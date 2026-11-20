@@ -167,6 +167,7 @@ import type {
   ConversationOnARecord,
   PieceOnARecord,
 } from './agent-records'
+import { PROFILES_PER_PAGE } from './agent-records'
 export type { ProfileReading, WhoStartedIt, ConversationOnARecord } from './agent-records'
 import {
   terminalFor,
@@ -10846,47 +10847,53 @@ export class RuntimeHost implements LiveHost {
    * what each one runs on, and all of it AS IT STANDS — `460` measured that nothing tells a running
    * conversation anything, so a launch-time line is a snapshot and this is a reading.
    *
-   * ⚑ **One store read, so existence and description cannot disagree.** The slugs are folded by a
-   * CHECK on the column, so *listed here* and *`admitGive` will not answer `no-such-profile`* are the
-   * same question asked of the same table.
+   * ⚑ The page and its count use the same identity table as Give. A profile with no conversation
+   * still has a row here.
    */
-  profilesVisibleTo(): ProfileReading {
-    const read = this.profileExecution
-    const conflicts = this.profileExecutionConflicts
+  profilesVisibleTo(after = ''): ProfileReading {
+    const { identities, count } = this.deps.store.agentIdentityPage(after, PROFILES_PER_PAGE + 1)
+    const page = identities.slice(0, PROFILES_PER_PAGE)
+    const next = identities.length > PROFILES_PER_PAGE ? page.at(-1)?.slug : undefined
     return {
-      profiles: this.deps.store.agentIdentities().map((one): ProfileReport => {
-        // ⛔ **Its fields, built here rather than spread from the row** — see {@link ProfileReport}
-        // for what the row carries that this does not, and why each absence is a ruling. ⚑ A spread
-        // with a narrower declared type writes past the type, which is how a capability column would
-        // arrive at a model without anybody choosing it.
-        const chosen = this.deps.store.modelChoiceOf(one.slug)
-        const runsOn = this.itsProvider(one.slug).provider
-        return {
-          profile: one.slug,
-          displayName: one.displayName,
-          provider: runsOn,
-          // ⚑ **D-042 · R6 — the default IN FORCE**, as three plain fields.
-          defaultModel:
-            chosen !== null && aChoiceIsInForce(chosen, runsOn)
-              ? { provider: chosen.provider, model: chosen.model, effort: chosen.effort }
-              : null,
-          ...(kindOf(read, conflicts, one.id, one.createdAt) === 'service'
-            ? { isAService: true as const }
-            : {}),
-        }
-      }),
+      profiles: page.map((one) => this.profileReport(one)),
+      count,
+      ...(next === undefined ? {} : { next }),
       usage: this.providerUsage(),
       windowsSeen: this.usageWindowsSeen(),
       readAt: this.now(),
     }
   }
 
+  private profileReport(
+    one: Pick<AgentIdentity, 'id' | 'slug' | 'displayName' | 'createdAt'>,
+  ): ProfileReport {
+    const chosen = this.deps.store.modelChoiceOf(one.slug)
+    const runsOn = this.itsProvider(one.slug).provider
+    const kind = kindOf(
+      this.profileExecution,
+      this.profileExecutionConflicts,
+      one.id,
+      one.createdAt,
+    )
+    return {
+      profile: one.slug,
+      displayName: one.displayName,
+      provider: runsOn,
+      // ⚑ **D-042 · R6 — the default in force.**
+      defaultModel:
+        chosen !== null && aChoiceIsInForce(chosen, runsOn)
+          ? { provider: chosen.provider, model: chosen.model, effort: chosen.effort }
+          : null,
+      ...(kind === 'service' ? { isAService: true } : {}),
+    }
+  }
+
   /** Read an agent’s conversations and work; keep the existing standing-rules check. */
   agentRecord(profile: string, by: Caller, me: string | null): AgentRecordReading {
     // ⚑ **The roster's own row**, so the record and `list_profiles` say one thing of the agent.
-    const slug = foldProfileName(profile)
-    const agent = this.profilesVisibleTo().profiles.find((one) => one.profile === slug)
-    if (agent === undefined) return { is: 'no-agent-by-that-name' }
+    const identity = this.deps.store.agentIdentityOf(profile)
+    if (identity === null) return { is: 'no-agent-by-that-name' }
+    const agent = this.profileReport(identity)
     // ⚑ **This caller and the conversations it took the place of** — said as `you` (729 · R90).
     const itself = me === null ? [] : this.theIdsItStandsFor(me)
     const unread = rowsUnreadOnce()
