@@ -250,14 +250,23 @@ it.each([false, true])(
   },
 )
 
-
 it('coalesces fifty same-scope connection notices into the current read and one follow-up', async () => {
   const out = fixture()
   let finishCurrent!: (value: readonly ProviderConnection[]) => void
   let finishTrailing!: (value: readonly ProviderConnection[]) => void
   out.api.providerConnections
-    .mockImplementationOnce(() => new Promise((resolve) => { finishCurrent = resolve }))
-    .mockImplementationOnce(() => new Promise((resolve) => { finishTrailing = resolve }))
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCurrent = resolve
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishTrailing = resolve
+        }),
+    )
   const props = reactive({
     provider: 'claude' as Provider,
     name: 'Fern',
