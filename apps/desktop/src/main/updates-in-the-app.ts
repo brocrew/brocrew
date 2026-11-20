@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { autoUpdater as nativeUpdater, BrowserWindow, dialog } from 'electron'
 import type { App } from 'electron'
 import type { AppUpdater, BaseUpdater } from 'electron-updater'
-import { UPDATES_CHANNELS, type UpdateChannel } from '../shared/updates'
+import { UPDATES_CHANNELS } from '../shared/updates'
 import { shownVersion } from './build-identity'
 import { defaultDataFolder, workspaceOf } from './data-folder'
 import { feedOfTheApp } from './release-feed'
@@ -65,6 +65,8 @@ export function startUpdates(options: {
       autoUpdater.autoInstallOnAppQuit = false
       if (process.platform === 'darwin') autoUpdater.autoInstallOnAppQuit = true
       autoUpdater.allowDowngrade = false
+      // electron-updater offers prereleases to an install whose version has a prerelease part.
+      autoUpdater.allowPrerelease = false
       autoUpdater.requestHeaders = NOBODY_IN_PARTICULAR
       const { publicUpdateFeed, websiteUpdatesEnabled, UPDATE_REQUEST_HEADERS } =
         await import('./update-feed')
@@ -202,10 +204,9 @@ export function startUpdates(options: {
       read: () => readUpdateSettings(settings.file, settings.defaults),
       write: (chosen) => writeUpdateSettings(settings.file, chosen),
     },
-    check: async (channel: UpdateChannel): Promise<FoundUpdate | null> => {
+    check: async (): Promise<FoundUpdate | null> => {
       if (process.env.BROCREW_SKIP_UPDATE_CHECK === '1') return null
       const autoUpdater = await theUpdater()
-      autoUpdater.allowPrerelease = channel === 'beta'
       const result = await autoUpdater.checkForUpdates()
       if (result === null || !result.isUpdateAvailable) return null
       return {

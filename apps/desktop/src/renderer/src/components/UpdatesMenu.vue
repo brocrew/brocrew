@@ -105,10 +105,7 @@ function onKey(event: KeyboardEvent): void {
 async function flip(event: Event, change: Parameters<typeof updates.set>[0]): Promise<void> {
   const box = event.target as HTMLInputElement
   await press(() => updates.set(change))
-  box.checked =
-    'checkAutomatically' in change
-      ? (snapshot.value?.checkAutomatically ?? false)
-      : snapshot.value?.channel === 'beta'
+  box.checked = snapshot.value?.checkAutomatically ?? false
 }
 
 // Focus moves in as it opens — to its first control, or to the menu itself where it has none (a
@@ -273,16 +270,6 @@ onMounted(async () => {
             @change="flip($event, { checkAutomatically: !snapshot!.checkAutomatically })"
           />
           <span>Check automatically</span>
-        </label>
-        <label class="switch">
-          <input
-            type="checkbox"
-            role="switch"
-            :checked="snapshot.channel === 'beta'"
-            data-cy="updates-beta"
-            @change="flip($event, { channel: snapshot!.channel === 'beta' ? 'stable' : 'beta' })"
-          />
-          <span>Get beta updates</span>
         </label>
       </div>
     </template>

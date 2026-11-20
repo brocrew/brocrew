@@ -35,7 +35,6 @@ export const WORKSPACES: WorkspaceRow[] = [
 export const UPDATES: UpdatesSnapshot = {
   version: '0.9.2',
   checkAutomatically: true,
-  channel: 'stable',
   state: { kind: 'available', version: '0.9.3' },
 }
 

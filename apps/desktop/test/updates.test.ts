@@ -153,16 +153,12 @@ describe('§1 · the rules', () => {
     }
     let offered = old
     const fetched: FoundUpdate[] = []
-    const channels: string[] = []
     const take = async (release: FoundUpdate) => {
       fetched.push(release)
     }
     const app = anUpdater({
-      start: { checkAutomatically: false, channel: 'beta' },
-      check: async (channel) => {
-        channels.push(channel)
-        return offered
-      },
+      start: { checkAutomatically: false },
+      check: async () => offered,
       download: take,
     })
     await app.updates.checkNow()
@@ -171,7 +167,6 @@ describe('§1 · the rules', () => {
     offered = newest
     await app.updates.download()
     expect(fetched).toEqual([newest])
-    expect(channels).toEqual(['beta', 'beta'])
     expect(
       app.asked.published.some(
         ({ state }) => state.kind === 'downloading' && state.version === '0.1.25',
@@ -200,44 +195,32 @@ describe('§1 · the rules', () => {
   })
 
   for (const outcome of ['resolve', 'reject'] as const) {
-    for (const change of ['channel', 'stop'] as const) {
-      it(`${change} during refresh prevents download when it ${outcome}s`, async () => {
-        let finish!: () => void
-        let checks = 0
-        const app = anUpdater({
-          start: { checkAutomatically: false, channel: 'beta' },
-          check: async () => {
-            if (++checks === 1) return NEWER
-            return new Promise<FoundUpdate>((resolve, reject) => {
-              finish = () =>
-                outcome === 'resolve'
-                  ? resolve({ ...NEWER, version: '0.3.0-beta.1' })
-                  : reject(new Error('feed unavailable'))
-            })
-          },
-        })
-        await app.updates.checkNow()
-        const pending = app.updates.download()
-        expect(checks).toBe(2)
-        if (change === 'channel') app.updates.set({ channel: 'stable' })
-        else app.updates.stop()
-        const published = app.asked.published.length
-        finish()
-        await pending
-        expect(app.asked.downloads).toBe(0)
-        expect(app.asked.installs).toBe(0)
-        if (change === 'channel') {
-          expect(app.updates.snapshot()).toMatchObject({
-            channel: 'stable',
-            state: { kind: 'idle', checkedAt: null, upToDate: false },
+    it(`stop during refresh prevents download when it ${outcome}s`, async () => {
+      let finish!: () => void
+      let checks = 0
+      const app = anUpdater({
+        start: { checkAutomatically: false },
+        check: async () => {
+          if (++checks === 1) return NEWER
+          return new Promise<FoundUpdate>((resolve, reject) => {
+            finish = () =>
+              outcome === 'resolve'
+                ? resolve({ ...NEWER, version: '0.3.0' })
+                : reject(new Error('feed unavailable'))
           })
-          await app.updates.download()
-          expect(app.asked.downloads).toBe(0)
-        } else {
-          expect(app.asked.published).toHaveLength(published)
-        }
+        },
       })
-    }
+      await app.updates.checkNow()
+      const pending = app.updates.download()
+      expect(checks).toBe(2)
+      app.updates.stop()
+      const published = app.asked.published.length
+      finish()
+      await pending
+      expect(app.asked.downloads).toBe(0)
+      expect(app.asked.installs).toBe(0)
+      expect(app.asked.published).toHaveLength(published)
+    })
   }
 
   it('keeps another click or check from racing a download refresh', async () => {
@@ -267,13 +250,13 @@ describe('§1 · the rules', () => {
     on.updates.start()
     await on.pass()
     expect(on.asked.checks).toBe(1)
-    on.elsewhere({ checkAutomatically: false, channel: 'stable' })
+    on.elsewhere({ checkAutomatically: false })
     for (let day = 0; day < 3; day += 1) await on.pass()
     expect(on.asked.checks).toBe(1)
     expect(on.updates.snapshot().checkAutomatically).toBe(false)
-    // …and a change here keeps what the other workspace chose.
-    on.updates.set({ channel: 'beta' })
-    expect(on.asked.written.at(-1)).toEqual({ checkAutomatically: false, channel: 'beta' })
+    // …and a change here starts from what the other workspace chose.
+    on.updates.set({})
+    expect(on.asked.written.at(-1)).toEqual({ checkAutomatically: false })
   })
 
   it('on: once soon after launch, then once a day — and never a download it was not asked for', async () => {
@@ -291,7 +274,7 @@ describe('§1 · the rules', () => {
   })
 
   it('a person who asks is answered, the switch off or not — and one check at a time', async () => {
-    const off = anUpdater({ start: { checkAutomatically: false, channel: 'beta' }, offered: null })
+    const off = anUpdater({ start: { checkAutomatically: false }, offered: null })
     const [first, second] = await Promise.all([off.updates.checkNow(), off.updates.checkNow()])
     expect(off.asked.checks).toBe(1)
     expect(second?.state).toEqual({ kind: 'checking' })
@@ -421,7 +404,7 @@ describe('§1 · the rules', () => {
     })
   })
 
-  it('a failure is said in plain words, its first line only — and a channel with no release yet is up to date', async () => {
+  it('a failure is said in plain words, its first line only — and no release yet is up to date', async () => {
     const broken = anUpdater({
       check: async () => {
         throw new Error('the feed answered 404\nHeaders: {"server": "x"}')
@@ -491,26 +474,12 @@ describe('§1 · the rules', () => {
     expect(told).toHaveLength(101)
   })
 
-  it('an offer from the other channel is dropped when the channel changes', async () => {
-    const beta = anUpdater({ start: { checkAutomatically: true, channel: 'beta' } })
-    await beta.updates.checkNow()
-    expect(beta.updates.snapshot().state.kind).toBe('available')
-    beta.updates.set({ channel: 'stable' })
-    expect(beta.updates.snapshot().state).toEqual({
-      kind: 'idle',
-      checkedAt: null,
-      upToDate: false,
-    })
-    await beta.updates.download()
-    expect(beta.asked.downloads).toBe(0)
-  })
-
-  it('the switches are kept, and with checks turned off nothing is asked', async () => {
+  it('the switch is kept, and with checks turned off nothing is asked', async () => {
     const on = anUpdater()
     on.updates.start()
-    const after = on.updates.set({ checkAutomatically: false, channel: 'beta' })
-    expect(after).toMatchObject({ checkAutomatically: false, channel: 'beta' })
-    expect(on.asked.written).toEqual([{ checkAutomatically: false, channel: 'beta' }])
+    const after = on.updates.set({ checkAutomatically: false })
+    expect(after).toMatchObject({ checkAutomatically: false })
+    expect(on.asked.written).toEqual([{ checkAutomatically: false }])
     for (let day = 0; day < 3; day += 1) await on.pass()
     expect(on.asked.checks).toBe(0)
   })
@@ -526,16 +495,15 @@ describe('§1 · the rules', () => {
     expect(() => theAutoUpdaterOf({ default: {} })).toThrow('electron-updater has no autoUpdater')
   })
 
-  it('the wire takes the two switches and nothing else', () => {
+  it('the wire takes the switch and nothing else', () => {
     expect(parseSettingsChange({ checkAutomatically: false })).toEqual({
       checkAutomatically: false,
     })
-    expect(parseSettingsChange({ channel: 'beta' })).toEqual({ channel: 'beta' })
     for (const bad of [
       null,
       [],
       'x',
-      { channel: 'nightly' },
+      { channel: 'beta' },
       { checkAutomatically: 'yes' },
       { url: 'x' },
     ]) {
@@ -549,11 +517,11 @@ describe('§2 · the settings file', () => {
     const where = { appData: '/A', userData: '/A/@brobot2/desktop' }
     expect(updateSettingsOf({ ...where, hidden: false })).toEqual({
       file: join('/A', '@brobot2', 'settings.json'),
-      defaults: { checkAutomatically: true, channel: 'stable' },
+      defaults: { checkAutomatically: true },
     })
     expect(updateSettingsOf({ ...where, hidden: true })).toEqual({
       file: join('/A/@brobot2/desktop', 'update-settings.json'),
-      defaults: { checkAutomatically: false, channel: 'stable' },
+      defaults: { checkAutomatically: false },
     })
   })
 
@@ -562,11 +530,7 @@ describe('§2 · the settings file', () => {
     const file = join(folder, 'settings.json')
     expect(readUpdateSettings(file, UPDATE_DEFAULTS)).toEqual(UPDATE_DEFAULTS)
     expect(readUpdateSettings(file, HIDDEN_UPDATE_DEFAULTS)).toEqual(HIDDEN_UPDATE_DEFAULTS)
-    for (const text of [
-      '{',
-      '[]',
-      '{"updates": {"checkAutomatically": "no", "channel": "nightly"}}',
-    ]) {
+    for (const text of ['{', '[]', '{"updates": {"checkAutomatically": "no"}}']) {
       writeFileSync(file, text)
       expect(readUpdateSettings(file, UPDATE_DEFAULTS), text).toEqual(UPDATE_DEFAULTS)
     }
@@ -574,16 +538,13 @@ describe('§2 · the settings file', () => {
 
   it('written whole, keeping anything else the file holds', () => {
     const file = join(aFolder(), 'nested', 'settings.json')
-    writeUpdateSettings(file, { checkAutomatically: false, channel: 'beta' })
-    expect(readUpdateSettings(file, UPDATE_DEFAULTS)).toEqual({
-      checkAutomatically: false,
-      channel: 'beta',
-    })
-    writeFileSync(file, JSON.stringify({ somethingElse: 1, updates: {} }))
-    writeUpdateSettings(file, { checkAutomatically: true, channel: 'stable' })
+    writeUpdateSettings(file, { checkAutomatically: false })
+    expect(readUpdateSettings(file, UPDATE_DEFAULTS)).toEqual({ checkAutomatically: false })
+    writeFileSync(file, JSON.stringify({ somethingElse: 1, updates: { channel: 'beta' } }))
+    writeUpdateSettings(file, { checkAutomatically: true })
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
       somethingElse: 1,
-      updates: { checkAutomatically: true, channel: 'stable' },
+      updates: { checkAutomatically: true },
     })
     // Renamed over the file: nothing is left beside it.
     expect(readdirSync(dirname(file))).toEqual(['settings.json'])
@@ -594,9 +555,7 @@ describe('§2 · the settings file', () => {
     // A folder where the file should be: the rename over it fails.
     const file = join(folder, 'settings.json')
     mkdirSync(join(file, 'in-the-way'), { recursive: true })
-    expect(() =>
-      writeUpdateSettings(file, { checkAutomatically: false, channel: 'beta' }),
-    ).toThrow()
+    expect(() => writeUpdateSettings(file, { checkAutomatically: false })).toThrow()
     expect(readdirSync(folder)).toEqual(['settings.json'])
     expect(existsSync(`${file}.${String(process.pid)}.tmp`)).toBe(false)
   })

@@ -22,7 +22,7 @@ One x64 NSIS build makes **three CodeSignTool `sign` calls**, each signing and t
 
 Budget three signings per successful release. Setup and signature verification consume none. A rerun can consume three more, and a failed build may have consumed one or more already; confirm SSL.com's actual balance change on the first release rather than assuming its billing unit matches a CLI call. Twenty unused signings allow six complete releases with two left, if each call consumes one signing.
 
-Versioned prereleases (`vX.Y.Z-beta.N`) in `release.yml` also sign and consume three calls, so cut them sparingly. This keeps the beta channel usable for clients that already require signatures. Ordinary `windows-beta-*` and `beta-*` builds remain unsigned.
+Versioned prereleases (`vX.Y.Z-beta.N`) in `release.yml` also sign and consume three calls, so cut them sparingly. Ordinary `windows-beta-*` and `beta-*` builds remain unsigned.
 
 ## Publisher checks and upgrades
 

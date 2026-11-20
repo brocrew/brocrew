@@ -365,9 +365,7 @@ try {
   )
   summary.embeddedFeed = embeddedFeed
   let cdpA = await launch('a', 9339, VERSION_A, values['marker-a'])
-  await cdpA.evaluate(
-    'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
-  )
+  await cdpA.evaluate('return await window.api.updates.set({checkAutomatically:true})')
   await openUpdates(cdpA)
   await waitFor(
     async () => {
@@ -697,7 +695,6 @@ try {
       read.state.kind === 'idle' &&
       read.state.upToDate &&
       read.version === VERSION_B &&
-      read.channel === 'stable' &&
       read.checkAutomatically
     )
   }, 'B does not offer itself or change update settings')

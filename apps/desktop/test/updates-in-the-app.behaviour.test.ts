@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { App } from 'electron'
@@ -15,6 +15,7 @@ const fake = await vi.hoisted(async () => {
     updaterEvents: new EventEmitter(),
     autoStage: true,
     installOnQuit: false,
+    allowPrerelease: null as boolean | null,
     otherWorkspaces: 0,
     stops: [] as { conversationId: string; agentName: string }[],
     handlers: new Map<string, Handler>(),
@@ -69,6 +70,9 @@ vi.mock('electron-updater', () => ({
     autoUpdater: {
       set autoInstallOnAppQuit(value: boolean) {
         fake.installOnQuit = value
+      },
+      set allowPrerelease(value: boolean) {
+        fake.allowPrerelease = value
       },
       checkForUpdates: async () => {
         fake.checks += 1
@@ -146,6 +150,7 @@ beforeEach(() => {
   fake.autoStage = true
   fake.stops = []
   fake.installOnQuit = false
+  fake.allowPrerelease = null
   fake.otherWorkspaces = 0
   fake.handlers.clear()
   fake.appEvents.clear()
@@ -226,18 +231,21 @@ it('keeps a development build from checking even when the window asks', async ()
   expect(fake.fetched).toBe(0)
 })
 
-it('reports no newer release, and lets the person select the beta channel in its own settings', async () => {
+it('checks full releases only, even with a beta choice saved by an older version', async () => {
+  mkdirSync(join(root, 'data'), { recursive: true })
+  writeFileSync(
+    join(root, 'data', 'update-settings.json'),
+    JSON.stringify({ updates: { checkAutomatically: false, channel: 'beta' } }),
+  )
   start()
-  expect((await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)).checkAutomatically).toBe(false)
+  const read = await ask<UpdatesSnapshot>(UPDATES_CHANNELS.read)
+  expect(read.checkAutomatically).toBe(false)
+  expect(read).not.toHaveProperty('channel')
   const none = await ask<UpdatesSnapshot>(UPDATES_CHANNELS.checkNow)
   expect(none.state).toMatchObject({ kind: 'idle', upToDate: true })
   expect(fake.checks).toBe(1)
-  const chosen = await ask<UpdatesSnapshot>(UPDATES_CHANNELS.set, { channel: 'beta' })
-  expect(chosen.channel).toBe('beta')
-  expect(
-    JSON.parse(readFileSync(join(root, 'data', 'update-settings.json'), 'utf8')).updates.channel,
-  ).toBe('beta')
-  await expect(ask(UPDATES_CHANNELS.set, { channel: 'nightly' })).rejects.toThrow()
+  expect(fake.allowPrerelease).toBe(false)
+  await expect(ask(UPDATES_CHANNELS.set, { channel: 'beta' })).rejects.toThrow()
   expect(fake.fetched).toBe(0)
 })
 

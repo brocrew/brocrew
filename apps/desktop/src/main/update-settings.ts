@@ -1,12 +1,11 @@
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { UpdateChannel } from '../shared/updates'
 
 /**
- * 🔴 **W4.109 · B1 — how a computer's BroBot looks for updates**: whether it checks by itself, and
- * on which channel. One per computer, not per workspace: `<appData>/@brobot2/settings.json`, beside
- * the default data folder, never inside one.
+ * 🔴 **W4.109 · B1 — how a computer's BroBot looks for updates**: whether it checks by itself. One
+ * per computer, not per workspace: `<appData>/@brobot2/settings.json`, beside the default data
+ * folder, never inside one.
  *
  * ⚑ **A hidden launch keeps its own** (`<userData>/update-settings.json`): every test, smoke and
  * probe is one, and none of them may change what a person chose for this computer. ⛔ It checks
@@ -14,18 +13,11 @@ import type { UpdateChannel } from '../shared/updates'
  */
 export interface UpdateSettings {
   readonly checkAutomatically: boolean
-  readonly channel: UpdateChannel
 }
 
-/**
- * Default to automatic checks and stable releases.
- */
-export const UPDATE_DEFAULTS: UpdateSettings = { checkAutomatically: true, channel: 'stable' }
+export const UPDATE_DEFAULTS: UpdateSettings = { checkAutomatically: true }
 /** What a hidden launch starts with: checks off. */
-export const HIDDEN_UPDATE_DEFAULTS: UpdateSettings = {
-  checkAutomatically: false,
-  channel: 'stable',
-}
+export const HIDDEN_UPDATE_DEFAULTS: UpdateSettings = { checkAutomatically: false }
 
 /** Where the settings live, and what they are until the file says otherwise. */
 export function updateSettingsOf(where: {
@@ -55,7 +47,6 @@ export function readUpdateSettings(file: string, defaults: UpdateSettings): Upda
       typeof read.checkAutomatically === 'boolean'
         ? read.checkAutomatically
         : defaults.checkAutomatically,
-    channel: read.channel === 'beta' || read.channel === 'stable' ? read.channel : defaults.channel,
   }
 }
 

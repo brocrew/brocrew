@@ -337,9 +337,7 @@ async function seedWorkspace(workspace) {
   await mkdir(codexHome, { recursive: true })
   await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.port))
   let cdp = await launch('a', workspace.port, VERSION_A)
-  await cdp.evaluate(
-    'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
-  )
+  await cdp.evaluate('return await window.api.updates.set({checkAutomatically:true})')
   workspace.result.initialCredential = await saveRehearsalCodexKey(cdp)
   workspace.credentialBeforeButtons = await readFile(join(data, 'api-keys.json'), 'utf8')
   credentialPreserved(
@@ -709,7 +707,6 @@ async function reopenSecond(workspace) {
       read.state.kind === 'idle' &&
       read.state.upToDate &&
       read.version === VERSION_B &&
-      read.channel === 'stable' &&
       read.checkAutomatically
     )
   }, 'the signed candidate does not offer itself or change settings')
