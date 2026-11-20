@@ -7,6 +7,7 @@ it('carries positive person start through both listing halves without treating r
   try {
     const host = world.aHost()
     const person = await world.aPersonOpens(host, DEFAULT_PROFILE_ID)
+    world.db.prepare('UPDATE provider_session SET external_ref = NULL WHERE id = ?').run(person)
     const before = await host.listConversations()
     if ('refused' in before) throw new Error(before.refused)
     expect(before.unresumable.find((row) => row.sessionId === person)?.personStarted).toBe(true)
@@ -32,7 +33,8 @@ it('carries positive person start through both listing halves without treating r
       person,
       world.store.nextOrdinal(person),
       {
-        type: 'provider_session',
+        type: 'session',
+        state: 'started',
         ref: {
           provider: 'claude',
           sessionId: 'fictional-person-thread',
