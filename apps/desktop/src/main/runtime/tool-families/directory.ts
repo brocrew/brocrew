@@ -2,7 +2,7 @@ import { type AConversation, previewOf } from '../../../shared/last-exchange'
 import { ASKED_TO_STOP, type WhoStoppedIt, askedByClause } from '../../../shared/how-work-stopped'
 import { type AgentCard, type PieceOnTheCard, type WhoseConversation } from '../agent-directory'
 import { type AgentRecord } from '../host-split/host-command-contracts'
-import { type ProfileReport } from '../agent-records'
+import { PROFILES_PER_PAGE, type ProfileReport } from '../agent-records'
 import {
   type AgentToolAnswer,
   type AgentToolDefinition,
@@ -13,6 +13,7 @@ import { type AgentToolHost } from './host'
 import { readDirectoryCursor } from '../agent-directory'
 import { type Caller } from '../conversation-caller'
 import { EVERY_AGENT_THIS_APP_HOLDS } from '../../../shared/capabilities'
+import { isPathSegment } from '../../../shared/profile-name'
 import { HOW_A_PIECE_ENDED_SAID, pieceLine } from '../../../shared/piece-called'
 import {
   HOW_THE_LAST_TURN_ENDED,
@@ -690,28 +691,23 @@ export function createListProfilesTool(
   return {
     name: 'list_profiles',
 
-    description:
-      'Every agent this app holds — any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents lists conversations. A service is marked as one: it has one conversation, which any agent reaches by naming the profile. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.',
+    description: `Every agent this app holds, up to ${String(PROFILES_PER_PAGE)} profiles at a time in profile order. Pass next as cursor to continue. Any of them can be named to give_work: what each is called, which provider its conversations run on, and its default model and effort, when it has one; and each provider’s latest usage reading per window — how much is used, when it resets and when it was read, and whether that was before this app last started, when it may be another sign-in’s — so you can keep to a cap before you give work; and which windows each provider has reported since this app began noting them, with when each was first and last reported. These are identities, not conversations — list_agents lists conversations. A service is marked as one: it has one conversation, which any agent reaches by naming the profile. Being listed here is not a promise that a give will succeed. The answer says in words what the count covers — read that before summarising it. Name one agent with profile, before choosing whom to give work to, to read what it has done instead: how its standing rules begin, its conversations — who started each and when, which could not be reopened and which are archived — the newest pieces of work they hold and how each stands or ended, and the files it made.`,
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
      * A reader of this app's own table; a named agent's conversation record uses its own read.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
-    /**
-     * **F009 · one argument, and it opens a different answer rather than narrowing this one.**
-     * The ruling here was *none*: *"A name to ask about was the obvious argument and it is
-     * refused. The whole roster is one small read, and a named arm would buy one narrowing for a
-     * second shape of answer."* A record is not that narrowing — nothing on the roster tells what
-     * an agent has done — so the name opens it, as `list_tasks` naming a piece opens its record.
-     */
     input: {
       profile: z
         .string()
         .optional()
         .describe(
-          'An agent, by the profile this list names it by, to read what it has done instead of the list. Leave it out to list every agent.',
+          'Read the record of this profile. Leave it out to list profiles a page at a time.',
         ),
+      cursor: agentToolHandlerInput(
+        z.string().optional().describe('The next value from list_profiles. Leave out profile.'),
+      ),
     },
     call: (args) =>
       guarded(async () => {
@@ -720,6 +716,13 @@ export function createListProfilesTool(
             return refusalAnswer(
               refuseTool('malformed-request', {
                 problems: ['profile, when given, must name an agent list_profiles lists'],
+              }),
+            )
+          }
+          if (args.cursor !== undefined) {
+            return refusalAnswer(
+              refuseTool('malformed-request', {
+                problems: ['Use profile to read one record, or cursor to continue the roster.'],
               }),
             )
           }
@@ -740,9 +743,15 @@ export function createListProfilesTool(
             ].join('\n\n'),
           )
         }
-        // **No wall and no fold** (D-014): any agent may give work to any agent this app holds,
-        // so the whole roster is the answer.
-        const reading = host.profilesVisibleTo()
+        const cursor = args.cursor
+        if (cursor !== undefined && (typeof cursor !== 'string' || !isPathSegment(cursor))) {
+          return refusalAnswer(
+            refuseTool('malformed-request', {
+              problems: ['Use the next value returned by list_profiles as cursor.'],
+            }),
+          )
+        }
+        const reading = host.profilesVisibleTo(cursor)
         const profiles = reading.profiles.map((report) => ({
           profile: report.profile,
           ...(report.displayName === null ? {} : { display_name: report.displayName }),
@@ -758,8 +767,9 @@ export function createListProfilesTool(
           {
             outcome: 'ok',
             profiles,
-            count: profiles.length,
+            count: reading.count,
             count_covers: EVERY_AGENT_THIS_APP_HOLDS,
+            ...(reading.next === undefined ? {} : { next: reading.next }),
             // **F096 — each provider's newest usage reading, per window**.
             provider_usage: providerUsagePayload(reading.usage, reading.readAt),
             // **F096 — which windows each provider has reported, first and last**: kept when
@@ -780,6 +790,9 @@ export function createListProfilesTool(
           // characters and `ToolEntry.vue` draws that.
           [
             EVERY_AGENT_THIS_APP_HOLDS,
+            ...(reading.next === undefined
+              ? []
+              : [`More profiles: pass ${reading.next} as cursor to list_profiles.`]),
             ...reading.profiles.map((report) => profileText(report)),
             ...(Object.keys(reading.usage) as Provider[]).flatMap((provider) => {
               // Which windows it has reported, first and last, as the description promises.

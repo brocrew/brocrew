@@ -385,13 +385,48 @@ describe('488 · who exists, and what they were told', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · the door itself', () => {
-    it('⛔ it advertises one argument, the agent whose record to read, and no spelling of another', () => {
-      // `profile` reads that agent's record, never a narrowing of this roster; any other spelling
-      // is stripped (the next case).
+    it('⛔ it advertises a profile for one record and a cursor for the next roster page', () => {
       const one = agentToolsFor(host, 'sess_nobody').tools.find(
         (tool) => tool.name === 'list_profiles',
       )
-      expect(Object.keys(one?.input ?? {})).toEqual(['profile'])
+      expect(Object.keys(one?.input ?? {})).toEqual(['profile', 'cursor'])
+    })
+
+    it('continues in profile order and can read a named record beyond the first page', async () => {
+      const me = await anAgentRunning('lead')
+      for (let index = 51; index >= 0; index -= 1) {
+        const slug = `roster-${String(index).padStart(2, '0')}`
+        store.createAgentIdentity({ slug, displayName: slug, provider: 'codex' }, null)
+      }
+      const expected = store.agentIdentities().map((identity) => identity.slug)
+      const tools = toolsOf(me)
+      const first = await tools.call('list_profiles')
+      expect(namesIn(first)).toEqual(expected.slice(0, 50))
+      expect(first).toMatchObject({ count: expected.length, next: expected[49] })
+      expect(await tools.say('list_profiles')).toContain(`pass ${expected[49]} as cursor`)
+
+      const second = await tools.call('list_profiles', { cursor: first['next'] })
+      expect(namesIn(second)).toEqual(expected.slice(50))
+      expect(second['count']).toBe(expected.length)
+      expect(second).not.toHaveProperty('next')
+      expect(second['provider_usage']).toEqual(first['provider_usage'])
+      expect(second['usage_windows_seen']).toEqual(first['usage_windows_seen'])
+
+      expect(await tools.call('list_profiles', { profile: 'roster-51' })).toMatchObject({
+        outcome: 'ok',
+        profile: 'roster-51',
+        conversations: [],
+      })
+    })
+
+    it('reports an unusable roster cursor and explains the two different reads', async () => {
+      const tools = toolsOf(await anAgentRunning('lead'))
+      for (const args of [{ cursor: '/' }, { profile: 'lead', cursor: 'lead' }]) {
+        expect(await tools.call('list_profiles', args)).toMatchObject({
+          outcome: 'refused',
+          rail: 'malformed-request',
+        })
+      }
     })
 
     it('🔴 an argument a caller invents changes nothing', async () => {
