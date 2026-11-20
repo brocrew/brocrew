@@ -4338,7 +4338,7 @@ export function createSessionStore(
     childNumbered: AppStatement
     rootOwnedBy: AppStatement
     firstOwnedBy: AppStatement
-    latestOwnedBy: AppStatement
+    firstNonRootOwnedBy: AppStatement
     children: AppStatement
     countChildrenAfter: AppStatement
     doneCondition: AppStatement
@@ -4395,9 +4395,9 @@ export function createSessionStore(
         `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
           WHERE owner_session_id = ? ORDER BY rowid LIMIT 1`,
       ),
-      latestOwnedBy: db.prepare(
+      firstNonRootOwnedBy: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
-          WHERE owner_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+          WHERE owner_session_id = ? AND parent_id IS NOT NULL ORDER BY rowid LIMIT 1`,
       ),
       children: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work
@@ -6057,9 +6057,12 @@ export function createSessionStore(
 
     defaultTaskTitle(conversation) {
       const sql = workSql()
-      const row = (sql.rootOwnedBy.get(conversation) ?? sql.latestOwnedBy.get(conversation)) as
-        WorkDbRow | undefined
-      return row === undefined ? null : titleNow(row, activeGeneration(conversation))
+      const generation = activeGeneration(conversation)
+      const root = sql.rootOwnedBy.get(conversation) as WorkDbRow | undefined
+      const rootTitle = root === undefined ? null : aConversationTitle(titleNow(root, generation))
+      if (rootTitle !== null) return rootTitle
+      const first = sql.firstNonRootOwnedBy.get(conversation) as WorkDbRow | undefined
+      return first === undefined ? null : titleNow(first, generation)
     },
 
     rootOf(conversation) {
