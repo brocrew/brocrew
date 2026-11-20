@@ -620,6 +620,9 @@ export class WorkReads {
           givenAt: row.givenAt,
           changedAt:
             row.state === rawStates.get(row.piece) ? (row.lastRecordedChangeAt ?? null) : null,
+          ...(row.providerTurnFailure === undefined
+            ? {}
+            : { providerTurnFailure: row.providerTurnFailure }),
           urgent:
             row.state === 'stalled' ||
             row.state === 'waiting-on-a-person' ||

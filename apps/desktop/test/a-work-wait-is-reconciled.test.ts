@@ -1,6 +1,7 @@
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
+import { registerProviderFailureFallbackCases } from './helpers/provider-failure-fallback-cases'
 import {
   countSqlReads,
   settle,
@@ -240,9 +241,9 @@ describe('a work wait is reconciled without a window', () => {
     for (const folder of [userData, root]) rmSync(folder, { recursive: true, force: true })
   })
 
-  registerPersistedWaitRevisionCase({
+  const waitContext = {
     host: () => host,
-    replaceHost: (value) => {
+    replaceHost: (value: RuntimeHost) => {
       host = value
     },
     freezeClock: () => {
@@ -252,7 +253,9 @@ describe('a work wait is reconciled without a window', () => {
     waiting,
     store: () => store,
     build: () => build(),
-  })
+  }
+  registerPersistedWaitRevisionCase(waitContext)
+  registerProviderFailureFallbackCases(waitContext, tick, cycle, (owner) => notices(owner).length)
 
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {
     keepTurnsOpen = true

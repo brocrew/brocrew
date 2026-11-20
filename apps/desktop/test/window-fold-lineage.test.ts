@@ -10,6 +10,7 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import type { WindowReadQuery, WindowReadResult } from '../src/main/db/window-read-protocol'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { observeLedgerFolds } from './helpers/observe-ledger-folds'
 import { observeGenerationReads } from './helpers/observe-generation-reads'
@@ -271,4 +272,532 @@ it('keeps the historical turn cut after the current piece has closed', () => {
   const owner = cut.owners.find((one) => one.sessionId === 'alpha')!
   expect(owner.history.driven).toEqual({ value: ['alpha-child'] })
   expect(owner.history.states).toContainEqual(['alpha-child', 'closed'])
+})
+
+it('keeps the failure of driven work through an unrelated turn, a close, and recorded reopen', () => {
+  const { store, file } = world()
+  const terminalError = {
+    type: 'turn',
+    state: 'failed',
+    providerFailure: { message: 'The provider could not use this model.', code: 'modelNotFound' },
+  } as const
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  const read = (piece: string) => store.piecesOwnedBy('alpha').find((one) => one.piece === piece)
+  const first = 'alpha-child'
+  const second = 'alpha-second'
+  const root = store.rootOf('alpha')!
+  append({
+    type: 'work_given',
+    piece: second,
+    parent: root.piece,
+    label: `${root.label}.2`,
+    title: 'Unrelated work',
+    brief: 'Read the next chapter',
+    givenBy: 'beta',
+  })
+  append({ type: 'user_turn', text: 'Work on the first piece', drives: first })
+  const failedAt = append(terminalError)
+  const diagnosis = { turnOrdinal: failedAt, ...terminalError.providerFailure }
+  expect(read(first)).toMatchObject({
+    owner: 'alpha',
+    giver: 'alpha',
+    providerTurnFailure: diagnosis,
+  })
+  expect(read(second)).toMatchObject({ owner: 'alpha', giver: 'beta' })
+  expect(read(second)).not.toHaveProperty('providerTurnFailure')
+  expect(store.piecesOwnedBy('beta')[0]).toMatchObject({ owner: 'beta', giver: 'alpha' })
+  expect(store.piecesOwnedBy('beta')[0]).not.toHaveProperty('providerTurnFailure')
+
+  append({
+    type: 'message_queued',
+    messageId: 'retry-first',
+    kind: 'work',
+    text: 'Retry the first piece',
+    drives: first,
+  })
+  append({ type: 'user_turn', text: 'Work on the second piece', drives: second })
+  append({ type: 'assistant_message', text: 'I checked the chapter.' })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+
+  append({ type: 'status', state: 'ended' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+  append({ type: 'reopened' })
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  expect(createSessionStore(reopened).piecesOwnedBy('alpha')).toEqual(store.piecesOwnedBy('alpha'))
+
+  append({ type: 'message_unqueued', messageId: 'retry-first', reason: 'sent', text: 'Retry' })
+  append({ type: 'user_turn', text: 'Retry the first piece', drives: first })
+  append({ type: 'status', state: 'working' })
+  append({ type: 'assistant_message', text: 'I started it again.' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+  append({ type: 'turn', state: 'interrupted' })
+  expect(read(first)?.providerTurnFailure).toEqual(diagnosis)
+
+  append({ type: 'user_turn', text: 'Try it again', drives: first })
+  const failedAgain = append(terminalError)
+  expect(read(first)?.providerTurnFailure).toEqual({ ...diagnosis, turnOrdinal: failedAgain })
+  append({ type: 'user_turn', text: 'Retry once more', drives: first })
+  append({ type: 'work_interrupted', by: 'a-person' })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.providerTurnFailure).toEqual({ ...diagnosis, turnOrdinal: failedAgain })
+
+  append({ type: 'user_turn', text: 'Finish the first piece', drives: first })
+  append({ type: 'turn', state: 'completed' })
+  expect(read(first)?.piece).toBe(first)
+  expect(read(first)).not.toHaveProperty('providerTurnFailure')
+
+  append({ type: 'user_turn', text: 'Try both pieces' })
+  const sharedFailure = append(terminalError)
+  expect(read(first)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+  expect(read(second)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+  append({ type: 'work_closed', piece: second, by: 'beta' })
+  expect(read(second)).toMatchObject({ state: 'closed', owner: 'alpha', giver: 'beta' })
+  expect(read(second)).not.toHaveProperty('providerTurnFailure')
+  expect(read(first)?.providerTurnFailure?.turnOrdinal).toBe(sharedFailure)
+})
+
+it('bounds only the copied provider reason on the turn and reads old or malformed rows normally', () => {
+  const { store } = world()
+  const message = `${'x'.repeat(4094)}🛠 long provider details`
+  const diagnostic = { type: 'error', message, fatal: false } as const
+  store.append('alpha', 1, { type: 'user_turn', text: 'Retry' }, 2)
+  store.append('alpha', 2, diagnostic, 3)
+  store.append(
+    'alpha',
+    3,
+    { type: 'turn', state: 'failed', providerFailure: { message, code: 'x'.repeat(201) } },
+    4,
+  )
+  store.append('alpha', 4, { type: 'turn', state: 'failed' }, 5)
+  const malformed = { type: 'turn', state: 'failed', providerFailure: null }
+  store.append('alpha', 5, malformed as unknown as TranscriptEvent, 6)
+
+  const bounded = `${'x'.repeat(4094)}…`
+  expect(
+    store
+      .events('alpha')
+      .slice(2)
+      .map(({ event }) => event),
+  ).toEqual([
+    diagnostic,
+    { type: 'turn', state: 'failed', providerFailure: { message: bounded } },
+    { type: 'turn', state: 'failed' },
+    { type: 'turn', state: 'failed' },
+  ])
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: 3,
+    message: bounded,
+  })
+})
+
+const providerCause = { message: 'The provider could not run that model.', code: 'modelNotFound' }
+const refusedTurn = {
+  type: 'turn',
+  state: 'failed',
+  wordOf: 'this-app',
+  providerFailure: providerCause,
+} as const
+
+it('reads a taskless failure notice beside a legacy piece receipt after reopening the ledger', () => {
+  const { store, file } = world()
+  const piece = store.piecesOwnedBy('alpha')[0]?.piece
+  if (piece === undefined) throw new Error('the fixture holder needs its original piece')
+  const append = (event: TranscriptEvent, at: number) =>
+    store.append('alpha', store.nextOrdinal('alpha'), event, at)
+  append({ type: 'user_turn', text: 'Try the selected model' }, 10)
+  const failure = store.nextOrdinal('alpha')
+  append(refusedTurn, 11)
+  const existing = {
+    type: 'work_reconciliation',
+    incident: 'the-missing-wait',
+    piece,
+    kind: 'wait-target-missing',
+    since: 5,
+    step: 'person',
+    outcome: 'listed',
+  } as const
+  const notice = {
+    type: 'work_reconciliation',
+    incident: `rc3:0:${failure}:beta`,
+    kind: 'provider-turn-failed',
+    episode: { generation: 0, terminalOrdinal: failure },
+    since: 11,
+    step: 'giver',
+    outcome: 'planned',
+    target: 'beta',
+    messageId: 'the-first-failure-notice',
+  } as const
+  append(existing, 12)
+  append(notice, 13)
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  const read = createSessionStore(reopened)
+  const pieceReceipt = { ...existing, at: 12 }
+  expect(read.reconciliationReceiptsForOwner('alpha')).toEqual([
+    pieceReceipt,
+    { ...notice, at: 13 },
+  ])
+  expect(read.reconciliationReceipts('alpha', piece)).toEqual([pieceReceipt])
+  expect(read.reconciliationReceiptsForOwner('beta')).toEqual([])
+})
+
+it('keeps a provider failure notice holder on the queued notice across a cold read', () => {
+  const { store, file } = world()
+  const append = (event: TranscriptEvent, at: number) =>
+    store.append('beta', store.nextOrdinal('beta'), event, at)
+  append(
+    {
+      type: 'message_queued',
+      kind: 'notice',
+      messageId: 'provider-failure-notice',
+      text: 'The provider could not run the selected model.',
+      appNotice: 'a-provider-turn-failed',
+      attribution: 'app_authored',
+      providerFailureHolder: 'alpha',
+    },
+    20,
+  )
+  append(
+    {
+      type: 'message_queued',
+      kind: 'notice',
+      messageId: 'legacy-notice',
+      text: 'A piece needs attention.',
+      appNotice: 'a-work-wait-needs-attention',
+      attribution: 'app_authored',
+      providerFailureHolder: 'alpha',
+    },
+    21,
+  )
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  const read = createSessionStore(reopened)
+  const pending = read.messagesWaitingIn('beta')
+  expect(pending).toHaveLength(2)
+  expect(pending[0]).toMatchObject({
+    messageId: 'provider-failure-notice',
+    providerFailureHolder: 'alpha',
+    authorship: { attribution: 'app_authored', appNotice: 'a-provider-turn-failed' },
+  })
+  expect(pending[0]?.authorship).not.toHaveProperty('relayedFrom')
+  expect(pending[1]?.messageId).toBe('legacy-notice')
+  expect(pending[1]).not.toHaveProperty('providerFailureHolder')
+  const queued = read.events('beta').map((entry) => entry.event)
+  expect(
+    queued.find(
+      (event) => event.type === 'message_queued' && event.messageId === 'provider-failure-notice',
+    ),
+  ).toHaveProperty('providerFailureHolder', 'alpha')
+  expect(
+    queued.find((event) => event.type === 'message_queued' && event.messageId === 'legacy-notice'),
+  ).not.toHaveProperty('providerFailureHolder')
+})
+
+it('distinguishes the exact retraction of a provider failure notice from other outcomes', () => {
+  const { store, db } = world()
+  const recipient = 'beta'
+  const messageId = 'a-provider-failure-notice'
+  const facts = {
+    messageId,
+    text: 'The recipient could not run that model.',
+    appNotice: 'a-provider-turn-failed',
+    attribution: 'app_authored',
+  } as const
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal(recipient)
+    store.append(recipient, ordinal, event, ordinal)
+    return ordinal
+  }
+  const queue = () =>
+    append({ ...facts, type: 'message_queued', kind: 'notice', providerFailureHolder: 'alpha' })
+  const finish = (reason: 'retracted' | 'cancelled' | 'sent') =>
+    append({ ...facts, type: 'message_unqueued', reason })
+  const progress = () => store.providerFailureNoticeProgress(recipient, messageId)
+
+  expect(progress()).toBe('missing')
+  queue()
+  expect(progress()).toBe('pending')
+  finish('cancelled')
+  expect(progress()).toBe('not-delivered')
+  queue()
+  append({ type: 'message_unqueued', messageId, reason: 'sent', text: facts.text })
+  expect(progress()).toBe('not-delivered')
+  append({
+    type: 'user_turn',
+    text: facts.text,
+    attribution: facts.attribution,
+    appNotice: facts.appNotice,
+  })
+  expect(progress()).toBe('running')
+  append({ type: 'turn', state: 'completed' })
+  expect(progress()).toBe('turn-ended')
+  queue()
+  finish('retracted')
+  expect(progress()).toBe('retracted')
+  expect(store.queuedPromptProgress(recipient, messageId, facts.appNotice)).toBe('not-delivered')
+
+  const unread = queue()
+  db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?').run(
+    'unreadable',
+    recipient,
+    unread,
+  )
+  expect(progress()).toBe('not-delivered')
+})
+
+it('reads an ordinary holder failure through wakes, stopped completions and reopen', () => {
+  const { store, file } = world()
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+  append({ type: 'user_turn', text: 'Run the first task' })
+  const failedAt = append(refusedTurn)
+  const episode = store.providerFailureEpisode('alpha')
+  expect(episode).toEqual({
+    generation: 0,
+    terminalOrdinal: failedAt,
+    turnId: store.turns('alpha')[0]?.id,
+    cause: providerCause,
+    asks: [],
+  })
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: failedAt,
+    ...providerCause,
+  })
+
+  append({ type: 'provider_turn' })
+  append({ type: 'turn', state: 'completed', startedBy: 'the-provider' })
+  expect(store.providerFailureEpisode('alpha')).toEqual(episode)
+  append({ type: 'user_turn', text: 'Try again' })
+  append({ type: 'work_interrupted', by: 'a-person' })
+  append({ type: 'turn', state: 'completed' })
+  append({ type: 'user_turn', text: 'Try with a permission' })
+  append({
+    type: 'user_decision',
+    requestId: 'req_permission',
+    outcome: 'cancel',
+    by: { who: 'a-person' },
+  })
+  append({ type: 'turn', state: 'completed' })
+  append({ type: 'user_turn', text: 'Try again without a usable result' })
+  append({ type: 'turn', state: 'failed' })
+  append({ type: 'user_turn', text: 'Open but unfinished' })
+  expect(store.providerFailureEpisode('alpha')).toEqual(episode)
+  append({ type: 'reopened' })
+  const reopened = openDatabase(file)
+  cleanup.push(() => {
+    reopened.close()
+  })
+  expect(createSessionStore(reopened).providerFailureEpisode('alpha')).toEqual(episode)
+
+  append({ type: 'user_turn', text: 'Retry the same model' })
+  append({
+    type: 'user_decision',
+    requestId: 'req_cancelled_retry',
+    outcome: 'cancel',
+    by: { who: 'a-person' },
+  })
+  const failedAgain = append(refusedTurn)
+  expect(store.providerFailureEpisode('alpha')).toMatchObject({
+    terminalOrdinal: failedAgain,
+    cause: providerCause,
+  })
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toEqual({
+    turnOrdinal: failedAgain,
+    ...providerCause,
+  })
+  append({ type: 'user_turn', text: 'Continue silently' })
+  append({ type: 'turn', state: 'completed' })
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+  expect(store.piecesOwnedBy('alpha')[0]?.providerTurnFailure).toBeUndefined()
+})
+
+it('joins taskless Asks delivered into a provider burst, using the latest hold of each message', () => {
+  const { store, folder, db } = world()
+  const owner = 'peer-answerer'
+  store.adopt({
+    id: owner,
+    provider: 'codex',
+    sessionId: 'fictional-peer',
+    cwd: folder,
+    profileId: 'fictional',
+    createdAt: 1,
+    updatedAt: 1,
+  })
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal(owner)
+    store.append(owner, ordinal, event, ordinal + 1)
+    return ordinal
+  }
+  const ask = (asker: string, requestId: string, messageId = requestId) => {
+    append({
+      type: 'message_queued',
+      messageId,
+      kind: 'question',
+      text: 'A question',
+      relayedFrom: asker,
+      asks: { asker, requestId },
+    })
+  }
+  append({ type: 'user_turn', text: 'Earlier work' })
+  append({ type: 'turn', state: 'completed' })
+  ask('alpha', 'req_alpha_earlier', 'req_alpha')
+  append({
+    type: 'message_unqueued',
+    messageId: 'req_alpha',
+    reason: 'handover',
+    text: 'A question',
+  })
+  append({ type: 'provider_turn' })
+  ask('alpha', 'req_alpha')
+  ask('beta', 'req_beta')
+  for (const messageId of ['req_alpha', 'req_beta'])
+    append({ type: 'message_unqueued', messageId, reason: 'sent', text: 'A question' })
+  const opening = append({
+    type: 'user_turn',
+    text: 'A question\n\nA question',
+    parts: [
+      { text: 'A question', relayedFrom: 'alpha' },
+      { text: 'A question', relayedFrom: 'beta' },
+    ],
+  })
+  ask('alpha', 'req_mid_turn')
+  append({
+    type: 'message_unqueued',
+    messageId: 'req_mid_turn',
+    reason: 'handover',
+    text: 'A question',
+  })
+  const terminalOrdinal = append({ ...refusedTurn, startedBy: 'the-provider' })
+  ask('beta', 'req_late')
+  expect(store.turns(owner)).toHaveLength(2)
+  expect(store.piecesOwnedBy(owner)).toEqual([])
+  expect(store.providerFailureEpisode(owner)).toMatchObject({
+    terminalOrdinal,
+    asks: [
+      { asker: 'alpha', requestId: 'req_alpha' },
+      { asker: 'beta', requestId: 'req_beta' },
+    ],
+  })
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
+
+  const relay = db.prepare(
+    "UPDATE events SET payload = json_set(payload, '$.parts[0].relayedFrom', ?) WHERE session_id = ? AND ordinal = ?",
+  )
+  relay.run('another-peer', owner, opening)
+  expect(store.providerFailureEpisode(owner)).toBe('unknown')
+  relay.run('alpha', owner, opening)
+  expect(store.providerFailureEpisode(owner)).toMatchObject({ terminalOrdinal })
+  db.prepare(
+    "DELETE FROM events WHERE session_id = ? AND type = 'message_queued' AND json_extract(payload, '$.messageId') = ?",
+  ).run(owner, 'req_alpha')
+  expect(store.providerFailureEpisode(owner)).toBe('unknown')
+})
+
+it('treats a failed batch with a moved part and only one sent row as unknown', () => {
+  const { store } = world()
+  const append = (event: TranscriptEvent) => {
+    const ordinal = store.nextOrdinal('alpha')
+    store.append('alpha', ordinal, event, ordinal + 1)
+  }
+  const movedFrom = { sessionId: 'source', name: 'Source', ordinal: 1, requestId: 'req_move' }
+  append({
+    type: 'message_queued',
+    messageId: 'msg_question',
+    kind: 'question',
+    text: 'A question',
+    relayedFrom: 'beta',
+    asks: { asker: 'beta', requestId: 'req_question' },
+  })
+  append({
+    type: 'message_queued',
+    messageId: 'msg_moved',
+    kind: 'work',
+    text: 'Moved work',
+    movedFrom,
+  })
+  append({
+    type: 'message_unqueued',
+    messageId: 'msg_question',
+    reason: 'sent',
+    text: 'A question',
+  })
+  append({
+    type: 'user_turn',
+    text: 'A question\n\nMoved work',
+    parts: [
+      { text: 'A question', relayedFrom: 'beta' },
+      { text: 'Moved work', movedFrom },
+    ],
+  })
+  append(refusedTurn)
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+})
+
+it('keeps the episode unknown for unread terminals or an exhausted closed-turn bound', () => {
+  const { store, db } = world()
+  store.append('alpha', 1, { type: 'user_turn', text: 'Run' }, 2)
+  store.append('alpha', 2, refusedTurn, 3)
+  for (let n = 0; n < 8; n++) {
+    if (n === 7) {
+      expect(store.providerFailureEpisode('beta')).toBe('none')
+      expect(store.providerFailureEpisode('alpha')).toMatchObject({ terminalOrdinal: 2 })
+    }
+    for (const [owner, start] of [
+      ['alpha', 3],
+      ['beta', 1],
+    ] as const) {
+      const ordinal = start + n * 2
+      store.append(owner, ordinal, { type: 'provider_turn' }, ordinal + 1)
+      store.append(
+        owner,
+        ordinal + 1,
+        { type: 'turn', state: 'completed', startedBy: 'the-provider' },
+        ordinal + 2,
+      )
+    }
+  }
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+  expect(store.providerFailureEpisode('beta')).toBe('unknown')
+
+  store.append('alpha', 19, { type: 'user_turn', text: 'Try once more' }, 20)
+  store.append('alpha', 20, { type: 'turn', state: 'completed' }, 21)
+  db.prepare('UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?').run(
+    '{"type":"turn","state":"unread-terminal"}',
+    'alpha',
+    20,
+  )
+  expect(store.providerFailureEpisode('alpha')).toBe('unknown')
+})
+
+it('does not reuse a failure ordinal after the active generation is replaced', () => {
+  const { store } = world()
+  store.append('alpha', 1, { type: 'user_turn', text: 'Run' }, 2)
+  store.append('alpha', 2, refusedTurn, 3)
+  expect(store.providerFailureEpisode('alpha')).toMatchObject({ generation: 0, terminalOrdinal: 2 })
+
+  const generation = store.beginGeneration('alpha')
+  store.appendGeneration('alpha', generation, [
+    { ordinal: 1, event: { type: 'user_turn', text: 'Run in the next generation' }, at: 4 },
+    { ordinal: 2, event: { type: 'turn', state: 'completed' }, at: 5 },
+  ])
+  expect(
+    store.promoteGeneration('alpha', generation, { normalizerVersion: 1, derivedThrough: 5 }),
+  ).toBe(true)
+  expect(store.providerFailureEpisode('alpha')).toBe('none')
 })

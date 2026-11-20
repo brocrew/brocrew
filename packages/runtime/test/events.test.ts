@@ -4,6 +4,7 @@ import {
   DEGRADED_UNNAMED,
   RUNTIME_EVENT_TYPES,
   degradeEvent,
+  parseRuntimeEvent,
   permissionDecisionSchema,
   runtimeEventSchema,
   toRuntimeEvent,
@@ -246,6 +247,19 @@ describe('runtimeEventSchema', () => {
     for (const type of RUNTIME_EVENT_TYPES) {
       expect(runtimeEventSchema.safeParse(validEvents[type]).success).toBe(true)
     }
+  })
+
+  it.each([
+    { type: 'turn', state: 'failed' },
+    { type: 'turn', state: 'failed', providerFailure: { message: 'The model is unavailable.' } },
+    {
+      type: 'turn',
+      state: 'failed',
+      wordOf: 'this-app',
+      providerFailure: { message: 'The model is unavailable.', code: 'modelNotFound' },
+    },
+  ] as const)('round-trips an optional provider cause on a failed turn: %j', (event) => {
+    expect(parseRuntimeEvent(structuredClone(event))).toEqual({ ok: true, event })
   })
 
   it('covers exactly the documented variants', () => {

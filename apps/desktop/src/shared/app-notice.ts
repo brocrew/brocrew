@@ -64,6 +64,7 @@
  */
 export const APP_NOTICES = [
   'a-work-wait-needs-attention',
+  'a-provider-turn-failed',
   'a-person-gave-new-work',
   'an-answer-to-a-question',
   'an-answer-is-still-owed',
@@ -156,6 +157,8 @@ export const APP_NOTICE_MARK = 'reporting what happened'
 export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
   'a-work-wait-needs-attention':
     'This app added this note because a piece of work needs attention. You did not write it, and it is not a go-ahead.',
+  'a-provider-turn-failed':
+    "This app added this note because a conversation's turn failed with a recorded provider error.",
   'a-person-gave-new-work':
     'This app added this note: a person gave new work to an agent this conversation gave work to. You did not write it, and it is not a go-ahead.',
   'an-answer-to-a-question':

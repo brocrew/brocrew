@@ -1,4 +1,5 @@
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
+import { recordFailedQuestionTurn } from './lib/question-wake'
 import { giveToSeededWorker } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -13,6 +14,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { RuntimeHost as ProductRuntimeHost } from '../src/main/runtime/runtime-host'
+import type { WorkReconciler } from '../src/main/runtime/work-reconciliation'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -155,6 +157,141 @@ describe('what a replacement carries, and what it leaves behind', () => {
     return next
   }
 
+  it('replans a retracted failure notice after a restart for an answerer with no work', async () => {
+    const asker = await personOpens('pm')
+    await host.closeAll()
+    const holder = 'answerer-without-work'
+    store.create({
+      id: holder,
+      provider: 'codex',
+      cwd: root,
+      approvalMode: 'auto',
+      profileId: 'worker',
+      parentSessionId: asker,
+    })
+    expect(store.rootOf(holder)).toBeNull()
+    const append = (owner: string, event: TranscriptEvent) => {
+      const ordinal = store.nextOrdinal(owner)
+      store.append(owner, ordinal, event, tick())
+      return ordinal
+    }
+    const requestId = 'req_failed_peer'
+    const message = 'The provider could not run the selected model.'
+    const { turnOrdinal: terminalOrdinal } = recordFailedQuestionTurn(append, {
+      asker,
+      holder,
+      requestId,
+      prompt: 'Which clock face should be kept?',
+      message,
+    })
+    const messageId = 'retained-failure-notice'
+    append(holder, {
+      type: 'work_reconciliation',
+      incident: 'retained-failure-incident',
+      kind: 'provider-turn-failed',
+      episode: { generation: 0, terminalOrdinal },
+      since: tick(),
+      step: 'giver',
+      outcome: 'planned',
+      target: asker,
+      messageId,
+    })
+    const held = {
+      messageId,
+      text: message,
+      attribution: 'app_authored',
+      appNotice: 'a-provider-turn-failed',
+    } as const
+    append(asker, {
+      ...held,
+      type: 'message_queued',
+      kind: 'notice',
+      providerFailureHolder: holder,
+    })
+    append(asker, { ...held, type: 'message_unqueued', reason: 'retracted' })
+    expect(store.reconciliationOwners()).not.toContain(holder)
+    expect(store.reconciliationOwners(true)).toContain(holder)
+    expect(store.providerFailureEpisode(holder)).toMatchObject({ terminalOrdinal })
+
+    db.close()
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    store = createSessionStore(db, tick)
+    host = buildHost(ProductRuntimeHost)
+    expect(host.providerFailureForItsAsker(holder, asker)).toEqual({
+      message,
+      turnOrdinal: terminalOrdinal,
+    })
+    expect(host.providerFailureForItsAsker(holder, holder)).toBeNull()
+    expect(store.providerFailureNoticeProgress(asker, messageId)).toBe('retracted')
+    expect(store.reconciliationReceiptsForOwner(holder)).toMatchObject([
+      { outcome: 'planned', messageId, target: asker },
+    ])
+    await waitFor(
+      () => store.reconciliationReceiptsForOwner(holder).length >= 2,
+      'the restart pass to record a new plan for the same notice',
+    )
+    await waitFor(
+      () =>
+        ledger(asker).filter(
+          (event) => event.type === 'message_queued' && event.messageId === messageId,
+        ).length === 2,
+      'the restart pass to queue the same notice',
+    )
+    await waitFor(
+      () =>
+        ledger(asker).some(
+          (event) =>
+            event.type === 'message_unqueued' &&
+            event.messageId === messageId &&
+            event.reason === 'sent',
+        ),
+      'the original notice to reach the asker after the restart',
+    )
+    const runner = (host as unknown as { workReconciler: WorkReconciler }).workReconciler
+    await runner.run()
+    await runner.run()
+
+    const notices = ledger(asker).filter(
+      (event) => event.type === 'message_queued' && event.appNotice === 'a-provider-turn-failed',
+    )
+    expect(notices).toHaveLength(2)
+    expect(notices[1]).toMatchObject({ messageId, providerFailureHolder: holder })
+    expect(notices[1]).toHaveProperty(
+      'text',
+      expect.stringContaining(`Unanswered questions: ${requestId}.`),
+    )
+    expect(notices[1]).toHaveProperty('text', expect.stringContaining(message))
+    expect(notices[1]).toHaveProperty(
+      'text',
+      expect.stringContaining('Check its status and settings before choosing how to continue.'),
+    )
+    expect(store.reconciliationReceiptsForOwner(holder).map(({ outcome }) => outcome)).toEqual([
+      'planned',
+      'planned',
+      'delivered',
+    ])
+    store.setModel(holder, 'fictional-selected')
+    store.setReportedModel(holder, 'fictional-reported', null)
+    const status = () => callOn(asker, 'get_agent_status', { agent: holder })
+    expect(await status()).toMatchObject({
+      outcome: 'ok',
+      agent: {
+        agent: holder,
+        provider: 'codex',
+        runsOn: {
+          selected: { model: 'fictional-selected' },
+          reported: { model: 'fictional-reported' },
+        },
+      },
+      provider_question_failure: { message, turnOrdinal: terminalOrdinal },
+    })
+    expect(await callOn(asker, 'withdraw_question', { question: requestId })).toMatchObject({
+      outcome: 'ok',
+    })
+    expect(host.providerFailureForItsAsker(holder, asker)).toBeNull()
+    expect(await status()).not.toHaveProperty('provider_question_failure')
+  })
+
   it('a lost session leaves the work and its successful automatic holder reminder recorded', async () => {
     await host.closeAll()
     host = buildHost(ProductRuntimeHost)
@@ -228,6 +365,69 @@ describe('what a replacement carries, and what it leaves behind', () => {
     expect(after?.stalledBecause).toBe('could_not_be_reopened')
     expect(store.piecesOwnedBy(next)).toEqual([])
     expect(ledger(worker)).toContainEqual({ type: 'replaced_by', sessionId: next })
+  })
+
+  it('moves a held provider failure notice under its original ID before rechecking it', async () => {
+    const { pm, worker } = await aWorkerOver()
+    const messageId = 'held-provider-failure-notice'
+    const text = 'The provider could not run the selected model.'
+    store.append(
+      worker,
+      store.nextOrdinal(worker),
+      {
+        type: 'message_queued',
+        messageId,
+        kind: 'notice',
+        text,
+        appNotice: 'a-provider-turn-failed',
+        attribution: 'app_authored',
+        providerFailureHolder: pm,
+      },
+      tick(),
+    )
+    const next = await seedSuccessorAfterQuit(worker)
+
+    // The public send now resolves historical addresses first. Exercise the retained start path
+    // directly, where it still moves queued rows from a historical address.
+    const start = host as unknown as {
+      ensureRunning(id: string, sink: RecordingSink): Promise<string>
+    }
+    expect(await start.ensureRunning(worker, window)).toBe(next)
+    expect(ledger(worker)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId,
+        reason: 'abandoned',
+      }),
+    )
+    expect(ledger(next)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_queued',
+        messageId,
+        text,
+        appNotice: 'a-provider-turn-failed',
+        providerFailureHolder: pm,
+      }),
+    )
+    await waitFor(
+      () =>
+        ledger(next).some(
+          (event) =>
+            event.type === 'message_unqueued' &&
+            event.messageId === messageId &&
+            event.reason === 'retracted',
+        ),
+      'the notice without a current failure to be retracted',
+    )
+    expect(ledger(next)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId,
+        reason: 'retracted',
+        detail:
+          'The app did not deliver this notice because it could not confirm it was still needed.',
+      }),
+    )
   })
 
   it('a second message to an id already replaced reaches the ONE conversation that took its place, never a second replacement', async () => {

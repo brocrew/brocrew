@@ -20,7 +20,11 @@ import type {
   RequestRoutedEvent,
   RequestStrandedEvent,
 } from './question-contracts'
-import type { WorkReconciliationEvent, WorkRecoveryEvent } from './reconciliation-contracts'
+import type {
+  ProviderFailureReconciliationEvent,
+  WorkReconciliationEvent,
+  WorkRecoveryEvent,
+} from './reconciliation-contracts'
 import type { RailPermanence, RefusalRemedy, RefusalTold } from './refusals'
 import type {
   AgentMessageKind,
@@ -307,6 +311,8 @@ export interface QueuedMessageEvent {
    * before it.
    */
   about?: string
+  /** The ledger holding the failure notice's receipt. */
+  providerFailureHolder?: string
   /**
    * ⚑ **The question a held question's notice asks** — see {@link TheQuestionItAsks}. ⚑ On the row
    * so a held notice rebuilt after a quit still names it: one whose question has stopped waiting is
@@ -1309,6 +1315,7 @@ export interface InstructionChangedEvent {
 
 export type TranscriptEvent =
   | WorkReconciliationEvent
+  | ProviderFailureReconciliationEvent
   | WorkRecoveryEvent
   | WorkerRegisteredEvent
   | RuntimeEvent

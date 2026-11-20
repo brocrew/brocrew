@@ -218,6 +218,25 @@ describe('§3 · a refused Codex turn stalls its piece on the login, saying whos
     expect(task).not.toHaveProperty('stoppedOnALogin')
   })
 
+  it('clears a current failure when the task is placed on a named deliberate wait', () => {
+    const failed = itsTurnFailed({
+      type: 'turn',
+      state: 'failed',
+      providerFailure: { message: 'The provider did not support this model.' },
+    })
+    const waiting = {
+      type: 'work_status_set',
+      piece: 'work_7',
+      line: 'Wait for the available model.',
+      by: 'sess_giver',
+      waiting: true,
+    } as const
+    expect(theTask([...failed, waiting]).providerTurnFailure?.turnOrdinal).toBe(3)
+    expect(
+      theTask([...failed, { ...waiting, on: { kind: 'time', at: 9_000_000 } }]),
+    ).not.toHaveProperty('providerTurnFailure')
+  })
+
   it('⚑ the sentence a person’s row reads names no provider’s login wrongly', () => {
     expect(UNDRIVEN_SENTENCES.login_refused).toBe(
       'its turn failed because its provider refused the sign-in or API key its conversation was started with.',

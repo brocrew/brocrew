@@ -27,7 +27,7 @@ import type {
   ConversationRenameResult,
   ConversationTitleAuthor,
 } from '../../../shared/conversation-title'
-import type { AgentMessageKind, TaskOutcome } from '../../../shared/task-contracts'
+import type { AgentMessageKind, PieceRow, TaskOutcome } from '../../../shared/task-contracts'
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import type {
   AgentOwnNotesOutcome,
@@ -81,6 +81,15 @@ import type { ResourceRow } from '../../db/session-store'
 import type { ToolName } from './catalog'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { ThemeStore } from '../../themes/store'
+
+export interface AgentStatusRead {
+  readonly card: AgentCard
+  readonly failures: readonly {
+    readonly piece: PieceRow['piece']
+    readonly failure: NonNullable<PieceRow['providerTurnFailure']>
+  }[]
+  readonly questionFailure: NonNullable<PieceRow['providerTurnFailure']> | null
+}
 
 export interface AgentToolHost {
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
@@ -139,6 +148,7 @@ export interface AgentToolHost {
   archivedVisibleTo(by: Caller, me: string | null, input?: DirectoryPageInput): ArchivedListed
   whenItWasArchived(id: string): number | null
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null
+  agentStatus(id: string, by: Caller, me: string): AgentStatusRead | null
   servicePieceForStatus(owner: string): string | null | undefined
   whatOpenedItsLastTurn(id: string): {
     readonly took: ReceivedInATurn | null

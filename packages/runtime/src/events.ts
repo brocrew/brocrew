@@ -104,6 +104,8 @@ const turnEventSchema = z.object({
   state: z.enum(['completed', 'failed', 'interrupted']),
   /** Codex `turnId` when available; correlation only. */
   turnId: z.string().optional(),
+  /** The reason the provider reported for this failed turn, if one was observed. */
+  providerFailure: z.object({ message: z.string(), code: z.string().optional() }).optional(),
   /**
    * 🔴 **`720` · R71 — present when THIS APP wrote the word, not the provider.**
    *
@@ -2053,6 +2055,9 @@ export type ProviderLimitClearEvent = Extract<RuntimeEvent, { type: 'provider_li
 export type ProviderUsageEvent = Extract<RuntimeEvent, { type: 'provider_usage' }>
 /** ⚑ **F074 — the usage limit a turn ended on**, as the `turn` event carries it. */
 export type TurnLimit = NonNullable<Extract<RuntimeEvent, { type: 'turn' }>['limit']>
+export type ProviderTurnFailure = NonNullable<
+  Extract<RuntimeEvent, { type: 'turn' }>['providerFailure']
+>
 
 /**
  * What the meter knows, including **not knowing** — the third kind, which has no event.

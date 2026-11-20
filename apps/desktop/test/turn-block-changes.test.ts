@@ -64,6 +64,39 @@ describe('turn block changes', () => {
     expect(partial.next.personWait).toBeNull()
   })
 
+  it('shows the newest recorded failure once per holder on successive ordinary turns', () => {
+    const older = { turnOrdinal: 3, message: 'Earlier provider error.' }
+    const newest = { turnOrdinal: 9, message: 'Current provider error.' }
+    const conversation = 'conversation W1.1 · Fictional job'
+    const sameHolder = { owner: 'worker-1', conversation }
+    const helpers = [
+      { ...helper(1), ...sameHolder, providerTurnFailure: older },
+      { ...helper(2), ...sameHolder, providerTurnFailure: newest },
+      { ...helper(3), ...sameHolder, providerTurnFailure: newest },
+      { ...helper(4, true), state: null },
+      helper(5),
+    ]
+    const first = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
+    const second = turnBlockChanges({ ...input, helpers, now: 120_000 }, first.next)
+    const diagnosis =
+      "Conversation W1.1 · Fictional job couldn't run: Current provider error. Check its status and settings before choosing how to continue. · task W1.2 · recorded failed turn 9"
+    for (const answer of [first, second]) {
+      expect(answer.extra.helpers?.rows.map((row) => row.label)).toEqual([
+        'W1.4',
+        'W1.1',
+        'W1.2',
+        'W1.3',
+        'W1.5',
+      ])
+      const text = block(answer.extra)
+      expect(text.split('\n').filter((line) => line.includes("couldn't run"))).toEqual([
+        `- ${diagnosis}`,
+      ])
+      expect(text).toContain(TURN_BLOCK_WORDS.helperUnknown('W1.4'))
+      expect(text).not.toContain(older.message)
+    }
+  })
+
   it('caps rows at five, rotates persistent urgent helpers, and leaves overflow changes eligible', () => {
     const rows = Array.from({ length: 8 }, (_, i) => helper(i + 1, true))
     const first = turnBlockChanges({ ...input, helpers: rows }, EMPTY_TURN_BLOCK)
@@ -93,6 +126,29 @@ describe('turn block changes', () => {
       'W1.2',
     ])
     expect(block(ordinarySecond.extra)).toContain('and 3 more: list_tasks')
+  })
+
+  it('retains the diagnosis for the visible task until rotation shows a newer failure', () => {
+    const helpers = [
+      { ...helper(1), providerTurnFailure: { turnOrdinal: 3, message: 'Visible provider error.' } },
+      helper(2),
+      helper(3),
+      helper(4),
+      helper(5),
+      {
+        ...helper(6),
+        owner: 'worker-1',
+        conversation: 'conversation W1.1 · Fictional job',
+        providerTurnFailure: { turnOrdinal: 7, message: 'Rotated provider error.' },
+      },
+    ]
+    const first = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
+    const second = turnBlockChanges({ ...input, helpers }, first.next)
+    expect(first.extra.helpers?.rows).toHaveLength(5)
+    expect(block(first.extra)).toContain('Visible provider error.')
+    expect(block(first.extra)).not.toContain('Rotated provider error.')
+    expect(block(second.extra)).toContain('Rotated provider error.')
+    expect(block(second.extra)).not.toContain('Visible provider error.')
   })
 
   it('shows five open rows and the count even when one status could not be read', () => {

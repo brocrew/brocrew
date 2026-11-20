@@ -427,7 +427,7 @@ describe('494 · the act this app knows the author of', () => {
       // and whether that login was an API key, which changes the words and not the cause.
       // And whether its row says its provider would not bill, which chooses the fifth.
       expect(fold.replace(/\s+/g, ' ')).toContain(
-        "endOfDrive( event.state === 'interrupted', entry.at, theLimitItEndedOn(event, entry.at), event.state === 'failed' && event.loginRefused === true, event.state === 'failed' && event.onAKey === true, event.state === 'failed' && event.billingRefused === true, )",
+        "endOfDrive( event.state === 'interrupted', entry.at, limitAtTurnEnd(event, entry.at), event.state === 'failed' && event.loginRefused === true, event.state === 'failed' && event.onAKey === true, event.state === 'failed' && event.billingRefused === true, )",
       )
       expect(fold.replace(/\s+/g, ' ')).toContain(
         "interrupted ? 'turn_interrupted' : limit !== undefined ? 'provider_limited' : billingRefused ? 'billing_refused' : 'turn_ended'",

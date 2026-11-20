@@ -25,6 +25,22 @@ export interface ReconciliationReceipt extends WorkReconciliationEvent {
   readonly at: number
 }
 
+/** One recorded failed turn's notice to a recipient, independent of any work piece. */
+export interface ProviderFailureReconciliationEvent {
+  readonly type: 'work_reconciliation'
+  readonly incident: string
+  readonly kind: 'provider-turn-failed'
+  readonly episode: { readonly generation: number; readonly terminalOrdinal: number }
+  readonly since: number
+  readonly step: 'giver'
+  readonly outcome: 'planned' | 'delivered' | 'failed'
+  readonly target: string
+  readonly messageId: string
+}
+
+export type HolderReconciliationReceipt =
+  ReconciliationReceipt | (ProviderFailureReconciliationEvent & { readonly at: number })
+
 /** The existing sign-in reopen's observed steps; these rows never authorize a second reopen. */
 export interface WorkRecoveryEvent {
   readonly type: 'work_recovery'

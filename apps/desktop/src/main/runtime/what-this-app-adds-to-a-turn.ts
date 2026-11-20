@@ -1,5 +1,8 @@
 import { clockTimeFrom } from '../../shared/clock'
 import { localFormat } from '../../shared/local-time'
+import type { PieceRow } from '../../shared/task-contracts'
+import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
+import { providerFailureDiagnosis } from '../../shared/work-reconciliation'
 
 /**
  * 🔴 **The block of this app's own words at the end of what a turn hands its agent.**
@@ -63,6 +66,7 @@ export interface AHelperInTheTurn {
   readonly givenAt: number
   readonly changedAt: number | null
   readonly urgent: boolean
+  readonly providerTurnFailure?: NonNullable<PieceRow['providerTurnFailure']>
 }
 
 export type CurrentWorkInTheTurn =
@@ -110,16 +114,20 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
     lines.push(
       ...rows.slice(0, 5).map((row) => {
         const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
-        return row.state === null || label !== row.label
-          ? TURN_BLOCK_WORDS.helperUnknown(label)
-          : `- ${TURN_BLOCK_WORDS.helper(
-              row.conversation,
-              label,
-              oneLine(row.name, 64),
-              oneLine(row.state, 100),
-              row.changedAt === null ? null : howLongAgo(row.changedAt, now),
-              facts.contextOf?.(row.owner) ?? null,
-            )}`
+        if (row.state === null || label !== row.label) return TURN_BLOCK_WORDS.helperUnknown(label)
+        if (row.providerTurnFailure !== undefined) {
+          const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
+          const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)
+          return `- ${providerFailureDiagnosis(conversation, cause)} · task ${label} · recorded failed turn ${String(row.providerTurnFailure.turnOrdinal)}`
+        }
+        return `- ${TURN_BLOCK_WORDS.helper(
+          row.conversation,
+          label,
+          oneLine(row.name, 64),
+          oneLine(row.state, 100),
+          row.changedAt === null ? null : howLongAgo(row.changedAt, now),
+          facts.contextOf?.(row.owner) ?? null,
+        )}`
       }),
     )
     const overflow = more + Math.max(0, rows.length - 5)

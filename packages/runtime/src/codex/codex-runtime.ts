@@ -111,7 +111,6 @@ import {
   isTheSameCodexCopy,
 } from './auth'
 import { assertNotCancelled, cancelWith, withDeadline, withTimeout } from '../internal/bounded'
-import type { CodexTransport } from './codex-transport'
 import { codexNoLongerHasTheThread } from './lost-thread'
 import { beginCodexHomeBoot } from './home-boot'
 import { ensureCodexMemoryConfig, type CodexMemoryConfigResult } from './memory-config'
@@ -139,7 +138,13 @@ import { CommandTails, type CommandTail } from '../command-output'
 import { ToolAnswers, type ToolAnswer } from '../tool-answer'
 import { MessageActCalls } from '../message-act'
 import { NextTurnSetting, sessionSettings, requestPlanMode } from '../next-turn'
-import { wrapUnknown, type PlanStep, type RuntimeEvent, type TurnLimit } from '../events'
+import {
+  wrapUnknown,
+  type PlanStep,
+  type ProviderTurnFailure,
+  type RuntimeEvent,
+  type TurnLimit,
+} from '../events'
 import {
   publishedOffer,
   type PermissionDecision,
@@ -181,7 +186,12 @@ import { CodexSubAgents } from './sub-agents'
 import type { ThreadCompactStartParams } from './protocol/v2/ThreadCompactStartParams'
 import type { ThreadResumeParams } from './protocol/v2/ThreadResumeParams'
 import type { ThreadStartParams } from './protocol/v2/ThreadStartParams'
-import { type TransportFactory, createSpawnTransportFactory } from './codex-transport'
+import {
+  CodexRequestRefused,
+  type CodexTransport,
+  type TransportFactory,
+  createSpawnTransportFactory,
+} from './codex-transport'
 import {
   MODEL_LIST_PAGE_LIMIT,
   MODEL_PROBE_TIMEOUT_MS,
@@ -210,6 +220,14 @@ export const CODEX_TOOLS_TURNED_OFF: readonly string[] = [
 ]
 
 export const CODEX_TOOLS_LEFT_ON: readonly string[] = []
+
+function observedTurnFailure(error: unknown, code?: string): ProviderTurnFailure | undefined {
+  const message = readOptionalString(error, 'message')
+  if (message === undefined || code === 'unauthorized' || code === 'usageLimitExceeded') {
+    return undefined
+  }
+  return code === undefined ? { message } : { message, code }
+}
 
 export class CodexSessionHandle implements SessionHandle {
   private readonly provider = 'codex' as const
@@ -846,7 +864,8 @@ export class CodexSessionHandle implements SessionHandle {
   // Only matching provider completion ends a local turn; keep the provider's own outcome.
   private onTurnCompleted(params: unknown): boolean {
     const p = isRecord(params) ? params : {}
-    const completedTurnId = readString(isRecord(p['turn']) ? p['turn'] : undefined, 'id')
+    const turn = p['turn']
+    const completedTurnId = readString(turn, 'id')
     if (!this.isCurrentProviderTurn(completedTurnId)) return false
     const outcome = codexTurnOutcome(params)
     const ended = this.currentTurn
@@ -860,14 +879,26 @@ export class CodexSessionHandle implements SessionHandle {
       : outOfQuota
         ? { billingRefused: true as const, onAKey: true as const }
         : undefined
+    const error = readField(turn, 'error')
+    const providerFailure =
+      readField(turn, 'status') === 'failed' && !hitItsUsage && refused === undefined
+        ? observedTurnFailure(error, readOptionalString(error, 'codexErrorInfo'))
+        : undefined
     if (ended?.interruptAsked === true && ended.commands.size > 0) {
       this.completing = {
         turn: ended,
-        done: this.completeOnceItsCommandsEnd(ended, outcome, limit, refused),
+        done: this.completeOnceItsCommandsEnd(ended, outcome, limit, refused, providerFailure),
       }
       return true
     }
-    this.machine.completeTurn(outcome.outcome, outcome.message, limit, undefined, refused)
+    this.machine.completeTurn(
+      outcome.outcome,
+      outcome.message,
+      limit,
+      undefined,
+      refused,
+      providerFailure,
+    )
     return true
   }
 
@@ -877,6 +908,7 @@ export class CodexSessionHandle implements SessionHandle {
     outcome: ReturnType<typeof codexTurnOutcome>,
     limit: TurnLimit | undefined,
     refused: Parameters<SessionMachine['completeTurn']>[4],
+    providerFailure?: ProviderTurnFailure,
   ): Promise<void> {
     const giveUpAt = Date.now() + COMMANDS_END_WITHIN_MS
     let waited: Promise<void> = this.endWhatTheTurnStarted(turn)
@@ -887,7 +919,14 @@ export class CodexSessionHandle implements SessionHandle {
     }
     if (this.completing?.turn === turn) this.completing = null
     if (this.machine.openTurnId === turn.localId) {
-      this.machine.completeTurn(outcome.outcome, outcome.message, limit, undefined, refused)
+      this.machine.completeTurn(
+        outcome.outcome,
+        outcome.message,
+        limit,
+        undefined,
+        refused,
+        providerFailure,
+      )
     }
   }
 
@@ -1428,7 +1467,17 @@ export class CodexSessionHandle implements SessionHandle {
             this.efforts.rollback(settingsBefore.effort)
             this.plan.rollback(settingsBefore.phase)
             this.folders.rollback(settingsBefore.workFolders)
-            this.machine.failTurn(`turn/start failed: ${errorMessage(error)}`)
+            const providerFailure =
+              error instanceof CodexRequestRefused && error.method === 'turn/start'
+                ? observedTurnFailure(
+                    error.refusal,
+                    readOptionalString(readField(error.refusal, 'data'), 'codexErrorInfo'),
+                  )
+                : undefined
+            this.machine.failTurn(
+              `turn/start failed: ${errorMessage(error)}`,
+              providerFailure === undefined ? undefined : { providerFailure },
+            )
           }
         },
       )

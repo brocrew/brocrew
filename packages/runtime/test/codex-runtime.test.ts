@@ -620,6 +620,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
         'usageLimitExceeded',
       )
       expect(row).toMatchObject({ type: 'turn', state: 'failed', limit: { provider: 'codex' } })
+      expect(row).not.toHaveProperty('providerFailure')
       expect(row).not.toHaveProperty('billingRefused')
       expect(row).not.toHaveProperty('onAKey')
     })

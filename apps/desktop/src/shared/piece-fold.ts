@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from './conversation-events'
 import type { AskToStop } from './how-work-stopped'
 import type { PieceRow, StoppedOnALimit, StoppedOnALogin, TaskStallCause } from './task-contracts'
 
@@ -40,6 +41,41 @@ export function aPersonDrove(authorship: PieceTurnAuthorship, piece: string): bo
   )
 }
 
+/** A failed turn's limit, excluding a reset that had already passed. */
+export function limitAtTurnEnd(
+  event: Extract<TranscriptEvent, { type: 'turn' }>,
+  at: number,
+): StoppedOnALimit | undefined {
+  if (event.state !== 'failed' || event.limit === undefined) return undefined
+  const { provider, resetsAt, window } = event.limit
+  return {
+    provider,
+    ...(resetsAt !== undefined && resetsAt > at ? { resetsAt } : {}),
+    ...(window === undefined ? {} : { window }),
+  }
+}
+
+export function failureAtTurnEnd(
+  event: Extract<TranscriptEvent, { type: 'turn' }>,
+  turnOrdinal: number,
+): PieceRow['providerTurnFailure'] | null {
+  if (event.state === 'completed' && event.wordOf !== 'this-app') return null
+  if (event.state === 'failed' && event.providerFailure !== undefined)
+    return { ...event.providerFailure, turnOrdinal }
+  return undefined
+}
+
+export function withProviderFailure(
+  row: PieceRow,
+  failure: NonNullable<PieceRow['providerTurnFailure']> | null,
+): PieceRow {
+  if (failure !== null) return { ...row, providerTurnFailure: failure }
+  if (row.providerTurnFailure === undefined) return row
+  const { providerTurnFailure, ...rest } = row
+  void providerTurnFailure
+  return rest
+}
+
 interface WentBackTo {
   readonly cause: TaskStallCause
   readonly at: number
@@ -65,6 +101,7 @@ export interface PieceFold {
   readonly asked: Pick<AskToStop, 'by' | 'asker'> | null
   readonly whoseWordsDroveItLast: ReadonlyMap<string, boolean>
   readonly aPersonOpenedThisTurnFor: PieceTurnAuthorship | null
+  readonly workDrivenThisTurn: ReadonlySet<string>
   readonly waitsOnWhoWroteSince: ReadonlyMap<
     string,
     { readonly at: number; readonly cause: TaskStallCause }

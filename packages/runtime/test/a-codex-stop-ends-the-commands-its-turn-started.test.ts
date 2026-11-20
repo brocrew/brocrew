@@ -10,10 +10,12 @@ import {
 } from '../src/codex'
 import { type RuntimeEvent, type SessionHandle } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
+import { CodexRequestRefused } from '../src/codex/codex-transport'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
 import { BackgroundTerminals, type TerminalTimers } from '../src/codex/background-terminals'
 import {
   completedTurn,
+  failedTurn,
   threadStartResponse,
   turnCompletedNotification,
   turnStartResponse,
@@ -220,7 +222,7 @@ describe('F084 · a Codex stop ends the commands its turn started', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  const aSession = async (): Promise<ASession> => {
+  const aSession = async (sharedSkillsRoot?: string): Promise<ASession> => {
     const home = join(root, `home-${String(opened.length)}`)
     mkdirSync(home, { recursive: true })
     const server = new AppServerDouble()
@@ -230,7 +232,11 @@ describe('F084 · a Codex stop ends the commands its turn started', () => {
       server.codexHome ??= context.providerHome
       return server
     })
-    const handle = await runtime.start({ cwd: root, providerHome: home })
+    const handle = await runtime.start({
+      cwd: root,
+      providerHome: home,
+      ...(sharedSkillsRoot === undefined ? {} : { sharedSkillsRoot }),
+    })
     const events: RuntimeEvent[] = []
     const consumer = (async () => {
       for await (const event of handle.events()) events.push(event)
@@ -539,34 +545,105 @@ describe('F084 · a Codex stop ends the commands its turn started', () => {
     })
   })
 
-  describe('§4 · two passes, and an ending that waits for the second', () => {
-    it('🔴 a command started after the stop’s first pass is ended by the second, and the ending waits for it', async () => {
-      const s = await aSession()
-      const turnId = await aTurnOfTwoCommands(s)
-      await s.handle.interrupt()
-      expect(s.server.terminated()).toEqual(['102'])
+  describe('provider failure on a turn', () => {
+    const message = 'The selected model is unavailable for this account.'
+    const code = 'modelNotFound'
 
-      // ⚑ Between the stop and Codex's ending, the turn starts another command — its stop is held.
-      await aCommandStarts(s, turnId, 'exec-late', '103')
-      const release = s.terminals.holdTheStopOf('103')
-      s.server.notification(
+    it('keeps only the provider cause for the response-bound turn', async () => {
+      const session = await aSession()
+      const turnId = await aTurnRuns(session, 'Run the work')
+      session.server.notification(
         'turn/completed',
-        turnCompletedNotification(THREAD, completedTurn(turnId, { status: 'interrupted' })),
+        turnCompletedNotification(THREAD, failedTurn('older-turn', 'An unrelated failure')),
       )
-      await vi.waitFor(() => expect(s.server.terminated()).toContain('103'))
-      await new Promise((resolve) => setTimeout(resolve, 40))
-      // ⛔ The ending is not written while the second pass is out, and no next turn can start.
-      expect(endingsIn(s.events)).toHaveLength(0)
-      expect(s.handle.status()).toBe('working')
-
-      release()
-      await vi.waitFor(() => expect(endingsIn(s.events)).toHaveLength(1))
-      const ending = endingsIn(s.events)[0]
-      expect(ending?.state).toBe('interrupted')
-      expect(sorted(ending?.endedCommands)).toEqual(['exec-late', 'exec-waited'])
-      // ⛔ The second pass is a words stop's too: the command moved on from runs on.
-      expect([...s.terminals.running.keys()]).toEqual(['101'])
+      session.server.notification(
+        'turn/completed',
+        turnCompletedNotification(THREAD, {
+          ...failedTurn(turnId, message),
+          error: { message, codexErrorInfo: code, additionalDetails: null, misalignment: null },
+        }),
+      )
+      await vi.waitFor(() =>
+        expect(endingsIn(session.events)).toEqual([
+          { type: 'turn', state: 'failed', providerFailure: { message, code } },
+        ]),
+      )
+      expect(
+        session.events.filter(
+          (event) => event.type === 'error' && event.message.startsWith('turn failed:'),
+        ),
+      ).toEqual([{ type: 'error', message: `turn failed: ${message}`, fatal: false }])
     })
+
+    it.each(['start refusal', 'transport failure', 'skills preflight refusal'] as const)(
+      'distinguishes a %s from other failed starts',
+      async (failure) => {
+        const preflight = failure === 'skills preflight refusal'
+        const method = preflight ? 'skills/list' : 'turn/start'
+        const session = await aSession(preflight ? join(root, 'shared-skills') : undefined)
+        const error =
+          failure === 'transport failure'
+            ? new Error('The transport closed before the server answered.')
+            : new CodexRequestRefused(method, {
+                code: -32600,
+                message,
+                data: { codexErrorInfo: code },
+              })
+        session.server.onRequest(method, () => Promise.reject(error))
+        const requestsBefore = session.server.requests.length
+
+        await session.handle.send('Run the work')
+
+        await vi.waitFor(() =>
+          expect(endingsIn(session.events)).toEqual([
+            {
+              type: 'turn',
+              state: 'failed',
+              wordOf: 'this-app',
+              ...(failure === 'start refusal' ? { providerFailure: { message, code } } : {}),
+            },
+          ]),
+        )
+        const requests = session.server.requests.slice(requestsBefore)
+        expect(requests.filter((request) => request.method === method)).toHaveLength(1)
+        expect(requests.filter((request) => request.method === 'turn/start')).toHaveLength(
+          preflight ? 0 : 1,
+        )
+      },
+    )
+  })
+
+  describe('§4 · two passes, and an ending that waits for the second', () => {
+    it.each(['interrupted', 'failed'] as const)(
+      'a %s ending waits for the stop’s second command pass',
+      async (state) => {
+        const s = await aSession()
+        const turnId = await aTurnOfTwoCommands(s)
+        await s.handle.interrupt()
+        expect(s.server.terminated()).toEqual(['102'])
+
+        // ⚑ Between the stop and Codex's ending, the turn starts another command — its stop is held.
+        await aCommandStarts(s, turnId, 'exec-late', '103')
+        const release = s.terminals.holdTheStopOf('103')
+        const message = 'The provider failed while stopping the turn.'
+        const terminal = { ...failedTurn(turnId, message), status: state }
+        s.server.notification('turn/completed', turnCompletedNotification(THREAD, terminal))
+        await vi.waitFor(() => expect(s.server.terminated()).toContain('103'))
+        await new Promise((resolve) => setTimeout(resolve, 40))
+        // ⛔ The ending is not written while the second pass is out, and no next turn can start.
+        expect(endingsIn(s.events)).toHaveLength(0)
+        expect(s.handle.status()).toBe('working')
+
+        release()
+        await vi.waitFor(() => expect(endingsIn(s.events)).toHaveLength(1))
+        const ending = endingsIn(s.events)[0]
+        expect(ending?.state).toBe(state)
+        expect(ending?.providerFailure).toEqual(state === 'failed' ? { message } : undefined)
+        expect(sorted(ending?.endedCommands)).toEqual(['exec-late', 'exec-waited'])
+        // ⛔ The second pass is a words stop's too: the command moved on from runs on.
+        expect([...s.terminals.running.keys()]).toEqual(['101'])
+      },
+    )
 
     it('🔴 a second stop during that wait waits for the ending — it neither asks again nor forces one', async () => {
       const s = await aSession()

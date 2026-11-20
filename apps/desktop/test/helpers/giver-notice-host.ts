@@ -112,6 +112,7 @@ export function giverStallReceipts(store: SessionStore, giver: string) {
     ...store
       .reconciliationOwners()
       .flatMap((owner) => store.reconciliationReceiptsForOwner(owner))
+      .filter((receipt) => receipt.kind !== 'provider-turn-failed')
       .filter(
         (receipt) =>
           receipt.step === 'giver' &&

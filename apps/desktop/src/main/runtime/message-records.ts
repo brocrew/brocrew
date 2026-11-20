@@ -25,6 +25,7 @@ import type { QueuedMessage } from './queued-message'
 export type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {
   readonly giving?: never
   readonly rebriefing?: never
+  readonly providerFailureHolder?: string
 }
 
 /**

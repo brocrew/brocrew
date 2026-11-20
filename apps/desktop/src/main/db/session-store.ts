@@ -31,6 +31,7 @@ import {
   aStoredObject,
   isAStoredId,
   isMailboxKind,
+  providerFailureHolderStoredOn,
   theQuestionItAsks,
 } from './stored-event-codec'
 export { toPersistedEvents } from './stored-event-codec'
@@ -39,6 +40,7 @@ export type { WorkRow } from './work-ledger-read'
 import type { AncestryContext } from './work-ancestry-reader'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
+  HolderReconciliationReceipt,
   ReconciliationReceipt,
   WorkRecoveryEvent,
 } from '../../shared/reconciliation-contracts'
@@ -115,7 +117,11 @@ import { committedChangesOf, committedRowOf, type Committed } from './committed-
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
-import { workRecoveryEvent, reconciliationReceipt } from '../../shared/work-reconciliation'
+import {
+  holderReconciliationReceipt,
+  reconciliationReceipt,
+  workRecoveryEvent,
+} from '../../shared/work-reconciliation'
 
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
@@ -155,7 +161,13 @@ import type {
   NewAgent,
   LedgerStatus,
 } from '../../shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID, seededProviderFor, theMessagesOf } from '../../shared/runtime-ipc'
+import { failureAtTurnEnd } from '../../shared/piece-fold'
+import {
+  DEFAULT_PROFILE_ID,
+  MAX_TURN_PARTS,
+  seededProviderFor,
+  theMessagesOf,
+} from '../../shared/runtime-ipc'
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
 import {
@@ -382,6 +394,7 @@ export interface WaitingMessage {
   readonly rebrief?: true
   readonly drives?: string
   readonly about?: string
+  readonly providerFailureHolder?: string
   readonly asks?: TheQuestionItAsks
   readonly unansweredQuestion?: TheQuestionItAsks
   readonly messageAct?: string
@@ -635,6 +648,7 @@ export interface ScheduleEvidenceRow {
 }
 
 type QueuedPromptProgress = 'missing' | 'pending' | 'running' | 'turn-ended' | 'not-delivered'
+type ProviderFailureNoticeProgress = QueuedPromptProgress | 'retracted'
 
 export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
   /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
@@ -952,9 +966,9 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   numberUnder(parent: string): number
   recordGive(given: GivenPiece, ordinal: number, event: WorkGivenEvent, at: number): void
   /** Every saved work row, including roots, for incident reconciliation. */
-  reconciliationOwners(): readonly string[]
+  reconciliationOwners(includeProviderFailureNotices?: boolean): readonly string[]
   reconciliationWork(holders?: ReadonlySet<string>, unread?: RowsUnread): readonly WorkRow[]
-  reconciliationReceiptsForOwner(owner: string): readonly ReconciliationReceipt[]
+  reconciliationReceiptsForOwner(owner: string): readonly HolderReconciliationReceipt[]
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
   reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
   reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
@@ -963,6 +977,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     messageId: string,
     appNotice: AppNotice,
   ): QueuedPromptProgress
+  providerFailureNoticeProgress(target: string, messageId: string): ProviderFailureNoticeProgress
   reconciliationDelivery(
     target: string,
     messageId: string,
@@ -1133,6 +1148,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   whenAPersonLastWrote(sessionId: string): number | null
   requestsItsLastEndedTurnInterrupted(sessionId: string): readonly string[]
   lastEndedTurn(sessionId: string, unread?: RowsUnread): LastEndedTurn | null
+  providerFailureEpisode(sessionId: string, unread?: RowsUnread): ProviderFailureEpisode
   lastExchange(sessionId: string): Exchange
   lastExchangeForTaskRecord(sessionId: string): TaskRecordExchange
   whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
@@ -1329,6 +1345,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   reconciliationDrivenByTurn: () => [],
   reconciliationReceipts: () => [],
   queuedPromptProgress: () => 'missing',
+  providerFailureNoticeProgress: () => 'not-delivered',
   reconciliationDelivery: () => 'not-delivered',
   workById: () => null,
   activityWorkNames: () => new Map(),
@@ -1401,6 +1418,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   whoRoutedToWhom: () => [],
   conversationsHoldingACopyOf: () => [],
   fillQuestionCopies: () => ({ state: 'done', visited: 0, matched: 0 }),
+  providerFailureEpisode: () => 'unknown',
   lastEndedTurn: () => null,
   routedRequestsAtHand: () => null,
   questionsRaisedAtHand: () => null,
@@ -1474,6 +1492,19 @@ interface ExchangeRow {
   readonly payload: string | null
   readonly ordinal: number
 }
+
+export type ProviderFailureEpisode =
+  | 'none'
+  | 'unknown'
+  | {
+      readonly generation: number
+      readonly terminalOrdinal: number
+      readonly turnId: string
+      readonly cause: Omit<NonNullable<PieceRow['providerTurnFailure']>, 'turnOrdinal'>
+      readonly asks: readonly TheQuestionItAsks[]
+    }
+
+const CLOSED_TURNS_FOR_PROVIDER_FAILURE = 8
 
 interface ClosedTurnRow {
   id: string
@@ -1980,6 +2011,11 @@ export function createSessionStore(
     `SELECT id, opened_at, closed_at FROM turn WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
       ORDER BY ordinal DESC LIMIT 1`,
   )
+  const selectClosedTurnsForProviderFailure = db.prepare(
+    `SELECT id FROM turn
+       WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
+       ORDER BY ordinal DESC LIMIT ?`,
+  )
   const selectStatus = db.prepare(`SELECT status FROM provider_session WHERE id = ?`)
   const selectProviderOf = db.prepare(`SELECT provider FROM provider_session WHERE id = ?`)
   const selectTurnCount = db.prepare(
@@ -2271,24 +2307,38 @@ export function createSessionStore(
       ORDER BY created_at, id LIMIT ?`,
   )
   const selectReconciliationOwners = db.prepare('SELECT DISTINCT owner_session_id AS id FROM work')
+  const selectReconciliationOwnersWithFailures = db.prepare(
+    `SELECT owner_session_id AS id FROM work
+      UNION
+      SELECT session_id AS id FROM events INDEXED BY events_kind_owner_idx
+      WHERE type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload)
+          THEN json_extract(payload, '$.kind') = 'provider-turn-failed' ELSE 0 END`,
+  )
   const selectReconciliationOwnerReceipts = db.prepare(`SELECT payload, created_at FROM events
     WHERE type = 'work_reconciliation' AND session_id = ? ORDER BY generation, ordinal`)
   const selectReconciliationReceipts = db.prepare(
     `SELECT payload, created_at FROM events INDEXED BY events_work_piece_idx
       WHERE session_id = ? AND type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
       ORDER BY generation, ordinal`,
   )
   const selectUnreadReconciliationReceipt = db.prepare(
     `SELECT 1 FROM events INDEXED BY events_work_piece_idx
       WHERE session_id = ? AND type = 'work_reconciliation'
+        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
         AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END IS NULL
       LIMIT 1`,
   )
+  // RC3 can replan an explicit retraction. A newer unread queue row can supersede it.
   const selectReconciliationMessage = db.prepare(
     `SELECT generation, ordinal, payload FROM events
-      WHERE session_id = ? AND type IN ('message_queued', 'message_unqueued')
-        AND json_valid(payload) AND json_extract(payload, '$.messageId') = ?
+      WHERE session_id = @target AND type IN ('message_queued', 'message_unqueued')
+        AND CASE WHEN json_valid(payload) THEN
+              CASE WHEN json_type(payload, '$.messageId') IS 'text'
+                THEN json_extract(payload, '$.messageId') = @messageId ELSE @needsDisposition END
+              ELSE @needsDisposition END
       ORDER BY generation DESC, ordinal DESC LIMIT 1`,
   )
   const selectTurnAfterReconciliation = db.prepare(
@@ -2298,16 +2348,36 @@ export function createSessionStore(
       ORDER BY e.ordinal LIMIT 1`,
   )
 
-  function queuedPromptProgress(
+  function readQueuedPromptProgress(
     target: string,
     messageId: string,
     appNotice: AppNotice,
-  ): QueuedPromptProgress {
-    const message = selectReconciliationMessage.get(target, messageId) as
-      { generation: number; ordinal: number; payload: string } | undefined
+    needsDisposition: boolean,
+  ): ProviderFailureNoticeProgress {
+    const message = selectReconciliationMessage.get({
+      target,
+      messageId,
+      needsDisposition: needsDisposition ? 1 : 0,
+    }) as { generation: number; ordinal: number; payload: string } | undefined
     if (message === undefined) return 'missing'
-    const event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent
+    let event: QueuedMessageEvent | UnqueuedMessageEvent | null
+    try {
+      event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent | null
+    } catch {
+      return 'not-delivered'
+    }
+    if (event === null) return 'not-delivered'
+    if (needsDisposition) {
+      if (event.messageId !== messageId) return 'not-delivered'
+      const subjectOnItsTurn =
+        event.type === 'message_unqueued' &&
+        event.reason === 'sent' &&
+        event.appNotice === undefined
+      if (event.appNotice !== appNotice && !subjectOnItsTurn) return 'not-delivered'
+    }
     if (event.type === 'message_queued') return 'pending'
+    if (needsDisposition && event.type === 'message_unqueued' && event.reason === 'retracted')
+      return 'retracted'
     if (event.reason !== 'sent') return 'not-delivered'
     const opened = selectTurnAfterReconciliation.get(
       target,
@@ -2322,6 +2392,15 @@ export function createSessionStore(
     )
       return 'not-delivered'
     return opened.closed_at === null ? 'running' : 'turn-ended'
+  }
+
+  function queuedPromptProgress(
+    target: string,
+    messageId: string,
+    appNotice: AppNotice,
+  ): QueuedPromptProgress {
+    const progress = readQueuedPromptProgress(target, messageId, appNotice, false)
+    return progress === 'retracted' ? 'not-delivered' : progress
   }
 
   const selectTurnBlockInstructions = db.prepare(
@@ -2532,6 +2611,35 @@ export function createSessionStore(
                         ORDER BY ordinal DESC LIMIT 1)
       ORDER BY ordinal`,
   )
+  const selectProviderFailureTurnEnd = db.prepare(
+    `SELECT type, ordinal, payload, created_at FROM events INDEXED BY events_turn_idx
+       WHERE session_id = ? AND generation = ? AND turn_id = ?
+         AND (type IN ('turn', 'work_interrupted')
+           OR (type = 'user_decision' AND CASE WHEN json_valid(payload)
+             THEN json_extract(payload, '$.outcome') = 'cancel' ELSE 1 END))
+       ORDER BY ordinal LIMIT ?`,
+  )
+  const selectOpeningBeforeFailureTurn = db.prepare(
+    `SELECT ordinal FROM events
+       WHERE session_id = ? AND generation = ? AND ordinal < ? AND turn_id IS NOT ?
+         AND type IN ('user_turn', 'provider_turn')
+       ORDER BY ordinal DESC LIMIT 1`,
+  )
+  const selectSentBeforeFailureOpening = db.prepare(
+    `SELECT ordinal, payload FROM events INDEXED BY events_fold_idx
+       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND type = 'message_unqueued'
+         AND ordinal > ? AND ordinal < ?
+         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.reason') = 'sent'
+                  ELSE 1 END
+       ORDER BY ordinal LIMIT ?`,
+  )
+  theFoldIndexHolds(selectSentBeforeFailureOpening)
+  const selectQueueRowForFailure = db.prepare(
+    `SELECT payload FROM events INDEXED BY events_kind_owner_idx
+       WHERE type = 'message_queued' AND session_id = ? AND generation = ? AND ordinal < ?
+         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.messageId') = ? END
+       ORDER BY ordinal DESC LIMIT 1`,
+  )
   const selectRequestsTheLastClosedTurnInterrupted = db.prepare(
     `SELECT CASE WHEN json_valid(payload) THEN json_extract(payload, '$.requestId') END AS request
        FROM events INDEXED BY events_turn_idx
@@ -2692,6 +2800,19 @@ export function createSessionStore(
       ORDER BY ordinal LIMIT ?`,
   )
   theFoldIndexHolds(selectMessagesWaitingIn)
+  const queueEndingStillApplies = (
+    endedAt: number | undefined,
+    queuedAt: number,
+    stored: Record<string, unknown> | null,
+  ): boolean =>
+    endedAt !== undefined &&
+    (endedAt >= queuedAt ||
+      providerFailureHolderStoredOn(
+        stored?.kind,
+        stored?.appNotice,
+        stored?.providerFailureHolder,
+      ) === undefined)
+
   const selectEveryConversationAndStatus = db.prepare(`SELECT id, status FROM provider_session`)
   const selectHeldMessageRowsOf = db.prepare(
     `SELECT rowid AS row, type, ordinal,
@@ -2747,7 +2868,7 @@ export function createSessionStore(
           text: unknown
           payload: string | null
         }[]
-        const ended = new Set<unknown>()
+        const ended = new Map<unknown, number>()
         let lastTornEnding = -Infinity
         let lastStart = -Infinity
         for (const one of rows) {
@@ -2756,7 +2877,7 @@ export function createSessionStore(
             tornHere.push({ row: one.row, session_id: conversation.id, ordinal: one.ordinal })
             if (one.type === 'message_unqueued')
               lastTornEnding = Math.max(lastTornEnding, one.ordinal)
-          } else if (one.type === 'message_unqueued') ended.add(one.message_id)
+          } else if (one.type === 'message_unqueued') ended.set(one.message_id, one.ordinal)
         }
         if (conversation.status === 'ended' || conversation.status === 'errored') {
           torn.push(...tornHere)
@@ -2766,7 +2887,8 @@ export function createSessionStore(
           if (one.type !== 'message_queued' || one.valid !== 1 || one.message_id === null) continue
           if (one.payload === null) continue
           if (one.for_its_next_start === 1 && lastStart <= one.ordinal) continue
-          const origin = moveOriginOf(aStoredObject(one.payload)?.movedFrom)
+          const stored = aStoredObject(one.payload)
+          const origin = moveOriginOf(stored?.movedFrom)
           if (origin !== undefined) {
             const decisionRow = selectTheDecisionOn.get(
               origin.sessionId,
@@ -2782,7 +2904,11 @@ export function createSessionStore(
             )
               continue
           }
-          if (ended.has(one.message_id) || lastTornEnding > one.ordinal) continue
+          if (
+            queueEndingStillApplies(ended.get(one.message_id), one.ordinal, stored) ||
+            lastTornEnding > one.ordinal
+          )
+            continue
           heldHere.push({
             row: one.row,
             session_id: conversation.id,
@@ -3792,6 +3918,122 @@ export function createSessionStore(
       since,
       ...(byItsProvider ? { startedByItsProvider: true as const } : {}),
     }
+  }
+
+  function questionsInFailedTurn(
+    sessionId: string,
+    generation: number,
+    turnId: string,
+    opening: ExchangeRow,
+    turn: UserTurnEvent,
+  ): readonly TheQuestionItAsks[] {
+    const before = selectOpeningBeforeFailureTurn.get(
+      sessionId,
+      generation,
+      opening.ordinal,
+      turnId,
+    ) as { ordinal: number } | undefined
+    const sent = selectSentBeforeFailureOpening.all(
+      sessionId,
+      generation,
+      before?.ordinal ?? -1,
+      opening.ordinal,
+      MAX_TURN_PARTS + 1,
+    ) as { ordinal: number; payload: string }[]
+    const parts = theMessagesOf(turn)
+    if (parts.length === 0 || (turn.parts !== undefined && turn.parts.length !== parts.length))
+      throw new Error('the failed turn parts could not be read')
+    if (sent.length === 0) return []
+
+    // A flush records sent rows and then the opening parts in the same order.
+    if (sent.length !== parts.length)
+      throw new Error('the failed turn could not be matched to its queued input')
+
+    const asks: TheQuestionItAsks[] = []
+    for (const [index, row] of sent.entries()) {
+      const ending = aStoredObject(row.payload)
+      const messageId = ending?.['messageId']
+      if (ending?.['type'] !== 'message_unqueued' || !isAStoredId(messageId))
+        throw new Error('a sent message from the failed turn could not be read')
+      const found = selectQueueRowForFailure.get(sessionId, generation, row.ordinal, messageId) as
+        { payload: string } | undefined
+      const queued = aStoredObject(found?.payload ?? null)
+      if (queued?.['type'] !== 'message_queued')
+        throw new Error('the queued message for the failed turn could not be read')
+      if (queued['kind'] !== 'question') continue
+      const ask = theQuestionItAsks(queued['asks'])?.asks
+      if (ask === undefined || ask.asker !== parts[index]?.relayedFrom)
+        throw new Error('the question could not be matched to the failed turn')
+      asks.push(ask)
+    }
+    return asks
+  }
+
+  function providerFailureEpisodeOf(
+    sessionId: string,
+    unread?: RowsUnread,
+  ): ProviderFailureEpisode {
+    const noteSkip = unread?.in(sessionId) ?? (() => {})
+    return readOrSkip<ProviderFailureEpisode>(sessionId, noteSkip, 'unknown', () => {
+      const generation = activeGeneration(sessionId)
+      const turns = selectClosedTurnsForProviderFailure.all(
+        sessionId,
+        generation,
+        CLOSED_TURNS_FOR_PROVIDER_FAILURE,
+      ) as { id: string }[]
+      for (const { id } of turns) {
+        const opening = selectTheTurnsOpening.get(id, sessionId, generation) as
+          ExchangeRow | undefined
+        if (opening === undefined) continue
+        const turn = aStoredObject(opening.payload)
+        if (turn?.['type'] !== 'user_turn' || typeof turn['text'] !== 'string')
+          throw new Error('the failed turn opening could not be read')
+
+        const rows = selectProviderFailureTurnEnd.all(
+          sessionId,
+          generation,
+          id,
+          MAX_TURN_PARTS + 1,
+        ) as (EventRow & { type: TranscriptEvent['type'] })[]
+        if (rows.length > MAX_TURN_PARTS) return 'unknown'
+        const entries = toPersistedEvents(rows, noteSkip)
+        if (
+          entries.length !== rows.length ||
+          entries.some((entry, index) => entry.event.type !== rows[index]?.type)
+        )
+          return 'unknown'
+        const terminalAt = entries.findIndex(({ event }) => event.type === 'turn')
+        const terminal = entries[terminalAt]
+        if (terminal?.event.type !== 'turn') continue
+        const raw = aStoredObject(rows[terminalAt]?.payload ?? null)
+        const state = raw?.['state']
+        if (
+          (state !== 'failed' && state !== 'completed' && state !== 'interrupted') ||
+          entries.slice(terminalAt + 1).some(({ event }) => event.type === 'turn') ||
+          (state === 'failed' &&
+            raw?.['providerFailure'] !== undefined &&
+            terminal.event.providerFailure === undefined)
+        )
+          throw new Error('the recorded terminal could not be read')
+
+        const failure = failureAtTurnEnd(terminal.event, terminal.ordinal)
+        if (failure === undefined) continue
+        if (failure === null) {
+          if (howWorkStopped(entries).who === null) return 'none'
+          continue
+        }
+        const { turnOrdinal: terminalOrdinal, ...cause } = failure
+        const asks = questionsInFailedTurn(
+          sessionId,
+          generation,
+          id,
+          opening,
+          turn as unknown as UserTurnEvent,
+        )
+        return { generation, terminalOrdinal, turnId: id, cause, asks }
+      }
+      return turns.length === CLOSED_TURNS_FOR_PROVIDER_FAILURE ? 'unknown' : 'none'
+    })
   }
 
   function whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null {
@@ -5814,11 +6056,11 @@ export function createSessionStore(
           unread?.in(sessionId)(row.ordinal)
         }
       }
-      const ended = new Set<unknown>()
+      const ended = new Map<unknown, number>()
       let lastTornEnding = -Infinity
       for (const row of read) {
         if (row.type !== 'message_unqueued') continue
-        if (row.valid === 1) ended.add(row.message_id)
+        if (row.valid === 1) ended.set(row.message_id, row.ordinal)
         else lastTornEnding = Math.max(lastTornEnding, row.ordinal)
       }
       const rows = read.filter(
@@ -5827,13 +6069,13 @@ export function createSessionStore(
           row.valid === 1 &&
           row.message_id !== null &&
           row.payload !== null &&
-          !ended.has(row.message_id) &&
           lastTornEnding <= row.ordinal,
       )
       return rows.flatMap((row) => {
         const stored = aStoredObject(row.payload)
         const messageId = stored?.messageId
         if (stored === null || typeof messageId !== 'string') return []
+        if (queueEndingStillApplies(ended.get(messageId), row.ordinal, stored)) return []
         const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
         const piece = isAStoredId(stored.piece) ? stored.piece : null
         const label =
@@ -5842,6 +6084,11 @@ export function createSessionStore(
           pieceNumbersOf(stored.label) !== null
             ? stored.label
             : null
+        const holder = providerFailureHolderStoredOn(
+          stored.kind,
+          stored.appNotice,
+          stored.providerFailureHolder,
+        )
         return [
           {
             messageId,
@@ -5855,6 +6102,7 @@ export function createSessionStore(
             ...(piece !== null && stored.rebrief === true ? { rebrief: true as const } : {}),
             ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
             ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
+            ...(holder === undefined ? {} : { providerFailureHolder: holder }),
             ...(theQuestionItAsks(stored.asks) ?? {}),
             ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
             ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
@@ -5960,8 +6208,11 @@ export function createSessionStore(
       recordGiveTx(given, ordinal, event, at)
     },
 
-    reconciliationOwners() {
-      return (selectReconciliationOwners.all() as { id: string }[]).map((one) => one.id)
+    reconciliationOwners(includeProviderFailureNotices = false) {
+      const owners = includeProviderFailureNotices
+        ? selectReconciliationOwnersWithFailures
+        : selectReconciliationOwners
+      return (owners.all() as { id: string }[]).map((one) => one.id)
     },
     reconciliationWork(holders, unread) {
       const owners =
@@ -5983,7 +6234,7 @@ export function createSessionStore(
       return (
         selectReconciliationOwnerReceipts.all(owner) as { payload: string; created_at: number }[]
       ).map((row) => {
-        const receipt = reconciliationReceipt(JSON.parse(row.payload), row.created_at)
+        const receipt = holderReconciliationReceipt(JSON.parse(row.payload), row.created_at)
         if (receipt === null) throw new Error('an incident receipt could not be read')
         return receipt
       })
@@ -6045,6 +6296,9 @@ export function createSessionStore(
       })
     },
     queuedPromptProgress,
+    providerFailureNoticeProgress(target, messageId) {
+      return readQueuedPromptProgress(target, messageId, 'a-provider-turn-failed', true)
+    },
     reconciliationDelivery(target, messageId) {
       const progress = queuedPromptProgress(target, messageId, 'a-work-wait-needs-attention')
       return progress === 'missing' ? 'not-delivered' : progress
@@ -6573,6 +6827,7 @@ export function createSessionStore(
     lastEndedTurn(sessionId, unread) {
       return lastEndedTurnOf(sessionId, unread?.in(sessionId))
     },
+    providerFailureEpisode: providerFailureEpisodeOf,
     routedRequestsAtHand(sessionId) {
       return routedRequestsAtHand(sessionId)
     },
