@@ -1398,7 +1398,16 @@ describe('692 · a restart keeps what was open', () => {
       // passes over a task already `stalled` — and the rail lists the holder with nothing running
       // it. ⚑ **D-016c** — `699`'s live fact, which a crash-closed holder carried, went with the
       // kept-open family: whether a process runs is never part of the row.
+      console.info('CARD331_BEFORE_CRASH', JSON.stringify({
+        warm: store.workGivenOutBy(lead).rows,
+        cold: createSessionStore(db, tick).workGivenOutBy(lead).rows,
+        events: ledger(children[0]).map((event) => ({ type: event.type, state: 'state' in event ? event.state : null })),
+      }))
       crashAndRelaunch()
+      console.info('CARD331_AFTER_CRASH', JSON.stringify({
+        cold: createSessionStore(db, tick).workGivenOutBy(lead).rows,
+        events: ledger(children[0]).map((event) => ({ type: event.type, state: 'state' in event ? event.state : null })),
+      }))
       expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(await workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')

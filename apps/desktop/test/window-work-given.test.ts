@@ -1,4 +1,3 @@
-import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
@@ -95,10 +94,12 @@ it('carries the full canonical walk across cold reads, malformed rows and an ext
   }
   f.store.checkCommitted()
   expect(compare().rows[0]?.state).toBe('answered')
-  f.db.prepare(
-    `INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at)
+  f.db
+    .prepare(
+      `INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at)
      VALUES ('bad','holder',0,?,'work_replied','{',4)`,
-  ).run(f.store.nextOrdinal('holder'))
+    )
+    .run(f.store.nextOrdinal('holder'))
   f.store.checkCommitted()
   expect(compare().rowsUnread).toBe(1)
   expect(engine.read({ ...query, sessionId: 'unknown' })).toEqual({
@@ -109,7 +110,6 @@ it('carries the full canonical walk across cold reads, malformed rows and an ext
 
 it('executes the window command in a real worker and handles input before its held reply', async () => {
   const f = fixture()
-  const expected = f.store.workGivenOutBy('giver')
   const bundle = await bundleAWorker('src/main/window-reader.worker.ts', f.directory, 'work.cjs')
   const reader = new WindowWorkerReader(new Worker(bundle, { workerData: { file: f.file } }))
   let release!: () => void
@@ -131,6 +131,7 @@ it('executes the window command in a real worker and handles input before its he
     },
     close: () => reader.close(),
   })
+  const expected = createSessionStore(f.db).workGivenOutBy('giver')
   let settled = false
   const pending = executeRuntimeCommand(host, new RecordingSink('work-window'), {
     kind: 'workGivenBy',
@@ -181,8 +182,8 @@ it('retains the generic two-attempt snapshot rule when a writer overtakes each r
       f.store.setAgentDisplayName('holder', `Moved ${read.mock.calls.length}`)
     return result
   })
-  const before = f.store.workGivenOutBy('giver')
   const { host, mainFold } = hostWith(f, { read, close: async () => engine.close() })
+  const before = createSessionStore(f.db).workGivenOutBy('giver')
   expect(await host.workGivenBy('giver')).toEqual(before)
   expect(read.mock.calls.filter(([input]) => input.kind === 'work-given')).toHaveLength(2)
   expect(mainFold).not.toHaveBeenCalled()

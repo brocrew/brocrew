@@ -19,10 +19,7 @@ import {
   TASK_IS_OPEN,
   NOTHING_IT_WAITS_ON,
 } from '../../shared/tasks'
-import type {
-  PieceRow,
-  WhatAConversationIsWaitingOn,
-} from '../../shared/task-contracts'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../../shared/task-contracts'
 import { openQuestionsByWork, REQUEST_IS_OPEN, aPersonOwesAnAnswerIn } from '../../shared/questions'
 import type { LedgerWalk, RoutedRequest } from '../../shared/question-contracts'
 import type { Exchange, TaskRecordExchange } from '../../shared/last-exchange'
