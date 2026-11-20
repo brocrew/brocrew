@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
+import { createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { AllConversationTasksResult } from '../../src/shared/conversation-task-page'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
@@ -50,16 +51,31 @@ function result(partial: Partial<Page> = {}): Page {
   }
 }
 
+function deferredPage() {
+  let resolve!: (value: AllConversationTasksResult) => void
+  const promise = new Promise<AllConversationTasksResult>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 function show(readAll: RuntimeBridge['readAllConversationTasks']) {
   const active = ref(sessionId)
   const revision = ref(0)
   const open = vi.fn()
+  const state = createTranscript()
+  state.items.push({
+    kind: 'relayed',
+    id: 'brief',
+    text: 'Use the transcript brief.',
+    opened: { label: 'W9.21' },
+  })
   const Consumer = defineComponent({
     setup: () => () =>
       h(AllTasksDialog, {
         conversation: active.value,
         source: {
-          read: async () => ({ ok: false, reason: 'unknown-conversation' }),
+          read: async () => ({ ok: false, reason: 'unknown-conversation' }) as const,
           readAll,
           revision: revision.value,
         },
@@ -77,16 +93,7 @@ function show(readAll: RuntimeBridge['readAllConversationTasks']) {
             externalMcpServerIds: [],
           },
         ],
-        state: {
-          items: [
-            {
-              kind: 'relayed',
-              id: 'brief',
-              text: 'Use the transcript brief.',
-              opened: { label: 'W9.21' },
-            },
-          ],
-        } as InstanceType<typeof AllTasksDialog>['$props']['state'],
+        state,
         onOpenConversation: open,
       }),
   })
@@ -157,8 +164,8 @@ it('keeps root, ledger order, whole-set counts and newest open match across page
 })
 
 it('retires stale continuations when search or conversation changes, and shows incomplete coverage', async () => {
-  const lostNext = Promise.withResolvers<AllConversationTasksResult>()
-  const lostSearch = Promise.withResolvers<AllConversationTasksResult>()
+  const lostNext = deferredPage()
+  const lostSearch = deferredPage()
   const read = vi
     .fn<RuntimeBridge['readAllConversationTasks']>()
     .mockResolvedValueOnce(result({ root, tasks: [edge(1)], matched: 22, next: 'old-cursor' }))
