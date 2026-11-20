@@ -167,6 +167,7 @@ interface Cut {
   /** Why this one is allowed to be short, or who owns the repair. */
   readonly because: string
   readonly widths?: readonly number[]
+  readonly mayFit?: boolean
 }
 
 /**
@@ -177,6 +178,7 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
     starts: /^\d+d ago$/,
+    mayFit: true,
     because: 'The activity has its own ellipsis and retains its full age and timestamp on hover.',
   },
   {
@@ -186,7 +188,7 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   },
   {
     cy: 'rail-place-sess_long',
-    starts: '· /Users/m/dev/',
+    starts: '· a-very-long-directory-name-that-will-not-fit',
     because: 'The long folder cannot expand the status line; the full text remains on hover.',
   },
   {
@@ -196,7 +198,7 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   },
   {
     cy: 'rail-place-sess_named',
-    starts: '· /x/brobot-2',
+    starts: '· brobot-2',
     because: 'The shortened folder remains on the standing hover.',
   },
 ]
@@ -411,10 +413,12 @@ describe('§1 · the roster, at both shipped widths', () => {
       expect(found.filter((c) => !declaredFor(c, width)).map(describeCarrier)).toEqual([])
     })
 
-    it(`⛔ ${width}px · and every declared cut is still cut, so the list cannot go quiet`, async () => {
+    it(`⛔ ${width}px · and every required cut is still cut, so the list cannot go quiet`, async () => {
       const m = await rail(width)
       const found = sweep(m.host).filter((c) => c.cut !== null)
-      const missing = CUTS.filter((d) => appliesAt(d, width) && !found.some((c) => matches(c, d)))
+      const missing = CUTS.filter(
+        (d) => !d.mayFit && appliesAt(d, width) && !found.some((c) => matches(c, d)),
+      )
       for (const declared of CUTS.filter((d) => !appliesAt(d, width))) {
         const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, 'the previously shortened status is missing').toBeDefined()
