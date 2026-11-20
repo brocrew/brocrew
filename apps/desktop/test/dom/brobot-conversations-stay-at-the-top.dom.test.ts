@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
+import { AGENT_DISPLAY_NAME_CHARS, type ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import {
   CONVERSATION_IDENTITY_BATCH_SIZE,
   type ConversationIdentity,
@@ -43,9 +43,20 @@ async function draw(
   rows: ResumableSessionInfo[],
   activeId: string | null = null,
   renamed?: ConversationIdentity,
+  displayName?: string,
 ) {
   const selected: string[] = []
   const reads: string[][] = []
+  const roster = identities(rows.length)
+  const agents = displayName
+    ? {
+        ...roster,
+        identities: [
+          ...roster.identities,
+          { ...roster.identities[0]!, slug: 'brobot', displayName },
+        ],
+      }
+    : roster
   vi.stubGlobal('api', {
     runtime: {
       listConversations: async () => ({
@@ -65,7 +76,7 @@ async function draw(
       open: [],
       activeId,
       place: null,
-      agents: identities(rows.length),
+      agents,
       onSelect: (id: string) => selected.push(id),
       readIdentities: async ({ sessionIds }: { sessionIds: string[] }) => {
         reads.push(sessionIds)
@@ -249,7 +260,8 @@ for (const width of [251.68, 266.2]) {
     const label = card.querySelector<HTMLElement>('.rail-standing-profile')!
     const state = m.q('rail-state-word-person-4')
     const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
-    expect(label.textContent?.trim()).toBe('BroBot · claude ·')
+    expect(label.textContent?.trim()).toBe('BroBot')
+    expect(card.querySelector('.rail-brobot-provider')?.textContent?.trim()).toBe('· claude ·')
     expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1)
     expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
       line.getBoundingClientRect().right,
@@ -261,6 +273,45 @@ for (const width of [251.68, 266.2]) {
     expect(state.title).toBe(
       'waiting on an answer from Lars (the owner of W9.1 · Prepare the full launch list)',
     )
+    expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
+  })
+}
+
+for (const width of [251.68, 266.2]) {
+  it(`bounds an allowed custom name while retaining provider, state and age at ${width}px`, async () => {
+    const displayName = 'M'.repeat(AGENT_DISPLAY_NAME_CHARS)
+    const row = person(4)
+    row.state = {
+      is: 'waiting-on-an-answer',
+      from: 'Lars (the owner of W9.1 · Prepare the full launch list)',
+    }
+    const m = await draw([row], null, undefined, displayName)
+    m.host.style.width = `${width}px`
+    await expect.poll(() => m.q('rail-brobot-title-person-4').textContent).toContain('W4')
+    const card = m.q('open-session-person-4')
+    const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
+    const label = card.querySelector<HTMLElement>('.rail-standing-profile')!
+    const provider = card.querySelector<HTMLElement>('.rail-brobot-provider')!
+    const state = m.q('rail-state-word-person-4')
+    const age = card.querySelector<HTMLElement>('.rail-standing-age')!
+    expect(label.textContent).toBe(displayName)
+    expect(label.title).toBe(displayName)
+    expect(label.clientWidth).toBeGreaterThan(8)
+    expect(label.scrollWidth).toBeGreaterThan(label.clientWidth)
+    expect(getComputedStyle(label).textOverflow).toBe('ellipsis')
+    expect(provider.textContent?.trim()).toBe('· claude ·')
+    expect(provider.scrollWidth).toBeLessThanOrEqual(provider.clientWidth + 1)
+    expect(state.clientWidth).toBeGreaterThanOrEqual(20)
+    expect(state.scrollWidth).toBeGreaterThan(state.clientWidth)
+    expect(getComputedStyle(state).textOverflow).toBe('ellipsis')
+    for (const box of [label, provider, state, age]) {
+      expect(box.getBoundingClientRect().left).toBeGreaterThanOrEqual(
+        line.getBoundingClientRect().left - 1,
+      )
+      expect(box.getBoundingClientRect().right).toBeLessThanOrEqual(
+        line.getBoundingClientRect().right + 1,
+      )
+    }
     expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
   })
 }

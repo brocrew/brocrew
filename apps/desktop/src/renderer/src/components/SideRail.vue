@@ -1334,11 +1334,12 @@ const platform = platformHere()
                     "
                     ><span class="rail-standing-prefix"
                       ><template v-if="row.brobot">
-                        <span
-                          class="rail-standing-profile"
-                          :title="[row.label, row.provider].filter(Boolean).join(' · ')"
-                          >{{ [row.label, row.provider].filter(Boolean).join(' · ') }} ·
-                        </span>
+                        <span class="rail-standing-profile" :title="row.label">{{
+                          row.label
+                        }}</span>
+                        <span class="rail-brobot-provider" :title="row.provider ?? undefined">{{
+                          row.provider ? ` · ${row.provider} · ` : ' · '
+                        }}</span>
                         <span
                           class="rail-standing-word"
                           :data-cy="`rail-state-word-${row.sessionId}`"
@@ -1976,12 +1977,12 @@ const platform = platformHere()
 }
 
 .rail-brobot-standing .rail-standing-prefix {
+  display: grid;
   flex: 1 1 auto;
   min-width: 0;
+  grid-template-columns: minmax(0, max-content) max-content minmax(2em, 1fr);
 }
-.rail-brobot-standing .rail-standing-profile {
-  flex: none;
-  overflow: visible;
+.rail-brobot-provider {
   white-space: pre;
 }
 .rail-brobot-standing .rail-standing-word {
