@@ -154,7 +154,10 @@ it('keeps canonical rows to title, standing and address for open and answered ta
   const listed = [
     { ...waiting[0]!, named: { label: 'W18.1', title: 'A33 check', ended: 'answered' as const } },
     { ...waiting[1]!, named: { label: 'W18.2', title: 'Pending check' } },
-    { ...recent[0]!, named: { label: 'W18.3', title: 'Earlier check', ended: 'answered' as const } },
+    {
+      ...recent[0]!,
+      named: { label: 'W18.3', title: 'Earlier check', ended: 'answered' as const },
+    },
     { ...recent[1]!, named: { label: 'W18.4', title: 'Current check' } },
   ]
   const m = await rail(listed, {
