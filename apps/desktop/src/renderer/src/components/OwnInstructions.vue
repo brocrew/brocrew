@@ -242,7 +242,8 @@ async function decide(askId: string, approve: boolean): Promise<void> {
   const epoch = profileEpoch
   const keepDraft = changed.value
   busy.value = true
-  const result = await store.value.decideInstruction(askId, approve)
+  const ack = await store.value.decideInstruction(askId, approve)
+  const result = ack.outcome === 'taken' ? null : ack.reason
   if (epoch !== profileEpoch) return
   refusal.value = result
   busy.value = false

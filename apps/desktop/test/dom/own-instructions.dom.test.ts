@@ -47,7 +47,7 @@ function storeAnswering(reading: AgentInstructionsReading): {
     },
     decideInstruction: async (askId: string, approve: boolean) => {
       decided.push({ askId, approve })
-      return null
+      return { outcome: 'taken' as const }
     },
   } as unknown as AgentStore
   return { store, wrote, decided }

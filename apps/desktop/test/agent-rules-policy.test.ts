@@ -463,7 +463,12 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     if (!asked.ok) throw new Error('proposal refused')
     policy().instructAgent('lark', 'The person saved this', undefined, window)
     expect(propose(me, 'Stale', 0).ok).toBe(false)
-    expect(host.decideInstruction(asked.askId, true, window).outcome).toBe('refused')
+    // 352 · the person's edit already ended it, so a window still showing it is told it is gone.
+    expect(host.decideInstruction(asked.askId, true, window)).toEqual({
+      outcome: 'refused',
+      reason: 'there is no request waiting by that name, so nothing was written',
+      stillOpen: false,
+    })
     expect(store.ownInstructionsOf('lark').versions[0]?.text).toBe('The person saved this')
   })
 
