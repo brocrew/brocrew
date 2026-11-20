@@ -50,6 +50,9 @@ export type RunPowerShell = (command: string) => Promise<string>
  *
  * ⚑ SIGKILL at its timeout, as the watchdog's: `ps` has nothing to clean up. ⚑ And the deadline
  * releases the caller if the callback never comes, so a wedged `ps` cannot hold every later sample.
+ *
+ * ⚑ **PowerShell is waited for until it exits** (card 197): on a slow PC it can take longer than
+ * any fixed limit, and a limit there only made the listing fail every time.
  */
 export function listProcesses(
   platform: NodeJS.Platform = process.platform,
@@ -82,32 +85,19 @@ export const WINDOWS_LISTING =
   '"$($_.ProcessId) $($_.ParentProcessId) $($_.WorkingSetSize) ' +
   '$($_.KernelModeTime + $_.UserModeTime) $born $now" }'
 
-/** PowerShell starts slower than `ps` answers: its own bounds, inside the same kind of deadline. */
-const WINDOWS_LISTING_TIMEOUT_MS = 15_000
-const WINDOWS_LISTING_DEADLINE_MS = 20_000
-
 function powerShell(command: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', command],
-      {
-        timeout: WINDOWS_LISTING_TIMEOUT_MS,
-        maxBuffer: PS_MAX_BUFFER_BYTES,
-        encoding: 'utf8',
-        windowsHide: true,
-      },
+      { maxBuffer: PS_MAX_BUFFER_BYTES, encoding: 'utf8', windowsHide: true },
       (error, stdout) => (error ? reject(error) : resolve(stdout)),
     )
   })
 }
 
 async function listWithCim(run: RunPowerShell): Promise<readonly ListedProcess[]> {
-  const listing = await withDeadline(
-    run(WINDOWS_LISTING),
-    WINDOWS_LISTING_DEADLINE_MS,
-    'the process listing',
-  )
+  const listing = await run(WINDOWS_LISTING)
   const rows = parseWindowsListing(listing)
   if (rows.length === 0) throw new Error('the process listing had no line it could read')
   return rows

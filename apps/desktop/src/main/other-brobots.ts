@@ -49,8 +49,9 @@ export function listingCommand(executable: string): {
 }
 
 /**
- * How many other BroBot workspaces run now, or `null` when the process table cannot be read — an
- * update then waits, rather than guess that nothing else is running.
+ * How many other BroBot workspaces run now, or `null` when the process table cannot be read.
+ * ⚑ PowerShell is waited for until it exits (card 197): a limit made a slow PC answer `null`, and
+ * the update then restarted as if no other workspace ran.
  */
 export function otherBroBotsRunning(
   executable: string,
@@ -67,7 +68,7 @@ export function otherBroBotsRunning(
     execFile(
       file,
       [...args],
-      { timeout: 15_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
+      { maxBuffer: 16 * 1024 * 1024, windowsHide: true },
       (error, stdout) => {
         resolve(error ? null : otherBroBotsIn(String(stdout), own))
       },

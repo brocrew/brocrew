@@ -290,31 +290,31 @@ describe('what the Providers screen reads from the host', () => {
       expect(listed).toBe(2)
     })
 
-    it('keeps the last measurement when a slow command times out, then samples again quietly', async () => {
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
+    it('waits for a slow Windows listing, joining it rather than starting another', async () => {
       await withPid('claude', 4242)
       listing = listingOf([{ pid: 4242, ppid: 1, rssKb: 10, cpu: 1 }])
-      const last = await host.providerResources()
+      await host.providerResources()
       clock += 5_000
       vi.useFakeTimers()
       try {
-        listing = () => listProcesses('win32', () => new Promise(() => {}))
+        // pid, parent, 20 KiB working set, no CPU time, no creation time, now: as CIM prints it.
+        const table = '4242 1 20480 0 0 133800000000000000\r\n'
+        listing = () =>
+          listProcesses(
+            'win32',
+            () => new Promise((answer) => setTimeout(() => answer(table), 30_000)),
+          )
         const pending = host.providerResources()
+        clock += 29_000
+        await vi.advanceTimersByTimeAsync(29_000)
         expect(host.providerResources()).toBe(pending)
         expect(listed).toBe(2)
-        clock += 20_000
-        await vi.advanceTimersByTimeAsync(20_000)
-        expect(await pending).toBe(last)
-        expect(listed).toBe(2)
 
-        clock += 4_999
-        expect(await host.providerResources()).toBe(last)
+        clock += 1_000
+        await vi.advanceTimersByTimeAsync(1_000)
+        const answer = await pending
+        expect(answer.claude).toEqual({ running: 1, at: clock, rssBytes: 20 * 1024, cpuPercent: 0 })
         expect(listed).toBe(2)
-        listing = listingOf([{ pid: 4242, ppid: 1, rssKb: 20, cpu: 2 }])
-        clock += 1
-        const next = await host.providerResources()
-        expect(next.claude).toEqual({ running: 1, at: clock, rssBytes: 20 * 1024, cpuPercent: 2 })
-        expect(listed).toBe(3)
       } finally {
         vi.useRealTimers()
       }

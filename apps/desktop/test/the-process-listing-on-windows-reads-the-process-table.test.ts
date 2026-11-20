@@ -1,4 +1,3 @@
-import { listProcessesSmoke } from './helpers/list-processes-smoke'
 import { describe, expect, it, vi } from 'vitest'
 import {
   WINDOWS_LISTING,
@@ -88,23 +87,23 @@ describe('the listing on Windows', () => {
     )
   })
 
-  it('allows the CIM smoke command sixty seconds without using the product deadline', async () => {
+  it('waits for a slow PowerShell until it exits, with no time limit of its own', async () => {
     vi.useFakeTimers()
     try {
       started.fake = (args) => {
         const [file, argv, options, callback] = args as [
           string,
           string[],
-          { timeout: number },
+          { timeout?: number },
           (error: Error | null, stdout: string) => void,
         ]
         expect(file).toBe('powershell.exe')
         expect(argv).toEqual(['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LISTING])
-        expect(options.timeout).toBe(60_000)
+        expect(options.timeout).toBeUndefined()
         setTimeout(() => callback(null, TABLE), 30_000)
         return {}
       }
-      const reading = listProcessesSmoke('win32')
+      const reading = listProcesses('win32')
       await vi.advanceTimersByTimeAsync(30_000)
       expect(await reading).toEqual(parseWindowsListing(TABLE))
     } finally {
@@ -115,7 +114,7 @@ describe('the listing on Windows', () => {
 
   it('on this computer, if it is Windows, lists this very process with its parent and its memory', async (ctx) => {
     ctx.skip(process.platform !== 'win32', 'the CIM table is Windows’ own')
-    const rows = await listProcessesSmoke()
+    const rows = await listProcesses()
     const self = rows.find((row) => row.pid === process.pid)
     expect(self).toMatchObject({ pid: process.pid, ppid: process.ppid })
     expect(self?.rssKb).toBeGreaterThan(1024)
