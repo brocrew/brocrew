@@ -426,7 +426,7 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   const disclosure = m.q('card-other-tasks') as HTMLDetailsElement
   expect(disclosure.open).toBe(false)
   const collapsedHeight = disclosure.getBoundingClientRect().height
-  expect(disclosure.querySelector('summary')?.textContent).toContain('8')
+  expect(disclosure.querySelector('summary > span')?.textContent?.trim()).toBe('8')
   disclosure.querySelector('summary')!.click()
   expect(disclosure.open).toBe(true)
   expect(disclosure.getBoundingClientRect().height).toBeGreaterThan(collapsedHeight)

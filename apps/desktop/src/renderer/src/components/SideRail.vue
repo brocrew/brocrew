@@ -1902,7 +1902,6 @@ const platform = platformHere()
   overflow-wrap: anywhere;
   white-space: normal;
 }
-
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
   font-weight: var(--fw-normal);
 }
