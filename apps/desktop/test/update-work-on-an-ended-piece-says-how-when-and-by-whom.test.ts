@@ -353,7 +353,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     if (root === null) throw new Error('expected the giver root')
     const rootLine = root.title === null ? root.label : `${root.label} · ${root.title}`
     expect(toTheGiver.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')}; only its title can still change. ${label} was answered by ${helper} at ${clockTime(answeredAt)}. To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
+      `${endedOpening(label, 'the work', 'done')}. ${label} was answered by ${helper} at ${clockTime(answeredAt)}. Only its title can still change. To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
     )
     expect(JSON.stringify(toTheGiver)).not.toMatch(/sess_/)
 
@@ -369,7 +369,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
     expect(toTheHelper.detail).not.toHaveProperty('called')
     expect(toTheHelper.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')}. You answered ${label} at ${clockTime(answeredAt)}. Stop work on that piece; no further reply is owed.`,
+      `${endedOpening(label, 'the work', 'done')}. You answered ${label} at ${clockTime(answeredAt)}. Stop work on it; no further reply is owed.`,
     )
 
     const other = await personOpens('other')
@@ -563,6 +563,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     expect(refused.reason).toContain(endedOpening(heldLabel, 'the held one', 'withdrawn'))
     expect(refused.reason).not.toContain(' by ')
     expect(refused.reason).not.toContain('You ')
+    expect(refused.reason).not.toContain('Leave it to the person')
   })
 
   it('preserves field refusals while open and reports the ending before field rules after answer', async () => {
@@ -679,7 +680,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     ]) {
       const ended = await refusedAsEnded(pm, args)
       expect(ended.reason, JSON.stringify(args)).toContain(
-        `${endedOpening(label, 'Plan the trip', 'done')}; only its title can still change. You answered ${label} at ${clockTime(at)}. Stop work on that piece; no further reply is owed.`,
+        `${endedOpening(label, 'Plan the trip', 'done')}. You answered ${label} at ${clockTime(at)}. Stop work on it; no further reply is owed. Only its title can still change.`,
       )
       expect(ended.reason).not.toContain('give_work')
       expect(ended.detail, JSON.stringify(args)).toEqual({

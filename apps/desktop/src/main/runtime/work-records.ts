@@ -132,6 +132,7 @@ export interface EndedPieceDetail {
   readonly nextSteps?: {
     readonly title: string
     readonly outcome: PieceRow['outcome']
+    readonly actor: PieceRow['endedByActor']
     readonly heldByCaller: boolean
     readonly address: string | null
     readonly heldTasks: readonly string[]

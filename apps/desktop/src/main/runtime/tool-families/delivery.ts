@@ -18,6 +18,7 @@ import { type WhenItWasAskedToStop } from '../agent-tool-answer-words'
 import { aWakeRefused, aWakeThatDidNotHappen } from './launch-failures'
 import { refusalAnswer } from './answers'
 import { clockTimeFrom } from '../../../shared/clock'
+import { didIt } from '../../../shared/who-did-it'
 import { conversationLine } from '../conversation-address'
 
 /** Where the last ask to stop landed, as the sentence that says it names the three. */
@@ -41,8 +42,11 @@ export const WHEN_THE_ASK_LANDED: Readonly<
  */
 export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): string {
   const when = detail.at === undefined ? '' : ` at ${clockTimeFrom(detail.at, readAt)}`
-  const by = detail.called === undefined ? '' : ` by ${detail.called}`
-  const yours = detail.endedByYou === true
+  const actor = detail.nextSteps?.actor
+  const nonConversation = actor !== undefined && actor.who !== 'an-agent'
+  const called = nonConversation ? didIt(actor) : detail.called
+  const by = called === undefined ? '' : ` by ${called}`
+  const yours = !nonConversation && detail.endedByYou === true
   const { label } = detail
   let ended: string
   switch (detail.state) {
@@ -60,15 +64,20 @@ export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): stri
   }
   if (detail.nextSteps !== undefined) {
     const { title, outcome, address, heldTasks, heldByCaller } = detail.nextSteps
-    const retitle = detail.yoursToRetitle ? '; only its title can still change.' : '.'
-    const stop = heldByCaller ? ' Stop work on that piece; no further reply is owed.' : ''
+    const stop = heldByCaller ? ' Stop work on it; no further reply is owed.' : ''
+    const retitle = detail.yoursToRetitle ? ' Only its title can still change.' : ''
     const note =
       heldTasks.length === 0
         ? ''
         : ` To note something, set the status of a task you hold: ${heldTasks.join(', ')}.`
     const ending = when === '' && by === '' && !yours ? '' : ` ${ended}.`
-    const regive = address === null ? '' : ` To have more done, give_work with to: ${address}.`
-    return `Not changed: task ${detail.label} · ${title} has ended (${outcome ?? detail.state}) and keeps that outcome${retitle}${ending}${stop}${note}${regive}`
+    const continuation =
+      actor?.who === 'a-person'
+        ? ' Leave it to the person, or ask them before continuing.'
+        : address === null
+          ? ''
+          : ` To have more done, give_work with to: ${address}.`
+    return `Not changed: task ${detail.label} · ${title} has ended (${outcome ?? detail.state}) and keeps that outcome.${ending}${stop}${retitle}${note}${continuation}`
   }
   const act = !detail.yoursToRetitle
     ? 'stop work on that piece; no further reply is owed.'

@@ -2243,7 +2243,10 @@ export function derivePieces(
       // take-back is the giver speaking about its own decision; `outcome`, `summary` (719),
       // `resources` and `needsUserAction` are the owner's words about work it did, and a piece taken
       // back has none of them. ⚑ **D-025 · only who took it back** ({@link PieceRow.endedBy}).
-      settle(event.piece, 'withdrawn', entry.at, event.by, null, event.actor)
+      // Unlike a cancelled message, an explicit null by on this row records a person.
+      const actor =
+        event.actor === undefined && event.by === null ? { who: 'a-person' as const } : event.actor
+      settle(event.piece, 'withdrawn', entry.at, event.by, null, actor)
       continue
     }
     if (event.type === 'work_closed') {
@@ -2251,7 +2254,9 @@ export function derivePieces(
       // state. ⛔ **`settle` is the whole rule**: a close of a piece this ledger never opened, or one
       // already ended, changes nothing. ⚠️ It carries none of the owner's words onto the row, for
       // the take-back's reason: nobody replied — ⚑ only who closed it (D-025).
-      settle(event.piece, 'closed', entry.at, event.by, null, event.actor)
+      const actor =
+        event.actor === undefined && event.by === null ? { who: 'a-person' as const } : event.actor
+      settle(event.piece, 'closed', entry.at, event.by, null, actor)
       continue
     }
     if (

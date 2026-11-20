@@ -42,7 +42,7 @@ const UNKNOWN_PIECE =
 const OWN_ROOT =
   'that is this conversation’s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Close or withdraw a piece under a conversation’s own work.'
 const heldEndedWords = (label: string, title: string, outcome: string, ending: string): string =>
-  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome. ${ending}. Stop work on that piece; no further reply is owed.`
+  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome. ${ending}. Stop work on it; no further reply is owed.`
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for word', () => {

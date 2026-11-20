@@ -11651,7 +11651,8 @@ export class RuntimeHost implements LiveHost {
     caller: string | null,
     yoursToRetitle: boolean,
   ): EndedPieceDetail {
-    const endedBy = piece.endedBy
+    const actor = piece.endedByActor
+    const endedBy = caller !== null && actor?.who === 'an-agent' ? actor.agent : piece.endedBy
     return {
       piece: piece.piece,
       label: piece.label,
@@ -11669,6 +11670,7 @@ export class RuntimeHost implements LiveHost {
             nextSteps: {
               title: piece.title,
               outcome: piece.outcome,
+              actor,
               heldByCaller: piece.owner === caller,
               address:
                 yoursToRetitle && piece.owner !== caller ? this.addressOf(piece.owner) : null,

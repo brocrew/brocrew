@@ -577,7 +577,17 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     expect(closed).toEqual({ ok: true, piece, label: 'W1.1', askedItsTurnToStop: false })
     // The ledger says a person closed it: `work_closed` with no conversation in `by`.
     expect(ledger(ada)).toContainEqual({ type: 'work_closed', piece, by: null })
-    expect(pieceOf(ada, piece)).toMatchObject({ state: 'closed', endedBy: null })
+    expect(pieceOf(ada, piece)).toMatchObject({
+      state: 'closed',
+      endedBy: null,
+      endedByActor: { who: 'a-person' },
+    })
+    const retry = await callOn(agentToolsFor(host, brobot), 'withdraw_task', { piece })
+    expect(retry).toMatchObject({ outcome: 'refused', rail: 'that-piece-was-already-closed' })
+    expect(retry.reason).toContain('W1.1 was closed by a person at ')
+    expect(retry.reason).toContain('Only its title can still change.')
+    expect(retry.reason).toContain('Leave it to the person, or ask them before continuing.')
+    expect(retry.reason).not.toContain('give_work')
     await waitFor(() => told(ada, 'A person closed W1.1'), 'its holder to be told')
     await waitFor(() => told(brobot, 'A person closed W1.1'), 'its giver to be told')
     // Read again from the database, it stays closed and off every list a person is shown.
