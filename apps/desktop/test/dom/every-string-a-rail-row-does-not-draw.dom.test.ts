@@ -185,8 +185,8 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
     because: 'The opening excerpt stays on one line, with its full excerpt on hover.',
   },
   {
-    cy: 'open-session-sess_long',
-    starts: 'codex · ',
+    cy: 'rail-place-sess_long',
+    starts: '· /Users/m/dev/',
     because: 'The long folder cannot expand the status line; the full text remains on hover.',
   },
   {
