@@ -28,7 +28,7 @@ brobot:add-a-capability — When a tool is missing: existing connection first; b
 brobot:build-software — Before building or file-changing code: owner and checker verify it.
 ```
 
-Offer only skills installed and enabled for the profile. The app gates build-a-team on agent-creation permission and add-a-capability on its applicable role. The provider catalogue supplies descriptions and paths; if it cannot discover a skill, show its full SKILL.md path in the offered line. Show the actual offered list and loaded text in “What this agent receives.” Measure filtered or path-extended lists as sent.
+Offer only skills installed and enabled for the profile. The provider catalogue supplies descriptions and paths; if it cannot discover a skill, show its full SKILL.md path in the offered line. Show the actual offered list and loaded text in “What this agent receives.” Measure filtered or path-extended lists as sent.
 
 Codex: 660 characters, 676 UTF-8 bytes, 94 words.
 Claude: 716 characters, 732 UTF-8 bytes, 94 words.

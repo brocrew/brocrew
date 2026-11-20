@@ -1,6 +1,6 @@
 {
   "formatVersion": 2,
-  "version": "v26",
+  "version": "v27",
   "skills": [
     {
       "name": "delegate",
@@ -27,8 +27,8 @@
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
       "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "644f53e243c8905fdc6eeda7098ab0997208dcd8dedaff082cecbbe864799dd6",
-      "bytes": 4495
+      "sha256": "d9ecd202b386e83249c2fc10e816daeaff1c05ca7365e1b553102859f204da37",
+      "bytes": 4469
     },
     {
       "name": "remember",

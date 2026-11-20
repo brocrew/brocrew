@@ -427,7 +427,7 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
 const THE_NAMESPACE_SENTENCE = 'Tools that reach the app you are running inside.'
 
 /** The first sentence of the instructions' own clause that no namespace sentence may carry. */
-const A_CLAUSE_OF_THE_INSTRUCTIONS = 'An agent is named by the piece of work it owns'
+const A_CLAUSE_OF_THE_INSTRUCTIONS = 'A conversation’s address is the label of its first task'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §1 · what Codex is handed on thread/start
