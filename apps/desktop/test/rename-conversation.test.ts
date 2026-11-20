@@ -141,20 +141,20 @@ describe('renaming a conversation', () => {
     })
     recordTurn(conversation, { text: 'An imported opening', attribution: 'provider_transcript' })
     recordTurn(conversation, { text: 'An app notice', attribution: 'app_authored' })
-    const firstLine = 'a'.repeat(119)
+    const firstLine = 'A long opening '.repeat(16).trimEnd()
     recordTurn(conversation, {
       text: 'The flattened text of the whole turn',
       humanInitiated: true,
       parts: [
         { text: 'Agent brief', attribution: 'app_authored' },
-        { text: `\r\n  ${firstLine} continues\r\nSecond line`, humanInitiated: true },
+        { text: `\r\n  ${firstLine}  \r\nSecond line`, humanInitiated: true },
         { text: 'Second person message in the same turn', humanInitiated: true },
       ],
     })
     recordTurn(conversation, { text: 'Later person message', humanInitiated: true })
     expect(world.store.conversationTitle(conversation)).toBeNull()
 
-    const identity = { conversation, address: root.label, title: `${firstLine}…`, author: null }
+    const identity = { conversation, address: root.label, title: firstLine, author: null }
     expect(await readIdentity(conversation)).toEqual(identity)
     expect(
       await executeRuntimeCommand(host, world.window, {
@@ -164,14 +164,26 @@ describe('renaming a conversation', () => {
     ).toEqual([identity])
   })
 
-  it.each([{ text: ' \r\n ', humanInitiated: true }, { text: 'Opening from an unstamped ledger' }])(
-    'keeps the profile if the earliest possible person opening cannot name the row',
-    async (opening) => {
-      recordTurn(target, opening)
-      recordTurn(target, { text: 'Later observed prompt', humanInitiated: true })
-      expect(await readIdentity(target)).toMatchObject({ title: profileName, author: null })
+  it.each<{ reason: string; opening: Omit<UserTurnEvent, 'type'> }>([
+    { reason: 'blank message', opening: { text: ' \r\n ', humanInitiated: true } },
+    { reason: 'unstamped opening', opening: { text: 'Opening from an unstamped ledger' } },
+    {
+      reason: 'blank first person message in a combined turn',
+      opening: {
+        text: 'Combined turn',
+        humanInitiated: true,
+        parts: [
+          { text: 'Earlier agent message', attribution: 'app_authored' },
+          { text: ' \n ', humanInitiated: true },
+          { text: 'Later person message in the same turn', humanInitiated: true },
+        ],
+      },
     },
-  )
+  ])('keeps the profile when the opening is a $reason', async ({ opening }) => {
+    recordTurn(target, opening)
+    recordTurn(target, { text: 'Later observed prompt', humanInitiated: true })
+    expect(await readIdentity(target)).toMatchObject({ title: profileName, author: null })
+  })
 
   it('gives explicit, root and first owned task titles precedence over a person opening', async () => {
     const root = world.store.rootOf(target)!
@@ -219,6 +231,27 @@ describe('renaming a conversation', () => {
     })
     const root = world.store.ensurePersonalRoot(conversation, world.clock)
     recordTurn(conversation, { text: 'A later person message', humanInitiated: true })
+    expect(await readIdentity(conversation)).toEqual({
+      conversation,
+      address: root.label,
+      title: profileName,
+      author: null,
+    })
+  })
+
+  it('keeps the profile for an adopted conversation even after a person writes to it', async () => {
+    const conversation = 'sess_adopted_with_root'
+    world.store.adopt({
+      id: conversation,
+      provider: 'claude',
+      sessionId: 'adopted-provider-thread',
+      cwd: '/work',
+      profileId: 'worker',
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    const root = world.store.rootOf(conversation)!
+    recordTurn(conversation, { text: 'A person writes after adoption', humanInitiated: true })
     expect(await readIdentity(conversation)).toEqual({
       conversation,
       address: root.label,

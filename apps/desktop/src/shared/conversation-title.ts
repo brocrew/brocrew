@@ -8,7 +8,6 @@
 
 /** The most characters a conversation's title may hold, the same bound as a piece's title. */
 export const CONVERSATION_TITLE_CHARS = 200
-const OPENING_TITLE_CHARS = 120
 const LINE_BREAK = /[\r\n\u2028\u2029]/
 
 /** Who set a title: a person, through a person's own surface, or the agent of a conversation. */
@@ -90,14 +89,10 @@ export function aConversationTitle(text: unknown): string | null {
   return LINE_BREAK.test(trimmed) ? null : trimmed
 }
 
-/** The first nonblank line the person wrote, with the rail's display-length budget. */
+/** The first nonblank line the person wrote. The rail decides how much fits on screen. */
 export function titleFromOpeningMessage(message: string): string | null {
   const [first = ''] = message.trimStart().split(LINE_BREAK, 1)
-  const line = first.trimEnd()
-  if (line === '') return null
-  if (line.length <= OPENING_TITLE_CHARS) return line
-  const clipped = line.slice(0, OPENING_TITLE_CHARS - 1).replace(/[\uD800-\uDBFF]$/, '')
-  return `${clipped.trimEnd()}…`
+  return first.trimEnd() || null
 }
 
 /** Whether a stored author is one of the two shapes; a conversation id is a non-empty string. */
