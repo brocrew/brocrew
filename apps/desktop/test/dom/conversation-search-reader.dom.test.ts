@@ -652,7 +652,6 @@ it('labels an empty incomplete reading without claiming there are no matches', a
   expect(insidePalette('palette-searched')?.textContent).toContain('1 unread row.')
 })
 
-
 it('keeps the footer conversation search on one normal-height row at the standard rail width', async () => {
   const m = await openPalette()
   await userEvent.keyboard('{Escape}')
