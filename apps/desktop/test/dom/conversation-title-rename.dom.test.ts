@@ -170,7 +170,9 @@ it('reads canonical identity on selection, refreshes on work, and rereads on reo
   expect(m.q('conversation-title').parentElement?.textContent).not.toContain('Named by you')
   await expect.poll(() => m.q(`rail-address-${sessionId}`).textContent).toBe(sessionId)
   expect(readRail).toHaveBeenLastCalledWith({ sessionIds: [sessionId, serviceId] })
-  expect(m.q(`open-session-${sessionId}`).textContent).toContain(task.title)
+  const railRow = m.q(`open-session-${sessionId}`)
+  expect(railRow.querySelector('strong')?.textContent?.trim()).toBe(initial.title)
+  expect(railRow.textContent).not.toContain(task.title)
 
   primary = { ...primary, title: 'Renamed profile fallback' }
   changed({ what: 'agents' })
