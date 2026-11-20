@@ -456,7 +456,7 @@ describe('Service lifecycle', () => {
           }),
         ])
       })
-      expect(after.agentIdentities().servicesOn).toBeUndefined()
+      expect(after.agentIdentities()).not.toHaveProperty('servicesOn')
       expect(
         world
           .ledger(service)
