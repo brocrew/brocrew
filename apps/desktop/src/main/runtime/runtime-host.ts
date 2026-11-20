@@ -17741,8 +17741,15 @@ export class RuntimeHost implements LiveHost {
   private contextSizeOf(conversation: string): AgentCard['context'] {
     try {
       const reading = this.lastContextOf(conversation)?.reading
-      return reading?.kind === 'proportional'
-        ? { window: reading.window, percentUsed: Math.round((100 * reading.used) / reading.window) }
+      if (reading?.kind === 'proportional') {
+        return {
+          used: reading.used,
+          window: reading.window,
+          percentUsed: Math.round((100 * reading.used) / reading.window),
+        }
+      }
+      return reading?.kind === 'tokens'
+        ? { used: reading.used, window: null, percentUsed: null }
         : null
     } catch {
       return null

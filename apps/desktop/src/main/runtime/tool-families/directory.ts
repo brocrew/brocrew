@@ -74,6 +74,15 @@ const ARCHIVED_BY = 'a person'
 const archivedSaid = (archivedAt: number, readAt: number): string =>
   ` · archived ${clockTimeFrom(archivedAt, readAt)} by ${ARCHIVED_BY}`
 
+/** The latest context reading on a status line; a window and share only when one was reported. */
+const contextText = (context: AgentCard['context']): string => {
+  if (context == null) return ''
+  if (context.window === null || context.percentUsed === null) {
+    return ` · context ${String(Math.round(context.used))} tokens used (window size not reported)`
+  }
+  return ` · context ${String(context.percentUsed)}% of ${String(context.window)} tokens used`
+}
+
 const cardText = (
   card: AgentCard,
   called: string,
@@ -85,9 +94,7 @@ const cardText = (
   theStopOnAPerson(card.stoppedOnAPerson) +
   // **D-042 · R6 — what it runs on**, so a giver can check what its helper runs.
   runsOnText(card) +
-  (card.context == null
-    ? ''
-    : ` · context ${String(card.context.percentUsed)}% of ${String(card.context.window)} tokens used`) +
+  contextText(card.context) +
   (card.lastActiveAt == null ? '' : ` · last active ${new Date(card.lastActiveAt).toISOString()}`) +
   // **W4.209 · who started it, by the piece it started it from** — the record's and the launch
   // line's words (`AgentCard.parentCalled`), never by the starter's work now.

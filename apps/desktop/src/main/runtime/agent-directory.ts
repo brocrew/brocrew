@@ -181,7 +181,15 @@ export interface AgentCard {
   readonly whose: WhoseConversation
   readonly provider: Provider | null
   readonly lastActiveAt?: number | null
-  readonly context?: { readonly window: number; readonly percentUsed: number } | null
+  /**
+   * The latest context reading: tokens used, and the window and share only when the provider
+   * reports a window. `null` when there is no current reading.
+   */
+  readonly context?: {
+    readonly used: number
+    readonly window: number | null
+    readonly percentUsed: number | null
+  } | null
   /**
    * ⚑ **D-017 · R11 — what the agent is doing, in the ONE derivation every reader asks**
    * ({@link agentStateOf}): needs you, active, waiting on another conversation's answer, running in
