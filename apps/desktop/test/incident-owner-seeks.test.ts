@@ -259,7 +259,14 @@ it('bounds giver, stall and reply history to the canonical open pieces with no r
     )
     w.append(
       owner,
-      { type: 'user_turn', text: 'Fictional drive.', humanInitiated: owner === 'agent' },
+      owner === 'agent'
+        ? { type: 'user_turn', text: 'A person replies.', humanInitiated: true }
+        : {
+            type: 'user_turn',
+            text: 'The giver sends instructions.',
+            attribution: 'app_authored',
+            relayedFrom: 'person',
+          },
       3,
     )
     w.append(owner, { type: 'turn', state: 'completed' }, 4)

@@ -93,10 +93,11 @@ it('rechecks new open work and keeps told and untold stalls in their original or
     'holder-02-new',
   ])
   expect(reused.answer.queue!.stops.value.rows.map((one) => one.piece)).toEqual(['holder-01-new'])
-  for (const reads of Object.values(reused.reads)) {
+  for (const reads of Object.values(reused.projected)) {
     expect(reads).toContain('holder-00')
     expect(reads).not.toContain('holder-03')
   }
+  expect(reused.reads).toEqual({ stalls: [], stops: [] })
   const proof = vi.fn(() => true)
   const ordinary = w.db.transaction(() =>
     w.store.stalledWorkNobodyWasToldAbout(rowsUnreadOnce(), proof),
@@ -105,13 +106,14 @@ it('rechecks new open work and keeps told and untold stalls in their original or
   expect(proof).not.toHaveBeenCalled()
 })
 
-it('does not shortcut rootful owners even when their child pieces ended', () => {
+it('visits rootful owners through their canonical projection even when their child pieces ended', () => {
   const w = world()
   w.seed('closed', true)
   const { reused } = w.compare()
   expect(reused.answer.owners.find((one) => one.id === 'holder-00')!.openWork.value).not.toEqual([])
-  expect(reused.reads.stalls).toContain('holder-00')
-  expect(reused.reads.stops).toContain('holder-00')
+  expect(reused.projected.stalls).toContain('holder-00')
+  expect(reused.projected.stops).toContain('holder-00')
+  expect(reused.reads).toEqual({ stalls: [], stops: [] })
 })
 
 it('falls back for absent naming instead of treating it as ended', () => {
@@ -139,7 +141,7 @@ it('falls back for absent naming instead of treating it as ended', () => {
   expect(proofChecks).toEqual([false, false])
 })
 
-it('replays unread rows independently for both stalled facts and retains full holder coverage', () => {
+it('forwards unread evidence independently to both stalled facts and retains full holder coverage', () => {
   const w = world()
   w.seed('withdrawn')
   const ordinal = w.store.nextOrdinal('holder-00')
@@ -153,8 +155,9 @@ it('replays unread rows independently for both stalled facts and retains full ho
     expect(fact.skipped).toEqual([['holder-00', [ordinal]]])
     expect(fact.value).toMatchObject({ ledgers: 16, rowsUnread: 1, rows: [] })
   }
-  expect(reused.reads.stalls).toContain('holder-00')
-  expect(reused.reads.stops).toContain('holder-00')
+  expect(reused.projected.stalls).toContain('holder-00')
+  expect(reused.projected.stops).toContain('holder-00')
+  expect(reused.reads).toEqual({ stalls: [], stops: [] })
 })
 
 it.each([false, true])(
@@ -246,6 +249,7 @@ it('retains whole-ledger error accounting rather than accepting a failed ended p
     expect(fact.skipped).toEqual([['holder-00', ['the-whole-ledger']]])
     expect(fact.value).toMatchObject({ ledgers: 16, ledgersSkipped: 1, rowsUnread: 0, rows: [] })
   }
-  expect(reused.reads.stalls).toContain('holder-00')
-  expect(reused.reads.stops).toContain('holder-00')
+  expect(reused.projected.stalls).toContain('holder-00')
+  expect(reused.projected.stops).toContain('holder-00')
+  expect(reused.reads).toEqual({ stalls: [], stops: [] })
 })

@@ -49,7 +49,6 @@ it.each([false, true])(
         type: 'message_unqueued',
         messageId: 'brief',
         reason: 'sent',
-        kind: 'work',
         text: 'The held brief.',
       },
       { type: 'user_turn', text: 'Continue only the second.', drives: 'second' },

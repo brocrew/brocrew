@@ -1,6 +1,10 @@
 import { expect, vi } from 'vitest'
 import { aServiceWorld } from './a-service-world'
-import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
+import {
+  createSessionStore,
+  type SessionStore,
+  type WindowOpenWork,
+} from '../../src/main/db/session-store'
 import { windowFoldCache } from '../../src/main/db/window-fold-cache'
 import { readWindowWork } from '../../src/main/db/window-work-reading'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
@@ -73,6 +77,7 @@ export function endedWindowWork() {
       return pieces
     })
     const reads = { stalls: [] as string[], stops: [] as string[] }
+    const projected = { stalls: [] as string[], stops: [] as string[] }
     let phase: keyof typeof reads | undefined
     const prepare = db.prepare.bind(db)
     const observation = vi.spyOn(db, 'prepare').mockImplementation((sql) => {
@@ -111,7 +116,25 @@ export function endedWindowWork() {
               return (...args: unknown[]) => {
                 phase = key === 'stalledWorkNobodyWasToldAbout' ? 'stalls' : 'stops'
                 try {
-                  return Reflect.apply(method, target, useProof ? args : args.slice(0, 1))
+                  if (!useProof) return Reflect.apply(method, target, args.slice(0, 1))
+                  const work = args[2] as WindowOpenWork | undefined
+                  const stage = phase
+                  return Reflect.apply(
+                    method,
+                    target,
+                    work === undefined
+                      ? args
+                      : [
+                          ...args.slice(0, 2),
+                          {
+                            ...work,
+                            ownedBy: (owner, noteSkip) => {
+                              projected[stage].push(owner)
+                              return work.ownedBy(owner, noteSkip)
+                            },
+                          } satisfies WindowOpenWork,
+                        ],
+                  )
                 } finally {
                   phase = undefined
                 }
@@ -121,7 +144,7 @@ export function endedWindowWork() {
           return readWindowWork(db, observed)
         })
         .deferred()
-      return { answer, reads, firstAdmitted, firstEvicted: !pieces.has('holder-00') }
+      return { answer, reads, projected, firstAdmitted, firstEvicted: !pieces.has('holder-00') }
     } finally {
       observation.mockRestore()
     }
