@@ -99,9 +99,7 @@ export function createHumanAnswerReader(
 
   return {
     firstPersonOpening(sessionId, generation) {
-      const row = firstPersonOpening.get({ session: sessionId, generation }) as
-        | EventRow
-        | undefined
+      const row = firstPersonOpening.get({ session: sessionId, generation }) as EventRow | undefined
       if (row === undefined) return null
       const opening = toPersistedEvents([row])[0]
       return opening?.event.type === 'user_turn' ? firstHumanMessageOf(opening.event) : null
