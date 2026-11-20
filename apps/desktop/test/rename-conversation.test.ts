@@ -146,7 +146,7 @@ describe('renaming a conversation', () => {
       title: 'Person’s job title',
     })
     expect(named).toMatchObject({ ok: true, address: root.label, author: { kind: 'person' } })
-    expect(changed).toContain('work')
+    expect(changed.filter((what) => what === 'work')).toHaveLength(1)
     expect(await readIdentity(target)).toEqual({
       conversation: target,
       address: root.label,
@@ -167,7 +167,7 @@ describe('renaming a conversation', () => {
       previousAuthor: { kind: 'person' },
       author: { kind: 'agent', conversation: caller },
     })
-    expect(changed).toContain('work')
+    expect(changed.filter((what) => what === 'work')).toHaveLength(1)
     const beforeRead = world.store.events(target)
     const recordedBeforeRead = world.store.recordedOne(target)
     const providerHandles = world.handles.length

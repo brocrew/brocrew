@@ -7747,7 +7747,6 @@ export class RuntimeHost implements LiveHost {
       this.stateMayHaveMoved(conversation)
     }
     if (MOVES_ITS_NAME.has(type)) this.itsNameMayHaveMoved(conversation)
-    if (type === 'titled') this.theWorldMoved('work')
     // ⚑ **F036 · a question put to another conversation moves what THAT one owes** — routed to it
     // ({@link RequestRoutedEvent.parent}), or, for one already noted as owing, any row that moves
     // this asker's questions: an answer, a decline, a withdrawal, an ending.
@@ -18635,6 +18634,7 @@ export class RuntimeHost implements LiveHost {
         if (session != null) this.publishOurs(session, titled)
         else if (!this.writeWhileNothingRunsIt(conversation, titled))
           throw new Error('Could not record the conversation title.')
+        this.theWorldMoved('work')
       },
     })
   }
