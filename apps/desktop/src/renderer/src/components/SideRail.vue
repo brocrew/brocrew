@@ -762,6 +762,10 @@ function rowTitle(row: RailRow): string {
   return identity?.title ?? conversationTitle(row.label, row.named)
 }
 
+function profileName(row: RailRow): string {
+  return row.worker ? workerName(row.worker, props.agents?.identities ?? null) : row.label
+}
+
 function statusLine(row: RailRow, detailed = false): string {
   return [
     row.brobot || row.named ? row.label : null,
@@ -1314,8 +1318,8 @@ const platform = platformHere()
                         ><span
                           class="rail-standing-profile"
                           :data-cy="`rail-profile-${row.sessionId}`"
-                          :title="row.label"
-                          >{{ row.label }}</span
+                          :title="profileName(row)"
+                          >{{ profileName(row) }}</span
                         ></template
                       ><span
                         v-if="!identities.get(row.sessionId) && row.provider"

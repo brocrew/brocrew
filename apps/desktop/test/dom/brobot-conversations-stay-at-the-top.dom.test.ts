@@ -107,6 +107,9 @@ async function draw(
   await expect.poll(() => m.all('conversations-loading').length).toBe(0)
   m.host.style.width = '252px'
   m.q('side-rail').style.cssText += '; width:100%; min-width:0; flex:1 1 0'
+  // Model W1's measured row budget; the Electron check verifies the real enclosing layout.
+  const scroll = m.host.querySelector<HTMLElement>('.rail-scroll')!
+  scroll.style.paddingRight = '23px'
   await drawnReady()
   return { ...m, selected, reads }
 }
@@ -275,8 +278,7 @@ for (const provider of ['claude', 'codex'] as const) {
     const card = m.q('open-session-person-21')
     const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
     expect(m.q('side-rail').getBoundingClientRect().width).toBe(252)
-    // The native window's measured text budget; Electron verifies the enclosing layout.
-    line.style.width = '158px'
+    expect(card.getBoundingClientRect().width).toBe(216)
     expect(line.getBoundingClientRect().width).toBe(158)
     expect(line.textContent).toBe(`BroBot · ${provider} · idle · bakery`)
     expect(line.title).toBe(`BroBot · ${provider} · idle · bakery`)
@@ -303,15 +305,14 @@ for (const width of [252, 266.2]) {
     await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
     const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
     expect(line.textContent).toBe(`BroBot · claude · waiting on an answer from ${long} · bakery`)
-    line.style.width = '158px'
     visiblePrefix(line, 'BroBot · claude')
     expect(line.title).toContain(long)
     expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
     const label = m.q('rail-profile-recipe-1')
     const state = m.q('rail-state-word-recipe-1')
     const standing = label.closest('small')!
-    standing.style.width = '158px'
-    expect(label.textContent).toContain('Mira')
+    expect(label.textContent).toBe('Mira')
+    expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1)
     expect(label.clientWidth).toBeGreaterThan(20)
     expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
       standing.getBoundingClientRect().right,
