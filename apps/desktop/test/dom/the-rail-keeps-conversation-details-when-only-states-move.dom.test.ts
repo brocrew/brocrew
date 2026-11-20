@@ -48,7 +48,7 @@ it('updates nine states without deriving the details of 1960 conversations again
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
-    expect(mounted.host.querySelectorAll('[data-session-id]')).toHaveLength(1960)
+    expect(mounted.host.querySelectorAll('[data-session-id]')).toHaveLength(15)
     expect(conversationNamesRead()).toBe(1960)
     const order = () =>
       [...mounted.host.querySelectorAll('[data-session-id]')].map((row) =>
@@ -63,7 +63,7 @@ it('updates nine states without deriving the details of 1960 conversations again
     ;(mounted.vm.hearStates as (message: RuntimeStatesMessage) => void)({ moved, kept: [] })
     await nextTick()
     expect(mounted.host.querySelectorAll('small[data-standing="working"]')).toHaveLength(9)
-    expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(1951)
+    expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(6)
     expect(order()).toEqual(before)
     expect(conversationNamesRead(), 'a state notice must not derive unchanged names').toBe(0)
 
@@ -72,7 +72,7 @@ it('updates nine states without deriving the details of 1960 conversations again
     await nextTick()
     expect(conversationNamesRead()).toBe(1960)
     expect(mounted.q('open-session-conversation-0').textContent).toContain('renamed-folder')
-    expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(1960)
+    expect(mounted.host.querySelectorAll('small[data-standing="idle"]')).toHaveLength(15)
   } finally {
     window.api = beforeApi
   }

@@ -8,6 +8,7 @@ import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
+import { fullTime } from '../../src/renderer/src/lib/clock'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import {
   contrast,
@@ -337,18 +338,21 @@ describe('a row the host lists is made of what a row this window holds is made o
     const m = await rail({
       resumable: [OPENABLE, READABLE, { ...INERT, state: { is: 'active' } }],
     })
-    // ⚑ **449 · three facts on the one line, in the rail's own order**: the provider, the row's
-    // own fact, and WHERE it is working — the place LAST, because a 200px column ellipsizes it.
-    expect(row(m, 'sess_openable').querySelector('small')!.textContent?.trim()).toBe(
-      'claude · idle · brobot-2',
-    )
-    const refused = row(m, 'sess_child').querySelector('small')!
-    expect(refused.textContent?.trim()).toBe('claude · idle · billing-api')
-    expect(refused.textContent).not.toContain('sub-agent conversation')
-    expect(row(m, 'sess_child').textContent).not.toMatch(/ended|not running|reopen/i)
-    // ⚑ **The control, one fact over**: the host's other word, on the same kind of row.
-    expect(row(m, 'sess_inert').querySelector('small')!.textContent?.trim()).toBe(
-      'claude · active · nothing-here',
+    // The place stays last. Relative activity is separate from the host's current state.
+    for (const [entry, standing, place] of [
+      [OPENABLE, 'idle', 'brobot-2'],
+      [READABLE, 'idle', 'billing-api'],
+      [INERT, 'active', 'nothing-here'],
+    ] as const) {
+      const line = row(m, entry.sessionId).querySelector('small')!
+      const activity = line.querySelector('time')!
+      expect(activity.title).toBe(`${activity.textContent} · ${fullTime(entry.updatedAt)}`)
+      expect(line.textContent?.trim()).toBe(
+        `claude · ${standing} · ${activity.textContent} · ${place}`,
+      )
+    }
+    expect(row(m, 'sess_child').textContent).not.toMatch(
+      /sub-agent conversation|ended|not running|reopen/i,
     )
   })
 
@@ -384,7 +388,8 @@ describe('a row the host lists is made of what a row this window holds is made o
     const only = row(m, 'sess_openable')
     expect(only.querySelector('strong')!.textContent).toBe(DEFAULT_PROFILE_LABEL)
     const line = only.querySelector('small')!
-    expect(line.textContent?.trim()).toBe('claude · idle')
+    const activity = line.querySelector('time')!
+    expect(line.textContent?.trim()).toBe(`claude · idle · ${activity.textContent}`)
     // ⛔ **No trailing separator**, which is the shape a naive interpolation would have left.
     expect(line.textContent?.trim().endsWith('·')).toBe(false)
     expect(line.getAttribute('data-place')).toBeNull()
@@ -492,7 +497,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
 /* ------------------------------------------------- 4 · the row is readable at 200px */
 
 describe('the row survives the column it lives in (126)', () => {
-  it('keeps titles and subtitles to one line with their complete text reachable', async () => {
+  it('keeps these short titles and their metadata compact with complete text reachable', async () => {
     const m = await rail({ resumable: [READABLE], unresumable: [LOST_REF] })
     const scroll = m.host.querySelector('.rail-scroll') as HTMLElement
     // Non-vacuity: a stylesheet that failed to load gives every element a zero width, and the

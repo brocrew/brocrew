@@ -127,9 +127,8 @@ describe('parallel workers beside their agent', () => {
     expect(m.q('rail-worker-name-recipe-2').textContent).toBe('Mira · W90.2')
     const name = m.q('rail-worker-name-recipe-2')
     expect(m.q('open-session-recipe-2').querySelector('.rail-copy > strong')).toBe(name)
-    expect(lineCount(name)).toBe(1)
-    expect(getComputedStyle(name).textOverflow).toBe('ellipsis')
-    expect(getComputedStyle(name).whiteSpace).toBe('nowrap')
+    assertDrawn(name, 'the full worker name', m.host)
+    expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth)
     expect(name.title).toContain('Mira · W90.2')
 
     expect(m.q('rail-state-word-recipe-2').textContent).toBe('idle · answered')

@@ -1,5 +1,6 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { agoWords } from '../../src/renderer/src/lib/clock'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
@@ -96,8 +97,7 @@ const RECORDED = [
     updatedAt: NOW - 240_000,
   },
   {
-    // Titled by the piece it holds, and the title is longer than two lines of the column, so the
-    // title clamp has something to cut.
+    // The long title exercises wrapping, and the long metadata still has a hover fallback.
     sessionId: 'sess_named',
     provider: 'claude',
     profileId: 'default',
@@ -177,10 +177,8 @@ interface Cut {
 const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
-    starts: 'W1 · Rebuild the conversation rail',
-    because:
-      'A conversation title is shortened to one line so one long title cannot make its row tower ' +
-      'over the rest; the whole title is on the `:title` and is the row’s accessible name.',
+    starts: agoWords(RECORDED[1]!.updatedAt),
+    because: 'The activity on a crowded metadata line remains on hover.',
   },
   {
     cy: 'session-opening-sess_a',
@@ -200,8 +198,6 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
     starts: 'default · ',
-    // Linux's Inter metrics clip the final glyph even at the wider rail width.
-    widths: /linux/i.test(navigator.platform) ? [251.68, WIDE_RAIL_W] : [251.68],
     because: 'The full agent, provider, status and folder remain on hover.',
   },
 ]
@@ -449,15 +445,16 @@ describe('§1 · the roster, at both shipped widths', () => {
     })
   }
 
-  it('266.2px · the named status fits in full with the Mac’s Inter metrics', async (ctx) => {
-    // This one glyph fits with Mac font metrics; Linux's complete roster declares its cut.
-    ctx.skip(!/mac/i.test(navigator.platform))
-    const m = await rail(WIDE_RAIL_W)
-    const status = m
-      .q('open-session-sess_named')
-      .querySelector<HTMLElement>('small[data-standing]')!
-    assertDrawn(status, 'the named status fits at the wider rail width on the Mac')
-  })
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · wraps the long title without losing any of it',
+    async (width) => {
+      const m = await rail(width)
+      const title = m.q('open-session-sess_named').querySelector<HTMLElement>('strong')!
+      expect(title.textContent).toBe(`W1 · ${A_TITLE_LONGER_THAN_TWO_LINES}`)
+      expect(lineCount(title)).toBeGreaterThan(1)
+      assertDrawn(title, 'the full title at the shipped width')
+    },
+  )
 })
 
 /* ------------------------------------------------------------------ §2 · the repairs */

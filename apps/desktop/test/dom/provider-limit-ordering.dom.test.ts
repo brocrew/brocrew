@@ -224,7 +224,11 @@ async function screens() {
     )
     const short =
       word === 'clear' ? 'idle' : word === 'unavailable' ? 'Limit unavailable' : 'Claude limit'
-    expect(railWord).toBe(['claude', short, railLine.dataset.place].filter(Boolean).join(' · '))
+    const activity = railLine.querySelector('time')
+    expect(activity?.title).toBe(`${activity?.textContent} · ${fullTime(NOW)}`)
+    expect(railWord).toBe(
+      ['claude', short, activity?.textContent, railLine.dataset.place].filter(Boolean).join(' · '),
+    )
     expect(teamWord).toBe(short)
     const list = rail.value!.theOneList
     expect(list).not.toBeNull()

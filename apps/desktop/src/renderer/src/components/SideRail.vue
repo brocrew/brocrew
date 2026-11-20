@@ -1307,6 +1307,7 @@ const platform = platformHere()
                         row.named ? row.label : null,
                         row.provider,
                         row.detail ?? row.word,
+                        row.activityAt === undefined ? null : agoWords(row.activityAt, railMinute),
                         row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
                         row.place,
                       ]
@@ -1327,9 +1328,10 @@ const platform = platformHere()
                       </span></template
                     ><template v-if="row.activityAt !== undefined">
                       ·
-                      <time :title="fullTime(row.activityAt)">{{
-                        agoWords(row.activityAt, railMinute)
-                      }}</time> </template
+                      <time
+                        :title="`${agoWords(row.activityAt, railMinute)} · ${fullTime(row.activityAt)}`"
+                        >{{ agoWords(row.activityAt, railMinute) }}</time
+                      > </template
                     ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
                     ><template v-if="row.place"> · {{ row.place }}</template></small
                   >
@@ -1895,7 +1897,6 @@ const platform = platformHere()
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .rail-group-rows .rail-copy strong {
   overflow: visible;
   line-height: var(--leading-normal);
@@ -1905,7 +1906,6 @@ const platform = platformHere()
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
   font-weight: var(--fw-normal);
 }
-
 .rail-copy small {
   display: block;
   overflow: hidden;
@@ -1916,7 +1916,6 @@ const platform = platformHere()
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 /* Explanatory copy is bounded; its title retains the complete sentence. */
 .rail-copy small.says {
   display: -webkit-box;

@@ -76,6 +76,12 @@ describe('Worker titles in a large conversation rail', () => {
       { width: 1200, height: 900 },
     )
     await settled()
+    expect(view.host.querySelectorAll('[data-worker]')).toHaveLength(15)
+    view.q('rail-show-more').click()
+    await nextTick()
+    expect(view.host.querySelectorAll('[data-worker]')).toHaveLength(30)
+    view.q('rail-show-more').click()
+    await nextTick()
     expect(view.host.querySelectorAll('[data-worker]')).toHaveLength(rows.length)
     expect(visits).toBe(nodes.length)
     visits = 0
