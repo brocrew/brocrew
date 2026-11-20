@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import builderTools from '../../apps/desktop/build/builder-tools.mjs'
 
 // release.yml's publish job, run against a `gh` that answers with supplied GitHub responses.
+// The job runs on Linux, and the fake `gh` is a POSIX script, so those cases skip on Windows.
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const jobs = builderTools.loadYaml(
@@ -47,6 +48,7 @@ if (answer.status >= 400) {
 }
 `
 
+const itOnPosix = it.skipIf(process.platform === 'win32')
 const roots = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -118,6 +120,7 @@ const PUBLISH = {
 describe('release.yml publishes the approved draft by its id', () => {
   it('waits for the release environment, and takes the id and files the draft job recorded', () => {
     expect(jobs.publish.environment).toBe('release')
+    expect(jobs.publish['runs-on']).toBe('ubuntu-latest')
     expect(jobs.publish.needs).toEqual(['plan', 'draft'])
     expect(jobs.draft.outputs).toEqual({
       id: '${{ steps.draft.outputs.id }}',
@@ -128,71 +131,83 @@ describe('release.yml publishes the approved draft by its id', () => {
     expect(record).toContain('[.assets[] | {id, name, size}] | tojson')
   })
 
-  it('publishes the draft with its tag, commit and latest, after checking the tag and its files', () => {
-    const run = publish()
-    expect(run.stderr).toBe('')
-    expect(run.status).toBe(0)
-    expect(run.stdout).toBe('Published https://github.com/brocrew/brocrew/releases/tag/v0.2.27\n')
-    expect(run.calls).toEqual([...READS, PUBLISH])
-  })
+  itOnPosix(
+    'publishes the draft with its tag, commit and latest, after checking the tag and its files',
+    () => {
+      const run = publish()
+      expect(run.stderr).toBe('')
+      expect(run.status).toBe(0)
+      expect(run.stdout).toBe('Published https://github.com/brocrew/brocrew/releases/tag/v0.2.27\n')
+      expect(run.calls).toEqual([...READS, PUBLISH])
+    },
+  )
 
-  it('a draft whose tag an edit dropped is published by id, with its tag sent again', () => {
+  itOnPosix('a draft whose tag an edit dropped is published by id, with its tag sent again', () => {
     const untagged = draft({ tag_name: 'untagged-246ca2b9623cbca9391b' })
     const run = publish({ release: { status: 200, body: untagged } })
     expect(run.status).toBe(0)
     expect(run.calls).toEqual([...READS, PUBLISH])
   })
 
-  it('a tag that moved, files that changed, or a draft it cannot read stop it before publishing', () => {
-    const moved = publish({ tagged: 'f'.repeat(40) })
-    expect(moved.status).toBe(1)
-    expect(moved.stderr).toBe(
-      `Release ${ID} was not published: v0.2.27 points at ${'f'.repeat(40)}, not ${SHA}\n`,
-    )
-    expect(moved.calls).toEqual(READS.slice(0, 1))
+  itOnPosix(
+    'a tag that moved, files that changed, or a draft it cannot read stop it before publishing',
+    () => {
+      const moved = publish({ tagged: 'f'.repeat(40) })
+      expect(moved.status).toBe(1)
+      expect(moved.stderr).toBe(
+        `Release ${ID} was not published: v0.2.27 points at ${'f'.repeat(40)}, not ${SHA}\n`,
+      )
+      expect(moved.calls).toEqual(READS.slice(0, 1))
 
-    const replaced = ASSETS.map((asset) =>
-      asset.name === 'latest.yml' ? { ...asset, id: 9 } : asset,
-    )
-    const changed = publish({ release: { status: 200, body: draft({ assets: replaced }) } })
-    expect(changed.status).toBe(1)
-    expect(changed.stderr).toMatch(
-      new RegExp(`^Release ${ID} was not published: its files changed since the draft job: \\[`),
-    )
-    expect(changed.stderr).toContain('{"id":9,"name":"latest.yml","size":1002}')
-    expect(changed.calls).toEqual(READS)
+      const replaced = ASSETS.map((asset) =>
+        asset.name === 'latest.yml' ? { ...asset, id: 9 } : asset,
+      )
+      const changed = publish({ release: { status: 200, body: draft({ assets: replaced }) } })
+      expect(changed.status).toBe(1)
+      expect(changed.stderr).toMatch(
+        new RegExp(`^Release ${ID} was not published: its files changed since the draft job: \\[`),
+      )
+      expect(changed.stderr).toContain('{"id":9,"name":"latest.yml","size":1002}')
+      expect(changed.calls).toEqual(READS)
 
-    const missing = publish({ release: { status: 404, body: { message: 'Not Found' } } })
-    expect(missing.stderr).toBe(
-      `Release ${ID} was not published: gh api ${RELEASE} failed: gh: Not Found (HTTP 404)\n`,
-    )
-    expect(missing.calls).toEqual(READS)
-  })
+      const missing = publish({ release: { status: 404, body: { message: 'Not Found' } } })
+      expect(missing.stderr).toBe(
+        `Release ${ID} was not published: gh api ${RELEASE} failed: gh: Not Found (HTTP 404)\n`,
+      )
+      expect(missing.calls).toEqual(READS)
+    },
+  )
 
-  it('after a failed or unexpected publish answer, it reads the release once and says what it saw', () => {
-    const lost = { status: 502, body: { message: 'Bad Gateway' } }
-    const nowPublic = { status: 200, body: draft({ draft: false }) }
-    const uncertain = publish({ release: [{ status: 200, body: draft() }, nowPublic], patch: lost })
-    expect(uncertain.status).toBe(1)
-    expect(uncertain.stderr).toBe(
-      `Release ${ID} may be published: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502); ` +
-        'GitHub now reads draft: false, tag: v0.2.27\n',
-    )
-    expect(uncertain.calls).toEqual([...READS, PUBLISH, READS[1]])
+  itOnPosix(
+    'after a failed or unexpected publish answer, it reads the release once and says what it saw',
+    () => {
+      const lost = { status: 502, body: { message: 'Bad Gateway' } }
+      const nowPublic = { status: 200, body: draft({ draft: false }) }
+      const uncertain = publish({
+        release: [{ status: 200, body: draft() }, nowPublic],
+        patch: lost,
+      })
+      expect(uncertain.status).toBe(1)
+      expect(uncertain.stderr).toBe(
+        `Release ${ID} may be published: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502); ` +
+          'GitHub now reads draft: false, tag: v0.2.27\n',
+      )
+      expect(uncertain.calls).toEqual([...READS, PUBLISH, READS[1]])
 
-    const unread = publish({ release: [{ status: 200, body: draft() }, lost], patch: lost })
-    expect(unread.stderr).toBe(
-      `Release ${ID} may be published: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502); ` +
-        `its state could not be read: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502)\n`,
-    )
-    expect(unread.calls).toEqual([...READS, PUBLISH, READS[1]])
+      const unread = publish({ release: [{ status: 200, body: draft() }, lost], patch: lost })
+      expect(unread.stderr).toBe(
+        `Release ${ID} may be published: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502); ` +
+          `its state could not be read: gh api ${RELEASE} failed: gh: Bad Gateway (HTTP 502)\n`,
+      )
+      expect(unread.calls).toEqual([...READS, PUBLISH, READS[1]])
 
-    const odd = publish({ patch: published({ draft: true, tag_name: 'untagged-1' }) })
-    expect(odd.status).toBe(1)
-    expect(odd.stderr).toBe(
-      `Release ${ID} may be published: GitHub answered draft: true, tag: untagged-1; ` +
-        'GitHub now reads draft: true, tag: v0.2.27\n',
-    )
-    expect(odd.calls).toEqual([...READS, PUBLISH, READS[1]])
-  })
+      const odd = publish({ patch: published({ draft: true, tag_name: 'untagged-1' }) })
+      expect(odd.status).toBe(1)
+      expect(odd.stderr).toBe(
+        `Release ${ID} may be published: GitHub answered draft: true, tag: untagged-1; ` +
+          'GitHub now reads draft: true, tag: v0.2.27\n',
+      )
+      expect(odd.calls).toEqual([...READS, PUBLISH, READS[1]])
+    },
+  )
 })
