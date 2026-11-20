@@ -366,7 +366,9 @@ describe('a to-do for a person', () => {
     expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({ outcome: 'taken' })
     expect(route(id)?.state).toBe('answered')
     expect(queued()).not.toContain(id)
-    expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({ outcome: 'refused' })
+    expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({
+      outcome: 'refused',
+    })
 
     const other = await aToDo(ada, { action: 'Open the settings window.' })
     const otherId = other.question as string

@@ -846,9 +846,9 @@ describe('611 · a question names who it is for', () => {
         reason:
           'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
       }
-      expect(await callOn(pmTools, 'answer_question', { ...proxy, asked_by: worker })).toMatchObject(
-        refusal,
-      )
+      expect(
+        await callOn(pmTools, 'answer_question', { ...proxy, asked_by: worker }),
+      ).toMatchObject(refusal)
       expect(await callOn(workerTools, 'answer_question', proxy)).toMatchObject(refusal)
       const missing = await callOn(pmTools, 'answer_question', {
         ...proxy,

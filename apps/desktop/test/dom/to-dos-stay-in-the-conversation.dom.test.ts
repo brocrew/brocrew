@@ -155,7 +155,10 @@ describe('to-dos in the conversation', () => {
     const replays: [TranscriptEvent[], string][] = [
       [[answered], 'An answer was sent.'],
       [[withdrawn], 'This to-do was withdrawn.'],
-      ...pieceEndings.map((ending): [TranscriptEvent[], string] => [[ending], 'This to-do has ended.']),
+      ...pieceEndings.map((ending): [TranscriptEvent[], string] => [
+        [ending],
+        'This to-do has ended.',
+      ]),
       ...pieceEndings.map((ending): [TranscriptEvent[], string] => [
         [withdrawn, ending],
         'This to-do was withdrawn.',
