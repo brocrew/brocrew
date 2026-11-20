@@ -1,34 +1,34 @@
 {
   "formatVersion": 2,
-  "version": "v24",
+  "version": "v25",
   "skills": [
     {
       "name": "delegate",
       "description": "Before assigning work or choosing helpers, reuse the best-fitting profile or service, name one result owner, and choose a supported model for each handoff.",
       "reminder": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model.",
-      "sha256": "055355b69be38163cd445c1055285b67b8307efe823a5da39b27207d98937226",
-      "bytes": 4118
+      "sha256": "0a04b13fd16d6d25a2f8865c1a382a26ebeca41b52b5f43ab3bb597d8bc3d1a0",
+      "bytes": 4434
     },
     {
       "name": "hand-back",
       "description": "During work or before completion, keep evidence findable, resolve required results and questions, and hand back once.",
       "reminder": "hand-back — Before returning: resolve dependencies, keep evidence and report once.",
-      "sha256": "45a161158deeb24d1c71f71f997b291ac9dabf49f19af5a61893be656a60b644",
-      "bytes": 3478
+      "sha256": "55087e599478896fb26cf51848b03b3d67809b88d245703c7c90956fbc427eca",
+      "bytes": 3486
     },
     {
       "name": "split-work",
       "description": "Before dividing an outcome, choose bounded pieces by project kind, outputs and dependencies; keep one owner responsible for integration.",
       "reminder": "split-work — Before dividing: bounded pieces, dependencies and integration.",
-      "sha256": "c9b20fafde41d35f7a382f9cdadab3f72a0e43ffec9ceac8184c201f6cb87e77",
-      "bytes": 3022
+      "sha256": "7e7fac8f41e9c60d577d29bf62e96d2a43f041bdc30891466836e1460903df3c",
+      "bytes": 3052
     },
     {
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
       "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "5d821102e1565fdac89d9a037190e7417ed1b6820755f9a56e8a416ee914ab5d",
-      "bytes": 4307
+      "sha256": "8b43b0e466c78c8ece08c57a307894d8503dd8f240d352789b3ae9fae9af98de",
+      "bytes": 4363
     },
     {
       "name": "remember",

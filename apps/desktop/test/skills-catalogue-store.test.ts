@@ -72,7 +72,8 @@ afterEach(() => {
 const revision = () => catalogue.list().revision
 
 describe('the SQLite skills catalogue', () => {
-  it('seeds exactly the eight shipped v24 files and preserves the source bytes', () => {
+  it('seeds exactly the eight shipped files and preserves the source bytes', () => {
+    const source = shipped()
     expect(catalogue.list()).toMatchObject({ total: 8, revision: 1 })
     expect(
       catalogue
@@ -83,12 +84,12 @@ describe('the SQLite skills catalogue', () => {
     for (const name of BUILT_IN_SKILL_NAMES) {
       const detail = catalogue.detail(`built-in/${name}`)!
       expect(detail).toMatchObject({
-        version: 'v24',
+        version: source.catalogue.version,
         active: true,
         defaultEnabled: true,
         alias: name,
       })
-      expect(detail.body).toBe(shipped().bodies.get(name))
+      expect(detail.body).toBe(source.bodies.get(name))
       expect(digest(detail.body)).toBe(detail.sha256)
     }
     new SqliteSkillCatalogue(db, shipped())
@@ -107,7 +108,7 @@ describe('the SQLite skills catalogue', () => {
       const id = `built-in/${name}`
       const old = db
         .prepare('SELECT metadata, body FROM skill_version WHERE skill_id=? AND version_key=?')
-        .get(id, 'v24') as { metadata: string; body: string }
+        .get(id, source.catalogue.version) as { metadata: string; body: string }
       const body = alteredBody ? `${old.body}\n` : old.body
       const bytes = Buffer.byteLength(body)
       const sha256 = digest(body)
@@ -193,10 +194,13 @@ describe('the SQLite skills catalogue', () => {
       expect(
         catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
       ).toMatchObject({ ready: false, selection: choice, reason: 'source-unavailable' })
-      const returning = shipped()
-      const next = verifyBuiltInSkills({ ...returning.catalogue, version: 'v24' }, returning.bodies)
+      const next = shipped()
       catalogue = new SqliteSkillCatalogue(db, next)
-      expect(catalogue.detail(id)).toMatchObject({ active: true, version: 'v24', body: first.body })
+      expect(catalogue.detail(id)).toMatchObject({
+        active: true,
+        version: first.version,
+        body: first.body,
+      })
       expect(catalogue.detail(id, first.versionId)?.body).toBe(first.body)
       expect(
         catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === id),
@@ -256,13 +260,13 @@ describe('the SQLite skills catalogue', () => {
     catalogue.select('aid:recipe-worker', 'built-in/delegate', 'off', revision())
     const previous = catalogue.detail('built-in/delegate')!
     const next = shipped()
-    next.catalogue.version = 'v24'
+    next.catalogue.version = 'v99'
     const verified = verifyBuiltInSkills(next.catalogue, next.bodies)
     catalogue.seedBuiltins(verified)
     const stableRevision = revision()
     new SqliteSkillCatalogue(db, verified)
     expect(revision()).toBe(stableRevision)
-    expect(catalogue.detail('built-in/delegate')?.version).toBe('v24')
+    expect(catalogue.detail('built-in/delegate')?.version).toBe('v99')
     expect(catalogue.detail('built-in/delegate', previous.versionId)?.body).toBe(previous.body)
     expect(
       catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === previous.id),

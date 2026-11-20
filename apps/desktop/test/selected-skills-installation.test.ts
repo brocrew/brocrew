@@ -401,7 +401,7 @@ describe.each(['claude', 'codex'] as const)(
           ?.filter((one) => one.id.startsWith('built-in/'))
           .every(
             (one) =>
-              one.version === 'v24' &&
+              one.version === source.catalogue.version &&
               one.textPackVersion === 'v99' &&
               one.textPackDigest === pack.digest,
           ),
@@ -415,8 +415,8 @@ describe.each(['claude', 'codex'] as const)(
       )
       expect(projected?.textPackSourceSha256).toBe(hash(delegate))
       expect(projected?.sourceSha256).not.toBe(projected?.textPackSourceSha256)
-      expect(catalogue.detail('built-in/delegate')?.version).toBe('v24')
-      expect((await prepare()).version).toBe('v24')
+      expect(catalogue.detail('built-in/delegate')?.version).toBe(source.catalogue.version)
+      expect((await prepare()).version).toBe(source.catalogue.version)
     })
   },
 )
