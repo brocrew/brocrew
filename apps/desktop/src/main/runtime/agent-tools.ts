@@ -12,10 +12,7 @@ import { aLaunchRefused, aLaunchThatDidNotStart } from './tool-families/launch-f
 import { answerInWords } from './agent-tool-answer-words'
 import { conversationAddressing } from './tool-families/addressing'
 import { createAnswerQuestionTool, createListQuestionsTool } from './tool-families/questions'
-import {
-  createCreateAgentTool,
-  createGiveWorkTool,
-} from './tool-families/launch'
+import { createCreateAgentTool, createGiveWorkTool } from './tool-families/launch'
 import {
   createFindFilesTool,
   createReadDocumentTool,
