@@ -941,7 +941,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     const workerTools = agentToolsFor(host, errand.agent as string)
     const stranger = await aPerson('pm-stranger')
 
-    // The owner names it.
     const retitled = await callOn(pmTools, 'update_work', {
       piece: taken.label,
       title: 'Renamed by its owner',
@@ -968,7 +967,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(closed.rail).toBe('the-giver-briefs-and-closes-a-piece')
     expect(taskOf(pm, taken.piece)?.state).toBe('working')
 
-    // A conversation that is not its owner is told there is no such piece.
     const meddled = await callOn(stranger.tools, 'update_work', {
       piece: taken.label,
       title: 'mine now',
@@ -977,8 +975,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(meddled.rail).toBe('no-piece-by-that-name')
     expect(taskOf(pm, taken.piece)?.title).toBe('Renamed by its owner')
 
-    // Where the two readings differ: the worker owns a piece a conversation gave and may not name
-    // it, while the giver may — and the taken-on piece's owner names its own.
     const byTheWorker = await callOn(workerTools, 'update_work', {
       piece: errand.label,
       title: 'mine',
@@ -1039,7 +1035,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(routedAbout?.to).toBe('a-person')
     expect(routedAbout !== undefined && Object.hasOwn(routedAbout, 'parent')).toBe(false)
 
-    // The same explicit choice also works with the root inferred.
     const alone = await aPerson('pm-alone')
     const forRoot = await callWithWords(alone.tools, 'ask_question', {
       question: 'which city?',
