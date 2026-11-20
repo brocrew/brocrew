@@ -65,7 +65,7 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'agent-cannot-take-a-message': 'until-a-person-changes-it',
   // **A launch in flight clears with nobody acting** (650): the provider registers and the same
   // call is admitted, or the launch fails and the reservation is abandoned, and the same call then
-  // meets `no-such-agent` — at `withdraw_task` (since `657`) `not-a-piece-you-gave`, that door's
+  // meets `no-such-agent` — at `withdraw_task` (since `657`) `no-piece-by-that-name`, that door's
   // ended-child fold. The same permanence `INTERRUPT_RAILS` gives this word — the census
   // that lets it be shared checks that they match.
   'that-conversation-has-not-started': 'while-this-holds',
@@ -94,7 +94,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'agent-name-taken': 'permanent',
   // **Permanent: a name that names nothing of yours will not start naming something** (429) —
   // see the rail's own note.
-  'not-a-piece-you-gave': 'permanent',
   // **Permanent: `answered` is terminal.** No person, no grant and no later state of the world
   // un-answers a piece, and `429` §3.1 forbids the one verb that might have looked like a way back.
   'that-piece-was-already-answered': 'permanent',
@@ -127,7 +126,7 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'no-piece-by-that-name': 'permanent',
   'the-giver-names-a-piece': 'permanent',
   'that-piece-has-ended': 'permanent',
-  'the-giver-briefs-and-closes-a-piece': 'permanent',
+  'the-giver-briefs-a-piece': 'permanent',
   // **Permanent: closed is terminal too**, as taken back is.
   'that-piece-was-already-closed': 'permanent',
   // **D-016 · commit 6 — a conversation never gains a root.**
@@ -164,7 +163,7 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // It clears with nobody acting, so it is retryable, and `shared/refusals.ts`' biconditional
   // — *a rail carries an act if and only if this app can retry it* — requires the act. It says
   // what to DO and never that it will work: a launch that fails meets `no-such-agent` on the retry
-  // (`not-a-piece-you-gave` at `withdraw_task`, since `657`).
+  // (`no-piece-by-that-name` at `withdraw_task`, since `657`).
   // (`650` split a second arm here, the lost race; `657` made that a hold and retired its word.)
   'that-conversation-has-not-started': 'make-the-same-call-when-this-settles',
   // **424's new rail, and this line is the compile error it caused.** `425` merged `424` and
@@ -190,7 +189,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // **429 · three nulls and one word, and the biconditional decided all four before this table
   // was written.** `list_tasks` composes a DIFFERENT call and that is not a remedy —
   // `reply-rails.ts` ruled it: *finding another id is not making this id succeed*.
-  'not-a-piece-you-gave': null,
   // **Nothing, and `429` §4 predicted a word here.** §3.1 of the same brief refuses to withdraw
   // an answered task, and it is right — taking back work somebody already did is a different claim
   // about history. **Giving the same words as new work is a DIFFERENT call**, which is what
@@ -218,7 +216,7 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'no-piece-by-that-name': null,
   'the-giver-names-a-piece': null,
   'that-piece-has-ended': null,
-  'the-giver-briefs-and-closes-a-piece': null,
+  'the-giver-briefs-a-piece': null,
   // **Nothing: the caller already did this**, as for a piece it took back itself.
   'that-piece-was-already-closed': null,
   // **D-016 · commit 6 · not retryable, so it carries no act** — the biconditional; the sentence
@@ -297,7 +295,7 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // **650 · a launch in flight.** Its own sentence and not `INTERRUPT_RAILS'`: that one says
   // *nothing running to interrupt*, which is about the other door's act. It says both ways the
   // wait can end, because the retry after a launch that fails meets `no-such-agent` (at
-  // `withdraw_task`, `not-a-piece-you-gave`; at `update_work`, `no-piece-by-that-name`).
+  // `no-piece-by-that-name` at `withdraw_task` and `update_work`).
   // **657 · and it is said at THREE doors of this vocabulary now** — `message_agent`,
   // `withdraw_task` and, since D-016, `update_work`'s close — so its first clause names what was
   // refused of none of them: it said *nothing was sent or queued*, which is a message's fact, and a
@@ -336,21 +334,12 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // case, because a model that tried the same name capitalised differently would meet this twice.
   'agent-name-taken':
     'there is already an agent with that name, so nothing was created. Names are compared without case. Choose a different name, or use the agent that exists.',
-  // **It names where the right label is and promises nothing about this one** — the split
-  // `reply-rails.ts` made between a sentence that helps and a field that promises. **Two doors
-  // say it and only one names an agent** — `message_agent`'s follow-up, not `withdraw_task` — so
-  // the agent clause is said as the condition it is.
-  'not-a-piece-you-gave':
-    'that is not a piece you gave (or, when the call names an agent, not one you gave that agent), so nothing was done. list_tasks lists the open pieces you gave out, and with state: "all" the ended ones too; the name may belong to another conversation, or to nothing at all.',
-  // **HO-023 §5's second clause is in the DETAIL and the sentence points at it.** The label, the
-  // outcome and the resources are facts about work that exists; a sentence that merely said *no*
-  // would leave a giver re-sending blind, which is the measurement this rail came from.
   'that-piece-was-already-answered':
     'that piece was already answered, so there was nothing to take back and nothing was done. Read the reply first; for genuinely new work, give it with give_work. Its label, the outcome the agent gave and the resources its reply handed in, if any, are in the detail.',
   // **It says the caller did this**, because the alternative sentence — *that piece is finished* —
   // would send a giver looking for a reply nobody wrote.
   'that-piece-was-already-taken-back':
-    'you have already taken that piece back, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
+    'that piece was already taken back, so nothing was done. No further action on this piece is owed.',
   // **D-016 · said at `withdraw_task` and at `update_work`'s close**, so it names both acts.
   'that-work-is-being-sent':
     'the message carrying that work is being sent right now, so nothing was done: make this call again once it has gone. Work cannot be taken back or closed while that message is mid-flight.',
@@ -368,7 +357,7 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // at `message_agent` and at `update_work`, so it says *nothing was done*, true at both, and names
   // the acts of both doors and no other (D-023 · R2).
   'that-is-your-own-work':
-    'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Follow-ups, new briefs and closing are for pieces one conversation gives another.',
+    'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Close or withdraw a piece under a conversation’s own work.',
   // **663 · it gives the reason as the rule, not as the state**: a model told only *not yet* would
   // reasonably try another way in, and there is none that is safe.
   'that-conversation-is-still-stopping':
@@ -392,14 +381,11 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // not name, which no ended piece reaches today.
   'that-piece-has-ended':
     'that piece has ended — answered, closed or taken back — so nothing was changed: its last word stands. Only its title may still be changed.',
-  // **D-016 · the act first, inside the cut** — then what the owner may do instead. **Commit 6
-  // · true of both kinds of piece**: a person's piece has no giver's conversation to brief or
-  // close it, and no door for the person either.
-  'the-giver-briefs-and-closes-a-piece':
-    'only a conversation that gave a piece gives it a new brief or closes it, so nothing was changed. Ask with ask_question to change or stop the work; you may set its status line, keep files you made for it, or hand it back with reply_to_parent.',
+  'the-giver-briefs-a-piece':
+    'only the conversation that gave you that piece can change its brief or done condition. Ask with ask_question to change the brief or done condition. Nothing was changed.',
   // **It says the caller did this**, as `that-piece-was-already-taken-back` does.
   'that-piece-was-already-closed':
-    'you have already closed that piece, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
+    'that piece was already closed, so nothing was done. No further action on this piece is owed.',
   // A personal request must belong to the admitted, recorded turn.
   'work-record-unavailable': 'Your current work could not be read. Try again in a moment.',
   'no-work-of-your-own':

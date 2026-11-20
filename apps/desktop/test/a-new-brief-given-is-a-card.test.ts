@@ -427,7 +427,7 @@ describe('§4 · every surface asks one predicate', () => {
   })
 
   it('🔴 a REFUSED new brief has no row, so its notice prints the refusal — ⛔ a refused give, a card, leaves its receipt to the card', () => {
-    const RAIL = 'the-giver-briefs-and-closes-a-piece'
+    const RAIL = 'the-giver-briefs-a-piece'
     const refusal = (tool: string, rail: string): TranscriptEvent =>
       ({
         type: 'tool_refused',

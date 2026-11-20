@@ -69,12 +69,11 @@ export const APP_NOTICES = [
   'an-answer-to-a-question',
   'an-answer-is-still-owed',
   'a-question-stayed-unanswered',
-  // 🔴 **D-016** — the conversation that gave this one a piece of work took it back, and this app
-  // tells the owner so it stops working on it (`withdraw_task`).
+  // A conversation ended a piece this one held or gave.
   'a-piece-taken-back',
-  // 🔴 **D-016** — the conversation that gave this one a piece of work closed it, and this app tells
-  // the owner so it stops working on it (`update_work`'s close).
   'a-piece-closed',
+  'a-piece-it-gave-taken-back',
+  'a-piece-it-gave-closed',
   // 🔴 A person took back the piece a service is on, and this app tells the service, so it stops
   // working on it, and the conversation that gave it, so it no longer waits for its answer.
   'a-piece-a-person-took-back',
@@ -169,11 +168,17 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
   'a-question-stayed-unanswered':
     'This app added this note because a conversation still owes an answer after a reminder.',
   'a-piece-taken-back':
-    'This app put these words here because the conversation that gave this conversation a piece of ' +
-    'work took it back. You did not write them, and they were not sent on anybody’s behalf.',
+    'This app added this note because a piece of work this conversation held was taken back. ' +
+    'You did not write it, and it was not sent on anybody’s behalf.',
   'a-piece-closed':
-    'This app put these words here because the conversation that gave this conversation a piece of ' +
-    'work closed it. You did not write them, and they were not sent on anybody’s behalf.',
+    'This app added this note because a piece of work this conversation held was closed. ' +
+    'You did not write it, and it was not sent on anybody’s behalf.',
+  'a-piece-it-gave-taken-back':
+    'This app added this note because a piece of work this conversation gave was taken back. ' +
+    'You did not write it, and it was not sent on anybody’s behalf.',
+  'a-piece-it-gave-closed':
+    'This app added this note because a piece of work this conversation gave was closed. ' +
+    'You did not write it, and it was not sent on anybody’s behalf.',
   'a-piece-a-person-took-back':
     'This app put these words here because a person took back a piece of work this conversation ' +
     'held. You did not write them, and they were not sent on anybody’s behalf.',

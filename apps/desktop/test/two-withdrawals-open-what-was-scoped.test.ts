@@ -158,7 +158,6 @@ describe('two withdrawals — open what was scoped', () => {
     reader: string
     readerTools: AgentToolset
     writer: string
-    writerLabel: string
     mine: string
     theirs: string
   }> => {
@@ -181,7 +180,6 @@ describe('two withdrawals — open what was scoped', () => {
       reader,
       readerTools: inspector.tools,
       writer,
-      writerLabel: scribe.label,
       mine,
       theirs,
     }
@@ -237,9 +235,16 @@ describe('two withdrawals — open what was scoped', () => {
     })
   })
 
-  describe('the same pair: a message lands, and the destroying verbs do not', () => {
-    it('message admitted · interrupt and withdraw both refused, one pair, one test', async () => {
-      const { readerTools, writer, writerLabel } = await twoConversations()
+  describe('cross-conversation withdrawal uses the existing work ending', () => {
+    it('message and withdrawal are admitted while the interrupt rule still holds', async () => {
+      await personOpens('desk')
+      const deskTools = theToolsetJustHandedOut()
+      const {
+        agent: writer,
+        label: writerLabel,
+        tools: writerTools,
+      } = await aPieceGiven(deskTools, 'scribe', 'Find things')
+      const { tools: readerTools } = await aPieceGiven(deskTools, 'inspector', 'Inspect things')
 
       const said = await callOn(readerTools, 'message_agent', {
         agent: writer,
@@ -255,9 +260,20 @@ describe('two withdrawals — open what was scoped', () => {
       expect(refused).toMatchObject({ outcome: 'refused', rail: 'a-person-is-being-asked' })
       expect(store.routedRequestsOf(writer)).toEqual(waiting)
 
+      const asked = await callOn(writerTools, 'ask_question', {
+        who_answers: 'a-person',
+        piece: writerLabel,
+        question: 'Which notes should I check?',
+      })
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const question = () =>
+        store.routedRequestsOf(writer).find((request) => request.requestId === asked.question)
+      expect(question()?.state).toBe('open')
+
       const taken = await callOn(readerTools, 'withdraw_task', { piece: writerLabel })
-      expect(taken.outcome, JSON.stringify(taken)).toBe('refused')
-      expect(taken.rail).toBe('not-a-piece-you-gave')
+      expect(taken, JSON.stringify(taken)).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
+      expect(question()?.state).toBe('work-withdrawn')
+      for (const request of waiting) expect(store.routedRequestsOf(writer)).toContainEqual(request)
       expect(host.sessionIds).toContain(writer)
     })
 

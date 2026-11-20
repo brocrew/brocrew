@@ -1,5 +1,4 @@
 import type { RaisedQuestion, RoutedRequest } from '../../shared/question-contracts'
-import type { HowAPieceEnded } from '../../shared/piece-called'
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import type { Exchange, TaskRecordExchange } from '../../shared/last-exchange'
 import type { ResourcePosition, ResourceRow } from '../db/session-store'
@@ -20,30 +19,6 @@ export interface TaskRecordPages {
   readonly children?: RecordPage<number>
   readonly files?: RecordPage<ResourcePosition>
 }
-
-/**
- * 🔴 **F089 · a piece `withdraw_task` named that the caller HOLDS** — the facts its refusal says it by:
- * the caller's root, the work a person gave it, which never ends; a piece it holds that is open; or
- * one that has ended, with how, when and by whom, off the row that ended it, as `reply_to_parent`'s
- * refusal reads an ended piece.
- */
-export type APieceItHolds =
-  | { readonly is: 'its-root'; readonly label: string }
-  | { readonly is: 'open'; readonly label: string }
-  | {
-      readonly is: 'ended'
-      readonly label: string
-      readonly state: HowAPieceEnded
-      /** When it ended, epoch ms — absent when its row holds no moment. */
-      readonly at?: number
-      /**
-       * Who ended it, by NAME ({@link RuntimeHost.whatToCallTheConversation}) — absent when its row
-       * names nobody, and for the caller's own reply: a reader is not told its own name.
-       */
-      readonly called?: string
-      /** The moment it was refused, which its sentence says the ending's time as of. */
-      readonly readAt: number
-    }
 
 /**
  * ⚑ **D-016 · a root, as a board or a record names it** — its row and its own two lines, and no

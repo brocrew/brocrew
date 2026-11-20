@@ -349,9 +349,9 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       const before = tally(worker, pm)
       const refused = refusedWith(
         await callOn(worker, 'update_work', { piece: label, brief: 'x' }),
-        'the-giver-briefs-and-closes-a-piece',
+        'the-giver-briefs-a-piece',
       )
-      expect(refused.rail).toBe('the-giver-briefs-and-closes-a-piece')
+      expect(refused.rail).toBe('the-giver-briefs-a-piece')
       await letItSettle()
       expect(tally(worker, pm)).toEqual(before)
       expect(pieceOf(worker, piece).brief).toBe(THE_NEW_BRIEF)
@@ -407,7 +407,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a close', () => {
-    it('closing an open piece ends it as closed and tells its owner, and nothing can end or brief it again', async () => {
+    it.each(['giver', 'third party'])('close by the %s', async (whoClosed) => {
       const { pm, worker, piece, label, title } = await aPmAndItsWorker()
       // ⚑ The owner gives a child under this piece, so the open-pieces sentence has something to name.
       await bringIdentityIntoBeing('grandchild')
@@ -425,7 +425,13 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       await waitFor(() => isIdle(worker), 'the worker to go idle')
       expect(TASK_IS_OPEN[pieceOf(worker, piece).state]).toBe(true)
 
-      const closed = await callOn(pm, 'update_work', { piece: label, close: true })
+      const closer = whoClosed === 'giver' ? pm : await personOpens('observer')
+      const reason = 'The result has arrived elsewhere.'
+      const closed = await callOn(closer, 'update_work', {
+        piece: label,
+        close: true,
+        ...(closer === pm ? {} : { status: reason }),
+      })
       expect(closed.outcome, JSON.stringify(closed)).toBe('ok')
       expect(closed).toMatchObject({
         state: 'closed',
@@ -436,7 +442,9 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(closed).not.toHaveProperty('told')
 
       // ⚑ One row, by the giver; the fold says closed, not withdrawn, and closed is an ending.
-      expect(rowsOf(worker, 'work_closed')).toEqual([expect.objectContaining({ piece, by: pm })])
+      expect(rowsOf(worker, 'work_closed')).toEqual([
+        expect.objectContaining({ piece, by: closer }),
+      ])
       const folded = pieceOf(worker, piece)
       expect(folded.state).toBe('closed')
       expect(folded.state).not.toBe('withdrawn')
@@ -448,13 +456,25 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         'the owner to be told the piece was closed',
       )
       const notice = read(worker).find((turn) => turn.appNotice === 'a-piece-closed')
-      const who = host.whatToCallTheConversation(pm)
+      const who = host.whatToCallTheConversation(closer)
       expect(notice?.text).toContain(
-        `${who} closed ${pieceLine(label, title)}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`,
+        `${who}, ${host.nameByItsWork(closer)}, closed your task ${pieceLine(label, title)}. It keeps its outcome; stop work on it.`,
       )
       expect(notice?.text).toContain(
         `Its open pieces ${child.label} are still yours: take each back with withdraw_task, or close it with update_work, if it is no longer needed.`,
       )
+
+      const giveNotice = () =>
+        read(pm).filter((turn) => turn.appNotice === 'a-piece-it-gave-closed')
+      if (closer === pm) {
+        expect(notice?.text).not.toContain('Reason:')
+      } else {
+        await waitFor(() => giveNotice().length > 0, 'the giver to be told')
+        expect(giveNotice()).toHaveLength(1)
+        expect(giveNotice()[0]?.text).toContain(`${who} closed ${pieceLine(label, title)}`)
+        expect(giveNotice()[0]?.text).toContain(`Reason: ${reason}`)
+        expect(notice?.text).toContain(`Reason: ${reason}`)
+      }
 
       // ⚑ A reply owed no more is not taken: the owner's reply is refused and writes no answer.
       const replied = await callOn(worker, 'reply_to_parent', {
@@ -468,6 +488,15 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       // ⚑ Nothing can take it back, close it again or brief it: each is refused for the piece having
       // ended, and writes no row and tells nobody.
       await letItSettle()
+      if (closer === pm) {
+        expect(giveNotice()).toHaveLength(0)
+        expect(
+          events(pm).filter(
+            (event) =>
+              event.type === 'message_queued' && event.appNotice === 'a-piece-it-gave-closed',
+          ),
+        ).toHaveLength(0)
+      }
       const before = tally(worker, pm)
       refusedWith(
         await callOn(pm, 'withdraw_task', { piece: label }),
@@ -548,7 +577,9 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       )
       expect(saidToProvider(worker).some((said) => said.includes(THE_GIVES_BRIEF))).toBe(true)
       expect(
-        saidToProvider(worker).some((said) => said.includes('its reply is no longer owed')),
+        saidToProvider(worker).some((said) =>
+          said.includes('It keeps its outcome; stop work on it.'),
+        ),
       ).toBe(true)
       expect(saidToProvider(worker).filter((said) => said.includes(HELD_BRIEF))).toEqual([])
     })

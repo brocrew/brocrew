@@ -1,4 +1,4 @@
-import { type APieceItHolds, type EndedPieceDetail } from '../work-records'
+import { type EndedPieceDetail } from '../work-records'
 import {
   type NewBriefDelivery,
   type OutOfReach,
@@ -72,55 +72,6 @@ export function aMessageAboutAQueuedPiece(label: string): string {
 }
 
 /**
- * **F089 · `withdraw_task` naming a piece the caller HOLDS, open, said as what it is** — it is not
- * one the caller gave, so `not-a-piece-you-gave` is true; that word's own sentence then guesses the
- * name may belong to another conversation or to nothing at all, which is false of the caller's own
- * piece. **The act first, inside the cut**: the two doors open to work it holds, as
- * `that-is-work-you-hold` names them at `message_agent`.
- */
-export function aTakeBackOfAPieceYouHold(label: string): string {
-  return (
-    `to hand it back finished, call reply_to_parent; to ask about it, call ask_question naming it: ` +
-    `${label} is a piece you hold, not one you gave, so nothing was taken back. withdraw_task ` +
-    `takes back only a piece you gave.`
-  )
-}
-
-/**
- * **F089 · …and one it holds that has ENDED** — how, when and by whom, as `reply_to_parent`'s
- * refusal says an ended piece, and with its act, first: no more is owed on it.
- */
-export function aTakeBackOfAPieceYouHoldThatEnded(
-  held: Extract<APieceItHolds, { readonly is: 'ended' }>,
-): string {
-  const when = held.at === undefined ? '' : ` at ${clockTimeFrom(held.at, held.readAt)}`
-  const by = held.called === undefined ? '' : ` by ${held.called}`
-  const how =
-    held.state === 'answered'
-      ? `you answered it${when}`
-      : held.state === 'withdrawn'
-        ? `it was taken back${by}${when}`
-        : `it was closed${by}${when}`
-  return (
-    `stop work on that piece; no further reply is owed. ${held.label} is a piece you hold, not one ` +
-    `you gave, and it has already ended: ${how}, so there was nothing left to take back.`
-  )
-}
-
-/**
- * **F089 · …and the caller's own ROOT** — the work a person gave it, which never ends and no
- * conversation gave. **The act first, inside the cut**: `that-is-your-own-work`'s — ask a person
- * about it, and answer the person here.
- */
-export function aTakeBackOfYourOwnWork(label: string): string {
-  return (
-    `ask a person with ask_question naming it, and answer the person here when it is done: ` +
-    `${label} is this conversation’s own work, from a person, so nothing was taken back. ` +
-    `withdraw_task takes back only a piece you gave.`
-  )
-}
-
-/**
  * **The facts a take-back refusal states, per rail** (429).
  *
  * **A switch over a discriminated union rather than one bag built at the door**, so the arm that
@@ -133,31 +84,19 @@ export function takeBackDetail(
   refused: TakeBackRefused,
 ): Readonly<Record<string, unknown>> {
   switch (refused.rail) {
-    case 'not-a-piece-you-gave': {
-      // **F089 · and, for a piece the caller holds, what it is** — its label, and how it ended.
-      const held = refused.itHoldsIt
-      if (held === undefined) return { piece }
-      if (held.is !== 'ended') return { piece, label: held.label }
-      return {
-        piece,
-        label: held.label,
-        state: held.state,
-        ...(held.at === undefined ? {} : { at: held.at }),
-        ...(held.called === undefined ? {} : { called: held.called }),
-      }
-    }
+    case 'no-piece-by-that-name':
+      return { piece }
     case 'that-piece-was-already-answered':
       return {
+        ...refused.ended,
         piece,
-        label: refused.label,
         ...(refused.outcome === null ? {} : { answered: refused.outcome }),
         ...(refused.resources.length === 0 ? {} : { resources: refused.resources }),
-        ...(refused.endedAt === null ? {} : { at: refused.endedAt }),
       }
-    // **657 · the last of these four is a launch in flight**, and it carries the piece's label
-    // because the caller can act on it once the launch lands.
     case 'that-piece-was-already-taken-back':
     case 'that-piece-was-already-closed':
+      return { ...refused.ended, piece }
+    case 'that-is-your-own-work':
     case 'that-work-is-being-sent':
     case 'that-conversation-has-not-started':
     case 'a-conversation-with-its-questions-is-starting':

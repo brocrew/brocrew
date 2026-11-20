@@ -280,10 +280,8 @@ describe('§3 · ⛔ the refusal names a performable act — in the caller’s o
     // `its-work-has-stalled` carries the act in `SPAWN_RAILS`. So the retryable half of the run's
     // table has no rail left in this one, and what is pinned is the half that remains.
     //
-    // ⛔ **The one that did not carry an act** (`no-task-you-gave-that-agent` in the run, called
-    // `not-a-piece-you-gave` since D-016), plus the rail this dispatch split off it — both
-    // `permanent`, both silent, for the same stated reason.
-    for (const rail of ['not-a-piece-you-gave', 'that-is-work-you-hold'] as const) {
+    // An unknown piece and a piece held by the caller remain separate outcomes.
+    for (const rail of ['no-piece-by-that-name', 'that-is-work-you-hold'] as const) {
       expect(TOOL_PERMANENCE[rail]).toBe('permanent')
       expect(toolRemedyOf(rail)).toBeNull()
     }
@@ -293,12 +291,9 @@ describe('§3 · ⛔ the refusal names a performable act — in the caller’s o
   })
 
   it('⛔ the refusal the PO called correct-and-useless still fires where it is the truth', () => {
-    // 🔴 **The new rail takes ONE case and not the family.** An id that names nothing of anybody's
-    // is still `not-a-piece-you-gave` (`no-task-you-gave-that-agent` until D-016), and its sentence
-    // still names no verb for held work — the repair is a SPLIT, which is `that-agent-is-you`'s own
-    // shape (`424`).
-    const said = sentenceOf('not-a-piece-you-gave')
-    expect(said).toContain('not a piece you gave')
+    // A missing piece can be looked up. It does not imply work the caller holds.
+    const said = sentenceOf('no-piece-by-that-name')
+    expect(said).toContain('no piece by that name')
     expect(said).toContain('list_tasks')
     expect(said).not.toContain('ask_question')
   })

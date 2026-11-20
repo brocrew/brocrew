@@ -606,7 +606,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       const refused = await callOn(worker, 'update_work', { piece: label, brief: 'x' })
       expect(refused).toMatchObject({
         outcome: 'refused',
-        rail: 'the-giver-briefs-and-closes-a-piece',
+        rail: 'the-giver-briefs-a-piece',
       })
       expect(sentBy(worker)).toHaveLength(0)
       expect(sentBy(pm)).toHaveLength(1)

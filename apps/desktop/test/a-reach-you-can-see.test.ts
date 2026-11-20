@@ -297,13 +297,13 @@ describe('433 §B · the agents a reach can see', () => {
       const refused = await callOn(brobotTools, 'withdraw_task', { piece: itsRoot?.label })
       expect(refused, JSON.stringify(refused)).toMatchObject({
         outcome: 'refused',
-        rail: 'not-a-piece-you-gave',
+        rail: 'no-piece-by-that-name',
       })
       // ⚑ **The same call, one caller over** — the other identity meets the same word. ⛔ **The fixture's own return, never `handed.at(-1)`**
       // — a later launch would silently point this pair at a different caller and the refusal
       // would go on passing.
       expect(await callOn(explorerTools, 'withdraw_task', { piece: itsRoot?.label })).toMatchObject(
-        { outcome: 'refused', rail: 'not-a-piece-you-gave' },
+        { outcome: 'refused', rail: 'no-piece-by-that-name' },
       )
     })
   })

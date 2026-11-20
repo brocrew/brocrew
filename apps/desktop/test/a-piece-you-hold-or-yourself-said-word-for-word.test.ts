@@ -20,7 +20,7 @@ import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
  * 🔴 **W4.154 · F089–F091 — the words a model reads, WORD FOR WORD** (`52872cc0`, `8e0773c3`).
  *
  * The devs' own tests compare these refusals with the functions and constants that build them
- * (`aTakeBackOfAPieceYouHold(label)`), so a sentence
+ * (the take-back formatter), so a sentence
  * reworded in its builder still passes them, and `the-act-inside-the-cut` pins only each act. Here
  * every sentence is written out, so its whole meaning is pinned:
  *
@@ -37,19 +37,12 @@ import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 
 const DAY_MS = 86_400_000
 
-const THE_GUESS =
-  'that is not a piece you gave (or, when the call names an agent, not one you gave that agent), so nothing was done. list_tasks lists the open pieces you gave out, and with state: "all" the ended ones too; the name may belong to another conversation, or to nothing at all.'
-/** F089 · an open piece the caller holds, whole. */
-const anOpenHeldPiece = (label: string): string =>
-  `to hand it back finished, call reply_to_parent; to ask about it, call ask_question naming it: ${label} is a piece you hold, not one you gave, so nothing was taken back. withdraw_task takes back only a piece you gave.`
-
-/** F089 · an ended piece the caller holds, whole; `how` is the clause after "it has already ended:". */
-const anEndedHeldPiece = (label: string, how: string): string =>
-  `stop work on that piece; no further reply is owed. ${label} is a piece you hold, not one you gave, and it has already ended: ${how}, so there was nothing left to take back.`
-
-/** F089 · the caller's own root, whole. */
-const itsOwnRoot = (label: string): string =>
-  `ask a person with ask_question naming it, and answer the person here when it is done: ${label} is this conversation’s own work, from a person, so nothing was taken back. withdraw_task takes back only a piece you gave.`
+const UNKNOWN_PIECE =
+  'no piece by that name is available to this call, so nothing was done. Check its label or id with search_work or list_tasks.'
+const OWN_ROOT =
+  'that is this conversation’s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Close or withdraw a piece under a conversation’s own work.'
+const endedWords = (ending: string): string =>
+  `stop work on that piece; no further reply is owed. ${ending}, so nothing was changed.`
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for word', () => {
@@ -159,20 +152,19 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
     })
     // The rail's sentence as it was, then only the permanence the answer adds.
     expect(reason, what).toMatch(/[.!?]$/)
+    const detail = rail === 'that-piece-was-already-answered' ? 'The reply outcome was done. ' : ''
     expect(said.text, what).toBe(
-      `refused (${rail}): ${reason} ${permanenceInWords(rail, 'permanent')}`,
+      `refused (${rail}): ${reason} ${detail}${permanenceInWords(rail, 'permanent')}`,
     )
   }
 
   describe('§1 · F089 · withdraw_task on a piece the caller holds', () => {
-    it('🔴 open: the whole sentence — and the giver of the same piece takes it back', async () => {
+    it('withdraws an open held piece and explains a later retry by the giver', async () => {
       const { workerTools, pmTools, label } = await aPmAndItsWorker('the piece')
-      const refused = await callWithWords(workerTools, 'withdraw_task', { piece: label })
-      expectRefused(refused, 'not-a-piece-you-gave', anOpenHeldPiece(label), label)
-      expect(refused.structured.detail).toEqual({ piece: label, label })
-      // ⚑ The pair one caller over: the pm gave it, and takes it back.
-      const tookBack = await callOn(pmTools, 'withdraw_task', { piece: label })
-      expect(tookBack.outcome, JSON.stringify(tookBack)).toBe('ok')
+      const taken = await callOn(workerTools, 'withdraw_task', { piece: label })
+      expect(taken).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
+      const again = await callOn(pmTools, 'withdraw_task', { piece: label })
+      expect(again).toMatchObject({ outcome: 'refused', rail: 'that-piece-was-already-taken-back' })
     })
 
     it('🔴 ended — answered by it, taken back by its giver, closed by its giver: each whole, with who and when', async () => {
@@ -195,23 +187,30 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         (await callOn(pmTools, 'update_work', { piece: closed.label, close: true })).outcome,
       ).toBe('ok')
       const thePm = host.whatToCallTheConversation(pm)
-      for (const [holder, named, how] of [
-        [worker, label, (at: number) => `you answered it at ${clockTime(at)}`],
+      for (const [holder, named, rail, how] of [
+        [
+          worker,
+          label,
+          'that-piece-was-already-answered',
+          (at: number) => `You answered ${label} at ${clockTime(at)}`,
+        ],
         [
           back.agent,
           back.label,
-          (at: number) => `it was taken back by ${thePm} at ${clockTime(at)}`,
+          'that-piece-was-already-taken-back',
+          (at: number) => `${back.label} was taken back by ${thePm} at ${clockTime(at)}`,
         ],
         [
           closed.agent,
           closed.label,
-          (at: number) => `it was closed by ${thePm} at ${clockTime(at)}`,
+          'that-piece-was-already-closed',
+          (at: number) => `${closed.label} was closed by ${thePm} at ${clockTime(at)}`,
         ],
       ] as const) {
         const at = endedAt(holder, named)
         const tools = holder === worker ? workerTools : agentToolsFor(host, holder)
         const refused = await callWithWords(tools, 'withdraw_task', { piece: named })
-        expectRefused(refused, 'not-a-piece-you-gave', anEndedHeldPiece(named, how(at)), named)
+        expectRefused(refused, rail, endedWords(how(at)), named)
       }
     })
 
@@ -234,8 +233,8 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       const refused = await callWithWords(workerTools, 'withdraw_task', { piece: label })
       expectRefused(
         refused,
-        'not-a-piece-you-gave',
-        anEndedHeldPiece(label, `you answered it at ${said}`),
+        'that-piece-was-already-answered',
+        endedWords(`You answered ${label} at ${said}`),
         label,
       )
       expect(refused.structured.detail).toMatchObject({ label, state: 'answered', at })
@@ -246,13 +245,13 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       const itsRoot = store.rootOf(pm)?.label
       if (itsRoot === undefined) throw new Error('a conversation a person opened owns a root')
       const ofTheRoot = await callWithWords(pmTools, 'withdraw_task', { piece: itsRoot })
-      expectRefused(ofTheRoot, 'not-a-piece-you-gave', itsOwnRoot(itsRoot), itsRoot)
+      expectRefused(ofTheRoot, 'that-is-your-own-work', OWN_ROOT, itsRoot)
       expect(ofTheRoot.structured.detail).toEqual({ piece: itsRoot, label: itsRoot })
       // ⚑ …and a name that is none of the caller's: the pm's root, named by its worker, and a
       // made-up one — one answer, so a name is no oracle.
       for (const spelled of [itsRoot, 'W99.99']) {
         const refused = await callWithWords(workerTools, 'withdraw_task', { piece: spelled })
-        expectRefused(refused, 'not-a-piece-you-gave', THE_GUESS, spelled)
+        expectRefused(refused, 'no-piece-by-that-name', UNKNOWN_PIECE, spelled)
         expect(refused.structured.detail, spelled).toEqual({ piece: spelled })
       }
     })

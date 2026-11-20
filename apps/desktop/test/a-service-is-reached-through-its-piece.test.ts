@@ -378,7 +378,7 @@ describe('a service is reached through the piece it is on', () => {
       ).toBe(false)
     })
 
-    it('accepts a Message from outside without granting authority over the task', async () => {
+    it('accepts an outside Message and ending while keeping status edits scoped', async () => {
       const { host, stranger, service, one } = await aServiceOnTheFirstPiece()
       const sameProfile = await world.aPersonOpens(host, 'caller')
       for (const outsider of [stranger, sameProfile]) {
@@ -408,13 +408,14 @@ describe('a service is reached through the piece it is on', () => {
           )
         })
         expect(
-          (await call(host, outsider, 'withdraw_task', { piece: one.label })).structured,
-        ).toMatchObject({ outcome: 'refused', rail: 'not-a-piece-you-gave' })
-        expect(
-          (await call(host, outsider, 'update_work', { piece: one.label, close: true })).structured,
+          (await call(host, outsider, 'update_work', { piece: one.label, status: 'my progress' }))
+            .structured,
         ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
       }
-      expect(stateOf(service, one.piece)).toBe('stalled')
+      expect(
+        (await call(host, stranger, 'update_work', { piece: one.label, close: true })).structured,
+      ).toMatchObject({ outcome: 'ok', state: 'closed' })
+      expect(stateOf(service, one.piece)).toBe('closed')
     })
 
     it('accepts a Message about an ended piece while the service works on its next piece', async () => {

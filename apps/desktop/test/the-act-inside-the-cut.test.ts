@@ -14,9 +14,6 @@ import {
   TOOL_REFUSALS,
   aMessageAboutAQueuedPiece,
   aStartItsLoginOrSettingsRefused,
-  aTakeBackOfAPieceYouHold,
-  aTakeBackOfAPieceYouHoldThatEnded,
-  aTakeBackOfYourOwnWork,
   anEndedPieceSaid,
   refuseTool,
 } from '../src/main/runtime/agent-tools'
@@ -122,13 +119,13 @@ import {
  * went with it. Every new word chose, below. ⚠️ `wider-than-its-parent` lost its act — a give names
  * no mode, so there is no setting left to drop — and both its arms run past the cut, so they are
  * in {@link NO_ACT} and {@link NO_ACT_PAST_THE_BOUND} by name.
- * ⚑ **D-016 · commit 5** (the giver's verbs) added two — `the-giver-briefs-and-closes-a-piece` (282
+ * ⚑ **D-016 · commit 5** (the giver's verbs) added two — `the-giver-briefs-a-piece` (282
  * characters; its act ends at 186) and `that-piece-was-already-closed` (137, a row with no act, so it
  * is in {@link NO_ACT} beside its taken-back twin) — and reworded the acts of `that-piece-has-ended`
  * and `that-is-your-own-work` (ending at 169 and 191) and `resource-not-a-form-this-app-keeps`'s
  * (198): each is said at more than one door now, so each says what is true at all of them.
  * ⚑ **D-016 · commit 6** (a request the person makes) added one — `no-work-of-your-own` (223
- * characters; its act ends at 181) — and reworded `the-giver-briefs-and-closes-a-piece` (288; its act
+ * characters; its act ends at 181) — and reworded `the-giver-briefs-a-piece` (288; its act
  * is *Ask with ask_question…* now, true of a piece a person gave too, and ends at 192),
  * `a-person-gave-that-piece` (293, from 208; its act ends at 187) and the clause of
  * `that-is-your-own-work` after its act (327; the act still ends at 191).
@@ -524,33 +521,6 @@ const OVERRIDES: readonly {
     spreadAs: 'aMessageAboutAQueuedPiece',
     sentence: aMessageAboutAQueuedPiece('W3.4.1.2.1.1'),
   },
-  // ⚑ **F089 · a take-back of a piece the caller holds**, open, ended, or its root — said as what it
-  // is. The ended arm at its longest: taken back by a 64-character name, on another day.
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-a-piece-you-hold',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aTakeBackOfAPieceYouHold',
-    sentence: aTakeBackOfAPieceYouHold('W3.4.1.2.1.1'),
-  },
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-a-piece-you-hold-that-ended',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aTakeBackOfAPieceYouHoldThatEnded',
-    sentence: aTakeBackOfAPieceYouHoldThatEnded({
-      is: 'ended',
-      label: 'W3.4.1.2.1.1',
-      state: 'withdrawn',
-      at: 0,
-      called: LONG_SLUG,
-      readAt: 3 * 24 * 60 * 60_000,
-    }),
-  },
-  {
-    key: 'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-your-own-work',
-    rail: 'not-a-piece-you-gave',
-    spreadAs: 'aTakeBackOfYourOwnWork',
-    sentence: aTakeBackOfYourOwnWork('W3'),
-  },
   // A take-back or a close that cannot end the copies passed up of the piece's questions, said with
   // its label. Planted with a deep label.
   {
@@ -682,16 +652,8 @@ const ACT: Readonly<Record<string, string>> = {
     'Ask a person to save an API key on the Codex card in Providers',
   'TOOL_REFUSALS|agent-name-taken': 'Choose a different name, or use the agent that exists',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
-  'TOOL_REFUSALS|not-a-piece-you-gave': 'list_tasks lists the open pieces you gave out',
   'TOOL_REFUSALS|that-piece-is-still-queued': 'Change its brief with update_work',
   'TOOL_REFUSALS|that-piece-is-still-queued/its-label': 'Change its brief with update_work',
-  // ⚑ **F089** — the doors open to work the caller holds, or nothing more owed, or the person.
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-a-piece-you-hold':
-    'to hand it back finished, call reply_to_parent; to ask about it, call ask_question naming it',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-a-piece-you-hold-that-ended':
-    'stop work on that piece',
-  'TOOL_REFUSALS|not-a-piece-you-gave/a-take-back-of-your-own-work':
-    'ask a person with ask_question naming it, and answer the person here when it is done',
   'TOOL_REFUSALS|that-piece-was-already-answered':
     'Read the reply first; for genuinely new work, give it with give_work',
   'TOOL_REFUSALS|no-piece-by-that-name': 'Check its label or id with search_work or list_tasks',
@@ -711,8 +673,8 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **D-016 · commit 5 · a new word chose an act** — the owner asks, since only a giver briefs and
   // closes; what the owner may do itself comes after it, past the cut. ⚑ **Commit 6** — *Ask*, not
   // *Ask it*: a piece a person gave has no giving conversation, and its question goes to a person.
-  'TOOL_REFUSALS|the-giver-briefs-and-closes-a-piece':
-    'Ask with ask_question to change or stop the work',
+  'TOOL_REFUSALS|the-giver-briefs-a-piece':
+    'Ask with ask_question to change the brief or done condition',
   // An agent request goes through give_work; an unavailable work read can be retried.
   'TOOL_REFUSALS|no-work-of-your-own': 'Use give_work',
   'TOOL_REFUSALS|work-record-unavailable': 'Try again',

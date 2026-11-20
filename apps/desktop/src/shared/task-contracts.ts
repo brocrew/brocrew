@@ -825,7 +825,7 @@ export interface WorkRepliedEvent {
 }
 
 /**
- * 🔴 **D-016 · a piece of work, taken back by its giver** (`withdraw_task`) — in the owner's ledger,
+ * 🔴 **D-016 · a piece of work, taken back by a conversation** (`withdraw_task`) — in the owner's ledger,
  * because the owner's ledger is the one the piece is folded from.
  *
  * ⚑ **It closes the piece and the questions its owner asked about it**: `deriveRoutedRequests` reads

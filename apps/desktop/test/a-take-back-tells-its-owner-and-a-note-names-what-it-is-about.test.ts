@@ -16,18 +16,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { describeConversation } from '../src/main/runtime/conversation-address'
-import {
-  aTakeBackOfAPieceYouHold,
-  aTakeBackOfAPieceYouHoldThatEnded,
-  aTakeBackOfYourOwnWork,
-  agentToolsFor,
-  refuseTool,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { agentToolsFor, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { agentName } from '../src/shared/runtime-ipc'
-import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
@@ -891,42 +883,25 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(turn.slice(first, second)).not.toContain('about task')
   })
 
-  it('🔴 a take-back of a piece its caller holds, open, says so and names the doors that take it; nothing is taken back', async () => {
-    const { worker, workerTools, piece, label } = await aPmAndItsWorker('the piece')
-    const refused = await callWithWords(workerTools, 'withdraw_task', { piece: label })
-    // ⚑ `not-a-piece-you-gave`, which is true — said with what the piece is, and the doors that take it.
-    expect(refused.structured).toMatchObject({
-      outcome: 'refused',
-      rail: 'not-a-piece-you-gave',
-      permanence: 'permanent',
-      retryable: false,
-      remedy: null,
-      reason: aTakeBackOfAPieceYouHold(label),
-      detail: { piece: label, label },
-    })
-    expect(refused.text).toBe(
-      `refused (not-a-piece-you-gave): ${aTakeBackOfAPieceYouHold(label)} ${permanenceInWords('not-a-piece-you-gave', 'permanent')}`,
+  it('lets a holder withdraw its own open piece with its reason', async () => {
+    const { pm, worker, workerTools, piece, label } = await aPmAndItsWorker('the piece')
+    const reason = 'The input this work depended on is gone.'
+    const result = await callOn(workerTools, 'withdraw_task', { piece: label, reason })
+    expect(result).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
+    expect(ledger(worker)).toContainEqual(
+      expect.objectContaining({ type: 'work_taken_back', piece, by: worker }),
     )
-    expect(refused.text).toContain(`${label} is a piece you hold, not one you gave`)
-    // ⛔ …and never the guess its word makes of a name it cannot place: this one is the caller's own.
-    expect(refused.text).not.toContain('or to nothing at all')
-    // ⛔ Nothing was taken back: the piece is open, and no row says otherwise.
-    expect(openPiecesOf(worker).map((one) => one.piece)).toContain(piece)
-    expect(ledger(worker).some((event) => event.type === 'work_taken_back')).toBe(false)
-    // ⚑ Both doors it names take it: a question keeps it open, and a reply hands it back.
-    const asked = await callOn(workerTools, 'ask_question', {
-      who_answers: 'the-parent',
-      piece: label,
-      question: 'which way?',
-    })
-    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
-    expect(openPiecesOf(worker).map((one) => one.piece)).toContain(piece)
-    const replied = await callOn(workerTools, 'reply_to_parent', {
-      piece: label,
-      outcome: 'done',
-      summary: 'done',
-    })
-    expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
+    await letTheTurnFinish(worker)
+    const actor = host.whatToCallTheConversation(worker)
+    const notice = await theNoticeIn(worker)
+    expect(notice).toContain(`${actor} took back`)
+    expect(notice).toContain(`Reason: ${reason}`)
+    const giveNotice = () =>
+      wordsIn(pm).filter((row) => row.appNotice === 'a-piece-it-gave-taken-back')
+    await waitFor(() => giveNotice().length > 0, 'the giver to be told')
+    expect(giveNotice()).toHaveLength(1)
+    expect(giveNotice()[0]?.text).toContain(`${actor} took back`)
+    expect(giveNotice()[0]?.text).toContain(`Reason: ${reason}`)
   })
 
   it('🔴 a take-back of a piece its caller holds that has ended says how, when and by whom — answered, taken back, closed', async () => {
@@ -947,39 +922,30 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const close = await callOn(pmTools, 'update_work', { piece: closed.label, close: true })
     expect(close.outcome, JSON.stringify(close)).toBe('ok')
     const thePm = host.whatToCallTheConversation(pm)
-    for (const [holder, named, state, how] of [
-      [worker, label, 'answered', 'you answered it at '],
-      [back.agent, back.label, 'withdrawn', `it was taken back by ${thePm} at `],
-      [closed.agent, closed.label, 'closed', `it was closed by ${thePm} at `],
+    for (const [holder, named, state, rail] of [
+      [worker, label, 'answered', 'that-piece-was-already-answered'],
+      [back.agent, back.label, 'withdrawn', 'that-piece-was-already-taken-back'],
+      [closed.agent, closed.label, 'closed', 'that-piece-was-already-closed'],
     ] as const) {
       const row = store.piecesOwnedBy(holder).find((one) => one.label === named)
       expect(row?.state, named).toBe(state)
       const at = row?.endedAt
       if (typeof at !== 'number') throw new Error(`${named} has no moment it ended`)
-      // ⚑ Who ended it is named, except the holder's own reply.
-      const by = state === 'answered' ? {} : { called: thePm }
       const tools = holder === worker ? workerTools : agentToolsFor(host, holder)
       const refused = await callWithWords(tools, 'withdraw_task', { piece: named })
       expect(refused.structured, named).toMatchObject({
         outcome: 'refused',
-        rail: 'not-a-piece-you-gave',
+        rail,
         permanence: 'permanent',
-        reason: aTakeBackOfAPieceYouHoldThatEnded({
-          is: 'ended',
-          label: named,
-          state,
-          at,
-          ...by,
-          readAt: at,
-        }),
-        detail: { piece: named, label: named, state, at, ...by },
+        detail: { piece: named, label: named, state, at },
       })
-      expect(refused.text, named).toContain(
-        `refused (not-a-piece-you-gave): stop work on that piece; no further reply is owed. ` +
-          `${named} is a piece you hold, not one you gave, and it has already ended: ${how}`,
-      )
-      expect(refused.text, named).not.toContain('or to nothing at all')
-      if (state === 'answered') expect(refused.structured.detail).not.toHaveProperty('called')
+      if (state === 'answered') {
+        expect(refused.structured.detail).not.toHaveProperty('called')
+        expect(refused.text).toContain(`You answered ${named} at `)
+      } else {
+        expect(refused.structured.detail).toHaveProperty('called', thePm)
+        expect(refused.text).toContain(`by ${thePm} at `)
+      }
     }
     // ⚑ …and one taken back while its give still waited behind the holder's turn: the row that
     // ended it names nobody, so neither does the sentence.
@@ -994,35 +960,24 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     if (typeof at !== 'number') throw new Error(`${waited.label} has no moment it ended`)
     const refused = await callWithWords(workerTools, 'withdraw_task', { piece: waited.label })
     expect(refused.structured).toMatchObject({
-      rail: 'not-a-piece-you-gave',
-      reason: aTakeBackOfAPieceYouHoldThatEnded({
-        is: 'ended',
-        label: waited.label,
-        state: 'withdrawn',
-        at,
-        readAt: at,
-      }),
+      rail: 'that-piece-was-already-taken-back',
       detail: { piece: waited.label, label: waited.label, state: 'withdrawn', at },
     })
     expect(refused.structured.detail).not.toHaveProperty('called')
-    expect(refused.text).toContain('and it has already ended: it was taken back at ')
+    expect(refused.text).toContain(`${waited.label} was taken back at `)
   })
 
-  it('🔴 a take-back of the caller’s own root, or of work it took on for a person, says what it is — open, then answered', async () => {
-    const { pm, pmTools } = await aPmAndItsWorker('the piece')
+  it('keeps the root open and lets another conversation withdraw a person-given child', async () => {
+    const { pm, pmTools, worker, workerTools } = await aPmAndItsWorker('the piece')
     const root = store.rootOf(pm)?.label
     if (root === undefined) throw new Error('a conversation a person opened owns a root')
-    const ofTheRoot = await callWithWords(pmTools, 'withdraw_task', { piece: root })
-    expect(ofTheRoot.structured).toMatchObject({
+    const refused = await callWithWords(pmTools, 'withdraw_task', { piece: root })
+    expect(refused.structured).toMatchObject({
       outcome: 'refused',
-      rail: 'not-a-piece-you-gave',
-      permanence: 'permanent',
-      reason: aTakeBackOfYourOwnWork(root),
+      rail: 'that-is-your-own-work',
       detail: { piece: root, label: root },
     })
-    expect(ofTheRoot.text).toContain(`${root} is this conversation’s own work, from a person`)
-    expect(ofTheRoot.text).not.toContain('or to nothing at all')
-    // ⚑ The finding's own case: work the pm took on for its person — open, and then answered.
+    expect(refused.text).toContain('this conversation’s own work, from a person')
     await host.send(pm, 'Please take on the trip plan.', window)
     const taken = await callOn(pmTools, 'take_on_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
@@ -1031,61 +986,40 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     })
     expect(taken.outcome, JSON.stringify(taken)).toBe('ok')
     const label = taken.label as string
-    const open = await callWithWords(pmTools, 'withdraw_task', { piece: label })
-    expect(open.structured).toMatchObject({
-      rail: 'not-a-piece-you-gave',
-      reason: aTakeBackOfAPieceYouHold(label),
-      detail: { piece: label, label },
+    const reason = 'The trip has been cancelled.'
+    expect(await callOn(workerTools, 'withdraw_task', { piece: label, reason })).toMatchObject({
+      outcome: 'ok',
+      state: 'withdrawn',
     })
-    const replied = await callOn(pmTools, 'reply_to_parent', {
-      piece: label,
-      outcome: 'done',
-      summary: 'planned',
+    expect(store.rootOf(pm)?.label).toBe(root)
+    expect(store.piecesOwnedBy(pm).find((one) => one.label === label)).toMatchObject({
+      state: 'withdrawn',
+      endedBy: worker,
     })
-    expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
-    const at = store.piecesOwnedBy(pm).find((one) => one.label === label)?.endedAt
-    if (typeof at !== 'number') throw new Error(`${label} has no moment it ended`)
-    const ended = await callWithWords(pmTools, 'withdraw_task', { piece: label })
-    expect(ended.structured).toMatchObject({
-      rail: 'not-a-piece-you-gave',
-      reason: aTakeBackOfAPieceYouHoldThatEnded({
-        is: 'ended',
-        label,
-        state: 'answered',
-        at,
-        readAt: at,
-      }),
-      detail: { piece: label, label, state: 'answered', at },
-    })
-    expect(ended.text).toContain(
-      `${label} is a piece you hold, not one you gave, and it has already ended: you answered it at `,
-    )
-    expect(ended.text).not.toContain('or to nothing at all')
+    claimed.add(pm)
+    await letTheTurnFinish(pm)
+    const notice = await theNoticeIn(pm)
+    expect(notice).toContain(`${host.whatToCallTheConversation(worker)} took back`)
+    expect(notice).toContain(`Reason: ${reason}`)
   })
 
-  it('⛔ a take-back of a name its caller neither holds nor gave keeps the word’s own sentence — a made-up label, another’s piece, a predecessor’s', async () => {
-    const { pm, worker, pmTools, workerTools, label } = await aPmAndItsWorker('the piece')
-    await bringIdentityIntoBeing('helper')
-    const other = await aGive(pmTools, 'helper', 'the other piece', 'new')
-    const theGuess = refuseTool('not-a-piece-you-gave').reason
-    expect(theGuess).toContain('or to nothing at all')
-    for (const spelled of ['W99.99', other.label]) {
-      const refused = await callWithWords(workerTools, 'withdraw_task', { piece: spelled })
-      expect(refused.structured, spelled).toMatchObject({
-        outcome: 'refused',
-        rail: 'not-a-piece-you-gave',
-        reason: theGuess,
-      })
-      expect(refused.structured.detail, spelled).toEqual({ piece: spelled })
-    }
-    // ⛔ A conversation standing in another's place holds none of what that one held.
+  it('refuses an unknown name and never redirects an ending notice to a successor', async () => {
+    const { pm, worker, workerTools, label } = await aPmAndItsWorker('the piece')
+    const refused = await callWithWords(workerTools, 'withdraw_task', { piece: 'W99.99' })
+    expect(refused.structured).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-piece-by-that-name',
+      reason: refuseTool('no-piece-by-that-name').reason,
+      detail: { piece: 'W99.99' },
+    })
     const { next, tools } = await followHistoricalWorker(worker, pm, label)
     const fromNext = await callWithWords(agentToolsFor(host, next), 'withdraw_task', {
       piece: label,
     })
-    expect(fromNext.structured).toMatchObject({ rail: 'not-a-piece-you-gave', reason: theGuess })
-    expect(fromNext.structured.detail).toEqual({ piece: label })
-    // ⚑ The control: the pm, which gave the other piece, takes it back.
+    expect(fromNext.structured).toMatchObject({ outcome: 'ok', delivery: 'not-delivered' })
+    expect(takeBackNoticesIn(next)).toHaveLength(0)
+    expect(store.piecesOwnedBy(worker).find((one) => one.label === label)?.state).toBe('withdrawn')
+    const other = await aGive(tools, 'worker', 'a new piece', 'new')
     const tookBack = await callOn(tools, 'withdraw_task', { piece: other.label })
     expect(tookBack.outcome, JSON.stringify(tookBack)).toBe('ok')
   })

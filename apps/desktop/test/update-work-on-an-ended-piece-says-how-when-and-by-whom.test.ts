@@ -567,19 +567,10 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     expect(refused.reason).not.toContain('You ')
   })
 
-  /**
-   * 🔴 **F090 · an ended piece is refused as one FIRST, whatever was asked of it.** ⛔ Its owner's
-   * close, new brief and title met the giver's words first — *"Ask with ask_question to change or
-   * stop the work; you may set its status line, keep files you made for it, or hand it back with
-   * reply_to_parent"* — and every one of those acts is refused on a piece that has ended. ⚑ The
-   * giver's words stay where they are true: on a piece that is open.
-   */
-  it('🔴 F090 · its owner’s close, new brief and title: the giver’s words while it is open; once it has answered, how it ended — for every field, and nothing written', async () => {
+  it('preserves field refusals while open and reports the ending before field rules after answer', async () => {
     const { worker, piece, label } = await aPmAndItsWorker()
-    // ⚑ Open: whose act it is, and what its owner may do instead, which an open piece takes.
     for (const [args, rail] of [
-      [{ piece: label, close: true }, 'the-giver-briefs-and-closes-a-piece'],
-      [{ piece: label, brief: 'do it my way' }, 'the-giver-briefs-and-closes-a-piece'],
+      [{ piece: label, brief: 'do it my way' }, 'the-giver-briefs-a-piece'],
       [{ piece: label, title: 'mine now' }, 'the-giver-names-a-piece'],
     ] as const) {
       const open = await callOn(worker, 'update_work', args)
@@ -670,7 +661,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     }
   })
 
-  it('🔴 F090 · work taken on for a person: a close while it is open gets the giver’s words; once answered, how it ended, and that only its title may change — which it does', async () => {
+  it('🔴 F090 · work taken on for a person: once answered, it says how it ended and that only its title may change', async () => {
     const pm = await personOpens(`pm-${String(++pairs)}`)
     await host.send(pm, 'Please take on the trip plan.', window)
     const taken = await callOn(pm, 'take_on_work', {
@@ -681,12 +672,6 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     expect(taken.outcome, JSON.stringify(taken)).toBe('ok')
     const piece = taken.piece as string
     const label = taken.label as string
-    // ⚑ Open: no conversation gave it, so none closes it — its owner asks, sets its status line,
-    // keeps files or hands it back, each of which an open piece takes.
-    expect(await callOn(pm, 'update_work', { piece: label, close: true })).toMatchObject({
-      outcome: 'refused',
-      rail: 'the-giver-briefs-and-closes-a-piece',
-    })
     expect(
       (await callOn(pm, 'reply_to_parent', { piece: label, outcome: 'done', summary: 'planned' }))
         .outcome,
