@@ -1,6 +1,5 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { agoWords } from '../../src/renderer/src/lib/clock'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
@@ -164,7 +163,7 @@ interface Cut {
   /** The `data-cy` the cut is reported under — the element's own, or its nearest hooked ancestor. */
   readonly cy: string
   /** Enough of the string to tell one row's line from another's. */
-  readonly starts: string
+  readonly starts: string | RegExp
   /** Why this one is allowed to be short, or who owns the repair. */
   readonly because: string
   readonly widths?: readonly number[]
@@ -177,7 +176,7 @@ interface Cut {
 const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
-    starts: agoWords(RECORDED[1]!.updatedAt),
+    starts: /^\d+d ago$/,
     because: 'The activity on a crowded metadata line remains on hover.',
   },
   {
@@ -213,8 +212,12 @@ const CUTS = [...SHORTENED_ON_PURPOSE, ...CUT_AND_NOT_REPAIRED_HERE]
 
 const appliesAt = (d: Cut, width: number): boolean => !d.widths || d.widths.includes(width)
 
+const matches = (c: Carrier, d: Cut): boolean =>
+  c.cy === d.cy &&
+  (typeof d.starts === 'string' ? c.text.startsWith(d.starts) : d.starts.test(c.text))
+
 const declaredFor = (c: Carrier, width: number): Cut | undefined =>
-  CUTS.find((d) => appliesAt(d, width) && d.cy === c.cy && c.text.startsWith(d.starts))
+  CUTS.find((d) => appliesAt(d, width) && matches(c, d))
 
 /* ------------------------------------------------------------------ §0 · the sensor */
 
@@ -411,14 +414,9 @@ describe('§1 · the roster, at both shipped widths', () => {
     it(`⛔ ${width}px · and every declared cut is still cut, so the list cannot go quiet`, async () => {
       const m = await rail(width)
       const found = sweep(m.host).filter((c) => c.cut !== null)
-      const missing = CUTS.filter(
-        (d) =>
-          appliesAt(d, width) && !found.some((c) => c.cy === d.cy && c.text.startsWith(d.starts)),
-      )
+      const missing = CUTS.filter((d) => appliesAt(d, width) && !found.some((c) => matches(c, d)))
       for (const declared of CUTS.filter((d) => !appliesAt(d, width))) {
-        const carrier = sweep(m.host).find(
-          (c) => c.cy === declared.cy && c.text.startsWith(declared.starts),
-        )
+        const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, 'the previously shortened status is missing').toBeDefined()
       }
       expect(
@@ -436,9 +434,7 @@ describe('§1 · the roster, at both shipped widths', () => {
     it(`⚠️ ${width}px · a cut declared recoverable really is recoverable`, async () => {
       const m = await rail(width)
       for (const declared of SHORTENED_ON_PURPOSE) {
-        const carrier = sweep(m.host).find(
-          (c) => c.cy === declared.cy && c.text.startsWith(declared.starts),
-        )
+        const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, `${declared.cy} was not drawn at all`).toBeDefined()
         expect(carrier!.recovered, `${declared.cy} is cut and no title recovers it`).toBe(true)
       }

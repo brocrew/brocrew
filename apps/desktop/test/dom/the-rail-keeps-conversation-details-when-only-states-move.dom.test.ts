@@ -55,6 +55,7 @@ it('updates nine states without deriving the details of 1960 conversations again
         row.getAttribute('data-session-id'),
       )
     const before = order()
+    expect(before).toEqual(conversations.slice(0, 15).map((row) => row.sessionId))
     vi.mocked(agentName).mockClear()
     const moved = Array.from({ length: 9 }, (_, i) => ({
       conversation: `conversation-${i}`,
