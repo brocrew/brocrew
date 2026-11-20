@@ -750,9 +750,6 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   aPersonPicked(provider: Provider, pair: ModelAndEffort, at: number): void
   conversationsPerIdentity(): readonly IdentityHistory[]
   removeAgentIdentity(profileSlug: string): boolean
-  spawnPolicy(): { spawningEnabled: boolean }
-  /** Throw the switch. Nothing running is stopped — see {@link appPolicy}. */
-  setSpawningEnabled(enabled: boolean): void
   defaultApprovalModeChosen(): boolean
   defaultApprovalMode(): 'ask' | 'auto'
   setDefaultApprovalMode(mode: 'ask' | 'auto'): void
@@ -1241,8 +1238,6 @@ export const NULL_SESSION_STORE: SessionStore = {
   forgetSealedApiKey: () => {},
   conversationsPerIdentity: () => [],
   removeAgentIdentity: () => false,
-  spawnPolicy: () => ({ spawningEnabled: false }),
-  setSpawningEnabled: () => {},
   defaultApprovalModeChosen: () => false,
   defaultApprovalMode: () => 'ask',
   setDefaultApprovalMode: () => {},
@@ -1636,10 +1631,8 @@ export function createSessionStore(
     startedOnOf: AppStatement
     identityOfSession: AppStatement
     writeIdentityOnSession: AppStatement
-    readPolicy: AppStatement
     readApprovalDefault: AppStatement
     writeApprovalDefault: AppStatement
-    writePolicy: AppStatement
     readParent: AppStatement
     writeParent: AppStatement
     spawnedBy: AppStatement
@@ -1685,10 +1678,6 @@ export function createSessionStore(
       ),
       writeIdentityOnSession: db.prepare(
         `UPDATE provider_session SET agent_identity_id = ? WHERE id = ?`,
-      ),
-      readPolicy: db.prepare(`SELECT spawning_enabled FROM app_policy WHERE id = 'policy'`),
-      writePolicy: db.prepare(
-        `UPDATE app_policy SET spawning_enabled = ?, updated_at = ? WHERE id = 'policy'`,
       ),
       readApprovalDefault: db.prepare(
         `SELECT default_approval_mode FROM app_policy WHERE id = 'policy'`,
@@ -5294,15 +5283,6 @@ export function createSessionStore(
         }
       })()
       return true
-    },
-
-    spawnPolicy() {
-      const row = spawnSql().readPolicy.get() as { spawning_enabled: number } | undefined
-      return { spawningEnabled: row !== undefined && row.spawning_enabled === 1 }
-    },
-
-    setSpawningEnabled(enabled) {
-      spawnSql().writePolicy.run(enabled ? 1 : 0, now())
     },
 
     defaultApprovalModeChosen() {

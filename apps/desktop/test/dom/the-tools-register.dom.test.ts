@@ -167,7 +167,6 @@ beforeEach(() => {
       identities: [identity('pm'), identity('web-builder'), identity('scout')],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     },

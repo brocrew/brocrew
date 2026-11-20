@@ -356,7 +356,7 @@ export function createGiveWorkTool(
 }
 
 export function createCreateAgentTool(
-  host: Pick<AgentToolHost, 'createAgentFor' | 'judgeTheDefaultItNames' | 'mayCreateAgents'>,
+  host: Pick<AgentToolHost, 'createAgentFor' | 'judgeTheDefaultItNames'>,
   by: Caller,
   me: string,
   theModels: string,
@@ -424,13 +424,10 @@ export function createCreateAgentTool(
       kind: documentedToolEnum(
         TOOL_INPUT_ENUMS['create_agent:kind'],
         'What kind of agent it is, set when it is made.',
-        'A service can be made only while a person has services on.',
       ).optional(),
     } satisfies Readonly<Record<keyof CreateAgentArguments, z.ZodType>>,
     call: (args) =>
       guarded(async () => {
-        const wall = host.mayCreateAgents(me)
-        if (!wall.ok) return notCreated(refuseTool(wall.rail, wall.detail))
         // **Every problem at once, never the first one** (325). A model that has to discover
         // three malformed arguments one round trip at a time is a model spending three turns on
         // one call, and the refusal is permanent for each of them anyway.

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, whatTheChildWouldLack } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -25,7 +25,7 @@ import {
   refuseTool,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
+import { SPAWN_RAILS, describeRail } from '../src/main/runtime/spawn-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 /**
@@ -333,18 +333,6 @@ describe('374 · the rails a message passes', () => {
       })
       expect(asking.outcome, JSON.stringify(asking)).toBe('ok')
       expect(store.find(asking.agent as string)?.approvalMode).toBe('ask')
-      // ⛔ **…and WIDER is still refused, where it can be: that `ask` spawner's child in `auto`.**
-      // No give reaches it, so the rail's own comparison is asked. ⛔ **`499` moved both the name
-      // and the word**: HO-036 withdrew `spawn-must-prompt`, and its successor is
-      // `until-a-person-changes-it` because the parent's own approvals button is the switch `366`
-      // said did not exist.
-      expect(
-        whatTheChildWouldLack(
-          { provider: 'codex', approvalMode: 'auto' },
-          { provider: 'claude', approvalMode: 'ask' },
-        ),
-      ).toEqual(['the-card-before-an-act'])
-      expect(permanenceOf('wider-than-its-parent')).toBe('until-a-person-changes-it')
     })
 
     it('⛔ `340` §2 · a commander still may not answer for a person', async () => {

@@ -45,7 +45,6 @@ const context = (text: string, version = 1): NotesContext => ({
   cwd: '/fictional/project',
   startedBy: null,
   root: 'not-yet-numbered',
-  spawningEnabled: true,
   configured: 'Standing wishes stay first.',
   others: { shown: [], more: 0 },
   ownNotes: { text, version },

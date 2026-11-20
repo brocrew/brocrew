@@ -155,7 +155,6 @@ const roster = (pmName: string | null): AgentIdentities => ({
   ],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })
@@ -194,7 +193,6 @@ const everyPoolName = (): AgentIdentities => ({
   ],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })

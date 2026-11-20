@@ -13,8 +13,15 @@ describe('a stopped replacement service holds the reply or answer', () => {
     world = aServiceWorld()
   })
   afterEach(async () => {
+    vi.restoreAllMocks()
     await world.cleanUp()
   })
+
+  function keepTheReplacementBusyOnReopen(profile: string): void {
+    world.onResumed = (resumed, handle) => {
+      if (resumed === profile) vi.spyOn(handle, 'status').mockReturnValue('working')
+    }
+  }
 
   it('reports the stopped replacement service that holds a reply', async () => {
     const { host, first, second } = await openServiceAndTwoCallers(world)
@@ -36,8 +43,9 @@ describe('a stopped replacement service holds the reply or answer', () => {
       world.clock++,
     )
 
-    const after = world.aHost({ servicesOn: false })
+    const after = world.aHost()
     await after.resumeSession(given.owner, world.window, null)
+    keepTheReplacementBusyOnReopen('browser-driver')
     const reply = agentToolsFor(after, given.owner).tools.find(
       (one) => one.name === 'reply_to_parent',
     )
@@ -93,13 +101,15 @@ describe('a stopped replacement service holds the reply or answer', () => {
       { type: 'replaced_by', sessionId: replacement },
       world.clock++,
     )
-    const after = world.aHost({ servicesOn: false })
+    const after = world.aHost()
     await after.resumeSession(first, world.window, null)
+    keepTheReplacementBusyOnReopen('replacement-service')
     const answer = agentToolsFor(after, first).tools.find((one) => one.name === 'answer_question')
     if (answer === undefined) throw new Error('the caller has no answer tool')
     const result = await answer.call({
       question,
       answers: [{ part: 'answer', answer: ['room 23'] }],
+      interrupt: false,
     })
     expect(result.structured).toMatchObject({
       outcome: 'ok',

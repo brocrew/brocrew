@@ -42,8 +42,7 @@ describe('a service queues the work it is given', () => {
     if (outcome.ok) throw new Error(`given, to ${outcome.owner}`)
     return outcome.refusal.rail
   }
-  const aServiceAndTwoCallers = (opts: { servicesOn?: boolean } = {}) =>
-    openServiceAndTwoCallers(world, opts)
+  const aServiceAndTwoCallers = () => openServiceAndTwoCallers(world)
 
   /** Until `piece` at `service` has been handed over: open, and no longer waiting. */
   const handedOver = async (service: string, piece: string): Promise<void> => {
@@ -180,20 +179,6 @@ describe('a service queues the work it is given', () => {
   })
 
   describe('a give it refuses', () => {
-    it('while services are switched off', async () => {
-      const { host, first } = await aServiceAndTwoCallers({ servicesOn: false })
-      expect(refusedAs(await world.gives(host, first, 'browser-driver'))).toBe('services-are-off')
-      expect(world.conversationsRecorded()).toBe(2)
-    })
-
-    it('where this app can’t tell it is the only one on its data', async () => {
-      world.anAgent('browser-driver')
-      world.anAgent('caller', 'nothing kept')
-      const host = world.aHost({ owned: false })
-      const caller = await world.aPersonOpens(host, 'caller')
-      expect(refusedAs(await world.gives(host, caller, 'browser-driver'))).toBe('services-are-off')
-    })
-
     it('where its kind can’t be told and the database holds a service’s conversation for it', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       accepted(await world.gives(host, first, 'browser-driver'))
@@ -663,10 +648,11 @@ describe('a service queues the work it is given', () => {
       })
     })
 
-    it('when its first give would record its conversation while agents may not start any', async () => {
+    it('a first give records the service even if the retired spawning column holds off', async () => {
       const { host, first } = await aServiceAndTwoCallers()
-      world.store.setSpawningEnabled(false)
-      expect(refusedAs(await world.gives(host, first, 'browser-driver'))).toBe('spawning-disabled')
+      world.db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
+      const given = accepted(await world.gives(host, first, 'browser-driver'))
+      expect(world.store.recordedOne(given.owner)?.profileId).toBe('browser-driver')
     })
 
     it('when its agent has no provider to record its conversation on', async () => {
@@ -781,7 +767,6 @@ describe('a service queues the work it is given', () => {
       conversationAt: () => null,
       recentWith: () => ({ rows: [], more: false }),
       serviceAt: () => service,
-      spawningEnabled: () => true,
       itsProvider: () => ({ provider: 'claude', from: 'saved' }),
       theNamedModelsProvider: () => null,
       modelChoiceOf: () => null,
@@ -832,8 +817,8 @@ describe('a service queues the work it is given', () => {
       expect(admitted({ ...aService, waitsOnTheGiver: 'unread' })).toBe('its-record-cannot-be-read')
     })
 
-    it('refuses while services are off, and where the kind can’t be told', () => {
-      expect(admitted({ is: 'off' })).toBe('services-are-off')
+    it('refuses if this app does not own the service queue, and where the kind can’t be told', () => {
+      expect(admitted({ is: 'queue-not-owned' })).toBe('service-queue-not-owned')
       expect(admitted({ is: 'unknown' })).toBe('its-kind-is-unknown')
     })
 

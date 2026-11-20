@@ -62,7 +62,6 @@ export function identities(count = 3): AgentIdentities {
       },
     ],
     foldersWithoutARow: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   }

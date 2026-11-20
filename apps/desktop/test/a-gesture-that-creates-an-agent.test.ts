@@ -70,7 +70,6 @@ const roster = (identities: AgentIdentity[], orphans: string[] = []): AgentIdent
     isStarting: false,
     runsOn: theProviderOfAnAgent(one.provider, NONE_STARTED),
   })),
-  spawningEnabled: true,
   // 500 · required on `AgentIdentities`; this file is about creating an identity, not about the
   // mode a launch begins in.
   defaultApprovalMode: 'ask',

@@ -10,8 +10,8 @@ import { mount, unmountAll, type Mounted } from './harness'
 import { rosterSettingsBridge } from '../lib/agent-roster-fixture'
 
 /**
- * 🔴 **One identity's sheet, on a screen** — its provider control, the rule-writing policy, the
- * spawning note, and a Save that writes only the external servers it may use.
+ * 🔴 **One identity's sheet, on a screen** — its provider control, the rule-writing policy,
+ * and a Save that writes only the external servers it may use.
  *
  * ⚠️ **In the DOM project** because a string assertion over SSR markup cannot tell a rendered
  * control from one that is present and dead.
@@ -53,7 +53,6 @@ const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
 function storeOver(): AgentStore {
   const bridge = {
     ...rosterSettingsBridge(() => answers),
-    setSpawningEnabled: async () => ({ spawningEnabled: answers.list.spawningEnabled }),
     // Clone the payload here for the same reason as the external MCP settings mock. This
     // payload is two primitives, so nothing here can be a Proxy — which is exactly the claim
     // `the-bridge-that-clones-nothing.test.ts` files it under, and a fake that skipped the clone
@@ -104,7 +103,6 @@ describe('355 · the capabilities sheet', () => {
         identities: [identity()],
         foldersWithoutARow: [],
         use: [],
-        spawningEnabled: true,
         // 500 · required on `AgentIdentities`; this sheet is per-identity and reads neither.
         defaultApprovalMode: 'ask',
         // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
@@ -283,16 +281,6 @@ describe('355 · the capabilities sheet', () => {
       // and not about the sheet being broken.
       const { m: real } = await openSheet()
       expect(shown(real.q('capabilities-save'))).toBe(true)
-    })
-
-    it('⚠️ says no agent can start a conversation while spawning is switched off', async () => {
-      answers.list = { ...answers.list, spawningEnabled: false }
-      const { m } = await openSheet()
-      expect(shown(m.q('capabilities-spawning-off'))).toBe(true)
-      // ⚑ The pair — with the switch on, the warning is not drawn at all.
-      answers.list = { ...answers.list, spawningEnabled: true }
-      const { m: on } = await openSheet()
-      expect(on.all('capabilities-spawning-off')).toHaveLength(0)
     })
 
     /**

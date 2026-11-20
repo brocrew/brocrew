@@ -1369,8 +1369,6 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       approve: z.boolean(),
     })
     .strict(),
-  z.object({ kind: z.literal('setSpawningEnabled'), enabled: z.boolean() }),
-  z.object({ kind: z.literal('setServicesOn'), on: z.boolean() }),
   /**
    * 🔴 **The mode a person's next conversation begins in** (500, HO-036 §3.1).
    *
@@ -1407,7 +1405,6 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     slug: agentSlug,
     displayName: agentDisplayName.nullable(),
     provider: providerSchema.nullable(),
-    // A person makes a service only while services are on; the host refuses it otherwise.
     asAService: z.literal(true).optional(),
   }),
 ]) satisfies z.ZodType<RuntimeCommand>
@@ -1504,12 +1501,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ⛔ **The capability door, refused for its neighbours' reason** (355). Both statements are the
   // ledger's. The READ is worth nothing — the surface asking is on a window that is going — and the
   // WRITE is a person widening what an agent may do, which is not a thing to accept in the moment
-  // the app stops being able to act on it. ⚠️ `setSpawningEnabled` is refused in BOTH directions and
-  // that is deliberate: turning the switch OFF during a quit reads like the one exemption worth
-  // making, and it is not one. `admitGive` asks the switch at the moment a give would start a
-  // conversation, and by the time this door is closed there is no give left to refuse — so the
-  // write would change a row nothing will read before the process ends, and the person would be
-  // told it took effect.
+  // the app stops being able to act on it.
   skills: 'refused',
   agentIdentities: 'refused',
   setExternalMcpServers: 'refused',
@@ -1529,9 +1521,6 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // the host. ⚑ A person told the choice took effect would be told about a row nothing will read
   // before the process ends.
   setAgentProvider: 'refused',
-  setSpawningEnabled: 'refused',
-  // A person turning services on or off while the app quits would be told of a change nothing acts on.
-  setServicesOn: 'refused',
   // 500. ⛔ **Refused, and `setAgentProvider` above is the precedent word for word**: this is a
   // person saying what their NEXT conversation should start in, and there are no next conversations
   // — `createSession` is already refused by the host. ⚑ A person told their default took effect, in
@@ -2931,11 +2920,6 @@ export async function executeRuntimeCommand(
         command.sessionId,
         command.parts,
       ) satisfies Answer<'deleteConversation'>
-    case 'setSpawningEnabled':
-      requireAPerson(sink, command.kind)
-      return host.setSpawningEnabled(command.enabled) satisfies Answer<'setSpawningEnabled'>
-    case 'setServicesOn':
-      return host.setServicesOn(command.on) satisfies Answer<'setServicesOn'>
     case 'setDefaultApprovalMode':
       // ⛔ **`requireAPerson`, and `noPersonBehindIt`'s sentence is true of it without stretching**:
       // *"changes what agents are allowed to do"* is exactly what a default of `auto` changes, one

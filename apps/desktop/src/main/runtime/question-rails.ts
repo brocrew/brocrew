@@ -48,7 +48,7 @@ import type { RefusalRemedy } from '../../shared/refusals'
  *
  * `374`'s rule survives as separate properties: **sentences are unique across every rail
  * vocabulary**, while names may be shared only by the explicit census allowlist —
- * `malformed-request` and `spawning-disabled`, each owned by `SPAWN_RAILS` and `TOOL_REFUSALS`.
+ * `malformed-request`, owned by `SPAWN_RAILS` and `TOOL_REFUSALS`.
  * All vocabularies share the PAYLOAD — `347`'s rule that a model meets one grammar everywhere.
  */
 export const QUESTION_RAILS = [
