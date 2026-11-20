@@ -6058,8 +6058,7 @@ export function createSessionStore(
     defaultTaskTitle(conversation) {
       const sql = workSql()
       const row = (sql.rootOwnedBy.get(conversation) ?? sql.latestOwnedBy.get(conversation)) as
-        | WorkDbRow
-        | undefined
+        WorkDbRow | undefined
       return row === undefined ? null : titleNow(row, activeGeneration(conversation))
     },
 
