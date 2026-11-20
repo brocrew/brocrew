@@ -53,6 +53,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
+  z.object({ kind: z.literal('work-given'), sessionId: conversationId }).strict(),
   z
     .object({
       kind: z.literal('activity'),
@@ -109,6 +110,10 @@ interface WindowPublication {
 interface WindowLeads {
   readonly kind: 'leads'
   readonly rows: readonly ThreadLeadRow[]
+}
+interface WindowWorkGiven {
+  readonly kind: 'work-given'
+  readonly work: ReturnType<SessionStore['workGivenOutBy']>
 }
 interface WindowFiles {
   readonly kind: 'files'
@@ -178,6 +183,7 @@ export type WindowReadResult =
   | WindowForest
   | WindowForestNodes
   | WindowPublication
+  | WindowWorkGiven
 
 const skipped = z.union([z.number().int().nonnegative().safe(), z.literal('the-whole-ledger')])
 const walk = z
@@ -324,6 +330,7 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
+  z.object({ kind: z.literal('work-given'), work: walk }).strict(),
 ])
 
 export interface WindowStoreReader {
