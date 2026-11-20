@@ -11,6 +11,7 @@ import { workSearchQuery } from '../../shared/work-search'
 import { filesLibraryRequest } from '../../shared/files-library'
 import { teamProfileGraphRequest } from '../../shared/team-profile-graph'
 import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../../shared/conversation-title'
+import { ALL_TASKS_FILTERS } from '../../shared/conversation-task-page'
 import {
   MAX_BACKGROUND_ID,
   MAX_SETTINGS_BYTES,
@@ -1078,6 +1079,13 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     cursor: z.string().max(2048).optional(),
   }),
   z.object({
+    kind: z.literal('readAllConversationTasks'),
+    sessionId,
+    filter: z.enum(ALL_TASKS_FILTERS),
+    text: z.string().optional(),
+    cursor: z.string().optional(),
+  }),
+  z.object({
     kind: z.literal('readConversationTitleHistory'),
     sessionId,
     before: z
@@ -1571,6 +1579,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   readConversationIdentity: 'refused',
   readConversationIdentities: 'refused',
   readConversationTasks: 'refused',
+  readAllConversationTasks: 'refused',
   readConversationTitleHistory: 'refused',
   renameConversation: 'refused',
   // ⛔ Refused, with `retitleWork` as the precedent: a person acting on work, while the service that
@@ -2693,6 +2702,8 @@ export async function executeRuntimeCommand(
       return host.readConversationIdentities(command) satisfies Answer<'readConversationIdentities'>
     case 'readConversationTasks':
       return host.readConversationTasks(command) satisfies Answer<'readConversationTasks'>
+    case 'readAllConversationTasks':
+      return host.readAllConversationTasks(command) satisfies Answer<'readAllConversationTasks'>
     case 'readConversationTitleHistory':
       return host.readConversationTitleHistory(
         command,

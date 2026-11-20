@@ -12,6 +12,8 @@ import type { RulesBaseline } from '../agent-rules'
 import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../conversation-archive'
 import type { McpServerRequestForAPerson } from '../conversation-events'
 import type {
+  AllConversationTasksInput,
+  AllConversationTasksResult,
   ConversationTaskPageInput,
   ConversationTaskPageResult,
 } from '../conversation-task-page'
@@ -783,6 +785,7 @@ export interface RuntimeBridge {
     input: ConversationIdentityBatchInput,
   ): Promise<readonly ConversationIdentity[]>
   readConversationTasks(input: ConversationTaskPageInput): Promise<ConversationTaskPageResult>
+  readAllConversationTasks(input: AllConversationTasksInput): Promise<AllConversationTasksResult>
   readConversationTitleHistory(
     input: ConversationTitleHistoryInput,
   ): Promise<ConversationTitleHistory | null>

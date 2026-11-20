@@ -626,6 +626,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   readConversationIdentity: { how: 'plain-by-construction' },
   readConversationIdentities: { how: 'plain-by-construction' },
   readConversationTasks: { how: 'plain-by-construction' },
+  readAllConversationTasks: { how: 'plain-by-construction' },
   readConversationTitleHistory: { how: 'plain-by-construction' },
   renameConversation: { how: 'plain-by-construction' },
   takeBackWork: { how: 'plain-by-construction' },

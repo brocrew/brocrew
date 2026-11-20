@@ -1,4 +1,31 @@
 import type { TaskState } from './task-contracts'
+import type { WorkThatNamesIt } from './piece-called'
+import type { WorkEdge } from './who-called-whom'
+
+export const ALL_TASKS_FILTERS = ['all', 'active', 'open', 'closed'] as const
+export type AllTasksFilter = (typeof ALL_TASKS_FILTERS)[number]
+
+export interface AllConversationTasksInput {
+  readonly sessionId: string
+  readonly filter: AllTasksFilter
+  readonly text?: string
+  readonly cursor?: string
+}
+
+export type AllConversationTasksResult =
+  | {
+      readonly ok: true
+      readonly conversation: string
+      readonly root: WorkThatNamesIt | null
+      readonly tasks: readonly WorkEdge[]
+      readonly counts: Readonly<Record<AllTasksFilter, number>> | null
+      readonly matched: number | null
+      readonly newestOpenMatch: string | null
+      readonly next: string | null
+      readonly rowsUnread: number
+      readonly ledgersSkipped: number
+    }
+  | { readonly ok: false; readonly reason: 'unknown-conversation' | 'invalid-cursor' }
 
 export interface ConversationTaskPageInput {
   readonly sessionId: string
