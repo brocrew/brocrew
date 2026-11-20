@@ -83,6 +83,25 @@ describe('the search bounds every reused owner and its own completeness', () => 
     }
   })
 
+  it('resets an overflowed ledger while reusing its statement and keeping the page count', () => {
+    const db = new Database(':memory:')
+    try {
+      const page = new WorkSearchPageBudget()
+      const ledger = workSearchMaterialization(page)
+      const select = ledger.database(db).prepare(rows)
+      expect(select.all(10000)).toHaveLength(10000)
+      expect(() => select.get(1)).toThrow()
+      ledger.resetLedger()
+      expect(ledger.measured()).toEqual({ rows: 0, bytes: 0, statements: 0 })
+      expect(select.all(10000)).toHaveLength(10000)
+      expect(ledger.measured().rows).toBe(10000)
+      expect(page.returnedRows).toBe(20000)
+      expect(() => select.get(1)).toThrow()
+    } finally {
+      db.close()
+    }
+  })
+
   it('enforces 16 MiB of ledger materialization across individually small cells', () => {
     const db = new Database(':memory:')
     try {

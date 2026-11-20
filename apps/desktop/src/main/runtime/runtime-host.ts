@@ -105,12 +105,21 @@ export type {
 import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
-import { listConversationTasks, type ConversationTasksInput } from './conversation-tasks'
+import {
+  listConversationTasks,
+  readConversationTasks,
+  type ConversationTasksInput,
+} from './conversation-tasks'
+import type { ConversationTaskPageInput } from '../../shared/conversation-task-page'
 import { GiveWork } from './give-work'
 import type {
+  ConversationIdentity,
+  ConversationIdentityBatchInput,
   ConversationRenameInput,
   ConversationRenameResult,
   ConversationTitleAuthor,
+  ConversationTitleHistory,
+  ConversationTitleHistoryInput,
   ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import {
@@ -7734,6 +7743,7 @@ export class RuntimeHost implements LiveHost {
       this.stateMayHaveMoved(conversation)
     }
     if (MOVES_ITS_NAME.has(type)) this.itsNameMayHaveMoved(conversation)
+    if (type === 'titled') this.theWorldMoved('work')
     // ⚑ **F036 · a question put to another conversation moves what THAT one owes** — routed to it
     // ({@link RequestRoutedEvent.parent}), or, for one already noted as owing, any row that moves
     // this asker's questions: an answer, a decline, a withdrawal, an ending.
@@ -11147,6 +11157,10 @@ export class RuntimeHost implements LiveHost {
 
   listConversationTasks(input: ConversationTasksInput) {
     return listConversationTasks(input, this.deps.store, (id) => this.itIsAService(id))
+  }
+
+  readConversationTasks(input: ConversationTaskPageInput) {
+    return readConversationTasks(input, this.deps.store)
   }
 
   /**
@@ -18584,6 +18598,36 @@ export class RuntimeHost implements LiveHost {
       conversation,
       this.itIsAService(conversation),
     )
+  }
+
+  readConversationIdentity(conversation: string): ConversationIdentity | null {
+    const { store } = this.deps
+    if (store.conversationBinding(conversation) === null) return null
+    const savedTitle = store.conversationTitle(conversation)
+    const { address, title } = describeConversationForRead(
+      store,
+      conversation,
+      this.itIsAService(conversation),
+      savedTitle,
+    )
+    return { conversation, address, title, author: savedTitle?.author ?? null }
+  }
+
+  readConversationIdentities(
+    input: ConversationIdentityBatchInput,
+  ): readonly ConversationIdentity[] {
+    return [...new Set(input.sessionIds)].flatMap((id) => {
+      const identity = this.readConversationIdentity(id)
+      return identity === null ? [] : [identity]
+    })
+  }
+
+  readConversationTitleHistory(
+    input: ConversationTitleHistoryInput,
+  ): ConversationTitleHistory | null {
+    const { store } = this.deps
+    if (store.conversationBinding(input.sessionId) === null) return null
+    return store.conversationTitleHistory(input.sessionId, input.before)
   }
 
   renameConversation(

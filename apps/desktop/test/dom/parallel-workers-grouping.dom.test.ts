@@ -82,7 +82,7 @@ describe('parallel workers beside their agent', () => {
       expect(m.all('rail-worker-heading')).toHaveLength(1)
       expect(m.q('rail-worker-heading').textContent).toBe('Mira')
       assertDrawn(m.q('rail-worker-heading'), 'the agent heading', m.host)
-      const rows = [...m.q('rail-rows-agents').querySelectorAll<HTMLElement>('[data-session-id]')]
+      const rows = [...m.q('rail-rows-recent').querySelectorAll<HTMLElement>('[data-session-id]')]
       expect(ids(rows)).toEqual(Array.from({ length: count }, (_, i) => `recipe-${i + 1}`))
       for (let i = 1; i <= count; i++) {
         const label = m.q(`rail-worker-name-recipe-${i}`)

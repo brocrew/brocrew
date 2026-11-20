@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import type { AgentIdentity } from '../../../shared/runtime-ipc'
+import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
+import { fullTime } from '../lib/clock'
+import { usePaletteSearch, type SearchBand, type SearchRow } from '../composables/usePaletteSearch'
 import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -15,7 +19,6 @@ import {
   runnable,
   searchedNote,
   type PaletteAgent,
-  type PaletteCommand,
   type PaletteNavigation,
   type PaletteOpenRow,
 } from '../lib/command-palette'
@@ -104,6 +107,9 @@ const props = defineProps<{
    * is "the" one, a question `RuntimeScreen` already owns.
    */
   agent: PaletteAgent | null
+  searchCaller?: string | null
+  profiles?: readonly AgentIdentity[]
+  searchConversations?: (caller: string, query: WorkSearchQuery) => Promise<WorkSearchResult>
 }>()
 
 /**
@@ -182,37 +188,38 @@ const commands = computed(() =>
   }),
 )
 
-/**
- * The bands that have rows, best band first. A band with none is not drawn (`118`).
- *
- * ⛔ **This is the ONE order** — see {@link bandedResults}. {@link shown} is its flattening, so what
- * the cursor walks and what the eye reads are the same list by construction; they cannot come to
- * disagree about which row Enter is about.
- */
-const bands = computed(() => bandedResults(commands.value, query.value))
+const profilePicker = ref<HTMLSelectElement | null>(null)
+const groupPicker = ref<HTMLInputElement | null>(null)
+const searchMore = ref<HTMLButtonElement | null>(null)
+const {
+  profile,
+  grouped,
+  searchAvailable,
+  useReader,
+  searchPage,
+  searchBusy,
+  searchFailed,
+  readConversations,
+  readerBands,
+  searchIncomplete,
+  searchNote,
+} = usePaletteSearch(props, query, showing)
 
-/**
- * ⛔ **The rows the CURSOR may land on — which is not every row drawn, since 279.**
- *
- * ⚠️ **`279` §3 rules running a provider command out of scope, so a palette that let Enter land on
- * one would be offering something it will not do.** Filtering here rather than at each keyboard
- * branch is `169` §1's rule: `move`, `current`, the Enter handler and the click all read this one
- * list, so there is no path by which one of them reaches a row the others cannot.
- *
- * ⚑ **This is why {@link bands} and this are no longer the same list**, and every place that used to
- * ask `shown.length` for *"is anything drawn"* now asks {@link drawn} instead — see there. Getting
- * that wrong would put the no-match state on screen underneath a band full of rows.
- */
-const shown = computed(() => bands.value.flatMap((band) => band.rows).filter(runnable))
+const bands = computed<readonly SearchBand[]>(() => {
+  if (!useReader.value) return bandedResults(commands.value, query.value)
+  return [
+    ...readerBands.value,
+    ...bandedResults(
+      commands.value.filter((row) => row.group !== 'conversations'),
+      query.value,
+    ),
+  ]
+})
 
-/**
- * ⛔ **Whether anything at all is on screen** — the question the list-vs-miss branch really asks.
- *
- * ⚠️ **It used to be `shown.length > 0`, and that was the same question until 279 split it.** A
- * query matching only the agent's own commands draws a full band and no runnable row; asking
- * `shown` there would render *"Nothing matches"* over 44 visible results, and Enter would take the
- * escape hatch out of a palette that had found exactly what was asked for.
- */
+// Keep keyboard selection and pointer actions on the same runnable rows.
+const canRun = (row: SearchRow): boolean => row.expandProfile !== undefined || runnable(row)
+const shown = computed(() => bands.value.flatMap((band) => band.rows).filter(canRun))
+
 const drawn = computed(() => bands.value.some((band) => band.rows.length > 0))
 
 /** The sentence under the agent's band — see {@link agentNote} for the four states it tells apart. */
@@ -233,15 +240,8 @@ const note = computed(() =>
   }),
 )
 
-/**
- * The row Enter runs, or `null` when nothing matched.
- *
- * ⚠️ **A row that LEFT falls back to the first one**, which is the only honest landing place: the
- * conversation that was highlighted is no longer offered, so there is nothing to keep pointing at.
- * What this can never do is point at a DIFFERENT row while the person was not looking — that was
- * the index's failure, and it is why {@link cursorId} is an id.
- */
-const current = computed<PaletteCommand | null>(
+// Keep the selection by row ID when results move.
+const current = computed<SearchRow | null>(
   () => shown.value.find((row) => row.id === cursorId.value) ?? shown.value[0] ?? null,
 )
 
@@ -322,7 +322,13 @@ function move(by: number): void {
  * its own answer. The one asynchronous action — export — reports through a toast, which is a
  * surface that survives this component going away (`ToastStack` is mounted by `RuntimeScreen`).
  */
-function run(command: PaletteCommand): void {
+function run(command: SearchRow): void {
+  if (command.expandProfile !== undefined) {
+    profile.value = command.expandProfile
+    grouped.value = false
+    cursorId.value = null
+    return
+  }
   // ⛔ **A row this palette can only SHOW does nothing here either** (279 §3). The cursor already
   // cannot reach one — `shown` filters on the same {@link runnable} — so this is the CLICK half of
   // the same rule, in the same predicate. Two answers to *"may this row act"* is how one gesture
@@ -416,8 +422,9 @@ function onKey(event: KeyboardEvent): void {
     return
   }
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault()
     event.stopImmediatePropagation()
+    if (event.target === profilePicker.value) return
+    event.preventDefault()
     move(event.key === 'ArrowDown' ? 1 : -1)
     return
   }
@@ -439,8 +446,14 @@ function onKey(event: KeyboardEvent): void {
       chordRefusal.value = SEND_CHORD_REFUSED
       return
     }
-    event.preventDefault()
     event.stopImmediatePropagation()
+    if (
+      event.target === profilePicker.value ||
+      event.target === groupPicker.value ||
+      event.target === searchMore.value
+    )
+      return
+    event.preventDefault()
     if (current.value) run(current.value)
     // ⛔ **On a miss, Enter takes the ONE thing the miss offers** (found in this dispatch's own
     // review). It is not "run whatever was selected before" — there is no row, and `current` is
@@ -453,7 +466,11 @@ function onKey(event: KeyboardEvent): void {
     // is nothing to run, the button is not on screen, and firing the escape hatch would navigate
     // away from a palette that had just found what was asked for. Enter does nothing there, which
     // is the honest answer to a key pressed over rows that are not actions.
-    else if (!drawn.value) escapeToLibrary()
+    else if (
+      !drawn.value &&
+      (!useReader.value || (searchPage.value && !searchPage.value.next_cursor))
+    )
+      escapeToLibrary()
     return
   }
   if (event.key === 'Tab') {
@@ -563,11 +580,33 @@ defineExpose({
             :aria-expanded="drawn"
             :aria-controls="drawn ? 'palette-rows' : undefined"
             :aria-activedescendant="current ? current.id : undefined"
+            maxlength="200"
             placeholder="Jump to a conversation, or go somewhere…"
             autocomplete="off"
             spellcheck="false"
           />
           <span class="palette-chord">esc</span>
+        </div>
+
+        <div v-if="searchAvailable" class="palette-search-controls">
+          <label class="palette-profile">
+            Profile
+            <select ref="profilePicker" v-model="profile" data-cy="palette-profile-filter">
+              <option value="">All conversations</option>
+              <option v-for="one in props.profiles" :key="one.id" :value="one.slug">
+                {{ one.displayName ?? one.slug }}
+              </option>
+            </select>
+          </label>
+          <label class="palette-profile">
+            <input
+              ref="groupPicker"
+              v-model="grouped"
+              type="checkbox"
+              data-cy="palette-group-search"
+            />
+            Group by profile
+          </label>
         </div>
 
         <ul
@@ -577,52 +616,72 @@ defineExpose({
           data-cy="palette-rows-scroll"
           role="listbox"
         >
-          <template v-for="band in bands" :key="band.group">
-            <!-- ⚠️ **The agent's band names its provider** (279 §2's *"visibly distinguishable"*) —
-                 see `groupLabel`, which prints the name it was handed rather than deciding one. -->
-            <li class="palette-band" role="presentation" :data-cy="`palette-band-${band.group}`">
-              {{ groupLabel(band.group, props.agent) }}
+          <template v-for="band in bands" :key="band.profileGroup?.key ?? band.group">
+            <li
+              class="palette-band"
+              role="presentation"
+              :data-cy="band.profileGroup ? 'palette-profile-group' : `palette-band-${band.group}`"
+            >
+              <template v-if="band.profileGroup">
+                {{ band.profileGroup.name }}
+                <span v-if="band.profileGroup.matched !== null">
+                  · {{ band.profileGroup.matched }}
+                </span>
+              </template>
+              <template v-else>{{ groupLabel(band.group, props.agent) }}</template>
             </li>
             <li
               v-for="row in band.rows"
               :id="row.id"
               :key="row.id"
               class="palette-row"
-              :class="{ current: current?.id === row.id, listed: !runnable(row) }"
-              :role="runnable(row) ? 'option' : 'presentation'"
-              :aria-selected="runnable(row) ? current?.id === row.id : undefined"
+              :class="{
+                current: current?.id === row.id,
+                listed: !canRun(row),
+                expand: row.expandProfile !== undefined,
+              }"
+              :role="canRun(row) ? 'option' : 'presentation'"
+              :aria-selected="canRun(row) ? current?.id === row.id : undefined"
               :data-cy="`palette-row-${row.id}`"
               :data-current="current?.id === row.id"
-              :data-listed="!runnable(row)"
-              :title="row.group === 'agent' ? (row.detail ?? undefined) : undefined"
+              :data-listed="!canRun(row)"
+              :title="
+                row.group === 'agent' || (useReader && row.group === 'conversations')
+                  ? (row.detail ?? undefined)
+                  : undefined
+              "
               @mousedown.prevent="run(row)"
             >
-              <strong>{{ row.title }}</strong>
-              <!-- Absent, not blank, when there is nothing true to say (`211` §3).
-                   ⚠️ **A hover on the AGENT's rows only, and the bound above is the reason**
-                   (279, from this dispatch's own review). `MAX_COMMAND_TEXT` is 500 because the live
-                   catalogue's descriptions run to 1 135 characters and cutting at 200 loses the half
-                   of `/code-review` that names `--fix` — but this line is clipped to one line, so
-                   without a hover those extra characters would be carried across the wire and shown
-                   to nobody. ⛔ Not on BroBot's own rows: their details are short strings this app
-                   wrote, and a tooltip on every row of every band is a change to a surface `249`
-                   settled rather than a consequence of this one. -->
+              <strong>
+                {{ row.title }}
+                <span
+                  v-if="row.recorded?.archived_at != null"
+                  class="palette-recorded-mark"
+                  :title="fullTime(row.recorded.archived_at)"
+                  data-cy="palette-recorded-archive"
+                  >Archived</span
+                >
+                <span
+                  v-if="row.recorded?.title_author?.kind === 'person'"
+                  class="palette-recorded-mark"
+                  data-cy="palette-recorded-title-author"
+                  >Named by you</span
+                >
+              </strong>
               <small v-if="row.detail">{{ row.detail }}</small>
             </li>
           </template>
         </ul>
 
-        <!-- ⛔ **A search miss, and the way out of it stated in the miss itself** (`239`). It is NOT
-             the empty state and never can be: `buildCommands` always returns every destination,
-             so an empty list here means one thing only — what was typed matched nothing. ⚠️ **It
-             said *the three destinations* until `566` made it four and `570` five**, which is a
-             count in prose doing the work of a list (`a-title-that-names-a-count-the-assertion-
-             never-checks`); `command-palette.test.ts` holds the roster and this says the rule. That is
-             `104`'s "first-run distinct from no-match", settled by construction rather than by a
-             branch that could get the two the wrong way round. -->
-        <div v-else class="palette-miss" data-cy="palette-no-match">
-          <strong>{{ noMatchHeading(query) }}</strong>
-          <p>{{ NO_MATCH_BODY }}</p>
+        <div
+          v-else-if="!useReader || (searchPage && !searchPage.next_cursor)"
+          class="palette-miss"
+          data-cy="palette-no-match"
+        >
+          <strong>{{
+            useReader && searchIncomplete ? 'No matches in the pages read' : noMatchHeading(query)
+          }}</strong>
+          <p v-if="!useReader">{{ NO_MATCH_BODY }}</p>
           <button
             type="button"
             class="palette-escape"
@@ -656,7 +715,19 @@ defineExpose({
 
         <!-- ⛔ **What this palette actually looked at.** The sentence `249` §2 asks for, and the
              difference between a search and a claim about one. -->
-        <p class="palette-foot" data-cy="palette-searched">{{ note }}</p>
+        <p v-if="searchFailed" class="palette-refused" role="alert">{{ searchFailed }}</p>
+        <button
+          v-if="useReader && searchPage?.next_cursor"
+          ref="searchMore"
+          type="button"
+          class="palette-escape palette-more"
+          data-cy="palette-search-more"
+          :disabled="searchBusy"
+          @click="readConversations(true)"
+        >
+          {{ grouped ? 'Show more profiles' : 'Show more' }}
+        </button>
+        <p class="palette-foot" data-cy="palette-searched">{{ useReader ? searchNote : note }}</p>
       </div>
     </div>
   </Teleport>
@@ -668,6 +739,43 @@ defineExpose({
    first version of this comment said the two "never coexist by construction", which `show`'s guard
    makes true only at the moment of opening — an overlay raised afterwards is a state neither of
    them prevents, and the z-index is what keeps it survivable. */
+.palette-recorded-mark {
+  margin-inline-start: var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-normal);
+}
+
+.palette-search-controls,
+.palette-more {
+  align-self: start;
+  margin: var(--space-3) var(--space-8);
+}
+
+.palette-search-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+}
+
+.palette-row.expand strong {
+  color: var(--accent-2-text);
+}
+
+.palette-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
+
+.palette-profile select {
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+}
+
 .palette-scrim {
   position: fixed;
   z-index: 60;

@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import { calendarDay } from '../../src/renderer/src/lib/clock'
 import type { ArchiveOutcome } from '../../src/shared/conversation-archive'
-import type { LibraryEntry, LibraryPage } from '../../src/shared/runtime-ipc'
+import type { LibraryEntry, LibraryPage, LibraryQuery } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { panelIdentities } from './sub-agents-workers-fixture'
 
 /**
  * Archived conversations on All conversations: they are listed and marked with the day they were
@@ -73,7 +74,7 @@ const page = (entries: LibraryEntry[], matched = entries.length): LibraryPage =>
 
 type Api = {
   runtime: {
-    listLibrary: (input?: { filters?: { archived?: string } }) => Promise<LibraryPage>
+    listLibrary: (input?: LibraryQuery) => Promise<LibraryPage>
     restoreConversation: (input: { sessionId: string }) => Promise<ArchiveOutcome>
     archiveConversation: (input: { sessionId: string }) => Promise<ArchiveOutcome>
   }
@@ -147,6 +148,77 @@ async function tickArchived(m: Mounted, on: boolean): Promise<void> {
 afterEach(() => {
   unmountAll()
   delete stubbed().api
+})
+
+it('filters the full Library by roster profile and labels only the current query count', async () => {
+  const developer = {
+    ...panelIdentities()[0]!,
+    id: 'aid:dev',
+    slug: 'dev',
+    displayName: 'Dev Team',
+  }
+  const devRow = { ...KEPT, profileId: 'Dev' }
+  const unfiltered = page([devRow, AWAY, FOUND], 355)
+  let finishOld!: (answer: LibraryPage) => void
+  const oldProfile = new Promise<LibraryPage>((resolve) => {
+    finishOld = resolve
+  })
+  let finishMiss!: (answer: LibraryPage) => void
+  const miss = new Promise<LibraryPage>((resolve) => {
+    finishMiss = resolve
+  })
+  const read = vi
+    .fn<Api['runtime']['listLibrary']>()
+    .mockResolvedValueOnce(unfiltered)
+    .mockReturnValueOnce(oldProfile)
+    .mockResolvedValueOnce({ ...unfiltered, entries: [devRow], matched: 325 })
+    .mockReturnValueOnce(miss)
+    .mockResolvedValueOnce({ ...unfiltered, entries: [FOUND], matched: 1 })
+  stub([unfiltered], { done: true, conversations: [] })
+  stubbed().api!.runtime.listLibrary = read
+  const m = mount(SessionLibrary, { identities: [developer] })
+  await expect.poll(() => m.all('library-row-th_found').length).toBe(1)
+  expect(read).toHaveBeenNthCalledWith(1, { query: '', filters: {} })
+
+  const picker = m.q('library-facet-profile') as HTMLSelectElement
+  expect(picker.options[1]?.textContent?.trim()).toBe('Dev Team')
+  picker.value = 'dev'
+  picker.dispatchEvent(new Event('change'))
+  await expect.poll(() => read.mock.calls.length).toBe(2)
+  expect(read).toHaveBeenNthCalledWith(2, { query: '', filters: { profileId: 'dev' } })
+  expect(m.q('library-filter-count').textContent).toContain('—')
+
+  const search = m.q('library-search') as HTMLInputElement
+  search.value = 'agenda'
+  search.dispatchEvent(new Event('input'))
+  await expect.poll(() => m.q('library-filter-count').textContent).toContain('325')
+  expect(read).toHaveBeenNthCalledWith(3, { query: 'agenda', filters: { profileId: 'dev' } })
+  expect(m.q('library-counts').textContent).toContain('355')
+  expect(m.all('library-row-th_kept')).toHaveLength(1)
+  expect(m.all('library-row-th_found')).toHaveLength(0)
+  finishOld({ ...unfiltered, entries: [AWAY], matched: 17 })
+  await oldProfile
+  await nextTick()
+  expect(m.q('library-filter-count').textContent).toContain('325')
+  expect(m.all('library-row-th_away')).toHaveLength(0)
+
+  search.value = 'missing'
+  search.dispatchEvent(new Event('input'))
+  await nextTick()
+  expect(m.q('library-filter-count').textContent).toContain('—')
+  await expect.poll(() => read.mock.calls.length).toBe(4)
+  expect(m.all('library-filtered-empty')).toHaveLength(0)
+  expect(m.all('library-row-th_kept')).toHaveLength(1)
+  finishMiss({ ...unfiltered, entries: [], matched: 0 })
+  const chip = 'library-constraint-profileId'
+  await expect.poll(() => m.all('library-filtered-empty').length).toBe(1)
+  expect(m.q('library-filter-count').textContent).toContain('0 match')
+  expect(m.all('library-row-th_kept')).toHaveLength(0)
+  expect(m.q(chip).textContent).toContain('Profile: Dev Team')
+  m.q(chip).click()
+  await expect.poll(() => m.all('library-row-th_found').length).toBe(1)
+  expect(read).toHaveBeenNthCalledWith(5, { query: 'missing', filters: {} })
+  expect(picker.value).toBe('')
 })
 
 describe('an archived conversation is listed, and marked', () => {

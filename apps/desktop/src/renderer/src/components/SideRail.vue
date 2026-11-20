@@ -8,17 +8,7 @@ import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contr
 
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
 import crewMark from '../assets/brocrew-mark.svg'
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  nextTick,
-  ref,
-  useId,
-  watch,
-  watchEffect,
-  type Ref,
-} from 'vue'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, useId, watch, watchEffect } from 'vue'
 import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
@@ -45,6 +35,13 @@ import {
   type ListedConversation,
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
+import { agoWords, fullTime } from '../lib/clock'
+import {
+  CONVERSATION_IDENTITY_BATCH_SIZE,
+  type ConversationIdentity,
+  type ConversationIdentityBatchInput,
+} from '../../../shared/conversation-title'
+import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation, PaletteOpenRow } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import { liveSignalView } from '../lib/live-signal'
@@ -69,17 +66,10 @@ import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWh
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
-import { profileItRunsAs, whereItWorks } from '../lib/session-record'
+import { whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
 import type { SessionRecord } from '../lib/session-record'
 import { useSpawnSafety } from '../lib/spawn-safety'
-import {
-  RAIL_SECTION_REMEMBERED,
-  RAIL_SECTIONS,
-  railSectionHeading,
-  railSectionOf,
-  type RailSectionKey,
-} from '../lib/rail-sections'
 import { usePersistentToggle } from '../composables/usePersistentToggle'
 import AgentState from './AgentState.vue'
 import CommandPalette from './CommandPalette.vue'
@@ -91,7 +81,7 @@ import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
 /**
  * The rail holds destinations, the conversation list, one live signal and the stop switch.
  * Tools, agents and projects keep their counts and actions on their own pages.
- * Conversations stay split between BroBot and other agents; the stop switch stays in reach.
+ * Conversations are split by whether they need you; the stop switch stays in reach.
  */
 const client = useClientApi()
 const nameOfProvider = useProviderNames(client)
@@ -207,6 +197,14 @@ const props = withDefaults(
     waiting?: WhatEachConversationIsWaitingOn | null
     /** Collapsed to its icons, and each conversation to its avatar and work label. */
     collapsed?: boolean
+    readIdentities?: (
+      input: ConversationIdentityBatchInput,
+    ) => Promise<readonly ConversationIdentity[]>
+    identityRevision?: number
+    searchConversations?: (
+      conversation: string,
+      query: WorkSearchQuery,
+    ) => Promise<WorkSearchResult>
   }>(),
   {
     collapsed: false,
@@ -227,6 +225,7 @@ const emit = defineEmits<{
    * conversation is doing. The screen owns which surface is showing, so it owns the look too.
    */
   select: [sessionId: string]
+  readConversation: [sessionId: string]
   /** Show the new-conversation surface. Starting it happens there, where the thread begins. */
   newConversation: []
   /**
@@ -399,6 +398,7 @@ onBeforeUnmount(() => lists.clear())
 const {
   hostResumable,
   hostUnresumable,
+  coverageComplete,
   looked,
   listError,
   said,
@@ -508,34 +508,16 @@ function placeOf(record: SessionRecord): string | null {
 
 /** ⚑ **D-017b · one row of the one list** — the same markup and the same press, whatever it is doing. */
 interface RailRow extends PaletteOpenRow {
+  readonly activityAt?: number
   readonly worker?: ListedConversation['worker']
   readonly facets: AgentFacets
   readonly detail?: string
   readonly standing: Standing
   /** ⚑ Another window has it open — said on the row, because a message from here is refused. */
   readonly elsewhere: boolean
-  /**
-   * ⚑ **2026-10-01 · which section draws it** — BroBot's or the other agents' — decided once, here,
-   * by {@link railSectionOf} off the profile the conversation runs as.
-   */
-  readonly section: RailSectionKey
 }
 
-/**
- * ⚑ **D-017b · every conversation, described ONCE per render, newest first** — the ones this window
- * is fed from their own records, every other from the host's list (the one on screen included,
- * when it is drawn from its ledger: the host's row is what the list admits).
- *
- * ⚠️ **A row held here keeps its record's derivation** (099): the mark and the word come from ONE
- * `facets` call — the mark takes the object, the word takes {@link standingWord} of it — so the row
- * is one answer in two registers. ⚑ **Every other row draws the one state the host says of it**
- * ({@link facetsOfState}, {@link agentStateWords}) — the same state `list_agents` says. ⛔ No row
- * says whether a process runs (`05` rule 5); ⚑ it says `open in another window` where that is true,
- * because a message from here is refused there.
- *
- * ⚑ **Order**: newest activity first, by the host's row; a conversation the host has not listed yet
- * (a launch whose row is being written) goes first.
- */
+/** Local records supply live state. Other rows and activity order come from the host listing. */
 const rows = computed<RailRow[]>(() => {
   const byHost = new Map(listed.value.map((row) => [row.sessionId, row]))
   const shown = props.onScreen
@@ -577,12 +559,10 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(worker ? { worker } : {}),
         sessionId: record.sessionId,
+        activityAt: host?.updatedAt,
         provider: record.meta?.provider ?? null,
         facets,
         standing,
-        // ⛔ **The word the row SHOWS** (203) — ⚑ D-017 · R11: in the ONE state's words
-        // (`stateHere`), whose answer it waits on (R19) and who holds the work it gave out
-        // (D-036) — the plate's own.
         ...(limit ? { detail: limit.detail } : purpose ? { detail: purpose.detail } : {}),
         word: limit?.short ?? purpose?.word ?? standingWord(facets, currentState),
         label: workerLabel(who(record), worker, host?.named),
@@ -594,9 +574,6 @@ const rows = computed<RailRow[]>(() => {
         // ⛔ **The one fact that tells two rows apart** (211 §3), read off the record.
         opening: record.opening,
         elsewhere: false,
-        // ⛔ **The profile it RUNS as** — `null` for one this app ran as nobody, whose `meta`
-        // carries BroBot's id only for the type's sake.
-        section: railSectionOf(profileItRunsAs(record.meta)),
       },
     })
   }
@@ -617,6 +594,7 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(host.worker ? { worker: host.worker } : {}),
         sessionId: host.sessionId,
+        activityAt: host.updatedAt,
         provider: host.provider,
         facets,
         standing: standingOf(facets),
@@ -627,8 +605,6 @@ const rows = computed<RailRow[]>(() => {
         place: host.place,
         opening: shownHere?.opening ?? null,
         elsewhere: host.inAnotherWindow,
-        // ⚑ The slug its label was named from — a person's own conversations never reach this list.
-        section: railSectionOf(host.identity),
       },
     })
   }
@@ -646,21 +622,6 @@ const waitsShort = computed(() =>
     props.open.map((record) => record.sessionId),
   ),
 )
-
-/**
- * ⛔ **How many open conversations are waiting on YOU, live** (203, from 195 H3).
- *
- * ⚠️ **`standingOf`, not `needing`, and the difference is a decision the design already made.** A
- * plan go-ahead is a `needing` and is deliberately NOT a `waiting` standing — *"a go-ahead blocks
- * nothing and can be pressed whenever"* — so counting every badge would put a number on the rail
- * that does not agree with the rows under it. This counts exactly the rows that say `waiting`.
- *
- * ⚑ **2026-10-01 · per section** — each section's header counts its own rows, so the two badges
- * add up to what the one badge said.
- */
-function needingCount(of: readonly RailRow[]): number {
-  return of.filter((row) => row.standing === 'waiting').length
-}
 
 /* ---------------------------------------------------------------------------
    The command palette (249) — hosted HERE, and the reason is the constraint.
@@ -683,85 +644,139 @@ const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
  * about which conversation "this" is.
  */
 const onScreenId = computed(() => (props.place === null ? props.activeId : null))
+const paletteSearchCaller = computed(
+  () =>
+    listed.value.find((row) => row.sessionId === onScreenId.value)?.sessionId ??
+    listed.value[0]?.sessionId ??
+    null,
+)
 
-/* ---------------------------------------------------------------------------
-   ⚑ 2026-10-01 · the one list in two sections — BroBot's, then the other agents'.
-   --------------------------------------------------------------------------- */
+const RAIL_PAGE_SIZE = 15
+const sectionNames = { 'needs-you': 'Needs you', recent: 'Recent' } as const
+type RailSectionKey = keyof typeof sectionNames
 
-/**
- * ⚑ **Whether each section is open — per viewer, remembered across a reload**, as the drawer
- * remembers its own. Both open until a person folds one.
- */
-const sectionOpen: Readonly<Record<RailSectionKey, Ref<boolean>>> = {
-  brobot: usePersistentToggle(RAIL_SECTION_REMEMBERED.brobot, true),
-  agents: usePersistentToggle(RAIL_SECTION_REMEMBERED.agents, true),
+const sectionOpen = {
+  'needs-you': usePersistentToggle('brobot2.railNeedsYouOpen', true),
+  recent: usePersistentToggle('brobot2.railRecentOpen', true),
 }
-
-/** ⚑ The id each section's rows are drawn under — what its header's `aria-controls` names. */
+const recentLimit = ref(RAIL_PAGE_SIZE)
+watch(
+  () => props.workspaceFolder?.path,
+  () => (recentLimit.value = RAIL_PAGE_SIZE),
+)
 const sectionIdBase = useId()
 const rowsIdOf = (key: RailSectionKey): string => `${sectionIdBase}-rows-${key}`
 
-/** ⚑ One section, as its header and its rows draw it. */
-interface RailSection {
-  readonly key: RailSectionKey
-  readonly heading: string
-  /** Worker pools keep durable number order within the newest-first list. */
-  readonly rows: readonly RailRow[]
-  readonly workerHeads: ReadonlyMap<
-    string,
-    { readonly identity: string; readonly giver: string; readonly label: string }
-  >
-  /** How many of them wait on a person — see {@link needingCount}. */
-  readonly needing: number
-  readonly open: boolean
-  /**
-   * ⛔ **Folded, and the conversation on screen is one of its rows** — so its header carries the
-   * selection the hidden row cannot. ⚑ Never true while the section is open: the row says it.
-   */
-  readonly holdsTheOneOnScreen: boolean
+const waitingRows = computed(() => rows.value.filter((row) => row.standing === 'waiting'))
+const recentRows = computed(() => rows.value.filter((row) => row.standing !== 'waiting'))
+
+function railSection(key: RailSectionKey, eligible: readonly RailRow[], shown: readonly RailRow[]) {
+  const groups = groupWorkers(shown, (row) => row.sessionId)
+  const workerHeads = new Map(
+    groups.flatMap(({ worker, rows }) =>
+      worker
+        ? [
+            [
+              rows[0]!.sessionId,
+              {
+                identity: worker.identity,
+                giver: worker.giver,
+                label: workerName(worker, props.agents?.identities ?? null),
+              },
+            ] as const,
+          ]
+        : [],
+    ),
+  )
+  const open = sectionOpen[key].value
+  const selected = eligible.some((row) => row.sessionId === onScreenId.value)
+  const recentTotal = key === 'recent' && coverageComplete.value ? eligible.length : null
+  return {
+    key,
+    heading: sectionNames[key],
+    rows: groups.flatMap((group) => group.rows),
+    workerHeads,
+    open,
+    holdsTheOneOnScreen:
+      selected && (!open || !shown.some((row) => row.sessionId === onScreenId.value)),
+    count:
+      key === 'needs-you'
+        ? String(eligible.length)
+        : recentTotal === null
+          ? open
+            ? `${shown.length} shown`
+            : null
+          : open
+            ? `${shown.length} of ${recentTotal}`
+            : String(recentTotal),
+  }
 }
 
-/**
- * ⚑ **The sections with rows in them, BroBot's first.** ⛔ A section with no rows is not drawn, and a
- * folded one keeps its count, its badge and — when it holds the conversation on screen — the mark.
- */
-const sections = computed<RailSection[]>(() =>
-  RAIL_SECTIONS.flatMap((key) => {
-    const inIt = rows.value.filter((row) => row.section === key)
-    if (inIt.length === 0) return []
-    const open = sectionOpen[key].value
-    const groups = groupWorkers(inIt, (row) => row.sessionId)
-    const workerHeads = new Map(
-      groups.flatMap((group) =>
-        group.worker
-          ? [
-              [
-                group.rows[0]!.sessionId,
-                {
-                  identity: group.worker.identity,
-                  giver: group.worker.giver,
-                  label: workerName(group.worker, props.agents?.identities ?? null),
-                },
-              ] as const,
-            ]
-          : [],
-      ),
-    )
-    return [
-      {
-        key,
-        heading: railSectionHeading(key, props.agents?.identities ?? null),
-        rows: groups.flatMap((group) => group.rows),
-        workerHeads,
-        needing: needingCount(inIt),
-        open,
-        holdsTheOneOnScreen: !open && inIt.some((row) => row.sessionId === onScreenId.value),
-      },
-    ]
-  }),
+const sections = computed(() => {
+  const waiting = waitingRows.value
+  const recent = recentRows.value
+  return [
+    ...(waiting.length ? [railSection('needs-you', waiting, waiting)] : []),
+    ...(recent.length ? [railSection('recent', recent, recent.slice(0, recentLimit.value))] : []),
+  ]
+})
+
+const moreRecent = computed(() =>
+  Math.min(RAIL_PAGE_SIZE, recentRows.value.length - recentLimit.value),
 )
 
-/** ⚑ A press on a section's header folds it, or unfolds it. */
+const identityIds = computed((previous?: string[]) => {
+  const ids = sections.value
+    .filter((section) => section.open)
+    .flatMap((section) => section.rows.map((row) => row.sessionId))
+    .sort()
+  return previous?.length === ids.length && previous.every((id, i) => id === ids[i])
+    ? previous
+    : ids
+})
+const identities = ref(new Map<string, ConversationIdentity | null>())
+let acceptedIdentityRevision: number | undefined
+watch(
+  [identityIds, () => props.workspaceFolder?.path, () => props.identityRevision],
+  async ([ids, workspace, revision], [, previousWorkspace], invalidate) => {
+    if (workspace !== previousWorkspace) identities.value = new Map()
+    const read = props.readIdentities
+    if (!read) return
+    let current = true
+    invalidate(() => (current = false))
+    const before = identities.value
+    const unread = revision !== acceptedIdentityRevision ? ids : ids.filter((id) => !before.has(id))
+    const batches: ConversationIdentityBatchInput[] = []
+    for (let i = 0; i < unread.length; i += CONVERSATION_IDENTITY_BATCH_SIZE) {
+      const sessionIds = unread.slice(i, i + CONVERSATION_IDENTITY_BATCH_SIZE)
+      batches.push({ sessionIds })
+    }
+    try {
+      const answers = await Promise.all(batches.map((batch) => read(batch)))
+      if (current) {
+        const merged = new Map(ids.map((id) => [id, before.get(id) ?? null]))
+        for (const id of unread) merged.set(id, null)
+        for (const [i, batch] of answers.entries()) {
+          for (const item of batch) {
+            if (batches[i]?.sessionIds.includes(item.conversation)) {
+              merged.set(item.conversation, item)
+            }
+          }
+        }
+        acceptedIdentityRevision = revision
+        identities.value = merged
+      }
+    } catch {
+      // Keep the last identities for this workspace when a read fails.
+    }
+  },
+  { immediate: true },
+)
+
+function rowTitle(row: RailRow): string {
+  return identities.value.get(row.sessionId)?.title ?? conversationTitle(row.label, row.named)
+}
+
 function fold(key: RailSectionKey): void {
   sectionOpen[key].value = !sectionOpen[key].value
 }
@@ -808,6 +823,7 @@ const paletteAgent = computed<PaletteAgent | null>(() => {
  */
 function fromPalette(action: PaletteNavigation): void {
   if (action.kind === 'select') return emit('select', action.sessionId)
+  if (action.kind === 'read-conversation') return emit('readConversation', action.sessionId)
   if (action.kind === 'go') return emit('go', action.place)
   emit('newConversation')
 }
@@ -933,6 +949,9 @@ const platform = platformHere()
       :list-error="listError"
       :active-id="onScreenId"
       :agent="paletteAgent"
+      :search-caller="paletteSearchCaller"
+      :search-conversations="props.searchConversations"
+      :profiles="props.agents?.identities"
       @navigate="fromPalette"
     />
 
@@ -1140,7 +1159,7 @@ const platform = platformHere()
         </button>
       </div>
 
-      <!-- Opening any row shows its full conversation, and sending a message there continues it. Group the same ordered rows into collapsible BroBot and other-agent sections, BroBot first. Omit empty sections rather than split by open or closed state. -->
+      <!-- Work needing you stays above the paged Recent list. -->
       <div class="rail-section rail-conversations" data-wired="true" data-cy="rail-conversations">
         <p
           v-if="!looked && !listError"
@@ -1179,18 +1198,15 @@ const platform = platformHere()
               <use href="#i-chevron" />
             </svg>
             <span class="section-name" :title="section.heading">{{ section.heading }}</span>
-            <!-- ⛔ **A LIVE attention count** (203, from 195 H3). It renders only when there is
-                 something to say, so a quiet rail is quiet — the same rule the *Waiting on you*
-                 badge follows and the reason a fresh install shows no zero. -->
             <span
-              v-if="section.needing > 0"
+              v-if="section.key === 'needs-you'"
               class="count badge"
-              :data-cy="`rail-needs-you-${section.key}`"
-              :title="`${NEEDS_YOU}: ${section.needing}`"
-              >{{ section.needing }}</span
+              data-cy="rail-needs-you"
+              :title="`${NEEDS_YOU}: ${section.count}`"
+              >{{ section.count }}</span
             >
-            <span class="count" :data-cy="`rail-count-${section.key}`">{{
-              section.rows.length
+            <span v-else-if="section.count !== null" class="count" data-cy="rail-count-recent">{{
+              section.count
             }}</span>
           </button>
           <div
@@ -1218,13 +1234,20 @@ const platform = platformHere()
                 :data-cy="`open-session-${row.sessionId}`"
                 :data-session-id="row.sessionId"
                 :data-active="row.sessionId === onScreenId"
-                :aria-label="conversationTitle(row.label, row.named)"
+                :aria-label="rowTitle(row)"
                 :aria-description="
                   [
                     row.worker
                       ? workerDescription(row.worker, props.agents?.identities ?? null)
                       : null,
                     row.detail,
+                    identities.get(row.sessionId)?.address,
+                    !row.worker && row.named && identities.get(row.sessionId)
+                      ? conversationTitle(row.label, row.named)
+                      : null,
+                    identities.get(row.sessionId)?.author?.kind === 'person'
+                      ? 'Named by you'
+                      : null,
                   ]
                     .filter(Boolean)
                     .join(' ') || undefined
@@ -1238,7 +1261,8 @@ const platform = platformHere()
                   props.collapsed
                     ? [
                         row.worker && row.named ? row.label : null,
-                        conversationTitle(row.label, row.named),
+                        rowTitle(row),
+                        identities.get(row.sessionId)?.address,
                         row.worker
                           ? workerDescription(row.worker, props.agents?.identities ?? null)
                           : null,
@@ -1259,56 +1283,29 @@ const platform = platformHere()
                   :data-cy="`rail-work-label-${row.sessionId}`"
                   >{{ row.named.label }}</span
                 >
-                <span class="rail-copy" :class="{ 'rail-worker-top': row.worker }">
+                <span
+                  class="rail-copy"
+                  :class="{ 'rail-worker-top': row.worker && !identities.get(row.sessionId) }"
+                >
                   <!-- The full title remains available on hover and as the button’s name. -->
                   <strong
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
                     :title="
-                      row.worker
+                      row.worker && !identities.get(row.sessionId)
                         ? [row.label, row.named?.title].filter(Boolean).join(' · ')
-                        : conversationTitle(row.label, row.named)
+                        : rowTitle(row)
                     "
-                    >{{ row.worker ? row.label : conversationTitle(row.label, row.named) }}</strong
+                    >{{
+                      row.worker && !identities.get(row.sessionId) ? row.label : rowTitle(row)
+                    }}</strong
                   >
                   <span
-                    v-if="row.worker"
+                    v-if="row.worker && !identities.get(row.sessionId)"
                     class="rail-worker-state"
                     :title="row.detail ?? workerState(row.word, row.named)"
                     :data-cy="`rail-state-word-${row.sessionId}`"
                     >{{ workerState(row.word, row.named) }}</span
                   >
-                  <template v-if="row.worker">
-                    <small
-                      v-for="piece in workerSubtitles(
-                        row.sessionId,
-                        row.named,
-                        workByHolder.get(row.sessionId) ?? [],
-                      )"
-                      :key="piece.key"
-                      class="rail-worker-piece"
-                      :title="piece.text"
-                      >{{ piece.text }}</small
-                    >
-                  </template>
-                  <!-- ⛔ **What this conversation was opened with** (211 §3, from 210 finding 4). ⚠️
-                     **Absent, not blank, when the app does not know it** — a row that made one up
-                     out of the oldest message it happens to hold would look exactly like a row that
-                     knows. -->
-                  <small
-                    v-if="row.opening"
-                    :id="`rail-opening-${row.sessionId}`"
-                    class="opening"
-                    :title="row.opening"
-                    :data-cy="`session-opening-${row.sessionId}`"
-                    >{{ row.opening }}</small
-                  >
-                  <!-- ⛔ **`row.word`, not `row.standing`** (203, from 195 H3): the word names WHICH
-                     wait, and `data-standing` keeps the coarse word cross-surface tests read (099).
-                     ⛔ **449 · WHERE it is working, last**: the rail is a 200px column, so whatever
-                     is last is what ellipsizes, and a folder a person can recover from the hover is
-                     a better thing to lose than the word that says whether the conversation is
-                     waiting on them. ⚑ **D-016 · commit 7 · R2 — the agent's name, first, when the
-                     work titles the row.** -->
                   <small
                     :id="`rail-state-${row.sessionId}`"
                     :data-standing="row.standing"
@@ -1326,21 +1323,84 @@ const platform = platformHere()
                         .filter(Boolean)
                         .join(' · ')
                     "
-                    ><template v-if="row.named && !row.worker"
-                      ><span>{{ row.label }}</span> · </template
-                    >{{ row.provider
-                    }}<template v-if="!row.worker">
+                    ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
+                      ><span>{{ row.label }}</span></template
+                    ><template v-if="!identities.get(row.sessionId) && row.provider">
+                      <template v-if="row.named && !row.worker"> · </template
+                      >{{ row.provider }} </template
+                    ><template v-if="!row.worker || identities.get(row.sessionId)">
+                      <template v-if="row.provider || row.named || identities.get(row.sessionId)">
+                        ·
+                      </template>
+                      <span :data-cy="`rail-state-word-${row.sessionId}`">
+                        {{ row.worker ? workerState(row.word, row.named) : row.word }}
+                      </span></template
+                    ><template v-if="row.activityAt !== undefined">
                       ·
-                      <span :data-cy="`rail-state-word-${row.sessionId}`">{{
-                        row.word
-                      }}</span></template
+                      <time :title="fullTime(row.activityAt)">{{
+                        agoWords(row.activityAt, railMinute)
+                      }}</time> </template
                     ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
                     ><template v-if="row.place"> · {{ row.place }}</template></small
+                  >
+                  <small
+                    v-if="identities.get(row.sessionId)"
+                    :title="
+                      [identities.get(row.sessionId)?.address, row.provider]
+                        .filter(Boolean)
+                        .join(' · ')
+                    "
+                    >Conversation
+                    <span :data-cy="`rail-address-${row.sessionId}`">{{
+                      identities.get(row.sessionId)?.address
+                    }}</span>
+                    <template v-if="row.provider"> · {{ row.provider }}</template>
+                    <template v-if="identities.get(row.sessionId)?.author?.kind === 'person'">
+                      · Named by you</template
+                    >
+                  </small>
+                  <small
+                    v-if="!row.worker && row.named && identities.get(row.sessionId)"
+                    :title="conversationTitle(row.label, row.named)"
+                    >{{ conversationTitle(row.label, row.named) }}</small
+                  >
+                  <template v-if="row.worker">
+                    <small
+                      v-for="piece in workerSubtitles(
+                        row.sessionId,
+                        row.named,
+                        workByHolder.get(row.sessionId) ?? [],
+                      )"
+                      :key="piece.key"
+                      class="rail-worker-piece"
+                      :title="piece.text"
+                      >{{ piece.text }}</small
+                    >
+                  </template>
+                  <small
+                    v-if="row.opening"
+                    :id="`rail-opening-${row.sessionId}`"
+                    class="opening"
+                    :title="row.opening"
+                    :data-cy="`session-opening-${row.sessionId}`"
+                    >{{ row.opening }}</small
                   >
                 </span>
               </button>
             </template>
           </div>
+          <button
+            v-if="section.key === 'recent' && section.open && moreRecent > 0"
+            class="rail-item rail-show-more"
+            type="button"
+            data-cy="rail-show-more"
+            :aria-label="`Show ${moreRecent} more recent conversations`"
+            :title="props.collapsed ? `Show ${moreRecent} more` : undefined"
+            @click="recentLimit += RAIL_PAGE_SIZE"
+          >
+            <svg class="icon" aria-hidden="true"><use href="#i-chevron" /></svg>
+            <span class="rail-copy">Show {{ moreRecent }} more</span>
+          </button>
         </section>
         <!-- 🔴 **685 · the waits reading could not read every row** (`676` F-R18a) — so a row above
              reading *idle* may be waiting. ⚑ Once, under the rows it qualifies, and only when one
@@ -1348,6 +1408,15 @@ const platform = platformHere()
         <p v-if="waitsShort" class="rail-unread" data-cy="rail-waits-unread">
           <strong>{{ ROWS_UNREAD_LEAD }}</strong> {{ waitsShort }}
         </p>
+        <button
+          v-if="paletteSearchCaller && props.searchConversations && !props.collapsed"
+          class="rail-item rail-find"
+          type="button"
+          data-cy="rail-find-conversation"
+          @click="palette?.toggle()"
+        >
+          Find a conversation
+        </button>
       </div>
     </div>
 
@@ -1452,6 +1521,16 @@ const platform = platformHere()
 </template>
 
 <style scoped>
+.rail-show-more,
+.rail-find {
+  color: var(--accent-text);
+  font: inherit;
+}
+
+.rail-show-more .icon {
+  transform: rotate(90deg);
+}
+
 .rail-worker-heading {
   margin: var(--space-4) var(--space-6) var(--space-2);
   color: var(--muted);

@@ -215,7 +215,11 @@ import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
 import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
-import { theWorkAPersonGave } from '../lib/working-together'
+import type {
+  ConversationIdentity,
+  ConversationIdentityBatchInput,
+  ConversationRenameInput,
+} from '../../../shared/conversation-title'
 import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
 import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
@@ -244,9 +248,12 @@ import type { FirstMessageCameTo, LaunchDoor, SendIntent } from '../lib/session-
 import { createWindow, openAt, prependPage, type WindowState } from '../lib/transcript-window'
 import AppTitleBar from './AppTitleBar.vue'
 import ConversationPane from './ConversationPane.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
+import type { TaskPageSource } from '../composables/useConversationTaskPage'
 import MessageLinks from './MessageLinks.vue'
 import LinkedHistory from './LinkedHistory.vue'
-import type { ResolvedMessageLink } from '../lib/message-links'
+import { linkFailureReason, type ResolvedMessageLink } from '../lib/message-links'
+import type { WorkSearchQuery } from '../../../shared/work-search'
 import { createMessageLinkResolver } from '../lib/runtime-message-links'
 import IconSprite from './IconSprite.vue'
 import NewConversation from './NewConversation.vue'
@@ -601,12 +608,13 @@ async function jumpToLatestForActive(): Promise<void> {
 const reading = ref<{ entry: LibraryEntry; history: WindowState } | null>(null)
 
 /**
- * ⚑ **D-017b · a library entry, pressed** — one this app records opens in its full view
- * ({@link openConversation}); one it holds no ledger for is read, and its view says why.
+ * An archived Library row uses the same read-only history route as conversation search.
+ * Other recorded rows open in their full view. Provider-only rows keep the Library reader.
  */
 function readFromTheLibrary(entry: LibraryEntry): void {
   if (entry.recordId) {
-    void openConversation(entry.recordId)
+    if (entry.archivedAt === undefined) void openConversation(entry.recordId)
+    else void openFoundConversation(entry.recordId)
     return
   }
   reading.value = { entry, history: createWindow() }
@@ -709,6 +717,28 @@ async function openMessageDestination(answer: ResolvedMessageLink): Promise<bool
   linkedIdentity.value = null
   await focusBack()
   return true
+}
+
+function searchConversations(conversation: string, query: WorkSearchQuery) {
+  return window.api.runtime.searchWork({ conversation, query })
+}
+
+function readRailIdentities(input: ConversationIdentityBatchInput) {
+  return appClosing.value
+    ? Promise.resolve([])
+    : window.api.runtime.readConversationIdentities(input)
+}
+
+async function openFoundConversation(id: string): Promise<void> {
+  const from = messageLinkPlace()
+  try {
+    const result = await resolveMessageLink(`brocrew://conversation/${encodeURIComponent(id)}`)
+    if (!stillAtLinkPlace(from)) return
+    if (!(await openMessageDestination(result)) && stillAtLinkPlace(from))
+      say(linkFailureReason(result))
+  } catch (cause) {
+    if (stillAtLinkPlace(from)) say(readableError(cause))
+  }
 }
 
 /**
@@ -3018,42 +3048,60 @@ const waitsBeganOfActive = computed(() =>
       },
 )
 
-/**
- * 🔴 **D-016 · commit 7 · R2 — the work that names the conversation on screen**, off its row in the
- * one list, as {@link listedStateOfActive} is: the header titles it with that work. ⚑ `null` while
- * the list names none.
- */
 const listedNamedOfActive = computed(() =>
   active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.named ?? null),
 )
 
-/**
- * ⚑ **R4 — the header's rename, offered only where the door accepts it: a piece a person gave.**
- * ⛔ On this surface that is exactly a ROOT (a label of one number): a conversation that owns a root
- * is named by that root, and one that owns none is named by a piece its parent gave it — only a
- * conversation with a root takes work on for a person.
- *
- * ⚑ **A refusal is the door's own words, handed back to the field**; a throw (the bridge, a quit)
- * is said as {@link readableError} says it. ⚠️ The list is asked again BEFORE the field closes, so
- * the old title does not flash back — except on a conversation still starting, whose row is written
- * once its launch settles: the old title shows until then, and the `work` announcement the host
- * makes when the row is down re-reads the list here, as in every other window.
- */
-const retitleOfActive = computed(() => {
-  // ⚑ **UI-008 · the one rule, asked** — the card's *Current task* draws the same root.
-  const named = theWorkAPersonGave(listedNamedOfActive.value)
-  if (named === null) return undefined
-  return async (title: string): Promise<string | null> => {
-    try {
-      const retitled = await window.api.runtime.retitleWork({ piece: named.label, title })
-      if (!retitled.ok) return retitled.reason
-      await rail.value?.refreshResumable()
-      return null
-    } catch (cause) {
-      return readableError(cause)
-    }
+const selectedForIdentity = computed(() =>
+  surface.value === 'conversation' && active.value?.meta ? active.value : null,
+)
+const conversationIdentity = ref<ConversationIdentity | null>(null)
+const workRevision = ref(0)
+const agentIdentityRevision = ref(0)
+const readTitleHistory: TitleHistorySource['read'] = (input) =>
+  appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
+const readTaskPage: TaskPageSource['read'] = (input) =>
+  appClosing.value
+    ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
+    : window.api.runtime.readConversationTasks(input)
+let identityRead = 0
+let identitySelection = 0
+
+async function readSelectedIdentity(): Promise<void> {
+  const selected = selectedForIdentity.value
+  const reading = ++identityRead
+  if (selected === null || appClosing.value) return
+  const sessionId = selected.sessionId
+  try {
+    const identity = await window.api.runtime.readConversationIdentity({ sessionId })
+    if (reading !== identityRead || selected !== selectedForIdentity.value) return
+    if (identity === null || identity.conversation === sessionId)
+      conversationIdentity.value = identity
+  } catch {
+    // Keep the last reading for this selection when the host cannot answer.
   }
-})
+}
+
+watch(
+  selectedForIdentity,
+  () => {
+    identitySelection += 1
+    conversationIdentity.value = null
+    void readSelectedIdentity()
+  },
+  { immediate: true, flush: 'sync' },
+)
+
+async function renameConversation(input: ConversationRenameInput) {
+  const selection = identitySelection
+  const renamed = await window.api.runtime.renameConversation(input)
+  if (renamed.ok && selectedForIdentity.value?.sessionId === renamed.conversation) {
+    if (selection === identitySelection) conversationIdentity.value = renamed
+    // Re-read after the reply so a concurrent work notice cannot leave an older title visible.
+    void readSelectedIdentity()
+  }
+  return renamed
+}
 
 // Arriving at Recent activity or Waiting on you reads again at once, so neither shows a reading up
 // to a tick old.
@@ -3143,6 +3191,8 @@ onMounted(() => {
     // conversations' ledgers, so the reader asks the question it already asks and gets the whole
     // answer — which is this channel's contract rather than an economy.
     work: () => {
+      void readSelectedIdentity()
+      workRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheCast()
@@ -3170,6 +3220,8 @@ onMounted(() => {
     // and this one are the same function rather than two readers of one store.
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
+      void readSelectedIdentity()
+      agentIdentityRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       refreshAgents()
@@ -3804,6 +3856,10 @@ onUnmounted(() => {
           @fold="railFold.toggle()"
           @new-conversation="place = 'new'"
           @select="select"
+          :read-identities="readRailIdentities"
+          :identity-revision="workRevision + agentIdentityRevision"
+          :search-conversations="searchConversations"
+          @read-conversation="openFoundConversation"
           @go="
             (destination) => {
               linkedIdentity = null
@@ -3938,7 +3994,10 @@ onUnmounted(() => {
             :listed-state="listedStateOfActive"
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"
-            :retitle="retitleOfActive"
+            :identity="conversationIdentity"
+            :title-history="{ read: readTitleHistory, revision: workRevision }"
+            :task-page-source="{ read: readTaskPage, revision: workRevision }"
+            :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"
             :draft="drafts.read(draftKeyForActive)"

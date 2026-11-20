@@ -1,5 +1,10 @@
 import type { MemoryAmendmentAsked, MemoryCheckAsked, MemoryUndoAsked } from '../agent-memory'
 import type { RulesBaseline } from '../agent-rules'
+import type {
+  ConversationIdentityBatchInput,
+  ConversationTitleHistoryInput,
+} from '../conversation-title'
+import type { ConversationTaskPageInput } from '../conversation-task-page'
 import type { ExternalMcpServerReach } from '../external-mcp'
 import type { DecideMoveRequestInput } from '../move-contracts'
 import type { OwnNotesWrite } from '../own-notes'
@@ -620,6 +625,10 @@ export type RuntimeCommand =
    * ⚑ `piece` is its label (`W1`) or its id; `title` is what the person typed, trimmed main-side.
    */
   | { kind: 'retitleWork'; piece: string; title: string }
+  | { kind: 'readConversationIdentity'; sessionId: string }
+  | ({ kind: 'readConversationIdentities' } & ConversationIdentityBatchInput)
+  | ({ kind: 'readConversationTasks' } & ConversationTaskPageInput)
+  | ({ kind: 'readConversationTitleHistory' } & ConversationTitleHistoryInput)
   | { kind: 'renameConversation'; conversation: string; title: string }
   /**
    * A person takes back the piece a service is on, by its label or its id: the service is told to

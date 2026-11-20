@@ -165,7 +165,7 @@ export function readerFields() {
         const field = String(issue.path[0])
         const message =
           field === 'agent'
-            ? 'required; name the agent by the piece it owns (W1.2) or its id'
+            ? 'required; name the conversation by any of its task labels (W1.2) or its id from list_agents'
             : field === 'resource'
               ? 'required; send the resource id (res_…)'
               : 'required; send text'

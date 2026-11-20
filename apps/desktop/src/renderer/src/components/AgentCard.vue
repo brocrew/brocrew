@@ -46,6 +46,12 @@ import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
 import SessionBot from './SessionBot.vue'
 import TaskList from './TaskList.vue'
+import ConversationTasks from './ConversationTasks.vue'
+import {
+  useConversationTaskPage,
+  type TaskPageSource,
+} from '../composables/useConversationTaskPage'
+import ConversationTitleHistory, { type TitleHistorySource } from './ConversationTitleHistory.vue'
 import CardCompactDoor from './CardCompactDoor.vue'
 import SignInPanel from './SignInPanel.vue'
 import type { ProfileSignIn } from '../composables/useProfileSignIn'
@@ -84,6 +90,8 @@ const props = defineProps<{
   root?: WorkThatNamesIt | null
   /** ⚑ `rows-unread.ts`' sentence for the walk behind {@link tasks}, when it could not read rows. */
   tasksShort?: string | null
+  titleHistory?: TitleHistorySource
+  taskPageSource?: TaskPageSource
   /** ⚑ `false` where no caller can act on a press, so the task lines draw none (`118`). */
   canOpen: boolean
   /** ⚑ What this window's transcript of the agent says is open. */
@@ -167,8 +175,22 @@ function openThePicker(event: MouseEvent, at: 'model' | 'effort'): void {
 const workspace = computed(() => props.agent?.panel.value.workspace ?? null)
 const files = computed(() => props.agent?.panel.value.files ?? null)
 const counts = computed(() => props.agent?.panel.value.taskCounts ?? null)
+const taskPage = useConversationTaskPage(
+  () => props.taskPageSource,
+  () => props.conversation,
+)
 /** ⚑ Every piece "All tasks" lists: the work given to it, and the root a person gave. */
-const allTasks = computed(() => (counts.value?.all ?? 0) + (root.value === null ? 0 : 1))
+const allTasks = computed(() => {
+  if (!props.taskPageSource) return (counts.value?.all ?? 0) + (root.value === null ? 0 : 1)
+  const held = taskPage.page.value?.counts
+  const hasRoot = taskPage.page.value?.current?.kind === 'root' || root.value !== null
+  return held ? held.active + held.open + held.closed + Number(hasRoot) : null
+})
+const showAllTasks = computed(() =>
+  props.taskPageSource
+    ? props.agent !== undefined && (allTasks.value === null || allTasks.value > 0)
+    : (allTasks.value ?? 0) > (hasOpenTask.value ? 1 : 0),
+)
 /** ⚑ A copied path says so for a moment on the Copy control itself. */
 const copied = ref(false)
 /** ⚑ W4.183 · a tile's type tag (PNG, PDF…), from its file name. */
@@ -595,6 +617,8 @@ const fileManager = fileManagerHere()
         icon="#i-play"
         accent
         fold="brobot2.cardTaskFolded"
+        tabindex="-1"
+        aria-label="Current task"
         data-cy="card-task"
       >
         <template #title>
@@ -602,7 +626,7 @@ const fileManager = fileManagerHere()
         </template>
         <!-- ⚑ **W4.183 · v3's "All tasks (n) →"**: the current piece alone until it is pressed. -->
         <!-- ⛔ Offered wherever a piece is not already shown: the current one is, the rest are not. -->
-        <template v-if="allTasks > (hasOpenTask ? 1 : 0)" #action>
+        <template v-if="showAllTasks" #action>
           <button
             type="button"
             class="text-action"
@@ -611,53 +635,71 @@ const fileManager = fileManagerHere()
             @click="props.agent?.openTasks()"
           >
             All tasks
-            <span class="text-action-count">({{ allTasks }})</span>
+            <span v-if="allTasks !== null" class="text-action-count">({{ allTasks }})</span>
             <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
           </button>
         </template>
-        <!-- ⛔ **Not read yet is not *no task*** — before the work given to this agent has been read,
-             the box says so rather than claiming there is none (`641` §5.5's rule, and the state a
-             selected agent's card is in between its selection and its read, UI-006). -->
-        <p v-if="props.tasks === undefined" class="task-unread" data-cy="card-task-unread">
-          Nothing has been read about its work yet.
-        </p>
-        <CardEmpty
-          v-else-if="!hasOpenTask"
-          icon="#i-check"
-          says="No current task"
-          hint="Work given to this agent appears here."
-          data-cy="card-task-empty"
-        />
-        <TaskList
-          v-if="hasTasks"
-          data-cy="cast-taken"
-          :tasks="tasks!"
-          mode="current"
-          :root="root"
+        <ConversationTasks
+          v-if="props.taskPageSource"
+          :page="taskPage.page.value"
+          :pending="taskPage.pending.value"
+          :error="taskPage.error.value"
+          :known="tasks"
           :can-open="props.canOpen"
-          :briefs="briefs"
+          @more="taskPage.showMore"
           @open-conversation="(conversation) => emit('openConversation', conversation)"
         />
-        <!-- Show work counts by state. -->
-        <p v-if="counts && counts.all > 0" class="task-counts" data-cy="card-task-counts">
-          <span class="task-count active"
-            ><svg class="icon" aria-hidden="true"><use href="#i-play" /></svg
-            ><strong>{{ counts.active }}</strong> active</span
-          >
-          <span class="task-count open"
-            ><svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg
-            ><strong>{{ counts.open }}</strong> open</span
-          >
-          <span class="task-count closed"
-            ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg
-            ><strong>{{ counts.closed }}</strong> closed</span
-          >
-        </p>
-        <!-- 🔴 **678 · F-R18a** — the walk behind it counted rows it could not read. -->
-        <p v-if="props.tasksShort" class="gap" data-cy="cast-taken-short">
-          <strong>{{ ROWS_UNREAD_LEAD }}</strong>
-          {{ props.tasksShort }}
-        </p>
+        <template v-else>
+          <!-- ⛔ **Not read yet is not *no task*** — before the work given to this agent has been read,
+             the box says so rather than claiming there is none (`641` §5.5's rule, and the state a
+             selected agent's card is in between its selection and its read, UI-006). -->
+          <p v-if="props.tasks === undefined" class="task-unread" data-cy="card-task-unread">
+            Nothing has been read about its work yet.
+          </p>
+          <CardEmpty
+            v-else-if="!hasOpenTask"
+            icon="#i-check"
+            says="No current task"
+            hint="Work given to this agent appears here."
+            data-cy="card-task-empty"
+          />
+          <TaskList
+            v-if="hasTasks"
+            data-cy="cast-taken"
+            :tasks="tasks!"
+            mode="current"
+            :root="root"
+            :can-open="props.canOpen"
+            :briefs="briefs"
+            @open-conversation="(conversation) => emit('openConversation', conversation)"
+          />
+          <!-- Show work counts by state. -->
+          <p v-if="counts && counts.all > 0" class="task-counts" data-cy="card-task-counts">
+            <span class="task-count active"
+              ><svg class="icon" aria-hidden="true"><use href="#i-play" /></svg
+              ><strong>{{ counts.active }}</strong> active</span
+            >
+            <span class="task-count open"
+              ><svg class="icon" aria-hidden="true"><use href="#i-clock" /></svg
+              ><strong>{{ counts.open }}</strong> open</span
+            >
+            <span class="task-count closed"
+              ><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg
+              ><strong>{{ counts.closed }}</strong> closed</span
+            >
+          </p>
+          <!-- 🔴 **678 · F-R18a** — the walk behind it counted rows it could not read. -->
+          <p v-if="props.tasksShort" class="gap" data-cy="cast-taken-short">
+            <strong>{{ ROWS_UNREAD_LEAD }}</strong>
+            {{ props.tasksShort }}
+          </p>
+        </template>
+        <ConversationTitleHistory
+          v-if="props.titleHistory && props.conversation"
+          :source="props.titleHistory"
+          :conversation="props.conversation"
+          :who="props.who"
+        />
       </CardSection>
 
       <component
@@ -1232,6 +1274,11 @@ button.run-effort[aria-expanded='true'] {
 }
 
 /* Its work in three counts, under the current task. */
+.card-task:focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
 .task-counts {
   display: flex;
   flex-wrap: wrap;

@@ -152,6 +152,51 @@ it('retains later pushes and incomplete membership while retrying beyond two sec
   expect(view.all('conversations-error')).toHaveLength(0)
 })
 
+it('keeps the exact Recent total with the accepted coverage, then recovers it after incomplete reads', async () => {
+  const read = vi.fn().mockResolvedValue(answer(4, 4, ['kept', 'older']))
+  const view = rail(read)
+  await tick()
+  const count = () => view.q('rail-count-recent').textContent?.trim()
+  expect(count()).toBe('2 of 2')
+
+  read.mockResolvedValue({ refused: 'outdated refusal', published: { epoch, seq: 3 } })
+  await refresh(view)
+  expect(count()).toBe('2 of 2')
+
+  const partial = answer(5, 5, ['kept'])
+  read.mockResolvedValue({
+    ...partial,
+    published: {
+      ...partial.published,
+      covers: { population: 'listing', complete: false, ids: ['kept'] },
+    },
+  })
+  await refresh(view)
+  expect(count()).toBe('2 shown')
+  expect(view.all('open-session-older')).toHaveLength(1)
+
+  read.mockResolvedValue(answer(4, 6, ['outdated']))
+  await refresh(view)
+  expect(count()).toBe('2 shown')
+  expect(view.all('open-session-outdated')).toHaveLength(0)
+
+  read.mockResolvedValue(answer(6, 7, ['kept'], true))
+  await refresh(view)
+  expect(count()).toBe('1 shown')
+
+  read.mockResolvedValue(answer(6, 8, ['kept']))
+  await refresh(view)
+  expect(count()).toBe('1 of 1')
+
+  read.mockResolvedValue({ refused: 'current refusal', published: { epoch, seq: 6 } })
+  await refresh(view)
+  expect(count()).toBe('1 shown')
+  expect(view.all('open-session-kept')).toHaveLength(1)
+  read.mockResolvedValue(answer(7, 9, ['kept', 'new']))
+  await refresh(view)
+  expect(count()).toBe('2 of 2')
+})
+
 it('cancels a retry when the app closes', async () => {
   const read = vi.fn().mockRejectedValue(new Error('fictional unavailable'))
   rail(read)

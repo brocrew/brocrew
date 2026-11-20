@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
-import type { LibraryCounts, LibraryFilters } from '../../../shared/runtime-ipc'
+import type { AgentIdentityName, LibraryCounts, LibraryFilters } from '../../../shared/runtime-ipc'
 import {
   KIND_OPTIONS,
   ORIGIN_OPTIONS,
@@ -40,6 +40,7 @@ import {
 
 const props = defineProps<{
   filters: LibraryFilters
+  profiles?: readonly AgentIdentityName[] | null
   /** The whole-library tally — where the Provider options come from. Null before the first read. */
   counts: LibraryCounts | null
   /** How many rows matched `query ∧ filters`, counted main-side BEFORE the page was sliced. */
@@ -67,7 +68,7 @@ const states = computed(() => stateCount(props.filters))
  * it is sent as an ABSENT key rather than as an empty string, because main-side an absent field is
  * what "unfiltered" means and a `''` provider would match nothing at all.
  */
-function pick(key: 'provider' | 'origin' | 'kind', value: string): void {
+function pick(key: 'provider' | 'origin' | 'kind' | 'profileId', value: string): void {
   const next: LibraryFilters = { ...props.filters }
   if (value === '') delete next[key]
   // The cast is the one place a facet's string becomes its typed value. Every option rendered here
@@ -116,6 +117,22 @@ onUnmounted(() => document.removeEventListener('pointerdown', pressedOutside))
 
 <template>
   <div class="facets" :data-active="active ? 'yes' : 'no'" data-cy="library-facets">
+    <label v-if="profiles?.length" class="facet" :class="{ on: filters.profileId !== undefined }">
+      <span class="k">Profile</span>
+      <select
+        class="profile-select"
+        data-cy="library-facet-profile"
+        aria-label="Filter by profile"
+        :value="filters.profileId ?? ''"
+        @change="pick('profileId', ($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">All profiles</option>
+        <option v-for="profile in profiles" :key="profile.id" :value="profile.slug">
+          {{ profile.displayName ?? profile.slug }}
+        </option>
+      </select>
+    </label>
+
     <label class="facet" :class="{ on: filters.provider !== undefined }">
       <span class="k">Provider</span>
       <select
@@ -267,6 +284,10 @@ onUnmounted(() => document.removeEventListener('pointerdown', pressedOutside))
   font: inherit;
   font-weight: var(--fw-medium);
   cursor: pointer;
+}
+
+.profile-select {
+  max-inline-size: 10rem;
 }
 
 .facet.on select {

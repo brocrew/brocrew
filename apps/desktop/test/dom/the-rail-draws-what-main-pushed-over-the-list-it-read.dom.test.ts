@@ -202,8 +202,8 @@ describe('the rail draws what main pushed over the list it read', () => {
     for (const id of ['sess_a', 'sess_b', 'sess_c']) {
       expect(standing(m, id), `${id}: before the push`).toBe('idle')
     }
-    expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
-    expect(said(m.q('rail-count-brobot'))).toBe('3')
+    expect(m.all('rail-needs-you')).toHaveLength(0)
+    expect(drawnOrder(m)).toHaveLength(3)
     expect(drawnOrder(m)).toEqual(['sess_a', 'sess_b', 'sess_c'])
     expect(listedState(m, 'sess_a')).toEqual({ is: 'idle' })
 
@@ -219,11 +219,11 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(standing(m, 'sess_c')).toBe('idle')
     expect(said(standingOf(m, 'sess_c'))).toContain('claude · idle')
     // The badge counts the one row that is waiting on a person, and the count of rows does not move.
-    const badge = m.q('rail-needs-you-brobot')
+    const badge = m.q('rail-needs-you')
     expect(visible(badge)).toBe(true)
     expect(said(badge)).toBe('1')
     expect(badge.getAttribute('title')).toBe('needs you: 1')
-    expect(said(m.q('rail-count-brobot'))).toBe('3')
+    expect(drawnOrder(m)).toHaveLength(3)
     // A push moves a word, never an order.
     expect(drawnOrder(m)).toEqual(['sess_a', 'sess_b', 'sess_c'])
 
@@ -248,14 +248,14 @@ describe('the rail draws what main pushed over the list it read', () => {
     // Message 1 · A needs a person.
     await push(m, { conversation: 'sess_a', state: { is: 'needs-you' } })
     expect(standing(m, 'sess_a')).toBe('waiting')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
 
     // Message 2, a separate one · B is active. A's word is not forgotten.
     await push(m, { conversation: 'sess_b', state: { is: 'active' } })
     expect(standing(m, 'sess_b')).toBe('working')
     expect(said(standingOf(m, 'sess_b'))).toContain('claude · active')
     expect(standing(m, 'sess_a'), 'A after the second message').toBe('waiting')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
     expect(standing(m, 'sess_c')).toBe('idle')
 
     // Message 3 · one message with two moves: A is active again (its own earlier word replaced), and
@@ -269,8 +269,8 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(standing(m, 'sess_b'), 'B after the third message').toBe('working')
     expect(standing(m, 'sess_c')).toBe('waiting')
     // The badge went from A's one to C's one: a replacement, not a first push that stuck.
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
-    expect(said(m.q('rail-count-brobot'))).toBe('3')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
+    expect(drawnOrder(m)).toHaveLength(3)
   })
 
   /* ---------------------------------------------------------------- 3 · a later read wins */
@@ -286,7 +286,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     // The positive: the pushes stood before the read was asked.
     expect(standing(m, 'sess_a')).toBe('waiting')
     expect(standing(m, 'sess_b')).toBe('working')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
     expect(standing(m, 'sess_c')).toBe('idle')
 
     // A read asked afterwards: the host now says A and B idle, and C running in the background.
@@ -300,7 +300,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(standing(m, 'sess_a')).toBe('idle')
     expect(said(standingOf(m, 'sess_a'))).toContain('claude · idle')
     expect(standing(m, 'sess_b')).toBe('idle')
-    expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
+    expect(m.all('rail-needs-you')).toHaveLength(0)
   })
 
   /* ---------------------------------------------------------------- 4 · a push in flight stands */
@@ -332,14 +332,14 @@ describe('the rail draws what main pushed over the list it read', () => {
     // …and the push that arrived after it was asked stands over the answer it raced.
     expect(standing(m, 'sess_a')).toBe('waiting')
     expect(said(standingOf(m, 'sess_a'))).toContain('claude · needs you')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
 
     // A read asked AFTER the push: the same push gives way, so "stands" is not a push that never
     // expires.
     stubbed().api = answering([A, B, CBackground])
     await readAgain(m)
     expect(standing(m, 'sess_a')).toBe('idle')
-    expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
+    expect(m.all('rail-needs-you')).toHaveLength(0)
     expect(standing(m, 'sess_c')).toBe('background')
   })
 
@@ -350,7 +350,7 @@ describe('the rail draws what main pushed over the list it read', () => {
 
     await push(m, { conversation: 'sess_a', state: { is: 'needs-you' } })
     expect(standing(m, 'sess_a')).toBe('waiting')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
     expect(m.all('conversations-error')).toHaveLength(0)
 
     // The database remains locked through the quiet retry interval.
@@ -367,15 +367,15 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(said(error)).toContain('the database is locked')
     // A failed read is no answer, so it prunes nothing: the push is still drawn.
     expect(standing(m, 'sess_a')).toBe('waiting')
-    expect(said(m.q('rail-needs-you-brobot'))).toBe('1')
-    expect(said(m.q('rail-count-brobot'))).toBe('3')
+    expect(said(m.q('rail-needs-you'))).toBe('1')
+    expect(drawnOrder(m)).toHaveLength(3)
 
     // The next read that succeeds takes the line away — and the push with it.
     stubbed().api = answering([A, B, C])
     await readAgain(m)
     expect(m.all('conversations-error')).toHaveLength(0)
     expect(standing(m, 'sess_a')).toBe('idle')
-    expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
+    expect(m.all('rail-needs-you')).toHaveLength(0)
   })
 
   /* ---------------------------------------------------------------- 6 · a conversation not listed */
@@ -395,8 +395,8 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(m.all('open-session-sess_ghost')).toHaveLength(0)
     expect((m.vm.listedOf as (id: string) => unknown)('sess_ghost')).toBeNull()
     expect(drawnOrder(m)).toEqual(['sess_a', 'sess_b', 'sess_c'])
-    expect(said(m.q('rail-count-brobot'))).toBe('3')
-    expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
+    expect(drawnOrder(m)).toHaveLength(3)
+    expect(m.all('rail-needs-you')).toHaveLength(0)
 
     // Part 2 · a read whose answer is parked, naming two conversations the list did not.
     let release!: (rows: ResumableSessionInfo[]) => void
@@ -418,7 +418,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     await inFlight
 
     // Both conversations are drawn now: the read named them.
-    expect(said(m.q('rail-count-brobot'))).toBe('5')
+    expect(drawnOrder(m)).toHaveLength(5)
     // The one main pushed says what main pushed; the one it did not says what the host listed — the
     // difference between them is the push.
     expect(standing(m, 'sess_late')).toBe('working')
@@ -429,7 +429,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     // A read asked after the push puts the conversation back to what the host says.
     stubbed().api = answering([A, B, C, late, quiet])
     await readAgain(m)
-    expect(said(m.q('rail-count-brobot'))).toBe('5')
+    expect(drawnOrder(m)).toHaveLength(5)
     expect(standing(m, 'sess_late')).toBe('idle')
     expect(standing(m, 'sess_quiet')).toBe('idle')
   })
