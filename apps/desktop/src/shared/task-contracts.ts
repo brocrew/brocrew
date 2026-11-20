@@ -349,8 +349,6 @@ export interface PieceRow {
    * only while that piece is stalled, so a caller waiting behind it sees why it waits.
    */
   readonly queueStalledAt?: number
-  /** Beside {@link queuedBehind} while services are off: nothing is handed over until they are on. */
-  readonly queueWaitsForServices?: true
   /**
    * 🔴 **What was running in the background for it when its conversation ended** — present on a
    * `stalled` row whose stop took that work with it: {@link TaskStallCause} `background_stopped`, or

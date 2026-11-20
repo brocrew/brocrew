@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { acceptedGive, aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('a model lookup before the first use of another provider', () => {
   let world: AServiceWorld
@@ -23,7 +23,7 @@ describe('a model lookup before the first use of another provider', () => {
       ),
     ]
   }
-  async function setup(): Promise<{ host: RuntimeHost; giver: string }> {
+  async function setup(): Promise<{ host: RuntimeHost; giver: string; address: string }> {
     const host = world.aHost({ listProfiles: listedProfiles })
     const giver = (
       await host.createSession(
@@ -31,23 +31,22 @@ describe('a model lookup before the first use of another provider', () => {
         world.window,
       )
     ).sessionId
-    expect((await world.gives(host, giver, 'draft-reader')).ok).toBe(true)
-    return { host, giver }
+    const given = acceptedGive(await world.gives(host, giver, 'draft-reader'))
+    return { host, giver, address: given.label }
   }
 
   it('a refused give does not prepare the target agent on another provider', async () => {
-    const { host, giver } = await setup()
-    world.store.setSpawningEnabled(false)
-    const before = world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex')).length
+    const { host, giver, address } = await setup()
+    const targetHome = join(world.folder, 'provider-homes', 'draft-reader', 'codex')
+    expect(world.preparedIn).not.toContain(targetHome)
     const given = await world.gives(host, giver, 'draft-reader', {
+      to: address,
       provider: 'codex',
       model: 'fake-codex-a',
     })
-    expect(given).toMatchObject({ ok: false, refusal: { rail: 'spawning-disabled' } })
-    expect(world.preparedIn.filter((path) => path.endsWith('/draft-reader/codex'))).toHaveLength(
-      before,
-    )
-    expect(existsSync(join(world.folder, 'provider-homes/draft-reader/codex'))).toBe(false)
+    expect(given).toMatchObject({ ok: false, refusal: { rail: 'its-provider-is-fixed' } })
+    expect(world.preparedIn).not.toContain(targetHome)
+    expect(existsSync(targetHome)).toBe(false)
   })
 
   it('reading both picker lists uses the stand-in for a provider this agent has not used', async () => {

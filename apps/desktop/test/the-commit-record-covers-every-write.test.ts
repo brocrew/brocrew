@@ -339,7 +339,7 @@ describe('the commit record covers every write', () => {
       world.anAgent('giver', 'normal')
       world.anAgent('helper', 'normal')
       world.anAgent('target', 'normal')
-      host = world.aHost({ servicesOn: false, statesMoved: () => undefined })
+      host = world.aHost({ statesMoved: () => undefined })
       effects = []
       type Watched = Record<string, (...args: unknown[]) => unknown>
       const watched = host as unknown as Watched

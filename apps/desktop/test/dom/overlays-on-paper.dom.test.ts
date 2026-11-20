@@ -84,7 +84,6 @@ function capabilityStore(): AgentStore {
       ],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: true,
     }),
   } as unknown as RuntimeBridge)
   void store.load()

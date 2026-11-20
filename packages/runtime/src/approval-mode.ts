@@ -17,7 +17,7 @@ export class ApprovalModeSwitch extends NextTurnSetting<ApprovalMode> {
 
 export type { ApprovalModeState } from './runtime'
 
-// Provider descriptors own the protection rows; comparisons use absolute protections, not removed ones.
+// Provider descriptors own these protections.
 export const PROTECTIONS = [
   /** A person answers before an action runs. */
   'the-card-before-an-act',
@@ -27,25 +27,7 @@ export const PROTECTIONS = [
 
 export type Protection = (typeof PROTECTIONS)[number]
 
-/** A conversation's approval posture: the mode, and the provider that decides what the mode means. */
-export interface ApprovalPosture {
-  readonly provider: Provider
-  readonly approvalMode: ApprovalMode
-}
-
 /** Absolute protections retained by each provider and approval mode. */
 export const WHAT_STANDS_PAST_ITS_FOLDER: Readonly<
   Record<Provider, Readonly<Record<ApprovalMode, readonly Protection[]>>>
 > = providerRecord((provider) => providerDescriptor(provider).approval.protections)
-
-// Compare any protection against none, so differing protections do not introduce new refusals.
-export function whatTheChildWouldLack(
-  child: ApprovalPosture,
-  parent: ApprovalPosture,
-): readonly Protection[] {
-  const keeps = ({ provider, approvalMode }: ApprovalPosture): readonly Protection[] =>
-    WHAT_STANDS_PAST_ITS_FOLDER[provider][approvalMode]
-  if (keeps(child).length > 0) return []
-  const kept = keeps(parent)
-  return PROTECTIONS.filter((one) => kept.includes(one))
-}

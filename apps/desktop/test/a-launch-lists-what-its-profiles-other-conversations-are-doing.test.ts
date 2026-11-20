@@ -87,7 +87,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     profileSlug: 'ali',
     cwd: '/tmp/work',
     startedBy: null,
-    spawningEnabled: true,
     root: null,
     others: { shown: [], more: 0 },
     ...over,

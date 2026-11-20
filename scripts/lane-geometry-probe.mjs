@@ -84,12 +84,12 @@ const LANE = `
   const corner = document.querySelector('.overlay-corner')
   if (!corner) return null
   const box = corner.getBoundingClientRect()
-  const stop = document.querySelector('[data-cy=overlay-spawning]')
+  const queue = document.querySelector('[data-cy=persons-queue]')
   return {
     left: Math.round(box.left),
     width: Math.round(box.width),
     right: Math.round(box.right),
-    stop: stop ? Math.round(stop.getBoundingClientRect().right) : null,
+    queue: queue ? Math.round(queue.getBoundingClientRect().right) : null,
   }
 `
 

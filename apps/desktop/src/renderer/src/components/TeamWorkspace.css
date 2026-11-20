@@ -359,20 +359,6 @@
   font-weight: var(--fw-bold);
 }
 
-.team-services {
-  margin-left: auto;
-  display: grid;
-  gap: var(--space-2);
-  justify-items: end;
-}
-.team-services-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-.team-services-line {
-  color: var(--muted);
-}
 .team-service-tag {
   margin-left: var(--space-3);
   border: var(--border-width) solid var(--line);

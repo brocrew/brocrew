@@ -114,7 +114,6 @@ const source = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
   identities: [identity({ slug: 'ada', displayName: 'Ada' })],
   foldersWithoutARow: [],
   use: [used({ slug: 'ada' })],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
   ...over,

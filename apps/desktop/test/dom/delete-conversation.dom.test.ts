@@ -5,7 +5,6 @@ import DeleteConversation from '../../src/renderer/src/components/DeleteConversa
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { RECOVERY_COPIES_STAY } from '../../src/renderer/src/lib/archive-and-delete'
 import { sizeWords } from '../../src/renderer/src/lib/files-kept'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type {
   ArchiveOutcome,
   DeleteOutcome,
@@ -123,11 +122,8 @@ async function tick(m: Mounted, id: string, on: boolean): Promise<void> {
 
 const confirm = (m: Mounted): HTMLButtonElement => m.q('delete-confirm') as HTMLButtonElement
 
-const safety = useSpawnSafety()
-
 beforeEach(() => {
   // No stop lane, so the sheet's own controls are the only stops in the trap.
-  safety.forget()
 })
 
 afterEach(() => {

@@ -151,7 +151,6 @@ import { whenTheWorldMoves } from '../lib/the-world-moved'
 import { limitsDisplayLane, type LimitsDisplayState } from '../lib/limits-display'
 import { profileItRunsAs, readableError } from '../lib/session-record'
 import { takeBackThrough } from '../lib/take-back'
-import { useSpawnSafety } from '../lib/spawn-safety'
 import {
   forgetPersistentPreference,
   usePersistentChoice,
@@ -291,7 +290,7 @@ const store = useSessionStore()
 const overlays = useOverlays()
 
 /**
- * 🔴 **The agent identities, and the global spawning switch** (355) — rows, read once, kept for the
+ * The agent identities, read once and kept for the
  * life of the window.
  *
  * ⛔ **Not `RuntimeBridge.profiles()`.** That is a `readdir` of `provider-homes/` and it answers the
@@ -300,16 +299,6 @@ const overlays = useOverlays()
  * difference is reported rather than hidden.
  */
 const agentStore = useAgentStore()
-const safety = useSpawnSafety()
-
-/**
- * ⚑ **Throw the global spawning switch, and say when it could not be thrown** (355).
- *
- * ⛔ **The toast is the whole error path, and that is deliberate.** The rail row draws what the
- * store now holds — which on a refusal is what it held before — so a switch that did not move is
- * already visible. What the row cannot carry is WHY, and the app's one-line notice is where every
- * other *"that did not happen"* in this screen goes.
- */
 /**
  * ⛔ **An identity comes into being by a conversation RUNNING as it, so the list has to be re-read
  * when one starts** (355, review).
@@ -330,48 +319,13 @@ function refreshAgents(): void {
   void agentStore.load()
 }
 
-async function setSpawning(enabled: boolean): Promise<void> {
-  const refusal = await agentStore.setSpawning(enabled)
-  if (refusal !== null) say(refusal)
-}
-
-/**
- * 🔴 **A person set the mode every conversation they start begins in** (500, HO-036 §3.1).
- *
- * ⚑ **{@link setSpawning}'s shape, one setting over**, and deliberately identical: the store
- * patches the held roster from what the DATABASE answered, this reports a refusal the same way, and
- * a person meets one grammar for both of the app-wide settings this app keeps in its LEDGER.
- * ⚠️ The three `localStorage` preferences above are app-wide too and are deliberately not this
- * shape: they are per-machine view state, which `usePersistentToggle` rules *"has no business in
- * the DB or over IPC"* — and this one decides what an agent does without asking.
- */
+/** Set the mode a person's next conversation opens in. */
 async function setApprovalDefault(mode: 'ask' | 'auto'): Promise<void> {
   const refusal = await agentStore.setApprovalDefault(mode)
   if (refusal !== null) say(refusal)
 }
 
-/**
- * 🔴 **This screen supplies the window's one emergency stop, and two surfaces draw it** (390).
- *
- * ⛔ **The rail's anchored switch and the overlay layer's safety lane are ONE state**, not two that
- * agree. `388` measured what the second one is for: every `OverlayHost` is a fixed `inset: 0`
- * `aria-modal` layer that covers the rail, so `385 §3`'s anchoring — real, and proved against
- * SCROLLING — left the stop unreachable by mouse and by Tab while any modal was open.
- *
- * ⚠️ **`watchEffect`, so it re-supplies on every read the store makes**, including the one
- * {@link refreshAgents} fires when an identity row is written anywhere in this app (`534`) and the
- * patch `AgentStore.setSpawning` applies from the database's own answer. ⚑ It is the SAME value the rail's identities section is
- * handed below — a conduit for one fact, not a second reader of it.
- */
-watchEffect(() => {
-  safety.supply(agentStore.identities.value, (enabled) => void setSpawning(enabled))
-})
-
-/**
- * 🔴 **The window's one person's queue** (401) — supplied below, drawn by *Waiting on you* and by
- * the overlay layer's corner. ⚑ `spawn-safety`'s shape one subject over, and for the same reason: two surfaces
- * that agree by construction rather than two that happen to.
- */
+/** The window's shared queue, used by Waiting on you and by the overlay. */
 const persons = usePersonsQueue()
 
 const rail = ref<InstanceType<typeof SideRail> | null>(null)
@@ -3255,8 +3209,6 @@ onUnmounted(() => {
   // that outlives this component under HMR, and a stale list of rows pointing at conversations a
   // new store has never heard of is worse than no list.
   persons.forget()
-  // And the stop switch, for the same reason: this screen supplied it.
-  safety.forget()
 })
 
 /**
