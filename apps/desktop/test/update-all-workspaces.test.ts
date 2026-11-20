@@ -18,6 +18,9 @@ function cluster(held = false, ownerReady = false) {
   const failures = new Set<string>()
   const silent = new Set<string>()
   const quitting = new Set<string>()
+  const downloaded = new Set(['/workspace-1', '/workspace-2'])
+  if (ownerReady) downloaded.add('/workspace-0')
+  const lostDiscoveries = new Map<string, Promise<void>>()
   let remembered: readonly string[] | null = null
   let loseInstallReply = false
   let refuseInstall = false
@@ -29,8 +32,16 @@ function cluster(held = false, ownerReady = false) {
       : Promise.resolve()
     const actor: ReturnType<typeof workspaceUpdate> = workspaceUpdate({
       self: { folder, pid: i + 1, startedAt: i, name: folder, executable: '/BroCrew' },
-      ready: () => ownerReady || i > 0,
-      discover: async () => [...actors.values()].map((peer) => peer.details()),
+      ready: () => downloaded.has(folder),
+      discover: async () => {
+        const lost = lostDiscoveries.get(folder)
+        lostDiscoveries.delete(folder)
+        if (lost) {
+          await lost
+          throw new Error('A running copy of BroCrew could not be matched to its workspace')
+        }
+        return [...actors.values()].map((peer) => peer.details())
+      },
       request: async (peer, request) => {
         const target = actors.get(peer.folder)
         if (!target) throw new Error('workspace closed before acknowledgement')
@@ -54,6 +65,7 @@ function cluster(held = false, ownerReady = false) {
       report: (error) => journal.push(`reply error ${String(error)}`),
       quit: () => {
         journal.push(`quit ${i}`)
+        quitting.add(folder)
         actor.finishQuit()
       },
       install: () => journal.push(`native install ${i}`),
@@ -70,6 +82,8 @@ function cluster(held = false, ownerReady = false) {
     failures,
     silent,
     quitting,
+    downloaded,
+    lostDiscoveries,
     remembered: () => remembered,
     refuseQuit: () => {
       refuseQuit = true
@@ -197,6 +211,48 @@ it('a quit the update held back is carried out when the update stops, instead of
   expect(c.journal).toContain('quit 0')
   expect(c.journal).not.toContain('reopen 0')
   expect(c.journal).not.toContain('quit 2')
+})
+
+it('a workspace the update told to quit reopens when a later step stops the update', async () => {
+  const c = cluster()
+  c.downloaded.delete('/workspace-2')
+  c.refuseInstall()
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('not delivered')
+  expect(c.journal).toContain('quit 2')
+  expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 2', 'reopen 0'])
+})
+
+it('a workspace the person quit during the update stays closed after the update told it to quit too', async () => {
+  const c = cluster(true)
+  c.downloaded.delete('/workspace-2')
+  c.refuseInstall()
+  const updating = c.first.restart('0.2.24')
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  expect(c.actors.get('/workspace-2')!.holdQuit()).toBe(true)
+  for (const save of c.saves.values()) save()
+  await expect(updating).rejects.toThrow('not delivered')
+  expect(c.journal).toContain('quit 2')
+  expect(c.journal.filter((step) => step.startsWith('reopen'))).toEqual(['reopen 0'])
+})
+
+it('a quit held while the update looks for the workspaces is carried out when that look fails, and no later update quits again', async () => {
+  const c = cluster()
+  let lose!: () => void
+  c.lostDiscoveries.set(
+    '/workspace-0',
+    new Promise<void>((resolve) => {
+      lose = resolve
+    }),
+  )
+  const updating = c.first.restart('0.2.24')
+  for (let tick = 0; tick < 12; tick += 1) await Promise.resolve()
+  expect(c.actors.get('/workspace-0')!.holdQuit()).toBe(true)
+  lose()
+  await expect(updating).rejects.toThrow('could not be matched')
+  expect(c.journal).toEqual(['quit 0'])
+  c.failures.add('/workspace-2')
+  await expect(c.first.restart('0.2.24')).rejects.toThrow('disk full')
+  expect(c.journal.filter((step) => step === 'quit 0')).toHaveLength(1)
 })
 
 it('when the installer itself fails to stop, the others reopen or say they stopped, and so does it', async () => {

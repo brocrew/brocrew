@@ -102,8 +102,9 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
         deps.quit()
         return
       }
-      // The person is quitting this workspace, so it is neither reopened nor kept open.
-      if (deps.quitting()) return
+      // The person is quitting this workspace, so it is neither reopened nor kept open. A quit the
+      // update itself asked for does not count: that workspace reopens like any other it stopped.
+      if (deps.quitting() && !quitChosen) return
       // A workspace with the update ready installs it as it exits, so it cannot reopen.
       if (stopped && !deps.ready()) deps.reopen()
       else if (stopped && asking === 0) deps.stayStopped()
@@ -126,12 +127,13 @@ export function workspaceUpdate(deps: WorkspaceUpdateDeps) {
   }
 
   async function perform(installer: UpdateWorkspaceId, version: string): Promise<void> {
-    const peers = await participants()
-    const chosen = peers.find((peer) => same(peer, installer))
-    if (chosen === undefined || !chosen.ready) {
-      throw new Error('The workspace with the downloaded update could not be reached')
-    }
+    let peers: readonly UpdateWorkspace[] = []
     try {
+      peers = await participants()
+      const chosen = peers.find((peer) => same(peer, installer))
+      if (chosen === undefined || !chosen.ready) {
+        throw new Error('The workspace with the downloaded update could not be reached')
+      }
       // A workspace with the update ready cannot reopen after a failure, so those stop last and
       // the installer last of all: a failure before them leaves them untouched.
       const others = peers.filter((peer) => !same(peer, chosen))
