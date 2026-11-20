@@ -262,7 +262,7 @@ import RuntimeOverlaySheets, { type SheetStart } from './RuntimeOverlaySheets.vu
 import { createPlaceHistory, type HistoryEntry, type Place } from '../lib/place-history'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
 import { conversationTitle } from '../lib/conversation-list'
-import { humanPromptOf } from '../../../shared/human-turn-answer'
+import { firstHumanMessageOf } from '../../../shared/human-turn-answer'
 import { platformHere } from '../lib/this-computer'
 import { provideMainTab, type MainTab } from '../composables/useMainTab'
 import { providePlaceNavigator } from '../composables/usePlaceNavigator'
@@ -3103,7 +3103,7 @@ onMounted(() => {
         authChangedFor(DEFAULT_PROFILE_ID, message.provider)
     })
   stopHearingIdentityEvents = window.api.runtime.onEvent((message) => {
-    if (message.event.type !== 'user_turn' || humanPromptOf(message.event) === null) return
+    if (message.event.type !== 'user_turn' || firstHumanMessageOf(message.event) === null) return
     if (selectedForIdentity.value?.sessionId === message.sessionId) void readSelectedIdentity()
     personIdentityRevision.value += 1
   })
