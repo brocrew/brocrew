@@ -1329,11 +1329,6 @@ const platform = platformHere()
                       · Named by you</template
                     >
                   </small>
-                  <small
-                    v-if="!row.worker && row.named && identities.get(row.sessionId)"
-                    :title="conversationTitle(row.label, row.named)"
-                    >{{ conversationTitle(row.label, row.named) }}</small
-                  >
                   <template v-if="row.worker">
                     <small
                       v-for="piece in workerSubtitles(

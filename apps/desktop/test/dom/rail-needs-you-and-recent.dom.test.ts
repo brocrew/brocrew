@@ -150,6 +150,39 @@ it('fits full conversation titles between the section header and row metadata', 
   }
 })
 
+it('keeps canonical rows to title, standing and address for open and answered tasks', async () => {
+  const listed = [
+    { ...waiting[0]!, named: { label: 'W18.1', title: 'A33 check', ended: 'answered' as const } },
+    { ...waiting[1]!, named: { label: 'W18.2', title: 'Pending check' } },
+    { ...recent[0]!, named: { label: 'W18.3', title: 'Earlier check', ended: 'answered' as const } },
+    { ...recent[1]!, named: { label: 'W18.4', title: 'Current check' } },
+  ]
+  const m = await rail(listed, {
+    readIdentities: async () =>
+      listed.map(({ sessionId }, index) => ({
+        conversation: sessionId,
+        address: `W${18 + index}`,
+        title: index === 0 ? 'A33' : `Saved conversation ${index}`,
+        author: { kind: 'person' },
+      })),
+  })
+  for (const [index, { sessionId, named }] of listed.entries()) {
+    await expect.poll(() => m.all(`rail-address-${sessionId}`).length).toBe(1)
+    const entry = m.q(`open-session-${sessionId}`)
+    const lines = [...entry.querySelector('.rail-copy')!.children]
+    expect(lines.map(({ tagName }) => tagName)).toEqual(['STRONG', 'SMALL', 'SMALL'])
+    expect(lines[0]!.textContent?.trim()).toBe(index === 0 ? 'A33' : `Saved conversation ${index}`)
+    expect(lines[1]!.getAttribute('data-standing')).toBe(index < 2 ? 'waiting' : 'idle')
+    expect(lines[2]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `Conversation W${18 + index} · claude · Named by you`,
+    )
+    expect(entry.textContent).not.toContain(named.title)
+    expect(entry.textContent).not.toContain('(answered)')
+    entry.click()
+  }
+  expect(m.selected).toEqual(listed.map(({ sessionId }) => sessionId))
+})
+
 it('pages eligible Recent at fifteen, keeps older rows, and counts the live/listed overlap once', async () => {
   const older = Array.from({ length: 18 }, (_item, index) =>
     row(`older-${index}`, 'brobot', index + 2),
