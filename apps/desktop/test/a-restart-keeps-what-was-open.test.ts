@@ -1,3 +1,4 @@
+import { RuntimeHost as GiverNoticeHost } from './helpers/giver-notice-host'
 import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-agent-tool'
@@ -166,8 +167,8 @@ describe('692 · a restart keeps what was open', () => {
   let announced: RuntimeChangeMessage[]
   const tick = (): number => clock++
 
-  const buildHost = (): RuntimeHost => {
-    const built = new RuntimeHost({
+  const buildHost = (Host = RuntimeHost): RuntimeHost => {
+    const built = new Host({
       store,
       ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
       ...neutralHostDeps(() => userData),
@@ -242,9 +243,9 @@ describe('692 · a restart keeps what was open', () => {
   }
 
   /** ⛔ A crash or a kill: the next launch happens and the quit never ran. */
-  const crashAndRelaunch = (): void => {
+  const crashAndRelaunch = (Host = RuntimeHost): void => {
     store = createSessionStore(db, tick)
-    host = buildHost()
+    host = buildHost(Host)
   }
 
   /** ⚑ The TEXT a model reads, beside the payload `callOn` returns. */
@@ -1389,6 +1390,8 @@ describe('692 · a restart keeps what was open', () => {
     })
 
     it('⚑ F-d controls · a RUNNING holder and a CRASH-closed one read the same — the turn’s word, and no process fact', async () => {
+      await host.closeAll()
+      host = buildHost(GiverNoticeHost)
       const { lead, children, leadTools } = await theFourOpen('auto')
       await giveAndLetItStall(leadTools, children[0], 'the work of a running child')
       expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
@@ -1398,16 +1401,13 @@ describe('692 · a restart keeps what was open', () => {
       // passes over a task already `stalled` — and the rail lists the holder with nothing running
       // it. ⚑ **D-016c** — `699`'s live fact, which a crash-closed holder carried, went with the
       // kept-open family: whether a process runs is never part of the row.
-      console.info('CARD331_BEFORE_CRASH', JSON.stringify({
-        warm: store.workGivenOutBy(lead).rows,
-        cold: createSessionStore(db, tick).workGivenOutBy(lead).rows,
-        events: ledger(children[0]).map((event) => ({ type: event.type, state: 'state' in event ? event.state : null })),
-      }))
-      crashAndRelaunch()
-      console.info('CARD331_AFTER_CRASH', JSON.stringify({
-        cold: createSessionStore(db, tick).workGivenOutBy(lead).rows,
-        events: ledger(children[0]).map((event) => ({ type: event.type, state: 'state' in event ? event.state : null })),
-      }))
+      // Keep this durable-state control independent of another reminder-driven turn.
+      expect(
+        createSessionStore(db, tick)
+          .workGivenOutBy(lead)
+          .rows.find((row) => row.piece === theOpenPiece.get(children[0])),
+      ).toMatchObject({ stalledBecause: 'turn_ended' })
+      crashAndRelaunch(GiverNoticeHost)
       expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
       expect(listed(children[0])).toEqual({ running: 'not-running' })
       expect(await workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
