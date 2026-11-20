@@ -1,13 +1,13 @@
 {
   "formatVersion": 2,
-  "version": "v25",
+  "version": "v26",
   "skills": [
     {
       "name": "delegate",
       "description": "Before assigning work or choosing helpers, reuse the best-fitting profile or service, name one result owner, and choose a supported model for each handoff.",
       "reminder": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model.",
-      "sha256": "0a04b13fd16d6d25a2f8865c1a382a26ebeca41b52b5f43ab3bb597d8bc3d1a0",
-      "bytes": 4434
+      "sha256": "14412fc4d4706ba18ce4e1b4f6eab2e665bbab204c84dc192f89c813acf15dfb",
+      "bytes": 4547
     },
     {
       "name": "hand-back",
@@ -27,8 +27,8 @@
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
       "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "8b43b0e466c78c8ece08c57a307894d8503dd8f240d352789b3ae9fae9af98de",
-      "bytes": 4363
+      "sha256": "644f53e243c8905fdc6eeda7098ab0997208dcd8dedaff082cecbbe864799dd6",
+      "bytes": 4495
     },
     {
       "name": "remember",
