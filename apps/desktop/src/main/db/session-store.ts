@@ -3464,6 +3464,7 @@ export function createSessionStore(
     trackChanges = false,
     before?: number,
     keep?: (fold: PieceFold) => void,
+    cut?: { readonly before: number; readonly read: (pieces: readonly PieceRow[] | null) => void },
   ): readonly PieceRow[] {
     const generation = activeGeneration(owner)
     const stalled = new Map<string, number>()
@@ -3475,14 +3476,17 @@ export function createSessionStore(
     }
     return readOrSkip(owner, skipped, [], () => {
       const floor = pieceFoldFloor(owner, generation, options.backgroundWakesIt)
-      if (floor === null) return []
+      if (floor === null) {
+        cut?.read([])
+        return []
+      }
       const rows = selectPieceEvents.iterate(
         owner,
         generation,
         floor,
         before ?? Number.POSITIVE_INFINITY,
       ) as Iterable<EventRow>
-      const pieces = derivePieces(owner, persistedEventsFrom(rows, skipped), {
+      const folding = {
         ...options,
         // Told after the last row: a fold that skipped one is never carried forward.
         ...(keep === undefined
@@ -3492,7 +3496,11 @@ export function createSessionStore(
                 if (complete) keep(at)
               },
             }),
-      })
+      }
+      const pieces =
+        cut === undefined
+          ? derivePieces(owner, persistedEventsFrom(rows, skipped), folding)
+          : piecesAtTheCutAndNow(owner, rows, cut.before, folding, skipped, cut.read)
       if (complete) {
         if (before === undefined) pieceStallOrdinals.set(pieces, stalled)
         return pieces
@@ -6372,32 +6380,11 @@ export function createSessionStore(
       const pieces =
         before === undefined
           ? piecesOfSession(owner, skipped)
-          : readOrSkip(owner, skipped, [], () => {
-              const generation = activeGeneration(owner)
-              const stalled = new Map<string, number>()
-              const options = pieceFoldOptions(owner, false, stalled)
-              const floor = pieceFoldFloor(owner, generation, options.backgroundWakesIt)
-              if (floor === null) {
-                atTheCut = []
-                return []
-              }
-              const rows = selectPieceEvents.iterate(
-                owner,
-                generation,
-                floor,
-                Number.POSITIVE_INFINITY,
-              ) as Iterable<EventRow>
-              const now = piecesAtTheCutAndNow(owner, rows, before, options, skipped, (cut) => {
+          : foldPiecesOfSession(owner, skipped, false, undefined, undefined, {
+              before,
+              read: (cut) => {
                 atTheCut = cut
-              })
-              if (complete) {
-                pieceStallOrdinals.set(now, stalled)
-                return now
-              }
-              return now.map(({ definitionOfDone: _condition, ...piece }) => {
-                void _condition
-                return piece
-              })
+              },
             })
       if (before === undefined && complete) atTheCut = pieces
       let driven: readonly string[] | null = null
