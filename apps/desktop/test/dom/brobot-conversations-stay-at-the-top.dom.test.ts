@@ -3,7 +3,10 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
-import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../../src/shared/conversation-title'
+import {
+  CONVERSATION_IDENTITY_BATCH_SIZE,
+  type ConversationIdentity,
+} from '../../src/shared/conversation-title'
 import { mount, unmountAll } from './harness'
 import { memoryStorage } from './memory-storage'
 import { workerRows, identities, NOW } from './parallel-workers-fixture'
@@ -36,7 +39,11 @@ function person(number: number, waiting = false): ResumableSessionInfo {
   }
 }
 
-async function draw(rows: ResumableSessionInfo[], activeId: string | null = null) {
+async function draw(
+  rows: ResumableSessionInfo[],
+  activeId: string | null = null,
+  renamed?: ConversationIdentity,
+) {
   const selected: string[] = []
   const reads: string[][] = []
   vi.stubGlobal('api', {
@@ -64,12 +71,16 @@ async function draw(rows: ResumableSessionInfo[], activeId: string | null = null
         reads.push(sessionIds)
         return rows
           .filter((row) => sessionIds.includes(row.sessionId))
-          .map((row) => ({
-            conversation: row.sessionId,
-            address: row.named?.label ?? row.sessionId,
-            title: row.named?.title ?? 'BroBot',
-            author: null,
-          }))
+          .map((row) =>
+            renamed?.conversation === row.sessionId
+              ? renamed
+              : {
+                  conversation: row.sessionId,
+                  address: row.named?.label ?? row.sessionId,
+                  title: row.named?.title?.trim() || 'BroBot',
+                  author: null,
+                },
+          )
       },
     },
     { width: 280, height: 1250 },
@@ -158,7 +169,7 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     expect(style.whiteSpace).toBe('nowrap')
     expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(49)
     expect(row.getAttribute('aria-describedby')).toBe(`rail-state-person-${number}`)
-    expect(m.q(`rail-state-person-${number}`).textContent).toContain('claude')
+    expect(row.querySelector(`#rail-state-person-${number}`)?.textContent).toContain('claude')
   }
   await drawnReady()
   if (import.meta.env.VITE_RAIL_RESTORE_CAPTURE)
@@ -198,3 +209,16 @@ for (const width of [251.68, 266.2]) {
     expect(m.selected).toEqual(['person-21', 'person-4'])
   })
 }
+
+it('uses an authored conversation title before its root title', async () => {
+  const m = await draw([person(4)], null, {
+    conversation: 'person-4',
+    address: 'W4',
+    title: 'Saved conversation name',
+    author: { kind: 'person' },
+  })
+  await expect
+    .poll(() => m.q('rail-brobot-title-person-4').textContent?.trim())
+    .toBe('W4 · Saved conversation name')
+  expect(m.q('rail-brobot-title-person-4').title).toBe('W4 · Saved conversation name')
+})
