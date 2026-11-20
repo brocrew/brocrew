@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide, type ShallowRef } from 'vue'
 import type { ClientProviderApi } from '../../src/shared/client-provider-api'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
@@ -133,12 +133,12 @@ it('isolates distinct clients, out-of-order generations and refusals without cha
   const factsA = answer(24)
   nextA.resolve(factsA)
   await settle()
-  expect(left.held().value).toBe(factsA)
+  expect(left.held().value).toBeNull()
   expect(right.held().value).toBeNull()
   const factsB = answer(72)
   firstB.resolve(factsB)
   oldA.resolve(answer(1))
-  await settle()
+  await vi.waitFor(() => expect(left.held().value).toBe(factsA))
   expect(left.held().value).toBe(factsA)
   expect(right.held().value).toBe(factsB)
   a.read.mockRejectedValueOnce(new Error('Fictional read refused'))
@@ -156,4 +156,32 @@ it('isolates distinct clients, out-of-order generations and refusals without cha
   b.notice('usage')
   await settle()
   expect(right.held().value).toBe(recovered)
+})
+
+it('coalesces login notices received during one usage read and settles the last answer', async () => {
+  const f = usageClient()
+  const previous = answer(8)
+  f.read.mockResolvedValueOnce(previous)
+  const out = surface(f.api)
+  await settle()
+  const pendingReads: ReturnType<typeof pending>[] = []
+  f.read.mockImplementation(() => {
+    const next = pending()
+    pendingReads.push(next)
+    return next.promise
+  })
+  for (let notice = 0; notice < 50; notice++) f.notice('login')
+  const concurrent = pendingReads.length
+  const retained = out.held().value === previous
+  const firstRound = [...pendingReads]
+  for (const read of firstRound) read.resolve(answer(9))
+  await settle()
+  const followups = pendingReads.slice(firstRound.length)
+  for (const read of followups) read.resolve(answer(10))
+  await settle()
+  const final = out.held().value?.claude[0]?.usedPercent
+  expect(retained).toBe(true)
+  expect(concurrent).toBe(1)
+  expect(followups).toHaveLength(1)
+  expect(final).toBe(10)
 })

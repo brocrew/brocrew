@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { withProviderHomeLock } from '../src/internal/provider-home'
 import { AuthUnavailableError } from '../src/internal/auth'
 import {
+  aNewerCodexSignInIsAvailable,
   NoCodexSignInOnThisComputerError,
   fallbackSignIn,
   codexAuthHealth,
@@ -135,6 +136,7 @@ describe('claudeKeychainTokenProvider (022)', () => {
 })
 
 describe('provisionCodexAuth (022)', () => {
+  const subscription = JSON.stringify({ tokens: { account_id: 'fictional-machine' } })
   let home: string
   let sourceDir: string
   let source: string
@@ -148,6 +150,120 @@ describe('provisionCodexAuth (022)', () => {
   afterEach(() => {
     rmSync(home, { recursive: true, force: true })
     rmSync(sourceDir, { recursive: true, force: true })
+  })
+
+  it.each(['{', '{}', '{"tokens":{}}'])(
+    'keeps a working copy when the newer machine account is unreadable (%s)',
+    async (incoming) => {
+      const dest = join(home, 'auth.json')
+      writeFileSync(dest, subscription)
+      writeFileSync(source, incoming)
+      utimesSync(dest, 100, 100)
+      utimesSync(source, 200, 200)
+
+      expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
+      expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
+        'unchanged',
+      )
+      expect(signInAt(dest)).toBe(digestOf(subscription))
+    },
+  )
+
+  it('does not request a server stop for identical sign-in bytes with a newer source timestamp', async () => {
+    writeFileSync(source, subscription)
+    const dest = join(home, 'auth.json')
+    writeFileSync(dest, readFileSync(source))
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+
+    expect(aNewerCodexSignInIsAvailable(home, source)).toBe(false)
+    expect(await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })).toBe(
+      'unchanged',
+    )
+    expect(lstatSync(dest).mtimeMs).toBe(100_000)
+  })
+
+  it('refreshes an older subscription copy from this computer without changing the source', async () => {
+    const dest = join(home, 'auth.json')
+    const old = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-old' } })
+    const newer = JSON.stringify({ auth_mode: 'chatgpt', tokens: { account_id: 'fictional-new' } })
+    writeFileSync(dest, old)
+    writeFileSync(source, newer)
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+    const original = lstatSync(source)
+
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
+
+    expect(signInAt(dest)).toBe(digestOf(newer))
+    expect(signInAt(source)).toBe(digestOf(newer))
+    expect(lstatSync(source).mtimeMs).toBe(original.mtimeMs)
+    expect(lstatSync(source).ino).toBe(original.ino)
+  })
+
+  it.each([100, 200])('keeps a subscription copy as new as the source (%s)', async (sourceTime) => {
+    writeFileSync(source, subscription)
+    const dest = join(home, 'auth.json')
+    const rotated = JSON.stringify({
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'fictional-rotated' },
+    })
+    writeFileSync(dest, rotated)
+    utimesSync(dest, 200, 200)
+    utimesSync(source, sourceTime, sourceTime)
+    const original = lstatSync(dest)
+
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
+
+    expect(signInAt(dest)).toBe(digestOf(rotated))
+    expect(lstatSync(dest).mtimeMs).toBe(original.mtimeMs)
+    expect(lstatSync(dest).ino).toBe(original.ino)
+  })
+
+  it('leaves an API-key home unchanged even when the machine sign-in is newer', async () => {
+    writeFileSync(source, subscription)
+    const dest = join(home, 'auth.json')
+    const key = JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-test-key' })
+    writeFileSync(dest, key)
+    utimesSync(dest, 100, 100)
+    utimesSync(source, 200, 200)
+
+    await reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
+
+    expect(signInAt(dest)).toBe(digestOf(key))
+  })
+
+  it('keeps an agent rotation that happened while the copy waited for the home lock', async () => {
+    writeFileSync(source, subscription)
+    const dest = join(home, 'auth.json')
+    writeFileSync(dest, '{"tokens":{"account_id":"fictional-before"}}')
+    utimesSync(dest, 50, 50)
+    utimesSync(source, 100, 100)
+    let entered!: () => void
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const ready = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const owner = withProviderHomeLock(home, async () => {
+      entered()
+      await ready
+    })
+    await held
+    const copying = reprovisionCodexAuth(home, { sourceAuthPath: source, newerOnly: true })
+    const rotated = '{"tokens":{"account_id":"fictional-rotated-under-lock"}}'
+    try {
+      writeFileSync(dest, rotated)
+      utimesSync(dest, 200, 200)
+    } finally {
+      release()
+    }
+    await owner
+    await copying
+    expect(signInAt(dest)).toBe(digestOf(rotated))
+    expect(lstatSync(dest).mtimeMs).toBe(200_000)
   })
 
   it('copies auth.json content into the home at 0600, atomically, leaving no temp file', async () => {
@@ -611,12 +727,14 @@ describe('a copy Codex refused, replaced once by the one refreshed last', () => 
   const replace = (
     refused: CodexCopyIdentity | null = codexCopyIdentityIn(helper),
     stillWanted: () => boolean = () => true,
+    newerOnly?: true,
   ) =>
     replaceARefusedCodexCopy(helper, {
       managedRoot: root,
       // A home that holds no copy has none to name; the writer finds none either.
       refused: refused ?? { dev: 0n, ino: 0n, size: 0n, mtimeNs: 0n },
       stillWanted,
+      ...(newerOnly === undefined ? {} : { newerOnly }),
       candidates: [
         { from: 'the-computers', sourceAuthPath: computers },
         { from: 'brobots-own', fallback: { path: join(ownHome, 'auth.json'), managedRoot: root } },
@@ -625,6 +743,19 @@ describe('a copy Codex refused, replaced once by the one refreshed last', () => 
   const holds = (text: string) => writeFileSync(join(helper, 'auth.json'), text, { mode: 0o600 })
   const own = (text: string) => writeFileSync(join(ownHome, 'auth.json'), text, { mode: 0o600 })
   const held = () => signInAt(join(helper, 'auth.json'))
+
+  it('does not replace a newer agent file with an older recovery candidate', async () => {
+    writeFileSync(computers, FRESH)
+    own(FRESHER)
+    utimesSync(computers, 100, 100)
+    utimesSync(join(ownHome, 'auth.json'), 100, 100)
+    utimesSync(join(helper, 'auth.json'), 200, 200)
+    expect(await replace(undefined, undefined, true)).toBe('not-tried')
+    expect(held()).toBe(digestOf(DEAD))
+    utimesSync(join(ownHome, 'auth.json'), 300, 300)
+    expect(await replace(undefined, undefined, true)).toBe('brobots-own')
+    expect(held()).toBe(digestOf(FRESHER))
+  })
 
   it('🔴 replaces it with this computer’s, refreshed later, of the same account, atomically and private', async () => {
     writeFileSync(computers, FRESH)

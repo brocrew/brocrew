@@ -152,3 +152,140 @@ describe('293 §5 · an answer applies only while it still owns the profile', ()
     expect(shownIn(lists), 'a credential gesture could not revive a failed menu').toEqual(ACCOUNT_B)
   })
 })
+
+describe('a login refresh retains the last model answer while disowning older requests', () => {
+  it('retains rows while refreshing and never lets the pre-login request win', async () => {
+    const old = deferred()
+    const fresh = deferred()
+    let read = () => Promise.resolve(ACCOUNT_A)
+    const lists = holderOver(() => read())
+    await lists.read('claude', 'work')
+    read = () => old.promise
+    const obsolete = lists.reread()
+    await Promise.resolve()
+    lists.forget('work', { retainAnswered: true })
+    expect(shownIn(lists)).toEqual(ACCOUNT_A)
+    expect(lists.readiness('claude', 'work')).toEqual({ state: 'pending' })
+    expect(lists.choices('claude', 'work')).toBeNull()
+    read = () => fresh.promise
+    const current = lists.reread()
+    expect(lists.held('claude', 'work')).toMatchObject({ state: 'answered', refreshing: true })
+    fresh.resolve(ACCOUNT_B)
+    await current
+    expect(shownIn(lists)).toEqual(ACCOUNT_B)
+    old.resolve(ACCOUNT_A)
+    await obsolete
+    expect(shownIn(lists)).toEqual(ACCOUNT_B)
+    expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  })
+
+  it('replaces retained rows with the authoritative empty answer', async () => {
+    const fresh = deferred()
+    let read = () => Promise.resolve(ACCOUNT_A)
+    const lists = holderOver(() => read())
+    await lists.read('claude', 'work')
+    lists.forget('work', { retainAnswered: true })
+    read = () => fresh.promise
+    const current = lists.reread()
+    expect(shownIn(lists)).toEqual(ACCOUNT_A)
+    fresh.resolve({ ...ACCOUNT_B, models: [] })
+    await current
+    expect(shownIn(lists)?.models).toEqual([])
+    expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  })
+})
+
+it('settles a failed forced refresh without promoting retained choices to current readiness', async () => {
+  const fresh = deferred()
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => read())
+  await lists.read('claude', 'work')
+  lists.forget('work', { retainAnswered: true })
+  read = () => fresh.promise
+  const current = lists.reread()
+  fresh.reject(new Error('Fictional refresh failed'))
+  await current
+  expect(shownIn(lists)).toEqual(ACCOUNT_A)
+  expect(lists.held('claude', 'work')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'work')).toMatchObject({ state: 'settled', ready: null })
+  expect(lists.choices('claude', 'work')).toBeNull()
+})
+
+it('settles another profile when ordinary forget disowns its pending catalogue request', async () => {
+  const pending = deferred()
+  let calls = 0
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => {
+    calls++
+    return read()
+  })
+  await lists.read('claude', 'alpha')
+  await lists.read('claude', 'beta')
+  read = () => pending.promise
+  const obsolete = lists.reread()
+  await Promise.resolve()
+  expect(calls).toBe(4)
+  expect(lists.held('claude', 'beta')).toMatchObject({ refreshing: true })
+  lists.forget('alpha')
+  await lists.read('claude', 'beta')
+  expect(lists.held('claude', 'alpha')).toBeNull()
+  expect(lists.held('claude', 'beta')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'beta').state).toBe('settled')
+  expect(calls).toBe(4)
+  pending.resolve(ACCOUNT_B)
+  await obsolete
+  expect(lists.held('claude', 'beta')).toMatchObject({ state: 'answered', list: ACCOUNT_A })
+  expect(lists.readiness('claude', 'beta').state).toBe('settled')
+})
+
+it('settles retained refresh ownership when another profile supplied an unavailable catalogue', async () => {
+  let read = () => Promise.resolve(ACCOUNT_A)
+  let calls = 0
+  const lists = holderOver(() => {
+    calls++
+    return read()
+  })
+  await lists.read('claude', 'alpha')
+  read = () =>
+    Promise.resolve({
+      ...ACCOUNT_B,
+      models: [],
+      notAsked: {
+        ok: false as const,
+        reason: 'refused' as const,
+        detail: 'Fictional catalogue unavailable.',
+      },
+    })
+  await lists.read('claude', 'beta')
+  expect(lists.held('claude', 'alpha')).toMatchObject({
+    state: 'answered',
+    list: { notAsked: { reason: 'refused' } },
+  })
+  lists.forget('alpha', { retainAnswered: true })
+  read = () => Promise.resolve(ACCOUNT_B)
+  await lists.reread()
+  expect(lists.held('claude', 'alpha')).not.toMatchObject({ refreshing: true })
+  expect(lists.readiness('claude', 'alpha').state).toBe('settled')
+  expect(calls).toBeGreaterThan(2)
+})
+
+it('does not retire a different provider while refreshing a provider-scoped login', async () => {
+  const other = deferred()
+  let read = () => Promise.resolve(ACCOUNT_A)
+  const lists = holderOver(() => read())
+  await lists.read('claude', 'work')
+  read = () => other.promise
+  const pending = lists.read('codex', 'work')
+  lists.forget('work', { retainAnswered: true, provider: 'claude' })
+  read = () => Promise.resolve(ACCOUNT_B)
+  await lists.reread('claude')
+  expect(lists.readiness('codex', 'work').state).toBe('pending')
+  other.resolve({ ...ACCOUNT_A, provider: 'codex' })
+  await pending
+  expect(lists.held('codex', 'work')).toMatchObject({
+    state: 'answered',
+    list: { provider: 'codex' },
+  })
+  expect(lists.readiness('codex', 'work').state).toBe('settled')
+  expect(shownIn(lists)).toEqual(ACCOUNT_B)
+})

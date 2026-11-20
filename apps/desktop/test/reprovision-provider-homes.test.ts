@@ -1,3 +1,8 @@
+import {
+  copiesBeforeEveryTurn,
+  keepsTheKeySession,
+  copiesBeforeApprovingAPlan,
+} from './lib/automatic-codex-copy'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -154,12 +159,11 @@ describe('copying this install’s provider sign-ins', () => {
           await beforeResume?.()
           if (resumeFails) throw new Error('fictional restart failure')
           const handle = await runtime.resume(ref, options)
-          if (replacementCloseFails) {
-            const close = handle.close.bind(handle)
-            handle.close = async () => {
-              await close()
-              throw new Error('fictional replacement close failed')
-            }
+          const close = handle.close.bind(handle)
+          handle.close = async () => {
+            stopped++
+            await close()
+            if (replacementCloseFails) throw new Error('fictional replacement close failed')
           }
           handle.awaitProcessExit = () => oldProcessExit
           await beforeReturn?.()
@@ -205,6 +209,32 @@ describe('copying this install’s provider sign-ins', () => {
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
+
+  const automaticFixture = () => ({
+    host,
+    root,
+    sink,
+    ops,
+    copy,
+    messages,
+    get launches() {
+      return launches
+    },
+    get stopped() {
+      return stopped
+    },
+  })
+
+  it('automatically stops the cached server and copies a newer sign-in before sending', () =>
+    copiesBeforeEveryTurn(automaticFixture()))
+
+  it('does not check or copy machine sign-ins for an API-key turn', async () => {
+    keySaved = true
+    await keepsTheKeySession(automaticFixture())
+  })
+
+  it('copies a newer sign-in before the turn that approves a plan', () =>
+    copiesBeforeApprovingAPlan(automaticFixture()))
 
   for (const opening of ['start', 'resume'] as const) {
     for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {

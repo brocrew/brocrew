@@ -11,7 +11,6 @@ import type {
   ProviderResources,
   ProviderUsageReading,
   ProviderVersion,
-  ProviderHomesReprovision,
 } from '../../../shared/runtime-ipc'
 import {
   A_STANDING_IN_A_WORD,
@@ -243,10 +242,10 @@ async function copyMachineSignIn(): Promise<void> {
   // ⚑ No check here: a copy that landed is a login notice, which asks again (`loginMoved`).
 }
 
-async function signInHere(): Promise<void> {
+async function signInHere(): Promise<boolean> {
   if (nativeSignIn.value) {
     if (keyStatus.value?.set === false) await nativeSetup.signIn()
-    return
+    return false
   }
   let connected = false
   await withGesture('signing-in', async () => {
@@ -266,6 +265,7 @@ async function signInHere(): Promise<void> {
     }
   })
   if (connected) await refreshConnectedModels()
+  return connected
 }
 
 async function cancelSignIn(): Promise<void> {
@@ -281,10 +281,6 @@ async function cancelSignIn(): Promise<void> {
   }
 }
 
-const copyingHomes = ref(false)
-const copiedHomes = ref<ProviderHomesReprovision | null>(null)
-const copyHomesError = ref<string | null>(null)
-let copyHomesTimer: ReturnType<typeof setTimeout> | undefined
 const descriptor = computed(
   () =>
     props.descriptor ??
@@ -292,59 +288,6 @@ const descriptor = computed(
       ? catalogueState.value.providers.find((item) => item.id === props.provider)
       : undefined),
 )
-const keepsProfileSignIns = computed(() => descriptor.value?.credential === 'profile-or-key')
-async function readHomeCopies(statusOnly = false): Promise<void> {
-  const result = await client.reprovisionProviderHomes({
-    provider: props.provider,
-    ...(statusOnly ? { statusOnly: true } : {}),
-  })
-  if (!cardOpen) return
-  copiedHomes.value = result.profiles.length === 0 ? null : result
-  if (result.pending > 0)
-    copyHomesTimer = setTimeout(() => {
-      void readHomeCopies(true).catch(() => {
-        copyHomesError.value = 'Could not read the switch progress. Open Providers again to check.'
-      })
-    }, 1000)
-}
-async function copyAllMachineSignIns(): Promise<void> {
-  if (copyingHomes.value || (copiedHomes.value?.pending ?? 0) > 0) return
-  copyingHomes.value = true
-  copiedHomes.value = null
-  copyHomesError.value = null
-  clearTimeout(copyHomesTimer)
-  try {
-    await readHomeCopies()
-  } catch {
-    copyHomesError.value = 'Could not copy the sign-ins. Try again.'
-  } finally {
-    copyingHomes.value = false
-  }
-}
-function copyHomeReason(
-  reason:
-    | 'api-key'
-    | 'key-status-unavailable'
-    | 'unchanged'
-    | 'copy-failed'
-    | 'restart-failed'
-    | 'stop-failed',
-): string {
-  switch (reason) {
-    case 'api-key':
-      return 'Saved API key: all agents using this provider keep their key.'
-    case 'key-status-unavailable':
-      return 'API key status could not be checked. Try again.'
-    case 'unchanged':
-      return 'Already uses this Mac’s sign-in.'
-    case 'copy-failed':
-      return 'Could not copy the sign-in. Check this Mac’s sign-in and try again.'
-    case 'restart-failed':
-      return 'Sign-in copied, but this agent could not restart. Try again.'
-    case 'stop-failed':
-      return 'Could not confirm this agent stopped. Its sign-in was left unchanged.'
-  }
-}
 
 /** ⚑ The plan in the provider's own word, as a person writes it: `max` → *Max*. */
 const plan = computed(() => {
@@ -572,7 +515,6 @@ watch(
 )
 onBeforeUnmount(() => {
   cardOpen = false
-  clearTimeout(copyHomesTimer)
   modelRefresh?.abort()
 })
 
@@ -581,7 +523,10 @@ const list = computed(() => (held.value?.state === 'answered' ? held.value.list 
 
 const listSays = computed(() => {
   const now = held.value
-  if (modelsRefreshing.value || now === null || now.state === 'asking') {
+  if (now?.state === 'answered' && (modelsRefreshing.value || now.refreshing)) {
+    return { message: 'Updating models…', tone: 'note' as const, remedy: null }
+  }
+  if (now === null || now.state === 'asking') {
     return { message: `Reading ${name.value}’s models…`, tone: 'note' as const, remedy: null }
   }
   const catalogue =
@@ -771,7 +716,7 @@ const setupKey = ref(false)
 const setupExternal = ref(false)
 const setupCopySays = ref<string | null>(null)
 const setupCheckFailure = ref<string | null>(null)
-const setupStep = ref<1 | 2 | 3>(1)
+const setupStep = ref<1 | 2>(1)
 const setupChecking = ref(false)
 const setupReady = computed(
   () =>
@@ -784,7 +729,9 @@ const setupReady = computed(
     }) === true,
 )
 watch(setupReady, (ready) => {
-  if (ready) setupCheckFailure.value = null
+  if (ready) {
+    setupCheckFailure.value = null
+  }
 })
 const setupBusy = computed(
   () => setupChecking.value || keyBusy.value || authBusy.value !== 'idle' || nativeSetup.busy.value,
@@ -822,8 +769,14 @@ function useSetupKey(): void {
 async function setupSignIn(): Promise<void> {
   if (setupBusy.value || !canSetUpSignIn.value) return
   setupKey.value = false
-  if (nativeSignIn.value || signIn.value.state === 'available') await signInHere()
-  else setupExternal.value = true
+  if (nativeSignIn.value) {
+    if (keyStatus.value?.set === false)
+      await nativeSetup.signIn(() => {
+        if (setupReady.value) settingUp.value = false
+      })
+  } else if (signIn.value.state === 'available') {
+    if ((await signInHere()) && setupReady.value) settingUp.value = false
+  } else setupExternal.value = true
 }
 async function copySetupCommand(): Promise<void> {
   if (!props.setup) return
@@ -855,7 +808,7 @@ async function checkSetup(): Promise<void> {
     }
     await aPersonChecksAgain()
     await readKey()
-    if (setupReady.value) setupStep.value = 3
+    if (setupReady.value) settingUp.value = false
     else
       setupCheckFailure.value =
         auth.value?.state === 'usable'
@@ -907,7 +860,6 @@ onMounted(() => {
     void check()
     void readKey()
   }
-  if (keepsProfileSignIns.value) void readHomeCopies(true).catch(() => {})
   if (!programMissing.value) void lists.value.read(props.provider, undefined, { once: true })
 })
 watch(programMissing, (missing) => {
@@ -1075,98 +1027,84 @@ defineExpose({ beginSetup })
       <ol class="setup-steps" aria-label="Setup steps">
         <li :aria-current="setupStep === 1 ? 'step' : undefined">1 · Connect</li>
         <li :aria-current="setupStep === 2 ? 'step' : undefined">2 · Check</li>
-        <li :aria-current="setupStep === 3 ? 'step' : undefined">3 · Done</li>
       </ol>
-      <template v-if="setupStep !== 3">
-        <p class="line">Sign in or use an API key.</p>
-        <div class="actions">
-          <button
-            type="button"
-            class="bb-button"
-            data-cy="setup-sign-in"
-            :disabled="setupBusy || !canSetUpSignIn"
-            :title="!canSetUpSignIn && signIn.state !== 'available' ? signIn.reason : undefined"
-            @click="setupSignIn"
-          >
-            Sign in
-          </button>
-          <button
-            type="button"
-            class="bb-button"
-            data-cy="setup-use-key"
-            :disabled="setupBusy"
-            @click="useSetupKey"
-          >
-            Use an API key
-          </button>
-          <button
-            v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
-            type="button"
-            class="bb-button"
-            @click="cancelSignIn"
-          >
-            Cancel sign-in
-          </button>
-        </div>
-        <div v-if="setupExternal && props.setup" class="setup-command">
-          <p class="line">
-            Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
-          </p>
-          <p v-if="props.setup.signInInstructions" class="line">
-            {{ props.setup.signInInstructions }}
-          </p>
-          <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
-          <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
-            Copy command
-          </button>
-          <p v-if="setupCopySays" class="line quiet" role="status">{{ setupCopySays }}</p>
-        </div>
-        <label v-if="setupKey" class="setup-key"
-          >API key<input
-            v-model="keyDraft"
-            class="bb-input"
-            type="password"
-            autocomplete="off"
-            :disabled="setupBusy"
-            :placeholder="`Paste your ${name} API key`"
-            data-cy="setup-key-input"
-        /></label>
-        <p v-if="setupKey || keyStatus?.set" class="line quiet">{{ checkSpends }}</p>
-        <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
-          {{ signIn.reason }}
+      <p class="line">Sign in or use an API key.</p>
+      <div class="actions">
+        <button
+          type="button"
+          class="bb-button"
+          data-cy="setup-sign-in"
+          :disabled="setupBusy || !canSetUpSignIn"
+          :title="!canSetUpSignIn && signIn.state !== 'available' ? signIn.reason : undefined"
+          @click="setupSignIn"
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          class="bb-button"
+          data-cy="setup-use-key"
+          :disabled="setupBusy"
+          @click="useSetupKey"
+        >
+          Use an API key
+        </button>
+        <button
+          v-if="authBusy === 'signing-in' || nativeSetup.busy.value"
+          type="button"
+          class="bb-button"
+          @click="cancelSignIn"
+        >
+          Cancel sign-in
+        </button>
+      </div>
+      <div v-if="setupExternal && props.setup" class="setup-command">
+        <p class="line">
+          Run this command in {{ props.setup.shell }}. Follow its sign-in, then come back here.
         </p>
-        <ProviderSetupProgress
-          v-if="nativeSignIn"
-          :progress="nativeSetup.state.value?.progress ?? ''"
-          :auth-url="nativeSetup.state.value?.authUrl ?? null"
-          :error="nativeSetup.error.value"
-        />
-        <div class="actions">
-          <button
-            type="button"
-            class="bb-button bb-button--primary"
-            data-cy="setup-check"
-            :disabled="
-              setupBusy ||
-              !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
-            "
-            @click="checkSetup"
-          >
-            {{ setupChecking ? 'Checking…' : 'Check' }}
-          </button>
-        </div>
-      </template>
-      <template v-else
-        ><p class="line" data-cy="setup-ready">{{ name }} is ready.</p>
+        <p v-if="props.setup.signInInstructions" class="line">
+          {{ props.setup.signInInstructions }}
+        </p>
+        <code data-cy="setup-command">{{ props.setup.signInCommand }}</code>
+        <button type="button" class="bb-button" data-cy="setup-copy" @click="copySetupCommand">
+          Copy command
+        </button>
+        <p v-if="setupCopySays" class="line quiet" role="status">{{ setupCopySays }}</p>
+      </div>
+      <label v-if="setupKey" class="setup-key"
+        >API key<input
+          v-model="keyDraft"
+          class="bb-input"
+          type="password"
+          autocomplete="off"
+          :disabled="setupBusy"
+          :placeholder="`Paste your ${name} API key`"
+          data-cy="setup-key-input"
+      /></label>
+      <p v-if="setupKey || keyStatus?.set" class="line quiet">{{ checkSpends }}</p>
+      <p v-if="signIn.state !== 'available' && !setupKey && !props.setup" class="line quiet">
+        {{ signIn.reason }}
+      </p>
+      <ProviderSetupProgress
+        v-if="nativeSignIn"
+        :progress="nativeSetup.state.value?.progress ?? ''"
+        :auth-url="nativeSetup.state.value?.authUrl ?? null"
+        :error="nativeSetup.error.value"
+      />
+      <div class="actions">
         <button
           type="button"
           class="bb-button bb-button--primary"
-          data-cy="setup-done"
-          @click="closeSetup"
+          data-cy="setup-check"
+          :disabled="
+            setupBusy ||
+            !(setupExternal || auth?.state === 'usable' || keyStatus?.set || keyDraft.trim())
+          "
+          @click="checkSetup"
         >
-          Done
-        </button></template
-      >
+          {{ setupChecking ? 'Checking…' : 'Check' }}
+        </button>
+      </div>
       <p v-if="authNotice" class="line" :class="{ warn: authNoticeWarns }" role="status">
         {{ authNotice }}
       </p>
@@ -1310,44 +1248,6 @@ defineExpose({ beginSetup })
         >
           {{ authNotice }}
         </p>
-        <div v-if="keepsProfileSignIns" data-cy="copy-all-sign-ins">
-          <p class="line quiet">
-            Copies this Mac’s sign-in for every agent in this install; saved API keys stay as they
-            are.
-          </p>
-          <button
-            type="button"
-            class="action"
-            :disabled="copyingHomes || setupBusy || (copiedHomes?.pending ?? 0) > 0"
-            @click="copyAllMachineSignIns"
-          >
-            {{
-              copyingHomes ? 'Copying sign-ins…' : `Use this Mac's ${name} sign-in for all agents`
-            }}
-          </button>
-          <div v-if="copiedHomes" role="status">
-            <p class="line quiet">
-              Agents restart automatically between tasks to use the new sign-in. BroCrew does not
-              need restarting.
-            </p>
-            <p class="line">
-              {{ copiedHomes.replaced }} switched now, {{ copiedHomes.pending }} will switch when
-              they finish their current task. {{ copiedHomes.skipped }} skipped /
-              {{ copiedHomes.failed }} failed.
-            </p>
-            <p
-              v-for="profile in copiedHomes.profiles.filter(
-                (one) => one.state === 'skipped' || one.state === 'failed',
-              )"
-              :key="profile.profileId"
-              class="line quiet"
-            >
-              {{ profile.profileId }}:
-              {{ 'reason' in profile ? copyHomeReason(profile.reason) : '' }}
-            </p>
-          </div>
-          <p v-if="copyHomesError" role="alert" class="line">{{ copyHomesError }}</p>
-        </div>
         <p v-if="renewalSends !== null" class="line quiet" data-cy="provider-login-renewal">
           {{ renewalSends }}
         </p>

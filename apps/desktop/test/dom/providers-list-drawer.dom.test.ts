@@ -177,7 +177,7 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(ids()).toEqual(['claude', 'codex'])
     expect(m.host.querySelector('[data-cy="provider-drawer"]')).toBeNull()
   })
-  it('uses an injected descriptor’s sign-in policy in the reused card', async () => {
+  it('keeps an injected descriptor’s login wording without offering a bulk sign-in action', async () => {
     const check = window.api.runtime.checkProviderAuth
     window.api.runtime.checkProviderAuth = async (asked) =>
       (asked.provider as string) === 'fable'
@@ -193,9 +193,8 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     row(m, 'fable').click()
     await settle()
-    expect(m.q('copy-all-sign-ins').textContent).toContain(
-      "Use this Mac's Fable sign-in for all agents",
-    )
+    expect(m.q('provider-account').textContent).toContain('Runs on your Fable login')
+    expect(m.all('copy-all-sign-ins')).toHaveLength(0)
   })
   it('uses supplied success words for a fictional provider’s manual check', async () => {
     const check = window.api.runtime.checkProviderAuth
@@ -390,6 +389,10 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(row(m, 'codex').textContent).toContain("Couldn't check")
   })
   it('opens the requested setup provider through the existing Settings route', async () => {
+    window.api.runtime.checkProviderAuth = async () => ({
+      state: 'absent',
+      reason: 'Fictional setup still needs a sign-in.',
+    })
     const m = screen({ setupProvider: 'codex' })
     await settle()
     expect(m.q('provider-drawer').textContent).toContain('Codex')

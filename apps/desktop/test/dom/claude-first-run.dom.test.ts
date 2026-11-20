@@ -359,7 +359,7 @@ it('uses CLI-owned browser sign-in and automatically retries a warming model cat
     completedSignInMessage: 'The supplied native sign-in completed.',
   })
   await settle()
-  expect(m.q('provider-models-said').textContent).toContain('Reading')
+  expect(m.q('provider-models-said').textContent?.trim()).toBe('Updating models…')
   expect(m.q('provider-models-said').textContent).not.toContain('Try again')
   await vi.waitFor(() => expect(m.all('provider-model-row')).toHaveLength(1))
   expect(modelList).toHaveBeenCalledTimes(3)
@@ -378,7 +378,7 @@ it('shows a persistent catalogue failure only after the bounded post-Check retri
   const before = modelList.mock.calls.length
   check.click()
   await settle()
-  expect(m.q('provider-models-said').textContent).toContain('Reading')
+  expect(m.q('provider-models-said').textContent?.trim()).toBe('Updating models…')
   expect(m.q('provider-models-said').textContent).not.toContain('Try again')
   await vi.waitFor(() => expect(m.q('provider-models-said').textContent).toContain('Try again'))
   expect(modelList).toHaveBeenCalledTimes(before + 3)
@@ -430,3 +430,50 @@ it('never lets a late initial idle read erase newer installer progress', async (
   expect(m.q('install-program').hasAttribute('disabled')).toBe(true)
   expect(m.q('install-progress').textContent).toContain('Downloading Claude Code')
 })
+
+it('closes wizard-owned native sign-in only after completion and the readiness recheck', async () => {
+  const { m, props, bridge, publish, signedIn } = fixture(true)
+  props.setupRequested = true
+  await settle()
+  m.q('setup-sign-in').click()
+  await settle()
+  expect(bridge.signIn).toHaveBeenCalledExactlyOnceWith('claude')
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+  signedIn()
+  publish({ phase: 'signed-in', progress: 'Signed in.', authUrl: null, exitCode: 0 })
+  await vi.waitFor(() => expect(m.all('provider-inline-setup')).toHaveLength(0))
+  expect(m.q('provider-standing').textContent?.trim()).toBe('Ready')
+})
+
+it('does not close later explicit setup for a native sign-in started outside it', async () => {
+  const { m, props, publish, signedIn } = fixture(true)
+  await settle()
+  m.q('native-sign-in').click()
+  await settle()
+  props.setupRequested = true
+  await settle()
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+  signedIn()
+  publish({ phase: 'signed-in', progress: 'Signed in.', authUrl: null, exitCode: 0 })
+  await vi.waitFor(() => expect(m.q('provider-standing').textContent?.trim()).toBe('Ready'))
+  expect(m.all('provider-inline-setup')).toHaveLength(1)
+})
+
+it.each(['failed', 'cancelled', 'admission-rejected'] as const)(
+  'retires wizard native completion after %s before a late signed-in event',
+  async (outcome) => {
+    const { m, props, bridge, publish, signedIn, readVersions } = fixture(true)
+    props.setupRequested = true
+    await settle()
+    if (outcome === 'admission-rejected')
+      bridge.signIn.mockRejectedValueOnce(new Error('Fictional admission refused.'))
+    m.q('setup-sign-in').click()
+    await settle()
+    if (outcome !== 'admission-rejected') publish({ phase: outcome })
+    signedIn()
+    publish({ phase: 'signed-in', progress: 'Late sign-in.', authUrl: null, exitCode: 0 })
+    await settle()
+    expect(readVersions).not.toHaveBeenCalled()
+    expect(m.all('provider-inline-setup')).toHaveLength(1)
+  },
+)

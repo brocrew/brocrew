@@ -1,21 +1,18 @@
 import { addressedGive, newConversationGive } from './lib/give-fixture'
+import { StandInCodex, digestOf, signInAt, type TurnMode } from './lib/refused-codex-stand-in'
 import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  AuthUnavailableError,
   withProviderHomeLock,
   FakeRuntime,
   type FakeSessionHandle,
-  type ResumeOptions,
   type RuntimeEvent,
-  type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
 import { CodexRefusedItsSignInError, codexCopyIdentityIn } from '@brobot2/runtime/codex'
@@ -45,12 +42,6 @@ import { neutralHostDeps } from './lib/host-fixture'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-type CopiedSignIn = ReturnType<typeof codexCopyIdentityIn>
-
-const digestOf = (bytes: string | Buffer): string =>
-  createHash('sha256').update(bytes).digest('hex').slice(0, 16)
-const signInAt = (path: string): string => digestOf(readFileSync(path))
-
 const signIn = (account: string, token: string, refreshed: string): string =>
   JSON.stringify({
     auth_mode: 'chatgpt',
@@ -79,142 +70,6 @@ class Sink implements RuntimeEventSink {
 const says = (handle: FakeSessionHandle, error: RuntimeEvent): void =>
   (handle as unknown as { push(event: RuntimeEvent): void }).push(error)
 const REFUSED = { type: 'error', message: 'refused', fatal: false, cause: 'auth' } as const
-
-class StandInCodex extends FakeRuntime {
-  readonly handles: FakeSessionHandle[] = []
-  constructor(
-    private readonly accepts: () => ReadonlySet<string>,
-    private readonly starts: string[],
-  ) {
-    super('codex')
-  }
-  failsOtherwise = false
-  refusesBeforeCodexIsAsked = false
-  asItRefuses: () => void = () => {}
-  checksItsSignIn: () => Promise<boolean> = async () => false
-  readonly turnModes: TurnMode[] = []
-  readonly sent: string[] = []
-  /** The thread retains its input across a reopen; carrying on adds no message to it. */
-  private readonly retained = new Map<string, string>()
-  readonly answeredInputs: string[] = []
-  carriedOn = 0
-  asItCarriesOn: () => void = () => {}
-  carryOnIsHeldOpen = false
-  carryOnIsRefusedAtOnce = false
-  aStopMeetsTheRefusal = false
-  cannotCarryOn = false
-  asItStarts: () => void = () => {}
-  asItResumes: (handle: FakeSessionHandle) => void = () => {}
-  private openTurn: { refuse: (loginRefused?: boolean) => void; answer: () => void } | null = null
-  refuseTheOpenTurn(loginRefused = true): void {
-    const end = this.openTurn
-    this.openTurn = null
-    end?.refuse(loginRefused)
-  }
-  answerTheOpenTurn(): void {
-    const end = this.openTurn
-    this.openTurn = null
-    end?.answer()
-  }
-  private taken(providerHome: string): CopiedSignIn {
-    const beganOn = codexCopyIdentityIn(providerHome)
-    const held = signInAt(join(providerHome, 'auth.json'))
-    this.starts.push(held)
-    if (this.failsOtherwise) throw new Error('the program did not start')
-    if (this.refusesBeforeCodexIsAsked) {
-      throw new AuthUnavailableError('codex', 'Codex auth.json has insecure permissions.')
-    }
-    if (!this.accepts().has(held)) {
-      this.asItRefuses()
-      throw new CodexRefusedItsSignInError('Your Codex sign-in has expired.', beganOn)
-    }
-    this.asItStarts()
-    return beganOn
-  }
-  private kept(handle: FakeSessionHandle, beganOn: CopiedSignIn): FakeSessionHandle {
-    const inside = handle as unknown as {
-      machine: {
-        beginTurn(): number | null
-        completeTurn(
-          state: 'completed' | 'failed',
-          why?: string,
-          a?: undefined,
-          b?: undefined,
-          c?: object,
-        ): void
-      }
-      push(event: RuntimeEvent): void
-    }
-    const refused = (loginRefused = true): void =>
-      inside.machine.completeTurn('failed', 'simulated refusal', undefined, undefined, {
-        ...(loginRefused ? { loginRefused: true } : {}),
-      })
-    const answered = (): void => {
-      this.answeredInputs.push(this.retained.get(handle.ref.sessionId) ?? '')
-      inside.push({ type: 'assistant_message', text: 'answered' })
-      inside.machine.completeTurn('completed')
-    }
-    const stop = handle.interrupt.bind(handle)
-    Object.assign(handle, {
-      interrupt: async () => {
-        if (this.aStopMeetsTheRefusal && this.openTurn !== null) this.refuseTheOpenTurn()
-        else await stop()
-      },
-      checkSignIn: () => this.checksItsSignIn(),
-      signInCopyAtLaunch: () => beganOn,
-      // A turn of words, as the test says it goes: refused on its sign-in before doing anything,
-      // refused after a word of a reply, left open to be refused later, or answered. ⚑ As Codex's
-      // adapter does, the turn begins as it is handed over and goes on after the call returns.
-      send: async (text: string) => {
-        this.sent.push(text)
-        this.retained.set(handle.ref.sessionId, text)
-        const mode = this.turnModes.shift() ?? 'answered'
-        inside.machine.beginTurn()
-        if (mode === 'held-open') {
-          this.openTurn = { refuse: refused, answer: answered }
-          return
-        }
-        setTimeout(() => {
-          if (mode === 'stopped-on-a-limit') {
-            inside.machine.completeTurn('failed', 'usage limit', undefined, undefined, {
-              limit: { provider: 'codex', resetsAt: Date.now() + 3_600_000 },
-            })
-          } else if (mode === 'refused') refused()
-          else if (mode === 'refused-after-a-word') {
-            inside.push({ type: 'assistant_delta', text: 'Let me' })
-            refused()
-          } else answered()
-        }, 0)
-      },
-      ...(this.cannotCarryOn
-        ? {}
-        : {
-            carryOn: async () => {
-              this.carriedOn += 1
-              this.asItCarriesOn()
-              inside.machine.beginTurn()
-              if (this.carryOnIsRefusedAtOnce) refused()
-              else if (this.carryOnIsHeldOpen) this.openTurn = { refuse: refused, answer: answered }
-              else setTimeout(answered, 0)
-            },
-          }),
-    })
-    this.handles.push(handle)
-    return handle
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const beganOn = this.taken(options.providerHome)
-    return this.kept(await super.start(options), beganOn)
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const beganOn = this.taken(options.providerHome)
-    const handle = this.kept(await super.resume(ref, options), beganOn)
-    this.asItResumes(handle)
-    return handle
-  }
-}
-
-type TurnMode = 'refused' | 'refused-after-a-word' | 'held-open' | 'stopped-on-a-limit' | 'answered'
 
 class AClaude extends FakeRuntime {
   constructor(private readonly kept: FakeSessionHandle[]) {
@@ -293,6 +148,10 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       providerAuth: {
         ...ops,
         signIn: () => aSignIn(),
+        reprovision: (...asked) => {
+          writer.reached += 1
+          return Promise.resolve(ops.reprovision(...asked)).finally(() => (writer.answered += 1))
+        },
         replaceARefusedCopy: (...asked) => {
           writer.reached += 1
           return ops.replaceARefusedCopy(...asked).finally(() => (writer.answered += 1))
@@ -320,10 +179,21 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
   function aHelperHolding(copy: string): void {
     mkdirSync(helperHome(), { recursive: true, mode: 0o700 })
-    writeFileSync(join(helperHome(), 'auth.json'), copy, { mode: 0o600 })
+    const path = join(helperHome(), 'auth.json')
+    writeFileSync(path, copy, { mode: 0o600 })
+    const refreshed = Date.parse((JSON.parse(copy) as { last_refresh: string }).last_refresh) / 1000
+    utimesSync(path, refreshed, refreshed)
   }
   const brobotsOwnIs = (copy: string) =>
     writeFileSync(join(ownHome(), 'auth.json'), copy, { mode: 0o600 })
+  function aNewerSignInArrivesOnRefusal(): void {
+    codex.asItRefuses = () => {
+      writeFileSync(machine, THE_COMPUTERS)
+      accepted.clear()
+      accept(THE_COMPUTERS)
+      codex.asItRefuses = () => {}
+    }
+  }
   let watching: Sink
   const start = () => {
     watching = new Sink()
@@ -635,6 +505,28 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       accept(THE_COMPUTERS)
     }
 
+    it('waits for the refused server to exit before replacing its cached sign-in', async () => {
+      await runningOnACopyThatDiesInATurn()
+      let exited!: () => void
+      const exit = new Promise<void>((resolve) => {
+        exited = resolve
+      })
+      const handle = codex.handles[0]!
+      handle.awaitProcessExit = () => exit
+      const closing = vi.spyOn(handle, 'close')
+      try {
+        await handle.runTurnRefusedOnItsLogin()
+        await vi.waitFor(() => expect(closing).toHaveBeenCalled())
+        expect(handle.status()).toBe('ended')
+        expect(held()).toBe(digestOf(DEAD))
+        expect(writer.reached).toBe(0)
+      } finally {
+        exited()
+      }
+      await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
+      expect(held()).toBe(digestOf(THE_COMPUTERS))
+    })
+
     it('🔴 Codex refuses the copy in a turn: it is replaced, and the conversation reopened on the fresh one', async () => {
       await runningOnACopyThatDiesInATurn()
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
@@ -725,6 +617,21 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(held()).toBe(digestOf(another))
     })
 
+    it('does not retry when the agent copy rotates while the replacement waits for its lock', async () => {
+      await runningOnACopyThatDiesInATurn()
+      const rotated = signIn('acct-fictional-a', 'ROTATED', '2026-10-10T23:00:00Z')
+      accept(rotated)
+      await withProviderHomeLock(helperHome(), async () => {
+        await codex.handles[0]!.runTurnRefusedOnItsLogin()
+        await vi.waitFor(() => expect(writer.reached).toBe(1))
+        aHelperHolding(rotated)
+      })
+      await vi.waitFor(() => expect(writer.answered).toBeGreaterThanOrEqual(1))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(starts).toEqual(digests(DEAD))
+      expect(held()).toBe(digestOf(rotated))
+    })
+
     it('⛔ the app closed while the writer waits for the home’s lock replaces nothing', async () => {
       await runningOnACopyThatDiesInATurn()
       let letGo: () => void = () => {}
@@ -781,9 +688,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       aHelperHolding(DEAD)
       accept(DEAD)
       const { sessionId } = await start()
-      writeFileSync(machine, THE_COMPUTERS)
-      accepted.clear()
-      accept(THE_COMPUTERS)
+      aNewerSignInArrivesOnRefusal()
       codex.turnModes.push(mode)
       beforeTheMessage()
       await host.send(sessionId, MESSAGE, watching)
@@ -903,6 +808,55 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       await settled()
       expect(codex.carriedOn).toBe(0)
       expect(handedOver()).toEqual([MESSAGE])
+    })
+
+    it('uses a newer Mac account for the first send in an older conversation', async () => {
+      aHelperHolding(DEAD)
+      accept(DEAD)
+      const { sessionId: id } = await start()
+      const other = signIn('acct-fictional-b', 'NEW-MAC-ACCOUNT', '2026-10-10T23:00:00Z')
+      writeFileSync(machine, other)
+      accepted.clear()
+      accept(other)
+      codex.asItResumes = () => {
+        expect(codex.sent).toEqual([])
+        expect(held()).toBe(digestOf(other))
+      }
+
+      await host.send(id, MESSAGE, watching)
+
+      await vi.waitFor(() => expect(codex.answeredInputs).toHaveLength(1))
+      expect(starts).toEqual(digests(DEAD, other))
+      expect(handedOver()).toEqual([MESSAGE])
+      expect(endingsOf(id)).toEqual(['completed'])
+      expect(turnsOf(id)).toHaveLength(1)
+      expect(codex.carriedOn).toBe(0)
+      expect(watching.errors).toEqual([])
+      expect(signInAt(machine)).toBe(digestOf(other))
+    })
+
+    it('copies a newer different Mac account after refusal but waits for the person to resume', async () => {
+      aHelperHolding(DEAD)
+      const other = signIn('acct-fictional-b', 'NEW-MAC-ACCOUNT', '2026-10-10T23:00:00Z')
+      accept(DEAD, other)
+      const { sessionId: id } = await start()
+      codex.turnModes.push('held-open')
+      await host.send(id, MESSAGE, watching)
+      Object.assign(codex.handles[0]!, {
+        checkSignIn: async () => held() === digestOf(other),
+      })
+      writeFileSync(machine, other)
+      codex.refuseTheOpenTurn()
+      await vi.waitFor(() => expect(writer.answered).toBeGreaterThanOrEqual(1))
+      await settled()
+      expect(held()).toBe(digestOf(other))
+      expect(starts).toEqual(digests(DEAD))
+      expect(codex.carriedOn).toBe(0)
+      expect(handedOver()).toEqual([MESSAGE])
+
+      await host.resumeSession(id, watching)
+      expect(starts).toEqual(digests(DEAD, other))
+      expect(codex.carriedOn).toBe(0)
     })
 
     it('⛔ a refused turn reopened on another account’s sign-in carries nothing on, and its reopen asks for the message again', async () => {
@@ -1723,8 +1677,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           { provider: 'claude', profileId: DEFAULT_PROFILE_ID },
           watching,
         )
-        writeFileSync(machine, THE_COMPUTERS)
-        accept(THE_COMPUTERS)
+        aNewerSignInArrivesOnRefusal()
         codex.turnModes.push('refused')
         const given = await host.giveWork(
           newConversationGive('farah', 'The open pull requests', MESSAGE),
@@ -1818,8 +1771,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           { provider: 'claude', profileId: DEFAULT_PROFILE_ID },
           watching,
         )
-        writeFileSync(machine, THE_COMPUTERS)
-        accept(THE_COMPUTERS)
+        aNewerSignInArrivesOnRefusal()
         codex.turnModes.push('held-open', 'refused')
         const older = await host.giveWork(
           newConversationGive('farah', 'The release notes', 'Draft the release notes.'),

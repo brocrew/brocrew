@@ -7,7 +7,7 @@ import {
 } from '../lib/provider-launch-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -355,13 +355,75 @@ it('releases provider notices with the window so late completion cannot refresh 
   expect(checkAuth.mock.calls).toHaveLength(checked)
 })
 
-it('keeps the post-login usage answer when an older signed-out read arrives late', async () => {
-  const { screen, complete, releaseUsage } = fixture(false, true)
+it('drains the pending signed-out usage read before publishing the post-login answer', async () => {
+  const { screen, complete, releaseUsage, usage } = fixture(false, true)
   await settle()
+  expect(usage).toHaveBeenCalledTimes(1)
   complete()
   await settle()
-  expect(screen.q('app-usage').textContent).toContain('5h 28%')
+  expect(usage).toHaveBeenCalledTimes(1)
+  expect(screen.q('app-usage').textContent).toContain('usage not read yet')
   releaseUsage()
   await settle()
+  expect(usage).toHaveBeenCalledTimes(2)
   expect(screen.q('app-usage').textContent).toContain('5h 28%')
+})
+
+it('immediately disowns an old account model reply when another login notice joins its refresh', async () => {
+  const { listeners } = fixture(true)
+  await settle()
+  expect(lists.choices('claude', DEFAULT_PROFILE_ID)?.ready).toBe(true)
+  const known = lists.choices('claude', DEFAULT_PROFILE_ID)!.list
+  const replies: ((answer: ModelList) => void)[] = []
+  window.api.runtime.modelList = vi.fn(
+    () => new Promise<ModelList>((resolve) => replies.push(resolve)),
+  )
+  const readyMenus: string[][] = []
+  const stop = watch(
+    () => lists.choices('claude', DEFAULT_PROFILE_ID),
+    (choices) => {
+      if (choices?.ready) readyMenus.push(choices.list.models.map((model) => model.id))
+    },
+    { flush: 'sync' },
+  )
+  const notice = () => {
+    for (const listener of listeners) listener({ what: 'login', provider: 'claude' })
+  }
+  const accountModels = (id: string): ModelList => ({
+    ...known,
+    models: [{ id, label: id, addedBy: 'the-provider', efforts: [] }],
+    startsOn: { model: id, effort: null, from: 'its-default' },
+  })
+  try {
+    notice()
+    await settle()
+    expect(replies).toHaveLength(1)
+    expect(lists.readiness('claude', DEFAULT_PROFILE_ID).state).toBe('pending')
+    for (let otherNotice = 0; otherNotice < 49; otherNotice++) notice()
+    expect(replies).toHaveLength(1)
+    replies[0]!(accountModels('stale-account-only'))
+    await settle()
+    expect(replies).toHaveLength(2)
+    expect(readyMenus, 'the disowned account must never become launchable').toEqual([])
+    expect(lists.choices('claude', DEFAULT_PROFILE_ID)).toBeNull()
+    expect(lists.readiness('claude', DEFAULT_PROFILE_ID).state).toBe('pending')
+    expect(lists.held('claude', DEFAULT_PROFILE_ID)).toMatchObject({
+      state: 'answered',
+      list: { models: known.models },
+      refreshing: true,
+    })
+    replies[1]!(accountModels('latest-account-only'))
+    await settle()
+    expect(readyMenus).toEqual([['latest-account-only']])
+    expect(lists.readiness('claude', DEFAULT_PROFILE_ID)).toMatchObject({
+      state: 'settled',
+      ready: true,
+    })
+    expect(lists.choices('claude', DEFAULT_PROFILE_ID)?.list.models[0]?.id).toBe(
+      'latest-account-only',
+    )
+    expect(replies).toHaveLength(2)
+  } finally {
+    stop()
+  }
 })

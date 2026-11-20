@@ -74,7 +74,7 @@ export class CodexRefusedItsSignInError extends AuthUnavailableError {
   }
 }
 
-// --- Codex: copy auth.json once into the profile home (0600, atomic) ---
+// Codex auth copies use the profile home's lock and atomic writer.
 
 const CODEX_AUTH_FILE = 'auth.json'
 
@@ -83,13 +83,30 @@ export function personalCodexAuthPath(): string {
   return join(homedir(), '.codex', CODEX_AUTH_FILE)
 }
 
+/** Check before stopping a server; the writer checks freshness again under the home's lock. */
+export function aNewerCodexSignInIsAvailable(
+  providerHome: string,
+  source = personalCodexAuthPath(),
+): boolean {
+  const from = statOrNull(source)
+  if (from === null || !from.isFile()) return false
+  const dest = join(providerHome, CODEX_AUTH_FILE)
+  const to = statOrNull(dest)
+  if (to !== null && (!to.isFile() || from.mtimeMs <= to.mtimeMs)) return false
+  const incoming = readFileSync(source)
+  const account = codexAccountOf(incoming.toString('utf8'))
+  if (account === null || account === 'api-key') return false
+  if (to === null) return true
+  const existing = readFileSync(dest)
+  return !existing.equals(incoming) && codexAccountOf(existing.toString('utf8')) !== 'api-key'
+}
+
 /**
  * Copy the personal Codex `auth.json` into the profile home **once**, atomically, at
  * mode `0600` (022, from 015). It copies **only** `auth.json` (never history/config/
  * db), copies its **content** (never symlinks the profile to the personal file,
  * which Codex may truncate/rewrite), and **never overwrites** an existing profile
- * credential — that copy may have been refreshed independently, and re-copying the
- * personal one on an mtime change would clobber it.
+ * credential. Automatic refreshes use {@link reprovisionCodexAuth} after stopping its app-server.
  *
  * Where the computer has no Codex sign-in, it copies `fallbackAuthPath` instead when one is given:
  * BroBot's own profile's sign-in, so an agent can start on a computer signed in to Codex only
@@ -100,7 +117,11 @@ export function personalCodexAuthPath(): string {
  */
 export async function provisionCodexAuth(
   providerHome: string,
-  opts: { sourceAuthPath?: string; managedRoot?: string; fallbackAuthPath?: string } = {},
+  opts: {
+    sourceAuthPath?: string
+    managedRoot?: string
+    fallbackAuthPath?: string
+  } = {},
 ): Promise<void> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
   if (opts.fallbackAuthPath !== undefined && opts.managedRoot === undefined) {
@@ -268,8 +289,7 @@ async function provisionCodexAuthLocked(
       ancestry?.verify()
       const dest = join(providerHome, CODEX_AUTH_FILE)
 
-      // Copy exactly once: never clobber a possibly-refreshed profile credential. A link the
-      // person made to a sign-in file is kept as the file it leads to.
+      // Existing copies can have rotated independently; provisioning leaves them alone.
       const destStat = statOrNull(dest)
       // A link that leads nowhere is no sign-in: it goes, and a fresh copy takes its place.
       if (destStat === null && lstatOrNull(dest)?.isSymbolicLink()) unlinkSync(dest)
@@ -340,6 +360,7 @@ export async function replaceARefusedCodexCopy(
   opts: {
     managedRoot: string
     candidates: readonly CodexCopyCandidate[]
+    newerOnly?: boolean
     /** The copy Codex refused, as it stood then. A copy that is no longer that one is left alone. */
     refused: CodexCopyIdentity
     /**
@@ -379,6 +400,13 @@ export async function replaceARefusedCodexCopy(
               candidate.from === 'the-computers'
                 ? readFileSync(candidate.sourceAuthPath)
                 : fallbackSignIn(candidate.fallback)
+            if (opts.newerOnly && bytes !== null) {
+              const path =
+                candidate.from === 'the-computers'
+                  ? candidate.sourceAuthPath
+                  : candidate.fallback.path
+              if (statSync(path, { bigint: true }).mtimeNs <= held.mtimeNs) continue
+            }
           } catch {
             continue
           }
@@ -432,42 +460,24 @@ function isTheSameCopy(held: BigIntStats, refused: CodexCopyIdentity): boolean {
 }
 
 /**
- * Copy the personal Codex `auth.json` into the profile home **again**, replacing what is there
- * (098) — the one sanctioned writer over a credential {@link provisionCodexAuth} refuses to touch.
- *
- * ## Why this is a second function and not a flag on the first
- *
- * `provisionCodexAuth`'s copy-once rule is correct and stays exactly as it was. It runs on **every**
- * session launch, and an overwrite there would clobber a profile credential that had refreshed
- * independently — silently, on a schedule, for the whole life of the app. That is the stomp the rule
- * exists to prevent, and a parameter that switched it off would put the stomp one careless call site
- * away.
- *
- * What the rule did not anticipate is that a copy can go **stale**, and then nothing could ever
- * replace it: the app had no way back short of deleting a file by hand. So the overwrite lives here,
- * in a function whose only caller is a person pressing a button. Automatic callers get the safe one;
- * this one is reachable only by asking for it by name.
- *
- * ⚠️ **This does not end the sharing.** The copy and `~/.codex` hold one rotating refresh token
- * between them, so the next refresh by either side breaks the other again — see `codex-login.ts` for
- * the measurement and for the remedy that does end it. Any surface offering this must say so.
- *
- * Everything else is {@link provisionCodexAuth}'s: the per-home lock, `0600`, content-not-symlink,
- * a temp created `O_EXCL|O_NOFOLLOW`, and a refusal if the destination has been replaced by a
- * symlink or a directory. Only the final install differs — `rename` (which replaces atomically)
- * where the first uses `link` (which refuses to).
+ * Replace a profile's copy while its app-servers are stopped. Automatic callers request
+ * `newerOnly`; freshness and whether the copy is still wanted are checked under the home lock.
+ * Explicit individual re-copy requests keep their existing replacement behavior. Both paths use
+ * the atomic writer and never write to the source file.
  */
 export async function reprovisionCodexAuth(
   providerHome: string,
-  opts: { sourceAuthPath?: string } = {},
+  opts: { sourceAuthPath?: string; newerOnly?: boolean; stillWanted?: () => boolean } = {},
 ): Promise<ReprovisionOutcome> {
   const source = opts.sourceAuthPath ?? personalCodexAuthPath()
   return await withProviderHomeLock(providerHome, () => {
+    if (opts.stillWanted?.() === false) return 'unchanged'
     const dest = join(providerHome, CODEX_AUTH_FILE)
 
     // A directory here is no sign-in. A link is replaced by the copy: `rename` replaces the link
     // itself, never the file it leads to.
     const destStat = lstatOrNull(dest)
+    if (opts.newerOnly && !aNewerCodexSignInIsAvailable(providerHome, source)) return 'unchanged'
     if (destStat && !destStat.isFile() && !destStat.isSymbolicLink()) {
       throw new AuthUnavailableError('codex', `profile auth.json is not a regular file: ${dest}`)
     }
@@ -485,6 +495,11 @@ export async function reprovisionCodexAuth(
         'codex',
         `personal Codex auth.json not found at ${source} — sign in with the codex CLI first, then try again`,
       )
+    }
+
+    if (opts.newerOnly) {
+      const account = codexAccountOf(data.toString('utf8'))
+      if (account === null || account === 'api-key') return 'unchanged'
     }
 
     // Report honestly when there was nothing to do. A surface that says "re-copied" over identical

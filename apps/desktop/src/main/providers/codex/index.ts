@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
   codexAuthHealth,
+  aNewerCodexSignInIsAvailable,
   personalCodexAuthPath,
   provisionCodexAuth,
   replaceARefusedCodexCopy,
@@ -196,6 +197,9 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     credentialHome(profileId) {
       return paths.homeOf(profileId)
     },
+    hasNewerCopy(profileId) {
+      return aNewerCodexSignInIsAvailable(homePathFor(profileId), seams.machineAuthPath?.())
+    },
     async check(profileId, signal) {
       const providerHome = await homeFor(profileId)
 
@@ -204,10 +208,18 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
       return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
     },
-    reprovision(profileId) {
+    reprovision(profileId, newerOnly, stillWanted) {
       refuseWhileAKeyIsSaved()
       const home = homePathFor(profileId)
-      return provisionProviderHome(paths.managedRoot, home).then(() => reprovisionCodexAuth(home))
+      return provisionProviderHome(paths.managedRoot, home).then(() =>
+        reprovisionCodexAuth(home, {
+          ...(seams.machineAuthPath === undefined
+            ? {}
+            : { sourceAuthPath: seams.machineAuthPath() }),
+          ...(newerOnly === undefined ? {} : { newerOnly }),
+          ...(stillWanted === undefined ? {} : { stillWanted }),
+        }),
+      )
     },
     async signIn(profileId, signal) {
       refuseWhileAKeyIsSaved()
@@ -235,6 +247,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const managedRoot = paths.managedRoot
       return await replaceARefusedCodexCopy(home, {
         managedRoot,
+        newerOnly: true,
         refused: refused as import('@brobot2/runtime/codex').CodexCopyIdentity,
         stillWanted,
         candidates: [

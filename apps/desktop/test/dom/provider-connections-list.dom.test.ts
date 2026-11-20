@@ -1,5 +1,7 @@
 import { createModelLists } from '../lib/provider-launch-fixture'
 import { providerDescriptor } from '@brobot2/shared'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
@@ -216,6 +218,103 @@ it('rereads metadata when the existing provider login notice changes', async () 
   await settle()
   expect(m.q('provider-connections').textContent).toContain('After')
   expect(m.q('provider-connections').textContent).not.toContain('Before')
+})
+
+it('keeps known connections and readiness visible while the same login is rechecked', async () => {
+  const pending = held<ProviderConnection[]>()
+  let refreshing = false
+  const { m, props } = card(() =>
+    refreshing ? pending.promise : Promise.resolve(rows('claude', 'Known account')),
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Known account')
+  expect(m.q('provider-connection').textContent).toContain('Ready')
+  refreshing = true
+  props.loginMoved++
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(1)
+  expect(m.q('provider-connection').textContent).toContain('Known account')
+  expect(m.q('provider-connection').textContent).toContain('Ready')
+  expect(m.q('provider-connections').textContent).not.toContain('Reading…')
+  pending.answer(rows('claude', 'Refreshed account'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Refreshed account')
+  expect(m.q('provider-connections').getAttribute('aria-busy')).toBe('false')
+})
+
+it('clears known connections immediately when switching provider during a read', async () => {
+  const pending = held<ProviderConnection[]>()
+  let switching = false
+  const { m, props } = card(() =>
+    switching ? pending.promise : Promise.resolve(rows('claude', 'Previous provider')),
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Previous provider')
+  switching = true
+  props.provider = 'codex'
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(0)
+  expect(m.q('provider-connections').textContent).not.toContain('Previous provider')
+  pending.answer(rows('codex', 'Next provider'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Codex · Next provider')
+})
+
+it('clears the previous metadata when the recheck identifies a different account', async () => {
+  const pending = held<ProviderConnection[]>()
+  let refreshing = false
+  let account = 'first@example.test'
+  window.api.runtime.checkProviderAuth = async () => ({
+    state: 'usable',
+    login: 'account',
+    account,
+    expiresAt: null,
+  })
+  const { m, props } = card(() =>
+    refreshing ? pending.promise : Promise.resolve(rows('claude', 'Previous account')),
+  )
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Previous account')
+  refreshing = true
+  account = 'second@example.test'
+  props.loginMoved++
+  await settle()
+  expect(m.all('provider-connection')).toHaveLength(0)
+  expect(m.q('provider-connections').textContent).not.toContain('Previous account')
+  pending.answer(rows('claude', 'Next account'))
+  await settle()
+  expect(m.q('provider-connection').textContent).toContain('Next account')
+  expect(m.q('provider-connections').getAttribute('aria-busy')).toBe('false')
+})
+
+it('keeps model chips visible and names the pending refresh until its new answer settles', async () => {
+  const pending = held<ModelList>()
+  let refreshing = false
+  const known: ModelList = {
+    provider: 'claude',
+    notAsked: null,
+    standIn: null,
+    lastPicked: null,
+    startsOn: null,
+    models: [{ id: 'fern-known', label: 'Fern known', addedBy: 'the-provider' }],
+  }
+  window.api.runtime.modelList = () => (refreshing ? pending.promise : Promise.resolve(known))
+  const { m, props } = card(async () => rows('claude'))
+  await settle()
+  expect(m.q('provider-model-row').textContent).toContain('Fern known')
+  refreshing = true
+  props.lists.forget(DEFAULT_PROFILE_ID, { retainAnswered: true })
+  const refresh = props.lists.reread()
+  await settle()
+  expect(m.q('provider-model-row').textContent).toContain('Fern known')
+  expect(m.q('provider-models-said').textContent).toContain('Updating models…')
+  expect(m.q('provider-models').textContent).not.toContain('Reading Claude’s models…')
+  pending.answer({ ...known, models: [] })
+  await refresh
+  await settle()
+  expect(m.all('provider-model-row')).toHaveLength(0)
+  expect(m.q('provider-models').textContent).not.toContain('Updating models…')
+  expect(m.q('provider-models').textContent).not.toContain('Reading Claude’s models…')
 })
 
 for (const state of ['absent', 'unknown'] as const) {

@@ -1,4 +1,5 @@
 import { onScopeDispose, shallowRef, type ShallowRef } from 'vue'
+import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { useClientProviders } from '../client-provider/injection'
 import type { ClientProviderApi } from '../../../shared/client-provider-api'
 import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
@@ -17,6 +18,7 @@ function createUsage(api: ClientProviderApi) {
   let users = 0
   let stopListening: (() => void) | undefined
   let reading = 0
+  let lifecycle = 0
 
   async function readUsage(): Promise<void> {
     const ours = ++reading
@@ -31,10 +33,14 @@ function createUsage(api: ClientProviderApi) {
   return function useUsage(): Readonly<ShallowRef<ProviderUsage | null>> {
     users += 1
     if (users === 1) {
-      void readUsage()
+      const lifetime = ++lifecycle
+      const refresh = oneReadAtATime(async () => {
+        if (lifetime === lifecycle) await readUsage()
+      })
+      void refresh()
       try {
         stopListening = api.onProvidersChanged((message) => {
-          if (message.what === 'usage' || message.what === 'login') void readUsage()
+          if (message.what === 'usage' || message.what === 'login') void refresh()
         })
       } catch {
         // A window without the bridge shows the readings as not read yet.
@@ -45,6 +51,7 @@ function createUsage(api: ClientProviderApi) {
       users -= 1
       if (users === 0) {
         reading++
+        lifecycle++
         stopListening?.()
         stopListening = undefined
       }

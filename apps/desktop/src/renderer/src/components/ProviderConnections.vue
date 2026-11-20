@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { useClientProviders } from '../client-provider/injection'
 import { computed, onBeforeUnmount, shallowRef, useId, watch } from 'vue'
 import type { Provider, ProviderConnection } from '@brobot2/shared'
@@ -19,9 +20,9 @@ const failed = shallowRef(false)
 let ticket = 0
 let open = true
 
-async function read(): Promise<void> {
+async function readOnce(): Promise<void> {
+  if (!open) return
   const mine = ++ticket
-  reading.value = null
   failed.value = false
   try {
     const rows = await client.providerConnections()
@@ -31,17 +32,31 @@ async function read(): Promise<void> {
     if (open && mine === ticket) failed.value = true
   }
 }
+let read: () => Promise<void>
 watch(
   [
     () => props.provider,
-    () => props.loginMoved,
     () => props.keyStatus?.set,
     () => props.keyStatus?.setAt,
+    () => (props.auth?.state === 'usable' ? props.auth.login : undefined),
+    () => (props.auth?.state === 'usable' ? props.auth.account : undefined),
   ],
   () => {
+    reading.value = null
+    ticket++
+    const scopedRead = oneReadAtATime(async () => {
+      if (read === scopedRead) await readOnce()
+    })
+    read = scopedRead
     void read()
   },
   { immediate: true },
+)
+watch(
+  () => props.loginMoved,
+  () => {
+    void read()
+  },
 )
 onBeforeUnmount(() => {
   open = false

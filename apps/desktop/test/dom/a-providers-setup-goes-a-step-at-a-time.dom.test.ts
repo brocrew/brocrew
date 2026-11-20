@@ -277,7 +277,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     expect(m.all('provider-inline-setup')).toHaveLength(0)
     expect(m.all('provider-status')).toHaveLength(1)
   })
-  it('Check re-reads readiness and Done closes the flow without another provider prompt', async () => {
+  it('Check re-reads readiness and closes the flow without another provider prompt', async () => {
     const { m, runtime, readVersions } = theCard(SIGNED_IN)
     await settled()
     if (m.all('provider-options').length > 0) {
@@ -290,9 +290,8 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     await settled()
     expect(readVersions).toHaveBeenCalledTimes(1)
     expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(2)
-    expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
-    m.q('setup-done').click()
-    await settled()
+    expect(m.q('provider-standing').textContent?.trim()).toBe('Ready')
+    expect(m.q('provider-account').textContent).toContain('Runs on your')
     expect(m.all('provider-inline-setup')).toHaveLength(0)
     expect(m.all('setup-other')).toHaveLength(0)
   })
@@ -376,7 +375,9 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     runtime.checkProviderAuth.mockResolvedValueOnce(SIGNED_IN)
     m.q('setup-check').click()
     await settled()
-    expect(m.q('setup-ready').textContent).toContain('Claude is ready.')
+    expect(m.all('provider-inline-setup')).toHaveLength(0)
+    expect(m.q('provider-standing').textContent?.trim()).toBe('Ready')
+    expect(m.q('provider-account').textContent).toContain('Runs on your')
   })
 })
 
