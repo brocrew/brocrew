@@ -31,18 +31,7 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-/**
- * A to-do for a person.
- *
- * A helper (Ada) asks the person to do something only they can do, with `request_action`: it is
- * in their queue as a to-do, with its files kept for the piece, and the piece can wait on it. The
- * person answers Done or Can't do it, with a note, through their window, and Ada is told once,
- * in words that say what the person did. A request that is no to-do is not answered this way.
- *
- * A real `RuntimeHost` over a real SQLite ledger, real migrations and the real tools; the only
- * double is the provider.
- */
-
+/** The to-do lifecycle through RuntimeHost and SQLite, with a provider double. */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -56,7 +45,6 @@ async function settle(): Promise<void> {
 
 /** While set, every resume waits for it: the conversation stays starting until it settles. */
 let resumesWait: Promise<void> | null = null
-/** How many resumes have been asked for. */
 let resumesAsked = 0
 
 /** The provider double: it keeps the handles it gives out, so a test can report background work. */
