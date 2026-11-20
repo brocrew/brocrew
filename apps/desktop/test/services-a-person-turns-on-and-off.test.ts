@@ -130,8 +130,13 @@ describe('Service lifecycle', () => {
       expect(world.store.rootOf(toolConversation!)).toBeNull()
       expect(world.startedAs).toEqual(['caller'])
       const before = world.conversationsRecorded()
-      const given = accepted(await world.gives(host, caller, 'fetcher'))
-      expect(given.owner).toBe(toolConversation)
+      const given = await call(host, caller, 'give_work', {
+        profile: 'fetcher',
+        title: 'Book the room',
+        brief: 'Book the meeting room for Tuesday.',
+        definition_of_done: 'The room is booked and the confirmation is recorded.',
+      })
+      expect(given.structured).toMatchObject({ outcome: 'ok', agent: toolConversation })
       expect(world.conversationsRecorded()).toBe(before)
       // A normal agent made beside them is not one.
       const normal = await call(host, caller, 'create_agent', { profile_slug: 'writer' })
