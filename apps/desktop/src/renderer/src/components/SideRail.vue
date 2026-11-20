@@ -1301,9 +1301,13 @@ const platform = platformHere()
                           :title="row.label"
                           >{{ row.label }}</span
                         ></template
-                      ><template v-if="!identities.get(row.sessionId) && row.provider">
-                        <template v-if="row.named && !row.worker"> · </template
-                        >{{ row.provider }} </template
+                      ><span
+                        v-if="!identities.get(row.sessionId) && row.provider"
+                        class="rail-standing-profile"
+                        :title="row.provider"
+                      >
+                        <template v-if="row.named && !row.worker"> · </template>
+                        {{ row.provider }} </span
                       ><template v-if="!row.worker || identities.get(row.sessionId)">
                         <template v-if="row.provider || row.named || identities.get(row.sessionId)">
                           ·
