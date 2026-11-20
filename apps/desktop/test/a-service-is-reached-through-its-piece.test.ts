@@ -225,8 +225,8 @@ describe('a service is reached through the piece it is on', () => {
         question: 'which floor?',
       })
       expect(asked.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-agent-you-can-ask-by-that-name',
+        outcome: 'ok',
+        agent: service,
       })
     })
 

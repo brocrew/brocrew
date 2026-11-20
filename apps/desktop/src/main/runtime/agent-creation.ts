@@ -1,5 +1,6 @@
 import type { Provider } from '@brobot2/shared'
 import type { AgentIdentity, IdentityCreator, NewAgent } from '../../shared/runtime-ipc'
+import type { AgentRemoved } from '../../shared/agent-roster'
 import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import type { RulesAuthor } from '../../shared/own-instructions'
 import type { SessionStore } from '../db/session-store'
@@ -23,8 +24,14 @@ export interface AgentCreationOperations {
   >
   /** The profile a conversation runs as, live or as recorded; `null` when neither says. */
   profileOf(conversation: string): string | null
-  /** Keep a just-created identity as a service, taking it back if that cannot be written. */
-  keepItAsAService(created: AgentIdentity): void
+  keepServiceKind(created: AgentIdentity): void
+  serviceProvider(profile: string): Provider
+  recordServiceConversation(
+    profile: string,
+    provider: Provider,
+    choice: AgentModelChoice | null,
+  ): string
+  removeAgent(profile: string): AgentRemoved
   theProviderOfConversation(conversation: string): Provider | null
   rulesAuthor(me: string, by: Caller): RulesAuthor | null
   theWorldMoved(what: 'agents'): void
@@ -53,7 +60,7 @@ export class AgentCreation {
             : null
     const created = this.ops.store().createAgentIdentity(said, creator)
     if (created === null) throw new Error(nameIsTaken(said.slug))
-    if (said.asAService === true) this.ops.keepItAsAService(created)
+    if (said.asAService === true) this.recordItsServiceConversation(created)
     // An identity row exists, so every surface that lists identities re-reads.
     this.ops.theWorldMoved('agents')
     return created
@@ -77,36 +84,78 @@ export class AgentCreation {
     if (created === null) {
       return { ok: false, rail: 'agent-name-taken', detail: { agent: foldProfileName(said.slug) } }
     }
-    if (said.asAService === true) this.ops.keepItAsAService(created)
     // The rules are written after the name, so a second call naming this agent is refused by the
     // name before it reaches them; the database also refuses `its-creator` on a later version.
     const rulesAuthor = this.ops.rulesAuthor(me, by)
-    const rules =
-      itsOwnRules === null
-        ? null
-        : this.ops.store().writeOwnInstructions(
-            {
-              profileSlug: created.slug,
-              text: itsOwnRules,
-              whoWroteIt: 'its-creator',
-              ...(rulesAuthor === null ? {} : { author: rulesAuthor }),
-              // The conversation that acted, as every settled act records it; the identity's
-              // `created_by` holds the creating profile.
-              by: whoDidIt(by),
-              conversation: me,
-              said: null,
-              broughtBack: null,
-            },
-            this.ops.now(),
-          )
-    if (itsDefault !== null) this.ops.store().setModelChoice(created.slug, itsDefault)
+    let rules: Extract<CreateAgentOutcome, { ok: true }>['rules']
+    try {
+      rules =
+        itsOwnRules === null
+          ? null
+          : this.ops.store().writeOwnInstructions(
+              {
+                profileSlug: created.slug,
+                text: itsOwnRules,
+                whoWroteIt: 'its-creator',
+                ...(rulesAuthor === null ? {} : { author: rulesAuthor }),
+                // The conversation that acted, as every settled act records it; the identity's
+                // `created_by` holds the creating profile.
+                by: whoDidIt(by),
+                conversation: me,
+                said: null,
+                broughtBack: null,
+              },
+              this.ops.now(),
+            )
+      if (itsDefault !== null) {
+        const written = this.ops.store().setModelChoice(created.slug, itsDefault)
+        if (!written && said.asAService === true)
+          throw new Error('The service default could not be saved')
+      }
+      if (itsOwnRules !== null && rules === null && said.asAService === true)
+        throw new Error('The service rules could not be saved')
+    } catch (error) {
+      if (said.asAService === true) this.takeBackNewIdentity(created)
+      throw error
+    }
+    const serviceConversation =
+      said.asAService === true ? this.recordItsServiceConversation(created, itsDefault) : null
     // Announced after the rules and the default are written, so a re-read sees all of them.
     this.ops.theWorldMoved('agents')
     return {
       ok: true,
       identity: created,
+      ...(serviceConversation === null ? {} : { serviceConversation }),
       rules,
       defaultModel: this.ops.store().modelChoiceOf(created.slug),
+    }
+  }
+
+  /** Record a service's one conversation before returning its identity to its creator. */
+  private recordItsServiceConversation(
+    created: AgentIdentity,
+    choice: AgentModelChoice | null = null,
+  ): string {
+    try {
+      this.ops.keepServiceKind(created)
+      return this.ops.recordServiceConversation(
+        created.slug,
+        this.ops.serviceProvider(created.slug),
+        choice,
+      )
+    } catch (error) {
+      this.takeBackNewIdentity(created)
+      throw error
+    }
+  }
+
+  private takeBackNewIdentity(created: AgentIdentity): void {
+    try {
+      const removed = this.ops.removeAgent(created.slug)
+      if (!removed.ok)
+        console.warn(`agent creation did not take back ${created.slug}: ${removed.rail}`)
+    } catch (error) {
+      console.warn(`agent creation did not take back ${created.slug}`, error)
     }
   }
 

@@ -238,6 +238,7 @@ export type CreateAgentOutcome =
   | {
       readonly ok: true
       readonly identity: AgentIdentity
+      readonly serviceConversation?: string
 
       /** The first rules version actually written, or null when none was written. */
       readonly rules: OwnInstructionsVersion | null
