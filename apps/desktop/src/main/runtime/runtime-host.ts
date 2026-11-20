@@ -19838,12 +19838,16 @@ export class RuntimeHost implements LiveHost {
       (slot !== undefined && !going && (slot.session === null || status === 'working'))
     const answererIds =
       active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
-    let stalled: (typeof owed.owedQuestions)[number] | undefined
+    let stalledQuestion: string | undefined
     if (answererIds.length > 0) {
       const questionLedger = this.oneLedgerReadPerAnswer(unread)
-      stalled = owed.owedQuestions.find(({ askedBy, requestId }) =>
-        this.questionHasStalled(askedBy, requestId, answererIds, questionLedger),
-      )
+      if (
+        owed.owedQuestions.some(({ askedBy, requestId }) =>
+          this.questionHasStalled(askedBy, requestId, answererIds, questionLedger),
+        )
+      ) {
+        stalledQuestion = owed.owedQuestions.at(-1)?.requestId
+      }
     }
     return agentStateOf(
       {
@@ -19853,7 +19857,14 @@ export class RuntimeHost implements LiveHost {
         waitingOnTheAnswerSince: owed.waitingOnTheAnswerSince,
         owesAnAnswerTo: owed.owesAnAnswerTo,
         owesAnAnswerSince: owed.owesAnAnswerSince,
-        ...(stalled === undefined ? {} : { stalledQuestion: stalled.requestId }),
+        ...(stalledQuestion === undefined
+          ? {}
+          : {
+              stalledQuestion,
+              ...(owed.owedQuestions.length > 1
+                ? { unansweredQuestionCount: owed.owedQuestions.length }
+                : {}),
+            }),
         background: session?.background ?? NOTHING_IN_THE_BACKGROUND,
         scheduled:
           slot?.session?.scheduled ?? this.wakeUps.get(sessionId)?.level ?? NOTHING_SCHEDULED,

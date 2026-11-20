@@ -168,7 +168,12 @@ export function agentStateOf(facts: AgentStateFacts, now: number): AgentState {
       ...since(facts.owesAnAnswerSince),
       ...(hasBackgroundWork || facts.stalledQuestion === undefined
         ? {}
-        : { stalledQuestion: facts.stalledQuestion }),
+        : {
+            stalledQuestion: facts.stalledQuestion,
+            ...(facts.unansweredQuestionCount === undefined
+              ? {}
+              : { unansweredQuestionCount: facts.unansweredQuestionCount }),
+          }),
     }
   }
   if (arm === 'in-the-background') return { is: arm, what: inTheBackground(facts.background) }
@@ -208,6 +213,10 @@ export function agentStateWords(state: AgentState): string {
       return `waiting on an answer from ${state.from}`
     case 'owes-an-answer': {
       if (state.stalledQuestion !== undefined) {
+        const count = state.unansweredQuestionCount ?? 1
+        if (count > 1) {
+          return `stalled: ${count} questions unanswered after a reminder (latest ${state.stalledQuestion})`
+        }
         return `stalled: question ${state.stalledQuestion} remains unanswered after a reminder`
       }
       const [first, ...more] = state.to

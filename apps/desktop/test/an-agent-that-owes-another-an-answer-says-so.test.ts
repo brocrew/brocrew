@@ -49,12 +49,13 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
 const stalledOn = (id: string) => `stalled: question ${id} remains unanswered after a reminder`
 const owesAda: AgentState = { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) }
-const owesAdaAfterReminder = (id: string): AgentState => ({
-  is: 'owes-an-answer',
-  to: [ADA],
-  stalledQuestion: id,
-  since: expect.any(Number),
-})
+const owesAdaAfterReminder = (id: string) =>
+  ({
+    is: 'owes-an-answer',
+    to: [ADA],
+    stalledQuestion: id,
+    since: expect.any(Number),
+  }) satisfies AgentState
 const WAITING_ON_ADA = `waiting on ${ADA}`
 
 const settle = (): Promise<void> => settleFixtureTurns(2, 30)
@@ -329,6 +330,47 @@ describe('the host says who a conversation owes an answer to, and moves the word
       since: expect.any(Number),
     })
     expect(await wordsOf(observer, brobot)).toBe(WAITING_ON_ADA)
+  })
+
+  it('counts the unanswered questions and names the newest as answers are given', async () => {
+    const { brobot, brobotTools, ada, adaTools } = await aGiverWaitingOnAHelper()
+    const oldest = await adaAsksHerParent(adaTools, 'which schema?')
+    await untilPushed(brobot, owesAdaAfterReminder(oldest), 'the first reminder to end')
+    const middle = await adaAsksHerParent(adaTools, 'which table?')
+    await untilPushed(
+      brobot,
+      { ...owesAdaAfterReminder(middle), unansweredQuestionCount: 2 },
+      'the status to name the second unanswered question',
+    )
+    const newest = await adaAsksHerParent(adaTools, 'which column?')
+    await untilPushed(
+      brobot,
+      { ...owesAdaAfterReminder(newest), unansweredQuestionCount: 3 },
+      'the status to name the third unanswered question',
+    )
+
+    const observer = await personOpens('reviewer')
+    expect(await wordsOf(observer, brobot)).toBe(
+      `stalled: 3 questions unanswered after a reminder (latest ${newest})`,
+    )
+    for (const question of [newest, middle]) {
+      const answered = await callOn(brobotTools, 'answer_question', {
+        question,
+        asked_by: ada,
+        answers: [{ part: 'answer', answer: ['recorded'] }],
+      })
+      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      const remaining =
+        question === newest
+          ? { ...owesAdaAfterReminder(middle), unansweredQuestionCount: 2 }
+          : owesAdaAfterReminder(oldest)
+      await untilPushed(brobot, remaining, 'the status to drop the answered question')
+      expect(await wordsOf(observer, brobot)).toBe(
+        question === newest
+          ? `stalled: 2 questions unanswered after a reminder (latest ${middle})`
+          : stalledOn(oldest),
+      )
+    }
   })
 
   it('a question its child addressed to a person has no agent answerer', async () => {
