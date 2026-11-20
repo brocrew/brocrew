@@ -56,9 +56,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // **D-017 · R12 — and it no longer overstates**: it is said only about an id no conversation
   // has, and nothing makes an id exist.
   'no-such-agent': 'permanent',
-  // **D-017 · R12** — nothing the caller does starts it, and waiting does not either.
-  'that-conversation-takes-no-messages': 'permanent',
-  'that-is-a-service': 'permanent',
   'that-agent-has-several-conversations': 'permanent',
   // Permanent for THIS request: the same arguments will be malformed forever.
   'malformed-request': 'permanent',
@@ -154,8 +151,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'theme-too-large': 'change-what-you-sent-and-call-again',
   'theme-is-built-in': null,
   'no-such-agent': null,
-  'that-conversation-takes-no-messages': null,
-  'that-is-a-service': null,
   'that-agent-has-several-conversations': null,
   'malformed-request': null,
   'agent-cannot-take-a-message': null,
@@ -282,10 +277,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // The detail carries every label; the refusal sentence names up to five.
   'that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
-  'that-is-a-service':
-    'Not sent: that conversation is a service, which takes its work one piece at a time. Give it the work with give_work.',
-  'that-conversation-takes-no-messages':
-    'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the conversations this app can run. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
   'malformed-request':
     'the arguments did not match what this tool accepts, so nothing was done. The problems are listed in the detail: fix each one and call this tool again.',
   // **It says who can change it, because nothing the caller does will** (424). The old sentence

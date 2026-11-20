@@ -505,14 +505,8 @@ describe('425 · a refusal carries its remedy', () => {
         // `the-card-a-third-party-was-holding.test.ts` §5 walks end to end. ⚑ **D-017 — that
         // membership went with `END_RAILS`** (nothing ends a conversation).
         //
-        // ⚑ **D-017's three, each decided by the biconditional before the table was written**: a
-        // conversation not below the caller (`permanent` — who started it is fixed), one parked on
-        // a question another conversation owes (`until-a-person-changes-it`), and a row a message
-        // cannot start (`permanent`). ⚠️ Each SENTENCE names what is left, which is a different call.
+        // A conversation parked on an answer needs the current answerer to act.
         ['INTERRUPT_RAILS', 'it-is-waiting-on-an-answer'],
-        ['TOOL_REFUSALS', 'that-conversation-takes-no-messages'],
-        // A service's conversation takes work through give_work; no wait changes that.
-        ['TOOL_REFUSALS', 'that-is-a-service'],
         ['TOOL_REFUSALS', 'agent-cannot-take-a-message'],
         // ⚑ **D-016 · the document registry's words are the resource store's** — a store with
         // nowhere to keep, and the reader's `517` word for bytes it cannot read (HO-043 §1), which
@@ -756,8 +750,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+2**, the move offer's two that carry no act.
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(quiet).toHaveLength(78)
+      expect(quiet).toHaveLength(76)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['its-provider-is-fixed', 'permanent'],
@@ -984,8 +977,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
-      // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(107)
+      expect(walked).toHaveLength(105)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

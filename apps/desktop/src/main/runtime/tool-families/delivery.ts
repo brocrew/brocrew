@@ -1,7 +1,6 @@
 import { type EndedPieceDetail } from '../work-records'
 import {
   type NewBriefDelivery,
-  type OutOfReach,
   type TellDelivery,
   type TheStopAMessageGot,
   type Told,
@@ -380,20 +379,6 @@ export function whatBecameOfTheStop(
         said: `The turn ${called} was running had already been ${ASKED_TO_STOP}, so it was not asked again; ${what} goes in as that turn ends.`,
       }
   }
-}
-
-/**
- * **D-017 · R12 — an id this caller may not reach, answered in one sentence at every door**
- * (`RuntimeHost.whyItIsOutOfReach`): `no-such-agent` only for an id no conversation has — and for a
- * label that names nothing this caller may reach (D-016 · commit 7 · R1) — its own word for one a
- * message cannot start, and its own word for a service's conversation.
- */
-export const outOfReachAnswer = (out: OutOfReach, agent: string): AgentToolAnswer => {
-  if (out.is === 'no-such-agent') return refusalAnswer(refuseTool('no-such-agent', { agent }))
-  if (out.is === 'takes-no-messages') {
-    return refusalAnswer(refuseTool('that-conversation-takes-no-messages', { agent }))
-  }
-  return refusalAnswer(refuseTool('that-is-a-service', { agent }))
 }
 
 /**

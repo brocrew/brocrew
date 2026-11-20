@@ -6,7 +6,6 @@ import type {
   InterruptOutcome,
   MessageNowOutcome,
   RecordedAgentMessage,
-  OutOfReach,
   TheDoorsReach,
 } from '../message-records'
 import type { ConversationTasksInput, ConversationTasksResult } from '../conversation-tasks'
@@ -153,12 +152,6 @@ export interface AgentToolHost {
     readonly took: ReceivedInATurn | null
     readonly readAt: number
   }
-  whyItIsOutOfReach(
-    id: string,
-    by: Caller,
-    me: string | null,
-    forAMessage?: boolean,
-  ): OutOfReach | null
   messageDestination(address: string): string | null
   theConversationAddressed(
     address: string,

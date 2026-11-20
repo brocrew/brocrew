@@ -11,7 +11,6 @@ import { providerDescriptor, PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { ToolName } from './catalog'
 import {
   aMessageAboutAQueuedPiece,
-  outOfReachAnswer,
   theRuleOfAStopForWords,
   whatADeliveryMet,
   whatBecameOfTheStop,
@@ -264,7 +263,7 @@ export function createMessageAgentTool(
             reason: aMessageAboutAQueuedPiece(it.label),
           })
         }
-        if (destination === null) return outOfReachAnswer({ is: 'no-such-agent' }, agent)
+        if (destination === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
         let about: { readonly piece: string; readonly label: string } | null = null
         if (typeof named === 'string') {
           if (it.is === 'none') {
