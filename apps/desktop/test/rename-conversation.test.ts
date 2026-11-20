@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 describe('renaming a conversation', () => {
@@ -116,6 +117,28 @@ describe('renaming a conversation', () => {
     await expect(read(Array(16).fill(target))).rejects.toThrow('invalid runtime command')
     expect(world.handles).toHaveLength(starts)
     expect(ids.map((id) => world.store.events(id))).toEqual(before)
+  })
+
+  it('uses the displayed profile name when a person’s conversation has no title', async () => {
+    const conversation = await world.aPersonOpens(host, DEFAULT_PROFILE_ID)
+    const root = world.store.rootOf(conversation)!
+    world.store.append(
+      conversation,
+      world.store.nextOrdinal(conversation),
+      { type: 'user_turn', text: 'Opening request', humanInitiated: true },
+      world.clock,
+    )
+    expect(world.store.conversationTitle(conversation)).toBeNull()
+    expect(world.store.defaultTaskTitle(conversation)).toBeNull()
+
+    const identity = { conversation, address: root.label, title: 'BroBot', author: null }
+    expect(await readIdentity(conversation)).toEqual(identity)
+    expect(
+      await executeRuntimeCommand(host, world.window, {
+        kind: 'readConversationIdentities',
+        sessionIds: [conversation],
+      }),
+    ).toEqual([identity])
   })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
