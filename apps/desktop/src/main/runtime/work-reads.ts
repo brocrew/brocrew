@@ -19,7 +19,11 @@ import {
   TASK_IS_OPEN,
   NOTHING_IT_WAITS_ON,
 } from '../../shared/tasks'
-import type { PieceRow, WhatAConversationIsWaitingOn } from '../../shared/task-contracts'
+import type {
+  PieceRow,
+  WhatAConversationIsWaitingOn,
+  WorkGivenOut,
+} from '../../shared/task-contracts'
 import { openQuestionsByWork, REQUEST_IS_OPEN, aPersonOwesAnAnswerIn } from '../../shared/questions'
 import type { LedgerWalk, RoutedRequest } from '../../shared/question-contracts'
 import type { Exchange, TaskRecordExchange } from '../../shared/last-exchange'
@@ -287,6 +291,26 @@ export class WorkReads {
       const one = folded.find((row) => row.piece === child.piece)
       return one === undefined ? [] : [one]
     })
+  }
+
+  /**
+   * 🔴 **The work one conversation gave out, for the window that is showing it** (508).
+   *
+   * ⛔ **A named door rather than `pieceBoard(id).gave`, and the two answer different
+   * questions.** That one pairs both directions for `list_tasks` and hands back {@link PieceRow}s;
+   * this one is the window's half, narrowed to {@link WorkGivenOut} and carrying the walk — see
+   * {@link SessionStore.workGivenOutBy} for the count that narrowing exists to state.
+   *
+   * ⚑ **No {@link Caller} and nothing to refuse**, which is `pieceBoard`'s own ruling: *"A
+   * conversation is told about its own work; there is no argument for whose work to look at, so
+   * there is nothing to refuse."* ⚠️ And no `requireAPerson` — this verb lives on the window wire
+   * and on no toolset.
+   *
+   * ⛔ **The walk is carried through and never recomputed**: the party that WALKED is the only one
+   * that can say what it walked.
+   */
+  workGivenBy(sessionId: string): LedgerWalk<WorkGivenOut> {
+    return this.sources.store.workGivenOutBy(sessionId)
   }
 
   /**

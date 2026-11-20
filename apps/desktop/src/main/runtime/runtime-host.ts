@@ -17600,11 +17600,8 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  async workGivenBy(sessionId: string): Promise<LedgerWalk<WorkGivenOut>> {
-    return this.freshWindowQuery({ kind: 'work-given', sessionId }, (result) => {
-      if (result.kind !== 'work-given') throw new WindowReadUnavailable()
-      return result.work
-    })
+  workGivenBy(sessionId: string): LedgerWalk<WorkGivenOut> {
+    return this.workReads.workGivenBy(sessionId)
   }
 
   whoCalledWhom(sessionId: string): WhoCalledWhom {

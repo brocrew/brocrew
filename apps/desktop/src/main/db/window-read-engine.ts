@@ -300,8 +300,6 @@ export class WindowReadEngine {
           reported: [...reported],
           routing: readRoutes(false, projected),
         }
-      } else if (query.kind === 'work-given') {
-        result = { kind: 'work-given', work: store.workGivenOutBy(query.sessionId) }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
         result = { kind: 'activity', ...reading }

@@ -1,5 +1,3 @@
-import { RuntimeHost as GiverNoticeHost } from './helpers/giver-notice-host'
-import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-agent-tool'
 import { neutralHostDeps } from './lib/host-fixture'
@@ -167,10 +165,9 @@ describe('692 · a restart keeps what was open', () => {
   let announced: RuntimeChangeMessage[]
   const tick = (): number => clock++
 
-  const buildHost = (Host = RuntimeHost): RuntimeHost => {
-    const built = new Host({
+  const buildHost = (): RuntimeHost => {
+    const built = new RuntimeHost({
       store,
-      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CountingRuntime(provider, launched, handed, issued, gate),
@@ -243,9 +240,9 @@ describe('692 · a restart keeps what was open', () => {
   }
 
   /** ⛔ A crash or a kill: the next launch happens and the quit never ran. */
-  const crashAndRelaunch = (Host = RuntimeHost): void => {
+  const crashAndRelaunch = (): void => {
     store = createSessionStore(db, tick)
-    host = buildHost(Host)
+    host = buildHost()
   }
 
   /** ⚑ The TEXT a model reads, beside the payload `callOn` returns. */
@@ -1318,12 +1315,9 @@ describe('692 · a restart keeps what was open', () => {
     }
 
     /** ⚑ The Work tab's row for the open piece a parent gave one child — `workGivenBy`. */
-    const workTabRow = async (
-      parent: string,
-      child: string,
-    ): Promise<Record<string, unknown> | undefined> => {
+    const workTabRow = (parent: string, child: string): Record<string, unknown> | undefined => {
       const piece = theOpenPiece.get(child)
-      return (await host.workGivenBy(parent)).rows.find((row) => row.piece === piece) as
+      return host.workGivenBy(parent).rows.find((row) => row.piece === piece) as
         Record<string, unknown> | undefined
     }
 
@@ -1356,8 +1350,8 @@ describe('692 · a restart keeps what was open', () => {
       // ⚑ **The durable word is the turn's, and the quit did not move it** (D-016c — a stop moves no
       // piece). ⛔ `699` read the quit's ending here with a live *kept open* fact beside it, so the
       // tab would not say *has ended*; neither is on the row now: a process fact is never shown.
-      expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
-      expect(await workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
+      expect(workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
+      expect(workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
 
       // ⚑ **Live**: a person closes the other one. ⛔ Until commit 3 this was its parent's
       // `end_agent`, which went with that tool. ⚑ **D-017b** — a Close of a conversation nothing
@@ -1369,8 +1363,8 @@ describe('692 · a restart keeps what was open', () => {
       announced.length = 0
       await host.close(children[1], window)
       expect(listed(children[1])).toEqual({ running: 'not-running' })
-      expect(await workTabRow(lead, children[1])).toMatchObject({ stalledBecause: 'turn_ended' })
-      expect(await workTabRow(lead, children[1])).not.toHaveProperty('holderKeptOpen')
+      expect(workTabRow(lead, children[1])).toMatchObject({ stalledBecause: 'turn_ended' })
+      expect(workTabRow(lead, children[1])).not.toHaveProperty('holderKeptOpen')
       // 🔴 **…and a window is TOLD to re-read it** — the Work tab re-reads on `work` alone, and the
       // ending of a conversation holding open work announces it (`689`).
       expect(announced.map((change) => change.what)).toContain('work')
@@ -1390,27 +1384,19 @@ describe('692 · a restart keeps what was open', () => {
     })
 
     it('⚑ F-d controls · a RUNNING holder and a CRASH-closed one read the same — the turn’s word, and no process fact', async () => {
-      await host.closeAll()
-      host = buildHost(GiverNoticeHost)
       const { lead, children, leadTools } = await theFourOpen('auto')
       await giveAndLetItStall(leadTools, children[0], 'the work of a running child')
-      expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
-      expect(await workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
+      expect(workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
+      expect(workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
 
       // ⚑ **The stall predates the crash, so the launch leaves its word alone** — `work_restarted`
       // passes over a task already `stalled` — and the rail lists the holder with nothing running
       // it. ⚑ **D-016c** — `699`'s live fact, which a crash-closed holder carried, went with the
       // kept-open family: whether a process runs is never part of the row.
-      // Keep this durable-state control independent of another reminder-driven turn.
-      expect(
-        createSessionStore(db, tick)
-          .workGivenOutBy(lead)
-          .rows.find((row) => row.piece === theOpenPiece.get(children[0])),
-      ).toMatchObject({ stalledBecause: 'turn_ended' })
-      crashAndRelaunch(GiverNoticeHost)
-      expect(await workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
+      crashAndRelaunch()
+      expect(workTabRow(lead, children[0])).toMatchObject({ stalledBecause: 'turn_ended' })
       expect(listed(children[0])).toEqual({ running: 'not-running' })
-      expect(await workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
+      expect(workTabRow(lead, children[0])).not.toHaveProperty('holderKeptOpen')
     })
 
     it('🔴 F-d · the notice’s OWN report says what its words say — the turn the quit interrupted, and nothing about a process', async () => {
