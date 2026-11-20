@@ -50,8 +50,8 @@ describe('F071 · the ledger folds read through their own index', () => {
         (sql.includes('events_kind_owner_idx') && sql.includes(FOLD_TERM)),
     )
     expect(reads.filter(isOwnerSchedule)).toHaveLength(1)
-    // Two Stop reads now seek their own kinds instead of the complete fold range.
-    expect([...reads.filter((sql) => !isOwnerSchedule(sql)), ...stopSeeks()]).toHaveLength(23)
+    // Include the failed turn's sent-message read, and the two Stop reads that seek their own kinds.
+    expect([...reads.filter((sql) => !isOwnerSchedule(sql)), ...stopSeeks()]).toHaveLength(24)
     return reads
   }
 
