@@ -1295,7 +1295,7 @@ const platform = platformHere()
                     "
                     ><span class="rail-standing-prefix"
                       ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
-                        ><span :data-cy="`rail-profile-${row.sessionId}`">{{
+                        ><span :data-cy="`rail-profile-${row.sessionId}`" :title="row.label">{{
                           row.label
                         }}</span></template
                       ><template v-if="!identities.get(row.sessionId) && row.provider">
