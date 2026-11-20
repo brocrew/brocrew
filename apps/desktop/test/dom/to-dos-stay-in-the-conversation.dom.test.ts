@@ -133,22 +133,43 @@ describe('to-dos in the conversation', () => {
     expect((m.q('inline-todo-cant-req_report') as HTMLButtonElement).disabled).toBe(false)
   })
   it('replayed answered and withdrawn requests have no answer controls', async () => {
-    for (const ending of [
-      {
-        type: 'user_decision',
-        requestId: 'req_report',
-        outcome: 'answered',
-        by: { is: 'a-person' },
-      },
-      { type: 'question_withdrawn', requestId: 'req_report' },
+    const withdrawn: TranscriptEvent = { type: 'question_withdrawn', requestId: 'req_report' }
+    const answered: TranscriptEvent = {
+      type: 'user_decision',
+      requestId: 'req_report',
+      outcome: 'answered',
+      by: { who: 'a-person' },
+    }
+    const pieceEndings: TranscriptEvent[] = [
       { type: 'work_closed', piece: 'work_report', by: null },
       { type: 'work_taken_back', piece: 'work_report', by: null },
-      { type: 'work_replied', piece: 'work_report', outcome: 'done', summary: 'Sample checked.' },
+      {
+        type: 'work_replied',
+        piece: 'work_report',
+        outcome: 'done',
+        summary: 'Sample checked.',
+        resources: [],
+      },
       { type: 'question_ended_with_its_piece', requestId: 'req_report', ending: 'work-closed' },
-    ] as TranscriptEvent[]) {
-      const m = mount(ConversationPane, paneProps({ record: record([...events, ending]) }))
+    ]
+    const replays: [TranscriptEvent[], string][] = [
+      [[answered], 'An answer was sent.'],
+      [[withdrawn], 'This to-do was withdrawn.'],
+      ...pieceEndings.map((ending): [TranscriptEvent[], string] => [
+        [ending],
+        'This to-do has ended.',
+      ]),
+      ...pieceEndings.map((ending): [TranscriptEvent[], string] => [
+        [withdrawn, ending],
+        'This to-do was withdrawn.',
+      ]),
+    ]
+    for (const [endings, said] of replays) {
+      const m = mount(ConversationPane, paneProps({ record: record([...events, ...endings]) }))
       expect(m.q('inline-todo-text-req_report').textContent).toBe(TEXT)
+      expect(m.q('inline-todo-said-req_report').textContent?.trim()).toBe(said)
       expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
+      expect(m.all('inline-todo-cant-req_report')).toHaveLength(0)
       m.unmount()
     }
   })

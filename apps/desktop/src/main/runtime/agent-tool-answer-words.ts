@@ -378,7 +378,7 @@ function whatARefusalAdds(
   const rail = aText(structured['rail']) ?? ''
   const detail = detailOf(structured)
   if (rail === 'a-person-is-being-asked' && aText(detail['approval']) !== undefined) return ''
-  if (isCompleteCompactionRefusal(rail)) return ''
+  if (hasCompleteRefusalWords(rail)) return ''
   const said = Object.hasOwn(DETAIL_SAID, rail) ? (DETAIL_SAID[rail]?.(detail, context) ?? []) : []
   const unused = aText(structured['label_not_used'])
   if (unused !== undefined) said.push(theLabelWasUsedUp(unused))
@@ -422,12 +422,14 @@ function detailOf(
     : {}
 }
 
-function isCompleteCompactionRefusal(rail: string | undefined): boolean {
+function hasCompleteRefusalWords(rail: string | undefined): boolean {
   switch (rail) {
     case 'compaction-target-busy':
     case 'compaction-target-not-running':
     case 'compaction-unavailable':
     case 'compaction-request-failed':
+    case 'no-conversation-gave-this-work':
+    case 'person-addressed-request':
       return true
     default:
       return false
@@ -455,7 +457,7 @@ export function appOnlyRefusalQuote(
     return reason
   }
   if (rail !== undefined && finalText === reason && reason.startsWith('Not changed:')) return reason
-  if (isCompleteCompactionRefusal(rail) && finalText === reason) return reason
+  if (hasCompleteRefusalWords(rail) && finalText === reason) return reason
   const prefix =
     hasDirectRefusalOpening(reason) && finalText.startsWith(reason) ? '' : `refused (${rail}): `
   const base = `${prefix}${reason}`

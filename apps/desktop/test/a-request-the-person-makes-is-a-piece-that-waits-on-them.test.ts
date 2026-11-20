@@ -941,7 +941,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     const workerTools = agentToolsFor(host, errand.agent as string)
     const stranger = await aPerson('pm-stranger')
 
-    // The owner names it.
     const retitled = await callOn(pmTools, 'update_work', {
       piece: taken.label,
       title: 'Renamed by its owner',
@@ -968,7 +967,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(closed.rail).toBe('the-giver-briefs-and-closes-a-piece')
     expect(taskOf(pm, taken.piece)?.state).toBe('working')
 
-    // A conversation that is not its owner is told there is no such piece.
     const meddled = await callOn(stranger.tools, 'update_work', {
       piece: taken.label,
       title: 'mine now',
@@ -977,8 +975,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(meddled.rail).toBe('no-piece-by-that-name')
     expect(taskOf(pm, taken.piece)?.title).toBe('Renamed by its owner')
 
-    // Where the two readings differ: the worker owns a piece a conversation gave and may not name
-    // it, while the giver may — and the taken-on piece's owner names its own.
     const byTheWorker = await callOn(workerTools, 'update_work', {
       piece: errand.label,
       title: 'mine',
@@ -995,7 +991,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     )
   })
 
-  it('T8 · questions for the giver of a taken-on piece or a root record a short person receipt', async () => {
+  it('T8 · a taken-on piece and a root require an explicit person ask', async () => {
     const asked = (sessionId: string): QuestionAskedEvent[] =>
       events(sessionId).filter(
         (event): event is QuestionAskedEvent => event.type === 'question_asked',
@@ -1005,12 +1001,26 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
         (event): event is RequestRoutedEvent => event.type === 'request_routed',
       )
 
-    // A piece it took on, named: the giver is a person.
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
-    const forPiece = await callWithWords(pmTools, 'ask_question', {
+    const routedBefore = routed(pm)
+    const noGiver = await callWithWords(pmTools, 'ask_question', {
       question: 'which city?',
       who_answers: 'the-parent',
+      piece: taken.label,
+      resources: ['missing.txt'],
+    })
+    expect(noGiver.structured).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-conversation-gave-this-work',
+    })
+    expect(noGiver.structured).not.toHaveProperty('question')
+    expect(noGiver.structured).not.toHaveProperty('receipt')
+    expect(asked(pm)).toEqual([])
+    expect(routed(pm)).toEqual(routedBefore)
+    const forPiece = await callWithWords(pmTools, 'ask_question', {
+      question: 'which city?',
+      who_answers: 'a-person',
       piece: taken.label,
     })
     expect(forPiece.structured.outcome, JSON.stringify(forPiece.structured)).toBe('ok')
@@ -1025,11 +1035,10 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(routedAbout?.to).toBe('a-person')
     expect(routedAbout !== undefined && Object.hasOwn(routedAbout, 'parent')).toBe(false)
 
-    // A conversation that asks about its own root reaches a person too.
     const alone = await aPerson('pm-alone')
     const forRoot = await callWithWords(alone.tools, 'ask_question', {
       question: 'which city?',
-      who_answers: 'the-parent',
+      who_answers: 'a-person',
     })
     expect(forRoot.structured.outcome, JSON.stringify(forRoot.structured)).toBe('ok')
     expect(forRoot.structured.went_to).toBe('a-person')

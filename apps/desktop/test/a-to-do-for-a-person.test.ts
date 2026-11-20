@@ -29,34 +29,18 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  settleFixtureTurns,
 } from './lib/host-fixture'
 
-/**
- * A to-do for a person.
- *
- * A helper (Ada) asks the person to do something only they can do, with `request_action`: it is
- * in their queue as a to-do, with its files kept for the piece, and the piece can wait on it. The
- * person answers Done or Can't do it, with a note, through their window, and Ada is told once,
- * in words that say what the person did. A request that is no to-do is not answered this way.
- *
- * A real `RuntimeHost` over a real SQLite ledger, real migrations and the real tools; the only
- * double is the provider.
- */
-
+/** The to-do lifecycle through RuntimeHost and SQLite, with a provider double. */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** Long enough for every pump and every flush a row arms to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
+const settle = (): Promise<void> => settleFixtureTurns(2, 30)
 
 /** While set, every resume waits for it: the conversation stays starting until it settles. */
 let resumesWait: Promise<void> | null = null
-/** How many resumes have been asked for. */
 let resumesAsked = 0
 
 /** The provider double: it keeps the handles it gives out, so a test can report background work. */
@@ -329,31 +313,63 @@ describe('a to-do for a person', () => {
     })
   })
 
-  it('its giver may answer it for the person, and the helper reads that its giver answered, by name', async () => {
+  it('only the person answers a fresh to-do, and its asker can withdraw a separate one', async () => {
     const { brobot, ada } = await aHelperWithAPiece()
     const asked = await aToDo(ada, { action: 'Press Allow on the new app.' })
     const id = asked.question as string
-    // Its giver sees it as it sees a question routed to a person.
-    const listed = await call(agentToolsFor(host, brobot), 'list_questions', {})
-    expect(JSON.stringify(listed)).toContain(id)
-    const relayed = await call(agentToolsFor(host, brobot), 'answer_question', {
+    const route = (requestId: string) =>
+      store.routedRequestsOf(ada).find((row) => row.requestId === requestId)
+    const queued = () => host.questionsForAPerson().rows.map((row) => row.request.requestId)
+
+    const recorded = store
+      .events(ada)
+      .map((entry) => entry.event)
+      .find((event) => event.type === 'request_routed' && event.requestId === id)
+    expect(recorded).toMatchObject({ type: 'request_routed', to: 'a-person' })
+    expect(recorded).not.toHaveProperty('parent')
+    expect(route(id)).toMatchObject({ went: { to: 'a-person' }, parent: null, state: 'open' })
+    expect(queued()).toContain(id)
+    const answer = agentToolsFor(host, brobot).tools.find((one) => one.name === 'answer_question')
+    if (answer === undefined) throw new Error('the giver has no answer tool')
+    const proxy = await answer.call({
       question: id,
       asked_by: ada,
       answers: [{ part: 'answer', answer: ['Done'] }],
     })
-    expect(relayed, JSON.stringify(relayed)).toMatchObject({ outcome: 'ok' })
-    await waitFor(() => toldAda(ada).some((text) => text.includes(id)), 'Ada to be told')
-    const told = toldAda(ada).filter((text) => text.includes(id))
-    expect(told).toHaveLength(1)
-    expect(told[0]).toBe(
-      `${host.nameByItsWorkUnder(brobot, store.piecesOwnedBy(ada)[0]?.piece ?? null)} answered for the person about W1.1: done, quoting ${id}.\n\nYou asked: Press Allow on the new app.`,
-    )
-    expect(told[0]).not.toContain('A person')
-    // Its card closes as a question's does, and the person's answer after it is refused.
-    expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).not.toContain(id)
+    const refusal = {
+      outcome: 'refused',
+      rail: 'person-addressed-request',
+      reason:
+        'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
+    }
+    expect(proxy.structured).toMatchObject(refusal)
+    expect(proxy.text).toBe(refusal.reason)
+    expect(route(id)?.state).toBe('open')
+    expect(queued()).toContain(id)
+
+    expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({ outcome: 'taken' })
+    expect(route(id)?.state).toBe('answered')
+    expect(queued()).not.toContain(id)
     expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({
       outcome: 'refused',
     })
+
+    const other = await aToDo(ada, { action: 'Open the settings window.' })
+    const otherId = other.question as string
+    expect(otherId).not.toBe(id)
+    expect(queued()).toContain(otherId)
+    await ok(agentToolsFor(host, ada), 'withdraw_question', { question: otherId })
+    expect(route(otherId)?.state).toBe('withdrawn')
+    expect(queued()).not.toContain(otherId)
+    const late = await host.answerAction(ada, otherId, true, null, window)
+    expect(late).toMatchObject({ outcome: 'refused', stillOpen: false })
+
+    await waitFor(() => toldAda(ada).some((text) => text.includes(id)), 'Ada to be told')
+    await settle()
+    expect(toldAda(ada).filter((text) => text.includes(id))).toEqual([
+      `A person did what you asked them to do about W1.1, quoting ${id}.\n\nYou asked: Press Allow on the new app.`,
+    ])
+    expect(toldAda(ada).filter((text) => text.includes(otherId))).toEqual([])
   })
 
   it('a to-do and a question about a piece end when its holder hands the piece back, and the person’s answer then tells nobody', async () => {

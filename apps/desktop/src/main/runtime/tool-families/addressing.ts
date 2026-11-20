@@ -10,10 +10,7 @@ import { skippedRecordsSentence, unreadRowsSentence } from './listings'
 // Addressing helpers and their reads belong to one toolset instance.
 
 export function conversationAddressing(
-  host: Pick<
-    AgentToolHost,
-    'agentCard' | 'pieceRecord' | 'theConversationAddressed' | 'tookItsPlace'
-  >,
+  host: Pick<AgentToolHost, 'agentCard' | 'pieceRecord' | 'tookItsPlace'>,
   by: Caller,
   me: string,
 ) {
@@ -97,7 +94,5 @@ export function conversationAddressing(
     return refusalAnswer({ ...payload, reason: aSelfAddressSaid })
   }
 
-  const theConversationToReach = (spelled: string): string =>
-    host.theConversationAddressed(spelled, by, me, 'messaging')
-  return { selfRefusal, theConversationToReach }
+  return { selfRefusal }
 }

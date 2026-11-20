@@ -771,8 +771,8 @@ describe('591 · a question does not expire on a clock', () => {
    * and nobody asked what a person saw at the limit; this asks, with the same fold the queue reads.
    */
   describe('§5 · the row a person could never clear', () => {
-    it('⛔ an escalated question is in the person’s queue, and answering it LATE takes it out', async () => {
-      const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
+    it('⛔ a question addressed to the person stays queued until the person answers it', async () => {
+      const { worker, workerTools, piece } = await aWorkerHoldingWork()
       await callOn(workerTools, 'ask_question', {
         // ⚑ **612 · ADDRESSED to a person, because no sweep puts one there any more** (HO-088
         // §3.1, §2). ⛔ This drove `store.escalationsDue` and wrote the row through the host's own
@@ -792,14 +792,20 @@ describe('591 · a question does not expire on a clock', () => {
       const before = host.questionsForAPerson().rows
       expect(before.map((one) => one.request.requestId)).toEqual([asked.requestId])
 
-      // A person can answer fifteen minutes later; the late call must not leave an
-      // unanswerable open row.
       clock += BOUND * 6
-      const late = await callOn(pmTools, 'answer_question', {
-        question: asked.requestId,
-        answers: [{ part: 'answer', answer: ['b'] }],
-      })
-      expect(late.outcome, JSON.stringify(late)).toBe('ok')
+      expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
+        asked.requestId,
+      ])
+      const surface = new RecordingSink('webContents:9')
+      host.claimSession(worker, surface)
+      const late = await host.respondUserInput(
+        worker,
+        asked.requestId,
+        { kind: 'answer', answers: { answer: ['b'] } },
+        surface,
+      )
+      expect(late.outcome, JSON.stringify(late)).toBe('taken')
+      expect(stateOfRequest(worker, asked.requestId)).toBe('answered')
       expect(host.questionsForAPerson().rows).toEqual([])
       // ⚑ **612 · and it never carried a stamp**, because nothing escalated it — it was addressed.
       expect(

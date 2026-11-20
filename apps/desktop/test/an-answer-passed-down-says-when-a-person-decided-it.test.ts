@@ -9,6 +9,7 @@ import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
+import { newAskedQuestionId } from '../src/main/db/ids'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -139,6 +140,39 @@ describe('an answer an agent passes down says when a person decided it', () => {
     const asked = await callOn(tools, 'ask_question', { who_answers: whoAnswers, piece, question })
     expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
     return asked.question as string
+  }
+
+  const recordHistoricalPersonAsk = (
+    worker: string,
+    label: string,
+    parent: string,
+    prompt: string,
+  ): string => {
+    const work = store.workByLabel(label)
+    if (work === null) throw new Error(`No piece named ${label}`)
+    const requestId = newAskedQuestionId()
+    store.atomically(() => {
+      store.append(
+        worker,
+        store.nextOrdinal(worker),
+        {
+          type: 'question_asked',
+          requestId,
+          piece: work.piece,
+          label,
+          prompt,
+          questions: [{ id: 'answer', prompt, options: [] }],
+        },
+        tick(),
+      )
+      store.append(
+        worker,
+        store.nextOrdinal(worker),
+        { type: 'request_routed', requestId, to: 'a-person', parent },
+        tick(),
+      )
+    })
+    return requestId
   }
 
   const aPersonAnswers = async (asker: string, up: string, answer: string): Promise<void> => {
@@ -322,10 +356,10 @@ describe('an answer an agent passes down says when a person decided it', () => {
     })
   })
 
-  describe('§2 · asked of a person, and an agent answered instead', () => {
+  describe('§2 · person answers and historical routes with an agent answerer', () => {
     it('the asker reads that the agent answered instead of that person, and that this app cannot tell whether it asked them first', async () => {
-      const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
-      const id = await ask(workerTools, 'a-person', piece, 'which colour?')
+      const { pm, worker, piece } = await aPmWithAWorkerOnATask()
+      const id = recordHistoricalPersonAsk(worker, piece, pm.id, 'which colour?')
       await answerDown(pm.tools, id, worker, 'blue')
 
       const text = await theAnswerTo(worker, id)
@@ -356,8 +390,8 @@ describe('an answer an agent passes down says when a person decided it', () => {
     })
 
     it('asked of a person, passed up to a person and answered there: the person’s answer is said, never “instead of that person”', async () => {
-      const { pm, worker, workerTools, piece } = await aPmWithAWorkerOnATask()
-      const id = await ask(workerTools, 'a-person', piece, 'which colour?')
+      const { pm, worker, piece } = await aPmWithAWorkerOnATask()
+      const id = recordHistoricalPersonAsk(worker, piece, pm.id, 'which colour?')
       const up = recordForwardedQuestion(store, tick, {
         asker: worker,
         original: id,

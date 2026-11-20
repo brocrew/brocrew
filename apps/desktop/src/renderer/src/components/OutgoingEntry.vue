@@ -160,13 +160,14 @@ const todo = computed(() => {
     pending: shared?.pending ?? false,
     taken: ended || (shared?.taken ?? false),
     said:
-      asked.note !== undefined
-        ? asked.note
-        : asked.answered !== undefined
-          ? (shared?.said ?? 'An answer was sent.')
-          : asked.closed !== undefined
-            ? 'This to-do has ended.'
-            : (shared?.said ?? null),
+      asked.closed === 'withdrawn'
+        ? 'This to-do was withdrawn.'
+        : (asked.note ??
+          (asked.answered !== undefined
+            ? (shared?.said ?? 'An answer was sent.')
+            : asked.closed !== undefined
+              ? 'This to-do has ended.'
+              : (shared?.said ?? null))),
   }
 })
 
