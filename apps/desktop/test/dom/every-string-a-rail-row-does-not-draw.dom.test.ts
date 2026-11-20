@@ -29,6 +29,7 @@ import {
  * full text; a repaired cut must leave the roster. The rhythm suite checks the wide breakpoint.
  */
 const WIDE_RAIL_W = 266.2
+const ON_WINDOWS = /^win/i.test(navigator.platform)
 
 /* ------------------------------------------------------------------ the fixture */
 
@@ -177,6 +178,7 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
     starts: /^\d+d ago$/,
+    widths: ON_WINDOWS ? [251.68] : undefined,
     because: 'The activity on a crowded metadata line remains on hover.',
   },
   {
@@ -440,6 +442,14 @@ describe('§1 · the roster, at both shipped widths', () => {
       }
     })
   }
+
+  it('266.2px · draws the named row’s full activity age on Windows', async (ctx) => {
+    ctx.skip(!ON_WINDOWS)
+    const m = await rail(WIDE_RAIL_W)
+    const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
+    expect(activity.textContent?.trim()).toMatch(/^\d+d ago$/)
+    assertDrawn(activity, 'the named row’s activity age is drawn in full')
+  })
 
   it.each([251.68, WIDE_RAIL_W])(
     '%spx · wraps the long title without losing any of it',
