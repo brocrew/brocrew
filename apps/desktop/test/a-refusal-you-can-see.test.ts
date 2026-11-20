@@ -215,6 +215,7 @@ describe('405 · a refusal you can see', () => {
     // ⚑ **D-012's reader, delegated like every other member.**
     readTranscript: (...args) => host.readTranscript(...args),
     replyToParent: (...args) => host.replyToParent(...args),
+    replyTaskChoice: (...args) => host.replyTaskChoice(...args),
     maySaveMemory: (...args) => host.maySaveMemory(...args),
     pieceBoard: (...args) => host.pieceBoard(...args),
     answersHeldFor: (...args) => host.answersHeldFor(...args),
