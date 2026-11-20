@@ -251,6 +251,12 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       const made = await fullCall(tools, 'create_agent', { profile_slug: 'tester', rules: RULES })
       expect(made.structured, made.text).toMatchObject({ outcome: 'ok' })
       const { label, holder } = await gives(tools, 'Ship the clock page')
+      expect(store.setAgentDisplayName('tester', 'Clock Tester')).toBe(true)
+      const renamed = await host.renameConversation(
+        { conversation: label, title: 'Clock repair history' },
+        { kind: 'person' },
+      )
+      expect(renamed).toMatchObject({ ok: true, address: label })
 
       await host.closeAll()
       const firstStandIn = seedHistoricalSuccessor(store, holder, `sess_${++counter}`, tick())
@@ -274,13 +280,16 @@ describe('an agent’s record — the cases beyond what-an-agent-has-done', () =
       expect(byId.get(secondStandIn)).not.toHaveProperty('replaced_by')
       expect(record.text).toMatch(
         new RegExp(
-          ` {2}- the owner of ${label.replace('.', '\\.')} · Ship the clock page · you started it at .* · it could not be reopened, so conversation ${secondStandIn} \\(it holds no work\\) took its place\\n`,
+          ` {2}- conversation ${label.replace('.', '\\.')} · Clock repair history · you started it at .* · it could not be reopened, so conversation ${secondStandIn} · Clock Tester took its place\\n`,
         ),
       )
       expect(record.text).toContain(
-        `  - conversation ${firstStandIn} (it holds no work) · you started it at `,
+        `  - conversation ${firstStandIn} · Clock Tester · you started it at `,
       )
-      expect(record.text).not.toContain(`so conversation ${firstStandIn} (it holds no work) took`)
+      expect(record.text).not.toContain(`so conversation ${firstStandIn} · Clock Tester took`)
+      expect(record.structured.pieces).toContainEqual(
+        expect.objectContaining({ label, title: 'Ship the clock page', agent: holder }),
+      )
       expect(record.text).not.toMatch(/running/i)
     })
   })
