@@ -166,6 +166,56 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(store.workById(second.piece)?.owner).toBe(first.owner)
   })
 
+  it('keeps the first task title when an existing conversation with an untitled root gets a Give', async () => {
+    const target = await personOpens('pm')
+    const lead = await personOpens('lead', 'auto')
+    await host.send(target, 'Please review the itinerary.', window)
+    const took = await host.takeOnWork(
+      {
+        title: 'Review the itinerary',
+        brief: 'Check the proposed dates.',
+        definition_of_done: 'The dates are confirmed.',
+      },
+      speakingAs(target),
+    )
+    expect(took.ok).toBe(true)
+    const root = store.rootOf(target)!
+    expect(root.title).toBeNull()
+    const name = `conversation ${root.label} · Review the itinerary`
+    expect(host.nameByItsWork(target)).toBe(name)
+
+    const given = await answerOn(agentToolsFor(host, lead), 'give_work', {
+      ...task('Book the hotel'),
+      to: root.label,
+      conversation_title: 'A title only for a new conversation',
+    })
+    expect(given.structured).toMatchObject({
+      outcome: 'ok',
+      agent: target,
+      receipt: { recipient: { id: target, address: root.label, title: 'Review the itinerary' } },
+    })
+    expect(host.nameByItsWork(target)).toBe(name)
+    expect(store.conversationTitle(target)).toBeNull()
+  })
+
+  it('uses the first incoming Give as the fallback for a conversation with only an untitled root', async () => {
+    const target = await personOpens('pm')
+    const lead = await personOpens('lead')
+    const root = store.rootOf(target)!
+    expect(root.title).toBeNull()
+    expect(store.setAgentDisplayName('pm', 'Trip planner')).toBe(true)
+    expect(host.nameByItsWork(target)).toBe(`conversation ${root.label} · Trip planner`)
+    const tools = agentToolsFor(host, lead)
+    const firstName = `conversation ${root.label} · Book the hotel`
+
+    for (const title of ['Book the hotel', 'Book the flights']) {
+      const given = await answerOn(tools, 'give_work', { ...task(title), to: root.label })
+      expect(given.structured).toMatchObject({ outcome: 'ok', agent: target })
+      expect(host.nameByItsWork(target)).toBe(firstName)
+      expect(store.conversationTitle(target)).toBeNull()
+    }
+  })
+
   it('delivers messages and questions while archived and restores only after a committed give', async () => {
     await anAgentCalledPm()
     const lead = await personOpens('lead', 'auto')

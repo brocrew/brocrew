@@ -32,7 +32,7 @@ export function canonicalAddressOf(
 
 interface DisplayTitleReads {
   conversationTitle(conversation: string): ConversationTitle | null
-  latestTaskTitle(conversation: string): string | null
+  defaultTaskTitle(conversation: string): string | null
   conversationBinding(conversation: string): { readonly identity: string | null } | null
   agentIdentityNameById(
     identity: string,
@@ -47,7 +47,7 @@ function conversationDisplayTitle(
 ): string {
   if (savedTitle !== null) return savedTitle.title
   if (!service) {
-    const taskTitle = aConversationTitle(reads.latestTaskTitle(conversation))
+    const taskTitle = aConversationTitle(reads.defaultTaskTitle(conversation))
     if (taskTitle !== null) return taskTitle
   }
   const identity = reads.conversationBinding(conversation)?.identity

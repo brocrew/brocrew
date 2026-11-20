@@ -13,7 +13,7 @@ interface RenameConversationDependencies {
     SessionStore,
     | 'workByLabel'
     | 'firstTaskOf'
-    | 'latestTaskTitle'
+    | 'defaultTaskTitle'
     | 'conversationBinding'
     | 'agentIdentityNameById'
     | 'conversationTitle'

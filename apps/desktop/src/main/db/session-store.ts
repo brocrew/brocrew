@@ -978,7 +978,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
    * address, and it never changes.
    */
   firstTaskOf(conversation: string): { readonly piece: string; readonly label: string } | null
-  latestTaskTitle(conversation: string): string | null
+  defaultTaskTitle(conversation: string): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
   servicesBorn(): readonly { readonly conversation: string; readonly identity: string | null }[]
@@ -1334,7 +1334,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   activityWorkNames: () => new Map(),
   workByLabel: () => null,
   firstTaskOf: () => null,
-  latestTaskTitle: () => null,
+  defaultTaskTitle: () => null,
   rootOf: () => null,
   servicesBorn: () => [],
   workersBorn: () => [],
@@ -4384,7 +4384,7 @@ export function createSessionStore(
     childNumbered: AppStatement
     rootOwnedBy: AppStatement
     firstOwnedBy: AppStatement
-    latestOwnedBy: AppStatement
+    firstNonRootOwnedBy: AppStatement
     children: AppStatement
     countChildrenAfter: AppStatement
     doneCondition: AppStatement
@@ -4441,9 +4441,9 @@ export function createSessionStore(
         `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
           WHERE owner_session_id = ? ORDER BY rowid LIMIT 1`,
       ),
-      latestOwnedBy: db.prepare(
+      firstNonRootOwnedBy: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work INDEXED BY work_owner_idx
-          WHERE owner_session_id = ? ORDER BY rowid DESC LIMIT 1`,
+          WHERE owner_session_id = ? AND parent_id IS NOT NULL ORDER BY rowid LIMIT 1`,
       ),
       children: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work
@@ -6107,9 +6107,14 @@ export function createSessionStore(
       return { piece: row.id, label: workRowWalked(row).label }
     },
 
-    latestTaskTitle(conversation) {
-      const row = workSql().latestOwnedBy.get(conversation) as WorkDbRow | undefined
-      return row === undefined ? null : titleNow(row, activeGeneration(conversation))
+    defaultTaskTitle(conversation) {
+      const sql = workSql()
+      const generation = activeGeneration(conversation)
+      const root = sql.rootOwnedBy.get(conversation) as WorkDbRow | undefined
+      const rootTitle = root === undefined ? null : aConversationTitle(titleNow(root, generation))
+      if (rootTitle !== null) return rootTitle
+      const first = sql.firstNonRootOwnedBy.get(conversation) as WorkDbRow | undefined
+      return first === undefined ? null : titleNow(first, generation)
     },
 
     rootOf(conversation) {

@@ -36,7 +36,7 @@ it('keeps its address and title across reads with work from two callers', async 
   expect(one).toMatchObject({ outcome: 'ok', receipt: { recipient } })
   expect(two).toMatchObject({ outcome: 'ok', agent: service, receipt: { recipient } })
   expect(world.store.firstTaskOf(service)?.label).toBe(one.label)
-  expect(world.store.latestTaskTitle(service)).toBe('Second caller job')
+  expect(world.store.defaultTaskTitle(service)).toBe('First caller job')
   expect(host.addressOf(service)).toBe(service)
   expect(host.nameByItsWork(service)).toBe(line)
   expect(

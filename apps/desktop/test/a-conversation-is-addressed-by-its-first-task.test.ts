@@ -126,7 +126,7 @@ describe("a conversation's first task", () => {
     }
   })
 
-  it('uses a recorded conversation title, then the latest task title, then the profile', () => {
+  it('uses a recorded conversation title, then the first rootless task title, then the profile', () => {
     store.createAgentIdentity(
       { slug: 'fictional-reader', displayName: 'Fictional Reader', provider: 'claude' },
       null,
@@ -134,17 +134,20 @@ describe("a conversation's first task", () => {
     conversation('sess_without_tasks', 'sess_pm', 'fictional-reader')
     expect(describeConversationForRead(store, 'sess_without_tasks').title).toBe('Fictional Reader')
     const address = given('sess_pm', 'sess_dev', 'work_first', AT + 20)
+    expect(describeConversationForRead(store, 'sess_dev').line).toBe(
+      `conversation ${address} · the work_first`,
+    )
     given('sess_lead', 'sess_dev', 'work_second', AT + 1)
     expect(describeConversationForRead(store, 'sess_dev').line).toBe(
-      `conversation ${address} · the work_second`,
+      `conversation ${address} · the work_first`,
     )
     store.append(
       'sess_dev',
       2,
-      { type: 'work_retitled', piece: 'work_second', title: 'Current task title', by: null },
+      { type: 'work_retitled', piece: 'work_first', title: 'First task retitled', by: null },
       AT + 10,
     )
-    expect(describeConversationForRead(store, 'sess_dev').title).toBe('Current task title')
+    expect(describeConversationForRead(store, 'sess_dev').title).toBe('First task retitled')
     store.titleConversation(
       'sess_dev',
       3,
@@ -154,6 +157,39 @@ describe("a conversation's first task", () => {
     expect(describeConversationForRead(store, 'sess_dev').line).toBe(
       `conversation ${address} · Fictional project`,
     )
+  })
+
+  it('uses the current person root title in preference to later held tasks', () => {
+    store.createAgentIdentity(
+      { slug: 'fictional-project', displayName: 'Fictional Project', provider: 'claude' },
+      null,
+    )
+    conversation('sess_project', undefined, 'fictional-project')
+    const root = store.rootOf('sess_project')!
+
+    expect(describeConversationForRead(store, 'sess_project').title).toBe('Fictional Project')
+    given('sess_pm', 'sess_project', 'work_later', AT + 1)
+    store.append(
+      'sess_project',
+      store.nextOrdinal('sess_project'),
+      { type: 'work_retitled', piece: root.piece, title: 'Test the app', by: null },
+      AT + 2,
+    )
+    expect(describeConversationForRead(store, 'sess_project').line).toBe(
+      `conversation ${root.label} · Test the app`,
+    )
+    expect(store.workThatNamesAndItsWait('sess_project').named).toMatchObject({
+      label: root.label,
+      title: 'Test the app',
+    })
+
+    store.titleConversation(
+      'sess_project',
+      store.nextOrdinal('sess_project'),
+      { type: 'titled', title: 'Explicit title', author: { kind: 'person' } },
+      AT + 3,
+    )
+    expect(describeConversationForRead(store, 'sess_project').title).toBe('Explicit title')
   })
 
   it('§3 a task stored later with an earlier clock time does not take it over', () => {
