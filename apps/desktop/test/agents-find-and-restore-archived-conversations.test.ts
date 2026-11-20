@@ -182,9 +182,9 @@ describe('the person’s Restore', () => {
       expect(agentsIn(await call(pm, 'list_agents', { archived: true }), 'archived')).toEqual([
         helper,
       ])
-      expect(world.ledger(helper).filter((event) => event.type === 'restored_from_archive')).toEqual(
-        [],
-      )
+      expect(
+        world.ledger(helper).filter((event) => event.type === 'restored_from_archive'),
+      ).toEqual([])
     } finally {
       kept.archived.remove = remove
     }
