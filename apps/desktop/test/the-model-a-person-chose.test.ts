@@ -103,7 +103,6 @@ function facts(
     conversationAt: () => null,
     recentWith: () => ({ rows: [], more: false }),
     serviceAt: () => ({ is: 'normal' }),
-    spawningEnabled: () => true,
     itsProvider: () => ({ provider: null, from: 'nothing-yet' }),
     theNamedModelsProvider: () => null,
     modelChoiceOf: (slug) => {

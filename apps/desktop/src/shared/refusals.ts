@@ -427,8 +427,6 @@ export const TOOL_REFUSALS = [
   'that-conversation-has-not-started',
   // The message targets its sender. Retrying or changing grants cannot make that call valid.
   'that-agent-is-you',
-  // The global spawning switch is off; creation and spawn doors use the same switch word.
-  'spawning-disabled',
   // An admitted launch failed for a classified reason; admission itself did not refuse it.
   // Timeout, temporary shortages and an unusable program have separate words. Unknown errors propagate.
   'agent-did-not-start',
@@ -446,8 +444,6 @@ export const TOOL_REFUSALS = [
   // The folded name already exists. Creation refuses rather than adopting that identity;
   // the caller needs a different name.
   'agent-name-taken',
-  // A service was requested while services are off; no identity is made.
-  'services-are-off-so-none-is-made',
   // No piece given by this caller to the named recipient matches. Missing, other-giver
   // and other-recipient pieces share this answer; use a label from the caller’s work list.
   'not-a-piece-you-gave',

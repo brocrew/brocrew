@@ -61,7 +61,6 @@ function loadedStore(): AgentStore {
       identities: CROWDED,
       foldersWithoutARow: ['an-orphan-folder-with-a-long-name'],
       use: [],
-      spawningEnabled: false,
     }),
   } as unknown as RuntimeBridge)
   return store

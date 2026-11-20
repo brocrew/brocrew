@@ -264,7 +264,6 @@ describe('433 §A · the provider a person can change', () => {
         identities: AgentIdentity[]
         foldersWithoutARow: string[]
         use: readonly IdentityUse[]
-        spawningEnabled: boolean
         defaultApprovalMode: 'ask' | 'auto'
         externalMcpServers: readonly ExternalMcpServerRow[]
       } => host.agentIdentities() as never

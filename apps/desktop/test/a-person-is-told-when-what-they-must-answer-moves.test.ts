@@ -23,7 +23,7 @@ describe('a person is told when what they must answer moves', () => {
     world = aServiceWorld()
     world.anAgent('asker', 'normal')
     announced = []
-    host = world.aHost({ servicesOn: false, announce: (message) => announced.push(message.what) })
+    host = world.aHost({ announce: (message) => announced.push(message.what) })
     conversation = await world.aPersonOpens(host, 'asker')
     await loopTurns()
     announced = []

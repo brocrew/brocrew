@@ -376,8 +376,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     kind: 'removeExternalMcpServer',
     serverId: 'ems:nothing-listens-here',
   },
-  setSpawningEnabled: { kind: 'setSpawningEnabled', enabled: false },
-  setServicesOn: { kind: 'setServicesOn', on: false },
   setDefaultApprovalMode: { kind: 'setDefaultApprovalMode', mode: 'auto' },
 }
 
@@ -456,9 +454,7 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   // argument: this verb configures an identity, and *"the human is unrestricted"* is a
   // statement about a human, so the channel has to declare one.
   'setAgentProvider',
-  'setSpawningEnabled',
   // A person's services switch: which agents may run as services.
-  'setServicesOn',
   // 🔴 **500's launch default, gated with the four above and on `setAgentProvider`'s argument.**
   // ⛔ It is not a capability either — no rail reads it — and what it decides is what the NEXT
   // conversation a person opens asks before acting. ⚑ `noPersonBehindIt`'s own sentence is true of

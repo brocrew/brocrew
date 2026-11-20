@@ -13,8 +13,15 @@ describe('a stopped replacement service holds the reply or answer', () => {
     world = aServiceWorld()
   })
   afterEach(async () => {
+    vi.restoreAllMocks()
     await world.cleanUp()
   })
+
+  function keepTheReplacementBusyOnReopen(profile: string): void {
+    world.onResumed = (resumed, handle) => {
+      if (resumed === profile) vi.spyOn(handle, 'status').mockReturnValue('working')
+    }
+  }
 
   it('reports the stopped replacement service that holds a reply', async () => {
     const { host, first, second } = await openServiceAndTwoCallers(world)
@@ -36,8 +43,9 @@ describe('a stopped replacement service holds the reply or answer', () => {
       world.clock++,
     )
 
-    const after = world.aHost({ servicesOn: false })
+    const after = world.aHost()
     await after.resumeSession(given.owner, world.window, null)
+    keepTheReplacementBusyOnReopen('browser-driver')
     const reply = agentToolsFor(after, given.owner).tools.find(
       (one) => one.name === 'reply_to_parent',
     )
@@ -51,7 +59,7 @@ describe('a stopped replacement service holds the reply or answer', () => {
         recipient: { id: service, address: service, title, state: { kind: 'queued' } },
       },
     })
-    expect(result.text).toContain(`it is held for conversation ${service} · ${title}.`)
+    expect(result.text).toContain(`it is held until conversation ${service} · ${title} is free`)
     const queued = world.store
       .messagesWaitingIn(service)
       .find((one) => one.text.includes('notes ready'))
@@ -93,13 +101,15 @@ describe('a stopped replacement service holds the reply or answer', () => {
       { type: 'replaced_by', sessionId: replacement },
       world.clock++,
     )
-    const after = world.aHost({ servicesOn: false })
+    const after = world.aHost()
     await after.resumeSession(first, world.window, null)
+    keepTheReplacementBusyOnReopen('replacement-service')
     const answer = agentToolsFor(after, first).tools.find((one) => one.name === 'answer_question')
     if (answer === undefined) throw new Error('the caller has no answer tool')
     const result = await answer.call({
       question,
       answers: [{ part: 'answer', answer: ['room 23'] }],
+      interrupt: false,
     })
     expect(result.structured).toMatchObject({
       outcome: 'ok',
@@ -110,7 +120,8 @@ describe('a stopped replacement service holds the reply or answer', () => {
         recipient: { id: replacement, address: replacement, state: { kind: 'queued' } },
       },
     })
-    expect(result.text).toContain(`Your answer is held for conversation ${replacement} ·`)
+    expect(result.text).toContain(`conversation ${replacement} ·`)
+    expect(result.text).toContain('reads your answer when the turn it is running ends.')
     const waiting = world.store.messagesWaitingIn(replacement)
     const behind = waiting.findIndex((row) => row.text.includes('room 23'))
     expect(behind).toBeGreaterThanOrEqual(0)

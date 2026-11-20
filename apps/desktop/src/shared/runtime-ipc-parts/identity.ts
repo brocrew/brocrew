@@ -27,7 +27,7 @@ export interface NewAgent {
   readonly provider: Provider | null
   /**
    * Made a service: one conversation its callers share, which runs their work one piece at a time.
-   * Absent, it is a normal agent. ⛔ Refused while services are off.
+   * Absent, it is a normal agent.
    */
   readonly asAService?: true
 }
@@ -60,19 +60,12 @@ export interface AgentIdentities {
    * `RuntimeHost.removeAgent` answers with are one derivation.
    */
   readonly use: readonly IdentityUse[]
-  /** The global kill switch (341, HO-005 criterion 7). Absence of the row reads `false`. */
-  readonly spawningEnabled: boolean
-  /** A person has turned services on in this workspace; absent, they are off. */
-  readonly servicesOn?: true
   /** The agents that are services, by slug; absent when none is. */
   readonly services?: readonly string[]
   /**
-   * 🔴 **The mode a conversation a PERSON starts begins in** (500, HO-036 §3.1) — the second value
-   * on `app_policy`, and the second thing on this object that is about nobody in particular.
+   * The mode a conversation a person starts begins in.
    *
-   * ⛔ **Absence of the row, a NULL, and a word this build cannot read all answer `'ask'`** — the
-   * store's fold closes towards the mode that still asks, which is the opposite direction from
-   * `spawningEnabled`'s `false` and the same reasoning.
+   * An unset or unreadable default answers `'ask'`.
    *
    * ⚠️ **It is a launch default and nothing else reads it.** It does not describe any conversation
    * on this object, it cannot move one that is running, and no spawn ever sees it: the two doors a

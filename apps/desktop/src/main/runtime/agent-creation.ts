@@ -5,10 +5,7 @@ import type { RulesAuthor } from '../../shared/own-instructions'
 import type { SessionStore } from '../db/session-store'
 import { foldProfileName } from '../db/identity'
 import { whoDidIt, type Caller } from './conversation-caller'
-import type { CreateAgentOutcome, MayCreateAgents } from './host-split/host-command-contracts'
-
-/** A person's new service refused: services are off. */
-const NO_SERVICE_IS_MADE_WHILE_OFF = 'Not created: services are off.'
+import type { CreateAgentOutcome } from './host-split/host-command-contracts'
 
 /** The one sentence for a name that is already an identity, in the folded spelling the row has. */
 function nameIsTaken(slug: string): string {
@@ -22,15 +19,10 @@ function nameIsTaken(slug: string): string {
 export interface AgentCreationOperations {
   store(): Pick<
     SessionStore,
-    | 'createAgentIdentity'
-    | 'writeOwnInstructions'
-    | 'setModelChoice'
-    | 'modelChoiceOf'
-    | 'spawnPolicy'
+    'createAgentIdentity' | 'writeOwnInstructions' | 'setModelChoice' | 'modelChoiceOf'
   >
   /** The profile a conversation runs as, live or as recorded; `null` when neither says. */
   profileOf(conversation: string): string | null
-  servicesAreOn(): boolean
   /** Keep a just-created identity as a service, taking it back if that cannot be written. */
   keepItAsAService(created: AgentIdentity): void
   theProviderOfConversation(conversation: string): Provider | null
@@ -50,9 +42,6 @@ export class AgentCreation {
 
   /** The person's door: refusals are thrown, for the window to show. */
   createAgent(said: NewAgent, by?: Caller): AgentIdentity {
-    if (said.asAService === true && !this.ops.servicesAreOn()) {
-      throw new Error(NO_SERVICE_IS_MADE_WHILE_OFF)
-    }
     const actor = by === undefined ? null : whoDidIt(by)
     const creator: IdentityCreator | null =
       actor?.who === 'a-person'
@@ -71,18 +60,7 @@ export class AgentCreation {
   }
 
   /**
-   * Whether anything app-wide stops this caller creating an agent, asked before any argument is
-   * read; the admitted arm carries who is creating.
-   */
-  mayCreateAgents(me: string): MayCreateAgents {
-    if (!this.ops.store().spawnPolicy().spawningEnabled) {
-      return { ok: false, rail: 'spawning-disabled', detail: {} }
-    }
-    return { ok: true, creator: this.creatorOf(me) }
-  }
-
-  /**
-   * `create_agent`: the switch, then the name, then the new agent's own rules and default model,
+   * `create_agent`: the name, then the new agent's own rules and default model,
    * written only on the call that minted the row.
    */
   createAgentFor(
@@ -93,14 +71,9 @@ export class AgentCreation {
     /** The default model and effort the call named, already judged; `null` when it named none. */
     itsDefault: AgentModelChoice | null,
   ): CreateAgentOutcome {
-    if (said.asAService === true && !this.ops.servicesAreOn()) {
-      return { ok: false, rail: 'services-are-off-so-none-is-made', detail: {} }
-    }
-    const may = this.mayCreateAgents(me)
-    if (!may.ok) return may
     // Its provider: the one it names, else its default's, else the creator's.
     const provider = said.provider ?? itsDefault?.provider ?? this.ops.theProviderOfConversation(me)
-    const created = this.ops.store().createAgentIdentity({ ...said, provider }, may.creator)
+    const created = this.ops.store().createAgentIdentity({ ...said, provider }, this.creatorOf(me))
     if (created === null) {
       return { ok: false, rail: 'agent-name-taken', detail: { agent: foldProfileName(said.slug) } }
     }

@@ -59,7 +59,6 @@ const AGENTS: AgentIdentities = {
   identities: [ident('ada', { displayName: 'Ada', provider: 'claude' })],
   foldersWithoutARow: [],
   use: [use('ada', { conversations: 4 })],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

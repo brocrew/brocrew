@@ -107,7 +107,6 @@ function context(plugins: readonly PluginInstructionEntry[] | null): Instruction
     profileSlug: 'fictional-writer',
     cwd: '/fictional/work',
     startedBy: null,
-    spawningEnabled: true,
     root: 'not-yet-numbered',
     others: { shown: [], more: 0 },
     plugins,

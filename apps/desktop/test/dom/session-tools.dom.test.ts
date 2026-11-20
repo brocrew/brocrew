@@ -1,14 +1,12 @@
 import { publishedServerForDisplay } from '../../../../packages/runtime/src/claude/inventory-display'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import { catalogue, readInventory } from '../../src/renderer/src/lib/tool-inventory'
 import { mount, paneProps, permission, record, unmountAll, visible } from './harness'
@@ -31,38 +29,9 @@ import { mount, paneProps, permission, record, unmountAll, visible } from './har
  * iframe — so it is captured before the first resize and restored after every test.
  */
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-const safety = useSpawnSafety()
-
-const IDENTITIES: AgentIdentities = {
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: 0,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  spawningEnabled: true,
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-}
-
-beforeEach(() => {
-  // The lane is `v-if`'d on a supplied identities read (355), and §2 measures where it sits.
-  safety.supply(IDENTITIES, () => {})
-})
 
 afterEach(async () => {
   unmountAll()
-  safety.forget()
   // ⚠️ **444 · the band is a ROOT token now**, so a test that moves it has to put it back or
   // every later test in this file measures a lane it never set.
   document.documentElement.style.removeProperty('--lane-w')
@@ -413,7 +382,10 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
   for (const width of [1440, 1200, 1180]) {
     it(`⛔ at ${width}px the sheet stops short of the lane's right edge`, async () => {
       const { m, sheet } = await open(CLAUDE, width, 808)
-      const lane = m.q('overlay-spawning').getBoundingClientRect()
+      const lane = m
+        .q('overlay-host')
+        .querySelector<HTMLElement>('.overlay-corner')!
+        .getBoundingClientRect()
       const box = sheet.getBoundingClientRect()
 
       expect(lane.width, 'the lane did not render, so this measures nothing').toBeGreaterThan(0)
@@ -440,7 +412,10 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
   for (const width of [1200, 1180]) {
     it(`🔴 at ${String(width)}px the gap between sheet and lane is exactly one --space-5 step`, async () => {
       const { m, sheet } = await open(CLAUDE, width, 808)
-      const lane = m.q('overlay-spawning').getBoundingClientRect()
+      const lane = m
+        .q('overlay-host')
+        .querySelector<HTMLElement>('.overlay-corner')!
+        .getBoundingClientRect()
       const box = sheet.getBoundingClientRect()
       const step = Number.parseInt(
         getComputedStyle(document.documentElement).getPropertyValue('--space-5').trim(),
@@ -475,7 +450,10 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
     expect(Math.round(band.getBoundingClientRect().width), 'the lane ignored the token').toBe(
       planted,
     )
-    const lane = m.q('overlay-spawning').getBoundingClientRect()
+    const lane = m
+      .q('overlay-host')
+      .querySelector<HTMLElement>('.overlay-corner')!
+      .getBoundingClientRect()
     expect(Math.round(lane.right)).toBe(step + planted)
 
     const box = sheet.getBoundingClientRect()
@@ -495,7 +473,10 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
    */
   it('⚠️ …and with the token left alone it is the shipped 210 / 220', async () => {
     const { m, sheet } = await open(CLAUDE, 1180, 808)
-    const lane = m.q('overlay-spawning').getBoundingClientRect()
+    const lane = m
+      .q('overlay-host')
+      .querySelector<HTMLElement>('.overlay-corner')!
+      .getBoundingClientRect()
     expect(Math.round(lane.right)).toBe(210)
     expect(Math.round(sheet.getBoundingClientRect().width)).toBe(1180 - 2 * 220)
   })
@@ -508,21 +489,17 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
    * ⚠️ Review caught the first version of this file asserting only the gutter and the comment
    * claiming it held *"whatever the window"*.
    */
-  it('⛔ at 460px the sheet reaches into the gutter and the stop is still the element on top', async () => {
+  it('⛔ at 460px the sheet reaches into the queue gutter', async () => {
     const { m, sheet } = await open(CLAUDE, 460, 760)
-    const lane = m.q('overlay-spawning').getBoundingClientRect()
+    const lane = m
+      .q('overlay-host')
+      .querySelector<HTMLElement>('.overlay-corner')!
+      .getBoundingClientRect()
     const box = sheet.getBoundingClientRect()
     expect(
       Math.round(box.left),
       'the narrow sheet no longer overlaps the lane, so this measures the wrong thing',
     ).toBeLessThan(Math.round(lane.right))
-
-    const at = document.elementFromPoint(lane.left + lane.width / 2, lane.top + lane.height / 2)
-    expect(at, 'nothing is at the lane’s centre').not.toBeNull()
-    expect(
-      m.q('overlay-spawning').contains(at),
-      'the sheet is the element a click at the stop’s centre would reach',
-    ).toBe(true)
   })
 
   /**
@@ -533,7 +510,10 @@ describe('§2 · the workbench never grows into the stop’s gutter (390)', () =
   it('…and at v2.5.1’s 964px it would not', async () => {
     const { m, sheet } = await open(CLAUDE, 1180, 808)
     const before = sheet.getBoundingClientRect()
-    const lane = m.q('overlay-spawning').getBoundingClientRect()
+    const lane = m
+      .q('overlay-host')
+      .querySelector<HTMLElement>('.overlay-corner')!
+      .getBoundingClientRect()
     expect(Math.round(before.left)).toBeGreaterThanOrEqual(Math.round(lane.right))
 
     sheet.style.width = '964px'

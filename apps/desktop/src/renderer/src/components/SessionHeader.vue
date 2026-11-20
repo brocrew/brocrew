@@ -670,9 +670,7 @@ const panelToggleName = computed(() =>
          and open it*, so a look at a conversation costs nothing permanent.
          ⛔ **FIRST in the act cluster**, right after `.sep` — this bar's states-versus-acts
          boundary.
-         ⚑ **One press, no confirmation, on purpose.** This app's only confirmation idiom is
-         `spawn-safety.ts`'s press-then-press-again, and it guards the act that cannot be undone. A
-         door in front of a reversible act teaches a person the two acts weigh the same.
+         One press hands back the conversation. The person can take it over again.
          ⛔ **Drawn only where the host says the press would be allowed** — `handBackOffer` reads
          `CreatedSession.mayHandItBack`, which is `RuntimeHost.mayHandBack`'s own answer. A
          conversation this window STARTED offers nothing here (`106`: a control that cannot act is

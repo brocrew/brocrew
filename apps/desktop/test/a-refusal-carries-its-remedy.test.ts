@@ -579,31 +579,31 @@ describe('425 · a refusal carries its remedy', () => {
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
-    it('⛔ the pair walk sees both planted divergences behind shared rail spellings', () => {
-      // 🔴 **The defect, constructed without changing a product vocabulary.** Both spellings below
-      // belong to `SPAWN_RAILS` first and `TOOL_REFUSALS` later. One plant changes the TOOL remedy;
-      // the other changes the TOOL permanence. A lookup by spelling reads the first owner for each
-      // fact and reports no mismatch for either TOOL membership planted here.
-      const planted = VOCABULARIES.map((vocabulary): Vocabulary =>
-        vocabulary.name !== 'TOOL_REFUSALS'
-          ? vocabulary
-          : {
-              ...vocabulary,
-              remedyOf: (rail) =>
-                rail === 'malformed-request'
-                  ? 'make-the-same-call-when-this-settles'
-                  : vocabulary.remedyOf(rail),
-              permanenceOf: (rail) =>
-                rail === 'spawning-disabled' ? 'while-this-holds' : vocabulary.permanenceOf(rail),
-            },
-      )
-      const wrong = everyRail(planted).filter(
-        (one) => (one.remedy !== null) !== (one.permanence === 'while-this-holds'),
-      )
-      expect(wrong.map((one) => `${one.vocabulary} · ${one.rail}`)).toEqual([
-        'TOOL_REFUSALS · malformed-request',
-        'TOOL_REFUSALS · spawning-disabled',
-      ])
+    it('finds a mismatch on each side of the refusal pair for a shared rail spelling', () => {
+      // A spelling-only lookup would read the spawn entry, hiding mutations to the tool entry.
+      for (const changed of ['remedy', 'permanence']) {
+        const planted = VOCABULARIES.map((vocabulary): Vocabulary =>
+          vocabulary.name !== 'TOOL_REFUSALS'
+            ? vocabulary
+            : {
+                ...vocabulary,
+                remedyOf: (rail) =>
+                  changed === 'remedy' && rail === 'malformed-request'
+                    ? 'make-the-same-call-when-this-settles'
+                    : vocabulary.remedyOf(rail),
+                permanenceOf: (rail) =>
+                  changed === 'permanence' && rail === 'malformed-request'
+                    ? 'while-this-holds'
+                    : vocabulary.permanenceOf(rail),
+              },
+        )
+        const wrong = everyRail(planted).filter(
+          (one) => (one.remedy !== null) !== (one.permanence === 'while-this-holds'),
+        )
+        expect(wrong.map((one) => `${one.vocabulary} · ${one.rail}`)).toEqual([
+          'TOOL_REFUSALS · malformed-request',
+        ])
+      }
     })
 
     it('⛔ not one rail this app cannot retry carries a remedy', () => {
@@ -746,7 +746,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+2**, `restore_agent`'s: `that-conversation-is-not-archived` (`permanent`) and
       // `it-could-not-be-restored` (`until-a-person-changes-it`: a person repairs the file this app
       // keeps the archived conversations in). Its third word is retryable and carries the act.
-      // ⚑ **+3**, a give to a service: `services-are-off` and `its-kind-is-unknown`
+      // ⚑ **+3**, a give to a service: `service-queue-not-owned` and `its-kind-is-unknown`
       // (`until-a-person-changes-it`) and `that-is-this-conversation` (`permanent`) — each sentence
       // names another agent, or doing it here.
       // ⚑ **+1**, `permanent` and so `null`: `its-record-cannot-be-read`, a give to a service whose
@@ -755,12 +755,10 @@ describe('425 · a refusal carries its remedy', () => {
       // `server-already-asked-for` and `too-many-server-requests` (`until-a-person-changes-it`: the
       // person deciding what waits clears them) — each sentence says what to do instead.
       // ⚑ **+2**, the move offer's two that carry no act.
-      // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `services-are-off-so-none-is-made`, a
-      // service asked for while services are off — its sentence names the person who turns them on.
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(quiet).toHaveLength(83)
+      expect(quiet).toHaveLength(79)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['its-provider-is-fixed', 'permanent'],
@@ -784,17 +782,7 @@ describe('425 · a refusal carries its remedy', () => {
           remedy: null,
         }),
       )
-      // 🔴 **`499` · the rail this line named was `spawn-must-prompt`, and HO-036 withdrew
-      // it.** ⚑ The point of the assertion is unchanged and is the reason it is here: a rail with
-      // NO remedy code must still say, in its own sentence, what the caller may do — and
-      // `wider-than-its-parent` says it first: do the work here, or ask the person who can decide
-      // whether to change the caller's OWN approval mode. A give names no mode, so the caller has no
-      // setting to send again without. ⚑ **D-038 moved the act**: it named *that agent’s provider or
-      // approval mode*, but an agent has no mode of its own, and since the rail compares reach no
-      // provider it could be moved to changes the verdict.
-      expect(refuse('wider-than-its-parent').reason).toContain(
-        'Do this work here, or ask a person whether to change your approval mode',
-      )
+      expect(refuse('folder-unusable').reason).toContain('only a person can make it right')
       expect(refuseTool('agent-name-taken').reason).toContain('Choose a different name')
     })
 
@@ -998,7 +986,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(112)
+      expect(walked).toHaveLength(108)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

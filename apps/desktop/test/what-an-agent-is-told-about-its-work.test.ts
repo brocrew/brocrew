@@ -337,7 +337,6 @@ describe('what an agent is told about its work', () => {
           profileSlug: 'somebody',
           cwd: '/w',
           startedBy: null,
-          spawningEnabled: true,
           root: 'W1',
           others: { shown: [], more: 0 },
         }).text

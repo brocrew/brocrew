@@ -111,7 +111,6 @@ const agents: AgentIdentities = {
       runsOn: { provider: 'claude', from: 'saved' },
     },
   ],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
