@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { nextTick, type Ref } from 'vue'
 import { appClosing } from '../../src/renderer/src/lib/app-closing'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
@@ -94,6 +95,18 @@ function typeQuery(words: string): void {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+function dateInput(bound: 'from' | 'to'): HTMLInputElement {
+  const input = insidePalette(`palette-date-${bound}`)
+  if (!(input instanceof HTMLInputElement)) throw new Error(`Missing ${bound} date input`)
+  return input
+}
+
+function setDate(bound: 'from' | 'to', isoDay: string): void {
+  const input = dateInput(bound)
+  input.value = isoDay
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
 function setGrouping(checked: boolean): void {
   const control = insidePalette('palette-group-search') as HTMLInputElement
   control.checked = checked
@@ -159,6 +172,8 @@ it('pages exact worker groups and opens all matches for one profile with the key
   window.api.runtime.searchWork = search
   await openPalette()
   typeQuery('group-scenario')
+  setDate('from', '2026-01-01')
+  setDate('to', '2026-01-31')
   setGrouping(true)
 
   const groups = () => document.querySelectorAll('[data-cy="palette-profile-group"]')
@@ -170,6 +185,8 @@ it('pages exact worker groups and opens all matches for one profile with the key
   expect(insidePalette('palette-searched')?.textContent).toBe('19 matching conversations.')
   const input = {
     words: 'group-scenario',
+    from: '2026-01-01',
+    to: '2026-01-31',
     grouped: true,
     limit: 20,
     includeConversationMetadata: true,
@@ -203,6 +220,8 @@ it('pages exact worker groups and opens all matches for one profile with the key
     query: {
       words: 'group-scenario',
       profile: 'editor',
+      from: '2026-01-01',
+      to: '2026-01-31',
       limit: 20,
       includeConversationMetadata: true,
     },
@@ -210,6 +229,124 @@ it('pages exact worker groups and opens all matches for one profile with the key
   expect(groups()).toHaveLength(0)
   expect((insidePalette('palette-profile-filter') as HTMLSelectElement).value).toBe('editor')
   expect((insidePalette('palette-group-search') as HTMLInputElement).checked).toBe(false)
+})
+
+it('searches dates without words and retires a pending page when the range changes', async () => {
+  let finish!: (page: WorkSearchResult) => void
+  const old = new Promise<WorkSearchResult>((resolve) => {
+    finish = resolve
+  })
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValueOnce(result([hit('first-date', 'First date match', 'W1.2')], 'date-page'))
+    .mockReturnValueOnce(old)
+    .mockResolvedValueOnce(result([hit('new-date', 'New date match', 'W1.4')], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  const from = '2026-02-01'
+  const to = '2026-02-28'
+  setDate('from', from)
+  setDate('to', to)
+
+  const query = { words: '', from, to, limit: 20, includeConversationMetadata: true }
+  await expect
+    .poll(() => insidePalette('palette-row-open-first-date')?.textContent)
+    .toContain('First date match')
+  expect(search).toHaveBeenNthCalledWith(1, { conversation: caller, query })
+  const date = dateInput('from')
+  date.focus()
+  for (const key of ['ArrowUp', 'ArrowDown', 'Enter']) {
+    const press = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    expect(date.dispatchEvent(press)).toBe(true)
+    expect(document.activeElement).toBe(date)
+  }
+  insidePalette('palette-search-more')!.click()
+  expect(search).toHaveBeenNthCalledWith(2, {
+    conversation: caller,
+    query: { ...query, cursor: 'date-page' },
+  })
+
+  setDate('to', '2026-02-15')
+  await expect
+    .poll(() => insidePalette('palette-row-open-new-date')?.textContent)
+    .toContain('New date match')
+  expect(search).toHaveBeenNthCalledWith(3, {
+    conversation: caller,
+    query: { ...query, to: '2026-02-15' },
+  })
+  finish(result([hit('stale-date', 'Old date page', 'W1.3')], null))
+  await old
+  await nextTick()
+  expect(insidePalette('palette-row-open-new-date')?.textContent).toContain('New date match')
+  expect(insidePalette('palette-row-open-first-date')).toBeNull()
+  expect(insidePalette('palette-row-open-stale-date')).toBeNull()
+  expect(insidePalette('palette-search-more')).toBeNull()
+})
+
+it('shows an inverted range without searching, clears it, and forgets dates on dismissal', async () => {
+  const search = vi.fn<RuntimeBridge['searchWork']>().mockResolvedValue(result([], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  setDate('from', '2026-03-20')
+  setDate('to', '2026-03-01')
+  await nextTick()
+  await vi.advanceTimersByTimeAsync(180)
+  expect(dateInput('from').getAttribute('aria-invalid')).toBe('true')
+  expect(dateInput('to').getAttribute('aria-invalid')).toBe('true')
+  expect(document.querySelector('.palette-refused[role="alert"]')?.textContent?.trim()).toBe(
+    'From must be on or before To.',
+  )
+  expect(search).not.toHaveBeenCalled()
+
+  const clear = insidePalette('palette-clear-dates')!
+  clear.focus()
+  await userEvent.keyboard('{Enter}')
+  await nextTick()
+  expect(dateInput('from').value).toBe('')
+  expect(dateInput('to').value).toBe('')
+  expect(document.querySelector('.palette-refused[role="alert"]')).toBeNull()
+  await vi.advanceTimersByTimeAsync(180)
+  expect(search).not.toHaveBeenCalled()
+
+  setDate('to', '2026-03-01')
+  await nextTick()
+  await vi.advanceTimersByTimeAsync(180)
+  expect(search).toHaveBeenCalledExactlyOnceWith({
+    conversation: caller,
+    query: { words: '', to: '2026-03-01', limit: 20, includeConversationMetadata: true },
+  })
+  dateInput('to').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await nextTick()
+  expect(insidePalette('palette-date-to')).toBeNull()
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, metaKey: true, bubbles: true }),
+  )
+  await nextTick()
+  expect(dateInput('from').value).toBe('')
+  expect(dateInput('to').value).toBe('')
+})
+
+it('edits a native date without moving or opening the selected search result', async () => {
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValue(result([hit('native-date', 'Native date match', 'W1.2')], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  setDate('from', '2026-07-15')
+  const row = () => insidePalette('palette-row-open-native-date')
+  await expect.poll(() => row()?.getAttribute('aria-selected')).toBe('true')
+
+  const date = dateInput('from')
+  date.focus()
+  await userEvent.keyboard('{ArrowUp}')
+  await expect.poll(() => date.value).not.toBe('2026-07-15')
+  expect(date.value).not.toBe('')
+  await expect.poll(() => row()?.getAttribute('aria-selected')).toBe('true')
+  await userEvent.keyboard('{Enter}')
+  expect(document.activeElement).toBe(date)
+  expect(row()?.getAttribute('aria-selected')).toBe('true')
+  expect(insidePalette('palette-panel')).not.toBeNull()
 })
 
 it('keeps partial group counts unknown and discards a late grouped reply after mode changes', async () => {

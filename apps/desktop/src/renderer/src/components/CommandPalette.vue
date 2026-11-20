@@ -190,10 +190,14 @@ const commands = computed(() =>
 
 const profilePicker = ref<HTMLSelectElement | null>(null)
 const groupPicker = ref<HTMLInputElement | null>(null)
+const clearDateButton = ref<HTMLButtonElement | null>(null)
 const searchMore = ref<HTMLButtonElement | null>(null)
 const {
   profile,
   grouped,
+  dates,
+  invalidDates,
+  clearDates,
   searchAvailable,
   useReader,
   searchPage,
@@ -421,25 +425,18 @@ function onKey(event: KeyboardEvent): void {
     hide()
     return
   }
+  const nativeDate = event.target instanceof HTMLInputElement && event.target.type === 'date'
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
     event.stopImmediatePropagation()
-    if (event.target === profilePicker.value) return
+    if (event.target === profilePicker.value || nativeDate) return
     event.preventDefault()
     move(event.key === 'ArrowDown' ? 1 : -1)
     return
   }
   if (event.key === 'Enter') {
     if (event.isComposing) return
-    // ⚠️ **⌘↵ and ⇧⌘↵ are NOT this panel's** (`223`). They mean send/queue and interrupt-and-send
-    // in the composer; a palette that ran a row on them would answer a gesture aimed at a surface
-    // it is covering. Plain Enter is the palette's.
-    //
-    // ⛔ **…and this used to `return` and let them "pass through", which is not a thing that can
-    // happen** (292 §4, from `288` M1). The send handler is on the composer's textarea; an event
-    // dispatched at this palette's input bubbles upward and to `window`, never sideways into a
-    // sibling. So the chord was a silent no-op. ⚑ It is claimed and REFUSED now — see
-    // {@link SEND_CHORD_REFUSED} for why refusing beats wiring — and claimed the way every other
-    // chord this panel owns is claimed, so nothing underneath answers the half this let through.
+    // Modified Enter is the composer's send chord. Claim it and explain why it is unavailable
+    // here, since a key from the palette cannot reach the composer's sibling textarea.
     if (event.metaKey || event.ctrlKey) {
       event.preventDefault()
       event.stopImmediatePropagation()
@@ -448,6 +445,8 @@ function onKey(event: KeyboardEvent): void {
     }
     event.stopImmediatePropagation()
     if (
+      nativeDate ||
+      event.target === clearDateButton.value ||
       event.target === profilePicker.value ||
       event.target === groupPicker.value ||
       event.target === searchMore.value
@@ -455,17 +454,8 @@ function onKey(event: KeyboardEvent): void {
       return
     event.preventDefault()
     if (current.value) run(current.value)
-    // ⛔ **On a miss, Enter takes the ONE thing the miss offers** (found in this dispatch's own
-    // review). It is not "run whatever was selected before" — there is no row, and `current` is
-    // null — it is the escape hatch the sentence above the button has just named. A palette whose
-    // only offered action could not be reached by the key everything else in it uses would be
-    // `169`'s finding exactly: the button acts and the chord does not.
-    //
-    // ⛔ **`!drawn`, not `shown.length === 0`, since 279.** They were the same question until the
-    // agent's band arrived, and they part on the query that matches only a provider command: there
-    // is nothing to run, the button is not on screen, and firing the escape hatch would navigate
-    // away from a palette that had just found what was asked for. Enter does nothing there, which
-    // is the honest answer to a key pressed over rows that are not actions.
+    // Enter can open the Library on a miss. Use drawn rows here because a visible provider
+    // command can have no runnable actions and no Library button.
     else if (
       !drawn.value &&
       (!useReader.value || (searchPage.value && !searchPage.value.next_cursor))
@@ -607,6 +597,28 @@ defineExpose({
             />
             Group by profile
           </label>
+          <label
+            v-for="(label, bound) in { from: 'From (UTC)', to: 'To (UTC)' }"
+            :key="bound"
+            class="palette-profile"
+          >
+            {{ label }}
+            <input
+              v-model="dates[bound]"
+              type="date"
+              :aria-invalid="invalidDates || undefined"
+              :data-cy="`palette-date-${bound}`"
+            />
+          </label>
+          <button
+            ref="clearDateButton"
+            type="button"
+            class="palette-escape"
+            data-cy="palette-clear-dates"
+            @click="clearDates"
+          >
+            Clear dates
+          </button>
         </div>
 
         <ul
@@ -734,11 +746,6 @@ defineExpose({
 </template>
 
 <style scoped>
-/* Above `OverlayHost` (50) and below `ToastStack` (100): an export's receipt has to be readable
-   over this panel, and a modal that opens WHILE this one is up must not end up behind it. ⚠️ The
-   first version of this comment said the two "never coexist by construction", which `show`'s guard
-   makes true only at the moment of opening — an overlay raised afterwards is a state neither of
-   them prevents, and the z-index is what keeps it survivable. */
 .palette-recorded-mark {
   margin-inline-start: var(--space-4);
   color: var(--muted);
@@ -770,7 +777,7 @@ defineExpose({
   font-size: var(--type-caption);
 }
 
-.palette-profile select {
+.palette-profile :is(select, input[type='date']) {
   min-width: 0;
   max-width: 100%;
   font: inherit;
