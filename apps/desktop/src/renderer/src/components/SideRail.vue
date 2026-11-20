@@ -1422,11 +1422,11 @@ const platform = platformHere()
           data-cy="rail-find-conversation"
           @click="palette?.toggle()"
         >
-          Find a conversation
+          <svg class="icon"><use href="#i-search" /></svg>
+          <span class="rail-copy"><strong>Find a conversation</strong></span>
         </button>
       </div>
     </div>
-
     <div class="rail-bottom">
       <!-- Workspace actions and app updates have separate controls. -->
       <div ref="footerBox" class="rail-footer-box">
