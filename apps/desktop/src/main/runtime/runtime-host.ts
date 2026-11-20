@@ -23306,9 +23306,7 @@ export class RuntimeHost implements LiveHost {
           if (unavailable === null && aWakeThatDidNotHappen(error) === null) {
             throw error
           }
-          console.warn(
-            `message_agent: the start did not happen for ${to}: ${errorMessage(error)}`,
-          )
+          console.warn(`message_agent: the start did not happen for ${to}: ${errorMessage(error)}`)
           state = this.sendFailedAfterRecording(error)
         }
         if (state === null) await this.slots.get(to)?.session?.flushing
