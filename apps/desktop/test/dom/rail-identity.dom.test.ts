@@ -161,19 +161,12 @@ describe('211 §3 · a rail row says which conversation it is', () => {
       expect(text).toContain('codex')
     }
     const row = m.q('open-session-sess_bug')
-    expect(
-      row.querySelector('small[data-standing]'),
-      'the status line lost its hook',
-    ).not.toBeNull()
-
-    // ⛔ **The row now holds TWO `small`s, and that is what broke two live-smoke readers** (211 §3,
-    // found by running it). `snapshot()` and step 13 both read `row.querySelector('small')` — a
-    // POSITIONAL selector, unambiguous for as long as there was one line and silently wrong the
-    // moment there were two. Step 13's failure quoted this step's own prompt back where it expected
-    // a provider name. Both read `small[data-standing]` now, and this is the fact they rely on:
-    // there is more than one, and only one of them is the status.
+    const status = row.querySelector('small[data-standing]')
+    const opening = m.q('session-opening-sess_bug')
     expect(row.querySelectorAll('small')).toHaveLength(2)
-    expect(row.querySelector('small')).not.toBe(row.querySelector('small[data-standing]'))
+    expect(status?.textContent).toContain('codex')
+    expect(opening.textContent).toBe('Fix the line count in summarize.mjs')
+    expect(opening).not.toBe(status)
   })
 
   it('the whole prompt is one hover away when the row had to cut it', async () => {
@@ -195,8 +188,9 @@ describe('211 §3 · a rail row says which conversation it is', () => {
       .q('open-session-sess_long')
       .querySelector('small[data-standing]')!
       .getBoundingClientRect()
-    expect(status.top).toBeGreaterThanOrEqual(line.getBoundingClientRect().bottom - 1)
-    expect(status.bottom).toBeLessThanOrEqual(row.bottom + 1)
+    const excerpt = line.getBoundingClientRect()
+    expect(excerpt.top).toBeGreaterThanOrEqual(status.bottom - 1)
+    expect(excerpt.bottom).toBeLessThanOrEqual(row.bottom + 1)
   })
 
   it('⛔ a conversation whose beginning we never saw says nothing extra', async () => {
