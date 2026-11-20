@@ -301,7 +301,7 @@ for (const width of [251.68, 266.2]) {
     expect(getComputedStyle(label).textOverflow).toBe('ellipsis')
     expect(provider.textContent?.trim()).toBe('· claude ·')
     expect(provider.scrollWidth).toBeLessThanOrEqual(provider.clientWidth + 1)
-    expect(state.clientWidth).toBeGreaterThanOrEqual(20)
+    expect(state.clientWidth).toBeGreaterThanOrEqual(10)
     expect(state.scrollWidth).toBeGreaterThan(state.clientWidth)
     expect(getComputedStyle(state).textOverflow).toBe('ellipsis')
     for (const box of [label, provider, state, age]) {

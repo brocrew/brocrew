@@ -1943,7 +1943,7 @@ const platform = platformHere()
   display: grid;
   flex: 1 1 auto;
   min-width: 0;
-  grid-template-columns: minmax(0, max-content) max-content minmax(2em, 1fr);
+  grid-template-columns: minmax(0, max-content) max-content minmax(1em, 1fr);
 }
 .rail-brobot-provider {
   white-space: pre;
