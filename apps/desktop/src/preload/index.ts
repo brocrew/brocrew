@@ -5,6 +5,14 @@ import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-cont
 import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
 import type { McpServerRequestForAPerson } from '../shared/conversation-events'
+import type {
+  ConversationIdentityBatchInput,
+  ConversationTitleHistoryInput,
+} from '../shared/conversation-title'
+import type {
+  AllConversationTasksInput,
+  ConversationTaskPageInput,
+} from '../shared/conversation-task-page'
 import type { HandedPath } from '../shared/attachment-contracts'
 import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
@@ -530,6 +538,23 @@ const runtime: RuntimeBridge = Object.freeze({
   // so it is `plain-by-construction` on both halves of `363`'s question, as its neighbour above is.
   retitleWork: (input: { piece: string; title: string }) =>
     command({ kind: 'retitleWork', ...input }),
+  readConversationIdentity: (input: SessionInput) =>
+    command({ kind: 'readConversationIdentity', ...input }),
+  readConversationIdentities: ({ sessionIds }: ConversationIdentityBatchInput) =>
+    command({ kind: 'readConversationIdentities', sessionIds: [...sessionIds] }),
+  readConversationTasks: ({ sessionId, cursor }: ConversationTaskPageInput) =>
+    command({ kind: 'readConversationTasks', sessionId, cursor }),
+  readAllConversationTasks: ({ sessionId, filter, text, cursor }: AllConversationTasksInput) =>
+    command({ kind: 'readAllConversationTasks', sessionId, filter, text, cursor }),
+  readConversationTitleHistory: ({ sessionId, before }: ConversationTitleHistoryInput) =>
+    command({
+      kind: 'readConversationTitleHistory',
+      sessionId,
+      before:
+        before === undefined
+          ? undefined
+          : { generation: before.generation, ordinal: before.ordinal },
+    }),
   renameConversation: (input: { conversation: string; title: string }) =>
     command({ kind: 'renameConversation', ...input }),
   takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),

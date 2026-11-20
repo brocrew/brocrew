@@ -8,6 +8,7 @@ import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
+import { fullTime } from '../../src/renderer/src/lib/clock'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import {
   contrast,
@@ -326,29 +327,26 @@ describe('a row the host lists is made of what a row this window holds is made o
     expect(listed.querySelector('small')!.textContent).toContain('billing-api')
   })
 
-  /**
-   * ⚑ **D-017b · re-aimed** — this said *"WHEN on a row that can be reopened, and WHY on one that
-   * cannot"*. ⛔ Neither is a row's fact any more: every row opens, and what a row says is the one
-   * state the host derives (`shared/agent-state.ts`) — never whether a process runs (`05` rule 5).
-   * ⚑ **One fact on the line, and it is the host's**: the same fixture with another state says
-   * the other word.
-   */
+  // Current state comes from the host. Activity time never implies how a conversation runs.
   it('⚑ says the one state the host gives it — and nothing about a process, a reopen or a refusal', async () => {
     const m = await rail({
       resumable: [OPENABLE, READABLE, { ...INERT, state: { is: 'active' } }],
     })
-    // ⚑ **449 · three facts on the one line, in the rail's own order**: the provider, the row's
-    // own fact, and WHERE it is working — the place LAST, because a 200px column ellipsizes it.
-    expect(row(m, 'sess_openable').querySelector('small')!.textContent?.trim()).toBe(
-      'claude · idle · brobot-2',
-    )
-    const refused = row(m, 'sess_child').querySelector('small')!
-    expect(refused.textContent?.trim()).toBe('claude · idle · billing-api')
-    expect(refused.textContent).not.toContain('sub-agent conversation')
-    expect(row(m, 'sess_child').textContent).not.toMatch(/ended|not running|reopen/i)
-    // ⚑ **The control, one fact over**: the host's other word, on the same kind of row.
-    expect(row(m, 'sess_inert').querySelector('small')!.textContent?.trim()).toBe(
-      'claude · active · nothing-here',
+    // The place stays last. Relative activity is separate from the host's current state.
+    for (const [entry, standing, place] of [
+      [OPENABLE, 'idle', 'brobot-2'],
+      [READABLE, 'idle', 'billing-api'],
+      [INERT, 'active', 'nothing-here'],
+    ] as const) {
+      const line = row(m, entry.sessionId).querySelector('small')!
+      const activity = line.querySelector('time')!
+      expect(activity.title).toBe(`${activity.textContent} · ${fullTime(entry.updatedAt)}`)
+      expect(line.textContent?.trim()).toBe(
+        `claude · ${standing} · ${activity.textContent} · ${place}`,
+      )
+    }
+    expect(row(m, 'sess_child').textContent).not.toMatch(
+      /sub-agent conversation|ended|not running|reopen/i,
     )
   })
 
@@ -384,7 +382,8 @@ describe('a row the host lists is made of what a row this window holds is made o
     const only = row(m, 'sess_openable')
     expect(only.querySelector('strong')!.textContent).toBe(DEFAULT_PROFILE_LABEL)
     const line = only.querySelector('small')!
-    expect(line.textContent?.trim()).toBe('claude · idle')
+    const activity = line.querySelector('time')!
+    expect(line.textContent?.trim()).toBe(`claude · idle · ${activity.textContent}`)
     // ⛔ **No trailing separator**, which is the shape a naive interpolation would have left.
     expect(line.textContent?.trim().endsWith('·')).toBe(false)
     expect(line.getAttribute('data-place')).toBeNull()
@@ -443,9 +442,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     // The paired positive: the others are still here, so one row was merged and not the list.
     expect(m.all('open-session-sess_child')).toHaveLength(1)
     expect(m.all('open-session-sess_lostref')).toHaveLength(1)
-    // ⚑ 2026-10-01 · counted by section: two of BroBot's, and the reviewer's.
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
-    expect(m.q('rail-count-agents').textContent).toBe('1')
+    expect(m.q('rail-count-recent').textContent).toBe('3 shown')
   })
 
   it('⚠️ …and it reaches the UNRESUMABLE half too', async () => {
@@ -455,7 +452,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
     )
     expect(m.all('open-session-sess_lostref')).toHaveLength(1)
     expect(m.all('open-session-sess_refless')).toHaveLength(1)
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
+    expect(m.q('rail-count-recent').textContent).toBe('2 shown')
     // ⚑ **Drawn from its RECORD, not the host's row** (`151 M28`, landing D-017b): the held record's
     // folder is its own, so a host row that took its place would read `thing` instead.
     expect(row(m, 'sess_lostref').textContent).toContain('held-here')
@@ -494,7 +491,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
 /* ------------------------------------------------- 4 · the row is readable at 200px */
 
 describe('the row survives the column it lives in (126)', () => {
-  it('keeps titles and subtitles to one line with their complete text reachable', async () => {
+  it('keeps these short titles and their metadata compact with complete text reachable', async () => {
     const m = await rail({ resumable: [READABLE], unresumable: [LOST_REF] })
     const scroll = m.host.querySelector('.rail-scroll') as HTMLElement
     // Non-vacuity: a stylesheet that failed to load gives every element a zero width, and the
@@ -743,9 +740,8 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(drawn.textContent).toContain('brobot-otherproj')
     // …and the adopted row, in the same rail, still is not.
     expect(m.all('open-session-sess_userhome')).toHaveLength(0)
-    // ⚠️ The count above the list is the rail's own claim about what it is showing — the other
-    // agents' section's, since the developer is not BroBot (2026-10-01).
-    expect(m.q('rail-count-agents').textContent).toBe('1')
+    // The Recent count uses the displayed rows and excludes the adopted row.
+    expect(m.q('rail-count-recent').textContent).toBe('1 shown')
     // ⚠️ **571 · RE-AIMED, not stripped** (standing rule 26). ⛔ This read
     // `expect(m.all('no-open-sessions')).toHaveLength(0)`, and `571` deleted that element: the
     // empty sentence *"Nothing running. Start one above, or reopen one below."* was this rail's
@@ -770,7 +766,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     const m = await rail({ resumable: [OPENABLE], unresumable: [LOST_REF, USER_HOME] })
     // Three rows in, two out. A count still taken from the two host lists would promise a row
     // this list will not draw — `086`, and the failure `119` fixed on the scan button.
-    expect(m.q('rail-count-brobot').textContent).toBe('2')
+    expect(m.q('rail-count-recent').textContent).toBe('2 shown')
   })
 
   /**
@@ -792,8 +788,9 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     const section = ours.q('rail-conversations')
     expect(visible(section)).toBe(true)
     const said = section.textContent ?? ''
-    expect(said).toContain('BroBot')
-    expect(ours.q('rail-count-brobot').textContent).toBe('1')
+    expect(said).toContain('Recent')
+    expect(ours.q('open-session-sess_lostref').textContent).toContain('BroBot')
+    expect(ours.q('rail-count-recent').textContent).toBe('1 shown')
     // Keep adopted conversations visible only in the Sessions UI. The rail adds no hint,
     // badge, count, or other reference to the excluded rows.
     expect(said).not.toContain('Sessions')

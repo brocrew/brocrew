@@ -55,6 +55,11 @@ import {
   type SessionFacetInput,
 } from '../lib/agent-state'
 
+import type {
+  ConversationIdentity,
+  ConversationRenameInput,
+  ConversationRenameResult,
+} from '../../../shared/conversation-title'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 // ⚑ **636 · a TYPE only** — see {@link ConversationPane.waiting}, which is narrowed before it
 // arrives and is never derived here.
@@ -111,6 +116,8 @@ import { READ_WHAT_THE_MODEL_GOT } from '../lib/agent-inputs'
 import PromptComposer, { type ComposerState } from './PromptComposer.vue'
 import ConversationMain from './ConversationMain.vue'
 import SessionDrawer from './SessionDrawer.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
+import type { TaskPageSource } from '../composables/useConversationTaskPage'
 import SignInPanel from './SignInPanel.vue'
 import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import { providerLimitDisplay, type ProviderBlockFacts } from '../lib/provider-limit-status'
@@ -232,11 +239,11 @@ const props = defineProps<{
    * through.
    */
   named?: WorkThatNamesIt | null
-  /**
-   * ⚑ **R4 — rename that work**, present only where the door would accept it — the header's press.
-   * ⚑ Handed through: the screen owns the bridge and the re-list.
-   */
-  retitle?: (title: string) => Promise<string | null>
+  identity?: ConversationIdentity | null
+  titleHistory?: TitleHistorySource
+  taskPageSource?: TaskPageSource
+  /** Rename this conversation through the host. */
+  rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
   /** Archive this conversation: the header's press. Handed through; the screen owns the bridge. */
   archive?: () => Promise<string | null>
   /**
@@ -691,6 +698,22 @@ function goToConversation(conversation: string): void {
 function showTheBand(): void {
   emit('update:drawerTab', TAB_OF_THE_BAND)
   if (!props.drawerOpen) emit('toggleDrawer')
+}
+
+async function showTaskSection(): Promise<void> {
+  const conversation = props.record.sessionId
+  showTheBand()
+  await nextTick()
+  if (props.record.sessionId !== conversation) return
+  const section = paneBody.value?.querySelector<HTMLElement>('[data-cy="card-task"]')
+  if (!section) return
+  if (section.dataset.folded === 'true') {
+    section.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')?.click()
+    await nextTick()
+  }
+  if (!section.isConnected || props.record.sessionId !== conversation) return
+  section.scrollIntoView({ block: 'nearest' })
+  section.focus({ preventScroll: true })
 }
 
 /**
@@ -1902,7 +1925,9 @@ onUnmounted(() => {
       :capabilities="props.capabilities"
       :tools="control.tools"
       :named="props.named ?? null"
-      :retitle="props.retitle"
+      :identity="props.identity"
+      :open-task="showTaskSection"
+      :rename="props.rename"
       :archive="props.archive"
       :activity="activity"
       :last-report-at="lastReport"
@@ -2216,6 +2241,8 @@ onUnmounted(() => {
            through two dispatches that changed it. -->
       <SessionDrawer
         v-if="props.drawerOpen && props.record.meta"
+        :title-history="props.titleHistory"
+        :task-page-source="props.taskPageSource"
         :can-open-document="mayOpenADocument"
         @open-document="(resourceId) => void openResource(resourceId)"
         :session="props.record.meta"

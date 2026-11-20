@@ -236,6 +236,11 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // store — `createAgent`'s rule: a sample that got past the quit door would still be refused
   // `no-piece-by-that-name` rather than writing a title anywhere.
   retitleWork: { kind: 'retitleWork', piece: 'W0', title: 'Build the pages' },
+  readConversationIdentity: { kind: 'readConversationIdentity', sessionId: SESSION },
+  readConversationIdentities: { kind: 'readConversationIdentities', sessionIds: [SESSION] },
+  readConversationTasks: { kind: 'readConversationTasks', sessionId: SESSION },
+  readAllConversationTasks: { kind: 'readAllConversationTasks', sessionId: SESSION, filter: 'all' },
+  readConversationTitleHistory: { kind: 'readConversationTitleHistory', sessionId: SESSION },
   renameConversation: {
     kind: 'renameConversation',
     conversation: 'W0',

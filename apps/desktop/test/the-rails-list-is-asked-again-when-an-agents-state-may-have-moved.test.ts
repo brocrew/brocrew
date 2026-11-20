@@ -97,19 +97,6 @@ function functionOf(signature: string, where: Source = SCREEN): string {
   return where.code.slice(at, end)
 }
 
-/**
- * A top-level call whose callback holds `marker` — `onMounted(() => { … })` and its like — from
- * the call to (not including) the `})` at column zero that closes it.
- */
-function hookAround(opener: string, marker: string, where: Source = SCREEN): string {
-  const at = once(marker, where)
-  const start = where.code.lastIndexOf(`\n${opener}`, at)
-  expect(start, `${marker} is not inside a column-zero ${opener}`).toBeGreaterThan(-1)
-  const end = where.code.indexOf('\n})', at)
-  expect(end, `the ${opener} holding ${marker} is never closed at column zero`).toBeGreaterThan(at)
-  return where.code.slice(start + 1, end)
-}
-
 /** A `setInterval(...)` call, whole, by balancing its brackets, from a marker that names it. */
 function intervalOf(marker: string): string {
   const at = once(marker)
@@ -151,14 +138,16 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(arm).toMatch(/^\s*void rail\.value\?\.refreshResumable\(\)\s*$/m)
     expect(arm.match(ASKS_THE_RAILS_LIST)).toHaveLength(1)
 
-    // Every place the screen asks the rail's list, and none of them is a tick or the waits
-    // reading: the `conversations` arm, this arm, and the retitle. The control: the library's
-    // list is asked too, and the pattern does not count it.
+    // A rename reads the selected title. Its work notice reaches the rail through the work arm.
+    const rename = functionOf('async function renameConversation(')
+    expect(rename).toContain('void readSelectedIdentity()')
+    expect(rename).not.toMatch(ASKS_THE_RAILS_LIST)
+
+    // Only conversation and work notices ask the rail's list. The library read is separate.
     expect(SCREEN.code).toContain('void library.value?.refreshResumable()')
-    const retitle = hookAround('const retitleOfActive = computed(', 'retitleWork(')
-    const places = [SCREEN.code.slice(conversationsAt, workAt), arm, retitle]
-    expect(places.map((place) => place.match(ASKS_THE_RAILS_LIST)?.length ?? 0)).toEqual([1, 1, 1])
-    expect(SCREEN.code.match(ASKS_THE_RAILS_LIST)).toHaveLength(3)
+    const places = [SCREEN.code.slice(conversationsAt, workAt), arm]
+    expect(places.map((place) => place.match(ASKS_THE_RAILS_LIST)?.length ?? 0)).toEqual([1, 1])
+    expect(SCREEN.code.match(ASKS_THE_RAILS_LIST)).toHaveLength(2)
   })
 
   it('W4.74 · the one glance left on a clock asks nothing of the rail and reads no cast', () => {

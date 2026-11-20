@@ -99,6 +99,7 @@ export const NO_FILTERS: LibraryFilters = Object.freeze({})
 export function filterCount(filters: LibraryFilters): number {
   let count = 0
   if (filters.provider !== undefined) count++
+  if (filters.profileId !== undefined) count++
   if (filters.origin !== undefined) count++
   if (filters.kind !== undefined) count++
   if (filters.archived !== undefined) count++
@@ -116,9 +117,10 @@ export function anyFilter(filters: LibraryFilters): boolean {
   return filterCount(filters) > 0
 }
 
-/** Every key a filter can carry — the nine of {@link LibraryFilters}, in one place. */
+/** Every key a filter can carry. */
 const FILTER_KEYS = [
   'provider',
+  'profileId',
   'origin',
   'kind',
   'archived',
@@ -154,7 +156,7 @@ export function sameFilters(a: LibraryFilters, b: LibraryFilters): boolean {
  */
 export interface Constraint {
   /** Unique, and used as a `data-cy` suffix and a Vue key. */
-  key: StateKey | 'provider' | 'origin' | 'kind' | 'archived' | 'query'
+  key: StateKey | 'provider' | 'profileId' | 'origin' | 'kind' | 'archived' | 'query'
   label: string
   chip: string
   /** Which clear hatch relaxes it — the two axes `120` §4 keeps independent. */
@@ -169,10 +171,14 @@ export interface Constraint {
  * invisible constraint bit"*. A list that named the facets and left the search box out would send
  * someone to clear four filters over a result that was empty because of a typo.
  */
-export function activeConstraints(filters: LibraryFilters, query: string): Constraint[] {
+export function activeConstraints(
+  filters: LibraryFilters,
+  query: string,
+  profileName: (slug: string) => string = (slug) => slug,
+): Constraint[] {
   const out: Constraint[] = []
   const facet = (
-    key: 'provider' | 'origin' | 'kind',
+    key: 'provider' | 'profileId' | 'origin' | 'kind',
     axisLabel: string,
     label: string | undefined,
   ): void => {
@@ -186,6 +192,7 @@ export function activeConstraints(filters: LibraryFilters, query: string): Const
       ? undefined
       : filters.provider.charAt(0).toUpperCase() + filters.provider.slice(1),
   )
+  if (filters.profileId !== undefined) facet('profileId', 'Profile', profileName(filters.profileId))
   facet('origin', 'Origin', ORIGIN_OPTIONS.find((o) => o.value === filters.origin)?.label)
   facet('kind', 'Kind', KIND_OPTIONS.find((o) => o.value === filters.kind)?.label)
   if (filters.archived !== undefined) {

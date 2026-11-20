@@ -328,21 +328,21 @@ describe('a row the host lists says the host’s state', () => {
       expect(said(line), `${id}: the words`).toContain(words)
     }
     // The host row that needs a person counts; the row that waits on an agent's answer does not.
-    // ⚑ Every row is BroBot's, so the badge and the count are BroBot's section's.
-    const badge = all.q('rail-needs-you-brobot')
+    // The attention section counts only the conversation that needs a person.
+    const badge = all.q('rail-needs-you')
     expect(visible(badge)).toBe(true)
     expect(said(badge)).toBe('1')
     expect(badge.getAttribute('title')).toBe('needs you: 1')
-    expect(said(all.q('rail-count-brobot'))).toBe('6')
+    expect(drawnOrder(all)).toHaveLength(6)
     unmountAll()
 
     // B · the same rail without the row that needs a person: the badge is gone, the rest is drawn.
     const without = await rail({
       resumable: stateRows().filter((row) => row.sessionId !== 'sess_needs'),
     })
-    expect(said(without.q('rail-count-brobot'))).toBe('5')
+    expect(drawnOrder(without)).toHaveLength(5)
     expect(standingOf(without, 'sess_answer').getAttribute('data-standing')).toBe('elsewhere')
-    expect(without.all('rail-needs-you-brobot')).toHaveLength(0)
+    expect(without.all('rail-needs-you')).toHaveLength(0)
   })
 })
 
@@ -380,7 +380,7 @@ describe('a read of the list that fails after one that succeeded', () => {
   it('a later read that fails keeps the rows and says why, and the next one that succeeds takes the line away', async () => {
     const m = await rail({ resumable: [OPENABLE] })
     expect(visible(m.q('open-session-sess_openable'))).toBe(true)
-    expect(said(m.q('rail-count-brobot'))).toBe('1')
+    expect(drawnOrder(m)).toHaveLength(1)
     expect(m.all('conversations-error')).toHaveLength(0)
 
     const refresh = m.vm.refreshResumable as () => Promise<void>
@@ -401,7 +401,7 @@ describe('a read of the list that fails after one that succeeded', () => {
     expect(said(error)).toContain('the database is locked')
     // …and the row the earlier read drew is still there, still counted.
     expect(visible(m.q('open-session-sess_openable'))).toBe(true)
-    expect(said(m.q('rail-count-brobot'))).toBe('1')
+    expect(drawnOrder(m)).toHaveLength(1)
 
     // The next announcement is read: the line goes, and the list is the new list.
     stubbed().api = {
@@ -415,9 +415,8 @@ describe('a read of the list that fails after one that succeeded', () => {
     expect(m.all('conversations-error')).toHaveLength(0)
     expect(drawnOrder(m)).toHaveLength(2)
     expect(visible(m.q('open-session-sess_child'))).toBe(true)
-    // ⚑ The new row is the reviewer's, so it is counted in the other agents' section.
-    expect(said(m.q('rail-count-brobot'))).toBe('1')
-    expect(said(m.q('rail-count-agents'))).toBe('1')
+    // Recent is one list for both profiles.
+    expect(said(m.q('rail-count-recent'))).toBe('2 shown')
   })
 })
 

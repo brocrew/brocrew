@@ -10,6 +10,8 @@ import { z } from 'zod'
 import { workSearchQuery } from '../../shared/work-search'
 import { filesLibraryRequest } from '../../shared/files-library'
 import { teamProfileGraphRequest } from '../../shared/team-profile-graph'
+import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../../shared/conversation-title'
+import { ALL_TASKS_FILTERS } from '../../shared/conversation-task-page'
 import {
   MAX_BACKGROUND_ID,
   MAX_SETTINGS_BYTES,
@@ -627,14 +629,10 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
      */
     recordId: sessionId.optional(),
     /**
-     * The structured narrowing (121) — nine optional predicates, ANDed with `query` main-side.
+     * The structured narrowing (121), ANDed with `query` main-side.
      *
-     * ⚠️ **Every value is a CLOSED set, and that is the point of validating it here.** A provider
-     * comes from the shared enum, `origin`, `kind` and `archived` from the shared VALUE arrays, and the five
-     * state fields are booleans. Nothing in here reaches a filesystem, a query or a template — the
-     * worst a malformed one can do is narrow a list — but a shape the host does not expect is still
-     * a shape the host should not have to defend against, and this is where the app decided such
-     * things are settled.
+     * Provider and facet values use their shared enums, the state fields are booleans,
+     * and the profile ID is compared to the recorded identity.
      *
      * ⚠️ **`LIBRARY_ORIGINS` / `LIBRARY_KINDS` / `LIBRARY_ARCHIVED`, not inline copies** (review). An inline
      * `z.enum(['ours', 'user-home'])` infers a NARROWER type than the shared union, so widening the
@@ -645,6 +643,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     filters: z
       .object({
         provider: providerSchema.optional(),
+        profileId: z.string().optional(),
         origin: z.enum(LIBRARY_ORIGINS).optional(),
         kind: z.enum(LIBRARY_KINDS).optional(),
         notImported: z.boolean().optional(),
@@ -1068,6 +1067,30 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     kind: z.literal('retitleWork'),
     piece: z.string().min(1).max(200),
     title: z.string().max(PIECE_TITLE_CHARS),
+  }),
+  z.object({ kind: z.literal('readConversationIdentity'), sessionId }),
+  z.object({
+    kind: z.literal('readConversationIdentities'),
+    sessionIds: z.array(sessionId).max(CONVERSATION_IDENTITY_BATCH_SIZE),
+  }),
+  z.object({
+    kind: z.literal('readConversationTasks'),
+    sessionId,
+    cursor: z.string().max(2048).optional(),
+  }),
+  z.object({
+    kind: z.literal('readAllConversationTasks'),
+    sessionId,
+    filter: z.enum(ALL_TASKS_FILTERS),
+    text: z.string().optional(),
+    cursor: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('readConversationTitleHistory'),
+    sessionId,
+    before: z
+      .object({ generation: z.int().nonnegative(), ordinal: z.int().nonnegative() })
+      .optional(),
   }),
   z.object({
     kind: z.literal('renameConversation'),
@@ -1542,6 +1565,11 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // D-016 · commit 7 · R4. ⛔ **Refused, with `setAgentDisplayName` as the precedent**: a person
   // naming work, while the surfaces that would draw the new title are going away with the process.
   retitleWork: 'refused',
+  readConversationIdentity: 'refused',
+  readConversationIdentities: 'refused',
+  readConversationTasks: 'refused',
+  readAllConversationTasks: 'refused',
+  readConversationTitleHistory: 'refused',
   renameConversation: 'refused',
   // ⛔ Refused, with `retitleWork` as the precedent: a person acting on work, while the service that
   // would go on to its next piece is closing with the process.
@@ -2655,6 +2683,20 @@ export async function executeRuntimeCommand(
         command.title,
         sink,
       ) satisfies Answer<'retitleWork'>
+    case 'readConversationIdentity':
+      return host.readConversationIdentity(
+        command.sessionId,
+      ) satisfies Answer<'readConversationIdentity'>
+    case 'readConversationIdentities':
+      return host.readConversationIdentities(command) satisfies Answer<'readConversationIdentities'>
+    case 'readConversationTasks':
+      return host.readConversationTasks(command) satisfies Answer<'readConversationTasks'>
+    case 'readAllConversationTasks':
+      return host.readAllConversationTasks(command) satisfies Answer<'readAllConversationTasks'>
+    case 'readConversationTitleHistory':
+      return host.readConversationTitleHistory(
+        command,
+      ) satisfies Answer<'readConversationTitleHistory'>
     case 'renameConversation':
       return (await host.renameConversation(command, {
         kind: 'person',

@@ -28,6 +28,7 @@ import {
  * full text; a repaired cut must leave the roster. The rhythm suite checks the wide breakpoint.
  */
 const WIDE_RAIL_W = 266.2
+const ON_WINDOWS = /^win/i.test(navigator.platform)
 
 /* ------------------------------------------------------------------ the fixture */
 
@@ -95,8 +96,7 @@ const RECORDED = [
     updatedAt: NOW - 240_000,
   },
   {
-    // Titled by the piece it holds, and the title is longer than two lines of the column, so the
-    // title clamp has something to cut.
+    // The long title exercises wrapping, and the long metadata still has a hover fallback.
     sessionId: 'sess_named',
     provider: 'claude',
     profileId: 'default',
@@ -158,7 +158,7 @@ interface Cut {
   /** The `data-cy` the cut is reported under — the element's own, or its nearest hooked ancestor. */
   readonly cy: string
   /** Enough of the string to tell one row's line from another's. */
-  readonly starts: string
+  readonly starts: string | RegExp
   /** Why this one is allowed to be short, or who owns the repair. */
   readonly because: string
   readonly widths?: readonly number[]
@@ -171,10 +171,9 @@ interface Cut {
 const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
-    starts: 'W1 · Rebuild the conversation rail',
-    because:
-      'A conversation title is shortened to one line so one long title cannot make its row tower ' +
-      'over the rest; the whole title is on the `:title` and is the row’s accessible name.',
+    starts: /^\d+d ago$/,
+    widths: ON_WINDOWS ? [251.68] : undefined,
+    because: 'The activity on a crowded metadata line remains on hover.',
   },
   {
     cy: 'session-opening-sess_a',
@@ -194,8 +193,6 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
     starts: 'default · ',
-    // Linux's Inter metrics clip the final glyph even at the wider rail width.
-    widths: /linux/i.test(navigator.platform) ? [251.68, WIDE_RAIL_W] : [251.68],
     because: 'The full agent, provider, status and folder remain on hover.',
   },
 ]
@@ -211,8 +208,12 @@ const CUTS = [...SHORTENED_ON_PURPOSE, ...CUT_AND_NOT_REPAIRED_HERE]
 
 const appliesAt = (d: Cut, width: number): boolean => !d.widths || d.widths.includes(width)
 
+const matches = (c: Carrier, d: Cut): boolean =>
+  c.cy === d.cy &&
+  (typeof d.starts === 'string' ? c.text.startsWith(d.starts) : d.starts.test(c.text))
+
 const declaredFor = (c: Carrier, width: number): Cut | undefined =>
-  CUTS.find((d) => appliesAt(d, width) && d.cy === c.cy && c.text.startsWith(d.starts))
+  CUTS.find((d) => appliesAt(d, width) && matches(c, d))
 
 /* ------------------------------------------------------------------ §0 · the sensor */
 
@@ -409,14 +410,9 @@ describe('§1 · the roster, at both shipped widths', () => {
     it(`⛔ ${width}px · and every declared cut is still cut, so the list cannot go quiet`, async () => {
       const m = await rail(width)
       const found = sweep(m.host).filter((c) => c.cut !== null)
-      const missing = CUTS.filter(
-        (d) =>
-          appliesAt(d, width) && !found.some((c) => c.cy === d.cy && c.text.startsWith(d.starts)),
-      )
+      const missing = CUTS.filter((d) => appliesAt(d, width) && !found.some((c) => matches(c, d)))
       for (const declared of CUTS.filter((d) => !appliesAt(d, width))) {
-        const carrier = sweep(m.host).find(
-          (c) => c.cy === declared.cy && c.text.startsWith(declared.starts),
-        )
+        const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, 'the previously shortened status is missing').toBeDefined()
       }
       expect(
@@ -434,24 +430,31 @@ describe('§1 · the roster, at both shipped widths', () => {
     it(`⚠️ ${width}px · a cut declared recoverable really is recoverable`, async () => {
       const m = await rail(width)
       for (const declared of SHORTENED_ON_PURPOSE) {
-        const carrier = sweep(m.host).find(
-          (c) => c.cy === declared.cy && c.text.startsWith(declared.starts),
-        )
+        const carrier = sweep(m.host).find((c) => matches(c, declared))
         expect(carrier, `${declared.cy} was not drawn at all`).toBeDefined()
         expect(carrier!.recovered, `${declared.cy} is cut and no title recovers it`).toBe(true)
       }
     })
   }
 
-  it('266.2px · the named status fits in full with the Mac’s Inter metrics', async (ctx) => {
-    // This one glyph fits with Mac font metrics; Linux's complete roster declares its cut.
-    ctx.skip(!/mac/i.test(navigator.platform))
+  it('266.2px · draws the named row’s full activity age on Windows', async (ctx) => {
+    ctx.skip(!ON_WINDOWS)
     const m = await rail(WIDE_RAIL_W)
-    const status = m
-      .q('open-session-sess_named')
-      .querySelector<HTMLElement>('small[data-standing]')!
-    assertDrawn(status, 'the named status fits at the wider rail width on the Mac')
+    const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
+    expect(activity.textContent?.trim()).toMatch(/^\d+d ago$/)
+    assertDrawn(activity, 'the named row’s activity age is drawn in full')
   })
+
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · wraps the long title without losing any of it',
+    async (width) => {
+      const m = await rail(width)
+      const title = m.q('open-session-sess_named').querySelector<HTMLElement>('strong')!
+      expect(title.textContent).toBe(`W1 · ${A_TITLE_LONGER_THAN_TWO_LINES}`)
+      expect(lineCount(title)).toBeGreaterThan(1)
+      assertDrawn(title, 'the full title at the shipped width')
+    },
+  )
 })
 
 /* ------------------------------------------------------------------ §2 · the repairs */

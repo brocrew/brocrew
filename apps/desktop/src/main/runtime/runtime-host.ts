@@ -103,12 +103,25 @@ export type {
 import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
 import { WorkReads } from './work-reads'
-import { listConversationTasks, type ConversationTasksInput } from './conversation-tasks'
+import {
+  listConversationTasks,
+  readAllConversationTasks,
+  readConversationTasks,
+  type ConversationTasksInput,
+} from './conversation-tasks'
+import type {
+  AllConversationTasksInput,
+  ConversationTaskPageInput,
+} from '../../shared/conversation-task-page'
 import { GiveWork } from './give-work'
 import type {
+  ConversationIdentity,
+  ConversationIdentityBatchInput,
   ConversationRenameInput,
   ConversationRenameResult,
   ConversationTitleAuthor,
+  ConversationTitleHistory,
+  ConversationTitleHistoryInput,
   ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import {
@@ -11090,6 +11103,14 @@ export class RuntimeHost implements LiveHost {
     return listConversationTasks(input, this.deps.store, (id) => this.itIsAService(id))
   }
 
+  readConversationTasks(input: ConversationTaskPageInput) {
+    return readConversationTasks(input, this.deps.store)
+  }
+
+  readAllConversationTasks(input: AllConversationTasksInput) {
+    return readAllConversationTasks(input, this.deps.store)
+  }
+
   /**
    * 🔴 **D-024 · R3 — the files this conversation's profile made** — `list_tasks` with `made`: one
    * indexed read of the newest {@link MADE_FILES_LISTED} and their count, each file's piece by its
@@ -18737,6 +18758,36 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
+  readConversationIdentity(conversation: string): ConversationIdentity | null {
+    const { store } = this.deps
+    if (store.conversationBinding(conversation) === null) return null
+    const savedTitle = store.conversationTitle(conversation)
+    const { address, title } = describeConversationForRead(
+      store,
+      conversation,
+      this.itIsAService(conversation),
+      savedTitle,
+    )
+    return { conversation, address, title, author: savedTitle?.author ?? null }
+  }
+
+  readConversationIdentities(
+    input: ConversationIdentityBatchInput,
+  ): readonly ConversationIdentity[] {
+    return [...new Set(input.sessionIds)].flatMap((id) => {
+      const identity = this.readConversationIdentity(id)
+      return identity === null ? [] : [identity]
+    })
+  }
+
+  readConversationTitleHistory(
+    input: ConversationTitleHistoryInput,
+  ): ConversationTitleHistory | null {
+    const { store } = this.deps
+    if (store.conversationBinding(input.sessionId) === null) return null
+    return store.conversationTitleHistory(input.sessionId, input.before)
+  }
+
   renameConversation(
     input: ConversationRenameInput,
     author: ConversationTitleAuthor,
@@ -18754,6 +18805,7 @@ export class RuntimeHost implements LiveHost {
         if (session != null) this.publishOurs(session, titled)
         else if (!this.writeWhileNothingRunsIt(conversation, titled))
           throw new Error('Could not record the conversation title.')
+        this.theWorldMoved('work')
       },
     })
   }

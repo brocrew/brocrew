@@ -620,13 +620,13 @@ function raceGuardBroken(fn: string, whole: string): string[] {
   const at = fn.search(filter)
   const tryAt = fn.indexOf('try {')
   const catchAt = fn.indexOf('catch (cause)')
-  const unresumableAt = fn.indexOf('hostUnresumable.value = [...unresumable]')
+  const acceptedAt = fn.indexOf('listing.value = {')
   const lookedAt = fn.indexOf('looked.value = true')
   if (tryAt < 0 || catchAt < 0) broken.push('the read has no try/catch to be inside of')
   if (at >= 0) {
     if (!(tryAt >= 0 && tryAt < at && (catchAt < 0 || at < catchAt)))
       broken.push('the filter is not inside the try')
-    if (!(unresumableAt >= 0 && unresumableAt < at))
+    if (!(acceptedAt >= 0 && acceptedAt < at))
       broken.push('the filter does not follow the list it answers')
     if (!(lookedAt > at)) broken.push('the filter does not precede `looked`')
   }
@@ -664,10 +664,7 @@ describe('D-019 · a list read numbers itself before it is asked', () => {
 
     const late = real
       .replace('const asked = ++readsAsked', '')
-      .replace(
-        'hostResumable.value = [...resumable]',
-        'const asked = ++readsAsked\n    hostResumable.value = [...resumable]',
-      )
+      .replace('listing.value = {', 'const asked = ++readsAsked\n    listing.value = {')
     expect(late).not.toBe(real)
     expect(raceGuardBroken(late, whole)).not.toEqual([])
 

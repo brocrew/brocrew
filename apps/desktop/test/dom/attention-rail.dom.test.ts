@@ -143,7 +143,7 @@ describe('203 · the rail says how many are waiting, and what for (195 H3)', () 
       conversation('sess_quiet'),
     ])
 
-    const count = m.q('rail-needs-you-agents')
+    const count = m.q('rail-needs-you')
     expect(visible(count), 'the count is not on screen').toBe(true)
     expect(count.textContent?.trim()).toBe('2')
     // ⚠️ It agrees with the rows under it, which is what "live, not fixture" has to mean: the
@@ -160,8 +160,8 @@ describe('203 · the rail says how many are waiting, and what for (195 H3)', () 
     // The paired positive for the badge's absence. `012`'s rule: a fresh, quiet surface shows no
     // number rather than a confident 0, and the Home badge beside it follows the same one.
     const m = await rail([conversation('sess_quiet')])
-    expect(m.all('rail-needs-you-agents')).toHaveLength(0)
-    expect(m.q('rail-count-agents').textContent, 'the rail drew no rows at all').toBe('1')
+    expect(m.all('rail-needs-you')).toHaveLength(0)
+    expect(m.q('rail-count-recent').textContent, 'the rail drew no rows at all').toBe('1 shown')
   })
 
   it('⛔ the ROW says which kind — permission and question stop reading the same', async () => {

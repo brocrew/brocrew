@@ -37,6 +37,8 @@ import {
 } from '../lib/working-together'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import AgentCard from './AgentCard.vue'
+import type { TitleHistorySource } from './ConversationTitleHistory.vue'
+import type { TaskPageSource } from '../composables/useConversationTaskPage'
 import AllFilesDialog from './AllFilesDialog.vue'
 import AllTasksDialog from './AllTasksDialog.vue'
 import ContextDialog from './ContextDialog.vue'
@@ -72,6 +74,8 @@ import WorkingTogether from './WorkingTogether.vue'
  * the surface above, not here.
  */
 const props = defineProps<{
+  titleHistory?: TitleHistorySource
+  taskPageSource?: TaskPageSource
   approvalSaving?: boolean
   /**
    * What is OPEN — the session's control projection (064).
@@ -334,6 +338,8 @@ const panel = computed(() => sessionPanel(props.state))
       :tasks="band?.taken"
       :root="root"
       :tasks-short="band?.tookInShort ?? null"
+      :title-history="props.titleHistory"
+      :task-page-source="props.taskPageSource"
       :can-open="props.canOpenConversation ?? false"
       :panel="panel"
       :state="props.state"
@@ -397,8 +403,12 @@ const panel = computed(() => sessionPanel(props.state))
       @close="agent.tasksDialogOpen.value = false"
     >
       <AllTasksDialog
-        :tasks="band?.taken ?? []"
+        :tasks="props.taskPageSource?.readAll ? [] : (band?.taken ?? [])"
         :root="root"
+        :conversation="props.conversation"
+        :source="props.taskPageSource"
+        :parent="parent"
+        :identities="props.identities ?? null"
         :can-open="props.canOpenConversation ?? false"
         :state="props.state"
         @close="agent.tasksDialogOpen.value = false"

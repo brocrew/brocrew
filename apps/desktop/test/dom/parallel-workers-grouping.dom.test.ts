@@ -82,7 +82,7 @@ describe('parallel workers beside their agent', () => {
       expect(m.all('rail-worker-heading')).toHaveLength(1)
       expect(m.q('rail-worker-heading').textContent).toBe('Mira')
       assertDrawn(m.q('rail-worker-heading'), 'the agent heading', m.host)
-      const rows = [...m.q('rail-rows-agents').querySelectorAll<HTMLElement>('[data-session-id]')]
+      const rows = [...m.q('rail-rows-recent').querySelectorAll<HTMLElement>('[data-session-id]')]
       expect(ids(rows)).toEqual(Array.from({ length: count }, (_, i) => `recipe-${i + 1}`))
       for (let i = 1; i <= count; i++) {
         const label = m.q(`rail-worker-name-recipe-${i}`)
@@ -127,9 +127,8 @@ describe('parallel workers beside their agent', () => {
     expect(m.q('rail-worker-name-recipe-2').textContent).toBe('Mira · W90.2')
     const name = m.q('rail-worker-name-recipe-2')
     expect(m.q('open-session-recipe-2').querySelector('.rail-copy > strong')).toBe(name)
-    expect(lineCount(name)).toBe(1)
-    expect(getComputedStyle(name).textOverflow).toBe('ellipsis')
-    expect(getComputedStyle(name).whiteSpace).toBe('nowrap')
+    assertDrawn(name, 'the full worker name', m.host)
+    expect(name.scrollWidth).toBeLessThanOrEqual(name.clientWidth)
     expect(name.title).toContain('Mira · W90.2')
 
     expect(m.q('rail-state-word-recipe-2').textContent).toBe('idle · answered')

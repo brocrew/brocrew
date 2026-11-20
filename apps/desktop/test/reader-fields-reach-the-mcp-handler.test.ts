@@ -238,7 +238,7 @@ describe('reader tools answer field failures through Claude MCP', () => {
         const text = ownRefusal(await wire.call({ ...args, PRIVATE_TYPO: 'PRIVATE_VALUE' }))
         expect(text).toContain(
           entry.field === 'agent'
-            ? 'agent: required; name the agent by the piece it owns (W1.2) or its id'
+            ? 'agent: required; name the conversation by any of its task labels (W1.2) or its id from list_agents'
             : 'resource: required; send the resource id (res_…)',
         )
         expect(text).toContain('it takes only')

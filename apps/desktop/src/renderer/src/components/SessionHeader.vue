@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import type { OwnWait } from '../lib/conversation-list'
-import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import {
   type CreatedSession,
   type ProviderCapabilityMap,
   type SessionStatus,
 } from '../../../shared/runtime-ipc'
-import {
-  PIECE_TITLE_CHARS,
-  theWorkThatNamesItSaid,
-  type WorkThatNamesIt,
-} from '../../../shared/piece-called'
+import type {
+  ConversationIdentity,
+  ConversationRenameInput,
+  ConversationRenameResult,
+} from '../../../shared/conversation-title'
+import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import { clockTime } from '../../../shared/clock'
 import {
   activityWords,
@@ -28,6 +29,7 @@ import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inve
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
 import AgentState from './AgentState.vue'
+import ConversationTitleEditor from './ConversationTitleEditor.vue'
 
 /**
  * What this conversation is, and what it is doing right now.
@@ -54,7 +56,7 @@ import AgentState from './AgentState.vue'
  * three bordered, filled, 24px pills sitting in a row with three bordered, filled, 30px buttons,
  * and the PO read the row as a toolbar because it looks like one. ⚠️ **The title is neither**: it
  * is the conversation's identity, not a state and not one of the acts, and since D-016 · commit 7
- * (R4) pressing it edits it in place — so it stays drawn as the title ({@link renamable}).
+ * (R4) pressing it edits it in place — so it stays drawn as the title.
  *
  * 🔴 **`§1.4` is the one thing that may not give.** *"Whether an agent is working, waiting or done
  * is the most consequential fact on this screen and it currently has the least emphasis on it."*
@@ -136,19 +138,12 @@ const props = withDefaults(
      * does not exist, which is `106`'s rule — a control that cannot act is not offered.
      */
     tools?: ToolRegistry
-    /**
-     * 🔴 **D-016 · commit 7 · R2 — the work that names this conversation**, off the host's list
-     * (`SideRail.listedOf`): the title is `W1 · Bakery website` where it was the folder, and the
-     * folder moves to the hover. ⚑ `null` for the launcher and for a conversation the one list does
-     * not name, which keep today's title; the agent's name is on the Agent panel.
-     */
+    /** Linked task details and marks from the conversation list. */
     named?: WorkThatNamesIt | null
-    /**
-     * ⚑ **R4 — a person renames that work**, present only where the door would accept it (a root:
-     * `RuntimeScreen`'s rule), so an absent one draws the title and no press (`106`). Resolves
-     * `null` once renamed and re-listed, or the words that refused it.
-     */
-    retitle?: (title: string) => Promise<string | null>
+    identity?: ConversationIdentity | null
+    openTask?: () => void
+    /** Write the conversation's title through the host. */
+    rename?: (input: ConversationRenameInput) => Promise<ConversationRenameResult>
     /**
      * Archive this conversation: resolves `null` once it is archived, or the words that refused
      * it, drawn under the bar as they are. Absent draws neither Archive nor Delete, as on the
@@ -180,7 +175,7 @@ const props = withDefaults(
     starting: false,
     tools: undefined,
     named: null,
-    retitle: undefined,
+    rename: undefined,
     archive: undefined,
     activity: null,
     lastReportAt: null,
@@ -252,63 +247,18 @@ const toolsTitle = computed(() => {
   return asOf === null ? head : `${head} · ${asOf}`
 })
 
+const identity = computed(() =>
+  props.identity?.conversation === props.session?.sessionId ? (props.identity ?? null) : null,
+)
+const task = computed(() => (props.named === null ? null : theWorkThatNamesItSaid(props.named)))
 const title = computed(() => {
   if (!props.session) return 'New conversation'
-  // ⚑ F033 · with its marks; the rename field below edits `named.title` alone, never a mark.
-  if (props.named !== null) return theWorkThatNamesItSaid(props.named)
-  return basenameOf(props.session.cwd) || props.session.sessionId
+  return (
+    identity.value?.title ??
+    task.value ??
+    (basenameOf(props.session.cwd) || props.session.sessionId)
+  )
 })
-
-/**
- * 🔴 **D-016 · commit 7 · R4 — the work a press on the title renames**, or `null` where the title is
- * no press: the launcher, a title that is not the work's, and work the door would refuse
- * ({@link retitle} absent).
- *
- * ⚑ **The rename happens in place.** A press turns the title into its field, the label kept before
- * it; **Enter** saves, and **Escape** or leaving the field drops the draft and sends nothing — a
- * title is never written by a click somewhere else. ⛔ A refusal keeps the field open, with the
- * door's own words under it; nobody is told of a rename, and the title reads the newest.
- */
-const renamable = computed(() =>
-  props.session !== null && props.retitle !== undefined ? props.named : null,
-)
-const renaming = ref(false)
-const draft = ref('')
-const saving = ref(false)
-const refused = ref<string | null>(null)
-const titleInput = ref<HTMLInputElement | null>(null)
-
-function startRenaming(): void {
-  draft.value = renamable.value?.title ?? ''
-  refused.value = null
-  renaming.value = true
-  void nextTick(() => {
-    titleInput.value?.focus()
-    titleInput.value?.select()
-  })
-}
-
-function stopRenaming(): void {
-  renaming.value = false
-  refused.value = null
-}
-
-/** ⚑ Leaving the field cancels, except while Enter's save is in flight (the field is disabled). */
-function stopRenamingUnlessSaving(): void {
-  if (!saving.value) stopRenaming()
-}
-
-async function save(): Promise<void> {
-  if (props.retitle === undefined) return
-  saving.value = true
-  refused.value = await props.retitle(draft.value)
-  saving.value = false
-  if (refused.value === null) renaming.value = false
-  else void nextTick(() => titleInput.value?.focus())
-}
-
-// ⚑ Another conversation on screen — or its work no longer renamable here — leaves the field.
-watch(() => renamable.value?.label, stopRenaming)
 
 /** An archive in flight, and main's words when it refused one. */
 const archiving = ref(false)
@@ -517,45 +467,15 @@ const panelToggleName = computed(() =>
 
 <template>
   <header class="session-header" data-cy="session-header">
-    <div class="header-title">
-      <h1 :title="props.session?.cwd ?? ''" data-cy="conversation-title">
-        <template v-if="renamable && renaming"
-          >{{ renamable.label }} ·
-          <input
-            ref="titleInput"
-            v-model="draft"
-            class="title-input"
-            data-cy="conversation-title-input"
-            :maxlength="PIECE_TITLE_CHARS"
-            :disabled="saving"
-            :aria-label="`Title of ${renamable.label}`"
-            @keydown.enter.prevent="save"
-            @keydown.esc.stop.prevent="stopRenaming"
-            @blur="stopRenamingUnlessSaving"
-        /></template>
-        <button
-          v-else-if="renamable"
-          type="button"
-          class="title-press"
-          data-cy="conversation-title-rename"
-          :aria-label="`Rename ${title}`"
-          @click="startRenaming"
-        >
-          {{ title }}
-        </button>
-        <template v-else>{{ title }}</template>
-      </h1>
-      <!-- ⚑ **R4 · the door's own words, under the field they are about** — one line, cut with the
-           whole sentence on its hover, so the bar keeps its height. -->
-      <small
-        v-if="renaming && refused"
-        class="title-refused"
-        role="alert"
-        data-cy="conversation-title-refused"
-        :title="refused"
-        >{{ refused }}</small
-      >
-    </div>
+    <ConversationTitleEditor
+      :session="props.session"
+      :title="title"
+      :identity="identity"
+      :task="task"
+      :task-title="props.named?.title ?? null"
+      :open-task="props.openTask"
+      :rename="props.rename"
+    />
 
     <!-- 🔴 **THE most consequential fact on this screen, drawn as though it were** (`578`,
          `EXT-010` §1.4). ⛔ *"`Idle` is the only thing telling a person the turn has finished —
@@ -858,64 +778,6 @@ const panelToggleName = computed(() =>
   gap: var(--space-4) var(--space-6);
   min-height: var(--surface-header-h);
   grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.header-title {
-  min-width: 0;
-  grid-column: 1 / 3;
-  grid-row: 1;
-}
-
-h1 {
-  overflow: visible;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: var(--type-title);
-  font-style: var(--font-style-display, normal);
-  font-weight: var(--fw-display, var(--fw-heavy));
-  letter-spacing: var(--tracking-display, var(--tracking-tight));
-  line-height: var(--leading-tight);
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.title-press {
-  display: block;
-  overflow: visible;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: text;
-  letter-spacing: inherit;
-  text-align: left;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  font: inherit;
-}
-
-.title-press:focus-visible,
-.title-input:focus {
-  outline-offset: calc(-1 * var(--focus-ring-width));
-}
-
-.title-input {
-  width: 28ch;
-  max-width: 100%;
-  padding: 0 var(--space-3);
-  letter-spacing: inherit;
-}
-
-.title-refused {
-  display: block;
-  overflow: hidden;
-  margin-top: var(--space-1);
-  color: var(--danger-text);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .header-spacer {

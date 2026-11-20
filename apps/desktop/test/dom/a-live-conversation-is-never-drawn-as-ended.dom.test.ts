@@ -147,12 +147,11 @@ describe('the rail draws a running conversation as a conversation, never as ende
   it('🔴 D-017b · ONE list: the running conversation and a stopped one are rows of it, under one heading', async () => {
     const m = await rail({ resumable: [UNWATCHED, STOPPED] })
 
-    // ⚑ **2026-10-01 · both are the worker's**, so the one heading over them is the other agents'
-    // section's — the rail's conversations are in BroBot's section and the other agents'.
-    const list = m.q('rail-section-agents')
+    // Running and stopped rows both belong in Recent when neither needs the person.
+    const list = m.q('rail-section-recent')
     expect(visible(list)).toBe(true)
-    expect(list.textContent).toContain('Other agents')
-    expect(m.q('rail-count-agents').textContent).toBe('2')
+    expect(list.textContent).toContain('Recent')
+    expect(m.q('rail-count-recent').textContent).toBe('2 shown')
     // ⚑ **Both rows, in the same list** — the positive the negatives below stand on.
     expect(m.all(`open-session-${UNWATCHED.sessionId}`)).toHaveLength(1)
     expect(m.all(`open-session-${STOPPED.sessionId}`)).toHaveLength(1)

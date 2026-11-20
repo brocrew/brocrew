@@ -202,33 +202,67 @@ describe('searches wait in order and retain a bounded partial page', () => {
     expect(start).toHaveBeenCalledTimes(1)
   })
 
-  it('returns its last validated checkpoint at the deadline and never overlaps its worker', async () => {
-    vi.useFakeTimers()
-    const workers = [new WorkerDouble(), new WorkerDouble()]
-    const start = vi.fn(() => workers[start.mock.calls.length - 1]! as unknown as Worker)
-    const reader = new WorkSearchWorkerReader(start)
-    const pending = reader.read('sess_1', { scope: 'all' })
-    const partial = {
-      ...empty,
-      page: { ...empty.page, searched: 3, complete: false, next_cursor: 'fictional-cursor' },
-    }
-    workers[0]!.emit('message', { kind: 'progress', result: partial })
-    const queued = reader.read('sess_2', { scope: 'all' })
-    await vi.advanceTimersByTimeAsync(WORK_SEARCH_BOUNDS.workerMs)
-    expect(await pending).toEqual(partial)
-    expect(workSearchInWords(partial.page)).toContain(
-      'Older work has not been searched yet. next_cursor: fictional-cursor',
-    )
-    expect(start).toHaveBeenCalledTimes(1)
-    workers[0]!.emit('message', empty)
-    workers[0]!.emit('exit', 1)
-    await Promise.resolve()
-    expect(start).toHaveBeenCalledTimes(2)
-    workers[1]!.emit('message', empty)
-    workers[1]!.emit('exit', 0)
-    expect(await queued).toEqual(empty)
-    await reader.close()
-  })
+  it.each(['flat', 'grouped'] as const)(
+    'returns its last validated %s checkpoint without overlapping its worker',
+    async (mode) => {
+      vi.useFakeTimers()
+      const workers = [new WorkerDouble(), new WorkerDouble()]
+      const start = vi.fn(() => workers[start.mock.calls.length - 1]! as unknown as Worker)
+      const reader = new WorkSearchWorkerReader(start)
+      const pending = reader.read('sess_1', mode === 'flat' ? { scope: 'all' } : { grouped: true })
+      const partial = {
+        ...empty,
+        page: {
+          ...empty.page,
+          searched: 3,
+          complete: false,
+          ...(mode === 'flat'
+            ? { next_cursor: 'fictional-cursor' }
+            : {
+                next_cursor: null,
+                grouped: {
+                  matched: null,
+                  groups: [
+                    {
+                      profile: 'dev',
+                      matched: null,
+                      previews: [
+                        {
+                          conversation: 'sess_1',
+                          address: 'W1.1',
+                          title: 'A readable result',
+                          last_active_at: 123,
+                          status: 'Read the record',
+                          matched_task_labels: ['W1.1'],
+                          tasks_omitted: 0,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              }),
+        },
+      }
+      workers[0]!.emit('message', { kind: 'progress', result: partial })
+      const queued = reader.read('sess_2', { scope: 'all' })
+      await vi.advanceTimersByTimeAsync(WORK_SEARCH_BOUNDS.workerMs)
+      expect(await pending).toEqual(partial)
+      if (mode === 'flat') {
+        expect(workSearchInWords(partial.page)).toContain(
+          'Older work has not been searched yet. next_cursor: fictional-cursor',
+        )
+      }
+      expect(start).toHaveBeenCalledTimes(1)
+      workers[0]!.emit('message', empty)
+      workers[0]!.emit('exit', 1)
+      await Promise.resolve()
+      expect(start).toHaveBeenCalledTimes(2)
+      workers[1]!.emit('message', empty)
+      workers[1]!.emit('exit', 0)
+      expect(await queued).toEqual(empty)
+      await reader.close()
+    },
+  )
 
   it.each(['error', 'reply'])(
     'does not disguise a real worker failure (%s) as a partial success',

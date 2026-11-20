@@ -197,7 +197,12 @@ import type {
   LibraryPage,
   RebuiltLedger,
 } from '../../../shared/runtime-ipc'
-import { BUNDLE_SUFFIX, LIBRARY_QUERY_MAX, MAX_PATH_CHARS } from '../../../shared/runtime-ipc'
+import {
+  agentName,
+  BUNDLE_SUFFIX,
+  LIBRARY_QUERY_MAX,
+  MAX_PATH_CHARS,
+} from '../../../shared/runtime-ipc'
 import { archiveConversation, restoreConversation } from '../lib/archive-and-delete'
 import { useBundleImport } from '../lib/bundle-import'
 import { childLabel } from '../lib/child-descent'
@@ -285,7 +290,7 @@ const filters = ref<LibraryFilters>({ ...NO_FILTERS })
  * added to prevent it — and the tests never saw it, because every one of them sleeps past the
  * debounce before asserting.
  */
-const applied = ref<LibraryFilters>({ ...NO_FILTERS })
+const applied = ref({ filters: { ...NO_FILTERS }, query: '' })
 const loading = ref(false)
 const error = ref<string | null>(null)
 /**
@@ -350,12 +355,13 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   const asked: LibraryFilters = { ...filters.value }
+  const words = query.value
   try {
     const sessions = selectedClientApi.sessions
     if (!sessions) throw new Error('Session library is unavailable')
     // Query and filters count matches across the whole library before the page is sliced.
     const result = await sessions.listLibrary({
-      query: query.value,
+      query: words,
       // A plain snapshot crosses structured clone; the reactive proxy cannot. A shallow spread
       // suffices because every filter field is a primitive.
       filters: asked,
@@ -364,7 +370,7 @@ async function load(): Promise<void> {
     page.value = result
     // The two move together, always: `page.matched` is only meaningful beside the filters it was
     // counted over, and anything that says WHICH rows matched reads this rather than the controls.
-    applied.value = asked
+    applied.value = { filters: asked, query: words.trim() }
   } catch (cause) {
     if (mine !== issued) return
     // Shown, never swallowed: reading the library touches the user's own directories, and a failure
@@ -679,7 +685,7 @@ const truncated = computed(
     narrowingDeclaredBy({
       shown: page.value.entries.length,
       matched: page.value.matched,
-      filtered: anyFilter(applied.value),
+      filtered: anyFilter(applied.value.filters),
     }) === 'window-note',
 )
 
@@ -713,7 +719,8 @@ const firstRun = computed(
 )
 
 /** Every constraint currently narrowing the list — facets, state toggles and the query. */
-const constraints = computed(() => activeConstraints(filters.value, query.value))
+const profileName = (slug: string): string => agentName(slug, props.identities)
+const constraints = computed(() => activeConstraints(filters.value, query.value, profileName))
 
 /**
  * ⛔ **The count belongs to the page, so it goes quiet while a new one is in flight** (review).
@@ -724,7 +731,11 @@ const constraints = computed(() => activeConstraints(filters.value, query.value)
  * unfiltered, which is the other lie.
  */
 const settledMatched = computed(() =>
-  page.value !== null && sameFilters(applied.value, filters.value) ? page.value.matched : null,
+  page.value !== null &&
+  applied.value.query === query.value.trim() &&
+  sameFilters(applied.value.filters, filters.value)
+    ? page.value.matched
+    : null,
 )
 
 /**
@@ -732,7 +743,7 @@ const settledMatched = computed(() =>
  * note is a sentence about the page underneath it. The query is already quoted in the note.
  */
 const noteSummary = computed(() =>
-  activeConstraints(applied.value, '')
+  activeConstraints(applied.value.filters, '', profileName)
     .map((constraint) => constraint.label)
     .join(' · '),
 )
@@ -1063,6 +1074,7 @@ function size(bytes: number | null): string {
 
           <FacetBar
             :filters="filters"
+            :profiles="props.identities"
             :counts="counts"
             :matched="settledMatched"
             :archived="archivedOnly"

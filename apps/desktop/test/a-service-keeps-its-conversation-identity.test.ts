@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { answerOn, callOn } from './helpers/call-tool'
 import { newConversationGive } from './lib/give-fixture'
@@ -38,6 +39,12 @@ it('keeps its address and title across reads with work from two callers', async 
   expect(world.store.defaultTaskTitle(service)).toBe('First caller job')
   expect(host.addressOf(service)).toBe(service)
   expect(host.nameByItsWork(service)).toBe(line)
+  expect(
+    await executeRuntimeCommand(host, world.window, {
+      kind: 'readConversationIdentity',
+      sessionId: service,
+    }),
+  ).toEqual({ conversation: service, address: service, title: serviceName, author: null })
 
   const directory = await answerOn(firstTools, 'list_agents', { profile: 'browser-driver' })
   const status = await answerOn(secondTools, 'get_agent_status', { agent: service })
