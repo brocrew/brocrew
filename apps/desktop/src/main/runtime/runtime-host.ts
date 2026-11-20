@@ -8285,7 +8285,11 @@ export class RuntimeHost implements LiveHost {
    * written, then kept as the service's; the next start settles a crash between any two
    * (`reconcileProfileExecution`).
    */
-  private recordTheServiceConversation(profile: string, provider: Provider): string {
+  private recordTheServiceConversation(
+    profile: string,
+    provider: Provider,
+    asked: AgentModelChoice | null = null,
+  ): string {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service' || agent.conversation !== null) {
       throw new Error(`${foldProfileName(profile)} is not a service without a conversation`)
@@ -8296,7 +8300,7 @@ export class RuntimeHost implements LiveHost {
     const id = this.deps.newSessionId()
     const itsName = foldProfileName(profile)
     // Read before the reservation, so nothing between it and the row can leave it standing.
-    const pair = this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
+    const pair = asked ?? this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
     const cwd = this.deps.resolveCwd(id, undefined)
     this.keepTheProfileEntry(agent.identity, { ...entry, reserved: id }, true)
     try {
@@ -10791,6 +10795,14 @@ export class RuntimeHost implements LiveHost {
     return this.slots.has(current) || this.deps.store.recordedOne(current) !== null
       ? destination
       : null
+  }
+
+  /** Ask also accepts a service profile, whose one shared conversation already exists. */
+  questionDestination(address: string): string | null {
+    const conversation = this.messageDestination(address)
+    if (conversation !== null) return conversation
+    const service = this.theServiceAgent(address)
+    return service.is === 'service' ? service.conversation : null
   }
 
   /** A known piece label names its owner for reads; other doors retain their own reach. */
@@ -34285,30 +34297,6 @@ export class RuntimeHost implements LiveHost {
     return this.agentCreation.createAgent(said, by)
   }
 
-  /**
-   * Keep `created`, just made, as a service in the services list; ⛔ or, if that can't be written,
-   * take the new agent back through the one door that removes an agent ({@link removeAgent}), so
-   * no agent asked for as a service is left a normal one.
-   */
-  private keepItAsAService(created: AgentIdentity): void {
-    try {
-      this.keepTheProfileEntry(
-        created.id,
-        { kind: 'service', identityCreatedAt: created.createdAt },
-        true,
-      )
-    } catch (error) {
-      try {
-        const removed = this.removeAgent(created.slug)
-        if (!removed.ok)
-          console.warn(`runtime host did not take back ${created.slug}: ${removed.rail}`)
-      } catch (again) {
-        console.warn(`runtime host did not take back ${created.slug}: ${errorMessage(again)}`)
-      }
-      throw error
-    }
-  }
-
   createAgentFor(
     me: string,
     said: NewAgent,
@@ -34325,7 +34313,17 @@ export class RuntimeHost implements LiveHost {
       this.runningAs(conversation)?.profileId ??
       this.deps.store.recordedOne(conversation)?.profileId ??
       null,
-    keepItAsAService: (created) => this.keepItAsAService(created),
+    keepServiceKind: (created) =>
+      this.keepTheProfileEntry(
+        created.id,
+        { kind: 'service', identityCreatedAt: created.createdAt },
+        true,
+      ),
+    serviceProvider: (profileId) =>
+      this.resolveProviderLaunch({ profileId, askedProvider: null, providers: [] }).provider,
+    recordServiceConversation: (profile, provider, choice) =>
+      this.recordTheServiceConversation(profile, provider, choice),
+    removeAgent: (profile) => this.removeAgent(profile),
     theProviderOfConversation: (conversation) => this.theProviderOfConversation(conversation),
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
     theWorldMoved: (what) => this.theWorldMoved(what),

@@ -36,7 +36,7 @@ import {
 } from './question-arguments'
 
 export function createAskQuestionTool(
-  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'messageDestination'>,
+  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'questionDestination'>,
   by: Caller,
   me: string,
   selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
@@ -47,7 +47,7 @@ export function createAskQuestionTool(
     handlerOwnsMissingInput: true,
 
     description:
-      'Ask a question and get the answer back. who_answers: the-parent (the conversation that gave you this task), a-person, or an-agent (any existing conversation, named in agent by any of its labels). Ask whoever is likeliest to know, usually your giver. Ask the person only for what only they can give: an approval, a sign-in, an account switch, publishing, a yes on something they can see, a preference, a money or time commitment, or a fact only they know. Check their open questions first (list_questions) so nothing is asked twice, and name the job by its title. To ask the person to approve something for another agent, quote or attach that agent’s exact proposal. Name the task the question is about, or leave it out when you hold only one. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. Asking an archived conversation leaves it archived. This call does not wait: it says what was recorded (the question id) and whether the one asked started, is queued, or can’t run, and the answer reaches you later as a message. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked can’t answer, you are told why. withdraw_question takes a question back; withdraw your open questions about a task when it ends. Carry on from here.',
+      'Ask a question and get the answer back. who_answers: the-parent (the conversation that gave you this task), a-person, or an-agent (any existing conversation, named in agent by any of its labels or its id; a service may also be named by its profile). Ask whoever is likeliest to know, usually your giver. Ask the person only for what only they can give: an approval, a sign-in, an account switch, publishing, a yes on something they can see, a preference, a money or time commitment, or a fact only they know. Check their open questions first (list_questions) so nothing is asked twice, and name the job by its title. To ask the person to approve something for another agent, quote or attach that agent’s exact proposal. Name the task the question is about, or leave it out when you hold only one. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. Asking an archived conversation leaves it archived. This call does not wait: it says what was recorded (the question id) and whether the one asked started, is queued, or can’t run, and the answer reaches you later as a message. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked can’t answer, you are told why. withdraw_question takes a question back; withdraw your open questions about a task when it ends. Carry on from here.',
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — see
      * {@link AskQuestionArguments}, including which addressee it does and does not take.
@@ -81,7 +81,7 @@ export function createAskQuestionTool(
           .string()
           .optional()
           .describe(
-            'The conversation this question is for, by any of its task labels (W1.2) or its id from list_agents. Required when who_answers is an-agent, and only then.',
+            'The conversation this question is for, by any of its task labels (W1.2) or its id from list_agents; a service may also be named by its profile. Required when who_answers is an-agent, and only then.',
           ),
         question: z
           .string()
@@ -225,7 +225,7 @@ export function createAskQuestionTool(
         // The host reports an unknown address as the caller spelled it.
         const addressed =
           who === 'an-agent' && typeof agent === 'string'
-            ? (host.messageDestination(agent) ?? agent)
+            ? (host.questionDestination(agent) ?? agent)
             : null
         if (addressed !== null && (addressed === me || host.tookItsPlace(addressed) === me)) {
           return selfRefusal(agent as string, addressed, {
