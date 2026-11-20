@@ -341,30 +341,12 @@ export type MessageNowOutcome = {
 }
 
 /**
- * ⚑ **D-017 · R12 — why a caller may not reach a conversation by that id** (`05` rule 6) — see
- * {@link RuntimeHost.whyItIsOutOfReach}.
- *
- *  - `no-such-agent` — no conversation has that id. ⛔ The ONLY case that word is said about.
- *    ⚑ D-016 · commit 7 · R1 — a label is resolved before it is asked
- *    ({@link RuntimeHost.theConversationAddressed}), and one that names nothing this caller may
- *    reach arrives here as spelled.
- *  - `takes-no-messages` — this app records it and a message cannot start it (a read-only copy, a
- *    provider's own sub-agent, or one this app did not start), while nothing runs in it.
- *  - `a-service` — it is a service's conversation, which takes its work through give_work.
- */
-export type OutOfReach =
-  | { readonly is: 'no-such-agent' }
-  | { readonly is: 'takes-no-messages' }
-  | { readonly is: 'a-service' }
-
-/**
  * 🔴 **D-016 · commit 7 · R1 — the reach a door resolves a label by** — see
  * {@link RuntimeHost.theConversationAddressed}. ⚑ **Each door's OWN**, so a label is taken wherever
  * that door serves the id of the conversation it names, and is handed back as spelled wherever that
  * id would not be served.
  *
- *  - `messaging` — `get_agent_status`, `message_agent`, `ask_question`: the reach `list_agents` names
- *    by ({@link RuntimeHost.whyItIsOutOfReach}), which is the reach every rail of theirs reads.
+ *  - `messaging` — the conversation must be reachable for the operation using the address.
  *  - `interrupting` — `interrupt_agent`: that, or the chain below the caller the door stops
  *    ({@link RuntimeHost.interruptAgent}'s entitlement), which reads no grant.
  *  - `reading` — `read_transcript`: that, or the chain below the caller the door reads, or its own

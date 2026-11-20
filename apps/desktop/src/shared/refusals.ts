@@ -413,11 +413,6 @@ export const TOOL_REFUSALS = [
   'theme-too-large',
   // Unknown conversations and conversations outside the call’s reach share this answer.
   'no-such-agent',
-  // A recorded conversation cannot be started for messages: a read-only copy, provider child,
-  // or adopted conversation. An already-running one can still receive messages.
-  'that-conversation-takes-no-messages',
-  // The conversation is a service's, which takes its work one piece at a time through give_work.
-  'that-is-a-service',
   // The profile names several reachable conversations; the call must name one.
   'that-agent-has-several-conversations',
   'malformed-request',

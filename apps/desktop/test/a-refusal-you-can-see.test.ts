@@ -197,9 +197,6 @@ describe('405 · a refusal you can see', () => {
     agentStatus: (...args) => host.agentStatus(...args),
     servicePieceForStatus: (...args) => host.servicePieceForStatus(...args),
     whatOpenedItsLastTurn: (...args) => host.whatOpenedItsLastTurn(...args),
-    // ⚑ **D-017's two readers** (R12's reach answer, R10's replacement), delegated like every other
-    // member — see this helper's own note.
-    whyItIsOutOfReach: (...args) => host.whyItIsOutOfReach(...args),
     // ⚑ **D-016 · commit 7 · R1 — the one reading of an agent address**, delegated like every other
     // member — see this helper's own note.
     theConversationAddressed: (...args) => host.theConversationAddressed(...args),

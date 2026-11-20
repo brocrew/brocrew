@@ -146,7 +146,7 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
     // ⚑ The store's own read, inside `resumeSession`, made to fail — a shape no shortage errno, no
     // `ResumeError` and no typed launch failure produces, so `aWakeThatDidNotHappen` returns null for
     // it and (on the unplanted code) the reopen's `catch` rethrows it rather than dressing it up.
-    // ⚑ The rails (`whyItIsOutOfReach`, `refuseBeforeAStart` on arrival and again at delivery) read
+    // ⚑ The delivery checks (`refuseBeforeAStart` on arrival and again at delivery) read
     // `parentOf` too, ahead of the reopen — measured directly, by tracing every call this
     // wake makes before it reaches the store's own read. Only THAT read, `RuntimeHost.resumeSession`'s
     // (agent-tools.ts's plant is about what a REOPEN's failure becomes, not a rail's), is made to

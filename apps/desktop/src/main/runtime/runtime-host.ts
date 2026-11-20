@@ -84,7 +84,6 @@ import type {
   AnswerWithItsStop,
   MessageNowOutcome,
   RecordedAgentMessage,
-  OutOfReach,
   TheDoorsReach,
   NewBriefDelivery,
   Told,
@@ -95,7 +94,6 @@ export type {
   TheStopItsWordsAsked,
   AnswerWithItsStop,
   MessageNowOutcome,
-  OutOfReach,
   TheDoorsReach,
   NewBriefDelivery,
   Told,
@@ -10771,30 +10769,6 @@ export class RuntimeHost implements LiveHost {
     return this.theServiceOf(sessionId) === null
   }
 
-  /**
-   * Why this caller's words may not reach that conversation, or `null` when they may.
-   *
-   * ⛔ **`no-such-agent` only for an id no conversation has** (`05` rule 6).
-   */
-  whyItIsOutOfReach(
-    id: string,
-    by: Caller,
-    me: string | null,
-    /** ⚑ Asked for words to send it: the caller whose piece a service is on reaches that service. */
-    forAMessage = false,
-  ): OutOfReach | null {
-    // ⚑ **R10** — one that could never be reopened is reached through the one in its place.
-    const sessionId = this.theOneInItsPlace(id)
-    if (this.withinMessagingReach(sessionId, by, me)) return null
-    if (forAMessage && this.thePieceItIsOnFor(sessionId, by) !== null) return null
-    if (!this.slots.has(sessionId)) {
-      const row = this.deps.store.recordedOne(sessionId)
-      if (row === null) return { is: 'no-such-agent' }
-      if (!aRowADeliveryCanStart(row)) return { is: 'takes-no-messages' }
-    }
-    return this.theServiceOf(sessionId) === null ? { is: 'takes-no-messages' } : { is: 'a-service' }
-  }
-
   messageDestination(address: string): string | null {
     const destination = resolveConversationAddress(address, this.deps.store)
     const current = this.theOneInItsPlace(destination)
@@ -10815,7 +10789,7 @@ export class RuntimeHost implements LiveHost {
     const row = this.deps.store.workByLabel(address)!
     const admitted =
       reach === 'answering' ||
-      this.whyItIsOutOfReach(owner, by, me) === null ||
+      this.withinMessagingReach(this.theOneInItsPlace(owner), by, me) ||
       // ⚑ A piece the caller gave a service names that service, so a message or a stop about it is
       // answered for what that piece is, queued or on.
       ((reach === 'messaging' || reach === 'interrupting') && this.itGaveItToAService(row, by)) ||

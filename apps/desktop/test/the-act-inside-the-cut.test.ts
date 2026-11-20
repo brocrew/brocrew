@@ -610,9 +610,6 @@ const ACT: Readonly<Record<string, string>> = {
     'must be a Markdown file or page listed in resource_paths',
   // ⚑ **D-017 · R12** — said only about an id no conversation has; the act names what reaches.
   'TOOL_REFUSALS|no-such-agent': 'list_agents names the conversations this app can run',
-  'TOOL_REFUSALS|that-conversation-takes-no-messages':
-    'list_agents names the conversations this app can run',
-  'TOOL_REFUSALS|that-is-a-service': 'Give it the work with give_work',
   'TOOL_REFUSALS|that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations',
   'TOOL_REFUSALS|malformed-request': 'The problems are listed in the detail',
