@@ -27,6 +27,7 @@ function person(number: number, waiting = false): ResumableSessionInfo {
     ...base,
     sessionId: `person-${number}`,
     profileId: 'brobot',
+    provider: 'claude',
     personStarted: true,
     worker: undefined,
     state: { is: waiting ? 'needs-you' : 'idle' },
@@ -122,8 +123,8 @@ it('renders the restored group with seven BroBots and many newer helpers', async
   const numbers = [1, 4, 6, 7, 14, 15, 17]
   const people = numbers.map((number) => person(number))
   const titles = [
-    'Tests',
-    'Development',
+    'TESTS ITSELF',
+    'DEVELOPS ITSELF',
     'Behaviour',
     'Look and layout',
     'Providers',
@@ -139,7 +140,7 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     state: { is: index === 0 ? 'needs-you' : 'active' } as const,
   }))
   const m = await draw([...helpers, ...people])
-  await expect.poll(() => m.all('rail-address-person-17').length).toBe(1)
+  await expect.poll(() => m.all('rail-brobot-title-person-17').length).toBe(1)
   expect(ids(m, 'brobot')).toEqual(numbers.map((number) => `person-${number}`))
   expect(m.q('rail-count-brobot').textContent).toBe('7')
   for (const number of numbers)
@@ -147,8 +148,53 @@ it('renders the restored group with seven BroBots and many newer helpers', async
       [...m.q(`open-session-person-${number}`).querySelector('.rail-copy')!.children].map(
         ({ tagName }) => tagName,
       ),
-    ).toEqual(['STRONG', 'SMALL', 'SMALL'])
+    ).toEqual(['STRONG', 'SMALL'])
+  for (const [index, number] of numbers.entries()) {
+    const title = m.q(`rail-brobot-title-person-${number}`)
+    expect(title.textContent?.trim()).toBe(`W${number} · ${titles[index]}`)
+    expect(title.title).toBe(`W${number} · ${titles[index]}`)
+    const row = m.q(`open-session-person-${number}`)
+    const style = getComputedStyle(title)
+    expect(style.whiteSpace).toBe('nowrap')
+    expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(49)
+    expect(row.getAttribute('aria-describedby')).toBe(`rail-state-person-${number}`)
+    expect(m.q(`rail-state-person-${number}`).textContent).toContain('claude')
+  }
   await drawnReady()
   if (import.meta.env.VITE_RAIL_RESTORE_CAPTURE)
     await page.screenshot({ element: m.host, path: import.meta.env.VITE_RAIL_RESTORE_CAPTURE })
 })
+
+for (const width of [251.68, 266.2]) {
+  it(`keeps untitled and renamed BroBots compact at ${width}px without changing other rows`, async () => {
+    const untitled = person(21)
+    untitled.named = { label: 'W21', title: '' }
+    const named = person(4)
+    named.named = { label: 'W4', title: 'DEVELOPS ITSELF' }
+    const m = await draw([untitled, named, { ...person(90), profileId: 'reviewer' }])
+    m.host.style.width = `${width}px`
+    await expect.poll(() => m.all('rail-address-person-90').length).toBe(1)
+    expect(m.q('rail-brobot-title-person-21').textContent?.trim()).toBe('W21')
+    expect(m.q('rail-brobot-title-person-4').textContent?.trim()).toBe('W4 · DEVELOPS ITSELF')
+    for (const number of [21, 4]) {
+      const row = m.q(`open-session-person-${number}`)
+      expect([...row.querySelector('.rail-copy')!.children].map((el) => el.tagName)).toEqual([
+        'STRONG',
+        'SMALL',
+      ])
+      const title = row.querySelector('strong')!
+      expect(title.getBoundingClientRect().height).toBeCloseTo(
+        parseFloat(getComputedStyle(title).lineHeight),
+        1,
+      )
+      expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(49)
+      row.click()
+    }
+    expect(
+      [...m.q('open-session-person-90').querySelector('.rail-copy')!.children].map(
+        (el) => el.tagName,
+      ),
+    ).toEqual(['STRONG', 'SMALL', 'SMALL'])
+    expect(m.selected).toEqual(['person-21', 'person-4'])
+  })
+}

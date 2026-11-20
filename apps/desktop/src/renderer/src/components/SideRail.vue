@@ -766,7 +766,13 @@ watch(
 )
 
 function rowTitle(row: RailRow): string {
-  return identities.value.get(row.sessionId)?.title ?? conversationTitle(row.label, row.named)
+  const identity = identities.value.get(row.sessionId)
+  if (row.brobot) {
+    const address = identity?.address ?? row.named?.label
+    const title = identity?.author ? identity.title : row.named?.title
+    return [address, title?.trim()].filter(Boolean).join(' · ')
+  }
+  return identity?.title ?? conversationTitle(row.label, row.named)
 }
 
 function fold(key: RailSectionKey): void {
@@ -1243,7 +1249,7 @@ const platform = platformHere()
                     .join(' ') || undefined
                 "
                 :aria-describedby="
-                  row.opening
+                  !row.brobot && row.opening
                     ? `rail-opening-${row.sessionId} rail-state-${row.sessionId}`
                     : `rail-state-${row.sessionId}`
                 "
@@ -1275,10 +1281,19 @@ const platform = platformHere()
                 >
                 <span
                   class="rail-copy"
-                  :class="{ 'rail-worker-top': row.worker && !identities.get(row.sessionId) }"
+                  :class="{
+                    'rail-worker-top': row.worker && !identities.get(row.sessionId),
+                    'rail-brobot-copy': row.brobot,
+                  }"
                 >
                   <strong
-                    :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
+                    :data-cy="
+                      row.brobot
+                        ? `rail-brobot-title-${row.sessionId}`
+                        : row.worker
+                          ? `rail-worker-name-${row.sessionId}`
+                          : undefined
+                    "
                     :title="
                       row.worker && !identities.get(row.sessionId)
                         ? [row.label, row.named?.title].filter(Boolean).join(' · ')
@@ -1323,7 +1338,7 @@ const platform = platformHere()
                           >{{ row.label }}</span
                         ></template
                       ><span
-                        v-if="!identities.get(row.sessionId) && row.provider"
+                        v-if="(row.brobot || !identities.get(row.sessionId)) && row.provider"
                         class="rail-standing-profile"
                         :title="row.provider"
                       >
@@ -1355,7 +1370,7 @@ const platform = platformHere()
                     ></small
                   >
                   <small
-                    v-if="identities.get(row.sessionId)"
+                    v-if="!row.brobot && identities.get(row.sessionId)"
                     :title="
                       [identities.get(row.sessionId)?.address, row.provider]
                         .filter(Boolean)
@@ -1370,7 +1385,7 @@ const platform = platformHere()
                       · Named by you</template
                     >
                   </small>
-                  <template v-if="row.worker">
+                  <template v-if="row.worker && !row.brobot">
                     <small
                       v-for="piece in workerSubtitles(
                         row.sessionId,
@@ -1384,7 +1399,7 @@ const platform = platformHere()
                     >
                   </template>
                   <small
-                    v-if="row.opening"
+                    v-if="!row.brobot && row.opening"
                     :id="`rail-opening-${row.sessionId}`"
                     class="opening"
                     :title="row.opening"
@@ -1869,6 +1884,11 @@ const platform = platformHere()
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
   white-space: normal;
+}
+.rail-group-rows .rail-brobot-copy strong {
+  overflow: hidden;
+  line-height: var(--leading-snug);
+  white-space: nowrap;
 }
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
   font-weight: var(--fw-normal);
