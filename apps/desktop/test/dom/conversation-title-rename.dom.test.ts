@@ -509,3 +509,58 @@ it('ignores a former selection’s task page and refreshes the selected task on 
   await expect.poll(currentText).toContain('Refreshed service task')
   expect(read).toHaveBeenNthCalledWith(3, { sessionId: serviceId })
 })
+
+it('refreshes the visible profile fallback after delivered person input without a work notice', async () => {
+  let identity: ConversationIdentity = {
+    conversation: sessionId,
+    address: 'W17',
+    title: 'BroBot',
+    author: null,
+  }
+  const read = vi.fn<RuntimeBridge['readConversationIdentity']>(async () => identity)
+  const batch = vi.fn<RuntimeBridge['readConversationIdentities']>(async () => [identity])
+  window.api.runtime.readConversationIdentity = read
+  window.api.runtime.readConversationIdentities = batch
+  const m = await mountWith([row(sessionId, null)])
+  await expect.poll(() => m.q('conversation-title').textContent?.trim()).toBe('BroBot')
+  await expect
+    .poll(() => m.q(`open-session-${sessionId}`).querySelector('strong')?.textContent)
+    .toBe('BroBot')
+  const listeners = vi.mocked(window.api.runtime.onEvent).mock.calls.map(([listener]) => listener)
+  expect(listeners.length).toBeGreaterThan(1)
+  const deliver = (
+    event: {
+      type: 'user_turn'
+      text: string
+      humanInitiated?: boolean
+      attribution?: 'app_authored'
+    },
+    ordinal: number,
+  ) => {
+    for (const listener of listeners) listener({ sessionId, ordinal, at: Date.now(), event })
+  }
+  const before = read.mock.calls.length
+  deliver({ type: 'user_turn', text: 'App-authored notice', attribution: 'app_authored' }, 0)
+  await nextTick()
+  expect(read.mock.calls).toHaveLength(before)
+  identity = { ...identity, title: 'Plan the garden for spring' }
+  deliver(
+    {
+      type: 'user_turn',
+      text: 'Plan the garden for spring\nConsider the shade.',
+      humanInitiated: true,
+    },
+    1,
+  )
+  await expect.poll(() => m.q('conversation-title').textContent?.trim()).toBe(identity.title)
+  await expect
+    .poll(() => m.q(`open-session-${sessionId}`).querySelector('strong')?.textContent)
+    .toBe(identity.title)
+  expect(m.q(`rail-address-${sessionId}`).textContent).toBe('W17')
+  expect(m.all(`session-opening-${sessionId}`)).toHaveLength(0)
+  expect(
+    [...m.q(`open-session-${sessionId}`).querySelector('.rail-copy')!.children].map(
+      ({ tagName }) => tagName,
+    ),
+  ).toEqual(['STRONG', 'SMALL', 'SMALL'])
+})
