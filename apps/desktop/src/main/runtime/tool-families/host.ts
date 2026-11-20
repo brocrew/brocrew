@@ -150,6 +150,7 @@ export interface AgentToolHost {
     readonly took: ReceivedInATurn | null
     readonly readAt: number
   }
+  questionDestination(address: string): string | null
   messageDestination(address: string): string | null
   theConversationAddressed(
     address: string,

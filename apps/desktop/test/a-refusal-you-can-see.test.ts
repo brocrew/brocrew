@@ -200,6 +200,7 @@ describe('405 · a refusal you can see', () => {
     // member — see this helper's own note.
     theConversationAddressed: (...args) => host.theConversationAddressed(...args),
     messageDestination: (...args) => host.messageDestination(...args),
+    questionDestination: (...args) => host.questionDestination(...args),
     tookItsPlace: (...args) => host.tookItsPlace(...args),
     // ⚑ Added because the interface gained it, which is what this seam is for.
     whyWhatIsHeldWaits: (...args) => host.whyWhatIsHeldWaits(...args),

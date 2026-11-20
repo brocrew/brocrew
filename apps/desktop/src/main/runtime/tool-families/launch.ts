@@ -1,3 +1,4 @@
+import { conversationLine } from '../conversation-address'
 import { ABriefThatDidNotArrive, AGiveThatGaveNothing } from '../session-unavailable'
 import { RecordWriteFailed } from '../record-write'
 import { sendOverflowSaid } from '../send-overflow'
@@ -20,6 +21,7 @@ import {
   type NewAgent,
   PATH_SEGMENT_RULE,
   PROVIDER_NAME,
+  profileLabel,
   isPathSegment,
 } from '../../../shared/runtime-ipc'
 import { OWN_INSTRUCTIONS_CHARS } from '../../../shared/own-instructions'
@@ -369,7 +371,7 @@ export function createCreateAgentTool(
     name: 'create_agent',
 
     description:
-      'Bring a new agent into existence: a name, and optionally the standing rules it works under. No conversation is started, nothing is sent, and no purpose is recorded — the job goes in a piece of work you give it with give_work, while rules are what this agent is in every conversation it ever runs. This app gives the new agent its human name and tells you what it chose, so there is nothing to decide and nobody to ask. Returns the agent that now exists, or a refusal naming the rule that stopped it. Name model and effort to give it a default: what its new conversations start on.',
+      "Bring a new agent into existence: a name, and optionally the standing rules it works under. A normal agent's conversations are started by give_work. A service's one top-level conversation, shared by the whole workspace, is recorded now and its address is returned. Neither kind starts running or receives work from this call. Give the job in a task with give_work; rules are what this agent is in every conversation it runs. This app gives the new agent its human name and tells you what it chose, so there is nothing to decide and nobody to ask. Returns the agent that now exists, or a refusal naming what prevented creation. Name model and effort to give it defaults for starting work.",
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — `415`'s
      * device, and the `satisfies` below fails to compile if this shape and
@@ -421,7 +423,7 @@ export function createCreateAgentTool(
         ),
       kind: documentedToolEnum(
         TOOL_INPUT_ENUMS['create_agent:kind'],
-        'What kind of agent it is, set when it is made.',
+        'What kind of agent it is, set when it is made. Leave it out for normal.',
       ).optional(),
     } satisfies Readonly<Record<keyof CreateAgentArguments, z.ZodType>>,
     call: (args) =>
@@ -535,14 +537,23 @@ export function createCreateAgentTool(
             ...(named === null ? {} : { display_name: named }),
             rules: wrote === null ? 'none-given' : 'written',
             ...(outcome.defaultModel === null ? {} : { default_model: outcome.defaultModel }),
+            ...(outcome.serviceConversation === undefined
+              ? {}
+              : { conversation: outcome.serviceConversation }),
           },
           // Read off the outcome, never echoing the call: the name this app chose, that nothing
           // was started, its default, and whether its rules are saved.
-          `${named === null ? CREATED_UNDER_ITS_PROFILE_NAME : createdAndNamed(named)} It is not running and has been sent nothing.${
+          `${named === null ? CREATED_UNDER_ITS_PROFILE_NAME : createdAndNamed(named)}${
+            outcome.serviceConversation === undefined
+              ? ' It is not running and has been sent nothing.'
+              : ` Its shared conversation is recorded: ${conversationLine(outcome.serviceConversation, named ?? profileLabel(outcome.identity.slug))}. It is not running. No work was sent.`
+          }${
             // **D-042 · R2 — the default it now has, read back**.
             outcome.defaultModel === null
               ? ''
-              : ` Its new conversations start on ${aPairInWords(outcome.defaultModel)}.`
+              : outcome.serviceConversation === undefined
+                ? ` Its new conversations start on ${aPairInWords(outcome.defaultModel)}.`
+                : ` Its default is ${aPairInWords(outcome.defaultModel)}.`
           }${wrote === null ? '' : ` ${ITS_RULES_ARE_SAVED}`}`,
         )
       }),
