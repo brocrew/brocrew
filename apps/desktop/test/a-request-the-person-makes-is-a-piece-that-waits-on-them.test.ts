@@ -826,7 +826,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     await bringIdentityIntoBeing('worker')
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
-    const routedBefore = routed(pm)
     const giveUnder = (): Promise<Record<string, unknown>> =>
       callOn(pmTools, 'give_work', {
         to: 'new',
@@ -1008,6 +1007,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
 
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
+    const routedBefore = routed(pm)
     const noGiver = await callWithWords(pmTools, 'ask_question', {
       question: 'which city?',
       who_answers: 'the-parent',
