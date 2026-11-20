@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { railSectionOf, railSectionHeading, RAIL_SECTION_REMEMBERED } from '../lib/rail-sections'
 import { useClientApi } from '../client-provider/injection'
 import { useRecoveredConversationList } from '../composables/useConversationListRecovery'
 import { useModalDepth } from './OverlayHost.vue'
@@ -489,6 +490,7 @@ function placeOf(record: SessionRecord): string | null {
 
 /** ⚑ **D-017b · one row of the one list** — the same markup and the same press, whatever it is doing. */
 interface RailRow extends PaletteOpenRow {
+  readonly brobot: boolean
   readonly activityAt?: number
   readonly worker?: ListedConversation['worker']
   readonly facets: AgentFacets
@@ -540,6 +542,7 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(worker ? { worker } : {}),
         sessionId: record.sessionId,
+        brobot: host?.personStarted === true && railSectionOf(host.identity) === 'brobot',
         activityAt: host?.updatedAt,
         provider: record.meta?.provider ?? null,
         facets,
@@ -575,6 +578,7 @@ const rows = computed<RailRow[]>(() => {
       row: {
         ...(host.worker ? { worker: host.worker } : {}),
         sessionId: host.sessionId,
+        brobot: host.personStarted === true && railSectionOf(host.identity) === 'brobot',
         activityAt: host.updatedAt,
         provider: host.provider,
         facets,
@@ -633,10 +637,11 @@ const paletteSearchCaller = computed(
 )
 
 const RAIL_PAGE_SIZE = 15
-const sectionNames = { 'needs-you': 'Needs you', recent: 'Recent' } as const
+const sectionNames = { brobot: 'BroBot', 'needs-you': 'Needs you', recent: 'Recent' } as const
 type RailSectionKey = keyof typeof sectionNames
 
 const sectionOpen = {
+  brobot: usePersistentToggle(RAIL_SECTION_REMEMBERED.brobot, true),
   'needs-you': usePersistentToggle('brobot2.railNeedsYouOpen', true),
   recent: usePersistentToggle('brobot2.railRecentOpen', true),
 }
@@ -648,8 +653,10 @@ watch(
 const sectionIdBase = useId()
 const rowsIdOf = (key: RailSectionKey): string => `${sectionIdBase}-rows-${key}`
 
-const waitingRows = computed(() => rows.value.filter((row) => row.standing === 'waiting'))
-const recentRows = computed(() => rows.value.filter((row) => row.standing !== 'waiting'))
+const brobotRows = computed(() => rows.value.filter((row) => row.brobot))
+const otherRows = computed(() => rows.value.filter((row) => !row.brobot))
+const waitingRows = computed(() => otherRows.value.filter((row) => row.standing === 'waiting'))
+const recentRows = computed(() => otherRows.value.filter((row) => row.standing !== 'waiting'))
 
 function railSection(key: RailSectionKey, eligible: readonly RailRow[], shown: readonly RailRow[]) {
   const groups = groupWorkers(shown, (row) => row.sessionId)
@@ -674,14 +681,17 @@ function railSection(key: RailSectionKey, eligible: readonly RailRow[], shown: r
   const recentTotal = key === 'recent' && coverageComplete.value ? eligible.length : null
   return {
     key,
-    heading: sectionNames[key],
+    heading:
+      key === 'brobot'
+        ? railSectionHeading('brobot', props.agents?.identities ?? null)
+        : sectionNames[key],
     rows: groups.flatMap((group) => group.rows),
     workerHeads,
     open,
     holdsTheOneOnScreen:
       selected && (!open || !shown.some((row) => row.sessionId === onScreenId.value)),
     count:
-      key === 'needs-you'
+      key !== 'recent'
         ? String(eligible.length)
         : recentTotal === null
           ? open
@@ -697,6 +707,7 @@ const sections = computed(() => {
   const waiting = waitingRows.value
   const recent = recentRows.value
   return [
+    ...(brobotRows.value.length ? [railSection('brobot', brobotRows.value, brobotRows.value)] : []),
     ...(waiting.length ? [railSection('needs-you', waiting, waiting)] : []),
     ...(recent.length ? [railSection('recent', recent, recent.slice(0, recentLimit.value))] : []),
   ]
@@ -1149,6 +1160,13 @@ const platform = platformHere()
           class="rail-group"
           :data-cy="`rail-section-${section.key}`"
         >
+          <p
+            v-if="section.key === (waitingRows.length ? 'needs-you' : 'recent')"
+            class="section-label rail-other-heading"
+            data-cy="rail-other-conversations"
+          >
+            Other conversations
+          </p>
           <!-- A folded section still shows its count and marks the selected conversation. -->
           <button
             class="section-label section-toggle"
@@ -1174,9 +1192,12 @@ const platform = platformHere()
               :title="`${NEEDS_YOU}: ${section.count}`"
               >{{ section.count }}</span
             >
-            <span v-else-if="section.count !== null" class="count" data-cy="rail-count-recent">{{
-              section.count
-            }}</span>
+            <span
+              v-else-if="section.count !== null"
+              class="count"
+              :data-cy="`rail-count-${section.key}`"
+              >{{ section.count }}</span
+            >
           </button>
           <div
             v-if="section.open"

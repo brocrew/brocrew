@@ -2117,7 +2117,10 @@ export function createSessionStore(
                                   AND t.closed_at IS NOT NULL
                                 ORDER BY t.ordinal DESC LIMIT 1) AS last_end_reason`
   const selectAll = db.prepare(
-    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
+    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN},
+        (provider_session.adopted_at IS NULL AND provider_session.parent_session_id IS NULL
+         AND EXISTS (SELECT 1 FROM work INDEXED BY work_owner_idx
+                     WHERE owner_session_id = provider_session.id AND parent_id IS NULL)) AS person_started
        FROM provider_session ${GENERATION_JOIN}
       ORDER BY provider_session.updated_at DESC`,
   )
