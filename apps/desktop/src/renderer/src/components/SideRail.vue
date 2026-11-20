@@ -762,6 +762,25 @@ function rowTitle(row: RailRow): string {
   return identity?.title ?? conversationTitle(row.label, row.named)
 }
 
+function profileName(row: RailRow): string {
+  return row.worker && props.agents?.identities.some((one) => one.id === row.worker?.identity)
+    ? workerName(row.worker, props.agents.identities)
+    : row.label
+}
+
+function statusLine(row: RailRow, detailed = false): string {
+  return [
+    !row.brobot && row.named ? row.label : null,
+    row.provider,
+    detailed ? (row.detail ?? row.word) : row.word,
+    !row.brobot && row.activityAt !== undefined ? agoWords(row.activityAt, railMinute.value) : null,
+    row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
+    row.place,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 function fold(key: RailSectionKey): void {
   sectionOpen[key].value = !sectionOpen[key].value
 }
@@ -1274,70 +1293,53 @@ const platform = platformHere()
                     >{{ workerState(row.word, row.named) }}</span
                   >
                   <small
+                    v-if="row.brobot"
+                    :id="`rail-state-${row.sessionId}`"
+                    class="rail-brobot-standing"
+                    :data-standing="row.standing"
+                    :data-needing="row.facets.needing"
+                    :data-place="row.place ?? undefined"
+                    :aria-description="row.detail"
+                    :title="statusLine(row, true)"
+                    >{{ statusLine(row) }}</small
+                  >
+                  <small
+                    v-else
                     :id="`rail-state-${row.sessionId}`"
                     :class="{
                       'rail-standing-with-age': row.activityAt !== undefined,
-                      'rail-brobot-standing': row.brobot,
+                      'rail-standing-canonical': !!identities.get(row.sessionId),
                     }"
                     :data-standing="row.standing"
                     :aria-description="row.detail"
                     :data-needing="row.facets.needing"
                     :data-place="row.place ?? undefined"
-                    :title="
-                      [
-                        row.named ? row.label : null,
-                        row.provider,
-                        row.detail ?? row.word,
-                        row.activityAt === undefined ? null : agoWords(row.activityAt, railMinute),
-                        row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
-                        row.place,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
-                    "
+                    :title="statusLine(row, true)"
                     ><span class="rail-standing-prefix"
-                      ><template v-if="row.brobot">
-                        <span class="rail-standing-profile" :title="row.label">{{
-                          row.label
-                        }}</span>
-                        <span class="rail-brobot-provider" :title="row.provider ?? undefined">{{
-                          row.provider ? ` · ${row.provider} · ` : ' · '
-                        }}</span>
+                      ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
+                        ><span
+                          class="rail-standing-profile"
+                          :data-cy="`rail-profile-${row.sessionId}`"
+                          :title="profileName(row)"
+                          >{{ profileName(row) }}</span
+                        ></template
+                      ><span
+                        v-if="!identities.get(row.sessionId) && row.provider"
+                        class="rail-standing-profile"
+                        :title="row.provider"
+                      >
+                        <template v-if="row.named && !row.worker"> · </template>
+                        {{ row.provider }} </span
+                      ><template v-if="!row.worker || identities.get(row.sessionId)">
+                        <template v-if="row.provider || row.named || identities.get(row.sessionId)">
+                          ·
+                        </template>
                         <span
                           class="rail-standing-word"
                           :data-cy="`rail-state-word-${row.sessionId}`"
-                          :title="row.detail ?? row.word"
-                          >{{ row.word }}</span
-                        > </template
-                      ><template v-else
-                        ><template
-                          v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
-                          ><span
-                            class="rail-standing-profile"
-                            :data-cy="`rail-profile-${row.sessionId}`"
-                            :title="row.label"
-                            >{{ row.label }}</span
-                          ></template
-                        ><span
-                          v-if="!identities.get(row.sessionId) && row.provider"
-                          class="rail-standing-profile"
-                          :title="row.provider"
                         >
-                          <template v-if="row.named && !row.worker"> · </template>
-                          {{ row.provider }} </span
-                        ><template v-if="!row.worker || identities.get(row.sessionId)">
-                          <template
-                            v-if="row.provider || row.named || identities.get(row.sessionId)"
-                          >
-                            ·
-                          </template>
-                          <span
-                            class="rail-standing-word"
-                            :data-cy="`rail-state-word-${row.sessionId}`"
-                          >
-                            {{ row.worker ? workerState(row.word, row.named) : row.word }}
-                          </span></template
-                        ></template
+                          {{ row.worker ? workerState(row.word, row.named) : row.word }}
+                        </span></template
                       ></span
                     ><span v-if="row.activityAt !== undefined" class="rail-standing-age">
                       <span> · </span>
@@ -1939,16 +1941,15 @@ const platform = platformHere()
   min-width: var(--space-4);
 }
 
-.rail-brobot-standing .rail-standing-prefix {
-  display: grid;
+.rail-standing-canonical .rail-standing-prefix {
   flex: 1 1 auto;
   min-width: 0;
-  grid-template-columns: minmax(0, max-content) max-content minmax(1em, 1fr);
 }
-.rail-brobot-provider {
-  white-space: pre;
+.rail-standing-canonical .rail-standing-profile {
+  flex: none;
+  max-width: 50%;
 }
-.rail-brobot-standing .rail-standing-word {
+.rail-standing-canonical .rail-standing-word {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
