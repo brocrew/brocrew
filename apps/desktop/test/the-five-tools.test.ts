@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
   FakeLaunchGate,
   FakeProviderSessions,
@@ -1204,7 +1205,7 @@ describe('347 · the five tools', () => {
         }
         if (names === 'an open child task to withdraw') {
           expect(shape, tool.name).toEqual(['piece', 'reason'])
-          expect(tool.input.reason?.safeParse(undefined).success).toBe(true)
+          expect(z.object(tool.input).safeParse({ piece: 'W1.2' }).success).toBe(true)
         }
         if (names === 'a piece it holds or gave') expect(shape, tool.name).toContain('piece')
         if (names === 'a piece it or its profile holds or gave') {
