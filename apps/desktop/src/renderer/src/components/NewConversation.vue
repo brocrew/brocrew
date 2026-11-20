@@ -858,7 +858,7 @@ watch(
               class="note"
               data-cy="provider-readiness-failure"
             >
-              {{ providerName(problem.provider) ?? 'this provider' }}: {{ problem.reason }}
+              {{ providerName(problem.provider) ?? 'This provider' }} isn't signed in.
             </p>
             <p v-if="checkingProviders" class="note">Checking providers…</p>
             <template v-else>

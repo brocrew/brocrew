@@ -280,6 +280,10 @@ it('shows one clear provider setup action and no unavailable current provider wh
   await settle()
   const action = screen.q('new-provider-setup')
   expect(action.textContent?.trim()).toBe('Set up a provider')
+  expect(screen.all('provider-readiness-failure').map((row) => row.textContent?.trim())).toEqual([
+    "Claude isn't signed in.",
+    "Codex isn't signed in.",
+  ])
   expect(screen.all('provider-chip')).toHaveLength(0)
   expect(screen.all('model-picker-face')).toHaveLength(0)
   expect(screen.all('send-prompt')).toHaveLength(0)
