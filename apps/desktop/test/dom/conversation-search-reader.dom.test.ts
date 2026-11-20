@@ -651,3 +651,26 @@ it('labels an empty incomplete reading without claiming there are no matches', a
     .toContain('No matches in the pages read')
   expect(insidePalette('palette-searched')?.textContent).toContain('1 unread row.')
 })
+
+
+it('keeps the footer conversation search on one normal-height row at the standard rail width', async () => {
+  const m = await openPalette()
+  await userEvent.keyboard('{Escape}')
+  await expect.poll(() => insidePalette('palette-search')).toBeNull()
+  if (m.q('side-rail').dataset.collapsed === 'true') m.q('rail-fold').click()
+  await nextTick()
+  const rail = m.q('side-rail')
+  const row = m.q('rail-find-conversation')
+  const box = row.getBoundingClientRect()
+  expect(rail.getBoundingClientRect().width).toBeCloseTo(251.68, 0)
+  expect(box.height).toBeLessThanOrEqual(parseFloat(getComputedStyle(row).minHeight) + 1)
+  expect(row.querySelector('use')?.getAttribute('href')).toBe('#i-search')
+  const label = row.querySelector<HTMLElement>('.rail-copy strong')!
+  expect(label.textContent).toBe('Find a conversation')
+  expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth)
+  expect(label.getBoundingClientRect().height).toBeLessThanOrEqual(
+    parseFloat(getComputedStyle(label).lineHeight) + 1,
+  )
+  row.click()
+  await expect.poll(() => insidePalette('palette-search')).not.toBeNull()
+})
