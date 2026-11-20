@@ -17,7 +17,5 @@ export type ClientAgentApi = Pick<
   | 'createAgent'
   | 'registerExternalMcpServer'
   | 'removeExternalMcpServer'
-  | 'setServicesOn'
-  | 'setSpawningEnabled'
   | 'setDefaultApprovalMode'
 >

@@ -76,9 +76,8 @@ export const YOLO_MEANS =
  *
  * ⛔ **The fact lives in `WHAT_STANDS_PAST_ITS_FOLDER` (`@brobot2/runtime`) — what `auto` takes
  * off is that table's `ask` row less its `auto` row — and this file may not import it**: the
- * renderer must not pull the provider adapters into its bundle, which is the same rule
- * `SPAWN_RAIL_MEANS` follows for its own tool names: *"the tool names are prose and the test is what
- * keeps them true."* ⚑ `a-mode-a-child-inherits.test.ts` §4 censuses this sentence against that
+ * renderer must not pull the provider adapters into its bundle. `a-mode-a-child-inherits.test.ts`
+ * checks this sentence against that
  * table **in both directions** — every provider whose `ask` keeps a sandbox its `auto` does not is
  * named here, and no other — so the day Claude gains one, or Codex loses one, this line fails rather
  * than drifts.
@@ -88,10 +87,8 @@ export const YOLO_MEANS =
  *  - ⚠️ **It does not say *every* agent.** What travels down is the parent's own mode, to a
  *    conversation a give STARTS, and *"run in this mode too"* is that and only that: a give that
  *    finds a conversation the agent already has sends the work there, in whatever mode it runs.
- *    ⚑ **Since D-038 a Claude parent's `auto` does hand a Codex child its `auto`** — neither keeps
- *    anything past its folder, and `wider-than-its-parent` compares that (F050) — so on a Claude
- *    conversation this sentence is where the person is told the Codex half: it takes the sandbox
- *    off too.
+ *    A Codex conversation started by a Claude conversation in `auto` also runs in `auto`,
+ *    which turns off the Codex sandbox.
  *  - ⛔ **It does not argue**, which is `YOLO_MEANS`' own rule: no "unsafe", no scare quotes, no
  *    second sentence advising against the thing the control exists to do.
  *  - ⚑ **It does not repeat what {@link YOLO_MEANS} already said** about reach. This is one clause

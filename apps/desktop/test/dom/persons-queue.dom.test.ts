@@ -17,7 +17,6 @@ import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import {
   NOTHING_NAMED_THE_WORK,
   chainReading,
@@ -61,7 +60,6 @@ const NOW = 1_700_000_000_000
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 const queue = usePersonsQueue()
-const safety = useSpawnSafety()
 let travelled: PersonsQueueRow[] = []
 /** ⚑ **434** — what was settled HERE, and what was taken over without leaving. */
 let settled: { row: PersonsQueueRow; decision: AttentionDecision }[] = []
@@ -83,7 +81,6 @@ const identities = (): AgentIdentities => ({
   ],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
   externalMcpServers: [],
@@ -199,7 +196,6 @@ function walked<Row>(
   runtime: {
     agentIdentities: async () => identities(),
     setExternalMcpServers: async () => identities().identities[0],
-    setSpawningEnabled: async () => ({ spawningEnabled: true }),
   },
 }
 
@@ -367,132 +363,55 @@ async function openMore(m: Mounted, key: string): Promise<void> {
   await nextTick()
 }
 
-/** Do two boxes share any horizontal span? */
-function overlaps(a: DOMRect, b: DOMRect): boolean {
-  return a.left < b.right && b.left < a.right
-}
-
 beforeEach(() => {
   travelled = []
   settled = []
   takenOver = []
-  safety.supply(identities(), () => {})
   supply(ONE)
 })
 
 afterEach(async () => {
   unmountAll()
-  safety.forget()
   queue.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-/* -------------------------------------------------- §1 · one band, and everything else clears it */
-
-describe('§1 · the overlay layer reserves ONE band, and both cards live in it', () => {
-  /**
-   * 🔴 **The three widths `392` measured, and for its reason.** `--app-min-w` is 1180, the window
-   * opens at 1200, and 1440 is the other width this project photographs — so the floor, the
-   * default and the wide case are three samples of one arithmetic rather than one lucky layout.
-   *
-   * ⛔ **The band does not move with the window**, which is the property that lets a panel reserve
-   * a gutter for it once and be right at every size.
-   */
-  for (const width of [1440, 1200, 1180]) {
-    it(`🔴 at ${String(width)}px the band is 10px–210px and holds both cards`, async () => {
-      const m = await overlay(width)
-      const band = m.q('overlay-host').querySelector<HTMLElement>('.overlay-corner')!
-      const box = band.getBoundingClientRect()
-      expect(Math.round(box.left)).toBe(10)
-      expect(Math.round(box.width)).toBe(200)
-
-      const stop = m.q('overlay-spawning').getBoundingClientRect()
-      const summons = m.q('persons-queue').getBoundingClientRect()
-      for (const [what, card] of [
-        ['the stop', stop],
-        ['the summons', summons],
-      ] as const) {
-        expect(Math.round(card.left), `${what} left the band`).toBe(10)
-        expect(Math.round(card.right), `${what} left the band`).toBe(210)
-      }
-
-      // ⛔ **They cannot overlap, because one box lays them both out** — asserted anyway, because
-      // *cannot* is a claim about the CSS and this is the measurement of it.
-      expect(summons.bottom).toBeLessThanOrEqual(stop.top)
-      expect(overlaps(stop, summons)).toBe(true)
-      expect(Math.round(stop.bottom)).toBe(width === 0 ? 0 : Math.round(box.bottom))
-    })
-  }
-
-  /**
-   * ⛔ **Both are reachable at once, on top of a real sheet** — and this is the half `390`'s probe
-   * cannot answer alone, because it samples one point and two boxes overlapping everywhere except
-   * their centres would both pass it. Here the rects say they are stacked AND both centres live.
-   */
-  it('🔴 both cards are reachable at once', async () => {
-    const m = await overlay(1180)
-    expect(m.all('capabilities-sheet').length).toBeGreaterThan(0)
-    expect(reachable(m.q('overlay-spawning')), 'the summons covers the stop').toBe(true)
-    expect(reachable(m.q('persons-queue')), 'the stop covers the summons').toBe(true)
+describe('The waiting queue stays reachable in an overlay', () => {
+  it.each([1440, 1200, 1180])('keeps the queue in its band at %spx', async (width) => {
+    const m = await overlay(width)
+    const band = m.q('overlay-host').querySelector<HTMLElement>('.overlay-corner')!
+    const box = band.getBoundingClientRect()
+    const queue = m.q('persons-queue')
+    const card = queue.getBoundingClientRect()
+    expect(Math.round(box.left)).toBe(10)
+    expect(Math.round(box.width)).toBe(200)
+    expect(Math.round(card.left)).toBe(10)
+    expect(Math.round(card.right)).toBe(210)
+    expect(Math.round(card.bottom)).toBe(Math.round(box.bottom))
+    expect(reachable(queue)).toBe(true)
   })
 
-  /** ⚠️ And the planted control for THAT: a full-bleed layer above them takes both. */
-  it('⛔ the control: a layer above the pair makes both unreachable', async () => {
+  it('a layer above the queue makes it unreachable', async () => {
     const m = await overlay(1180)
     const lid = document.createElement('div')
     lid.style.cssText = 'position:fixed;inset:0;z-index:3;background:#fff'
     m.q('overlay-host').append(lid)
     await nextTick()
-    expect(reachable(m.q('overlay-spawning'))).toBe(false)
     expect(reachable(m.q('persons-queue'))).toBe(false)
     lid.remove()
   })
 
-  /**
-   * 🔴 **A long queue cannot push the emergency stop off the screen.** The column is bounded and
-   * the list inside the summons scrolls; without that, nine questions would carry the one control
-   * a person reaches for at the worst moment up past the top of the window.
-   */
-  it('🔴 nine questions do not move the stop', async () => {
-    const m = await overlay(1180)
-    const alone = m.q('overlay-spawning').getBoundingClientRect()
-    supply(
-      Array.from({ length: 9 }, (_unused, index) =>
-        asked({ requestId: `req_${String(index)}`, askedBy: `sess_worker-${String(index)}` }),
-      ),
-    )
-    await nextTick()
-    const crowded = m.q('overlay-spawning').getBoundingClientRect()
-    expect(Math.round(crowded.top)).toBe(Math.round(alone.top))
-    expect(Math.round(crowded.bottom)).toBe(Math.round(alone.bottom))
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
-    // ⛔ …and the summons above it stayed inside the window rather than growing out of the top.
-    expect(m.q('persons-queue').getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
-  })
-
-  it('⛔ nothing is drawn at all when nothing is waiting, so it can cover nothing', async () => {
+  it('draws no queue when nothing is waiting', async () => {
     supply([])
     const m = await overlay(1180)
     expect(m.all('persons-queue')).toEqual([])
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
   })
-})
 
-/* -------------------------------------------------------- §2 · it does not move the emergency stop */
-
-describe('§2 · the stop keeps every property 390 gave it', () => {
-  /**
-   * 🔴 **One Shift+Tab from the opening focus still lands on the stop** — the property `390`
-   * asserted, re-measured in the state that could have broken it: with the summons drawn. ⛔ It is
-   * a paired negative by construction, because with nothing waiting the summons is not in the DOM
-   * and the old assertion is vacuous about this.
-   */
-  it('🔴 one Shift+Tab reaches the stop, WITH the summons on screen', async () => {
+  it('reaches the queue with Shift+Tab from the opening focus', async () => {
     const m = await overlay(1180)
-    expect(m.all('persons-queue').length).toBe(1)
     tab(true)
     await nextTick()
-    expect(m.q('overlay-spawning').contains(document.activeElement)).toBe(true)
+    expect(m.q('persons-queue').contains(document.activeElement)).toBe(true)
   })
 
   it('⛔ the summons does not take the focus a dialog opens with', async () => {
@@ -513,7 +432,7 @@ describe('§2 · the stop keeps every property 390 gave it', () => {
    * moves nothing and a test written that way would be measuring the harness. The host's own
    * selector is the tab order, so this reads it.
    */
-  it('🔴 the summons sits immediately before the stop in the host’s own focus order', async () => {
+  it('🔴 the last focus in the overlay is reachable through the queue', async () => {
     const m = await overlay(1180)
     const host = m.q('overlay-host')
     const FOCUSABLE =
@@ -521,8 +440,7 @@ describe('§2 · the stop keeps every property 390 gave it', () => {
     const order = [...host.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => el.offsetParent !== null || el === document.activeElement,
     )
-    expect(order.at(-1)).toBe(m.q('overlay-spawning'))
-    expect(order.at(-2)).toBe(m.q('persons-queue-go-sess_worker-7:req_1'))
+    expect(order.at(-1)).toBe(m.q('persons-queue-go-sess_worker-7:req_1'))
     expect(host.contains(m.q('persons-queue'))).toBe(true)
 
     // ⛔ **The paired negative**: with nothing waiting, the stop is still last and the element
@@ -533,8 +451,7 @@ describe('§2 · the stop keeps every property 390 gave it', () => {
     const without = [...host.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => el.offsetParent !== null || el === document.activeElement,
     )
-    expect(without.at(-1)).toBe(m.q('overlay-spawning'))
-    expect(m.q('capabilities-sheet').contains(without.at(-2)!)).toBe(true)
+    expect(m.q('capabilities-sheet').contains(without.at(-1)!)).toBe(true)
   })
 
   /**
@@ -941,10 +858,6 @@ describe('§7 · paper, not the near-black it would inherit', () => {
     expect(luminance(paintedBackground(card))).toBeLessThan(0.2)
     m.q('overlay-host').setAttribute('data-chat-theme', 'light')
     expect(luminance(paintedBackground(card))).toBeGreaterThan(0.8)
-
-    // ⚑ …and it is the same surface the stop lane paints, which is what makes them one column
-    // rather than two cards that happen to look alike.
-    expect(paintedBackground(card)).toEqual(paintedBackground(m.q('overlay-spawning')))
   })
 
   /**
@@ -1217,7 +1130,7 @@ describe('§9 · a decision, its words, and the two groups', () => {
    * that grew without limit would push it off the screen, which is the one thing this card may
    * never do.
    */
-  it('🔴 twelve of each still leaves the emergency stop on screen, under one scroller', async () => {
+  it('🔴 both groups stay on screen and share one scroller', async () => {
     const many = Array.from({ length: 12 }, (_unused, index) =>
       asked({ requestId: `req_e${String(index)}`, askedBy: `sess_e${String(index)}` }),
     )
@@ -1233,10 +1146,7 @@ describe('§9 · a decision, its words, and the two groups', () => {
     expect(scrollers).toHaveLength(1)
     expect((scrollers[0] as HTMLElement).className).toContain('pq-body')
 
-    const stop = m.q('overlay-spawning').getBoundingClientRect()
-    expect(stop.top).toBeGreaterThanOrEqual(0)
-    expect(stop.bottom).toBeLessThanOrEqual(808)
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
+    expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(808)
     expect(card.getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
     // ⚑ **And both groups are really in there**, so the bound is holding 24 rows rather than
     // hiding half of them behind a `v-if` this test never noticed.
@@ -1359,9 +1269,9 @@ describe('§10 · the answers are reachable in the corner, and they change nothi
    * assertion is the band's own arithmetic, unchanged, with the tallest row this surface can draw
    * inside it.
    */
-  it('⛔ answers do not widen the band, and do not push the stop off the screen', async () => {
+  it('⛔ answers stay within the queue band', async () => {
     const m = await overlay(1180)
-    const alone = m.q('overlay-spawning').getBoundingClientRect()
+    const alone = m.q('persons-queue').getBoundingClientRect()
     supply(
       Array.from({ length: 6 }, (_unused, index) =>
         asked({ requestId: `req_${String(index)}`, askedBy: `sess_worker-${String(index)}` }),
@@ -1381,9 +1291,9 @@ describe('§10 · the answers are reachable in the corner, and they change nothi
     const box = band.getBoundingClientRect()
     expect(Math.round(box.left)).toBe(10)
     expect(Math.round(box.width)).toBe(200)
-    const crowded = m.q('overlay-spawning').getBoundingClientRect()
+    const crowded = m.q('persons-queue').getBoundingClientRect()
     expect(Math.round(crowded.bottom)).toBe(Math.round(alone.bottom))
-    expect(reachable(m.q('overlay-spawning'))).toBe(true)
+    expect(reachable(m.q('persons-queue'))).toBe(true)
     expect(m.q('persons-queue').getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
     // ⛔ **The answers stayed INSIDE the 200px column**, rather than overflowing it sideways into
     // the sheet — which a row of side-by-side buttons would have done at this width.

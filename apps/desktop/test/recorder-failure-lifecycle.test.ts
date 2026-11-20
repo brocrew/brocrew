@@ -22,7 +22,7 @@ describe('a recorder failure leaves the provider lifecycle intact', () => {
     world = aServiceWorld()
     world.anAgent('giver', 'normal')
     world.anAgent('helper', 'normal')
-    host = world.aHost({ servicesOn: false })
+    host = world.aHost()
     giver = (
       await host.createSession(
         { provider: 'claude', profileId: 'giver', cwd: world.folder, approvalMode: 'auto' },

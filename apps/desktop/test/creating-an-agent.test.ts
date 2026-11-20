@@ -375,24 +375,20 @@ describe('419 · creating an agent, and the provider it runs on', () => {
       },
     )
 
-    it('⛔ the kill switch refuses a creation, and the refusal says a person has to change it', async () => {
+    it('creates an agent when the retired spawning column still holds off', async () => {
+      await host.closeAll()
+      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
+      const savedPolicy = db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'")
+      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
+      store = createSessionStore(db, tick)
+      host = buildHost()
+
       const tools = await anAgentThatMayCreate()
-      host.setSpawningEnabled(false)
-      const refused = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
-
-      // ⛔ **Creating is not spawning, and it is refused anyway** — with the switch off, every
-      // identity it could mint is one nothing can start, which is the durable empty row criterion
-      // 12 exists to prevent, arriving in the state a person entered by asking the app to stop.
-      expect(refused['rail']).toBe('spawning-disabled')
-      expect(refused['permanence']).toBe('until-a-person-changes-it')
-      expect(String(refused['reason'])).toContain('Nothing was created')
-      expect(identityRow('archivist')).toBeUndefined()
-
-      // ⚑ The pair: the switch back on, and the same call creates.
-      host.setSpawningEnabled(true)
       expect((await callOn(tools, 'create_agent', { profile_slug: 'archivist' }))['outcome']).toBe(
         'ok',
       )
+      expect(identityRow('archivist')).toBeDefined()
+      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
     })
 
     it('⚑ a toolset that outlives its conversation creates as the profile that conversation’s record names', async () => {

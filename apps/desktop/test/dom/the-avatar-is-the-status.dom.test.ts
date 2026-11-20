@@ -104,7 +104,6 @@ const AGENTS: AgentIdentities = {
     use('newbie'),
     STARTER_USE,
   ],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

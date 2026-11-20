@@ -32,7 +32,7 @@ const factoryOf = (context: InstructionContext): string => {
  * Launches that differ in profile and in who started them. The core reads neither; only BroBot's
  * profile adds its own paragraphs.
  */
-const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'spawningEnabled' | 'others'>[] = [
+const LAUNCHES: readonly Omit<InstructionContext, 'cwd' | 'others'>[] = [
   {
     profileSlug: DEFAULT_PROFILE_ID,
     startedBy: null,
@@ -60,7 +60,6 @@ describe('one set of instructions for every agent', () => {
       const contexts = LAUNCHES.map((launch): InstructionContext => ({
         ...launch,
         cwd,
-        spawningEnabled: true,
         others: { shown: [], more: 0 },
       }))
       const published = contexts.map((context, index) => {

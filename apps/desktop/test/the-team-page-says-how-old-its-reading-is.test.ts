@@ -43,7 +43,6 @@ const source: AgentIdentities = {
       runsOn: { provider: null, from: 'nothing-yet' },
     },
   ],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

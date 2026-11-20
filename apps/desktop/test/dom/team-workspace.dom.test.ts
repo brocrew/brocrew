@@ -59,7 +59,6 @@ const agents: AgentIdentities = {
       runsOn: { provider: null, from: 'nothing-yet' },
     },
   ],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
@@ -100,6 +99,7 @@ describe('Team workspace fold and door', () => {
   it('renders literal slug fallback, never-run history, provider absence, and orphan folders', () => {
     const mounted = mount(TeamWorkspace, { agents, store })
     expect(mounted.q('team-workspace').textContent).toContain('BroBot')
+    expect(mounted.all('team-services-switch')).toHaveLength(0)
     expect(mounted.q('team-never-run-unnamed').textContent).toContain('Never run')
     // 🔴 **593 · the engine is LABELLED and it is behind the disclosure** — `EXT-012` §1 measured
     // the defect this repairs: *"three different KINDS of fact — a count, a category, an engine —
@@ -133,6 +133,10 @@ describe('Team workspace fold and door', () => {
     search.value = ''
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await nextTick()
+    expect(mounted.q('team-removal-means').textContent).toBe(
+      'Removing an agent removes it from the team and clears its server selections. ' +
+        'Its Claude and Codex folders stay on disk, and creating the same name again picks them back up.',
+    )
     mounted.q('team-remove-unnamed').click()
     await Promise.resolve()
     expect(store.renameTo).toHaveBeenCalledWith('running', null)
