@@ -25,8 +25,8 @@ import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-doub
 /**
  * A failure before a Message is recorded rejects the call. Once the recipient holds it,
  * a failed start returns that recorded ID and its cannot-run state, with the diagnostic
- * in the log. Errors reading the delivery outcome or writing the sender's receipt retain
- * their own error boundary.
+ * in the log. Errors reading the delivery outcome return unknown delivery; failed sender attribution
+ * preserves the known state and is reported separately.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -198,7 +198,7 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
   })
 
   it.each([false, true])(
-    'surfaces the post-wake receipt read error, even if recording the sender receipt also fails: %s',
+    'returns unknown delivery without guessing sender attribution: %s',
     async (failReceiptWrite) => {
       const { pm, worker, piece } = await aWorkerThatStopped()
       const fault = new Error('the post-wake message receipt read failed')
@@ -215,10 +215,18 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
         return append(...args)
       })
       try {
-        await expect(wakeByMessage(pm, worker, piece)).rejects.toBe(fault)
+        const result = await wakeByMessage(pm, worker, piece)
+        expect(result).toMatchObject({
+          outcome: 'ok',
+          delivery: 'unknown',
+          receipt: {
+            recorded: { kind: 'message', id: expect.any(String) },
+            recipient: { id: worker, state: { kind: 'delivery-unknown' } },
+          },
+        })
         expect(
           write.mock.calls.filter(([id, , event]) => id === pm && event.type === 'message_sent'),
-        ).toHaveLength(1)
+        ).toHaveLength(0)
       } finally {
         lookup.mockRestore()
         write.mockRestore()

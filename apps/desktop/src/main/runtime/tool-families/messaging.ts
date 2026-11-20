@@ -300,12 +300,13 @@ export function createMessageAgentTool(
         )
         const heldBeforeStart = holdingBeforeStart === null ? null : await holdingBeforeStart
         if (heldBeforeStart !== null) {
-          const { id, to, state } = heldBeforeStart
+          const { id, to, state, senderHistoryUnconfirmed } = heldBeforeStart
           if (state.kind === 'started' && says === 'follow-up' && about !== null) {
             host.takeBackWhatItsQuestionMadeFalse({ agent: to, piece: about.piece }, by)
           }
           const { receipt, said } = host.receiptForSend({
             recorded: { kind: 'message', id, taskLabel: about?.label ?? null },
+            ...(senderHistoryUnconfirmed ? { senderHistoryUnconfirmed } : {}),
             to,
             state,
             attachments,
@@ -314,7 +315,12 @@ export function createMessageAgentTool(
           return answer(
             {
               outcome: 'ok',
-              delivery: state.kind === 'started' ? 'sent' : 'queued',
+              delivery:
+                state.kind === 'started'
+                  ? 'sent'
+                  : state.kind === 'delivery-unknown'
+                    ? 'unknown'
+                    : 'queued',
               messageAct,
               agent,
               kind: says,

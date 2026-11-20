@@ -1,5 +1,5 @@
 import type { ContextReading } from '@brobot2/runtime'
-import type { SendReceipt } from '../../shared/tool-outcome'
+import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
 import { describeConversation } from './conversation-address'
 
 export const THE_ANSWER_ARRIVES_AS_A_MESSAGE = 'The answer arrives as a message.'
@@ -8,7 +8,7 @@ type ConversationReads = Parameters<typeof describeConversation>[0]
 
 type DeliveryFacts = Pick<SendReceipt, 'attachments'> & {
   readonly to: string
-  readonly state: SendReceipt['recipient']['state']
+  readonly senderHistoryUnconfirmed?: true
 }
 
 type Recorded = SendReceipt['recorded']
@@ -16,12 +16,14 @@ export type SendFacts = DeliveryFacts &
   (
     | {
         readonly recorded: Recorded & { readonly kind: 'task' }
+        readonly state: SendRecipientState
         readonly profile: string
         readonly targetKind: 'new' | 'continued'
         readonly context?: ContextReading | null
       }
     | {
         readonly recorded: Recorded & { readonly kind: 'message' | 'question' | 'reply' }
+        readonly state: SendReceipt['recipient']['state']
         readonly waitsFor?: string | null
         readonly heldBehindTurn?: boolean
       }
@@ -37,11 +39,19 @@ export function sendReceipt(
     recorded: facts.recorded,
     recipient: { id: facts.to, address, title, state: facts.state },
     attachments: facts.attachments,
+    ...(facts.senderHistoryUnconfirmed ? { senderHistoryUnconfirmed: true } : {}),
+  }
+  if (!('profile' in facts)) {
+    let said = outboundReceiptSaid(facts, address, conversation)
+    if (facts.senderHistoryUnconfirmed) {
+      if (facts.state.kind === 'started' || facts.state.kind === 'queued') {
+        said = `Your message ${facts.recorded.id} is recorded for ${conversation}. ${said}`
+      }
+      said += " The sender's history could not be confirmed."
+    }
+    return { receipt, said }
   }
   const { recorded, state } = facts
-  if (!('profile' in facts)) {
-    return { receipt, said: outboundReceiptSaid(facts, address, conversation) }
-  }
   const task = `Task ${recorded.taskLabel}`
   if (state.kind === 'started' || state.kind === 'queued') {
     const delivery = state.kind === 'started' ? 'sent to' : 'held for'
@@ -90,6 +100,9 @@ function outboundReceiptSaid(
     : recorded.kind === 'reply'
       ? 'Your reply'
       : `Your message ${recorded.id}`
+  if (state.kind === 'delivery-unknown') {
+    return `${subject} is recorded for ${conversation}. Delivery could not be determined.`
+  }
   if (state.kind === 'cannot-run') {
     if (state.cause.code === 'provider-file-missing') {
       const recovery = isQuestion

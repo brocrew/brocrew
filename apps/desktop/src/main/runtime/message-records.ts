@@ -1,4 +1,4 @@
-import type { SendRecipientState } from '../../shared/tool-outcome'
+import type { MessageRecipientState } from '../../shared/tool-outcome'
 import type { Provider } from '@brobot2/shared'
 import type { AgentState } from '../../shared/agent-state-contracts'
 import type { AppNotice } from '../../shared/app-notice'
@@ -397,5 +397,6 @@ export type Told<D extends NewBriefDelivery = TellDelivery> =
 export interface RecordedAgentMessage {
   readonly id: string
   readonly to: string
-  readonly state: SendRecipientState
+  readonly state: MessageRecipientState
+  readonly senderHistoryUnconfirmed?: true
 }

@@ -1,4 +1,4 @@
-import type { SendRecipientState } from '../../shared/tool-outcome'
+import type { MessageRecipientState, SendRecipientState } from '../../shared/tool-outcome'
 import type { RecordedAgentMessage } from './message-records'
 import { errorMessage } from './session-disclosures'
 
@@ -20,7 +20,7 @@ export async function startRecordedMessage(
   message: RecordedMessage,
   deps: StartRecordedMessageDependencies,
 ): Promise<RecordedAgentMessage> {
-  let state: SendRecipientState | null = null
+  let state: MessageRecipientState | null = null
   try {
     try {
       await deps.start()
@@ -33,15 +33,22 @@ export async function startRecordedMessage(
     if (state === null) await deps.waitForFlush()
     state ??= deps.state()
   } catch (error) {
-    try {
-      message.noteSending?.('queued')
-    } catch (receiptError) {
-      console.warn(
-        `message_agent: could not keep the sender receipt: ${errorMessage(receiptError)}`,
-      )
-    }
-    throw error
+    console.warn(`message_agent: could not determine delivery: ${errorMessage(error)}`)
+    state = { kind: 'delivery-unknown' }
   }
-  message.noteSending?.(state.kind === 'started' ? 'sent' : 'queued')
-  return { id: message.id, to: message.to, state }
+  let senderHistoryUnconfirmed: true | undefined
+  if (state.kind !== 'delivery-unknown') {
+    try {
+      message.noteSending?.(state.kind === 'started' ? 'sent' : 'queued')
+    } catch (error) {
+      console.warn(`message_agent: could not confirm sender history: ${errorMessage(error)}`)
+      senderHistoryUnconfirmed = true
+    }
+  }
+  return {
+    id: message.id,
+    to: message.to,
+    state,
+    ...(senderHistoryUnconfirmed ? { senderHistoryUnconfirmed } : {}),
+  }
 }

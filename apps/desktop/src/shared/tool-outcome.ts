@@ -16,7 +16,10 @@ export type SendRecipientState =
   | { readonly kind: 'queued'; readonly behind: number }
   | { readonly kind: 'cannot-run'; readonly cause: CannotRun; readonly needsPerson?: true }
 
+export type MessageRecipientState = SendRecipientState | { readonly kind: 'delivery-unknown' }
+
 export interface SendReceipt {
+  readonly senderHistoryUnconfirmed?: true
   readonly recorded: {
     readonly kind: 'task' | 'message' | 'question' | 'reply'
     readonly id: string
@@ -26,7 +29,7 @@ export interface SendReceipt {
     readonly id: string
     readonly address: string
     readonly title: string
-    readonly state: SendRecipientState
+    readonly state: MessageRecipientState
   }
   readonly attachments: readonly (
     | { readonly resource: string; readonly name: string; readonly overflowField?: string }

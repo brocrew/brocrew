@@ -170,56 +170,154 @@ describe('five more tools answer field failures through Claude MCP', () => {
     owned: world.store.piecesOwnedBy(caller),
   })
 
-  it.each(['Claude', 'Codex'] as const)(
-    '%s keeps the recorded Message receipt after an unclassified start failure',
-    async (adapter) => {
-      await host.close(worker, world.window)
-      const failure = new Error('fictional unclassified resume failure')
-      const wake = vi.spyOn(host, 'resumeSession').mockRejectedValueOnce(failure)
-      const wire = await server('message_agent')
-      const text = 'Keep these notes until this conversation can run.'
-      const args = { agent: worker, text }
-      let said: string
-      if (adapter === 'Claude') {
-        said = words(await wire.call(args))
-      } else {
-        const response = await answerCodexToolCall(wire.set, {
-          namespace: 'brobot',
-          tool: 'message_agent',
-          arguments: args,
-        })
-        expect(response.success).toBe(true)
-        said = response.contentItems
-          .map((item) => (item.type === 'inputText' ? item.text : ''))
-          .join('\n')
-      }
-      const receipt = calls.at(-1)?.structured?.receipt as SendReceipt
-      expect(receipt.recorded).toMatchObject({ kind: 'message', id: expect.any(String) })
-      expect(receipt.recipient).toMatchObject({
-        id: worker,
-        state: { kind: 'cannot-run', cause: { code: 'could-not-start' } },
-      })
-      expect(said).toContain(`Your message ${receipt.recorded.id} is recorded for conversation`)
-      expect(said).not.toContain(failure.message)
-      expect(world.store.messagesWaitingIn(worker)).toEqual([
-        expect.objectContaining({ messageId: receipt.recorded.id, text }),
-      ])
-      expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(0)
-      wake.mockRestore()
-      await host.resumeSession(worker, world.window)
-      await vi.waitFor(() => {
-        expect(world.store.messagesWaitingIn(worker)).toEqual([])
-        expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(1)
-      })
-      expect(world.ledger(worker)).toContainEqual(
-        expect.objectContaining({
-          type: 'message_unqueued',
-          messageId: receipt.recorded.id,
-          reason: 'sent',
-        }),
+  it.each(
+    (['Claude', 'Codex'] as const).flatMap((adapter) =>
+      (['start', 'readback', 'sender-started', 'sender-queued', 'sender-published'] as const).map(
+        (failureAt) => ({ adapter, failureAt }),
+      ),
+    ),
+  )('$adapter keeps recording facts after $failureAt failure', async ({ adapter, failureAt }) => {
+    await host.close(worker, world.window)
+    const failure = new Error('fictional unclassified resume failure')
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const wake =
+      failureAt === 'start' ? vi.spyOn(host, 'resumeSession').mockRejectedValueOnce(failure) : null
+    const lookup =
+      failureAt === 'readback'
+        ? vi.spyOn(host, 'stateOfARecordedMessage').mockImplementation(() => {
+            throw failure
+          })
+        : null
+    const append = world.store.append.bind(world.store)
+    const senderWrites = vi.spyOn(world.store, 'append').mockImplementation((...args) => {
+      const senderReceipt = args[0] === caller && args[2].type === 'message_sent'
+      if (senderReceipt && failureAt.startsWith('sender-') && failureAt !== 'sender-published')
+        throw failure
+      return append(...args)
+    })
+    const publish = world.window.send.bind(world.window)
+    const publication = vi.spyOn(world.window, 'send').mockImplementation((message) => {
+      if (
+        failureAt === 'sender-published' &&
+        message.sessionId === caller &&
+        message.event.type === 'message_sent'
       )
-    },
-  )
+        throw failure
+      publish(message)
+    })
+    if (failureAt === 'sender-queued') {
+      world.onResumed = (_profile, handle) => {
+        handle.send = async () => {
+          throw new Error('fictional delivery blocked before sending')
+        }
+      }
+    }
+    const wire = await server('message_agent')
+    const text = 'Keep these notes until this conversation can run.'
+    const args = { agent: worker, text }
+    let said: string
+    if (adapter === 'Claude') {
+      said = words(await wire.call(args))
+    } else {
+      const response = await answerCodexToolCall(wire.set, {
+        namespace: 'brobot',
+        tool: 'message_agent',
+        arguments: args,
+      })
+      expect(response.success).toBe(true)
+      said = response.contentItems
+        .map((item) => (item.type === 'inputText' ? item.text : ''))
+        .join('\n')
+    }
+    const receipt = calls.at(-1)?.structured?.receipt as SendReceipt
+    expect(receipt.recorded).toMatchObject({ kind: 'message', id: expect.any(String) })
+    expect(receipt.recipient).toMatchObject({
+      id: worker,
+      state:
+        failureAt === 'start'
+          ? { kind: 'cannot-run', cause: { code: 'could-not-start' } }
+          : {
+              kind:
+                failureAt === 'readback'
+                  ? 'delivery-unknown'
+                  : failureAt !== 'sender-queued'
+                    ? 'started'
+                    : 'queued',
+            },
+    })
+    expect(said).toContain(`Your message ${receipt.recorded.id} is recorded for conversation`)
+    expect(said).not.toContain(failure.message)
+    expect(warned.mock.calls.flat().join(' ')).toContain(failure.message)
+    if (failureAt === 'readback') {
+      expect(said).toContain('Delivery could not be determined.')
+      expect(lookup).toHaveBeenCalledTimes(1)
+      expect(
+        senderWrites.mock.calls.filter(
+          ([id, , event]) => id === caller && event.type === 'message_sent',
+        ),
+      ).toHaveLength(0)
+    }
+    if (failureAt.startsWith('sender-')) {
+      expect(receipt).toMatchObject({ senderHistoryUnconfirmed: true })
+      expect(
+        senderWrites.mock.calls.filter(
+          ([id, , event]) => id === caller && event.type === 'message_sent',
+        ),
+      ).toHaveLength(1)
+      expect(said).toContain("The sender's history could not be confirmed.")
+      expect(said).toContain(failureAt !== 'sender-queued' ? 'Delivered to ' : 'Held for ')
+    }
+    if (failureAt === 'sender-queued')
+      expect(receipt.recipient.state).toMatchObject({ kind: 'queued', behind: 0 })
+    if (failureAt === 'sender-published') {
+      expect(
+        world
+          .ledger(caller)
+          .filter(
+            (event) => event.type === 'message_sent' && event.messageId === receipt.recorded.id,
+          ),
+      ).toHaveLength(1)
+    }
+    lookup?.mockRestore()
+    senderWrites.mockRestore()
+    publication.mockRestore()
+    const alreadySent =
+      failureAt === 'readback' || failureAt === 'sender-started' || failureAt === 'sender-published'
+    expect(
+      world
+        .ledger(worker)
+        .filter(
+          (event) => event.type === 'message_queued' && event.messageId === receipt.recorded.id,
+        ),
+    ).toHaveLength(1)
+    if (alreadySent) {
+      expect(world.store.messagesWaitingIn(worker)).toEqual([])
+      expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(1)
+      await host.close(worker, world.window)
+      await host.resumeSession(worker, world.window)
+      expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(1)
+      return
+    }
+    expect(world.store.messagesWaitingIn(worker)).toEqual([
+      expect.objectContaining({ messageId: receipt.recorded.id, text }),
+    ])
+    expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(0)
+    if (failureAt === 'sender-queued') return
+    wake?.mockRestore()
+    world.onResumed = null
+    await host.resumeSession(worker, world.window)
+    await vi.waitFor(() => {
+      expect(world.store.messagesWaitingIn(worker)).toEqual([])
+      expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(1)
+    })
+    expect(world.ledger(worker)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_unqueued',
+        messageId: receipt.recorded.id,
+        reason: 'sent',
+      }),
+    )
+  })
 
   it('give_work still requires definition_of_done at the handler', async () => {
     const wire = await server('give_work')
