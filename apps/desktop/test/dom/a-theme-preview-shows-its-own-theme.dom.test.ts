@@ -1,5 +1,4 @@
-import { nextTick } from 'vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ThemesSection from '../../src/renderer/src/components/ThemesSection.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { previewCss } from '../../src/renderer/src/lib/theme-previews'
@@ -84,18 +83,6 @@ function bridge(trace: PreviewTrace): ThemesBridge {
   }
 }
 
-const settle = async (): Promise<void> => {
-  for (let i = 0; i < 6; i++) {
-    await new Promise((done) => setTimeout(done, 0))
-    await nextTick()
-  }
-  // IntersectionObserver delivers visible cards after layout.
-  for (let i = 0; i < 2; i++) {
-    await new Promise<void>((done) => requestAnimationFrame(() => done()))
-    await nextTick()
-  }
-}
-
 /** The painted colours of one card's preview, inside the light scope as on the Providers screen. */
 async function cardColours(): Promise<Record<string, Record<string, string>>> {
   const events: unknown[] = []
@@ -139,9 +126,17 @@ async function cardColours(): Promise<Record<string, Record<string, string>>> {
   try {
     const m = mount(ThemesSection, { themes: bridge(trace) }, { width: 900 })
     m.host.setAttribute('data-chat-theme', 'light')
-    await settle()
+    const ids = ['classic', 'sparse', 'tuned']
+    await vi.waitFor(() => {
+      for (const id of ids) {
+        expect(
+          m.host.querySelector(`[data-theme-id="${id}"] [data-theme-preview="${id}"]`),
+          `the ${id} preview rendered`,
+        ).toBeInstanceOf(Element)
+      }
+    })
     const out: Record<string, Record<string, string>> = {}
-    for (const id of ['classic', 'sparse', 'tuned']) {
+    for (const id of ids) {
       const at = (part: string): string => {
         try {
           return getComputedStyle(m.host.querySelector(`[data-theme-id="${id}"] ${part}`)!)
