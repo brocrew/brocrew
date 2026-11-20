@@ -30007,7 +30007,7 @@ export class RuntimeHost implements LiveHost {
    * ONE listing of this Mac's processes ({@link RuntimeHostDeps.listProcesses}), one at a time, and
    * no sooner than {@link RESOURCE_SAMPLE_MS} after the last one settled: an ask joins the one under
    * way, or is answered with the last. ⛔ **Nothing is measured while nobody asks** — no timer, no
-   * watch. ⚑ The listing is bounded (`process-listing.ts`), so one under way always settles.
+   * watch. ⚑ A listing under way is joined, never doubled; on Windows it lasts as long as PowerShell does.
    *
    * ⚑ **By pid, never by name**: the roots are each running conversation's
    * {@link SessionHandle.providerPid} — the child its adapter spawned and holds — and a process counts
