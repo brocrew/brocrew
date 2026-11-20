@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
+import { AGENT_DISPLAY_NAME_CHARS } from '../../src/shared/runtime-ipc'
 import {
   acceptEvent,
   createSessionRecord,
@@ -61,10 +62,10 @@ const conversation = (id: string, where: string, said: string | null): unknown =
   return record
 }
 
-const identity = (slug: string): unknown => ({
+const identity = (slug: string, displayName: string | null = null): unknown => ({
   id: `agp:default:${slug}`,
   slug,
-  displayName: null,
+  displayName,
   createdAt: NOW,
   provider: null,
   externalMcpServerIds: [],
@@ -112,7 +113,7 @@ const RECORDED = [
   },
 ]
 
-async function rail(width: number): Promise<Mounted> {
+async function rail(width: number, displayName: string | null = null): Promise<Mounted> {
   const stub = window as unknown as { api?: unknown }
   stub.api = {
     runtime: {
@@ -121,7 +122,7 @@ async function rail(width: number): Promise<Mounted> {
     },
   }
   const agents = {
-    identities: [identity('default'), identity('project-manager'), identity('worker')],
+    identities: [identity('default', displayName), identity('project-manager'), identity('worker')],
     foldersWithoutARow: [],
     use: [],
     defaultApprovalMode: 'ask',
@@ -461,6 +462,31 @@ describe('§1 · the roster, at both shipped widths', () => {
       expect(getComputedStyle(activity).overflowX).toBe('hidden')
       expect(getComputedStyle(activity).textOverflow).toBe('ellipsis')
       expect(titleRecovers(activity)).toBe(true)
+    },
+  )
+
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · preserves visible age beside a maximum-length profile name',
+    async (width) => {
+      const name = 'Project manager '.repeat(14).slice(0, AGENT_DISPLAY_NAME_CHARS)
+      expect(name).toHaveLength(AGENT_DISPLAY_NAME_CHARS)
+      const m = await rail(width, name)
+      const row = m.q('open-session-sess_named')
+      const prefix = row.querySelector<HTMLElement>('.rail-standing-prefix')!
+      const age = row.querySelector<HTMLElement>('time')!
+      const standing = age.closest('small')!
+      expect(prefix.textContent).toContain(name)
+      expect(getComputedStyle(prefix).textOverflow).toBe('ellipsis')
+      expect(titleRecovers(prefix)).toBe(true)
+      expect(age.textContent?.trim()).toBe('1102d ago')
+      expect(age.getBoundingClientRect().width).toBeGreaterThan(
+        Number.parseFloat(getComputedStyle(age).fontSize),
+      )
+      expect(age.getBoundingClientRect().right).toBeLessThanOrEqual(
+        standing.getBoundingClientRect().right + 0.01,
+      )
+      expect(cutsOf(age).every(({ by }) => by === age)).toBe(true)
+      expect(titleRecovers(age)).toBe(true)
     },
   )
 

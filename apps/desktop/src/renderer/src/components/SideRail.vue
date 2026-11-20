@@ -1863,11 +1863,14 @@ const platform = platformHere()
 }
 .rail-standing-with-age .rail-standing-prefix {
   flex: none;
+  max-width: calc(100% - 4em - var(--space-4));
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .rail-standing-age {
   display: flex;
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 4em;
 }
 .rail-standing-age > span {
   flex: none;
