@@ -763,12 +763,14 @@ function rowTitle(row: RailRow): string {
 }
 
 function profileName(row: RailRow): string {
-  return row.worker ? workerName(row.worker, props.agents?.identities ?? null) : row.label
+  return row.worker && props.agents?.identities.some((one) => one.id === row.worker?.identity)
+    ? workerName(row.worker, props.agents.identities)
+    : row.label
 }
 
 function statusLine(row: RailRow, detailed = false): string {
   return [
-    row.brobot || row.named ? row.label : null,
+    !row.brobot && row.named ? row.label : null,
     row.provider,
     detailed ? (row.detail ?? row.word) : row.word,
     !row.brobot && row.activityAt !== undefined ? agoWords(row.activityAt, railMinute.value) : null,

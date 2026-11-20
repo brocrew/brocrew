@@ -51,20 +51,17 @@ async function draw(
   rows: ResumableSessionInfo[],
   activeId: string | null = null,
   renamed?: ConversationIdentity,
-  displayName?: string,
+  rosterMode: 'full' | 'absent' | 'partial' = 'full',
 ) {
   const selected: string[] = []
   const reads: string[][] = []
   const roster = identities(rows.length)
-  const agents = displayName
-    ? {
-        ...roster,
-        identities: [
-          ...roster.identities,
-          { ...roster.identities[0]!, slug: 'brobot', displayName },
-        ],
-      }
-    : roster
+  const agents =
+    rosterMode === 'absent'
+      ? undefined
+      : rosterMode === 'partial'
+        ? { ...roster, identities: [] }
+        : roster
   vi.stubGlobal('api', {
     runtime: {
       listConversations: async () => ({
@@ -280,19 +277,19 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(m.q('side-rail').getBoundingClientRect().width).toBe(252)
     expect(card.getBoundingClientRect().width).toBe(216)
     expect(line.getBoundingClientRect().width).toBe(158)
-    expect(line.textContent).toBe(`BroBot · ${provider} · idle · bakery`)
-    expect(line.title).toBe(`BroBot · ${provider} · idle · bakery`)
+    expect(line.textContent).toBe(`${provider} · idle · bakery`)
+    expect(line.title).toBe(`${provider} · idle · bakery`)
     expect(line.children).toHaveLength(0)
     expect(card.querySelector('time')).toBeNull()
     expect(getComputedStyle(line).display).toBe('block')
     expect(getComputedStyle(line).textOverflow).toBe('ellipsis')
-    visiblePrefix(line, `BroBot · ${provider} · idle`)
+    visiblePrefix(line, `${provider} · idle`)
     expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
   })
 }
 
 for (const width of [252, 266.2]) {
-  it(`keeps the BroBot prefix and helper name visible beside long states at ${width}px`, async () => {
+  it(`keeps the provider and helper name visible beside long states at ${width}px`, async () => {
     const long = 'Lars (the owner of W9.1 · Prepare the full launch list)'
     const row = person(4)
     row.state = { is: 'waiting-on-an-answer', from: long }
@@ -305,8 +302,8 @@ for (const width of [252, 266.2]) {
     m.host.style.width = `${width}px`
     await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
     const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
-    expect(line.textContent).toBe(`BroBot · claude · waiting on an answer from ${long} · bakery`)
-    visiblePrefix(line, 'BroBot · claude')
+    expect(line.textContent).toBe(`claude · waiting on an answer from ${long} · bakery`)
+    visiblePrefix(line, 'claude')
     expect(line.title).toContain(long)
     expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
     const label = m.q('rail-profile-recipe-1')
@@ -327,5 +324,18 @@ for (const width of [252, 266.2]) {
     expect(standing.title).toContain(long)
     m.q('open-session-recipe-1').click()
     expect(m.selected).toEqual(['recipe-1'])
+  })
+}
+
+for (const rosterMode of ['absent', 'partial'] as const) {
+  it(`keeps the listing profile fallback when the worker roster is ${rosterMode}`, async () => {
+    const row = workerRows(1)[0]!
+    const m = await draw([row], null, undefined, rosterMode)
+    await expect.poll(() => m.all(`rail-profile-${row.sessionId}`).length).toBe(1)
+    const label = m.q(`rail-profile-${row.sessionId}`)
+    expect(label.textContent).toBe('recipe-worker · W90.1')
+    expect(label.title).toBe('recipe-worker · W90.1')
+    expect(label.textContent).not.toContain(row.worker!.identity)
+    expect(m.q('rail-address-recipe-1').textContent).toBe('W90.1')
   })
 }
