@@ -8,6 +8,7 @@ import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runti
 import { mount, parseColor, record, unmountAll, type Mounted } from './harness'
 import { memoryStorage } from './memory-storage'
 import { drawnReady, titleRecovers } from './drawn'
+import { acceptEvent } from '../../src/renderer/src/lib/session-record'
 
 const NOW = 1_700_000_000_000
 
@@ -372,8 +373,14 @@ it.each([251.68, 266.2])(
     ]
     const openings = ['Plan the garden for spring', 'Review the bicycle repair options']
     const opened = roots.map(({ sessionId }, index) => {
-      const opened = record([{ type: 'user_turn', text: openings[index]! }], sessionId)
+      const opened = record([], sessionId)
       opened.meta = { ...opened.meta!, sessionId, profileId: 'brobot' }
+      acceptEvent(opened, {
+        sessionId,
+        ordinal: 0,
+        at: NOW,
+        event: { type: 'user_turn', text: openings[index]!, humanInitiated: true },
+      })
       return opened
     })
     let finish!: (identities: ConversationIdentity[]) => void
