@@ -203,7 +203,8 @@ describe('give_work goes to the conversation the giver names', () => {
     const lead = await personOpens('lead')
     const root = store.rootOf(target)!
     expect(root.title).toBeNull()
-    expect(host.nameByItsWork(target)).toBe(`conversation ${root.label} · pm`)
+    expect(store.setAgentDisplayName('pm', 'Trip planner')).toBe(true)
+    expect(host.nameByItsWork(target)).toBe(`conversation ${root.label} · Trip planner`)
     const tools = agentToolsFor(host, lead)
     const firstName = `conversation ${root.label} · Book the hotel`
 
