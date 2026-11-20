@@ -160,6 +160,17 @@ it('uses injected versions and resources on arrival and focus, then stops after 
   expect(out.forbidden).not.toHaveBeenCalled()
 })
 
+function connectionProps() {
+  return reactive({
+    provider: 'claude' as Provider,
+    name: 'Fern',
+    auth: null,
+    keyStatus: null,
+    loginMoved: 0,
+    modelsKnown: false,
+  })
+}
+
 const rows = (provider: Provider, name: string): ProviderConnection[] => [
   {
     id: provider,
@@ -181,14 +192,7 @@ it('keeps injected connection reads scoped to the current provider and ignores l
         finish = resolve
       }),
   )
-  const props = reactive({
-    provider: 'claude' as Provider,
-    name: 'Fern',
-    auth: null,
-    keyStatus: null,
-    loginMoved: 0,
-    modelsKnown: false,
-  })
+  const props = connectionProps()
   const m = surface(ProviderConnections, out.api, props)
   expect(m.q('provider-connections').textContent).toContain('Reading…')
   props.loginMoved++
@@ -267,14 +271,7 @@ it('coalesces fifty same-scope connection notices into the current read and one 
           finishTrailing = resolve
         }),
     )
-  const props = reactive({
-    provider: 'claude' as Provider,
-    name: 'Fern',
-    auth: null,
-    keyStatus: null,
-    loginMoved: 0,
-    modelsKnown: false,
-  })
+  const props = connectionProps()
   const m = surface(ProviderConnections, out.api, props)
   for (let notice = 0; notice < 50; notice++) {
     props.loginMoved++
