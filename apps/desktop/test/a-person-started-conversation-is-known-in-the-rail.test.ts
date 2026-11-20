@@ -21,6 +21,7 @@ it('carries positive person start through both listing halves without treating r
         profileId: DEFAULT_PROFILE_ID,
         cwd: world.folder,
         approvalMode: 'ask',
+        ...(parent === null ? { service: true } : {}),
         ...(parent ? { parentSessionId: parent } : {}),
       })
     }
@@ -51,7 +52,8 @@ it('carries positive person start through both listing halves without treating r
       [...after.resumable, ...after.unresumable].map((row) => [row.sessionId, row]),
     )
     for (const id of ['agent-root', 'rootless', adopted])
-      expect(rows.get(id)?.personStarted).toBe(false)
+      expect(rows.get(id)?.personStarted, id).toBe(false)
+    expect(world.store.rootOf('rootless')).toBeNull()
     expect(world.store.rootOf('agent-root')).not.toBeNull()
     expect(world.store.rootOf(adopted)).not.toBeNull()
   } finally {
