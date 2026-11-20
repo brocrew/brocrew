@@ -943,8 +943,10 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       if (state === 'answered') {
         expect(refused.structured.detail).not.toHaveProperty('called')
         expect(refused.structured.detail).toHaveProperty('endedByYou', true)
+        expect(refused.text).toContain(`You answered ${named} at `)
       } else {
         expect(refused.structured.detail).toHaveProperty('called', thePm)
+        expect(refused.text).toContain(`by ${thePm} at `)
       }
     }
     // ⚑ …and one taken back while its give still waited behind the holder's turn: the row that
@@ -967,6 +969,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(refused.text).toContain(
       `task ${waited.label} · the piece that never reached it has ended (withdrawn)`,
     )
+    expect(refused.text).toContain(`${waited.label} was taken back at `)
   })
 
   it('keeps the root open and lets another conversation withdraw a person-given child', async () => {

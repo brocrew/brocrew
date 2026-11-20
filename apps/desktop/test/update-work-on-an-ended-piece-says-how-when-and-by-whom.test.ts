@@ -335,7 +335,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     // The premise for every name below: the two are told apart, and neither is an id.
     expect(helper).not.toBe(giver)
     expect(helper).not.toMatch(/sess_/)
-    // Read on the day it ended, so the time is said alone.
+    // An ending read the same day shows the time alone.
     expect(clockTimeFrom(answeredAt, clock)).toBe(clockTime(answeredAt))
     const statusRowsBefore = rowsOf(worker, 'work_status_set')
 
@@ -353,7 +353,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     if (root === null) throw new Error('expected the giver root')
     const rootLine = root.title === null ? root.label : `${root.label} · ${root.title}`
     expect(toTheGiver.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')}; only its title can still change. To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
+      `${endedOpening(label, 'the work', 'done')}; only its title can still change. ${label} was answered by ${helper} at ${clockTime(answeredAt)}. To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
     )
     expect(JSON.stringify(toTheGiver)).not.toMatch(/sess_/)
 
@@ -369,7 +369,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
     expect(toTheHelper.detail).not.toHaveProperty('called')
     expect(toTheHelper.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')}. Stop work on that piece; no further reply is owed.`,
+      `${endedOpening(label, 'the work', 'done')}. You answered ${label} at ${clockTime(answeredAt)}. Stop work on that piece; no further reply is owed.`,
     )
 
     const other = await personOpens('other')
@@ -379,7 +379,9 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
       at: answeredAt,
       yoursToRetitle: false,
     })
-    expect(thirdParty.reason).toContain(`${endedOpening(label, 'the work', 'done')}.`)
+    expect(thirdParty.reason).toContain(
+      `${endedOpening(label, 'the work', 'done')}. ${label} was answered by ${helper} at ${clockTime(answeredAt)}.`,
+    )
     expect(thirdParty.reason).not.toMatch(/title can still change|give_work|Stop work/)
 
     // Nothing was written by these refusals, and the piece is still answered.
@@ -438,7 +440,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     const later = await refusedAsEnded(pm, { piece: label, status: 'late' })
     // The moment in the detail is the ending's own, not the reading's.
     expect(later.detail).toMatchObject({ state: 'answered', at: answeredAt, called: helper })
-    expect(later.reason).toBe(thatDay.reason)
+    expect(later.reason).toContain(`${label} was answered by ${helper} at ${said}.`)
+    expect(later.reason).not.toBe(thatDay.reason)
   })
 
   it('a repeated close keeps the actor for each caller and leaves the task closed', async () => {
@@ -676,7 +679,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     ]) {
       const ended = await refusedAsEnded(pm, args)
       expect(ended.reason, JSON.stringify(args)).toContain(
-        `${endedOpening(label, 'Plan the trip', 'done')}; only its title can still change. Stop work on that piece; no further reply is owed.`,
+        `${endedOpening(label, 'Plan the trip', 'done')}; only its title can still change. You answered ${label} at ${clockTime(at)}. Stop work on that piece; no further reply is owed.`,
       )
       expect(ended.reason).not.toContain('give_work')
       expect(ended.detail, JSON.stringify(args)).toEqual({

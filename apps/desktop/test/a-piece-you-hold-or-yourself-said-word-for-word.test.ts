@@ -41,8 +41,8 @@ const UNKNOWN_PIECE =
   'no piece by that name is available to this call, so nothing was done. Check its label or id with search_work or list_tasks.'
 const OWN_ROOT =
   'that is this conversation’s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Close or withdraw a piece under a conversation’s own work.'
-const heldEndedWords = (label: string, title: string, outcome: string): string =>
-  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome. Stop work on that piece; no further reply is owed.`
+const heldEndedWords = (label: string, title: string, outcome: string, ending: string): string =>
+  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome. ${ending}. Stop work on that piece; no further reply is owed.`
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for word', () => {
@@ -189,7 +189,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         (await callOn(pmTools, 'update_work', { piece: closed.label, close: true })).outcome,
       ).toBe('ok')
       const thePm = host.whatToCallTheConversation(pm)
-      for (const [holder, named, title, rail, outcome, actor] of [
+      for (const [holder, named, title, rail, outcome, actor, ending] of [
         [
           worker,
           label,
@@ -197,6 +197,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           'that-piece-was-already-answered',
           'done',
           { endedByYou: true },
+          `You answered ${label}`,
         ],
         [
           back.agent,
@@ -205,6 +206,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           'that-piece-was-already-taken-back',
           'withdrawn',
           { called: thePm },
+          `${back.label} was taken back by ${thePm}`,
         ],
         [
           closed.agent,
@@ -213,12 +215,18 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           'that-piece-was-already-closed',
           'closed',
           { called: thePm },
+          `${closed.label} was closed by ${thePm}`,
         ],
       ] as const) {
         const at = endedAt(holder, named)
         const tools = holder === worker ? workerTools : agentToolsFor(host, holder)
         const refused = await callWithWords(tools, 'withdraw_task', { piece: named })
-        expectRefused(refused, rail, heldEndedWords(named, title, outcome), named)
+        expectRefused(
+          refused,
+          rail,
+          heldEndedWords(named, title, outcome, `${ending} at ${clockTime(at)}`),
+          named,
+        )
         expect(refused.structured.detail).toMatchObject({ label: named, at, ...actor })
       }
     })
@@ -243,7 +251,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       expectRefused(
         refused,
         'that-piece-was-already-answered',
-        heldEndedWords(label, 'the piece', 'done'),
+        heldEndedWords(label, 'the piece', 'done', `You answered ${label} at ${said}`),
         label,
       )
       expect(refused.structured.detail).toMatchObject({ label, state: 'answered', at })
@@ -276,7 +284,12 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       expect(row?.state).toBe('withdrawn')
       expect(row?.endedBy).toBeNull()
       const at = endedAt(worker, waited.label)
-      const words = heldEndedWords(waited.label, 'the piece that never reached it', 'withdrawn')
+      const words = heldEndedWords(
+        waited.label,
+        'the piece that never reached it',
+        'withdrawn',
+        `${waited.label} was taken back at ${clockTime(at)}`,
+      )
       const withOtherTask = `${words} To note something, set the status of a task you hold: ${label} · the first piece.`
       for (const args of [
         { piece: waited.label, close: true },
