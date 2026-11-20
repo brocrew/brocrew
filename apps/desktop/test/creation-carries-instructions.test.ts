@@ -614,22 +614,4 @@ describe('618 · creation carries instructions', () => {
       expect(identityRow('not a slug')).toBeUndefined()
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · the spawn rails still fire first
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§5 · the spawning switch before the argument', () => {
-    it('⛔ the kill switch is asked first, and writes nothing', async () => {
-      const { tools } = await brobot()
-      store.setSpawningEnabled(false)
-      const refused = await callOn(tools, 'create_agent', {
-        profile_slug: 'archivist',
-        rules: 'A perfectly good rule set.',
-      })
-      expect(refused['rail']).toBe('spawning-disabled')
-      expect(identityRow('archivist')).toBeUndefined()
-      expect(db.prepare('SELECT COUNT(*) AS n FROM identity_instruction').get()).toEqual({ n: 0 })
-    })
-  })
 })

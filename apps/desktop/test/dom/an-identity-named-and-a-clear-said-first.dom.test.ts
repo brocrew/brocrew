@@ -169,7 +169,6 @@ function storeOver(): { store: AgentStore; lists: ModelLists } {
       ({
         identities: world.roster.map((one) => ({ ...one })),
         foldersWithoutARow: [],
-        spawningEnabled: true,
         defaultApprovalMode: 'ask',
         use: [],
       }) as unknown as AgentIdentities,
@@ -621,7 +620,6 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
                 : ({
                     identities: roster,
                     foldersWithoutARow: [],
-                    spawningEnabled: true,
                     defaultApprovalMode: 'ask',
                     use: [],
                   } as unknown as AgentIdentities),
@@ -667,7 +665,6 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
     ;(store.identities as unknown as { value: unknown }).value = {
       identities: NAMED(),
       foldersWithoutARow: [],
-      spawningEnabled: true,
       defaultApprovalMode: 'ask',
       use: [],
     }

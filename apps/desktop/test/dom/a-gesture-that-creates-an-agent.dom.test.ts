@@ -63,7 +63,6 @@ const roster = (identities: AgentIdentity[], orphans: readonly string[] = []): A
   identities,
   foldersWithoutARow: orphans,
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
   externalMcpServers: [],
@@ -93,7 +92,6 @@ let answers: Answers
       return Promise.resolve(made)
     },
     setExternalMcpServers: () => Promise.resolve(answers.list.identities[0] ?? null),
-    setSpawningEnabled: () => Promise.resolve({ spawningEnabled: answers.list.spawningEnabled }),
     listResumable: () => Promise.resolve([]),
     listUnresumable: () => Promise.resolve([]),
   },

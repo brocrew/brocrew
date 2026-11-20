@@ -71,9 +71,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'that-conversation-has-not-started': 'while-this-holds',
   // **Permanent: a conversation can never send itself a message.** See the rail's own note.
   'that-agent-is-you': 'permanent',
-  // **A person has to throw the switch back**, which is exactly what this word is for — and it is
-  // the same permanence `SPAWN_RAILS` gives the same switch.
-  'spawning-disabled': 'until-a-person-changes-it',
   // **657 · an end its commander asked for, a shutdown, a sign-in or config** — somebody has to
   // decide something first (after an end, the caller itself: a new spawn is a new decision), and none
   // clears because time passes. See the word's own note. A binary was here until `716` (R67).
@@ -95,8 +92,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // neighbours, this is a fact about the CALL rather than about the world — `malformed-request`'s
   // shape, one rail over.
   'agent-name-taken': 'permanent',
-  // A person turns services on; nothing the caller can do does.
-  'services-are-off-so-none-is-made': 'until-a-person-changes-it',
   // **Permanent: a name that names nothing of yours will not start naming something** (429) —
   // see the rail's own note.
   'not-a-piece-you-gave': 'permanent',
@@ -179,7 +174,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // own, no verb in the roster makes a session command itself, and *"change the call, not the
   // world"* is what `permanent` already tells it.
   'that-agent-is-you': null,
-  'spawning-disabled': null,
   // **657 · nothing this caller can do** — the biconditional's other half.
   'agent-did-not-start': null,
   // **657 · the same call, once the stopped launch is gone** — which is this word's own
@@ -193,7 +187,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   // **710 · nothing this caller can do** — the biconditional's other half, as for the wake's mirror.
   'agent-could-not-be-started': null,
   'agent-name-taken': null,
-  'services-are-off-so-none-is-made': null,
   // **429 · three nulls and one word, and the biconditional decided all four before this table
   // was written.** `list_tasks` composes a DIFFERENT call and that is not a remedy —
   // `reply-rails.ts` ruled it: *finding another id is not making this id succeed*.
@@ -315,13 +308,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // told its target was busy, which is the one thing it was not.
   'that-agent-is-you':
     'that is this conversation: a conversation cannot send itself a message, so nothing was queued. Whatever you meant to send, do it yourself — or send it to another agent.',
-  // **The sentence carries what the switch's own label does not.** A person turned agent
-  // creation off by switching off agents starting new conversations, and a refusal that said only
-  // *no* would leave a model retrying a rule only a person can change. It says nothing was
-  // created, because the one thing a caller must not have to guess is whether a durable row exists
-  // now. D-016 · ruling 12's words for the switch (spec D30).
-  'spawning-disabled':
-    'creating agents is off: a person has switched off agents starting new conversations. Nothing was created, and no retry will pass until they switch it back on.',
   // **657 · it says no RULE refused it**, because the row a person reads says *refused* — and a
   // launch that failed is not a policy. Short enough to reach a person whole (the 200 cut).
   // **True on every arm, which its first draft was not**: it said *a person has to change that
@@ -350,7 +336,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // case, because a model that tried the same name capitalised differently would meet this twice.
   'agent-name-taken':
     'there is already an agent with that name, so nothing was created. Names are compared without case. Choose a different name, or use the agent that exists.',
-  'services-are-off-so-none-is-made': 'services are off. A person turns them on in Team.',
   // **It names where the right label is and promises nothing about this one** — the split
   // `reply-rails.ts` made between a sentence that helps and a field that promises. **Two doors
   // say it and only one names an agent** — `message_agent`'s follow-up, not `withdraw_task` — so

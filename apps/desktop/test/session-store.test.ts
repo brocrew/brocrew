@@ -724,7 +724,6 @@ function fakeBridge() {
       identities: [],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled: false,
       // 500 · the fail-closed pair, each closing towards the state somebody is still consulted in:
       // no spawning, and a launch that asks.
       defaultApprovalMode: 'ask' as const,
@@ -863,8 +862,6 @@ function fakeBridge() {
     restoreConversation: async () => ({ done: false, refusal: 'not here' }) as const,
     checkDeleteConversation: async () => ({ ok: false, refusal: 'not here' }) as const,
     deleteConversation: async () => ({ done: false, refusal: 'not here' }) as const,
-    setSpawningEnabled: async () => ({ spawningEnabled: false }),
-    setServicesOn: async () => ({ servicesOn: false }),
     // 500 · answers the fail-safe word, like the switch above answers the fail-closed one.
     setDefaultApprovalMode: async () => ({ defaultApprovalMode: 'ask' as const }),
     // D-016 · R4 · ⛔ **`no-piece-by-that-name`, the refusal arm, as `setAgentDisplayName` answers

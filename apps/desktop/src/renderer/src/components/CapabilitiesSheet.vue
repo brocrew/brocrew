@@ -3,7 +3,7 @@ import SheetShell from './SheetShell.vue'
 import type { AgentModelChoice as HeldModelChoice } from '../../../shared/model-choice-contracts'
 
 import { computed, ref, watch } from 'vue'
-import { RULE_WRITING_POLICY, SPAWN_RAIL_MEANS } from '../../../shared/capabilities'
+import { RULE_WRITING_POLICY } from '../../../shared/capabilities'
 import {
   EXTERNAL_MCP_EVERYONES,
   EXTERNAL_MCP_REACH_IS_FIXED,
@@ -33,7 +33,6 @@ import {
 import { useClientProviders } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
 import { WHERE_AGENTS_ARE_CREATED } from '../lib/where-agents-are-created'
-import { spawnSafetyView } from '../lib/spawn-safety'
 import { useAgentStore } from '../composables/useAgentStore'
 import OwnInstructions from './OwnInstructions.vue'
 import AgentModelChoice from './AgentModelChoice.vue'
@@ -102,13 +101,6 @@ const emit = defineEmits<{
 }>()
 
 const store = props.store ?? useAgentStore()
-/**
- * ⚑ **678 · the switch, by the words ON it** — `spawnSafetyView`'s own heading for *off*, the one
- * derivation both surfaces that draw the switch ask (`390` §2), so this sentence cannot name it
- * differently from the control it sends a person to.
- */
-const switchIsCalled = computed(() => spawnSafetyView(store.identities.value, false)?.heading ?? '')
-
 /**
  * 🔴 **712 · R41 (`707` GAP-5) — the identity this sheet is about, NAMED** (`agentName`, over the
  * roster this sheet already reads). ⛔ The title was `displayName ?? slug` — an inline copy of the
@@ -463,12 +455,6 @@ function onKey(event: KeyboardEvent): void {
         </div>
       </div>
 
-      <!-- 🔴 **What a conversation a person starts as this identity runs on** (433, HO-024 §2.1;
-           696 scoped the note to that launch — `providerTakesEffectNextTime`).
-           ⛔ **ABOVE the rails and outside them, because it is not one.** Nothing below enforces
-           anything about this: no rail reads `provider`, it refuses nothing, and the header's
-           *"every rail below"* is a sentence about the controls under `spawn-rail-means`.
-           ⚠️ **Its own gesture rather than a field on Save** — see {@link onProviderChange}. -->
       <div class="provider-choice" data-cy="capabilities-provider">
         <label class="provider-row">
           <span>Default provider</span>
@@ -557,39 +543,6 @@ function onKey(event: KeyboardEvent): void {
            `spawn-rail-means` would make the header's *"every rail below"* false. -->
       <p class="identity-note" data-cy="rules-fixed-policy">{{ RULE_WRITING_POLICY }}</p>
       <OwnInstructions :profile-slug="profileSlug" :store="props.store" />
-
-      <!-- 🔴 **What granting any of this buys, and where it stops** (368, HO-012 §2).
-           ⛔ **ABOVE the first control and not at the foot**, which is `367` §2's rule applied one
-           surface along: a person is told what a thing does *before* they choose it, not in a
-           footnote under the checkbox they already ticked.
-           ⚑ **Here and nowhere else, because this is the only screen where *an agent created it* is
-           a certainty rather than an inference** — see {@link SPAWN_RAIL_MEANS} for what the wire
-           does and does not carry.
-           ⚠️ **`identity-note` and not `note`**: this sheet's `.note` is `display: flex` with an
-           icon as its first item, and an alert glyph on this sentence would make a disclosure read
-           as an objection — `approval-mode.ts`'s rule, and `367` M18's trap in the same breath. -->
-      <p class="identity-note" data-cy="spawn-rail-means">{{ SPAWN_RAIL_MEANS }}</p>
-
-      <!-- ⚠️ **No agent starts a conversation while the switch is off, so the sheet says so** — the
-           other grants still apply to conversations already running — and it does
-           NOT offer the switch, because the switch is app-wide and is drawn beside this sheet
-           already (`SpawnStopLane`, in the overlay) as well as at the foot of the sidebar.
-           ⚠️ **678 · *"The switch is in the rail"* named it by a word nothing is labelled** (`110`'s
-           finding) — ⚑ it now names the control by the words ON it, `spawn-safety.ts`' off heading,
-           ⚠️ and says the second press: turning spawning back ON asks once (`355`), so one press
-           alone leaves this sentence true. -->
-      <p
-        v-if="store.identities.value && !store.identities.value.spawningEnabled"
-        class="note err block"
-        data-cy="capabilities-spawning-off"
-        role="status"
-      >
-        <svg class="icon"><use href="#i-alert" /></svg>
-        <span>
-          Spawning is switched off for the whole app, so no agent can start a conversation. Press
-          “{{ switchIsCalled }}”, then confirm, to switch it back on.
-        </span>
-      </p>
 
       <!-- 🔴 **516 · the external MCP servers this identity may use** (HO-040 §4.2, `HO-042` §6).
            ⛔ **Presence is the grant, so there is no *Use the default* here.** A restricted server is

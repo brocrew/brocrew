@@ -1,10 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import type { ToolRegistry } from '../../src/renderer/src/lib/transcript'
 import { mount, unmountAll } from './harness'
 
@@ -53,32 +51,7 @@ import { mount, unmountAll } from './harness'
  */
 
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-const safety = useSpawnSafety()
 
-const IDENTITIES: AgentIdentities = {
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: 0,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  spawningEnabled: true,
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-}
-
-/** ⚑ Nothing reported. The sheet's WIDTH rule does not depend on what is in it, and this file is
- *  about the width rule; a fixture with rows would add a reason for the number to move. */
 const NOTHING: ToolRegistry = { set: null, dropped: 0, at: null }
 
 const Sheet = defineComponent({
@@ -92,13 +65,8 @@ const Sheet = defineComponent({
     ),
 })
 
-beforeEach(() => {
-  safety.supply(IDENTITIES, () => {})
-})
-
 afterEach(async () => {
   unmountAll()
-  safety.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -109,7 +77,10 @@ async function at(width: number, height = 808) {
   await nextTick()
   const panel = m.q('session-tools')
   return {
-    lane: m.q('overlay-spawning').getBoundingClientRect(),
+    lane: m
+      .q('overlay-host')
+      .querySelector<HTMLElement>('.overlay-corner')!
+      .getBoundingClientRect(),
     sheet: panel.getBoundingClientRect(),
     /** The element, for the one assertion that reads the RULE rather than the rectangle. */
     panel,

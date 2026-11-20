@@ -216,15 +216,9 @@ export class PersonsQuestions {
    *
    * ⚠️ **Three facts that only bite together, and `402` put them together on a live run.**
    * (1) 🔴 **A child is `ask` whenever the conversation that started it is** — a conversation
-   * `give_work` starts runs in its giver's mode, and `admitGive` refuses one that would act past its
-   * folder with nobody asked where its giver could not, by the named rail `wider-than-its-parent`
-   * (499, HO-036; D-038) — so the first consequential tool call an agent-started conversation
-   * makes parks on a permission card, **unless the agent that started
-   * it was itself running without them.** ⛔ **This clause read *"Every spawned child is `ask` BY
-   * RAIL"* until `499`**, which was `366`'s absolute and is withdrawn: the population below is
-   * therefore smaller than it was, and never larger. ⚑ The rows it reads are unchanged —
-   * `permissionShaped` finds a card wherever one exists — so what moved is how many there are to
-   * find, not whether this reader finds them. (2) Only a person may answer it, and a spawned child
+   * `give_work` starts runs in its giver's mode. The provider decides when to ask for a native
+   * approval, and `permissionShaped` finds a card wherever one exists. (2) Only a person may
+   * answer it, and a spawned child
    * is reserved under no owner. (3) {@link questionsForAPerson} cannot admit one:
    * nothing ever stamped a routing that was already a person's — and since `612` nothing stamps
    * anything — so a permission's `escalatedAt` is null for ever, and since `611` the reader beside
