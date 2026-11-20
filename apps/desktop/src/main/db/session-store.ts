@@ -680,6 +680,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** One identity, or null when no agent has that name. */
   agentIdentityOf(profileSlug: string): AgentIdentity | null
   agentIdentities(): readonly AgentIdentity[]
+  agentIdentityPage(after: string, limit: number): {
+    readonly identities: readonly Pick<AgentIdentity, 'id' | 'slug' | 'displayName' | 'createdAt'>[]
+    readonly count: number
+  }
   /** The naming columns of one identity. */
   agentIdentityNameById(id: string): AgentIdentityName | null
   reconciliationNames(
@@ -1207,6 +1211,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   agentIdentityNameById: () => null,
   reconciliationNames: () => [],
   agentIdentities: () => [],
+  agentIdentityPage: () => ({ identities: [], count: 0 }),
   setExternalMcpServers: () => false,
   ownNotesOf: () => null,
   currentOwnNotesOf: () => null,
@@ -1654,6 +1659,8 @@ export function createSessionStore(
   )
   let spawnStatements: {
     listIdentities: AppStatement
+    identityPage: AppStatement
+    countIdentities: AppStatement
     ensureIdentityRow: AppStatement
     identityNameById: AppStatement
     identityBySlug: AppStatement
@@ -1679,6 +1686,11 @@ export function createSessionStore(
   const spawnSql = (): NonNullable<typeof spawnStatements> =>
     (spawnStatements ??= {
       listIdentities: db.prepare(`SELECT ${IDENTITY_COLUMNS} FROM agent_identity ORDER BY slug`),
+      identityPage: db.prepare(
+        `SELECT id, slug, display_name AS displayName, created_at AS createdAt
+           FROM agent_identity WHERE slug COLLATE NOCASE > ? ORDER BY slug COLLATE NOCASE LIMIT ?`,
+      ),
+      countIdentities: db.prepare('SELECT COUNT(*) AS count FROM agent_identity'),
       ensureIdentityRow: db.prepare(
         `INSERT OR IGNORE INTO agent_identity
            (id, slug, display_name, provider, created_at, created_by)
@@ -5333,6 +5345,16 @@ export function createSessionStore(
     },
     agentIdentities() {
       return (spawnSql().listIdentities.all() as IdentityRow[]).map(identityFrom)
+    },
+    agentIdentityPage(after, limit) {
+      const sql = spawnSql()
+      return db.transaction(() => ({
+        identities: sql.identityPage.all(after, limit) as Pick<
+          AgentIdentity,
+          'id' | 'slug' | 'displayName' | 'createdAt'
+        >[],
+        count: (sql.countIdentities.get() as { count: number }).count,
+      }))()
     },
     reconciliationNames(conversations) {
       if (conversations.length === 0) return []

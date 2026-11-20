@@ -49,9 +49,13 @@ export interface ProfileReport {
  * ⛔ **Every one, and there is no `refused` arm.** Any agent may start a conversation as any agent
  * this app holds, so there is no grant to fold this list by and no wall to refuse it with.
  */
+export const PROFILES_PER_PAGE = 50
+
 export interface ProfileReading {
-  /** Every identity this app holds — each is one the caller may start a conversation as. */
+  /** One page of identities this app holds, in profile order. */
   readonly profiles: readonly ProfileReport[]
+  readonly count: number
+  readonly next?: string
   /**
    * 🔴 **F096 — each provider's newest usage reading, per window** ({@link RuntimeHost.providerUsage}),
    * so a caller choosing whom to give work to can keep to a cap a person set — *Claude weekly: 34%,
