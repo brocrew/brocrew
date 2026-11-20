@@ -191,6 +191,9 @@ it('keeps injected connection reads scoped to the current provider and ignores l
   })
   const m = surface(ProviderConnections, out.api, props)
   expect(m.q('provider-connections').textContent).toContain('Reading…')
+  props.loginMoved++
+  await nextTick()
+  expect(out.api.providerConnections).toHaveBeenCalledTimes(1)
   out.api.providerConnections.mockResolvedValueOnce(rows('codex', 'Supplied second account'))
   props.provider = 'codex'
   props.name = 'Cedar'
@@ -199,6 +202,7 @@ it('keeps injected connection reads scoped to the current provider and ignores l
   finish(rows('claude', 'Obsolete first account'))
   await settle()
   expect(m.q('provider-connections').textContent).not.toContain('Obsolete first account')
+  expect(out.api.providerConnections).toHaveBeenCalledTimes(2)
   out.api.providerConnections.mockRejectedValueOnce(new Error('Supplied metadata refusal'))
   props.loginMoved++
   await settle()
@@ -245,3 +249,36 @@ it.each([false, true])(
     expect(out.forbidden).not.toHaveBeenCalled()
   },
 )
+
+
+it('coalesces fifty same-scope connection notices into the current read and one follow-up', async () => {
+  const out = fixture()
+  let finishCurrent!: (value: readonly ProviderConnection[]) => void
+  let finishTrailing!: (value: readonly ProviderConnection[]) => void
+  out.api.providerConnections
+    .mockImplementationOnce(() => new Promise((resolve) => { finishCurrent = resolve }))
+    .mockImplementationOnce(() => new Promise((resolve) => { finishTrailing = resolve }))
+  const props = reactive({
+    provider: 'claude' as Provider,
+    name: 'Fern',
+    auth: null,
+    keyStatus: null,
+    loginMoved: 0,
+    modelsKnown: false,
+  })
+  const m = surface(ProviderConnections, out.api, props)
+  for (let notice = 0; notice < 50; notice++) {
+    props.loginMoved++
+    await nextTick()
+  }
+  expect(out.api.providerConnections).toHaveBeenCalledTimes(1)
+  finishCurrent(rows('claude', 'Known supplied account'))
+  await settle()
+  expect(out.api.providerConnections).toHaveBeenCalledTimes(2)
+  expect(m.q('provider-connections').textContent).toContain('Fern · Known supplied account')
+  finishTrailing(rows('claude', 'Latest supplied account'))
+  await settle()
+  expect(m.q('provider-connections').textContent).toContain('Fern · Latest supplied account')
+  expect(out.api.providerConnections).toHaveBeenCalledTimes(2)
+  expect(out.forbidden).not.toHaveBeenCalled()
+})

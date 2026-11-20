@@ -32,7 +32,7 @@ async function readOnce(): Promise<void> {
     if (open && mine === ticket) failed.value = true
   }
 }
-const read = oneReadAtATime(readOnce)
+let read: () => Promise<void>
 watch(
   [
     () => props.provider,
@@ -44,6 +44,10 @@ watch(
   () => {
     reading.value = null
     ticket++
+    const scopedRead = oneReadAtATime(async () => {
+      if (read === scopedRead) await readOnce()
+    })
+    read = scopedRead
     void read()
   },
   { immediate: true },

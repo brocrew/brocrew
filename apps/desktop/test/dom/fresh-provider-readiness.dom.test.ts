@@ -355,14 +355,17 @@ it('releases provider notices with the window so late completion cannot refresh 
   expect(checkAuth.mock.calls).toHaveLength(checked)
 })
 
-it('keeps the post-login usage answer when an older signed-out read arrives late', async () => {
-  const { screen, complete, releaseUsage } = fixture(false, true)
+it('drains the pending signed-out usage read before publishing the post-login answer', async () => {
+  const { screen, complete, releaseUsage, usage } = fixture(false, true)
   await settle()
+  expect(usage).toHaveBeenCalledTimes(1)
   complete()
   await settle()
-  expect(screen.q('app-usage').textContent).toContain('5h 28%')
+  expect(usage).toHaveBeenCalledTimes(1)
+  expect(screen.q('app-usage').textContent).toContain('usage not read yet')
   releaseUsage()
   await settle()
+  expect(usage).toHaveBeenCalledTimes(2)
   expect(screen.q('app-usage').textContent).toContain('5h 28%')
 })
 
