@@ -87,7 +87,7 @@ export class AgentCreation {
     // The rules are written after the name, so a second call naming this agent is refused by the
     // name before it reaches them; the database also refuses `its-creator` on a later version.
     const rulesAuthor = this.ops.rulesAuthor(me, by)
-    let rules: Extract<CreateAgentOutcome, { ok: true }>['rules'] = null
+    let rules: Extract<CreateAgentOutcome, { ok: true }>['rules']
     try {
       rules =
         itsOwnRules === null
