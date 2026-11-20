@@ -1222,7 +1222,7 @@ const platform = platformHere()
                     .join(' ') || undefined
                 "
                 :aria-describedby="
-                  row.opening
+                  row.opening && !identities.get(row.sessionId)
                     ? `rail-opening-${row.sessionId} rail-state-${row.sessionId}`
                     : `rail-state-${row.sessionId}`
                 "

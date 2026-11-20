@@ -401,6 +401,9 @@ it.each([251.68, 266.2])(
       expect(entry.querySelector('strong')!.textContent).toBe(openings[index])
       expect(entry.querySelector('strong')!.title).toBe(openings[index])
       expect(m.all(`session-opening-${sessionId}`)).toHaveLength(0)
+      for (const id of entry.getAttribute('aria-describedby')!.split(' ')) {
+        expect(document.getElementById(id)).not.toBeNull()
+      }
       expect(m.q(`rail-address-${sessionId}`).textContent).toBe(`W${17 + index}`)
       entry.click()
     }

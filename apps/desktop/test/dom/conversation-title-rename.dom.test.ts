@@ -538,6 +538,7 @@ it.each([false, true])(
       for (const listener of listeners) listener({ sessionId, ordinal, at: Date.now(), event })
     }
     const before = read.mock.calls.length
+    const beforeBatch = batch.mock.calls.length
     deliver(
       {
         type: 'message_queued',
@@ -550,6 +551,7 @@ it.each([false, true])(
     deliver({ type: 'user_turn', text: 'App-authored notice', attribution: 'app_authored' }, 1)
     await nextTick()
     expect(read.mock.calls).toHaveLength(before)
+    expect(batch.mock.calls).toHaveLength(beforeBatch)
     identity = { ...identity, title: 'Plan the garden for spring' }
     deliver(
       {
