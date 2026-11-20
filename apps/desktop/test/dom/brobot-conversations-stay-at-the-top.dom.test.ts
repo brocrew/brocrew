@@ -166,8 +166,9 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     ).toEqual(['STRONG', 'SMALL'])
   for (const [index, number] of numbers.entries()) {
     const title = m.q(`rail-brobot-title-person-${number}`)
-    expect(title.textContent?.trim()).toBe(`W${number} · ${titles[index]}`)
-    expect(title.title).toBe(`W${number} · ${titles[index]}`)
+    const expected = titles[index] ? `W${number} · ${titles[index]}` : `W${number}`
+    expect(title.textContent?.trim()).toBe(expected)
+    expect(title.title).toBe(expected)
     const row = m.q(`open-session-person-${number}`)
     const style = getComputedStyle(title)
     expect(style.whiteSpace).toBe('nowrap')
