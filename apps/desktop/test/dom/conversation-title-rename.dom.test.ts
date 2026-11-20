@@ -541,7 +541,7 @@ it.each([false, true])(
     deliver(
       {
         type: 'message_queued',
-        kind: 'message',
+        kind: 'notice',
         messageId: 'held-person-opening',
         text: 'Queued but not delivered',
       },
