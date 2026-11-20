@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
+import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
+import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
+import CREW_NIGHT from '../../resources/themes/crew-night/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import {
@@ -18,9 +22,13 @@ const ids = (m: ReturnType<typeof mount>, key: string) =>
     (row) => row.dataset.sessionId,
   )
 
-beforeEach(() => vi.stubGlobal('localStorage', memoryStorage()))
+beforeEach(() => {
+  vi.stubGlobal('localStorage', memoryStorage())
+  applyTheme(resolveTheme(CREW_NIGHT as Theme, shippedDefined()))
+})
 afterEach(() => {
   unmountAll()
+  applyTheme(null)
   vi.unstubAllGlobals()
 })
 
