@@ -59,7 +59,7 @@ describe('a stopped replacement service holds the reply or answer', () => {
         recipient: { id: service, address: service, title, state: { kind: 'queued' } },
       },
     })
-    expect(result.text).toContain(`it is held for conversation ${service} · ${title}.`)
+    expect(result.text).toContain(`it is held until conversation ${service} · ${title} is free`)
     const queued = world.store
       .messagesWaitingIn(service)
       .find((one) => one.text.includes('notes ready'))
@@ -120,7 +120,8 @@ describe('a stopped replacement service holds the reply or answer', () => {
         recipient: { id: replacement, address: replacement, state: { kind: 'queued' } },
       },
     })
-    expect(result.text).toContain(`Your answer is held for conversation ${replacement} ·`)
+    expect(result.text).toContain(`conversation ${replacement} ·`)
+    expect(result.text).toContain('reads your answer when the turn it is running ends.')
     const waiting = world.store.messagesWaitingIn(replacement)
     const behind = waiting.findIndex((row) => row.text.includes('room 23'))
     expect(behind).toBeGreaterThanOrEqual(0)
