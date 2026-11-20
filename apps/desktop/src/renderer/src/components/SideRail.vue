@@ -1879,10 +1879,10 @@ const platform = platformHere()
   max-width: calc(100% - 4em - var(--space-4));
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-soft);
+  color: var(--text);
 }
 .rail-item:hover .rail-standing-prefix {
-  color: var(--rail-item-hover-ink, var(--text-soft));
+  color: var(--rail-item-hover-ink, var(--text));
 }
 .rail-item.active .rail-standing-prefix {
   color: var(--rail-item-active-ink, var(--text));
