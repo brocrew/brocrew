@@ -15,7 +15,6 @@ export function agentRosterForWire(): AgentIdentities {
     ],
     foldersWithoutARow: [],
     use: [],
-    spawningEnabled: true,
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   }

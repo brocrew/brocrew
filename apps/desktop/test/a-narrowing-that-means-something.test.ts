@@ -518,39 +518,12 @@ describe('371 · a narrowing that means something', () => {
       expect(new Set(sentences).size).toBe(SPAWN_RAILS.length)
     })
 
-    it('🔴 the approval rail sits among the rails of a START — 499`s position, and why it moved', () => {
-      // 🔴 **`366`'s `spawn-must-prompt` was THIRD and this asserted `indexOf(...) === 2`.**
-      // ⛔ That position was an artefact of the rule: an absolute *never `auto`* is decidable from
-      // the request alone. ⚑ HO-036 withdrew the absolute and `wider-than-its-parent` compares two
-      // conversations, so it needs the giver's mode AND the new conversation's provider.
-      //
-      // ⚑ **D-016 · R2** — a give names no provider: the conversation runs on the agent's own
-      // (`providerOf`), else the giver's, so an unknown name no longer has to be refused before the
-      // comparison can be made. The rail is asked only when the give would START a conversation —
-      // after the switch, which decides whether a start happens at all — and before the profile rule
-      // (R3) and the folder.
-      //
-      // ⚠️ **Asserted as an ORDER and not as an index**, which is the stronger claim and the one
-      // that survives a rail being inserted anywhere else.
-      expect(SPAWN_RAILS).not.toContain('spawn-must-prompt')
-      // ⛔ **Every anchor is present first**: `indexOf` of an absent rail is −1, which is "above"
-      // everything and would pass an order it never measured.
-      for (const rail of [
-        'wider-than-its-parent',
-        'spawning-disabled',
-        'no-such-profile',
-        'folder-unusable',
-      ] as const) {
-        expect(SPAWN_RAILS).toContain(rail)
-      }
-      expect(SPAWN_RAILS.indexOf('wider-than-its-parent')).toBeGreaterThan(
-        SPAWN_RAILS.indexOf('spawning-disabled'),
-      )
-      expect(SPAWN_RAILS.indexOf('wider-than-its-parent')).toBeLessThan(
-        SPAWN_RAILS.indexOf('no-such-profile'),
-      )
-      // ⚑ The folder rail comes last: it is the one clause that asks the disk anything.
-      expect(SPAWN_RAILS.indexOf('folder-unusable')).toBe(SPAWN_RAILS.length - 1)
+    it('checks the profile before the folder for a new conversation', () => {
+      const profile = SPAWN_RAILS.indexOf('no-such-profile')
+      const folder = SPAWN_RAILS.indexOf('folder-unusable')
+      expect(profile).toBeGreaterThanOrEqual(0)
+      expect(folder).toBeGreaterThan(profile)
+      expect(folder).toBe(SPAWN_RAILS.length - 1)
     })
   })
 })

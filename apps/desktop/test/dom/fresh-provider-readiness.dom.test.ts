@@ -44,7 +44,6 @@ const identities: AgentIdentities = {
   identities: [],
   use: [],
   foldersWithoutARow: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   defaultApprovalModeChosen: true,
   externalMcpServers: [],

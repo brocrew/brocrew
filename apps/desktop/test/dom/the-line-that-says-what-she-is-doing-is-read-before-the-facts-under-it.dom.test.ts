@@ -65,7 +65,6 @@ const AGENTS: AgentIdentities = {
   identities: [ADA],
   foldersWithoutARow: [],
   use: [ADA_USE],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

@@ -284,19 +284,15 @@ describe('500 · the setting he should only ever make once', () => {
       expect(NULL_SESSION_STORE.defaultApprovalMode()).toBe('ask')
     })
 
-    /**
-     * ⚠️ **The two writers on one row must not stamp each other's decision.** `updated_at` is the
-     * only thing on `app_policy` a person can tell a fresh install from a decision by, and a
-     * widened `writePolicy` would have made one press claim the other's moment.
-     */
-    it('⚠️ setting the default does not throw the spawning switch, and vice versa', () => {
-      store.setSpawningEnabled(false)
+    it('setting the default leaves the retired spawning column alone', () => {
+      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
       store.setDefaultApprovalMode('auto')
-      expect(store.spawnPolicy()).toEqual({ spawningEnabled: false })
       expect(store.defaultApprovalMode()).toBe('auto')
-      store.setSpawningEnabled(true)
-      expect(store.defaultApprovalMode()).toBe('auto')
-      expect(store.spawnPolicy()).toEqual({ spawningEnabled: true })
+      expect(
+        db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'").get(),
+      ).toEqual({
+        spawning_enabled: 0,
+      })
     })
   })
 
@@ -312,12 +308,8 @@ describe('500 · the setting he should only ever make once', () => {
       expect(store.defaultApprovalMode()).toBe('auto')
       const roster = (await ask({ kind: 'agentIdentities' })) as {
         defaultApprovalMode: string
-        spawningEnabled: boolean
       }
       expect(roster.defaultApprovalMode).toBe('auto')
-      // ⚑ **Both app-wide values on one read**, which is what makes the front door's *nobody has
-      // answered yet* window the same window its provider resolution already has.
-      expect(roster.spawningEnabled).toBe(true)
       expect(await ask({ kind: 'setDefaultApprovalMode', mode: 'ask' })).toEqual({
         defaultApprovalMode: 'ask',
       })

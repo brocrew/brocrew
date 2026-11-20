@@ -19,17 +19,15 @@ function fixture() {
     foldersWithoutARow: [],
     use: [],
     externalMcpServers: [],
-    spawningEnabled: false,
     defaultApprovalMode: 'ask',
   }
   const unused = (): never => {
     throw new Error('Unexpected agent operation')
   }
   const read = vi.fn(async () => list)
-  const write = vi.fn(async ({ enabled }: { enabled: boolean }) => ({ spawningEnabled: enabled }))
+  const write = vi.fn(async ({ mode }: { mode: 'ask' | 'auto' }) => ({ defaultApprovalMode: mode }))
   const agents: ClientAgentApi = {
     agentIdentities: read,
-    setSpawningEnabled: write,
     setExternalMcpServers: unused,
     setAgentProvider: unused,
     setAgentDisplayName: unused,
@@ -43,8 +41,7 @@ function fixture() {
     createAgent: unused,
     registerExternalMcpServer: unused,
     removeExternalMcpServer: unused,
-    setServicesOn: unused,
-    setDefaultApprovalMode: unused,
+    setDefaultApprovalMode: write,
   }
   const api: ClientApi = { ...createDesktopProviderApi(unused, () => undefined), agents }
   return { api, agents, read, write, list }
@@ -85,7 +82,7 @@ describe('the agent store belongs to its injected client', () => {
     expect(supplier).toHaveBeenCalledOnce()
     expect(transport.agentIdentities()).toBe(pending)
     await store.load()
-    expect(store.identities.value?.spawningEnabled).toBe(false)
+    expect(store.identities.value).toEqual(list)
     expect(store.loadError.value).toBeNull()
   })
 
@@ -98,9 +95,9 @@ describe('the agent store belongs to its injected client', () => {
     expect(rail.loaded.value).toBe(false)
     await rail.load()
     expect(sheet.loaded.value).toBe(true)
-    expect(await sheet.setSpawning(true)).toBeNull()
-    expect(rail.identities.value?.spawningEnabled).toBe(true)
-    expect(write.mock.calls).toEqual([[{ enabled: true }]])
+    expect(await sheet.setApprovalDefault('auto')).toBeNull()
+    expect(rail.identities.value?.defaultApprovalMode).toBe('auto')
+    expect(write.mock.calls).toEqual([[{ mode: 'auto' }]])
   })
 
   it('isolates distinct clients and their refused writes', async () => {
@@ -111,11 +108,11 @@ describe('the agent store belongs to its injected client', () => {
     expect(a).not.toBe(b)
     await Promise.all([a.load(), b.load()])
     second.write.mockRejectedValueOnce(new Error('Fictional write refusal'))
-    expect(await b.setSpawning(true)).toBe('Fictional write refusal')
-    expect(b.identities.value?.spawningEnabled).toBe(false)
-    expect(await a.setSpawning(true)).toBeNull()
-    expect(a.identities.value?.spawningEnabled).toBe(true)
-    expect(b.identities.value?.spawningEnabled).toBe(false)
+    expect(await b.setApprovalDefault('auto')).toBe('Fictional write refusal')
+    expect(b.identities.value?.defaultApprovalMode).toBe('ask')
+    expect(await a.setApprovalDefault('auto')).toBeNull()
+    expect(a.identities.value?.defaultApprovalMode).toBe('auto')
+    expect(b.identities.value?.defaultApprovalMode).toBe('ask')
   })
 
   it('does not poison a client cache when its capability was absent', () => {

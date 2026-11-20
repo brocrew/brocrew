@@ -42,7 +42,6 @@ const IDENTITIES: AgentIdentities = {
         ? { provider: null, from: 'nothing-yet' as const }
         : { provider: one.provider, from: 'saved' as const },
   })),
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }

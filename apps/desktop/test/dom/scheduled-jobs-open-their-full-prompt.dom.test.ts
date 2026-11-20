@@ -10,7 +10,6 @@ import { clockTimeFrom } from '../../src/shared/clock'
 import { readLocalTimeFrom } from '../../src/shared/local-time'
 import type { ScheduleRegistry } from '../../src/renderer/src/lib/transcript'
 import type { TimedScheduledJob } from '../../src/renderer/src/lib/scheduled-job-details'
-import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { assertDrawn, drawnReady, lineCount } from './drawn'
 import { mount, unmountAll } from './harness'
 import {
@@ -25,7 +24,6 @@ const originalViewport = { width: window.innerWidth, height: window.innerHeight 
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(SCHEDULE_NOW)
   readLocalTimeFrom(() => ({ before: 0, changes: [], rule: null }))
-  useSpawnSafety().forget()
 })
 
 afterEach(async () => {

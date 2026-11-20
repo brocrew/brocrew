@@ -80,7 +80,6 @@ const roster = (displayName: string | null): AgentIdentities => ({
   identities: [identity(displayName)],
   foldersWithoutARow: [],
   use: [],
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 })

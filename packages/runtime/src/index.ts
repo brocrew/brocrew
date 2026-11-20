@@ -179,10 +179,8 @@ export { IMAGE_MEDIA_TYPES, imageMediaType } from './image-media-type'
 export {
   ApprovalModeSwitch,
   PROTECTIONS,
-  whatTheChildWouldLack,
   WHAT_STANDS_PAST_ITS_FOLDER,
   type ApprovalModeState,
-  type ApprovalPosture,
   type Protection,
 } from './approval-mode'
 export { NextTurnSetting } from './next-turn'

@@ -267,12 +267,11 @@ describe('§3 · the sheet names the control, never *the rail*', () => {
       externalMcpServerIds: [],
     }) as unknown as AgentIdentity
 
-  async function sheet(profileSlug: string, spawningEnabled: boolean): Promise<Mounted> {
+  async function sheet(profileSlug: string): Promise<Mounted> {
     const roster = {
       identities: [identity('pm')],
       foldersWithoutARow: [],
       use: [],
-      spawningEnabled,
       defaultApprovalMode: 'ask',
       externalMcpServers: [],
     } as unknown as AgentIdentities
@@ -290,22 +289,8 @@ describe('§3 · the sheet names the control, never *the rail*', () => {
     return expandAgentCards(m)
   }
 
-  it('🔴 spawning off: the sentence names the switch by its heading — and the control, on, draws none', async () => {
-    const off = await sheet('pm', false)
-    const said = words(off.q('capabilities-spawning-off'))
-    // ⚠️ **and the second press** — switching spawning back ON asks once (`355`)
-    // The switch heading changed; the instruction must still name that exact control.
-    expect(said).toContain(
-      'Press “Agents cannot start new conversations”, then confirm, to switch it back on.',
-    )
-    expect(said).not.toMatch(/\brail\b/)
-    unmountAll()
-    const on = await sheet('pm', true)
-    expect(on.host.querySelector('[data-cy="capabilities-spawning-off"]')).toBeNull()
-  })
-
   it('🔴 an identity that is gone: where one is created, and that opening the sheet does not', async () => {
-    const m = await sheet('ghost', true)
+    const m = await sheet('ghost')
     const said = words(m.q('capabilities-no-row'))
     expect(said).toContain('There is no agent identity called ghost')
     expect(said).toContain('opening this sheet does not create one')

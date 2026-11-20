@@ -27,7 +27,6 @@ const roster: AgentIdentities = {
       from: 'saved' as const,
     },
   })),
-  spawningEnabled: true,
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
