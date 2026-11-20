@@ -251,7 +251,8 @@ export class WindowIncidentReads {
               : store.messagesWaitingIn(id, unread, maximumRows)
           }
         if (key === 'lastAskToStop')
-          return (id: string, unread?: RowsUnread) => {
+          return (id: string, unread?: RowsUnread, source?: 'work_interrupted') => {
+            if (source !== undefined) return store.lastAskToStop(id, unread, source)
             const row = fact(id, unread, 'stop')
             if (row !== undefined) return structuredClone(row.stop)
             return this.context.getStore()?.active === true

@@ -596,6 +596,44 @@ describe('explicit outbound sends', () => {
     },
   )
 
+  it('keeps the question open without a Stop notice after a person cancels an approval', async () => {
+    await host.setApprovalMode(target, 'ask', world.window)
+    const asked = await send('ask_question', {
+      who_answers: 'an-agent',
+      agent: target,
+      question: 'Is a copy required?',
+    })
+    const id = asked.structured?.question
+    if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+    const approval = () => world.ledger(target).find((event) => event.type === 'permission_request')
+    await waitFor(() => approval() !== undefined, 'the answerer’s permission card')
+    const card = approval()
+    if (card === undefined || card.type !== 'permission_request') throw new Error('No card.')
+    const beforeCancel = world.ledger(target).length
+    await expect(
+      host.respondPermission(target, card.id, { outcome: 'cancel' }, world.window),
+    ).resolves.toEqual({ outcome: 'taken' })
+    const cancelled = () => world.ledger(target).slice(beforeCancel)
+    await waitFor(
+      () => cancelled().some((event) => event.type === 'status' && event.state === 'idle'),
+      'the cancelled turn to send its terminal status',
+    )
+    expect(cancelled()).toContainEqual(
+      expect.objectContaining({ type: 'user_decision', outcome: 'cancel', by: { who: 'a-person' } }),
+    )
+    expect(cancelled().some((event) => event.type === 'work_interrupted')).toBe(false)
+    expect(world.store.lastEndedTurn(target)?.who).toBe('a-person')
+    const route = world.store.routedRequestsOf(sender).find((one) => one.requestId === id)
+    expect(route?.state).toBe('open')
+
+    const message = agentToolsFor(host, target).tools.find((one) => one.name === 'message_agent')
+    if (message === undefined) throw new Error('Missing Message tool.')
+    const sent = await message.call({ agent: sender, text: 'A later message for the asker.' })
+    expect(sent.structured?.receipt).toBeDefined()
+    expectNoQuestionWake(world.ledger(sender))
+    expectNoQuestionWake(cancelled())
+  })
+
   it.each(['withdrawn', 'answered', 'answered after moving'] as const)(
     'retracts a rehydrated unanswered notice once the question is %s',
     async (ended) => {
