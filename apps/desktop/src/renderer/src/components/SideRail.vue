@@ -2135,6 +2135,7 @@ const platform = platformHere()
 .rail[data-collapsed='true'] .rail-live,
 .rail[data-collapsed='true'] .rail-copy,
 .rail[data-collapsed='true'] .section-name,
+.rail[data-collapsed='true'] .rail-other-heading,
 .rail[data-collapsed='true'] .count:not(.badge),
 .rail[data-collapsed='true'] .rail-unread,
 .rail[data-collapsed='true'] .rail-empty,

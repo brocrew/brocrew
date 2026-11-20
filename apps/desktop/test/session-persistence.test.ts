@@ -508,6 +508,7 @@ describe('session persistence', () => {
     expect(host.unresumableSessions()).toEqual([
       {
         sessionId: 'sess_refless',
+        personStarted: true,
         provider: 'claude',
         cwd: dir,
         status: 'idle',

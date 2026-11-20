@@ -94,6 +94,7 @@ describe('the collapsed menu', () => {
     // ⚑ The column is the box the app gives the collapsed menu, and the menu stays inside it.
     const column = m.host.getBoundingClientRect()
     expect(Math.round(column.width)).toBe(RAIL_W_COLLAPSED)
+    expect(getComputedStyle(m.q('rail-other-conversations')).display).toBe('none')
     expect(m.q('side-rail').getBoundingClientRect().right).toBeLessThanOrEqual(column.right + 0.5)
     for (const [cy, word] of [
       ['rail-waiting', 'Waiting on you'],
