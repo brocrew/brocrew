@@ -102,7 +102,7 @@ export interface WorkSearchPage {
 
 export interface GroupedWorkSearchPreview extends Pick<
   ConversationSearchHit,
-  'conversation' | 'address' | 'title' | 'last_active_at' | 'metadata'
+  'conversation' | 'address' | 'title' | 'last_active_at' | 'status' | 'metadata'
 > {
   readonly matched_task_labels: readonly string[]
   readonly tasks_omitted: number
@@ -190,6 +190,7 @@ const groupedPreview = conversationHit
     address: true,
     title: true,
     last_active_at: true,
+    status: true,
     metadata: true,
     tasks_omitted: true,
   })

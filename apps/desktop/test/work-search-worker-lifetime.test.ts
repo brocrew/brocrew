@@ -232,6 +232,7 @@ describe('searches wait in order and retain a bounded partial page', () => {
                           address: 'W1.1',
                           title: 'A readable result',
                           last_active_at: 123,
+                          status: 'Read the record',
                           matched_task_labels: ['W1.1'],
                           tasks_omitted: 0,
                         },

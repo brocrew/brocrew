@@ -135,6 +135,7 @@ it('returns a single conversation row for matching ended and open tasks', () => 
             address,
             title: 'Catalogue rebuild',
             profile: 'profile_0',
+            status: 'Consult the librarian',
             matched_tasks: [
               { title: 'Indexed open task' },
               { title: 'Indexed ended task', state: 'answered' },
@@ -160,6 +161,7 @@ it('returns a single conversation row for matching ended and open tasks', () => 
               previews: [
                 {
                   conversation: owner,
+                  status: 'Consult the librarian',
                   matched_task_labels: [labels[1], labels[0]],
                   tasks_omitted: 0,
                 },
@@ -545,7 +547,7 @@ it('groups distinct conversation matches before selecting the six visible profil
     expect(grouped.groups[0]).toMatchObject({
       matched: 4,
       previews: [
-        { conversation: 'fictional_group_10', metadata: { provider: 'claude' } },
+        { conversation: 'fictional_group_10', status: null, metadata: { provider: 'claude' } },
         { conversation: 'fictional_group_09' },
         { conversation: 'fictional_group_08' },
       ],

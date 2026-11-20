@@ -20,7 +20,10 @@ interface PaletteSearchProps {
   searchConversations?: (caller: string, query: WorkSearchQuery) => Promise<WorkSearchResult>
 }
 
-export type SearchRow = PaletteCommand & { readonly expandProfile?: string }
+export type SearchRow = PaletteCommand & {
+  readonly expandProfile?: string
+  readonly recordedStatus?: string | null
+}
 
 export interface SearchBand {
   group: PaletteCommand['group']
@@ -161,6 +164,7 @@ export function usePaletteSearch(
       id: `open-${hit.conversation}`,
       title: hit.title,
       recorded: hit.metadata,
+      recordedStatus: hit.status,
       detail: [
         profileId ? profileName(profileId) : null,
         hit.metadata?.provider,
