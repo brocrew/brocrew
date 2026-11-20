@@ -223,12 +223,16 @@ async function sweep(managedRoot: string, home: string, current: string): Promis
   }
 }
 
+// Homes are swept one after another: concurrent sweeps would each take a slice per event-loop turn.
+let lastSweep: Promise<void> = Promise.resolve()
+
 /** Deferred, best-effort, single-flight cleanup per home. Launches never await this promise. */
 export function sweepSkillViews(managedRoot: string, home: string, current: string): Promise<void> {
   const key = resolve(home)
   const running = sweeps.get(key)
   if (running) return running
-  const pending = setImmediate()
+  const pending = lastSweep
+    .then(() => setImmediate())
     .then(() => sweep(managedRoot, key, current))
     .catch(() => {
       // Even a failed initial pin or listing is cleanup failure, not launch failure. A later
@@ -238,5 +242,6 @@ export function sweepSkillViews(managedRoot: string, home: string, current: stri
       sweeps.delete(key)
     })
   sweeps.set(key, pending)
+  lastSweep = pending
   return pending
 }
