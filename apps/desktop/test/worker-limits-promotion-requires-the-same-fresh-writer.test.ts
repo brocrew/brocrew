@@ -215,7 +215,9 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
             : 'agent'
       const args = statement.source.includes('AND (ordinal >= (SELECT min(ordinal)')
         ? [{ session: 'fictional', generation: 0 }]
-        : ['fictional', 0, argument]
+        : statement.source.includes('AND ordinal >= ?')
+          ? ['fictional', 0, argument, Number.POSITIVE_INFINITY]
+          : ['fictional', 0, argument]
       const cursor = statement.iterate(...args)
       expect(cursor.next().done).toBe(false)
       expect(statement.busy).toBe(true)
