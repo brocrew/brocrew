@@ -18,7 +18,8 @@ import { providerLaunchFixture, settleProviderLaunch as settle } from './provide
 const providers = Object.keys(PROVIDER_NAME) as Provider[]
 const unknown: AuthState = {
   state: 'unknown',
-  reason: 'Fictional sign-in unavailable at /fictional/provider/session.json. Open Providers to fix it.',
+  reason:
+    'Fictional sign-in unavailable at /fictional/provider/session.json. Open Providers to fix it.',
 }
 const usable: AuthState = { state: 'usable', login: 'account', expiresAt: null }
 const list = (provider: Provider, notAsked: ModelList['notAsked']): ModelList => ({
@@ -124,7 +125,9 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason']
       expectedReason === null ? 0 : providers.length,
     )
     expect(view.all('provider-readiness-failure').map((row) => row.textContent?.trim())).toEqual(
-      expectedReason === null ? [] : providers.map((provider) => `${PROVIDER_NAME[provider]} isn't signed in.`),
+      expectedReason === null
+        ? []
+        : providers.map((provider) => `${PROVIDER_NAME[provider]} isn't signed in.`),
     )
     expect(view.host.innerText).not.toContain(reason)
     expect(view.host.innerText).not.toContain('/fictional/provider/session.json')
