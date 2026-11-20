@@ -1010,6 +1010,97 @@ it('keeps Graph unread until the independent forest arrives, then draws the curr
   }
 })
 
+it('serializes Work reads and keeps only the latest visible conversation after a burst', async () => {
+  type Answer = Awaited<ReturnType<RuntimeBridge['workGivenBy']>>
+  const reading = (piece: string): Answer => ({
+    rows: [
+      {
+        piece,
+        label: 'W1.4',
+        title: piece,
+        state: 'working',
+        givenToProfile: 'worker',
+        givenAt: 1,
+      },
+    ],
+    walk: 'every-conversation-this-one-gave-work-to',
+    ledgers: 1,
+    rowsUnread: 0,
+  })
+  const a = deferred<Answer>()
+  const b = deferred<Answer>()
+  const leaving = deferred<Answer>()
+  const closing = deferred<Answer>()
+  const bridge = window.api.runtime
+  const previous = Object.getOwnPropertyDescriptor(bridge, 'workGivenBy')
+  const read = vi.fn<RuntimeBridge['workGivenBy']>(({ sessionId }) =>
+    sessionId === 'fictional-source' ? a.promise : b.promise,
+  )
+  Object.assign(bridge, { workGivenBy: read })
+  const workChanged = async () => {
+    changed({ what: 'work' })
+    await nextTick()
+  }
+  try {
+    const screen = await panelScreen(true)
+    await expect.poll(() => read.mock.calls.length).toBeGreaterThan(0)
+    await workChanged()
+    await workChanged()
+    await workChanged()
+    screen.q('open-session-fictional-target').click()
+    await expect
+      .poll(() =>
+        runtime.whoCalledWhom.mock.calls.some(([input]) => input.sessionId === 'fictional-target'),
+      )
+      .toBe(true)
+    await expect.poll(() => screen.all('drawer-tab-work').length).toBe(1)
+    screen.q('drawer-tab-work').click()
+    await workChanged()
+    expect(read.mock.calls.map(([input]) => input.sessionId)).toEqual(['fictional-source'])
+
+    a.resolve(reading('stale-source'))
+    await expect.poll(() => read.mock.calls.length).toBe(2)
+    expect(read).toHaveBeenLastCalledWith({ sessionId: 'fictional-target' })
+    expect(screen.all('work-row-stale-source')).toHaveLength(0)
+    b.resolve(reading('current-target'))
+    await expect.poll(() => screen.all('work-row-current-target').length).toBe(1)
+
+    read.mockRejectedValueOnce(new Error('Fictional Work read refusal'))
+    await workChanged()
+    await expect.poll(() => screen.all('work-doubt').length).toBe(1)
+    expect(screen.all('work-row-current-target')).toHaveLength(1)
+    expect(read).toHaveBeenCalledTimes(3)
+
+    read.mockReturnValueOnce(leaving.promise)
+    await workChanged()
+    await expect.poll(() => read.mock.calls.length).toBe(4)
+    await workChanged()
+    screen.q('rail-team').click()
+    await expect.poll(() => screen.all('team-workspace').length).toBe(1)
+    leaving.resolve(reading('arrived-after-leaving'))
+    await drawnReady()
+    expect(read).toHaveBeenCalledTimes(4)
+
+    read.mockReturnValueOnce(closing.promise)
+    screen.q('open-session-fictional-target').click()
+    await expect.poll(() => read.mock.calls.length).toBe(5)
+    await expect.poll(() => screen.all('work-row-current-target').length).toBe(1)
+    expect(screen.all('work-row-arrived-after-leaving')).toHaveLength(0)
+    await workChanged()
+    screen.unmount()
+    closing.resolve(reading('arrived-after-close'))
+    await drawnReady()
+    expect(read).toHaveBeenCalledTimes(5)
+  } finally {
+    if (previous) Object.defineProperty(bridge, 'workGivenBy', previous)
+    else Reflect.deleteProperty(bridge, 'workGivenBy')
+    a.resolve(reading('stale-source'))
+    b.resolve(reading('current-target'))
+    leaving.resolve(reading('arrived-after-leaving'))
+    closing.resolve(reading('arrived-after-close'))
+  }
+})
+
 it('reads the two file lists once per conversation opening, including mount', async () => {
   runtime.resolveLink.mockResolvedValueOnce({
     state: 'available',

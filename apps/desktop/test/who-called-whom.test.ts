@@ -1,3 +1,4 @@
+import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -59,6 +60,7 @@ describe('543 · who called whom', () => {
     store = createSessionStore(db, tick)
     host = new RuntimeHost({
       store,
+      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: syntheticProviderHome(() => userData),
@@ -167,7 +169,7 @@ describe('543 · who called whom', () => {
   /* ══════════ §0 · the premise: one identity, two conversations, one word for both ══════════ */
 
   describe('§0 · the defect `540` measured, asserted against the shipped reader', () => {
-    it('🔴 two conversations of ONE identity are ONE word to the reader that crosses today', () => {
+    it('🔴 two conversations of ONE identity are ONE word to the reader that crosses today', async () => {
       const pm = conversation('sess_pm', 'project-manager')
       // ⚑ **The same identity, twice** — nothing keys a conversation on its identity alone, so a
       // second conversation of one agent is an ordinary row and not an exotic one. ⛔ **This is the
@@ -177,7 +179,7 @@ describe('543 · who called whom', () => {
       giveWork(pm, first, 'work_a', { title: 'the first job' })
       giveWork(pm, second, 'work_b', { title: 'the second job' })
 
-      const given = host.workGivenBy(pm)
+      const given = await host.workGivenBy(pm)
       expect(given.rows.map((row) => row.piece)).toEqual(['work_a', 'work_b'])
       // ⛔ **`540`'s line, in this app's own bytes**: *"`WorkGivenOut` exposes only `givenToProfile`
       // and explicitly has no session id. The recipient CONVERSATION is dropped on the way to the

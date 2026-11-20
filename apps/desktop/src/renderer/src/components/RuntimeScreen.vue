@@ -2678,55 +2678,38 @@ watch([mainTab, activeId, surface], () => {
  * arriving, and (after a read that did not answer) on the glance.
  */
 const work = ref<WorkGivenOutReading | null>(null)
-/**
- * ⛔ **Which read is the newest, because the conversation id alone cannot say** — two triggers read
- * the SAME conversation, the arrival watch and a push, and without a sequence they land in
- * completion order and the older can overwrite the newer.
- */
 let workRead = 0
+let workReading = false
+let workClosed = false
 
-/**
- * ⚠️ **Gated on a conversation being on screen**: this read opens one ledger per conversation the
- * work went to, and a tick nothing paints is pure cost.
- */
 async function readTheWork(): Promise<void> {
-  // ⚠️ **Gated on the CONVERSATION being on screen, not merely on one being open.** `activeId`
-  // survives a walk to another page — `useSurface` only clears it when the conversation closes —
-  // so a tick keyed on it alone would read a ledger for a drawer that is not mounted, which is the
-  // *"a tick nothing paints is pure cost"* rule `readActivity` follows. ⛔ Found by reading
-  // `useSurface`, not by a failure: the poll works either way and the cost is invisible.
-  const asked = surface.value === 'conversation' ? activeId.value : null
-  if (asked === null) return
   workRead += 1
-  const mine = workRead
-  // ⛔ **The instant the QUESTION went out** — every age on the tab is measured from here.
-  const at = Date.now()
-  const answer = await store.workGivenBy(asked)
-  // ⚑ **The person moved while it was in flight** — writing it would leave the next conversation's
-  // first frame holding this one's work.
-  if (asked !== activeId.value) return
-  // ⛔ **A later read has already landed, so this one is history.**
-  if (mine !== workRead) return
-  if (answer !== null) {
-    work.value = { conversation: asked, walk: answer, answered: true, at }
-    return
+  if (workReading) return
+
+  workReading = true
+  try {
+    while (!workClosed && surface.value === 'conversation' && activeId.value !== null) {
+      const asked = activeId.value
+      const mine = workRead
+      const at = Date.now()
+      const answer = await store.workGivenBy(asked)
+      // Wait for the actual call to settle before asking again for the latest demand.
+      if (mine !== workRead) continue
+      if (workClosed || surface.value !== 'conversation' || asked !== activeId.value) return
+      work.value =
+        answer !== null
+          ? { conversation: asked, walk: answer, answered: true, at }
+          : work.value?.conversation === asked
+            ? { ...work.value, answered: false }
+            : null
+      return
+    }
+  } finally {
+    workReading = false
   }
-  // ⛔ **A refusal for the conversation we are LOOKING at keeps its rows and marks them; one for a
-  // conversation we have never had an answer about has nothing to keep.**
-  work.value = work.value?.conversation === asked ? { ...work.value, answered: false } : null
 }
 
-// ⚑ **Opening a conversation re-reads immediately** — a list just opened is read, never one left
-// from before; every move after that is pushed (W4.74).
-watch(activeId, () => void readTheWork())
-
-// ⚑ **…and so does ARRIVING at one from somewhere else**, which is the other half of the gate
-// above — `readActivity`'s `watch(surface, …)` exactly, one surface over. ⛔ Without it a person who
-// walked to another page and back would look at a reading as old as the time they spent away, with
-// the age line the only thing saying so.
-watch(surface, (now) => {
-  if (now === 'conversation') void readTheWork()
-})
+watch([activeId, surface], () => void readTheWork())
 
 /* ---------------------------------------------------------------------------
    547 · who called whom — the conversations around the one on screen
@@ -3256,7 +3239,7 @@ onUnmounted(() => {
   memoryRead++
   filesRead++
   glanceRead++
-  workRead++
+  workClosed = true
   // ⛔ **Handed back, because the refs outlive this component under HMR**: the press, the rail's
   // rows, the process figures and the files, so no band draws a replaced screen's read or presses
   // into it.
