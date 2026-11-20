@@ -358,9 +358,9 @@ describe('610 · the roster that names nobody', () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       expectRosterText(
         (await ask(brobot, 'list_agents')).text,
-        `conversation W1 · brobot · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
+        `conversation W1 · ${DEFAULT_PROFILE_LABEL} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
         brobot,
-        'brobot',
+        DEFAULT_PROFILE_LABEL,
         'brobot',
       )
     })

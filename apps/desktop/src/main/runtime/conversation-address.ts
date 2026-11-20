@@ -1,5 +1,6 @@
 import { agentIdentityRowId } from '../db/identity'
 import { aConversationTitle, type ConversationTitle } from '../../shared/conversation-title'
+import { profileLabel } from '../../shared/runtime-ipc'
 
 /** What resolving an address reads. */
 export interface ConversationAddressReads {
@@ -53,7 +54,7 @@ function conversationDisplayTitle(
   const identity = reads.conversationBinding(conversation)?.identity
   const profile =
     identity == null ? null : reads.agentIdentityNameById(agentIdentityRowId(identity))
-  return profile?.displayName ?? profile?.slug ?? 'untitled'
+  return profile?.displayName ?? (profile === null ? 'untitled' : profileLabel(profile.slug))
 }
 
 export function describeConversation(

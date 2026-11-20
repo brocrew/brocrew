@@ -490,7 +490,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       title: null,
       definitionOfDone: null,
     })
-    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · brobot')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · BroBot')
     expect(retitlesIn(brobot)).toHaveLength(0)
 
     const renamed = host.retitleForAPerson('W1', '  Build the pages ')
@@ -563,7 +563,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
 
     expect(retitlesIn(brobot)).toHaveLength(0)
     expect(ledger(brobot)).toHaveLength(rowsBefore)
-    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · brobot')
+    expect(host.nameByItsWork(brobot)).toBe('conversation W1 · BroBot')
 
     const renamed = host.retitleForAPerson('W1', ' Build the world ')
     expect(renamed).toMatchObject({ ok: true, label: 'W1', title: 'Build the world' })
