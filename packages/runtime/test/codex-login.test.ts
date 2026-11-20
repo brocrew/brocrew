@@ -115,13 +115,10 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     'account/read': ACCOUNT_CHATGPT,
   })
 
-  /** How long the home's gate makes the next boot wait — 0-ish means nobody is holding it. */
-  async function gateWait(home: string): Promise<number> {
-    const started = Date.now()
-    const release = await beginCodexHomeBoot(home, { waitMs: 400 })
-    const waited = Date.now() - started
+  // An already-aborted signal rejects a queued acquisition, but an empty queue grants it.
+  async function expectGateReleased(home: string): Promise<void> {
+    const release = await beginCodexHomeBoot(home, { signal: AbortSignal.abort() })
     release()
-    return waited
   }
 
   it('⛔ A · a check whose handshake never answers leaves no transport open and no gate held', async () => {
@@ -141,7 +138,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     expect(elapsed).toBeGreaterThanOrEqual(CREDENTIAL_HANDSHAKE_TIMEOUT_MS - 200)
     expect(spawned).toHaveLength(1)
     expect(spawned[0]!.closes, 'the app-server it spawned was closed').toBe(1)
-    expect(await gateWait(home), "the home's boot gate was handed back").toBeLessThan(200)
+    await expectGateReleased(home)
   }, 20_000)
 
   it('…and the pairing: an ordinary check still answers, and still releases', async () => {
@@ -156,7 +153,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
       expiresAt: null,
     })
     expect(spawned[0]!.closes, 'a check closes its app-server on the way out too').toBe(1)
-    expect(await gateWait(home)).toBeLessThan(200)
+    await expectGateReleased(home)
   })
 
   it('⛔ B · a sign-in whose handshake never answers closes the child rather than stranding it', async () => {
@@ -166,7 +163,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
 
     expect(spawned).toHaveLength(1)
     expect(spawned[0]!.closes).toBe(1)
-    expect(await gateWait(home)).toBeLessThan(200)
+    await expectGateReleased(home)
   }, 20_000)
 
   it('…and the pairing: an ordinary sign-in gets its URL, keeps the child, and frees the gate', async () => {
@@ -178,9 +175,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     // comes back to; closing it here would be a cancel with extra steps. This is the assertion that
     // stops "tear it down on every path" from becoming "tear it down".
     expect(spawned[0]!.closes).toBe(0)
-    expect(await gateWait(home), 'the gate is not held across the browser round trip').toBeLessThan(
-      200,
-    )
+    await expectGateReleased(home)
     await login.cancel()
     expect(spawned[0]!.closes).toBe(1)
   })
@@ -240,7 +235,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     signing.abort()
     expect(spawned[1]!.closes, 'the abort reached the sign-in`s child too').toBe(1)
     await expect(login).rejects.toThrow()
-    expect(await gateWait(home)).toBeLessThan(200)
+    await expectGateReleased(home)
   }, 20_000)
 
   /**
