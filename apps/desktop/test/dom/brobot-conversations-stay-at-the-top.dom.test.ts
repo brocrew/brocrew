@@ -6,73 +6,10 @@ import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { CONVERSATION_IDENTITY_BATCH_SIZE } from '../../src/shared/conversation-title'
 import { mount, unmountAll } from './harness'
 import { memoryStorage } from './memory-storage'
-import { workerRows, identities } from './parallel-workers-fixture'
+import { workerRows, identities, NOW } from './parallel-workers-fixture'
 import { drawnReady } from './drawn'
 import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
-import { mount, unmountAll } from './harness'
-import { workerRows, NOW } from './parallel-workers-fixture'
-import { memoryStorage } from './memory-storage'
-import { drawnReady } from './drawn'
 
-beforeEach(() => vi.stubGlobal('localStorage', memoryStorage()))
-afterEach(() => {
-  unmountAll()
-  vi.unstubAllGlobals()
-})
-
-const base = workerRows(1)[0]!
-function person(number: number, waiting = false): ResumableSessionInfo {
-  return {
-    ...base,
-    worker: undefined,
-    sessionId: `person-${number}`,
-    profileId: 'brobot',
-    personStarted: true,
-    state: { is: waiting ? 'needs-you' : 'idle' },
-    updatedAt: NOW - number * 1000,
-    named: { label: `W${number}`, title: `Conversation ${number}` },
-  }
-}
-async function draw(rows: ResumableSessionInfo[], activeId: string | null = null) {
-  const selected: string[] = []
-  vi.stubGlobal('api', {
-    runtime: {
-      listConversations: async () => ({
-        resumable: rows,
-        unresumable: [],
-        published: {
-          epoch: { run: 'rail-restore', n: 0 },
-          seq: 1,
-          covers: { population: 'listing', complete: true },
-        },
-      }),
-    },
-  })
-  const reads: string[][] = []
-  const byId = new Map(rows.map((row) => [row.sessionId, row]))
-  const m = mount(
-    SideRail,
-    {
-      open: [],
-      activeId,
-      place: null,
-      onSelect: (id: string) => selected.push(id),
-      readIdentities: async ({ sessionIds }: { sessionIds: string[] }) => {
-        reads.push(sessionIds)
-        return sessionIds.map((id) => ({
-          conversation: id,
-          address: byId.get(id)!.named?.label ?? id,
-          title: byId.get(id)!.named?.title ?? 'Helper',
-          author: null,
-        }))
-      },
-    },
-    { width: 280, height: 1200 },
-  )
-  await expect.poll(() => m.all('conversations-loading').length).toBe(0)
-  await nextTick()
-  return { ...m, selected, reads }
-}
 const ids = (m: ReturnType<typeof mount>, key: string) =>
   [...m.q(`rail-rows-${key}`).querySelectorAll<HTMLElement>('[data-session-id]')].map(
     (row) => row.dataset.sessionId,
