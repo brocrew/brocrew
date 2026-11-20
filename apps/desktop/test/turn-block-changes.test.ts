@@ -80,7 +80,9 @@ describe('turn block changes', () => {
       extra: partial.extra,
     })
     expect(partial.extra.helpers?.rows).toEqual(complete.extra.helpers?.rows)
-    expect(rendered.split('\n').filter((line) => line.startsWith('- conversation '))).toHaveLength(5)
+    expect(rendered.split('\n').filter((line) => line.startsWith('- conversation '))).toHaveLength(
+      5,
+    )
     expect(rendered).toContain('list_tasks shows the work you gave.')
     expect(rendered).not.toContain('and 3 more: list_tasks')
     expect(rendered).not.toContain(TURN_BLOCK_WORDS.nobody)
