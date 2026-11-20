@@ -1,5 +1,5 @@
 import { agentIdentityRowId } from '../db/identity'
-import { aConversationTitle, type ConversationTitle } from '../../shared/conversation-title'
+import type { ConversationTitle } from '../../shared/conversation-title'
 import { profileLabel } from '../../shared/runtime-ipc'
 
 /** What resolving an address reads. */
@@ -33,7 +33,7 @@ export function canonicalAddressOf(
 
 interface DisplayTitleReads {
   conversationTitle(conversation: string): ConversationTitle | null
-  defaultTaskTitle(conversation: string): string | null
+  defaultConversationTitle(conversation: string): string | null
   conversationBinding(conversation: string): { readonly identity: string | null } | null
   agentIdentityNameById(
     identity: string,
@@ -48,8 +48,8 @@ function conversationDisplayTitle(
 ): string {
   if (savedTitle !== null) return savedTitle.title
   if (!service) {
-    const taskTitle = aConversationTitle(reads.defaultTaskTitle(conversation))
-    if (taskTitle !== null) return taskTitle
+    const defaultTitle = reads.defaultConversationTitle(conversation)
+    if (defaultTitle !== null) return defaultTitle
   }
   const identity = reads.conversationBinding(conversation)?.identity
   const profile =
