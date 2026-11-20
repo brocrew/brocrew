@@ -619,7 +619,11 @@ describe('explicit outbound sends', () => {
       'the cancelled turn to send its terminal status',
     )
     expect(cancelled()).toContainEqual(
-      expect.objectContaining({ type: 'user_decision', outcome: 'cancel', by: { who: 'a-person' } }),
+      expect.objectContaining({
+        type: 'user_decision',
+        outcome: 'cancel',
+        by: { who: 'a-person' },
+      }),
     )
     expect(cancelled().some((event) => event.type === 'work_interrupted')).toBe(false)
     expect(world.store.lastEndedTurn(target)?.who).toBe('a-person')
