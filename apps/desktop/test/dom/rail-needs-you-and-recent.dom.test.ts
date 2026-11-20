@@ -7,6 +7,7 @@ import type { ListingAnswer } from '../../src/shared/listing-published'
 import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, parseColor, record, unmountAll, type Mounted } from './harness'
 import { memoryStorage } from './memory-storage'
+import { drawnReady, titleRecovers } from './drawn'
 
 const NOW = 1_700_000_000_000
 
@@ -58,7 +59,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function rail(listed: ResumableSessionInfo[], props: Record<string, unknown> = {}) {
+async function rail(
+  listed: ResumableSessionInfo[],
+  props: Record<string, unknown> = {},
+  width = 266,
+) {
   const selected: string[] = []
   const api = {
     runtime: {
@@ -83,7 +88,7 @@ async function rail(listed: ResumableSessionInfo[], props: Record<string, unknow
       onSelect: (id: string) => selected.push(id),
       ...props,
     },
-    { width: 266, height: 900 },
+    { width, height: 900 },
   )
   await expect.poll(() => m.all('conversations-loading').length).toBe(0)
   return { ...m, selected }
@@ -119,36 +124,47 @@ it('puts Needs you first, then one Recent list across the existing profiles', as
   }
 })
 
-it('fits full conversation titles between the section header and row metadata', async () => {
-  const longTitle = 'Lisbon trip, March renewal ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  const listed = [waiting[0]!, recent[0]!]
-  const m = await rail(listed, {
-    readIdentities: async () =>
-      listed.map(({ sessionId }) => ({
-        conversation: sessionId,
-        address: 'W9.8',
-        title: longTitle,
-        author: null,
-      })),
-  })
-  for (const [index, section] of ['needs-you', 'recent'].entries()) {
-    const id = listed[index]!.sessionId
-    await expect.poll(() => m.all(`rail-address-${id}`).length).toBe(1)
-    const entry = m.q(`open-session-${id}`)
-    const title = entry.querySelector('strong')!
-    const titleLines = document.createRange()
-    titleLines.selectNodeContents(title)
-    const first = m.q(`rail-toggle-${section}`).getBoundingClientRect()
-    const meta = entry.querySelector('[data-standing]')!.getBoundingClientRect()
-    const titleBox = title.getBoundingClientRect()
-    expect(title.textContent?.trim()).toBe(longTitle)
-    expect(titleLines.getClientRects().length).toBeGreaterThan(1)
-    expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth)
-    expect(titleBox.top).toBeGreaterThanOrEqual(first.bottom)
-    expect(titleBox.bottom).toBeLessThanOrEqual(meta.top)
-    expect(m.q(`rail-address-${id}`).textContent).toBe('W9.8')
-  }
-})
+it.each([251.68, 266.2])(
+  '%spx · keeps the full canonical title in one ellipsized line with hover',
+  async (width) => {
+    const longTitle = 'Lisbon trip, March renewal ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    const listed = [waiting[0]!, recent[0]!]
+    const m = await rail(
+      listed,
+      {
+        readIdentities: async () =>
+          listed.map(({ sessionId }) => ({
+            conversation: sessionId,
+            address: 'W9.8',
+            title: longTitle,
+            author: null,
+          })),
+      },
+      width,
+    )
+    await drawnReady()
+    for (const [index, section] of ['needs-you', 'recent'].entries()) {
+      const id = listed[index]!.sessionId
+      await expect.poll(() => m.all(`rail-address-${id}`).length).toBe(1)
+      const entry = m.q(`open-session-${id}`)
+      const title = entry.querySelector('strong')!
+      const first = m.q(`rail-toggle-${section}`).getBoundingClientRect()
+      const meta = entry.querySelector('[data-standing]')!.getBoundingClientRect()
+      const titleBox = title.getBoundingClientRect()
+      expect(title.textContent?.trim()).toBe(longTitle)
+      expect(getComputedStyle(title).whiteSpace).toBe('nowrap')
+      expect(getComputedStyle(title).textOverflow).toBe('ellipsis')
+      expect(titleBox.height).toBeLessThanOrEqual(
+        Number.parseFloat(getComputedStyle(title).lineHeight) + 0.1,
+      )
+      expect(title.scrollWidth).toBeGreaterThan(title.clientWidth)
+      expect(titleRecovers(title)).toBe(true)
+      expect(titleBox.top).toBeGreaterThanOrEqual(first.bottom)
+      expect(titleBox.bottom).toBeLessThanOrEqual(meta.top)
+      expect(m.q(`rail-address-${id}`).textContent).toBe('W9.8')
+    }
+  },
+)
 
 it('keeps canonical rows to title, standing and address for open and answered tasks', async () => {
   const listed = [
@@ -346,3 +362,48 @@ it('keeps a folded section’s rows reachable from the existing palette', async 
   const row = document.querySelector('[data-cy="palette-row-open-latest"]')
   expect(row?.textContent).toContain('claude · idle')
 })
+
+it.each([251.68, 266.2])(
+  '%spx · person openings distinguish canonical roots without a fourth preview',
+  async (width) => {
+    const roots = [
+      row('person-waiting', 'brobot', 1, { is: 'needs-you' }),
+      row('person-recent', 'brobot', 2),
+    ]
+    const openings = ['Plan the garden for spring', 'Review the bicycle repair options']
+    const opened = roots.map(({ sessionId }, index) => {
+      const opened = record([{ type: 'user_turn', text: openings[index]! }], sessionId)
+      opened.meta = { ...opened.meta!, sessionId, profileId: 'brobot' }
+      return opened
+    })
+    let finish!: (identities: ConversationIdentity[]) => void
+    const pending = new Promise<ConversationIdentity[]>((resolve) => {
+      finish = resolve
+    })
+    const m = await rail(roots, { open: opened, readIdentities: () => pending }, width)
+    for (const { sessionId } of roots) {
+      await expect.poll(() => m.all(`session-opening-${sessionId}`).length).toBe(1)
+    }
+    finish(
+      roots.map(({ sessionId }, index) => ({
+        conversation: sessionId,
+        address: `W${17 + index}`,
+        title: openings[index]!,
+        author: null,
+      })),
+    )
+    for (const [index, { sessionId }] of roots.entries()) {
+      await expect.poll(() => m.all(`rail-address-${sessionId}`).length).toBe(1)
+      const entry = m.q(`open-session-${sessionId}`)
+      expect(
+        [...entry.querySelector('.rail-copy')!.children].map(({ tagName }) => tagName),
+      ).toEqual(['STRONG', 'SMALL', 'SMALL'])
+      expect(entry.querySelector('strong')!.textContent).toBe(openings[index])
+      expect(entry.querySelector('strong')!.title).toBe(openings[index])
+      expect(m.all(`session-opening-${sessionId}`)).toHaveLength(0)
+      expect(m.q(`rail-address-${sessionId}`).textContent).toBe(`W${17 + index}`)
+      entry.click()
+    }
+    expect(m.selected).toEqual(roots.map(({ sessionId }) => sessionId))
+  },
+)

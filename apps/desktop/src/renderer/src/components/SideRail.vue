@@ -1257,6 +1257,7 @@ const platform = platformHere()
                   :class="{ 'rail-worker-top': row.worker && !identities.get(row.sessionId) }"
                 >
                   <strong
+                    :class="{ 'rail-canonical-title': identities.get(row.sessionId) }"
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
                     :title="
                       row.worker && !identities.get(row.sessionId)
@@ -1343,7 +1344,7 @@ const platform = platformHere()
                     >
                   </template>
                   <small
-                    v-if="row.opening"
+                    v-if="row.opening && !identities.get(row.sessionId)"
                     :id="`rail-opening-${row.sessionId}`"
                     class="opening"
                     :title="row.opening"
@@ -1828,6 +1829,11 @@ const platform = platformHere()
   line-height: var(--leading-normal);
   overflow-wrap: anywhere;
   white-space: normal;
+}
+.rail-group-rows .rail-copy strong.rail-canonical-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
   font-weight: var(--fw-normal);
