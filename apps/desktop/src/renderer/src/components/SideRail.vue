@@ -1880,6 +1880,7 @@ const platform = platformHere()
 }
 .rail-standing-with-age .rail-standing-tail {
   flex: 1 1 0;
+  min-width: var(--space-4);
 }
 
 .rail-live {
