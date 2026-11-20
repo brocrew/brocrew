@@ -267,6 +267,7 @@ import {
   createDraftWriter,
   importDraftsFile,
   keepDraftedPastes,
+  requestLastDraftSaves,
   savedDraftsBook,
   type DraftWriter,
 } from './drafts-file'
@@ -460,26 +461,18 @@ let recordedConversation: ((sessionId: string) => boolean) | null = null
 
 let draftWriter: DraftWriter | null = null
 
-const draftReaders = new Set<number>()
+const draftReaders = new Map<number, string>()
 
 async function theLastDraftSaves(): Promise<void> {
   const writer = draftWriter
   if (writer === null) return
-  const windows = BrowserWindow.getAllWindows().filter(
-    (window) =>
-      !window.isDestroyed() &&
-      !window.webContents.isDestroyed() &&
-      draftReaders.has(window.webContents.id),
-  )
-  writer.expectQuitSaves(windows.length)
-  for (const window of windows) {
-    try {
-      window.webContents.send(LAST_DRAFT_SAVE_CHANNEL)
-    } catch {
-      // A window already on its way out has handed over what it had, on `pagehide`.
-    }
-  }
-  const outcome = await writer.quitSaves()
+  const readers = BrowserWindow.getAllWindows().flatMap((window) => {
+    if (window.isDestroyed()) return []
+    const contents = window.webContents
+    const token = draftReaders.get(contents.id)
+    return token === undefined ? [] : [{ contents, token }]
+  })
+  const outcome = await requestLastDraftSaves(writer, readers, LAST_DRAFT_SAVE_CHANNEL)
   if (outcome === 'failed') throw new Error('the last unsent drafts could not be written to disk')
 }
 
@@ -1244,17 +1237,29 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   draftWriter = writer
   ipcMain.handle('app:saved-drafts', (event) => {
     const reader = event.sender
-    if (!draftReaders.has(reader.id)) {
-      const forget = (): void => void draftReaders.delete(reader.id)
-      reader.once('render-process-gone', forget)
-      reader.once('destroyed', forget)
+    const frame = event.senderFrame
+    if (frame && !frame.isDestroyed() && !frame.detached && frame === reader.mainFrame) {
+      if (!draftReaders.has(reader.id)) {
+        const forget = (): void => {
+          draftReaders.delete(reader.id)
+          reader.removeListener('render-process-gone', forget)
+          reader.removeListener('destroyed', forget)
+          reader.removeListener('did-navigate', forget)
+        }
+        reader.once('render-process-gone', forget)
+        reader.once('destroyed', forget)
+        reader.once('did-navigate', forget)
+      }
+      draftReaders.set(reader.id, frame.frameToken)
     }
-    draftReaders.add(reader.id)
     return restoreSavedDrafts(savedDraftsBook(database), {
       exists: (sessionId) => recordedConversation?.(sessionId) ?? true,
     })
   })
-  ipcMain.handle('app:save-drafts', (_event, saved: unknown) => writer.write(saved))
+  ipcMain.handle('app:save-drafts', (event, saved: unknown) => {
+    const frame = event.senderFrame
+    return writer.write(saved, frame && !frame.isDestroyed() ? frame.frameToken : undefined)
+  })
   ipcMain.handle('app:local-zone', () => localZone())
   ipcMain.handle('app:choose-cwd', async (event): Promise<ChosenCwd> => {
     const owner = BrowserWindow.fromWebContents(event.sender)

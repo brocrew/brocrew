@@ -835,10 +835,10 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
 
   it('🔴 the quit WAITS for each asked window’s LAST book to be on disk — only a book marked `last` counts — without treating a late book as a completed save', async () => {
     const writer = createDraftWriter(db)
-    writer.expectQuitSaves(0)
+    writer.expectQuitSaves([])
     expect(await writer.quitSaves()).toBe('saved')
 
-    writer.expectQuitSaves(1)
+    writer.expectQuitSaves(['main'])
     const waiting = writer.quitSaves()
     let settled = false
     void waiting.then(() => (settled = true))
@@ -847,17 +847,20 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
       drafts: [{ slot: NEW_CONVERSATION, text: 'an earlier book', attached: [] }],
     })
     expect(settled).toBe(false)
-    void writer.write({
-      drafts: [{ slot: NEW_CONVERSATION, text: 'typed as the app closed', attached: [] }],
-      last: true,
-    })
+    void writer.write(
+      {
+        drafts: [{ slot: NEW_CONVERSATION, text: 'typed as the app closed', attached: [] }],
+        last: true,
+      },
+      'main',
+    )
     expect(await waiting).toBe('saved')
     // ⚑ on disk by the time the quit is let go
     expect((await readBack()).drafts.map((draft) => draft.text)).toEqual([
       'typed as the app closed',
     ])
 
-    writer.expectQuitSaves(1)
+    writer.expectQuitSaves(['main'])
     const done = vi.fn()
     void writer.quitSaves().then(done)
     await Promise.resolve()
@@ -870,12 +873,15 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     savesFail()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
-      writer.expectQuitSaves(1)
+      writer.expectQuitSaves(['main'])
       const waiting = writer.quitSaves()
-      void writer.write({
-        drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
-        last: true,
-      })
+      void writer.write(
+        {
+          drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
+          last: true,
+        },
+        'main',
+      )
       expect(await waiting).toBe('failed')
     } finally {
       warn.mockRestore()
@@ -975,17 +981,17 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
 describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, which no test mounts', () => {
   const read = (path: string): string => readFileSync(join(HERE, path), 'utf8')
 
-  it('🔴 main’s doors, the existence question, the quit’s wait and the start-up keep are wired', () => {
+  it('🔴 main’s doors, the existence question and the start-up keep are wired', () => {
     const index = read('../src/main/index.ts')
     expect(index).toMatch(
-      /ipcMain\.handle\('app:save-drafts', \(_event, saved: unknown\) => writer\.write\(saved\)\)/,
+      /ipcMain\.handle\('app:save-drafts', \(event, saved: unknown\) => \{\n\s+const frame = event\.senderFrame\n\s+return writer\.write\(saved, frame && !frame\.isDestroyed\(\) \? frame\.frameToken : undefined\)/,
     )
     expect(index).toMatch(/const writer = createDraftWriter\(database\)\n\s+draftWriter = writer\n/)
     expect(index).toMatch(/return restoreSavedDrafts\(savedDraftsBook\(database\), \{\n/)
     expect(index).toMatch(
       /reader\.once\('render-process-gone', forget\)\n\s+reader\.once\('destroyed', forget\)/,
     )
-    expect(index).toMatch(/\n\s+draftReaders\.add\(reader\.id\)\n/)
+    expect(index).toContain('draftReaders.set(reader.id, frame.frameToken)')
     expect(index).toMatch(/if \(outcome === 'failed'\) throw /)
     expect(index).toMatch(
       /exists: \(sessionId\) => recordedConversation\?\.\(sessionId\) \?\? true,/,
@@ -993,12 +999,6 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     expect(index).toMatch(
       /recordedConversation = \(sessionId\) => db === null \|\| store\.recordedOne\(sessionId\) !== null\n/,
     )
-    // ⚑ the quit's last-book step: its own lifetime step, asking the windows that read drafts
-    expect(index).toMatch(/keepUnsentDrafts: \(\) => theLastDraftSaves\(\),/)
-    expect(index).toMatch(/draftReaders\.has\(window\.webContents\.id\)/)
-    expect(index).toMatch(/writer\.expectQuitSaves\(windows\.length\)/)
-    expect(index).toMatch(/window\.webContents\.send\(LAST_DRAFT_SAVE_CHANNEL\)/)
-    expect(index).toMatch(/const outcome = await writer\.quitSaves\(\)/)
     expect(index).toMatch(
       /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)/,
     )

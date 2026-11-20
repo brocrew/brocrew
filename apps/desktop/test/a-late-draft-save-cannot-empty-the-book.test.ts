@@ -63,9 +63,9 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   await writer.write(packet(brook, 'b'.repeat(66)))
-  writer.expectQuitSaves(1)
+  writer.expectQuitSaves(['main'])
   const waiting = writer.quitSaves()
-  await writer.write({ ...packet(brook, 'b'.repeat(67)), last: true })
+  await writer.write({ ...packet(brook, 'b'.repeat(67)), last: true }, 'main')
   expect(await waiting).toBe('saved')
   // A new process reads the file, without any of the old writer's memory.
   const saved = await restoreSavedDrafts(bookAt(path), {
@@ -83,12 +83,12 @@ it('a late last handover is still saved, and still cannot clear', async () => {
   const path = folder()
   const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'f'.repeat(8000)))
-  writer.expectQuitSaves(1)
+  writer.expectQuitSaves(['main'])
   const done = vi.fn()
   void writer.quitSaves().then(done)
   await Promise.resolve()
   expect(done).not.toHaveBeenCalled()
-  await writer.write({ ...packet(brook, 'typed last'), last: true, cleared: [fern] })
+  await writer.write({ ...packet(brook, 'typed last'), last: true, cleared: [fern] }, 'main')
   expect(read(path).drafts.map((draft) => [draft.slot, draft.text.length])).toEqual([
     [fern, 8000],
     [brook, 10],
@@ -111,9 +111,9 @@ it('an empty quit snapshot cannot clear a saved slot even if it contains a remov
   const path = folder()
   const writer = createDraftWriter(dbAt(path))
   await writer.write(packet(fern, 'fern words'))
-  writer.expectQuitSaves(1)
+  writer.expectQuitSaves(['main'])
   const waiting = writer.quitSaves()
-  await writer.write({ drafts: [], cleared: [fern], last: true })
+  await writer.write({ drafts: [], cleared: [fern], last: true }, 'main')
   expect(await waiting).toBe('saved')
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([fern])
 })
@@ -154,7 +154,7 @@ it('the renderer names a real removal explicitly and long typing reaches the fil
   keeper.flush()
   await Promise.all(saves)
   keeper.stop()
-  writer.expectQuitSaves(1)
+  writer.expectQuitSaves(['main'])
   const done = vi.fn()
   void writer.quitSaves().then(done)
   await Promise.resolve()
@@ -207,9 +207,9 @@ it('a failed final disk write leaves the previous saved draft available to a new
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   savesFail(path, true)
   try {
-    writer.expectQuitSaves(1)
+    writer.expectQuitSaves(['main'])
     const waiting = writer.quitSaves()
-    await writer.write({ ...packet(fern, 'stale'), last: true })
+    await writer.write({ ...packet(fern, 'stale'), last: true }, 'main')
     expect(await waiting).toBe('failed')
     expect(read(path).drafts[0]?.text.length).toBe(8000)
   } finally {
@@ -262,7 +262,7 @@ it('the quit receipt contains save counts, time and per-slot sizes without any d
   await writer.write(packet(brook, 'brook words'))
   const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
   try {
-    writer.expectQuitSaves(1)
+    writer.expectQuitSaves(['main'])
     expect(info).toHaveBeenCalledTimes(1)
     const [label, encoded] = info.mock.calls[0]!
     expect(label).toBe('BroCrew draft save status:')
@@ -303,7 +303,7 @@ it.each(['rejected', 'held'])(
       sweep: { holdRestored: () => undefined },
       handoff,
       bridge: {
-        saveDrafts: (saved) => writer.write(saved),
+        saveDrafts: (saved) => writer.write(saved, 'main'),
         onLastDraftSave: (listener) => {
           last = listener
           return () => {
@@ -317,7 +317,7 @@ it.each(['rejected', 'held'])(
       book.write(fern, 'f'.repeat(9000))
       await nextTick()
       expect(last).toEqual(expect.any(Function))
-      writer.expectQuitSaves(1)
+      writer.expectQuitSaves(['main'])
       const waiting = writer.quitSaves()
       last!()
       expect(await waiting).toBe('saved')
@@ -513,7 +513,7 @@ it.each([false, true])(
       handoff,
       bridge: {
         saveDrafts: (packet) => {
-          const save = writer.write(packet)
+          const save = writer.write(packet, 'main')
           saves.push(save)
           return save
         },
@@ -534,7 +534,7 @@ it.each([false, true])(
       await Promise.all(saves)
       // No debounce timer has fired, and the initial read stays held through the final save.
       expect(last).toEqual(expect.any(Function))
-      writer.expectQuitSaves(1)
+      writer.expectQuitSaves(['main'])
       const quitting = writer.quitSaves()
       last!()
       expect(await quitting).toBe('saved')

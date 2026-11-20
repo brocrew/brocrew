@@ -1,3 +1,4 @@
+import type { WebContents, WebFrameMain } from 'electron'
 import { lutimesSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isPastedImage } from '../shared/runtime-ipc'
@@ -41,9 +42,9 @@ export interface DraftWriter {
    * Keep the slots a save names, and remove the ones it clears. A slot it does not name is left as
    * it is. A book marked `last` answers the quit's request.
    */
-  write(raw: unknown): Promise<void>
-  /** The quit has asked `windows` windows for their last save: count the books marked `last`. */
-  expectQuitSaves(windows: number): void
+  write(raw: unknown, frame?: string): Promise<void>
+  expectQuitSaves(frames: readonly string[]): void
+  forgetQuitSave(frame: string): void
   /**
    * Resolve once every requested last book has arrived and its write has finished.
    */
@@ -58,8 +59,7 @@ export interface DraftWriter {
  */
 export function createDraftWriter(database: AppDatabase): DraftWriter {
   let quitting = false
-  let expected = 0
-  let arrived = 0
+  let pending = new Set<string>()
   let accepted = 0
   let saved = 0
   let lastSavedAt: number | null = null
@@ -84,7 +84,7 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
   }
 
   return {
-    write(raw) {
+    write(raw, frame) {
       if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as SavedDrafts).drafts))
         return Promise.resolve()
       accepted += 1
@@ -103,7 +103,6 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
         cleared.delete(draft.slot)
       }
       const next = { drafts: [...slots.values()], cleared: [...cleared] }
-      if (expected > 0 && packet.last === true) arrived += 1
       if (!database.open) {
         failed = null
       } else {
@@ -119,11 +118,12 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
           lastFailed = true
         }
       }
+      if (frame !== undefined && packet.last === true) pending.delete(frame)
       for (const listener of listeners) listener()
       return Promise.resolve()
     },
 
-    expectQuitSaves(windows) {
+    expectQuitSaves(frames) {
       const book = database.open ? savedDraftsFrom(savedDraftsBook(database)).drafts : []
       console.info(
         'BroCrew draft save status:',
@@ -140,15 +140,18 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
         }),
       )
       quitting = true
-      expected = windows
-      arrived = 0
+      pending = new Set(frames)
+    },
+
+    forgetQuitSave(frame) {
+      if (pending.delete(frame)) for (const listener of listeners) listener()
     },
 
     quitSaves() {
-      if (arrived >= expected) return Promise.resolve(lastFailed ? 'failed' : 'saved')
+      if (pending.size === 0) return Promise.resolve(lastFailed ? 'failed' : 'saved')
       return new Promise((resolve) => {
         const check = (): void => {
-          if (arrived >= expected) finish(lastFailed ? 'failed' : 'saved')
+          if (pending.size === 0) finish(lastFailed ? 'failed' : 'saved')
         }
         function finish(outcome: 'saved' | 'failed'): void {
           listeners.delete(check)
@@ -157,6 +160,57 @@ export function createDraftWriter(database: AppDatabase): DraftWriter {
         listeners.add(check)
       })
     },
+  }
+}
+
+type DraftReaderEvent = 'render-process-gone' | 'destroyed' | 'did-navigate'
+
+type DraftReader = Pick<WebContents, 'isDestroyed'> & {
+  mainFrame: Pick<WebFrameMain, 'frameToken' | 'isDestroyed' | 'detached' | 'send'> | null
+  once(event: DraftReaderEvent, listener: () => void): void
+  removeListener(event: DraftReaderEvent, listener: () => void): void
+}
+
+export async function requestLastDraftSaves(
+  writer: DraftWriter,
+  readers: readonly { contents: DraftReader; token: string }[],
+  channel: string,
+): Promise<'saved' | 'failed'> {
+  writer.expectQuitSaves(readers.map(({ token }) => token))
+  const release: Array<() => void> = []
+  try {
+    for (const { contents, token } of readers) {
+      const frame = contents.isDestroyed() ? null : contents.mainFrame
+      const gone = (): boolean =>
+        contents.isDestroyed() ||
+        !frame ||
+        frame.isDestroyed() ||
+        frame.detached ||
+        frame.frameToken !== token
+      const forget = (): void => writer.forgetQuitSave(token)
+      if (!frame || gone()) {
+        forget()
+        continue
+      }
+      contents.once('render-process-gone', forget)
+      contents.once('destroyed', forget)
+      contents.once('did-navigate', forget)
+      release.push(() => {
+        contents.removeListener('render-process-gone', forget)
+        contents.removeListener('destroyed', forget)
+        contents.removeListener('did-navigate', forget)
+      })
+      try {
+        frame.send(channel)
+      } catch (error) {
+        if (!gone()) throw error
+      }
+      // Electron can log a disposed-frame send without throwing it back to this caller.
+      if (gone()) forget()
+    }
+    return await writer.quitSaves()
+  } finally {
+    for (const stop of release) stop()
   }
 }
 

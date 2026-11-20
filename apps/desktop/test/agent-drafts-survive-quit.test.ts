@@ -43,8 +43,8 @@ describe('agent drafts before a conversation exists', () => {
       ],
     }
     const writer = createDraftWriter(db)
-    writer.expectQuitSaves(1)
-    await writer.write({ ...saved, last: true })
+    writer.expectQuitSaves(['main'])
+    await writer.write({ ...saved, last: true }, 'main')
     expect(await writer.quitSaves()).toBe('saved')
     const restored = await readBack({ exists: () => false })
     expect(restored).toEqual(saved)
