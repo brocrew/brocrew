@@ -281,6 +281,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+    outputs:
+      id: ${{ steps.draft.outputs.id }}
+      assets: ${{ steps.draft.outputs.assets }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -294,6 +297,7 @@ jobs:
           merge-multiple: true
           path: release
       - name: Replace any earlier draft of this version with a new one
+        id: draft
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ needs.plan.outputs.repo }}
@@ -321,6 +325,10 @@ jobs:
             "release/BroCrew-$VERSION-arm64-mac.zip" \
             "release/BroCrew-$VERSION-arm64-mac.zip.blockmap" \
             release/latest-mac.yml
+          # The publish job finds the draft by this id and checks its files against this list.
+          id="$(gh api --paginate "repos/$REPO/releases" --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id")"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "assets=$(gh api "repos/$REPO/releases/$id" --jq '[.assets[] | {id, name, size}] | tojson')" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Publish the draft once the release is approved
@@ -331,8 +339,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+        with:
+          install: 'false'
       - env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ needs.plan.outputs.repo }}
-          VERSION: ${{ needs.plan.outputs.version }}
-        run: gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+          TAG: v${{ needs.plan.outputs.version }}
+          DRAFT_ID: ${{ needs.draft.outputs.id }}
+          DRAFT_ASSETS: ${{ needs.draft.outputs.assets }}
+        run: node scripts/publish-release.mjs
