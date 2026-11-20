@@ -1305,7 +1305,10 @@ const platform = platformHere()
                         <template v-if="row.provider || row.named || identities.get(row.sessionId)">
                           ·
                         </template>
-                        <span :data-cy="`rail-state-word-${row.sessionId}`">
+                        <span
+                          class="rail-standing-word"
+                          :data-cy="`rail-state-word-${row.sessionId}`"
+                        >
                           {{ row.worker ? workerState(row.word, row.named) : row.word }}
                         </span></template
                       ></span
@@ -1874,6 +1877,9 @@ const platform = platformHere()
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.rail-standing-word {
+  flex: none;
 }
 .rail-standing-age {
   display: flex;
