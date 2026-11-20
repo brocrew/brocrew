@@ -85,6 +85,8 @@ it.each([false, true])(
     expect(unread.count).toBe(torn ? 1 : 0)
     expect(owner.piecesSkipped).toEqual(torn ? [skipped] : [])
     expect(owner.history.statesSkipped).toEqual(owner.piecesSkipped)
-    expect(readsBeforeNewestTurn).toBe(1)
+    // The terminal is now selected before the one shared current/cut replay begins.
+    expect(readsBeforeNewestTurn).toBe(0)
+    expect(pieceReads).toBe(1)
   },
 )

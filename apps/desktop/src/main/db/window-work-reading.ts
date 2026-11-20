@@ -1,9 +1,9 @@
 import type { AppDatabase } from './connection'
-import type { SessionStore } from './session-store'
+import type { SessionStore, WindowOpenWork } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { PieceRow } from '../../shared/task-contracts'
 import type { LedgerWalk, RaisedQuestion, WorkInHand } from '../../shared/question-contracts'
-import { TASK_IS_OPEN, openWorkOf } from '../../shared/tasks'
+import { TASK_IS_OPEN, openWorkOf, waitsOnWhoWrote } from '../../shared/tasks'
 import type { SkipNote } from './rows-unread'
 type SkippedRow = Parameters<SkipNote>[0]
 
@@ -78,19 +78,56 @@ function counted<T>(read: (unread: RowsUnread) => T): WindowFact<T> {
   return { value: read(unread), skipped: [...skipped].map(([id, rows]) => [id, [...rows]]) }
 }
 
+export interface WindowPieces {
+  readonly open: readonly PieceRow[]
+  readonly skipped: WindowFact<unknown>['skipped']
+  readonly owner: Omit<WindowWorkReading['owners'][number], 'given'>
+}
+
+/** Project a canonical fold while it is at hand; only open pieces keep their full rows. */
+export function projectWindowPieces(
+  store: SessionStore,
+  id: string,
+  folded: WindowFact<readonly PieceRow[]>,
+): WindowPieces {
+  const root = store.rootOf(id)
+  const open = folded.value.filter((piece) => TASK_IS_OPEN[piece.state])
+  const { named, waitingOnPurpose } = store.workThatNamesAndItsWait(id, undefined, folded.value)
+  const fact = <T>(value: T): WindowFact<T> => ({ value, skipped: folded.skipped })
+  return {
+    open,
+    skipped: folded.skipped,
+    owner: {
+      id,
+      rootless: root === null && store.recordedOne(id) !== null && store.parentOf(id) === null,
+      openWork: fact([...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(open)]),
+      waitsOnWhoWrote: fact(open.filter(waitsOnWhoWrote).map(stateWork)),
+      naming: fact({
+        named,
+        waitingOnPurpose:
+          waitingOnPurpose === null
+            ? null
+            : {
+                ...stateWork(waitingOnPurpose),
+                label: waitingOnPurpose.label,
+                statusLine: waitingOnPurpose.statusLine,
+              },
+      }),
+    },
+  }
+}
+
+function stateWork({ piece, parent, owner, state, givenAt }: PieceRow): StateWork {
+  return { piece, parent, owner, state, givenAt }
+}
+
 /** The state and naming projections need no task briefs, replies, or resource bodies. */
 export function readWindowWork(
   db: AppDatabase,
   store: SessionStore,
   listingOnly = false,
+  projected: ReadonlyMap<string, WindowPieces> = new Map(),
 ): WindowWorkReading {
-  const state = ({ piece, parent, owner, state, givenAt }: PieceRow): StateWork => ({
-    piece,
-    parent,
-    owner,
-    state,
-    givenAt,
-  })
   const ids = db
     .prepare(
       `SELECT id FROM provider_session
@@ -99,40 +136,52 @@ export function readWindowWork(
     UNION SELECT given_by_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL`,
     )
     .all() as { id: string }[]
-  const owners = ids.map(({ id }) => {
-    const root = store.rootOf(id)
-    return {
+  const readings = new Map(
+    ids.map(({ id }) => [
       id,
-      rootless: root === null && store.recordedOne(id) !== null && store.parentOf(id) === null,
-      openWork: counted((unread) => {
-        return [
-          ...(root === null ? [] : [{ label: root.label }]),
-          ...openWorkOf(store.piecesOwnedBy(id, unread)),
-        ]
-      }),
-      given: counted((unread) =>
-        store
-          .piecesGivenBy(id, unread)
-          .filter((piece) => TASK_IS_OPEN[piece.state])
-          .map(state),
-      ),
-      waitsOnWhoWrote: counted((unread) => store.piecesWaitingOnWhoWroteIn(id, unread).map(state)),
-      naming: counted((unread) => {
-        const { named, waitingOnPurpose } = store.workThatNamesAndItsWait(id, unread)
-        return {
-          named,
-          waitingOnPurpose:
-            waitingOnPurpose === null
-              ? null
-              : {
-                  ...state(waitingOnPurpose),
-                  label: waitingOnPurpose.label,
-                  statusLine: waitingOnPurpose.statusLine,
-                },
-        }
-      }),
-    }
-  })
+      projected.get(id) ??
+        projectWindowPieces(
+          store,
+          id,
+          counted((unread) => store.piecesOwnedBy(id, unread)),
+        ),
+    ]),
+  )
+  const givenTo = new Map<string, string[]>()
+  const edges = db
+    .prepare(
+      `SELECT DISTINCT given_by_session_id AS giver, owner_session_id AS owner
+      FROM work WHERE given_by_session_id IS NOT NULL`,
+    )
+    .all() as { giver: string; owner: string }[]
+  for (const { giver, owner } of edges) {
+    let holders = givenTo.get(giver)
+    if (holders === undefined) givenTo.set(giver, (holders = []))
+    holders.push(owner)
+  }
+  const forward = (reading: WindowPieces, unread?: RowsUnread): void => {
+    for (const [owner, skipped] of reading.skipped)
+      for (const ordinal of skipped) unread?.in(owner)(ordinal)
+  }
+  const work: WindowOpenWork = {
+    ownedBy: (owner, noteSkip) => {
+      const reading = readings.get(owner)!
+      for (const [, skipped] of reading.skipped) for (const ordinal of skipped) noteSkip?.(ordinal)
+      return reading.open
+    },
+    givenBy: (giver, unread) =>
+      (givenTo.get(giver) ?? [])
+        .flatMap((owner) => {
+          const reading = readings.get(owner)!
+          forward(reading, unread)
+          return reading.open.filter((piece) => piece.giver === giver)
+        })
+        .sort((left, right) => left.givenAt - right.givenAt || (left.piece < right.piece ? -1 : 1)),
+  }
+  const owners = ids.map(({ id }) => ({
+    ...readings.get(id)!.owner,
+    given: counted((unread) => work.givenBy(id, unread).map(stateWork)),
+  }))
   const pairs = db
     .prepare(
       `WITH RECURSIVE chain(piece, id, owner, parent) AS (
@@ -189,13 +238,13 @@ export function readWindowWork(
       ? undefined
       : {
           stalls: counted((unread) =>
-            stalled(store.stalledWorkNobodyWasToldAbout(unread, noOpenPieces)),
+            stalled(store.stalledWorkNobodyWasToldAbout(unread, noOpenPieces, work)),
           ),
           stops: counted((unread) =>
-            stalled(store.stalledWorkItsGiverWasToldAbout(unread, noOpenPieces)),
+            stalled(store.stalledWorkItsGiverWasToldAbout(unread, noOpenPieces, work)),
           ),
           replies: counted((unread) => {
-            const walk = store.piecesWaitingOnWhoWrote(unread)
+            const walk = store.piecesWaitingOnWhoWrote(unread, work)
             return {
               ...walk,
               rows: walk.rows.map(({ piece, label, title, owner, answeredAPersonAt }) => ({

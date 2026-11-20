@@ -6,6 +6,7 @@ import {
   type LedgerWindow,
 } from '../database/sqlite/ledger/history'
 import { readInstructionAskers } from './instruction-askers-read'
+import { piecesAtTheCutAndNow } from './piece-fold-cut'
 import { retryBusyWrite } from './retry-busy-write'
 import {
   createSessionCatalogueRead,
@@ -460,6 +461,12 @@ type PieceForAName = Pick<
 >
 
 export type PieceHeld = PieceForAName
+
+/** Open work already read for this window snapshot, including its unread-row evidence. */
+export interface WindowOpenWork {
+  ownedBy(owner: string, noteSkip?: SkipNote): readonly PieceRow[]
+  givenBy(giver: string, unread?: RowsUnread): readonly PieceRow[]
+}
 
 export function skipTheLedger(
   sessionId: string,
@@ -941,13 +948,18 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   stalledWorkNobodyWasToldAbout(
     unread?: RowsUnread,
     noOpenPieces?: (owner: string) => boolean,
+    work?: WindowOpenWork,
   ): LedgerWalk<PieceRow>
   stalledWorkItsGiverWasToldAbout(
     unread?: RowsUnread,
     noOpenPieces?: (owner: string) => boolean,
+    work?: WindowOpenWork,
   ): LedgerWalk<PieceRow>
   stalledWorkAPersonGave(unread?: RowsUnread): LedgerWalk<PieceRow>
-  piecesWaitingOnWhoWrote(unread?: RowsUnread): LedgerWalk<PieceWaitingOnWhoWrote>
+  piecesWaitingOnWhoWrote(
+    unread?: RowsUnread,
+    work?: WindowOpenWork,
+  ): LedgerWalk<PieceWaitingOnWhoWrote>
   piecesWaitingOnWhoWroteIn(owner: string, unread?: RowsUnread): readonly PieceWaitingOnWhoWrote[]
   providerLimitsSeen(
     now: number,
@@ -975,6 +987,14 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   reconciliationReceiptsForOwner(owner: string): readonly HolderReconciliationReceipt[]
   reconciliationRecovery(owner: string): WorkRecoveryEvent | null
   reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
+  reconciliationPieces(
+    owner: string,
+    unread?: RowsUnread,
+  ): {
+    readonly pieces: readonly PieceRow[]
+    readonly newestTurn: string | null
+    readonly driven: readonly string[] | null
+  }
   reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
   queuedPromptProgress(
     target: string,
@@ -1013,6 +1033,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   workThatNamesAndItsWait(
     conversation: string,
     unread?: RowsUnread,
+    folded?: readonly PieceRow[],
   ): {
     readonly named: WorkThatNamesIt | null
     readonly waitingOnPurpose: PieceRow | null
@@ -1350,6 +1371,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   reconciliationReceiptsForOwner: () => [],
   reconciliationRecovery: () => null,
   reconciliationDrivenByTurn: () => [],
+  reconciliationPieces: () => ({ pieces: [], newestTurn: null, driven: [] }),
   reconciliationReceipts: () => [],
   queuedPromptProgress: () => 'missing',
   providerFailureNoticeProgress: () => 'not-delivered',
@@ -2219,7 +2241,7 @@ export function createSessionStore(
                      'replaced_by', 'work_restarted', 'request_routed', 'request_stranded',
                      'user_turn', 'turn', 'status', 'work_interrupted', 'background_work',
                      'scheduled_work')
-        AND ordinal >= ?
+        AND ordinal >= ? AND ordinal < ?
       ORDER BY ordinal`,
   )
   const selectFirstPieceGiven = db.prepare(
@@ -3381,7 +3403,12 @@ export function createSessionStore(
       // A row the whole fold would count as unread, a first piece given, or a read that fails is
       // the whole fold's.
       try {
-        const rows = selectPieceEvents.all(owner, generation, after + 1) as EventRow[]
+        const rows = selectPieceEvents.all(
+          owner,
+          generation,
+          after + 1,
+          Number.POSITIVE_INFINITY,
+        ) as EventRow[]
         if (rows.length === 0) return held
         let readable = true
         const added = [
@@ -3449,13 +3476,13 @@ export function createSessionStore(
     return readOrSkip(owner, skipped, [], () => {
       const floor = pieceFoldFloor(owner, generation, options.backgroundWakesIt)
       if (floor === null) return []
-      const rows = selectPieceEvents.iterate(owner, generation, floor) as Iterable<EventRow>
-      function* beforeTheBound() {
-        for (const row of rows) {
-          if (before === undefined || row.ordinal < before) yield row
-        }
-      }
-      const pieces = derivePieces(owner, persistedEventsFrom(beforeTheBound(), skipped), {
+      const rows = selectPieceEvents.iterate(
+        owner,
+        generation,
+        floor,
+        before ?? Number.POSITIVE_INFINITY,
+      ) as Iterable<EventRow>
+      const pieces = derivePieces(owner, persistedEventsFrom(rows, skipped), {
         ...options,
         // Told after the last row: a fold that skipped one is never carried forward.
         ...(keep === undefined
@@ -3479,6 +3506,39 @@ export function createSessionStore(
   }
 
   const pieceFoldFloors = new Map<string, { readonly generation: number; readonly floor: number }>()
+
+  /** `null` is a foreign/old turn; `undefined` is a current turn with no terminal yet. */
+  function reconciliationCut(owner: string, turn: string): number | null | undefined {
+    const current = activeGeneration(owner)
+    const ending = db
+      .prepare(
+        `SELECT e.ordinal FROM events e JOIN turn t ON t.id = e.turn_id
+        WHERE t.session_id = ? AND t.id = ? AND t.generation = ?
+          AND (e.type = 'turn' OR (e.type = 'status' AND json_valid(e.payload)
+            AND json_extract(e.payload, '$.state') IN ('idle', 'ended', 'errored')))
+        ORDER BY e.ordinal LIMIT 1`,
+      )
+      .get(owner, turn, current) as { ordinal: number } | undefined
+    const known = db
+      .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
+      .get(turn, owner, current)
+    return known === undefined ? null : ending?.ordinal
+  }
+
+  function piecesThatDrove(
+    owner: string,
+    folded: readonly PieceRow[],
+    opening: UserTurnEvent | null,
+  ): readonly string[] {
+    const pieces = folded.filter((one) => one.state === 'working').map((one) => one.piece)
+    const root = workSql().rootOwnedBy.get(owner) as WorkDbRow | undefined
+    const named =
+      opening === null
+        ? []
+        : theMessagesOf(opening).flatMap((one) => (one.drives === undefined ? [] : [one.drives]))
+    if (root !== undefined && (named.length === 0 || named.includes(root.id))) pieces.push(root.id)
+    return pieces
+  }
 
   const namedByAPiece = new Map<
     string,
@@ -3867,6 +3927,7 @@ export function createSessionStore(
   function whatThisConversationIsWaitingOn(
     sessionId: string,
     unread?: RowsUnread,
+    work?: WindowOpenWork,
   ): WhatAConversationIsWaitingOn {
     const mine = unread?.in(sessionId)
     const routings = routedRequestsOfSession(sessionId, mine)
@@ -3877,21 +3938,23 @@ export function createSessionStore(
       answers: new Set(openQuestionsByWork(routings, raised).keys()),
       aPerson: aPersonOwesAnAnswerIn(routings),
       childrenOpen: new Set(
-        piecesGivenBySession(sessionId, unread)
-          .filter((piece) => TASK_IS_OPEN[piece.state])
-          .map((piece) => piece.parent),
+        (work === undefined
+          ? piecesGivenBySession(sessionId, unread).filter((piece) => TASK_IS_OPEN[piece.state])
+          : work.givenBy(sessionId, unread)
+        ).map((piece) => piece.parent),
       ),
     }
   }
 
   function oneWaitReadPerHolder(
     unread: RowsUnread,
+    work?: WindowOpenWork,
   ): (holder: string) => WhatAConversationIsWaitingOn {
     const held = new Map<string, WhatAConversationIsWaitingOn>()
     return (holder) => {
       const mine = held.get(holder)
       if (mine !== undefined) return mine
-      const outstanding = whatThisConversationIsWaitingOn(holder, unread)
+      const outstanding = whatThisConversationIsWaitingOn(holder, unread, work)
       held.set(holder, outstanding)
       return outstanding
     }
@@ -5937,7 +6000,7 @@ export function createSessionStore(
       return settleStrandedRequestsTx(at, running, unread, owners)
     },
 
-    stalledWorkNobodyWasToldAbout(counted, noOpenPieces) {
+    stalledWorkNobodyWasToldAbout(counted, noOpenPieces, work) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
       const unread = counted ?? rowsUnreadOnce()
       const told = new Map<string, ReadonlySet<string>>()
@@ -5948,14 +6011,19 @@ export function createSessionStore(
         told.set(giver, receipts)
         return receipts
       }
-      const waiting = oneWaitReadPerHolder(unread)
+      const waiting = oneWaitReadPerHolder(unread, work)
       const walked = walkLedgers(
         'every-conversation-that-was-given-work',
         holders,
         (sessionId, noteSkip) =>
           oneSnapshot && db.inTransaction && noOpenPieces?.(sessionId)
             ? []
-            : composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).filter(
+            : composeWhatEachPieceIsWaitingOn(
+                work === undefined
+                  ? piecesOfSession(sessionId, noteSkip)
+                  : work.ownedBy(sessionId, noteSkip),
+                waiting,
+              ).filter(
                 (piece) =>
                   aStallItsGiverCanBeToldOf(piece) && !toldAbout(piece.giver).has(piece.piece),
               ),
@@ -5992,7 +6060,7 @@ export function createSessionStore(
       )
       return stalledInOrder(found)
     },
-    stalledWorkItsGiverWasToldAbout(counted, noOpenPieces) {
+    stalledWorkItsGiverWasToldAbout(counted, noOpenPieces, work) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
       const unread = counted ?? rowsUnreadOnce()
       const told = new Map<string, ReadonlySet<string>>()
@@ -6004,30 +6072,37 @@ export function createSessionStore(
         }
         return receipts.has(piece)
       }
-      const waits = oneWaitReadPerHolder(unread)
+      const waits = oneWaitReadPerHolder(unread, work)
       const found = walkLedgers(
         'every-conversation-that-was-given-work',
         holders,
         (holder, noteSkip) =>
           oneSnapshot && db.inTransaction && noOpenPieces?.(holder)
             ? []
-            : composeWhatEachPieceIsWaitingOn(piecesOfSession(holder, noteSkip), waits).filter(
+            : composeWhatEachPieceIsWaitingOn(
+                work === undefined
+                  ? piecesOfSession(holder, noteSkip)
+                  : work.ownedBy(holder, noteSkip),
+                waits,
+              ).filter(
                 (piece) => aStallItsGiverCanBeToldOf(piece) && wasToldOf(piece.giver, piece.piece),
               ),
         unread,
       )
       return stalledInOrder(found)
     },
-    piecesWaitingOnWhoWrote(counted) {
+    piecesWaitingOnWhoWrote(counted, work) {
       const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
       const unread = counted ?? rowsUnreadOnce()
-      const itsWaits = oneWaitReadPerHolder(unread)
+      const itsWaits = oneWaitReadPerHolder(unread, work)
       const walked = walkLedgers(
         'every-conversation-that-was-given-work',
         holders,
         (sessionId, noteSkip) =>
           composeWhatEachPieceIsWaitingOn(
-            piecesWaitingOnWhoWroteIn(sessionId, noteSkip),
+            work === undefined
+              ? piecesWaitingOnWhoWroteIn(sessionId, noteSkip)
+              : work.ownedBy(sessionId, noteSkip).filter(waitsOnWhoWrote),
             itsWaits,
           ).filter(waitsOnWhoWrote),
         unread,
@@ -6265,37 +6340,75 @@ export function createSessionStore(
       return read
     },
     reconciliationDrivenByTurn(owner, turn) {
-      const current = activeGeneration(owner)
-      const ending = db
-        .prepare(
-          `SELECT e.ordinal FROM events e JOIN turn t ON t.id = e.turn_id
-        WHERE t.session_id = ? AND t.id = ? AND t.generation = ?
-          AND (e.type = 'turn' OR (e.type = 'status' AND json_valid(e.payload)
-            AND json_extract(e.payload, '$.state') IN ('idle', 'ended', 'errored')))
-        ORDER BY e.ordinal LIMIT 1`,
-        )
-        .get(owner, turn, current) as { ordinal: number } | undefined
-      const known = db
-        .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
-        .get(turn, owner, current)
-      if (known === undefined) return []
+      const before = reconciliationCut(owner, turn)
+      if (before === null) return []
       const unread = rowsUnreadOnce()
       const folded =
-        ending === undefined
+        before === undefined
           ? piecesOfSession(owner, unread.in(owner))
-          : foldPiecesOfSession(owner, unread.in(owner), false, ending.ordinal)
+          : foldPiecesOfSession(owner, unread.in(owner), false, before)
       if (unread.count !== 0 || unread.ledgersSkipped !== 0)
         throw new Error('the cut work could not be read')
-      const pieces = folded.filter((one) => one.state === 'working').map((one) => one.piece)
-      const root = workSql().rootOwnedBy.get(owner) as WorkDbRow | undefined
-      const opening = this.recordedTurnOpening(owner, turn)
-      const named =
-        opening === null
-          ? []
-          : theMessagesOf(opening).flatMap((one) => (one.drives === undefined ? [] : [one.drives]))
-      if (root !== undefined && (named.length === 0 || named.includes(root.id)))
-        pieces.push(root.id)
-      return pieces
+      return piecesThatDrove(owner, folded, this.recordedTurnOpening(owner, turn))
+    },
+    reconciliationPieces(owner, unread) {
+      const newestTurn = this.theNewestTurn(owner)
+      if (newestTurn === null)
+        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: [] }
+      let before: number | null | undefined
+      try {
+        before = reconciliationCut(owner, newestTurn)
+      } catch {
+        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: null }
+      }
+      if (before === null)
+        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: [] }
+      let complete = true
+      const skipped: SkipNote = (ordinal, cause) => {
+        complete = false
+        unread?.in(owner)(ordinal, cause)
+      }
+      let atTheCut: readonly PieceRow[] | null = null
+      const pieces =
+        before === undefined
+          ? piecesOfSession(owner, skipped)
+          : readOrSkip(owner, skipped, [], () => {
+              const generation = activeGeneration(owner)
+              const stalled = new Map<string, number>()
+              const options = pieceFoldOptions(owner, false, stalled)
+              const floor = pieceFoldFloor(owner, generation, options.backgroundWakesIt)
+              if (floor === null) {
+                atTheCut = []
+                return []
+              }
+              const rows = selectPieceEvents.iterate(
+                owner,
+                generation,
+                floor,
+                Number.POSITIVE_INFINITY,
+              ) as Iterable<EventRow>
+              const now = piecesAtTheCutAndNow(owner, rows, before, options, skipped, (cut) => {
+                atTheCut = cut
+              })
+              if (complete) {
+                pieceStallOrdinals.set(now, stalled)
+                return now
+              }
+              return now.map(({ definitionOfDone: _condition, ...piece }) => {
+                void _condition
+                return piece
+              })
+            })
+      if (before === undefined && complete) atTheCut = pieces
+      let driven: readonly string[] | null = null
+      if (atTheCut !== null) {
+        try {
+          driven = piecesThatDrove(owner, atTheCut, this.recordedTurnOpening(owner, newestTurn))
+        } catch {
+          // The current pieces remain usable when the separate historical fact is unread.
+        }
+      }
+      return { pieces, newestTurn, driven }
     },
     reconciliationReceipts(owner, piece) {
       if (selectUnreadReconciliationReceipt.get(owner) !== undefined)
@@ -6470,12 +6583,18 @@ export function createSessionStore(
       return theWorkThatNamesNow(conversation, unread)
     },
 
-    workThatNamesAndItsWait(conversation, unread) {
+    workThatNamesAndItsWait(conversation, unread, folded) {
       const generation = activeGeneration(conversation)
-      const held = heldForAName(conversation, generation, unread)
+      const held =
+        folded === undefined
+          ? heldForAName(conversation, generation, unread)
+          : {
+              pieces: folded,
+              waiting: folded.filter((piece) => TASK_IS_OPEN[piece.state]).at(-1) ?? null,
+            }
       return {
         named: theRootThatNames(conversation, generation) ?? theWorkThatNamesItAmong(held.pieces),
-        waitingOnPurpose: held.waiting,
+        waitingOnPurpose: held.waiting?.state === 'waiting-on-purpose' ? held.waiting : null,
       }
     },
 

@@ -8,6 +8,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
+import { windowFoldCache } from '../src/main/db/window-fold-cache'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 
 const cleanup: (() => void)[] = []
@@ -145,4 +146,171 @@ it('seeks both Stop kinds without walking other fold rows and retains torn-after
   const searches = plan.map((one) => one.detail).filter((one) => one.includes('SEARCH events'))
   expect(searches).toHaveLength(2)
   expect(searches.every((one) => one.includes('events_kind_owner_idx'))).toBe(true)
+})
+
+it.each(['none', 'before', 'after'] as const)(
+  'reads the exclusive turn cut and current pieces once, retaining %s-cut unread evidence',
+  (torn) => {
+    const w = world()
+    const root = w.store.rootOf('person')!
+    w.append(
+      'person',
+      {
+        type: 'work_given',
+        piece: 'child',
+        parent: root.piece,
+        label: `${root.label}.1`,
+        givenBy: 'agent',
+        title: 'Fictional child',
+        brief: 'Fictional',
+        definitionOfDone: 'Keep this condition.',
+      },
+      2,
+    )
+    w.append('person', { type: 'user_turn', text: 'Work on the child.', drives: 'child' }, 3)
+    const turn = w.store.theNewestTurn('person')!
+    const tear = () => {
+      const ordinal = w.store.nextOrdinal('person')
+      w.db
+        .prepare(
+          'INSERT INTO events(id,session_id,ordinal,type,payload,created_at,generation) VALUES(?,?,?,?,?,?,0)',
+        )
+        .run(`torn-${torn}`, 'person', ordinal, 'work_status_set', '{', 4)
+      return ordinal
+    }
+    const skippedBefore = torn === 'before' ? tear() : null
+    const cut = w.store.nextOrdinal('person')
+    w.append('person', { type: 'turn', state: 'completed' }, 5)
+    w.append('person', { type: 'work_closed', piece: 'child', by: 'agent' }, 6)
+    const skippedAfter = torn === 'after' ? tear() : null
+    const fresh = createSessionStore(w.db)
+    const expectedUnread = rowsUnreadOnce()
+    const expected = fresh.piecesOwnedBy('person', expectedUnread)
+    const expectedDriven =
+      torn === 'before' ? null : fresh.reconciliationDrivenByTurn('person', turn)
+    const prepare = w.db.prepare.bind(w.db)
+    const returned: number[] = []
+    let reads = 0
+    vi.spyOn(w.db, 'prepare').mockImplementation((sql) => {
+      const statement = prepare(sql)
+      if (!sql.includes("type IN ('work_given'") || !sql.includes('json_remove')) return statement
+      const iterate = statement.iterate.bind(statement)
+      vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+        reads++
+        for (const row of iterate(...args) as Iterable<{ ordinal: number }>) {
+          returned.push(row.ordinal)
+          yield row
+        }
+      })
+      return statement
+    })
+    const observed = createSessionStore(w.db)
+    const unread = rowsUnreadOnce()
+    const actual = observed.reconciliationPieces('person', unread)
+    expect(actual).toEqual({ pieces: expected, newestTurn: turn, driven: expectedDriven })
+    expect(actual.pieces[0]?.state).toBe('closed')
+    expect(actual.driven).toEqual(torn === 'before' ? null : ['child'])
+    expect(unread.count).toBe(expectedUnread.count)
+    expect(unread.ledgersSkipped).toBe(expectedUnread.ledgersSkipped)
+    expect(reads).toBe(1)
+    expect(new Set(returned).size).toBe(returned.length)
+    returned.length = 0
+    const historicalUnread = rowsUnreadOnce()
+    expect(observed.piecesOwnedBefore('person', cut, historicalUnread)[0]?.state).toBe('working')
+    expect(returned.every((ordinal) => ordinal < cut)).toBe(true)
+    expect(returned).not.toContain(cut)
+    expect(historicalUnread.count).toBe(skippedBefore === null ? 0 : 1)
+    if (skippedAfter !== null) expect(returned).not.toContain(skippedAfter)
+  },
+)
+
+it('bounds giver, stall and reply history to the canonical open pieces with no retained fold', () => {
+  const w = world()
+  const parent = w.store.rootOf('person')!
+  for (const [owner, piece] of [
+    ['agent', 'reply'],
+    ['ended', 'stall'],
+  ] as const) {
+    const number = w.store.numberUnder(parent.piece)
+    const given = {
+      type: 'work_given' as const,
+      piece,
+      parent: parent.piece,
+      label: `${parent.label}.${number}`,
+      givenBy: 'person',
+      title: piece,
+      brief: 'Fictional work without a question.',
+    }
+    w.store.recordGive(
+      {
+        piece,
+        parent: parent.piece,
+        number,
+        owner,
+        givenBy: 'person',
+        title: given.title,
+        brief: given.brief,
+        folder: null,
+        inputs: [],
+      },
+      w.store.nextOrdinal(owner),
+      given,
+      2,
+    )
+    w.append(
+      owner,
+      { type: 'user_turn', text: 'Fictional drive.', humanInitiated: owner === 'agent' },
+      3,
+    )
+    w.append(owner, { type: 'turn', state: 'completed' }, 4)
+  }
+  const canonical = createSessionStore(w.db)
+  const expectedStalls = canonical.stalledWorkNobodyWasToldAbout()
+  const expectedReplies = canonical.piecesWaitingOnWhoWrote()
+  const expectedGiven = canonical.piecesGivenBy('person')
+  expect(expectedStalls.rows.map((one) => one.piece)).toEqual(['stall'])
+  expect(expectedReplies.rows.map((one) => one.piece)).toEqual(['reply'])
+  const engine = new WindowReadEngine(w.file)
+  cleanup.push(() => engine.close())
+  Object.assign(engine, { answers: windowFoldCache(0) })
+  const db = (engine as unknown as { db: AppDatabase }).db
+  const prepare = db.prepare.bind(db)
+  const reads: string[] = []
+  vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+    const statement = prepare(sql)
+    if (!sql.includes("type IN ('work_given'") || !sql.includes('json_remove')) return statement
+    const iterate = statement.iterate.bind(statement)
+    vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+      reads.push(String(args[0]))
+      yield* iterate(...args)
+    })
+    return statement
+  })
+  const actual = engine.read({ kind: 'incidents' })
+  if (actual.kind !== 'incidents') throw new Error('wrong reading')
+  const queue = actual.routing.work!.queue!
+  for (const [reading, expected] of [
+    [queue.stalls, expectedStalls],
+    [queue.replies, expectedReplies],
+  ] as const) {
+    expect(reading.value.rows.map((one) => one.piece)).toEqual(
+      expected.rows.map((one) => one.piece),
+    )
+    for (const row of reading.value.rows)
+      expect(expected.rows.find((one) => one.piece === row.piece)).toEqual(
+        expect.objectContaining(row),
+      )
+    expect(reading.value.rowsUnread).toBe(expected.rowsUnread)
+    expect(reading.value.ledgers).toBe(expected.ledgers)
+  }
+  expect(actual.routing.work!.owners.find((one) => one.id === 'person')?.given.value).toEqual(
+    expectedGiven.map(({ piece, parent, owner, state, givenAt }) => ({
+      piece,
+      parent,
+      owner,
+      state,
+      givenAt,
+    })),
+  )
+  expect(reads.sort()).toEqual(['agent', 'ended'])
 })

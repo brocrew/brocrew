@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { SnapshotFoldAnswers } from './ledger-fold-state'
 import { windowFoldCache } from './window-fold-cache'
-import { readWindowWork } from './window-work-reading'
+import { readWindowWork, projectWindowPieces, type WindowPieces } from './window-work-reading'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -124,8 +124,14 @@ export class WindowReadEngine {
       )
       const database = this.db
       function readRoutes(listingOnly: true): WindowListingStates
-      function readRoutes(listingOnly?: false): WindowRoutes
-      function readRoutes(listingOnly = false): WindowRoutes | WindowListingStates {
+      function readRoutes(
+        listingOnly?: false,
+        projected?: ReadonlyMap<string, WindowPieces>,
+      ): WindowRoutes
+      function readRoutes(
+        listingOnly = false,
+        projected?: ReadonlyMap<string, WindowPieces>,
+      ): WindowRoutes | WindowListingStates {
         const candidates = database
           .prepare("SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'")
           .iterate() as IterableIterator<{ id: string }>
@@ -165,7 +171,7 @@ export class WindowReadEngine {
           routes,
           questions: store.questionsAPersonMustAnswer(unread),
           decisions: store.decisionsAwaitingAPerson(unread),
-          work: readWindowWork(cancellable, store),
+          work: readWindowWork(cancellable, store, false, projected),
         }
       }
       let result: WindowReadResult
@@ -181,6 +187,7 @@ export class WindowReadEngine {
       } else if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()
         const readings: IncidentReading[] = []
+        const projected = new Map<string, WindowPieces>()
         const reported = new Map<string, IncidentFact<readonly string[]>>()
         const read = <T>(answer: () => T): IncidentFact<T> => {
           try {
@@ -213,7 +220,16 @@ export class WindowReadEngine {
             }
           }
           const statesSkipped = new Set<SkippedRow>()
-          const states = store.piecesOwnedBy(sessionId, noted(statesSkipped))
+          const reconciled = store.reconciliationPieces(sessionId, noted(statesSkipped))
+          checkCancelled()
+          const states = reconciled.pieces
+          projected.set(
+            sessionId,
+            projectWindowPieces(store, sessionId, {
+              value: states,
+              skipped: statesSkipped.size === 0 ? [] : [[sessionId, [...statesSkipped]]],
+            }),
+          )
           for (const ordinal of statesSkipped) piecesSkipped.add(ordinal)
           const pieces = states.filter((one) => TASK_IS_OPEN[one.state])
           // The canonical work reader shares the open-piece fold already read for this owner.
@@ -226,7 +242,7 @@ export class WindowReadEngine {
             },
           }
           const work = foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped))
-          const newestTurn = store.theNewestTurn(sessionId)
+          const newestTurn = reconciled.newestTurn
           const stop = store.lastAskToStop(sessionId, noted(stopSkipped))
           for (const piece of pieces)
             if (piece.giver !== null && !reported.has(piece.giver))
@@ -250,10 +266,7 @@ export class WindowReadEngine {
               ]),
               recovery: read(() => store.reconciliationRecovery(sessionId)),
               newestTurn,
-              driven:
-                newestTurn === null
-                  ? { value: [] }
-                  : read(() => store.reconciliationDrivenByTurn(sessionId, newestTurn)),
+              driven: reconciled.driven === null ? null : { value: reconciled.driven },
               lastPerson:
                 stop?.by === 'a-person'
                   ? read(() => store.whenAPersonLastWrote(sessionId))
@@ -285,7 +298,7 @@ export class WindowReadEngine {
           kind: 'incidents',
           owners: readings,
           reported: [...reported],
-          routing: readRoutes(),
+          routing: readRoutes(false, projected),
         }
       } else if (query.kind === 'activity') {
         const reading = recentActivity(store, query.from, query.to)
