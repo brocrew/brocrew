@@ -1295,7 +1295,9 @@ const platform = platformHere()
                     "
                     ><span class="rail-standing-prefix"
                       ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
-                        ><span>{{ row.label }}</span></template
+                        ><span :data-cy="`rail-profile-${row.sessionId}`">{{
+                          row.label
+                        }}</span></template
                       ><template v-if="!identities.get(row.sessionId) && row.provider">
                         <template v-if="row.named && !row.worker"> · </template
                         >{{ row.provider }} </template
@@ -1862,8 +1864,14 @@ const platform = platformHere()
   display: flex;
 }
 .rail-standing-with-age .rail-standing-prefix {
+  display: flex;
   flex: none;
   max-width: calc(100% - 4em - var(--space-4));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-standing-with-age .rail-standing-prefix > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

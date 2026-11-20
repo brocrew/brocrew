@@ -177,6 +177,12 @@ interface Cut {
  */
 const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
+    cy: 'rail-profile-sess_named',
+    starts: 'default',
+    mayFit: true,
+    because: 'The profile name owns its ellipsis while the full standing remains on hover.',
+  },
+  {
     cy: 'open-session-sess_named',
     starts: /^\d+d ago$/,
     mayFit: true,
