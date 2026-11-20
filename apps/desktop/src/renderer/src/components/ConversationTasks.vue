@@ -171,6 +171,7 @@ time {
 }
 .task-status {
   display: grid;
+  color: var(--text-soft);
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: var(--space-3);
   white-space: pre-wrap;
@@ -181,6 +182,7 @@ time {
   font-size: var(--type-caption);
 }
 .task-other summary {
+  color: var(--text-soft);
   cursor: pointer;
   font-size: var(--type-caption);
 }
