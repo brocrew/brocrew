@@ -163,12 +163,6 @@ export const TOOL_NAMES = [
    */
   'find_files',
   /**
-   * Brings an archived conversation back to the lists, as a person's Restore does. It sends
-   * nothing of its own, so it hands nobody anything to do: a conversation that held messages or a
-   * schedule when it was archived carries on with them.
-   */
-  'restore_agent',
-  /**
    * Asks the person to register an external MCP server. It writes a request and contacts nothing;
    * only the person's press registers anything. It hands nobody work.
    */

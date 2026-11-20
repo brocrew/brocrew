@@ -296,7 +296,6 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
   'agent-could-not-be-started': theErrorAndItsProvider,
   'that-conversation-could-not-be-resumed': theErrorAndItsProvider,
   'agent-cannot-take-a-message': thisAppSaid,
-  'it-could-not-be-restored': thisAppSaid,
   'that-piece-was-already-answered': (detail, context) => {
     const label = aText(detail['label'])
     if (label === undefined) return []

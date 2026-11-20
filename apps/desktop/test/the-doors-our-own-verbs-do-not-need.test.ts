@@ -109,7 +109,6 @@ const THE_SPLIT: Readonly<Record<ToolName, BeyondItsRails>> = {
   // It brings an archived conversation back to the lists, as a person's Restore does, and sends
   // nothing of its own: what starts is what the app starts for words and jobs the conversation
   // already held, as `message_agent`'s words start a stopped one.
-  restore_agent: 'nothing-its-rails-do-not-cover',
   // It writes a request in the caller's own ledger and contacts nothing; only a person's press
   // registers a server.
   request_mcp_server: 'nothing-its-rails-do-not-cover',

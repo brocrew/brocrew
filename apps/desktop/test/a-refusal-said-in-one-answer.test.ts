@@ -456,16 +456,6 @@ describe('each actionable detail, in words', () => {
       ` This app said: It stopped taking turns. ${UNTIL}`,
     ],
     [
-      'what a person must do to restore it',
-      answered(
-        refuseTool('it-could-not-be-restored', {
-          agent: 'sess_typed',
-          said: 'Let BroBot write its folder',
-        }),
-      ),
-      ` This app said: Let BroBot write its folder. ${UNTIL}`,
-    ],
-    [
       'how an answered piece ended, and what its reply handed in',
       answered(
         refuseTool('that-piece-was-already-answered', {
@@ -750,7 +740,7 @@ describe('never two stops', () => {
       answered(
         refuseTool('malformed-request', { problems: ['agent is required.', 'text is required;'] }),
       ),
-      answered(refuseTool('it-could-not-be-restored', { said: 'Let BroBot write its folder.' })),
+      answered(refuseTool('agent-cannot-take-a-message', { said: 'Let BroBot write its folder.' })),
       answered(
         refuseQuestion('that-answer-cannot-be-sent', { said: 'no answer was given for part_2.' }),
       ),

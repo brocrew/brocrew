@@ -691,11 +691,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|no-agent-by-that-name': 'name an agent by the profile list_profiles gives it',
   // Restoring an archived conversation: each refusal names what to do next (the first one's act
   // ends at 195 of 200).
-  'TOOL_REFUSALS|that-conversation-is-not-archived':
-    'list_agents with archived: true names the archived ones you can reach',
-  'TOOL_REFUSALS|it-is-being-archived-or-deleted': 'Call this tool again once that is done',
-  'TOOL_REFUSALS|it-could-not-be-restored': 'Tell the person',
-  // Asking the person to register an MCP server: each refusal leads with what to do instead.
   'TOOL_REFUSALS|server-already-registered':
     'ask the person with ask_question (a-person) to grant it to your profile',
   'TOOL_REFUSALS|server-already-asked-for': 'wait for the person to decide',

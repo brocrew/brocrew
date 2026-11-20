@@ -734,7 +734,7 @@ describe('a successful answer says in words what its payload held', () => {
       expect(briefed.text).not.toContain('A memorable corrected brief.')
     })
 
-    it('list_agents names a conversation that holds no piece by its id, and restore_agent gives that id beside its name', async () => {
+    it('list_agents names a conversation that holds no piece by its id', async () => {
       const { pm, pmTools } = await aPm()
       store.create({
         id: 'below_1',
@@ -753,13 +753,6 @@ describe('a successful answer says in words what its payload held', () => {
       expect(line, listed.text).toBeDefined()
       expect(line).toContain(' · started by ')
       expect(line?.split(' · started by ')[0]).not.toContain('the owner of')
-
-      expect(await host.archiveConversation('below_1')).toMatchObject({ done: true })
-      const restored = await ok(pmTools, 'restore_agent', { agent: 'below_1' })
-      expect(restored.structured?.['restored']).toEqual([
-        { agent: 'below_1', carries_on: 'stopped' },
-      ])
-      expect(restored.text).toContain(', below_1: stays stopped until something starts it')
     })
 
     it('update_work a new brief its holder could not be started for: no Done, who could not be told, and why', async () => {

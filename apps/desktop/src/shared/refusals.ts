@@ -484,12 +484,6 @@ export const TOOL_REFUSALS = [
   'work-record-unavailable',
   // The profile name is not held by the app; this differs from a conversation id or piece label.
   'no-agent-by-that-name',
-  // Neither the named conversation nor a conversation below it is archived.
-  'that-conversation-is-not-archived',
-  // An archive or delete of the conversation is still under way.
-  'it-is-being-archived-or-deleted',
-  // The archived-conversation list could not be saved; the host’s explanation is carried in said.
-  'it-could-not-be-restored',
   // The requested name or address is registered. A request adds a server and never edits one.
   'server-already-registered',
   // Another request already asks for this server name; it clears when that request is decided.

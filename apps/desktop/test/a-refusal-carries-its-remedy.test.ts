@@ -449,9 +449,6 @@ describe('425 · a refusal carries its remedy', () => {
           'TOOL_REFUSALS · that-work-is-being-sent',
           'TOOL_REFUSALS · work-record-unavailable',
           'TOOL_REFUSALS · the-start-it-waited-on-did-not-happen',
-          // ⚑ **The seventeenth**: a restore while an archive or a delete of that conversation is
-          // still under way; the same call once it has landed.
-          'TOOL_REFUSALS · it-is-being-archived-or-deleted',
           'TOOL_REFUSALS · theme-invalid',
           'TOOL_REFUSALS · theme-exists',
           'TOOL_REFUSALS · theme-unknown',
@@ -475,7 +472,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(29)
+      expect(carrying).toHaveLength(28)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -569,7 +566,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(29)
+      expect(retryable).toHaveLength(28)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -736,9 +733,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `SPAWN_RAILS`' `its-provider-is-not-chosen`
       // (an agent with no provider saved whose conversations ran on both) — its sentence names a
       // person's choice on its sheet, or another agent.
-      // ⚑ **+2**, `restore_agent`'s: `that-conversation-is-not-archived` (`permanent`) and
-      // `it-could-not-be-restored` (`until-a-person-changes-it`: a person repairs the file this app
-      // keeps the archived conversations in). Its third word is retryable and carries the act.
       // ⚑ **+3**, a give to a service: `service-queue-not-owned` and `its-kind-is-unknown`
       // (`until-a-person-changes-it`) and `that-is-this-conversation` (`permanent`) — each sentence
       // names another agent, or doing it here.
@@ -750,7 +744,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+2**, the move offer's two that carry no act.
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
-      expect(quiet).toHaveLength(76)
+      expect(quiet).toHaveLength(74)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['its-provider-is-fixed', 'permanent'],
@@ -835,8 +829,6 @@ describe('425 · a refusal carries its remedy', () => {
           'TOOL_REFUSALS · work-record-unavailable',
           // ⚑ **D-016** — a give held behind a start that did not happen: the same give, once it has.
           'TOOL_REFUSALS · the-start-it-waited-on-did-not-happen',
-          // A restore behind an archive or a delete still under way: the same call, once it has landed.
-          'TOOL_REFUSALS · it-is-being-archived-or-deleted',
           // A give to a service that waits on its caller: the same give, once that work has ended.
           'SPAWN_RAILS · it-would-wait-on-itself',
           // A give to a service whose waits can't all be checked: the same give, once some has ended.
@@ -964,8 +956,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **Eighty-one** — `answer-too-long`, an answer over the bound.
       // ⚑ **Eighty-three** — F009's `no-agent-by-that-name`, the same word as `quiet` above.
       // ⚑ **Eighty-four** — `its-provider-is-not-chosen`, the same word as `quiet` above.
-      // ⚑ **Eighty-seven** — `restore_agent`'s three: the two `quiet` gained, and
-      // `it-is-being-archived-or-deleted`, which the same call clears once that has landed.
       // ⚑ **Ninety-three** — a give to a service's six: the four `quiet` gained, and
       // `it-would-wait-on-itself` and `its-waits-cannot-all-be-checked`, which the same give clears
       // once that work has ended.
@@ -977,7 +967,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
-      expect(walked).toHaveLength(105)
+      expect(walked).toHaveLength(102)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

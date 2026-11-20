@@ -23,7 +23,7 @@ import {
   isPathSegment,
 } from '../../../shared/runtime-ipc'
 import { OWN_INSTRUCTIONS_CHARS } from '../../../shared/own-instructions'
-import { PIECE_TITLE_CHARS, pieceNumbersOf } from '../../../shared/piece-called'
+import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
 import { type Provider, providerSchema } from '@brobot2/shared'
 import { TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum } from './catalog'
 import { whatADeliveryMet } from './delivery'
@@ -32,12 +32,10 @@ import type { WhatItRunsOn } from '../spawn-rails'
 import { aPairInWords } from '../../../shared/model-choice'
 import { answer, itsLabelIsNotUsed, refusalAnswer, sendAnswer } from './answers'
 import { carryRailRefusal, refuseTool, type PublishedRefusal } from './refusals'
-import { clockTimeFrom } from '../../../shared/clock'
-import { namedByItsWorkOnce } from './listings'
 import { protectedPlaceSaid } from '../../../shared/work-folders'
 import { z } from 'zod'
 
-// Launch, creation and restore tools classify only their known failure types.
+// Launch and creation tools classify only their known failure types.
 
 /**
  * **D-042 · R4 — what the helper's conversation runs on, said to the giver** (*"the give's answer
@@ -546,93 +544,6 @@ export function createCreateAgentTool(
               ? ''
               : ` Its new conversations start on ${aPairInWords(outcome.defaultModel)}.`
           }${wrote === null ? '' : ` ${ITS_RULES_ARE_SAVED}`}`,
-        )
-      }),
-  }
-}
-
-export function createRestoreAgentTool(
-  host: Pick<AgentToolHost, 'addressOf' | 'nameByItsWorkUnder' | 'restoreAsAnAgent'>,
-  by: Caller,
-  me: string,
-  guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
-): AgentToolDefinition & { readonly name: ToolName } {
-  return {
-    name: 'restore_agent',
-    description:
-      'Bring an archived conversation back: it shows again in the person’s lists and in list_agents, with the helpers archived with it. This sends it nothing, and its transcript says that you restored it, so the person sees who did. It carries on as when a person restores it: one that held messages when it was archived starts to take them, one with a schedule wakes for it, and any other stays stopped. So restoring a conversation that held a message or a schedule starts it and spends a turn; the answer says which. To only read an archived conversation, do not restore it: list_agents with archived: true finds it, and read_transcript reads it where it could before it was archived. Restore only what your work needs: a person archived it to put it away. Name it by the piece it owns (W1.2) or by its id; list_agents with archived: true lists the archived conversations. To restore one and tell it something in the same act, send it a message or give it work instead: whatever is sent to an archived conversation brings it back.',
-    /**
-     * A person's Restore, asked by an agent. It sends nothing of its own: what starts is only
-     * what the app starts for words and jobs the conversation already held, as a message to a
-     * stopped one does. The host's own refusals are the whole gate, and any archived
-     * conversation may be restored.
-     */
-    beyondItsRails: 'nothing-its-rails-do-not-cover',
-    input: {
-      agent: z
-        .string()
-        .describe(
-          'The archived conversation, by the piece it owns (W1.2) or by its id from list_agents with archived: true.',
-        ),
-    },
-    call: (args) =>
-      guarded(async () => {
-        if (typeof args.agent !== 'string' || args.agent.length === 0) {
-          return refusalAnswer(refuseTool('malformed-request', { problems: ['agent is required'] }))
-        }
-        const restored = host.restoreAsAnAgent(args.agent, by, me)
-        if (restored.is === 'no-such-agent') {
-          return refusalAnswer(refuseTool('no-such-agent', { agent: args.agent }))
-        }
-        if (restored.is === 'not-archived') {
-          return refusalAnswer(
-            refuseTool('that-conversation-is-not-archived', { agent: args.agent }),
-          )
-        }
-        if (restored.is === 'being-set-aside' || restored.is === 'could-not') {
-          return refusalAnswer(
-            refuseTool(
-              restored.is === 'could-not'
-                ? 'it-could-not-be-restored'
-                : 'it-is-being-archived-or-deleted',
-              { agent: args.agent, said: restored.said },
-            ),
-          )
-        }
-        const called = namedByItsWorkOnce(host)
-        /** One restored conversation, and how it carries on, in a line. */
-        const line = ({ conversation, carriesOn }: (typeof restored.conversations)[number]) => {
-          // One that holds no piece is named with its address too, as `name, address`.
-          const address = host.addressOf(conversation)
-          const name =
-            pieceNumbersOf(address) === null
-              ? `${called(conversation, null)}, ${address}`
-              : called(conversation, null)
-          if (carriesOn === null) return `${name}: stays stopped until something starts it`
-          return carriesOn === 'starting'
-            ? `${name}: starting now, for what it held when it was archived`
-            : `${name}: wakes at ${clockTimeFrom(carriesOn.wakesAt, restored.readAt)} for its schedule`
-        }
-        const many = restored.conversations.length > 1
-        return answer(
-          {
-            outcome: 'ok',
-            restored: restored.conversations.map(({ conversation, carriesOn }) => ({
-              agent: conversation,
-              carries_on:
-                carriesOn === null
-                  ? 'stopped'
-                  : carriesOn === 'starting'
-                    ? 'starting'
-                    : `wakes at ${clockTimeFrom(carriesOn.wakesAt, restored.readAt)}`,
-            })),
-          },
-          [
-            `restored, back in the lists; you sent ${many ? 'them' : 'it'} nothing, and ${
-              many ? 'their transcripts say' : 'its transcript says'
-            } you restored ${many ? 'them' : 'it'}:`,
-            ...restored.conversations.map(line),
-          ].join('\n'),
         )
       }),
   }

@@ -92,26 +92,6 @@ export type TakeBackRefused =
       readonly label: string
     }
 
-/** Held words or a due job start it now; wakesAt is epoch milliseconds; null stays stopped. */
-export type CarriesOn = 'starting' | { readonly wakesAt: number } | null
-
-/** Actual restored conversations and how each carries on. */
-export type RestoredByAnAgent =
-  | {
-      readonly is: 'restored'
-      readonly conversations: readonly {
-        readonly conversation: string
-        readonly carriesOn: CarriesOn
-      }[]
-
-      /** Read time used to place each scheduled wake on a day. */
-      readonly readAt: number
-    }
-  | { readonly is: 'no-such-agent' }
-  | { readonly is: 'not-archived' }
-  | { readonly is: 'being-set-aside'; readonly said: string }
-  | { readonly is: 'could-not'; readonly said: string }
-
 export type AgentRecordReading =
   | { readonly is: 'no-agent-by-that-name' }
   | { readonly is: 'a-record'; readonly record: AgentRecord }

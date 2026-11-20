@@ -131,11 +131,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   'work-record-unavailable': 'while-this-holds',
   // **F009 — the name is the call's**: the same name names nothing the next time either.
   'no-agent-by-that-name': 'permanent',
-  'that-conversation-is-not-archived': 'permanent',
-  // The archive or the delete lands by itself.
-  'it-is-being-archived-or-deleted': 'while-this-holds',
-  // A person has to let this app write the file it keeps the archived conversations in.
-  'it-could-not-be-restored': 'until-a-person-changes-it',
   'server-already-registered': 'permanent',
   // The person deciding the waiting request, or requests, is what clears these two.
   'server-already-asked-for': 'until-a-person-changes-it',
@@ -220,9 +215,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'work-record-unavailable': 'make-the-same-call-when-this-settles',
   // **F009 · permanent, so no act** — the sentence names the door that lists every agent.
   'no-agent-by-that-name': null,
-  'that-conversation-is-not-archived': null,
-  'it-is-being-archived-or-deleted': 'make-the-same-call-when-this-settles',
-  'it-could-not-be-restored': null,
   // Not retryable, so no act: the sentences say what to do instead.
   'server-already-registered': null,
   'server-already-asked-for': null,
@@ -384,12 +376,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // **F009 · the act first, inside the cut** — spell a name the roster holds.
   'no-agent-by-that-name':
     'name an agent by the profile list_profiles gives it: no agent has that profile, so there is no record to read. list_profiles without profile names every agent.',
-  'that-conversation-is-not-archived':
-    'that conversation is not archived, nor is any below it, so nothing was restored. list_agents with archived: true names the archived ones you can reach.',
-  'it-is-being-archived-or-deleted':
-    'that conversation is being archived or deleted right now, so nothing was restored. Call this tool again once that is done; a deleted one is then gone.',
-  'it-could-not-be-restored':
-    'this app could not change its list of archived conversations, so nothing was restored. Tell the person: the detail says what they need to do.',
   // The general forms; `request_mcp_server` says each with the name and numbers it met.
   'server-already-registered':
     'ask the person with ask_question (a-person) to grant it to your profile if you need that server: one by that name or at that address is already registered, and a request cannot change a registered server, so nothing was asked.',

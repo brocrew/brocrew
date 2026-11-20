@@ -1027,7 +1027,7 @@ describe('347 · the five tools', () => {
       // or everywhere.
       // ⚑ `request_mcp_server` asks the person to register an outside MCP server.
       // ⚑ `request_action` asks the person to do something, as a to-do.
-      expect(offered).toHaveLength(34)
+      expect(offered).toHaveLength(33)
       expect(offered.at(-2)).toBe('compact_agent')
       expect(offered.at(-1)).toBe('rename_conversation')
     })
@@ -1162,9 +1162,6 @@ describe('347 · the five tools', () => {
         find_files: 'nothing at all',
         search_work: 'nothing at all',
         search_past_work: 'nothing at all',
-        // `restore_agent` names the archived conversation to bring back. ⛔ It is not a dispatch
-        // tool under the rule above: it sends nothing and hands nobody anything to do.
-        restore_agent: 'the agent',
         request_mcp_server: 'a server to register',
         // `request_action` names the piece the to-do is about, as `ask_question` does, and hands
         // nobody work: only the person's answer reaches the caller.

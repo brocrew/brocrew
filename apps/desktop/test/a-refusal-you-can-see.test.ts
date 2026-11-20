@@ -187,7 +187,6 @@ describe('405 · a refusal you can see', () => {
     messageAgentNow: (...args) => host.messageAgentNow(...args),
     agentsVisibleTo: (...args) => host.agentsVisibleTo(...args),
     archivedVisibleTo: (...args) => host.archivedVisibleTo(...args),
-    restoreAsAnAgent: (...args) => host.restoreAsAnAgent(...args),
     whenItWasArchived: (...args) => host.whenItWasArchived(...args),
     profilesVisibleTo: (...args) => host.profilesVisibleTo(...args),
     // ⚑ **F009 · one agent's record** — added because the interface gained it, which is what this

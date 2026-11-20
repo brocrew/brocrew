@@ -36,7 +36,6 @@ import type {
   McpServerAsked,
   McpServerRequestOutcome,
   ProposeRulesOutcome,
-  RestoredByAnAgent,
   TakeBackOutcome,
   TakeOnWorkOutcome,
   UpdateWorkOutcome,
@@ -142,7 +141,6 @@ export interface AgentToolHost {
     facts?: FactsAQueueCarries,
   ): Promise<MessageNowOutcome>
   agentsVisibleTo(by: Caller, me: string | null, input?: DirectoryPageInput): AgentsListed
-  restoreAsAnAgent(address: string, by: Caller, me: string): RestoredByAnAgent
   archivedVisibleTo(by: Caller, me: string | null, input?: DirectoryPageInput): ArchivedListed
   whenItWasArchived(id: string): number | null
   agentCard(id: string, by: Caller, me: string | null): AgentCard | null

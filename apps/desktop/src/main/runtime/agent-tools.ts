@@ -15,7 +15,6 @@ import { createAnswerQuestionTool, createListQuestionsTool } from './tool-famili
 import {
   createCreateAgentTool,
   createGiveWorkTool,
-  createRestoreAgentTool,
 } from './tool-families/launch'
 import {
   createFindFilesTool,
@@ -166,7 +165,6 @@ export function agentToolsFor(
     createTakeOnWorkTool(host, by, guarded),
     createSearchWorkTool(host, me, guarded),
     createFindFilesTool(host, me, readerInputs, readerFieldRefusal, guarded),
-    createRestoreAgentTool(host, by, me, guarded),
     createRequestMcpServerTool(host, me, guarded),
     createRequestActionTool(host, by, guarded),
   ]

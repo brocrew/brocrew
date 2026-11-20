@@ -5,8 +5,6 @@ import type {
   WaitOnAsked,
   TheCopiesRefusal,
   TakeBackOutcome,
-  CarriesOn,
-  RestoredByAnAgent,
   AgentRecordReading,
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
@@ -20,8 +18,6 @@ import type {
 export type {
   WaitOnAsked,
   TakeBackOutcome,
-  CarriesOn,
-  RestoredByAnAgent,
   AgentRecordReading,
   UpdateWorkOutcome,
   TakeOnWorkOutcome,
@@ -31917,57 +31913,6 @@ export class RuntimeHost implements LiveHost {
     this.carryOnAfterTheStop(archived, NEWER_WORDS_AFTER_THE_ARCHIVE)
     this.theWorldMoved('conversations')
     return { done: true, conversations: archived }
-  }
-
-  /**
-   * An agent's restore: the person's Restore ({@link restoreConversation}), with its refusals, for
-   * the conversation `address` names by its id or by the label of a piece it owns. It sends
-   * nothing; each conversation brought back says in its own transcript that `me` restored it, and
-   * carries on as after a person's restore, which the answer says. Any archived conversation may
-   * be restored, whoever started it, so no reach is asked, and the answer names the whole tree
-   * that came back. An address that names nothing archived is said to name nothing when it is
-   * out of the caller's reach, as at every door.
-   */
-  restoreAsAnAgent(address: string, by: Caller, me: string): RestoredByAnAgent {
-    const named = this.deps.store.workByLabel(address)?.owner ?? address
-    const sessionId = this.theOneInItsPlace(named)
-    if (this.deps.store.recordedOne(sessionId) === null) return { is: 'no-such-agent' }
-    const archived = this.theArchivedTreeOf(sessionId)
-    if (archived.length === 0) {
-      return this.withinMessagingReach(sessionId, by, me)
-        ? { is: 'not-archived' }
-        : { is: 'no-such-agent' }
-    }
-    const beingSetAside = archived.some((conversation) => this.settingAside.has(conversation))
-    const restored = this.restoreFromTheArchive(
-      sessionId,
-      `Brought back from the archive: ${this.whatToCallTheConversation(me)} restored it.`,
-    )
-    if (!restored.done) {
-      return { is: beingSetAside ? 'being-set-aside' : 'could-not', said: restored.refusal }
-    }
-    const now = this.now()
-    return {
-      is: 'restored',
-      conversations: restored.conversations.map((conversation) => ({
-        conversation,
-        carriesOn: this.howItCarriesOn(conversation, now),
-      })),
-      readAt: now,
-    }
-  }
-
-  /** How a conversation just restored carries on: read right after {@link carryOnAfterTheStop}. */
-  private howItCarriesOn(conversation: string, now: number): CarriesOn {
-    const wakeUp = this.wakeUps.get(conversation)
-    if (
-      this.startsInFlight.has(conversation) ||
-      this.slots.has(conversation) ||
-      (wakeUp !== undefined && wakeUp.startAt <= now)
-    ) {
-      return 'starting'
-    }
-    return wakeUp === undefined ? null : { wakesAt: wakeUp.startAt }
   }
 
   /** A committed give brings its archived destination back even if the provider cannot start. */
