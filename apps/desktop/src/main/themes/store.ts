@@ -38,6 +38,7 @@ import {
   ACTIVE_THEME_FILE,
   readThemeChoice,
   saysAbsent,
+  THEME_LIBRARY_FOLDER,
   themeDirectory,
   themeFolderState,
   writeActiveTheme,
@@ -386,8 +387,10 @@ export class ThemeStore implements ThemeAssetRegistry {
 
   private async reload(): Promise<void> {
     this.options.assertWorkspace?.()
-    // The library may be new; its parent must already exist.
-    await mkdir(this.options.library).catch((error: unknown) => {
+    // A library inside the workspace never makes its missing parent; one beside it may.
+    await mkdir(this.options.library, {
+      recursive: this.options.library !== join(this.options.userData, THEME_LIBRARY_FOLDER),
+    }).catch((error: unknown) => {
       if (saysAbsent(error)) throw error
     })
     this.options.assertWorkspace?.()

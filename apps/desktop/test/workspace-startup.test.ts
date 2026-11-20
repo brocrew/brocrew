@@ -158,7 +158,7 @@ async function startup(
     },
     whatAFailedStartEndsOn: async (error: Error) => ({ kind: 'failed', detail: error.message }),
     stopWhatTheStartStarted: async () => {},
-    presentation: { hidden: true },
+    presentation: { hidden: fake.commandLine.hasSwitch('brobot-hidden') },
     dialog: { showErrorBox: (_title: string, line: string) => lines.push(line) },
     console: { error: (line: string) => lines.push(line) },
     keepTheSystemZone: () => {
@@ -367,6 +367,22 @@ it('main passes the must-exist option into SQLite when the database disappears a
   } finally {
     for (const db of connections) db.close()
   }
+})
+
+it('a first visible launch with no app-data folder yet makes its theme library and opens', async () => {
+  rmSync(appData, { recursive: true })
+  rmSync(join(workspace, 'brobot2.sqlite'))
+  let selected = workspace
+  const fresh: PinnableApp = {
+    isPackaged: false,
+    getPath: (name) => (name === 'appData' ? appData : selected),
+    setPath: (_name, path) => {
+      selected = path
+    },
+    commandLine: { hasSwitch: (name) => name === 'user-data-dir' },
+  }
+  expect(await startup(fresh)).toEqual({ lines: [], exits: [], databaseStarts: 1, exists: true })
+  expect(existsSync(join(appData, '@brobot2', 'themes'))).toBe(true)
 })
 
 it('configured startup on existing data reaches the database', async () => {
