@@ -29,6 +29,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  settleFixtureTurns,
 } from './lib/host-fixture'
 
 /** The to-do lifecycle through RuntimeHost and SQLite, with a provider double. */
@@ -36,12 +37,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** Long enough for every pump and every flush a row arms to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
+const settle = (): Promise<void> => settleFixtureTurns(2, 30)
 
 /** While set, every resume waits for it: the conversation stays starting until it settles. */
 let resumesWait: Promise<void> | null = null
