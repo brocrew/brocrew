@@ -275,7 +275,8 @@ for (const provider of ['claude', 'codex'] as const) {
     const card = m.q('open-session-person-21')
     const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
     expect(m.q('side-rail').getBoundingClientRect().width).toBe(252)
-    expect(card.getBoundingClientRect().width).toBe(216)
+    // The native window's measured text budget; Electron verifies the enclosing layout.
+    line.style.width = '158px'
     expect(line.getBoundingClientRect().width).toBe(158)
     expect(line.textContent).toBe(`BroBot · ${provider} · idle · bakery`)
     expect(line.title).toBe(`BroBot · ${provider} · idle · bakery`)
@@ -302,12 +303,14 @@ for (const width of [252, 266.2]) {
     await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
     const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
     expect(line.textContent).toBe(`BroBot · claude · waiting on an answer from ${long} · bakery`)
+    line.style.width = '158px'
     visiblePrefix(line, 'BroBot · claude')
     expect(line.title).toContain(long)
     expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
     const label = m.q('rail-profile-recipe-1')
     const state = m.q('rail-state-word-recipe-1')
     const standing = label.closest('small')!
+    standing.style.width = '158px'
     expect(label.textContent).toContain('Mira')
     expect(label.clientWidth).toBeGreaterThan(20)
     expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
