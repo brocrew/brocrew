@@ -78,7 +78,7 @@ export function listConversationTasks(
     | 'piecesWithTheirWaits'
     | 'firstTaskOf'
     | 'conversationTitle'
-    | 'defaultTaskTitle'
+    | 'defaultConversationTitle'
     | 'agentIdentityNameById'
     | 'recordedOne'
     | 'parentOf'

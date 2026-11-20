@@ -6,7 +6,7 @@ import type {
   HumanTurnAnswer,
 } from '../../shared/human-answer-contracts'
 import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
-import { humanPromptOf } from '../../shared/human-turn-answer'
+import { firstHumanMessageOf, humanPromptOf } from '../../shared/human-turn-answer'
 
 export function createHumanAnswerReader(
   db: Pick<AppDatabase, 'prepare'>,
@@ -14,6 +14,7 @@ export function createHumanAnswerReader(
   activeGeneration: (sessionId: string) => number,
   toPersistedEvents: (rows: EventRow[]) => PersistedEvent[],
 ): {
+  firstPersonOpening(sessionId: string, generation: number): string | null
   latestHumanAnswers(sessionId: string): HumanAnswers
   humanFinalsInWindow(
     sessionId: string,
@@ -22,6 +23,17 @@ export function createHumanAnswerReader(
   ): ReadonlyMap<number, HumanFinalContext>
 } {
   type HumanPromptRow = EventRow & { turn_id: string | null }
+  // The earliest possible person turn stands. An old unmarked row yields no title, even if a
+  // later turn has a stamp. Imported conversations and workers can also own a root.
+  const firstPersonOpening = db.prepare(
+    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_human_prompt_idx
+     WHERE session_id = @session AND generation = @generation
+       AND (${HUMAN_CONTEXT_TERM}) AND type = 'user_turn'
+       AND json_type(payload, '$.attribution') IS NULL
+       AND EXISTS (SELECT 1 FROM provider_session
+         WHERE id = @session AND parent_session_id IS NULL AND adopted_at IS NULL)
+     ORDER BY ordinal LIMIT 1`,
+  )
   const latestHumanPrompt = db.prepare(
     `SELECT ordinal, payload, created_at, turn_id FROM events INDEXED BY events_human_prompt_idx
      WHERE session_id = ? AND generation = ? AND (${HUMAN_CONTEXT_TERM}) AND type = 'user_turn'
@@ -86,6 +98,13 @@ export function createHumanAnswerReader(
   }
 
   return {
+    firstPersonOpening(sessionId, generation) {
+      const row = firstPersonOpening.get({ session: sessionId, generation }) as EventRow | undefined
+      if (row === undefined) return null
+      const opening = toPersistedEvents([row])[0]
+      return opening?.event.type === 'user_turn' ? firstHumanMessageOf(opening.event) : null
+    },
+
     latestHumanAnswers(sessionId) {
       const generation = activeGeneration(sessionId)
       const row = latestHumanPrompt.get(sessionId, generation) as HumanPromptRow | undefined

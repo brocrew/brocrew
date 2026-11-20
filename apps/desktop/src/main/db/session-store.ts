@@ -96,6 +96,7 @@ import {
   aConversationTitle,
   aTitleAuthor,
   CONVERSATION_TITLE_CHARS,
+  titleFromOpeningMessage,
   type ConversationTitle,
   type ConversationTitleHistory,
   type ConversationTitleHistoryCursor,
@@ -1017,7 +1018,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
    * address, and it never changes.
    */
   firstTaskOf(conversation: string): { readonly piece: string; readonly label: string } | null
-  defaultTaskTitle(conversation: string): string | null
+  defaultConversationTitle(conversation: string): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
   servicesBorn(): readonly { readonly conversation: string; readonly identity: string | null }[]
@@ -1380,7 +1381,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   activityWorkNames: () => new Map(),
   workByLabel: () => null,
   firstTaskOf: () => null,
-  defaultTaskTitle: () => null,
+  defaultConversationTitle: () => null,
   rootOf: () => null,
   servicesBorn: () => [],
   workersBorn: () => [],
@@ -2030,7 +2031,7 @@ export function createSessionStore(
   const selectLastTurn = db.prepare(
     `SELECT id FROM turn WHERE session_id = ? AND generation = ? ORDER BY ordinal DESC LIMIT 1`,
   )
-  const { latestHumanAnswers, humanFinalsInWindow } = createHumanAnswerReader(
+  const { firstPersonOpening, latestHumanAnswers, humanFinalsInWindow } = createHumanAnswerReader(
     db,
     selectLastTurn,
     activeGeneration,
@@ -6474,14 +6475,18 @@ export function createSessionStore(
       return { piece: row.id, label: workRowWalked(row).label }
     },
 
-    defaultTaskTitle(conversation) {
+    defaultConversationTitle(conversation) {
       const sql = workSql()
       const generation = activeGeneration(conversation)
       const root = sql.rootOwnedBy.get(conversation) as WorkDbRow | undefined
       const rootTitle = root === undefined ? null : aConversationTitle(titleNow(root, generation))
       if (rootTitle !== null) return rootTitle
       const first = sql.firstNonRootOwnedBy.get(conversation) as WorkDbRow | undefined
-      return first === undefined ? null : titleNow(first, generation)
+      const taskTitle = first === undefined ? null : aConversationTitle(titleNow(first, generation))
+      if (taskTitle !== null) return taskTitle
+      if (root === undefined) return null
+      const opening = firstPersonOpening(conversation, generation)
+      return opening === null ? null : titleFromOpeningMessage(opening)
     },
 
     rootOf(conversation) {

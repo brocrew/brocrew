@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -38,6 +39,15 @@ describe('renaming a conversation', () => {
     executeRuntimeCommand(host, world.window, { kind: 'readConversationIdentity', sessionId })
   const readTitles = (sessionId: string) =>
     executeRuntimeCommand(host, world.window, { kind: 'readConversationTitleHistory', sessionId })
+
+  function recordTurn(conversation: string, turn: Omit<UserTurnEvent, 'type'>): void {
+    world.store.append(
+      conversation,
+      world.store.nextOrdinal(conversation),
+      { type: 'user_turn', ...turn },
+      world.clock,
+    )
+  }
 
   function recordFirstTask(owner: string, title: string, brief: string): string {
     const root = world.store.rootOf(caller)!
@@ -86,7 +96,7 @@ describe('renaming a conversation', () => {
     })
     const taskLabel = recordFirstTask(service, serviceTask, 'Complete the service task.')
     expect(world.store.firstTaskOf(service)?.label).toBe(taskLabel)
-    expect(world.store.defaultTaskTitle(service)).toBe(serviceTask)
+    expect(world.store.defaultConversationTitle(service)).toBe(serviceTask)
     world.store.titleConversation(
       target,
       world.store.nextOrdinal(target),
@@ -119,19 +129,32 @@ describe('renaming a conversation', () => {
     expect(ids.map((id) => world.store.events(id))).toEqual(before)
   })
 
-  it('uses the displayed profile name when a person’s conversation has no title', async () => {
+  it('uses the first person message in stored order when the conversation has no work title', async () => {
     const conversation = await world.aPersonOpens(host, DEFAULT_PROFILE_ID)
     const root = world.store.rootOf(conversation)!
-    world.store.append(
-      conversation,
-      world.store.nextOrdinal(conversation),
-      { type: 'user_turn', text: 'Opening request', humanInitiated: true },
-      world.clock,
-    )
-    expect(world.store.conversationTitle(conversation)).toBeNull()
-    expect(world.store.defaultTaskTitle(conversation)).toBeNull()
 
-    const identity = { conversation, address: root.label, title: 'BroBot', author: null }
+    expect(await readIdentity(conversation)).toEqual({
+      conversation,
+      address: root.label,
+      title: 'BroBot',
+      author: null,
+    })
+    recordTurn(conversation, { text: 'An imported opening', attribution: 'provider_transcript' })
+    recordTurn(conversation, { text: 'An app notice', attribution: 'app_authored' })
+    const firstLine = 'A long opening '.repeat(16).trimEnd()
+    recordTurn(conversation, {
+      text: 'The flattened text of the whole turn',
+      humanInitiated: true,
+      parts: [
+        { text: 'Agent brief', attribution: 'app_authored' },
+        { text: `\r\n  ${firstLine}  \r\nSecond line`, humanInitiated: true },
+        { text: 'Second person message in the same turn', humanInitiated: true },
+      ],
+    })
+    recordTurn(conversation, { text: 'Later person message', humanInitiated: true })
+    expect(world.store.conversationTitle(conversation)).toBeNull()
+
+    const identity = { conversation, address: root.label, title: firstLine, author: null }
     expect(await readIdentity(conversation)).toEqual(identity)
     expect(
       await executeRuntimeCommand(host, world.window, {
@@ -139,6 +162,102 @@ describe('renaming a conversation', () => {
         sessionIds: [conversation],
       }),
     ).toEqual([identity])
+  })
+
+  it.each<{ reason: string; opening: Omit<UserTurnEvent, 'type'> }>([
+    { reason: 'blank message', opening: { text: ' \r\n ', humanInitiated: true } },
+    { reason: 'unstamped opening', opening: { text: 'Opening from an unstamped ledger' } },
+    {
+      reason: 'blank first person message in a combined turn',
+      opening: {
+        text: 'Combined turn',
+        humanInitiated: true,
+        parts: [
+          { text: 'Earlier agent message', attribution: 'app_authored' },
+          { text: ' \n ', humanInitiated: true },
+          { text: 'Later person message in the same turn', humanInitiated: true },
+        ],
+      },
+    },
+  ])('keeps the profile when the opening is a $reason', async ({ opening }) => {
+    recordTurn(target, opening)
+    recordTurn(target, { text: 'Later observed prompt', humanInitiated: true })
+    expect(await readIdentity(target)).toMatchObject({ title: profileName, author: null })
+  })
+
+  it('gives explicit, root and first owned task titles precedence over a person opening', async () => {
+    const root = world.store.rootOf(target)!
+    recordTurn(target, { text: 'Opening line\nMore details', humanInitiated: true })
+    expect(await readIdentity(target)).toMatchObject({ address: root.label, title: 'Opening line' })
+
+    recordFirstTask(target, 'First owned task', 'Complete the first task.')
+    expect(await readIdentity(target)).toMatchObject({
+      address: root.label,
+      title: 'First owned task',
+    })
+    world.store.append(
+      target,
+      world.store.nextOrdinal(target),
+      { type: 'work_retitled', piece: root.piece, title: 'Root title', by: null },
+      world.clock,
+    )
+    expect(await readIdentity(target)).toMatchObject({
+      address: root.label,
+      title: 'Root title',
+      author: null,
+    })
+    const named = await executeRuntimeCommand(host, world.window, {
+      kind: 'renameConversation',
+      conversation: root.label,
+      title: 'Explicit title',
+    })
+    expect(named).toMatchObject({ previousTitle: 'Root title', title: 'Explicit title' })
+    expect(await readIdentity(target)).toMatchObject({
+      address: root.label,
+      title: 'Explicit title',
+      author: { kind: 'person' },
+    })
+  })
+
+  it('keeps the profile for an agent-started reader even if it later owns a root', async () => {
+    const conversation = 'sess_child_with_root'
+    world.store.create({
+      id: conversation,
+      provider: 'claude',
+      cwd: '/work',
+      approvalMode: 'ask',
+      profileId: 'worker',
+      parentSessionId: caller,
+    })
+    const root = world.store.ensurePersonalRoot(conversation, world.clock)
+    recordTurn(conversation, { text: 'A later person message', humanInitiated: true })
+    expect(await readIdentity(conversation)).toEqual({
+      conversation,
+      address: root.label,
+      title: profileName,
+      author: null,
+    })
+  })
+
+  it('keeps the profile for an adopted conversation even after a person writes to it', async () => {
+    const conversation = 'sess_adopted_with_root'
+    world.store.adopt({
+      id: conversation,
+      provider: 'claude',
+      sessionId: 'adopted-provider-thread',
+      cwd: '/work',
+      profileId: 'worker',
+      createdAt: 1,
+      updatedAt: 2,
+    })
+    const root = world.store.rootOf(conversation)!
+    recordTurn(conversation, { text: 'A person writes after adoption', humanInitiated: true })
+    expect(await readIdentity(conversation)).toEqual({
+      conversation,
+      address: root.label,
+      title: profileName,
+      author: null,
+    })
   })
 
   it('uses one ledger history for a person and an agent, while keeping the task title', async () => {
