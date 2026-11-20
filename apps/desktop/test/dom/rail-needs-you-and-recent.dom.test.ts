@@ -119,6 +119,37 @@ it('puts Needs you first, then one Recent list across the existing profiles', as
   }
 })
 
+it('fits full conversation titles between the section header and row metadata', async () => {
+  const longTitle = 'Lisbon trip, March renewal ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  const listed = [waiting[0]!, recent[0]!]
+  const m = await rail(listed, {
+    readIdentities: async () =>
+      listed.map(({ sessionId }) => ({
+        conversation: sessionId,
+        address: 'W9.8',
+        title: longTitle,
+        author: null,
+      })),
+  })
+  for (const [index, section] of ['needs-you', 'recent'].entries()) {
+    const id = listed[index]!.sessionId
+    await expect.poll(() => m.all(`rail-address-${id}`).length).toBe(1)
+    const entry = m.q(`open-session-${id}`)
+    const title = entry.querySelector('strong')!
+    const titleLines = document.createRange()
+    titleLines.selectNodeContents(title)
+    const first = m.q(`rail-toggle-${section}`).getBoundingClientRect()
+    const meta = entry.querySelector('[data-standing]')!.getBoundingClientRect()
+    const titleBox = title.getBoundingClientRect()
+    expect(title.textContent?.trim()).toBe(longTitle)
+    expect(titleLines.getClientRects().length).toBeGreaterThan(1)
+    expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth)
+    expect(titleBox.top).toBeGreaterThanOrEqual(first.bottom)
+    expect(titleBox.bottom).toBeLessThanOrEqual(meta.top)
+    expect(m.q(`rail-address-${id}`).textContent).toBe('W9.8')
+  }
+})
+
 it('pages eligible Recent at fifteen, keeps older rows, and counts the live/listed overlap once', async () => {
   const older = Array.from({ length: 18 }, (_item, index) =>
     row(`older-${index}`, 'brobot', index + 2),

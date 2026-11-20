@@ -1171,9 +1171,7 @@ const platform = platformHere()
           class="rail-group"
           :data-cy="`rail-section-${section.key}`"
         >
-          <!-- ⚑ **The header is the fold** — a real button, so a key reaches it. ⛔ **A folded
-               section is never traceless**: its count and its badge stay, and when it holds the
-               conversation on screen it is marked as the row would be. -->
+          <!-- A folded section still shows its count and marks the selected conversation. -->
           <button
             class="section-label section-toggle"
             :class="{ active: section.holdsTheOneOnScreen }"
@@ -1280,7 +1278,6 @@ const platform = platformHere()
                   class="rail-copy"
                   :class="{ 'rail-worker-top': row.worker && !identities.get(row.sessionId) }"
                 >
-                  <!-- The full title remains available on hover and as the button’s name. -->
                   <strong
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
                     :title="
@@ -1897,6 +1894,13 @@ const platform = platformHere()
   line-height: var(--leading-snug);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rail-group-rows .rail-copy strong {
+  overflow: visible;
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
