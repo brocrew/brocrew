@@ -1205,6 +1205,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     const rootPiece = store.rootOf(pm)
     if (rootPiece === null) throw new Error('the pm has no root')
 
+    const routedBefore = routedIn(pm)
     const noGiver = await callWithWords(pmTools, 'ask_question', {
       question: 'which city?',
       who_answers: 'the-parent',
@@ -1219,7 +1220,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       'Not sent: no conversation gave you this work. If you meant to ask the person, use who_answers: a-person.',
     )
     expect(askedIn(pm)).toEqual([])
-    expect(routedIn(pm)).toEqual([])
+    expect(routedIn(pm)).toEqual(routedBefore)
 
     const fromPm = await callWithWords(pmTools, 'ask_question', {
       question: 'which city?',

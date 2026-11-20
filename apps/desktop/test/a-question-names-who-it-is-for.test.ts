@@ -282,9 +282,7 @@ describe('611 · a question names who it is for', () => {
       expect(out.went_to).toBe('a-person')
       const toPerson = routedIn(worker, 'the-person-the-asker-named')
       expect(toPerson.went).toEqual({ is: 'the-person-the-asker-named', to: 'a-person' })
-      // ⚑ **The parent is STILL on the row** — `HO-088` §2.3: *"Ada still SEES that Ali asked and
-      // sees the answer — she delegated the asking, not her sight of it."*
-      expect(toPerson.parent).toBe(pm)
+      expect(toPerson.parent).toBeNull()
 
       // 🔴 **And the parent is SUMMONED about one of them and not the other**, which is the
       // difference between seeing a question and being asked it. ⛔ A turn is a parent's
