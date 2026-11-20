@@ -16,7 +16,10 @@ import { mount } from './harness'
 import { providerLaunchFixture, settleProviderLaunch as settle } from './provider-launch.fixture'
 
 const providers = Object.keys(PROVIDER_NAME) as Provider[]
-const unknown: AuthState = { state: 'unknown', reason: 'Fictional auth check could not be read.' }
+const unknown: AuthState = {
+  state: 'unknown',
+  reason: 'Fictional sign-in unavailable at /fictional/provider/session.json. Open Providers to fix it.',
+}
 const usable: AuthState = { state: 'usable', login: 'account', expiresAt: null }
 const list = (provider: Provider, notAsked: ModelList['notAsked']): ModelList => ({
   provider,
@@ -120,8 +123,12 @@ it.each(['unknown auth', 'refused catalogue', 'rejected read', 'omitted reason']
     expect(view.all('provider-readiness-failure')).toHaveLength(
       expectedReason === null ? 0 : providers.length,
     )
-    for (const row of view.all('provider-readiness-failure'))
-      expect(row.textContent).toContain(reason)
+    expect(view.all('provider-readiness-failure').map((row) => row.textContent?.trim())).toEqual(
+      expectedReason === null ? [] : providers.map((provider) => `${PROVIDER_NAME[provider]} isn't signed in.`),
+    )
+    expect(view.host.innerText).not.toContain(reason)
+    expect(view.host.innerText).not.toContain('/fictional/provider/session.json')
+    expect(view.q('new-provider-setup').textContent?.trim()).toBe('Set up a provider')
     for (const provider of providers)
       expect(lists.readiness(provider)).toEqual({
         state: 'settled',
