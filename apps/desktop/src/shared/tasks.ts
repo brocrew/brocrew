@@ -942,12 +942,8 @@ export const A_WAIT_ON_PURPOSE_OUTLASTS: Readonly<Record<TaskStallCause, boolean
 }
 
 /**
- * ⚑ **D-016 · commit 6 · R4 — the piece a delivery row names for THIS ledger**: a brief's or a new
- * brief's own `piece`, else the piece it `drives`; `null` — it names none — drives every open
- * piece. ⛔ A row never carries both (`UserTurnEvent.drives`).
- *
- * ⚑ **D-022 · R4 — one spelling, read by the fold ({@link derivePieces}) and by the host**, which
- * keeps what each conversation's open turn drives, for `give_work`'s inference.
+ * The fold and host use a delivery's `piece` or `drives` for `give_work` inference.
+ * A row carries at most one. If it carries neither, it drives every open piece.
  */
 export function theDriveOf(event: {
   readonly piece?: string
