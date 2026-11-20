@@ -327,13 +327,7 @@ describe('a row the host lists is made of what a row this window holds is made o
     expect(listed.querySelector('small')!.textContent).toContain('billing-api')
   })
 
-  /**
-   * ⚑ **D-017b · re-aimed** — this said *"WHEN on a row that can be reopened, and WHY on one that
-   * cannot"*. ⛔ Neither is a row's fact any more: every row opens, and what a row says is the one
-   * state the host derives (`shared/agent-state.ts`) — never whether a process runs (`05` rule 5).
-   * ⚑ **One fact on the line, and it is the host's**: the same fixture with another state says
-   * the other word.
-   */
+  // Current state comes from the host. Activity time never implies how a conversation runs.
   it('⚑ says the one state the host gives it — and nothing about a process, a reopen or a refusal', async () => {
     const m = await rail({
       resumable: [OPENABLE, READABLE, { ...INERT, state: { is: 'active' } }],
