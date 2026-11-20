@@ -154,7 +154,7 @@ export function createMessageAgentTool(
     description:
       'Send a message to an existing conversation, by any of its labels. To give work, use give_work; to ask something and get the answer back, use ask_question. piece names the task it is about, if any. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. It is held until that conversation is free, then delivered with whatever else is held for it, oldest first (a person’s command goes on its own). A message leaves an archived conversation archived. With interrupt: true, the turn that conversation is running is also asked to stop, so the message need not wait for its work to finish; give the reason in the message — the conversation is told who stopped it and why. ' +
       theRuleOfAStopForWords(undefined, 'it') +
-      ' Use interrupt only for something it must know before it goes on. The answer names the conversation by its address and title and says what happened: delivered now, held because it is working, or Not sent and why.',
+      ' Use interrupt only for something it must know before it goes on. The answer names the conversation by its address and title and says what was recorded and whether it was delivered, held, or could not start. If nothing was recorded, it says Not sent and why.',
 
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).

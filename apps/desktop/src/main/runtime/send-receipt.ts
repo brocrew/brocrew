@@ -89,7 +89,7 @@ function outboundReceiptSaid(
     ? `Question ${recorded.id}`
     : recorded.kind === 'reply'
       ? 'Your reply'
-      : 'Your message'
+      : `Your message ${recorded.id}`
   if (state.kind === 'cannot-run') {
     if (state.cause.code === 'provider-file-missing') {
       const recovery = isQuestion

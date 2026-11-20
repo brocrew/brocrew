@@ -175,14 +175,14 @@ describe('663 M50 · a wake refused logs the host’s own words and keeps them o
       })
 
       // ⚑ Positive — the caller is told, in the door's own closed sentence, that the wake failed.
-      recordedMessageWakeFailure(
+      const messageId = recordedMessageWakeFailure(
         store,
         worker,
         refused.structured,
         'could-not-start',
         /could not bring it back/,
       )
-      expect(refused.text).toContain('Your message is recorded for')
+      expect(refused.text).toContain(`Your message ${messageId} is recorded for`)
 
       // ⛔ Negative — but never in the provider's own words: neither field the caller reads carries
       // the raw string, so a model can never see what only a person reading the log should.

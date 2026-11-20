@@ -23,25 +23,10 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**
- * # ⛔ 663 M33 · what is not recognised is dressed as a word — `650`'s catch-all, undone
- *
- * ⚑ **The rule, off `agent-tools.ts`'s own words**: `aWakeThatDidNotHappen` answers a failed reopen
- * in the wake's vocabulary only when it recognises the cause; whatever it does not recognise falls
- * through and is RETHROWN — *"a broken tool, not a word for a state nobody saw."* `650` is the card
- * that drew that line; before it, every reopen failure — however unrelated to a wake — was dressed
- * up as the same generic refusal, and a genuine bug (the STORE itself failing) read as an ordinary,
- * retryable *"that agent did not start."*
- *
- * ⚑ **The failure here is the store's, not the provider's or the launch's**: `SessionStore`'s own
- * `parentOf` (`spawnProvenance` until D-016), which `RuntimeHost.resumeSession` reads synchronously before it ever reaches the
- * provider, is made to throw a plain `Error` — a shape `aWakeThatDidNotHappen` has no branch for
- * (it is not a shortage errno, not a `ResumeError`, not one of `unavailableOf`'s reasons, and not a
- * typed launch failure). ⛔ **§1 is the kill**: on the code this row's plant edits, that plain Error
- * must reach the caller as a REJECTION of the `message_agent` call — never as a structured `refused`
- * answer. ⚑ **§2 is the positive it is paired with**: the very same wake, failing on a cause
- * `aWakeThatDidNotHappen` DOES recognise (an expired sign-in), still comes back as the ordinary
- * `agent-did-not-start` refusal — so §1's rejection is provably about recognition, not about the
- * wake path breaking wholesale.
+ * A failure before a Message is recorded rejects the call. Once the recipient holds it,
+ * a failed start returns that recorded ID and its cannot-run state, with the diagnostic
+ * in the log. Errors reading the delivery outcome or writing the sender's receipt retain
+ * their own error boundary.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -141,30 +126,50 @@ describe('663 M33 · a store that failed is not dressed as a word', () => {
   ): Promise<Record<string, unknown>> =>
     callOn(pm, 'message_agent', { agent: worker, text: 'carry on', kind: 'follow-up', piece })
 
-  it('§1 · a store failure `aWakeThatDidNotHappen` cannot recognise reaches the caller as a broken tool, never a refusal', async () => {
+  it('keeps the recorded Message receipt when a startup store read fails', async () => {
     const { pm, worker, piece } = await aWorkerThatStopped()
-    // ⚑ The store's own read, inside `resumeSession`, made to fail — a shape no shortage errno, no
-    // `ResumeError` and no typed launch failure produces, so `aWakeThatDidNotHappen` returns null for
-    // it and (on the unplanted code) the reopen's `catch` rethrows it rather than dressing it up.
-    // ⚑ The delivery checks (`refuseBeforeAStart` on arrival and again at delivery) read
-    // `parentOf` too, ahead of the reopen — measured directly, by tracing every call this
-    // wake makes before it reaches the store's own read. Only THAT read, `RuntimeHost.resumeSession`'s
-    // (agent-tools.ts's plant is about what a REOPEN's failure becomes, not a rail's), is made to
-    // fail — a rail throwing instead would leave `message_agent`'s catch entirely, never reaching
-    // `AStartThatDidNotHappen` or `aWakeThatDidNotHappen`, and would reject on both the planted and
-    // the unplanted code alike, proving nothing about this row.
+    const fault = new Error('the ledger read failed during the reopen')
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const real = store.parentOf.bind(store)
     store.parentOf = (id: string) => {
       const fromTheReopen = new Error().stack?.includes('.resumeSession (') ?? false
-      if (fromTheReopen) throw new Error('663 M33: the ledger read failed (disk I/O error)')
+      if (fromTheReopen) throw fault
       return real(id)
     }
-    // ⛔ **Never a structured refusal** — the whole point is that this shape does not become one; a
-    // caller reading `outcome` off a resolved value never gets the chance, because there is none.
+    const result = await wakeByMessage(pm, worker, piece)
+    const [held] = store.messagesWaitingIn(worker)
+    expect(held).toMatchObject({ messageId: expect.any(String), text: 'carry on' })
+    expect(result).toMatchObject({
+      outcome: 'ok',
+      delivery: 'queued',
+      receipt: {
+        recorded: { kind: 'message', id: held?.messageId },
+        recipient: {
+          id: worker,
+          state: { kind: 'cannot-run', cause: { code: 'could-not-start' } },
+        },
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain(fault.message)
+    expect(warned.mock.calls.flat().join(' ')).toContain(fault.message)
+    expect(host.sessionIds).not.toContain(worker)
+  })
+
+  it('rejects a failed queue write before it has recorded the Message', async () => {
+    const { pm, worker, piece } = await aWorkerThatStopped()
+    const fault = new Error('the recipient queue write failed')
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const append = store.append.bind(store)
+    vi.spyOn(store, 'append').mockImplementation((...args) => {
+      if (args[0] === worker && args[2].type === 'message_queued') throw fault
+      return append(...args)
+    })
     await expect(wakeByMessage(pm, worker, piece)).rejects.toThrow(
-      '663 M33: the ledger read failed (disk I/O error)',
+      'the words could not be kept for its next start',
     )
-    expect(store.messagesWaitingIn(worker)).toEqual([expect.objectContaining({ text: 'carry on' })])
+    expect(warned.mock.calls.flat().join(' ')).toContain(fault.message)
+    expect(store.messagesWaitingIn(worker)).toEqual([])
+    expect(host.sessionIds).not.toContain(worker)
   })
 
   it('§2 · control — an unavailable sign-in leaves a recorded message and a cannot-run receipt', async () => {

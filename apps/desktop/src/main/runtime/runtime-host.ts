@@ -100,6 +100,7 @@ export type {
 } from './message-records'
 import type { FindFilesAsked, FoundFiles } from './kept-file-search'
 import { KeptFiles } from './kept-files'
+import { startRecordedMessage } from './start-recorded-message'
 import { WorkReads } from './work-reads'
 import {
   listConversationTasks,
@@ -23762,33 +23763,15 @@ export class RuntimeHost implements LiveHost {
         says,
       )
       const id = kept.messageId
-      let state: SendRecipientState | null = null
-      try {
-        try {
-          await this.ensureRunning(to, null)
-        } catch (error) {
-          const unavailable =
-            unavailableOf(error) ?? unavailableOf(error instanceof Error ? error.cause : undefined)
-          if (unavailable === null && aWakeThatDidNotHappen(error) === null) {
-            throw error
-          }
-          console.warn(`message_agent: the start did not happen for ${to}: ${errorMessage(error)}`)
-          state = this.sendFailedAfterRecording(error)
-        }
-        if (state === null) await this.slots.get(to)?.session?.flushing
-        state ??= this.stateOfARecordedMessage(to, id)
-      } catch (error) {
-        try {
-          noteSending?.('queued')
-        } catch (receiptError) {
-          console.warn(
-            `message_agent: could not keep the sender receipt: ${errorMessage(receiptError)}`,
-          )
-        }
-        throw error
-      }
-      noteSending?.(state.kind === 'started' ? 'sent' : 'queued')
-      return { id, to, state }
+      return startRecordedMessage(
+        { id, to, ...(noteSending === undefined ? {} : { noteSending }) },
+        {
+          start: () => this.ensureRunning(to, null),
+          waitForFlush: () => this.slots.get(to)?.session?.flushing,
+          state: () => this.stateOfARecordedMessage(to, id),
+          failedStart: (error) => this.sendFailedAfterRecording(error),
+        },
+      )
     })
   }
 

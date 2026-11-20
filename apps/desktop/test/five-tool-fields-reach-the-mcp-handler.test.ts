@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
+import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
+import type { SendReceipt } from '../src/shared/tool-outcome'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -94,7 +99,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
 
   async function server(name: ToolName) {
     const selected = toolOf(name)
-    const configured = claudeMcpServersFor({
+    const set = {
       server: 'brobot',
       tools: [
         {
@@ -106,48 +111,35 @@ describe('five more tools answer field failures through Claude MCP', () => {
           },
         },
       ],
-    })!
+    }
+    const configured = claudeMcpServersFor(set)!
     const low = (
       configured.brobot as unknown as {
         instance: { server: { connect(transport: unknown): Promise<void>; close(): Promise<void> } }
       }
     ).instance.server
-    const out: Packet[] = []
-    const transport: Record<string, unknown> = {
-      start: async () => {},
-      send: async (packet: Packet) => {
-        out.push(packet)
-      },
-      close: async () => {},
-    }
-    await low.connect(transport)
-    closes.push(() => low.close())
-    let id = 0
-    async function request(method: string, params: Record<string, unknown>) {
-      const next = ++id
-      ;(transport.onmessage as (packet: unknown) => void)({
-        jsonrpc: '2.0',
-        id: next,
-        method,
-        params,
-      })
-      await vi.waitFor(() => expect(out.some((packet) => packet.id === next)).toBe(true), {
-        timeout: 5000,
-      })
-      return out.find((packet) => packet.id === next)!
-    }
-    await request('initialize', {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'fictional-test', version: '1' },
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: 'fictional-test', version: '1' })
+    closes.push(async () => {
+      await client.close()
+      await low.close()
     })
-    ;(transport.onmessage as (packet: unknown) => void)({
-      jsonrpc: '2.0',
-      method: 'notifications/initialized',
-    })
+    await low.connect(serverTransport)
+    await client.connect(clientTransport, { timeout: 5000 })
     return {
-      call: (args: Record<string, unknown>) => request('tools/call', { name, arguments: args }),
-      list: () => request('tools/list', {}),
+      set,
+      call: async (args: Record<string, unknown>): Promise<Packet> => ({
+        result: await client.request(
+          { method: 'tools/call', params: { name, arguments: args } },
+          CallToolResultSchema,
+          { timeout: 5000 },
+        ),
+      }),
+      list: async (): Promise<Packet> => ({
+        result: await client.request({ method: 'tools/list' }, ListToolsResultSchema, {
+          timeout: 5000,
+        }),
+      }),
     }
   }
 
@@ -177,6 +169,57 @@ describe('five more tools answer field failures through Claude MCP', () => {
     sends: [...world.sent],
     owned: world.store.piecesOwnedBy(caller),
   })
+
+  it.each(['Claude', 'Codex'] as const)(
+    '%s keeps the recorded Message receipt after an unclassified start failure',
+    async (adapter) => {
+      await host.close(worker, world.window)
+      const failure = new Error('fictional unclassified resume failure')
+      const wake = vi.spyOn(host, 'resumeSession').mockRejectedValueOnce(failure)
+      const wire = await server('message_agent')
+      const text = 'Keep these notes until this conversation can run.'
+      const args = { agent: worker, text }
+      let said: string
+      if (adapter === 'Claude') {
+        said = words(await wire.call(args))
+      } else {
+        const response = await answerCodexToolCall(wire.set, {
+          namespace: 'brobot',
+          tool: 'message_agent',
+          arguments: args,
+        })
+        expect(response.success).toBe(true)
+        said = response.contentItems
+          .map((item) => (item.type === 'inputText' ? item.text : ''))
+          .join('\n')
+      }
+      const receipt = calls.at(-1)?.structured?.receipt as SendReceipt
+      expect(receipt.recorded).toMatchObject({ kind: 'message', id: expect.any(String) })
+      expect(receipt.recipient).toMatchObject({
+        id: worker,
+        state: { kind: 'cannot-run', cause: { code: 'could-not-start' } },
+      })
+      expect(said).toContain(`Your message ${receipt.recorded.id} is recorded for conversation`)
+      expect(said).not.toContain(failure.message)
+      expect(world.store.messagesWaitingIn(worker)).toEqual([
+        expect.objectContaining({ messageId: receipt.recorded.id, text }),
+      ])
+      expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(0)
+      wake.mockRestore()
+      await host.resumeSession(worker, world.window)
+      await vi.waitFor(() => {
+        expect(world.store.messagesWaitingIn(worker)).toEqual([])
+        expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(1)
+      })
+      expect(world.ledger(worker)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_unqueued',
+          messageId: receipt.recorded.id,
+          reason: 'sent',
+        }),
+      )
+    },
+  )
 
   it('give_work still requires definition_of_done at the handler', async () => {
     const wire = await server('give_work')
