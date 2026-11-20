@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { AGENT_DISPLAY_NAME_CHARS, type ResumableSessionInfo } from '../../src/shared/runtime-ipc'
+import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import {
   CONVERSATION_IDENTITY_BATCH_SIZE,
   type ConversationIdentity,
@@ -97,6 +97,9 @@ async function draw(
     { width: 280, height: 1250 },
   )
   await expect.poll(() => m.all('conversations-loading').length).toBe(0)
+  m.host.style.width = '252px'
+  m.q('side-rail').style.cssText += '; width:100%; min-width:0; flex:1 1 0'
+  await drawnReady()
   return { ...m, selected, reads }
 }
 
@@ -246,72 +249,67 @@ it('uses an authored conversation title before its root title', async () => {
   expect(m.q('rail-brobot-title-person-4').title).toBe('W4 · Saved conversation name')
 })
 
-for (const width of [251.68, 266.2]) {
-  it(`keeps the BroBot name and provider whole while a long state ellipsizes at ${width}px`, async () => {
-    const row = person(4)
-    row.state = {
-      is: 'waiting-on-an-answer',
-      from: 'Lars (the owner of W9.1 · Prepare the full launch list)',
-    }
+function visiblePrefix(line: HTMLElement, text: string): void {
+  const range = document.createRange()
+  range.setStart(line.firstChild!, 0)
+  range.setEnd(line.firstChild!, text.length)
+  expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(
+    line.getBoundingClientRect().right + 1,
+  )
+}
+
+for (const provider of ['claude', 'codex'] as const) {
+  it(`uses the 0.2.32 inline ${provider} status at the real 158px status width`, async () => {
+    const row = person(21)
+    row.provider = provider
+    row.named = { label: 'W21', title: null }
     const m = await draw([row])
-    m.host.style.width = `${width}px`
-    await expect.poll(() => m.q('rail-brobot-title-person-4').textContent).toContain('W4')
-    const card = m.q('open-session-person-4')
-    const label = card.querySelector<HTMLElement>('.rail-standing-profile')!
-    const state = m.q('rail-state-word-person-4')
+    const card = m.q('open-session-person-21')
     const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
-    expect(label.textContent?.trim()).toBe('BroBot')
-    expect(card.querySelector('.rail-brobot-provider')?.textContent?.trim()).toBe('· claude ·')
-    expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1)
-    expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
-      line.getBoundingClientRect().right,
-    )
-    expect(state.clientWidth).toBeGreaterThan(8)
-    expect(state.scrollWidth).toBeGreaterThan(state.clientWidth)
-    expect(getComputedStyle(state).textOverflow).toBe('ellipsis')
-    expect(getComputedStyle(state).overflowX).toBe('hidden')
-    expect(state.title).toBe(
-      'waiting on an answer from Lars (the owner of W9.1 · Prepare the full launch list)',
-    )
+    expect(m.q('side-rail').getBoundingClientRect().width).toBe(252)
+    expect(card.getBoundingClientRect().width).toBe(216)
+    expect(line.getBoundingClientRect().width).toBe(158)
+    expect(line.textContent).toBe(`BroBot · ${provider} · idle · bakery`)
+    expect(line.title).toBe(`BroBot · ${provider} · idle · bakery`)
+    expect(line.children).toHaveLength(0)
+    expect(card.querySelector('time')).toBeNull()
+    expect(getComputedStyle(line).display).toBe('block')
+    expect(getComputedStyle(line).textOverflow).toBe('ellipsis')
+    visiblePrefix(line, `BroBot · ${provider} · idle`)
     expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
   })
 }
 
-for (const width of [251.68, 266.2]) {
-  it(`bounds an allowed custom name while retaining provider, state and age at ${width}px`, async () => {
-    const displayName = 'M'.repeat(AGENT_DISPLAY_NAME_CHARS)
+for (const width of [252, 266.2]) {
+  it(`keeps the BroBot prefix and helper name visible beside long states at ${width}px`, async () => {
+    const long = 'Lars (the owner of W9.1 · Prepare the full launch list)'
     const row = person(4)
-    row.state = {
-      is: 'waiting-on-an-answer',
-      from: 'Lars (the owner of W9.1 · Prepare the full launch list)',
+    row.state = { is: 'waiting-on-an-answer', from: long }
+    const helper = {
+      ...workerRows(1)[0]!,
+      state: { is: 'waiting-on-an-answer' as const, from: long },
     }
-    const m = await draw([row], null, undefined, displayName)
+    const m = await draw([row, helper])
     m.host.style.width = `${width}px`
-    await expect.poll(() => m.q('rail-brobot-title-person-4').textContent).toContain('W4')
-    const card = m.q('open-session-person-4')
-    const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
-    const label = card.querySelector<HTMLElement>('.rail-standing-profile')!
-    const provider = card.querySelector<HTMLElement>('.rail-brobot-provider')!
-    const state = m.q('rail-state-word-person-4')
-    const age = card.querySelector<HTMLElement>('.rail-standing-age')!
-    expect(label.textContent).toBe(displayName)
-    expect(label.title).toBe(displayName)
-    expect(label.clientWidth).toBeGreaterThan(8)
-    expect(label.scrollWidth).toBeGreaterThan(label.clientWidth)
-    expect(getComputedStyle(label).textOverflow).toBe('ellipsis')
-    expect(provider.textContent?.trim()).toBe('· claude ·')
-    expect(provider.scrollWidth).toBeLessThanOrEqual(provider.clientWidth + 1)
-    expect(state.clientWidth).toBeGreaterThanOrEqual(10)
+    await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
+    const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
+    expect(line.textContent).toBe(`BroBot · claude · waiting on an answer from ${long} · bakery`)
+    visiblePrefix(line, 'BroBot · claude')
+    expect(line.title).toContain(long)
+    expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
+    const label = m.q('rail-profile-recipe-1')
+    const state = m.q('rail-state-word-recipe-1')
+    const standing = label.closest('small')!
+    expect(label.textContent).toContain('Mira')
+    expect(label.clientWidth).toBeGreaterThan(20)
+    expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
+      standing.getBoundingClientRect().right,
+    )
+    expect(state.clientWidth).toBeGreaterThan(8)
     expect(state.scrollWidth).toBeGreaterThan(state.clientWidth)
     expect(getComputedStyle(state).textOverflow).toBe('ellipsis')
-    for (const box of [label, provider, state, age]) {
-      expect(box.getBoundingClientRect().left).toBeGreaterThanOrEqual(
-        line.getBoundingClientRect().left - 1,
-      )
-      expect(box.getBoundingClientRect().right).toBeLessThanOrEqual(
-        line.getBoundingClientRect().right + 1,
-      )
-    }
-    expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
+    expect(standing.title).toContain(long)
+    m.q('open-session-recipe-1').click()
+    expect(m.selected).toEqual(['recipe-1'])
   })
 }
