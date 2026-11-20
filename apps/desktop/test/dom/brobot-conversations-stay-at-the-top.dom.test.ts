@@ -140,11 +140,15 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     'Look and layout',
     'Providers',
     'Settings',
-    'Planning',
+    '',
   ]
   people.forEach((row, index) => {
     row.named = { label: `W${numbers[index]}`, title: titles[index]! }
   })
+  people[1]!.state = {
+    is: 'waiting-on-an-answer',
+    from: 'Lars (the owner of W9.1 · Prepare the full launch list)',
+  }
   mount(IconSprite, {}, { width: 0, height: 0 })
   const helpers = workerRows(60).map((row, index) => ({
     ...row,
@@ -182,11 +186,18 @@ for (const width of [251.68, 266.2]) {
     untitled.named = { label: 'W21', title: '' }
     const named = person(4)
     named.named = { label: 'W4', title: 'DEVELOPS ITSELF' }
-    const m = await draw([untitled, named, { ...person(90), profileId: 'reviewer' }])
+    const m = await draw([untitled, named, { ...person(90), profileId: 'reviewer' }], null, {
+      conversation: named.sessionId,
+      address: 'W44',
+      title: 'Saved conversation name',
+      author: { kind: 'person' },
+    })
     m.host.style.width = `${width}px`
     await expect.poll(() => m.all('rail-address-person-90').length).toBe(1)
     expect(m.q('rail-brobot-title-person-21').textContent?.trim()).toBe('W21')
-    expect(m.q('rail-brobot-title-person-4').textContent?.trim()).toBe('W4 · DEVELOPS ITSELF')
+    expect(m.q('rail-brobot-title-person-4').textContent?.trim()).toBe(
+      'W44 · Saved conversation name',
+    )
     for (const number of [21, 4]) {
       const row = m.q(`open-session-person-${number}`)
       expect([...row.querySelector('.rail-copy')!.children].map((el) => el.tagName)).toEqual([
@@ -222,3 +233,33 @@ it('uses an authored conversation title before its root title', async () => {
     .toBe('W4 · Saved conversation name')
   expect(m.q('rail-brobot-title-person-4').title).toBe('W4 · Saved conversation name')
 })
+
+for (const width of [251.68, 266.2]) {
+  it(`keeps the BroBot name and provider whole while a long state ellipsizes at ${width}px`, async () => {
+    const row = person(4)
+    row.state = {
+      is: 'waiting-on-an-answer',
+      from: 'Lars (the owner of W9.1 · Prepare the full launch list)',
+    }
+    const m = await draw([row])
+    m.host.style.width = `${width}px`
+    await expect.poll(() => m.q('rail-brobot-title-person-4').textContent).toContain('W4')
+    const card = m.q('open-session-person-4')
+    const label = card.querySelector<HTMLElement>('.rail-standing-profile')!
+    const state = m.q('rail-state-word-person-4')
+    const line = card.querySelector<HTMLElement>('.rail-brobot-standing')!
+    expect(label.textContent?.trim()).toBe('BroBot · claude ·')
+    expect(label.scrollWidth).toBeLessThanOrEqual(label.clientWidth + 1)
+    expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
+      line.getBoundingClientRect().right,
+    )
+    expect(state.clientWidth).toBeGreaterThan(8)
+    expect(state.scrollWidth).toBeGreaterThan(state.clientWidth)
+    expect(getComputedStyle(state).textOverflow).toBe('ellipsis')
+    expect(getComputedStyle(state).overflowX).toBe('hidden')
+    expect(state.title).toBe(
+      'waiting on an answer from Lars (the owner of W9.1 · Prepare the full launch list)',
+    )
+    expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
+  })
+}
