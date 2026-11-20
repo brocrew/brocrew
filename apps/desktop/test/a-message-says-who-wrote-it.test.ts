@@ -636,6 +636,10 @@ describe('624 · a message says who wrote it', () => {
           expect(sentence).toBe(
             'This app added this note because a conversation still owes an answer after a reminder.',
           )
+        } else if (notice === 'an-answerer-was-stopped') {
+          expect(sentence).toBe(
+            'This app added this note because the person stopped a conversation that still owed an answer.',
+          )
         } else if (notice === 'a-provider-turn-failed') {
           expect(sentence).toBe(
             "This app added this note because a conversation's turn failed with a recorded provider error.",

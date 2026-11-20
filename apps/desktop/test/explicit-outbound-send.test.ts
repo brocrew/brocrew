@@ -471,7 +471,7 @@ describe('explicit outbound sends', () => {
     ['codex', 'completed'],
     ['claude', 'interrupted'],
   ] as const)(
-    'keeps an unanswered question without waking a %s turn the person stopped',
+    'notifies the asker once and keeps reminders off a %s turn the person stopped',
     async (provider, terminal) => {
       const profile = 'outbound-stop-target'
       world.anAgent(profile, 'normal', provider)
@@ -519,6 +519,30 @@ describe('explicit outbound sends', () => {
           ]),
         )
         expect(world.store.lastEndedTurn(sessionId)?.who).toBe('a-person')
+        const notices = () =>
+          world
+            .ledger(sender)
+            .filter(
+              (event) =>
+                event.type === 'message_queued' && event.appNotice === 'an-answerer-was-stopped',
+            )
+        const deliveredNotices = () =>
+          world
+            .ledger(sender)
+            .flatMap((row) =>
+              row.type === 'user_turn'
+                ? theMessagesOf(row).filter((part) => part.appNotice === 'an-answerer-was-stopped')
+                : [],
+            )
+        await waitFor(
+          () => deliveredNotices().length > 0,
+          'the person Stop notice to reach the asker',
+        )
+        const { address, title } = describeConversation(world.store, sessionId, false)
+        expect(deliveredNotices().map((part) => part.text)).toEqual([
+          `Conversation ${address} · ${title} was stopped by the person before answering question ${id}.`,
+        ])
+        expect(notices()).toHaveLength(1)
         expect(
           world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state,
         ).toBe('open')
@@ -549,6 +573,22 @@ describe('explicit outbound sends', () => {
         expect(reminders()).toHaveLength(0)
         providerTurn.machine.completeTurn('completed')
         await waitFor(() => reminders().length === 1, 'a reminder after the next ordinary turn')
+        await waitFor(() => handle.status() === 'working', 'the reminder turn to start')
+        const reminderStop = world.ledger(sessionId).length
+        stopping.mockImplementationOnce(async () => {
+          providerTurn.machine.completeTurn(terminal)
+        })
+        await host.interrupt(sessionId, world.window)
+        await waitFor(
+          () =>
+            world
+              .ledger(sessionId)
+              .slice(reminderStop)
+              .some((event) => event.type === 'status' && event.state === 'idle'),
+          'the reminder turn to stop',
+        )
+        expect(reminders()).toHaveLength(1)
+        expect(notices()).toHaveLength(1)
       } finally {
         stopping.mockRestore()
         drive.mockRestore()

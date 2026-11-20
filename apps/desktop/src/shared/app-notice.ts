@@ -69,6 +69,7 @@ export const APP_NOTICES = [
   'an-answer-to-a-question',
   'an-answer-is-still-owed',
   'a-question-stayed-unanswered',
+  'an-answerer-was-stopped',
   // A conversation ended a piece this one held or gave.
   'a-piece-taken-back',
   'a-piece-closed',
@@ -167,6 +168,8 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
     'This app reminded you about an open question another conversation asked you.',
   'a-question-stayed-unanswered':
     'This app added this note because a conversation still owes an answer after a reminder.',
+  'an-answerer-was-stopped':
+    'This app added this note because the person stopped a conversation that still owed an answer.',
   'a-piece-taken-back':
     'This app added this note because a piece of work this conversation held was taken back. ' +
     'You did not write it, and it was not sent on anybody’s behalf.',

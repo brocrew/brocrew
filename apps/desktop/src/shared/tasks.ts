@@ -962,7 +962,11 @@ function aNoteExpectsNoReply(
     'says' | 'attribution' | 'work' | 'relayedFrom' | 'appNotice' | 'piece'
   >,
 ): boolean {
-  if (one.appNotice === 'a-question-stayed-unanswered') return true
+  if (
+    one.appNotice === 'a-question-stayed-unanswered' ||
+    one.appNotice === 'an-answerer-was-stopped'
+  )
+    return true
   return (
     one.says === 'note' &&
     !aPersonsOwnWords(one) &&

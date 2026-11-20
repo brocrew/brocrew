@@ -7,7 +7,8 @@ export function expectNoQuestionWake(events: readonly TranscriptEvent[]): void {
       (event) =>
         event.type === 'message_queued' &&
         (event.appNotice === 'an-answer-is-still-owed' ||
-          event.appNotice === 'a-question-stayed-unanswered'),
+          event.appNotice === 'a-question-stayed-unanswered' ||
+          event.appNotice === 'an-answerer-was-stopped'),
     ),
   ).toEqual([])
 }

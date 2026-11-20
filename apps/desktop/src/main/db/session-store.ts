@@ -1160,7 +1160,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     sessionId: string,
     read: { readonly back: number; readonly search: string | null },
   ): { readonly turns: readonly TranscriptTurn[]; readonly older: boolean }
-  lastAskToStop(sessionId: string, unread?: RowsUnread): AskToStop | null
+  lastAskToStop(
+    sessionId: string,
+    unread?: RowsUnread,
+    source?: 'work_interrupted',
+  ): AskToStop | null
   lastExplicitStopRequest(
     sessionId: string,
   ): { readonly asker: string; readonly reason: string } | null
@@ -4194,7 +4198,11 @@ export function createSessionStore(
     }
   }
 
-  function lastAskToStopOf(sessionId: string, noteSkip?: SkipNote): AskToStop | null {
+  function lastAskToStopOf(
+    sessionId: string,
+    noteSkip?: SkipNote,
+    source?: 'work_interrupted',
+  ): AskToStop | null {
     const generation = activeGeneration(sessionId)
     const row = selectLastAskToStop.get({ session: sessionId, generation }) as AskRow | undefined
     for (const torn of selectTornAsksAfter.all(sessionId, generation, row?.ordinal ?? -1) as {
@@ -4202,7 +4210,7 @@ export function createSessionStore(
     }[]) {
       noteUnreadRow(sessionId, torn.ordinal, noteSkip)
     }
-    if (row === undefined) return null
+    if (row === undefined || (source !== undefined && row.type !== source)) return null
     const asked = readOrSkip(sessionId, noteSkip, null, () => actorOfTheAsk(row))
     if (asked === null) return null
     const closed = selectLastClosedTurn.get(sessionId, generation) as ClosedTurnRow | undefined
@@ -6900,8 +6908,8 @@ export function createSessionStore(
     transcript(sessionId, read) {
       return transcriptOf(sessionId, read)
     },
-    lastAskToStop(sessionId, unread) {
-      return lastAskToStopOf(sessionId, unread?.in(sessionId))
+    lastAskToStop(sessionId, unread, source) {
+      return lastAskToStopOf(sessionId, unread?.in(sessionId), source)
     },
     lastExplicitStopRequest(sessionId) {
       const generation = activeGeneration(sessionId)

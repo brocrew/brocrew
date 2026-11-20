@@ -2298,7 +2298,7 @@ interface HostedSession {
    * this count holds.
    */
   turnsEnded: number
-  questionWakeDue?: true
+  questionWakeDue?: { readonly at: number; readonly completed: boolean }
   /**
    * ⚑ **When a person last wrote in it**, as far as this life knows: noted as a turn their own
    * words opened is recorded, and read off its ledger as a life that continues a recording begins
@@ -13433,7 +13433,11 @@ export class RuntimeHost implements LiveHost {
 
   private questionWakeIds(asker: string, question: string) {
     const key = Buffer.from(questionKey(asker, question)).toString('base64url')
-    return { reminder: `msg_owed_${key}`, notice: `msg_unanswered_${key}` }
+    return {
+      reminder: `msg_owed_${key}`,
+      notice: `msg_unanswered_${key}`,
+      stoppedNotice: `msg_answerer_stopped_${key}`,
+    }
   }
 
   private questionReminderProgress(answererIds: readonly string[], id: string) {
@@ -13491,9 +13495,12 @@ export class RuntimeHost implements LiveHost {
     return { address, title }
   }
 
-  private wakeForOwedQuestions(session: HostedSession): void {
+  private wakeForOwedQuestions(
+    session: HostedSession,
+    terminal: NonNullable<HostedSession['questionWakeDue']>,
+  ): void {
     try {
-      this.queueOwedQuestionReminders(session)
+      this.queueOwedQuestionReminders(session, terminal)
     } catch (error) {
       if (!(error instanceof RecordWriteFailed)) {
         console.warn(`Could not check which answers ${session.id} owes: ${errorMessage(error)}`)
@@ -13501,12 +13508,25 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private queueOwedQuestionReminders(session: HostedSession): void {
+  private queueOwedQuestionReminders(
+    session: HostedSession,
+    terminal: NonNullable<HostedSession['questionWakeDue']>,
+  ): void {
     const ledgerOf = this.oneLedgerReadPerAnswer()
     const owed = this.oneOwedReadPerAnswer(ledgerOf)(session.id)
     if (owed.length === 0) return
     const last = this.deps.store.lastEndedTurn(session.id)
-    if (last?.how !== 'it-finished' || last.who !== null) return
+    const stoppedByPerson =
+      last?.endedAt === terminal.at &&
+      last.who === 'a-person' &&
+      (last.how === 'it-finished' || last.how === 'it-was-stopped') &&
+      this.deps.store.lastAskToStop(session.id, undefined, 'work_interrupted')?.turn ===
+        'the-turn-that-ended-last'
+    if (
+      !stoppedByPerson &&
+      (!terminal.completed || last?.how !== 'it-finished' || last.who !== null)
+    )
+      return
 
     const waiting = new Set(
       [...session.mailbox, ...session.handingOver].flatMap(({ asks }) =>
@@ -13517,16 +13537,22 @@ export class RuntimeHost implements LiveHost {
     for (const { askedBy, requestId } of owed) {
       if (waiting.has(questionKey(askedBy, requestId))) continue
       if (!this.questionCanBeReminded(askedBy, requestId, answererIds, ledgerOf)) continue
-      const { reminder, notice } = this.questionWakeIds(askedBy, requestId)
-      const progress = this.questionReminderProgress(answererIds, reminder)
-      if (progress === 'turn-ended') {
-        void this.tellTheAskerItWentUnanswered(session.id, askedBy, requestId, notice).catch(
-          (error: unknown) => {
-            console.warn(
-              `The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`,
-            )
-          },
-        )
+      const { reminder, notice, stoppedNotice } = this.questionWakeIds(askedBy, requestId)
+      const progress = stoppedByPerson
+        ? undefined
+        : this.questionReminderProgress(answererIds, reminder)
+      if (stoppedByPerson || progress === 'turn-ended') {
+        void this.tellTheAskerItWentUnanswered(
+          session.id,
+          askedBy,
+          requestId,
+          stoppedByPerson ? stoppedNotice : notice,
+          stoppedByPerson,
+        ).catch((error: unknown) => {
+          console.warn(
+            `The unanswered-question notice could not reach ${askedBy}: ${errorMessage(error)}`,
+          )
+        })
       } else if (progress === 'missing') {
         const { address, title } = this.questionConversation(askedBy)
         this.holdUntilItStarts(
@@ -13558,12 +13584,22 @@ export class RuntimeHost implements LiveHost {
     asker: string,
     question: string,
     id: string,
+    stoppedByPerson: boolean,
   ): Promise<void> {
     await this.afterWhatArrivedFirst(this.theOneInItsPlace(asker), async () => {
       if (this.howItsQuestionEnded(asker, question) !== null) return
-      if (!this.questionCanBeReminded(asker, question, this.theIdsItStandsFor(answerer))) return
+      const ledgers = this.oneLedgerReadPerAnswer()
+      if (!this.questionCanBeReminded(asker, question, this.theIdsItStandsFor(answerer), ledgers))
+        return
+      if (
+        stoppedByPerson &&
+        !this.oneOwedReadPerAnswer(ledgers)(answerer).some(
+          (owed) => owed.askedBy === asker && owed.requestId === question,
+        )
+      )
+        return
       const to = this.theOneInItsPlace(asker)
-      const notice = 'a-question-stayed-unanswered'
+      const notice = stoppedByPerson ? 'an-answerer-was-stopped' : 'a-question-stayed-unanswered'
       const kept = this.theIdsItStandsFor(to).some(
         (thread) => this.deps.store.queuedPromptProgress(thread, id, notice) !== 'missing',
       )
@@ -13572,7 +13608,9 @@ export class RuntimeHost implements LiveHost {
       const where = await new Promise<WhereHeldWordsWait>((resolve) =>
         this.holdUntilItStarts(
           to,
-          `Conversation ${address} · ${title} didn't answer question ${question} after a reminder.`,
+          stoppedByPerson
+            ? `Conversation ${address} · ${title} was stopped by the person before answering question ${question}.`
+            : `Conversation ${address} · ${title} didn't answer question ${question} after a reminder.`,
           { unansweredQuestion: { asker, requestId: question }, appNotice: notice },
           'notice',
           resolve,
@@ -41431,14 +41469,15 @@ export class RuntimeHost implements LiveHost {
     // ordering holds by POSITION rather than by the fact that {@link runFlush} happens to await
     // first, which is a fact a later edit is free to change.
     if (event.type === 'turn') {
-      if (event.state === 'completed') session.questionWakeDue = true
-      else delete session.questionWakeDue
+      if (event.state === 'completed' || event.state === 'interrupted') {
+        session.questionWakeDue = { at, completed: event.state === 'completed' }
+      } else delete session.questionWakeDue
     }
     if (event.type === 'status' && TURN_ENDINGS.has(event.state)) {
-      const wake = session.questionWakeDue === true
+      const wake = session.questionWakeDue
       delete session.questionWakeDue
       if (event.state === 'idle') {
-        if (wake) this.wakeForOwedQuestions(session)
+        if (wake !== undefined) this.wakeForOwedQuestions(session, wake)
         this.flushQueued(session)
       }
     }
