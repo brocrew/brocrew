@@ -13,12 +13,7 @@ import { type AgentToolHost } from './host'
 import { readDirectoryCursor } from '../agent-directory'
 import { type Caller } from '../conversation-caller'
 import { EVERY_AGENT_THIS_APP_HOLDS } from '../../../shared/capabilities'
-import {
-  HOW_A_PIECE_ENDED_SAID,
-  type WorkThatNamesIt,
-  pieceLine,
-  theOwnerOf,
-} from '../../../shared/piece-called'
+import { HOW_A_PIECE_ENDED_SAID, pieceLine } from '../../../shared/piece-called'
 import {
   HOW_THE_LAST_TURN_ENDED,
   lastAskedToStop,
@@ -294,22 +289,26 @@ const profileText = (report: ProfileReport): string =>
  * standing rules begin, its conversations within reach, its newest pieces and the files it made,
  * each list newest first and the rest counted. Each time is placed on a day by `readAt`.
  *
- * **Each conversation by the work that names it** — the address `get_agent_status` and
- * `message_agent` take — or by its id when it holds none; **the caller's own as `you`** (729 ·
- * R90). **Never whether a conversation runs** (`05` rule 5) — `get_agent_status` says what one is
+ * **Each conversation by its canonical address and title**, with **the caller's own as `you`**
+ * (729 · R90). **Never whether a conversation runs** (`05` rule 5) — `get_agent_status` says what one is
  * doing — but whether it ENDED: could never be reopened, and which took its place. **An open
  * piece is *still open*, never a state word**: the record reads a piece's ending, and the word for an
  * open one is `list_tasks`' and `get_agent_status`', composed with what its holder waits on.
  */
-function agentRecordText(record: AgentRecord, me: string | null): string {
+function agentRecordText(
+  record: AgentRecord,
+  me: string | null,
+  nameByItsWork: (conversation: string) => string,
+): string {
   const at = (when: number): string => clockTimeFrom(when, record.readAt)
-  /** One of its conversations, by the work that names it, or by its id when it holds none. */
-  const theConversation = (conversation: string, named: WorkThatNamesIt | null): string =>
-    conversation === me
-      ? 'you'
-      : named === null
-        ? `conversation ${conversation} (it holds no work)`
-        : theOwnerOf(named)
+  const conversationNames = new Map<string, string>()
+  const theConversation = (conversation: string): string => {
+    const cached = conversationNames.get(conversation)
+    if (cached !== undefined) return cached
+    const name = nameByItsWork(conversation)
+    conversationNames.set(conversation, name)
+    return name
+  }
   /** How many, and of what: `1 older one`, `3 older ones`. */
   const some = (count: number, what: string): string =>
     `${String(count)} ${what} ${count === 1 ? 'one' : 'ones'}`
@@ -325,10 +324,7 @@ function agentRecordText(record: AgentRecord, me: string | null): string {
       [
         'Its conversations, the most recently active first:',
         ...record.conversations.map((one) => {
-          const called =
-            one.conversation === me
-              ? `you, ${one.named === null ? 'holding no work' : theOwnerOf(one.named)}`
-              : theConversation(one.conversation, one.named)
+          const called = `${one.conversation === me ? 'you, ' : ''}${theConversation(one.conversation)}`
           const starter =
             one.startedBy.is === 'a-person'
               ? 'a person started it'
@@ -338,7 +334,7 @@ function agentRecordText(record: AgentRecord, me: string | null): string {
           const replaced =
             one.inItsPlace === null
               ? ''
-              : ` · it could not be reopened, so ${theConversation(one.inItsPlace.conversation, one.inItsPlace.named)} took its place`
+              : ` · it could not be reopened, so ${one.inItsPlace.conversation === me ? 'you' : theConversation(one.inItsPlace.conversation)} took its place`
           // What became of it: another took its place, or a person archived it.
           const ended =
             replaced +
@@ -686,7 +682,7 @@ export function createGetAgentStatusTool(
 }
 
 export function createListProfilesTool(
-  host: Pick<AgentToolHost, 'agentRecord' | 'profilesVisibleTo'>,
+  host: Pick<AgentToolHost, 'agentRecord' | 'nameByItsWork' | 'profilesVisibleTo'>,
   by: Caller,
   me: string,
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
@@ -737,7 +733,7 @@ export function createListProfilesTool(
           return answer(
             { outcome: 'ok', ...agentRecordPayload(read.record) },
             [
-              agentRecordText(read.record, me),
+              agentRecordText(read.record, me, (id) => host.nameByItsWork(id)),
               // `list_tasks`' two sentences, for the pieces this read could be short of.
               ...(read.record.rowsUnread === 0 ? [] : [unreadRowsSentence(read.record.rowsUnread)]),
               ...whenSkipped(read.record.ledgersSkipped, skippedRecordsSentence),

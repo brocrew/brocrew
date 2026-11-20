@@ -258,6 +258,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       rules: THE_RULES,
     })
     expect(made.structured, made.text).toMatchObject({ outcome: 'ok' })
+    expect(store.setAgentDisplayName('tester', 'Clock Tester')).toBe(true)
     const w11 = await gives(oneTools, 'Build the clock page')
     expect(w11.label).toBe('W1.1')
     const first = w11.holder
@@ -364,16 +365,16 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(lastChanged).toEqual([...lastChanged].sort((a, b) => b - a))
       expect(record.structured.conversations_not_listed).toBe(0)
       expect(record.text).toMatch(
-        / {2}- the owner of W2\.1 · Plan the trip · started by BroBot \(the owner of W2\) at .* · last changed at [^·\n]*\n/,
+        / {2}- conversation W2\.1 · Plan the trip · started by BroBot \(the owner of W2\) at .* · last changed at [^·\n]*\n/,
       )
       // ⚑ The conversation in its place is the same agent's, so it is named as its own line names it.
       expect(record.text).toMatch(
         new RegExp(
-          ` {2}- the owner of W1\\.4 · Ship the clock page · you started it at .* · it could not be reopened, so conversation ${standIn} \\(it holds no work\\) took its place\\n`,
+          ` {2}- conversation W1\\.1 · Build the clock page · you started it at .* · it could not be reopened, so conversation ${standIn} · Clock Tester took its place\\n`,
         ),
       )
       expect(record.text).toContain(
-        `  - conversation ${standIn} (it holds no work) · you started it at `,
+        `  - conversation ${standIn} · Clock Tester · you started it at `,
       )
       expect(record.text).toContain('get_agent_status says what any of them is doing now.')
       expect(record.text).not.toMatch(/running/)
@@ -382,12 +383,12 @@ describe('F009 · what an agent has done, read on demand', () => {
       // started by a message alike.
       const fromTwo = await theRecordOf(twoTools, 'tester')
       expect(fromTwo.text).toContain(
-        '  - the owner of W1.4 · Ship the clock page · started by BroBot (the owner of W1) at ',
+        '  - conversation W1.1 · Build the clock page · started by BroBot (the owner of W1) at ',
       )
       expect(fromTwo.text).toContain(
-        `  - conversation ${standIn} (it holds no work) · started by BroBot (the owner of W1) at `,
+        `  - conversation ${standIn} · Clock Tester · started by BroBot (the owner of W1) at `,
       )
-      expect(fromTwo.text).toContain('  - the owner of W2.1 · Plan the trip · you started it at ')
+      expect(fromTwo.text).toContain('  - conversation W2.1 · Plan the trip · you started it at ')
 
       // ⚑ Its pieces, the newest given first, each with how it ended — and who gave it.
       const pieces = record.structured.pieces as PiecePayload[]
@@ -439,6 +440,11 @@ describe('F009 · what an agent has done, read on demand', () => {
     it('⚑ its own profile names the caller as you, and a person as the one who started it', async () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       const tools = agentToolsFor(host, brobot)
+      const renamed = await host.renameConversation(
+        { conversation: brobot, title: 'My conversation' },
+        { kind: 'person' },
+      )
+      expect(renamed).toMatchObject({ ok: true, address: 'W1' })
       const record = await theRecordOf(tools, DEFAULT_PROFILE_ID)
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       expect(record.structured.conversations).toEqual([
@@ -448,7 +454,9 @@ describe('F009 · what an agent has done, read on demand', () => {
           started_by: { kind: 'a-person' },
         }),
       ])
-      expect(record.text).toMatch(/ {2}- you, the owner of W1 · a person started it at /)
+      expect(record.text).toContain(
+        '  - you, conversation W1 · My conversation · a person started it at ',
+      )
       expect(record.text).toContain('It has no standing rules.')
       expect(record.text).toContain('It has made no files.')
       expect(record.text).toContain('Its conversations hold no pieces of work.')
@@ -653,7 +661,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       const record = await theRecordOf(tools, 'tester')
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       expect(record.text).toContain(
-        '  - the owner of W1.2.1 · Check the routes · started by Ada (the owner of W1.1 · Build the clock page) at ',
+        '  - conversation W1.1.1 · Wire the routes · started by Ada (the owner of W1.1 · Build the clock page) at ',
       )
       expect(record.text).not.toContain('started by Ada (the owner of W1.2')
       expect(record.text).not.toContain('(answered)')
@@ -699,14 +707,14 @@ describe('F009 · what an agent has done, read on demand', () => {
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       // ⛔ Not by W1.3, the piece Ada later gave it from: it was started with none.
       expect(record.text).toContain(
-        '  - the owner of W1.3.1 · Tag the release · started by Ada at ',
+        '  - conversation W1.3.1 · Tag the release · started by Ada at ',
       )
       // ⚑ The conversation it took the place of keeps the piece it was started from.
       expect(record.text).toContain(
-        '  - the owner of W1.2.1 · Check the routes · started by Ada (the owner of W1.1 · Build the clock page) at ',
+        '  - conversation W1.1.1 · Wire the routes · started by Ada (the owner of W1.1 · Build the clock page) at ',
       )
       expect(record.text).toContain(
-        'it could not be reopened, so the owner of W1.3.1 · Tag the release took its place',
+        'it could not be reopened, so conversation W1.3.1 · Tag the release took its place',
       )
       const byId = new Map(
         (record.structured.conversations as ConversationPayload[]).map((one) => [one.agent, one]),
@@ -742,10 +750,10 @@ describe('F009 · what an agent has done, read on demand', () => {
       const record = await theRecordOf(agentToolsFor(host, brobot), 'tester')
       expect(record.structured, record.text).toMatchObject({ outcome: 'ok' })
       expect(record.text).toContain(
-        '  - the owner of W1.3.1 · Tag the release · started by Ada (the owner of W1.3 · Ship the clock page) at ',
+        '  - conversation W1.3.1 · Tag the release · started by Ada (the owner of W1.3 · Ship the clock page) at ',
       )
       expect(record.text).toContain(
-        'it could not be reopened, so the owner of W1.3.1 · Tag the release took its place',
+        'it could not be reopened, so conversation W1.3.1 · Tag the release took its place',
       )
     })
   })
