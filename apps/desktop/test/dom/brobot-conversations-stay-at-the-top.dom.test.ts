@@ -140,10 +140,10 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     'Look and layout',
     'Providers',
     'Settings',
-    '',
+    null,
   ]
   people.forEach((row, index) => {
-    row.named = { label: `W${numbers[index]}`, title: titles[index]! }
+    row.named = { label: `W${numbers[index]}`, title: titles[index] ?? null }
   })
   people[1]!.state = {
     is: 'waiting-on-an-answer',
