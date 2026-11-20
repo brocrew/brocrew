@@ -425,11 +425,11 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   )
   const disclosure = m.q('card-other-tasks') as HTMLDetailsElement
   expect(disclosure.open).toBe(false)
-  expect(m.q('cast-other').getClientRects()).toHaveLength(0)
+  const collapsedHeight = disclosure.getBoundingClientRect().height
   expect(disclosure.querySelector('summary')?.textContent).toContain('8')
   disclosure.querySelector('summary')!.click()
   expect(disclosure.open).toBe(true)
-  expect(m.q('cast-other').getClientRects()).not.toHaveLength(0)
+  expect(disclosure.getBoundingClientRect().height).toBeGreaterThan(collapsedHeight)
   expect(otherTitles()).toEqual(others.slice(0, 5).map((item) => item.title))
   expect(m.q('card-task-counts').textContent?.trim()).toBe('0 active · 1 open · 8 closed')
   expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 3 more · 5 of 8')
