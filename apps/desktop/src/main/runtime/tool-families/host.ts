@@ -208,7 +208,10 @@ export interface AgentToolHost {
     input: ConversationRenameInput,
     author: ConversationTitleAuthor,
   ): Promise<ConversationRenameResult>
-  takeBackPiece(input: { readonly piece: string }, by: Caller): Promise<TakeBackOutcome>
+  takeBackPiece(
+    input: { readonly piece: string; readonly reason?: string },
+    by: Caller,
+  ): Promise<TakeBackOutcome>
   takeBackWhatItsQuestionMadeFalse(
     input: { readonly agent: string; readonly piece: string },
     by: Caller,

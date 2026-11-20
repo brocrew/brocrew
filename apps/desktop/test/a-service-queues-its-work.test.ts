@@ -1,6 +1,7 @@
 import { giveLateServiceTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { SendReceipt } from '../src/shared/tool-outcome'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -872,16 +873,17 @@ describe('a service queues the work it is given', () => {
   })
 
   describe('a queued piece taken back', () => {
-    it('by its caller ends without a word to the service, and the pieces behind it move up', async () => {
+    it.each(['giver', 'third party'])('queued withdrawal by the %s', async (who) => {
       const { host, first, second } = await aServiceAndTwoCallers()
       await aServiceAtWork(host, first)
       const one = accepted(await world.gives(host, first, 'browser-driver', { title: 'One' }))
       accepted(await world.gives(host, second, 'browser-driver', { title: 'Two' }))
       const before = world.ledger(one.owner).length
 
+      const actor = who === 'giver' ? first : second
       const taken = await host.takeBackPiece(
         { piece: one.label },
-        { ownerId: agentCallerId(first) },
+        { ownerId: agentCallerId(actor) },
       )
       expect(taken).toMatchObject({
         ok: true,
@@ -891,6 +893,19 @@ describe('a service queues the work it is given', () => {
         delivery: 'not-delivered',
         whyNotTold: 'The piece was queued and had not reached it, so nothing was sent.',
       })
+      if (actor !== first) {
+        await vi.waitFor(() => {
+          const notices = world
+            .ledger(first)
+            .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
+            .filter((message) => message.appNotice === 'a-piece-it-gave-taken-back')
+          expect(notices).toHaveLength(1)
+          expect(notices[0]?.text).toContain(
+            `${host.whatToCallTheConversation(actor)} took back ${one.label} · One.`,
+          )
+          expect(notices[0]?.text).not.toContain('Reason:')
+        })
+      }
       expect(
         world
           .ledger(one.owner)
@@ -902,20 +917,22 @@ describe('a service queues the work it is given', () => {
         'withdrawn',
         'waiting',
       ])
+      expect(world.ledger(one.owner).at(-1)).toMatchObject({ type: 'work_taken_back', by: actor })
       expect(host.pieceBoard(second).gave.map((row) => row.queuedBehind)).toEqual([1])
       expect(world.startedAs).toEqual(['caller', 'other-caller', 'browser-driver'])
     })
 
-    it('by another caller is refused: it is not a piece it gave', async () => {
+    it('admits another conversation over the existing service ending path', async () => {
       const { host, first, second } = await aServiceAndTwoCallers()
-      const one = accepted(await world.gives(host, first, 'browser-driver'))
-      expect(
-        await host.takeBackPiece({ piece: one.label }, { ownerId: agentCallerId(second) }),
-      ).toEqual({ ok: false, refused: { rail: 'not-a-piece-you-gave' } })
-      expect(await host.takeBackPiece({ piece: one.label }, THE_APP_ITSELF)).toEqual({
+      const active = await aServiceAtWork(host, first)
+      const queued = accepted(await world.gives(host, first, 'browser-driver'))
+      expect(await host.takeBackPiece({ piece: queued.label }, THE_APP_ITSELF)).toEqual({
         ok: false,
-        refused: { rail: 'not-a-piece-you-gave' },
+        refused: { rail: 'no-piece-by-that-name' },
       })
+      expect(
+        await host.takeBackPiece({ piece: active.label }, { ownerId: agentCallerId(second) }),
+      ).toMatchObject({ ok: true, piece: active.piece })
     })
   })
 

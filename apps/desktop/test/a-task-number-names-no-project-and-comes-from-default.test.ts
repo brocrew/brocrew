@@ -184,11 +184,14 @@ describe('D-016 · what a giver is told about a piece it gave, through the real 
       detail: { piece: first.label, label: first.label, answered: 'done' },
     })
     const answeredDetail = tooLate.structured.detail as Record<string, unknown>
-    expect(Object.keys(answeredDetail).length).toBeGreaterThanOrEqual(3)
-    for (const key of Object.keys(answeredDetail)) {
-      expect(['piece', 'label', 'answered', 'resources', 'at'], `detail key ${key}`).toContain(key)
-    }
-    expect(Object.keys(answeredDetail)).not.toContain('project')
+    expect(answeredDetail).toMatchObject({
+      state: 'answered',
+      called: host.whatToCallTheConversation(worker),
+      at: store.piecesOwnedBy(worker).find((one) => one.piece === first.piece)?.endedAt,
+      yoursToRetitle: true,
+    })
+    expect(answeredDetail.at).toEqual(expect.any(Number))
+    expect(answeredDetail).not.toHaveProperty('project')
 
     // A second piece to the same worker, taken back (the positive of the same door) — by its id,
     // the other spelling the door takes — and taken back again.
@@ -208,8 +211,16 @@ describe('D-016 · what a giver is told about a piece it gave, through the real 
       rail: 'that-piece-was-already-taken-back',
     })
     const takenBackDetail = again.structured.detail as Record<string, unknown>
-    expect(takenBackDetail).toEqual({ piece: second.piece, label: second.label })
-    expect(Object.keys(takenBackDetail).sort()).toEqual(['label', 'piece'])
+    expect(takenBackDetail).toEqual({
+      piece: second.piece,
+      label: second.label,
+      state: 'withdrawn',
+      endedByYou: true,
+      at: store.piecesOwnedBy(worker).find((one) => one.piece === second.piece)?.endedAt,
+      yoursToRetitle: true,
+    })
+    expect(takenBackDetail.at).toEqual(expect.any(Number))
+    expect(takenBackDetail).not.toHaveProperty('project')
   })
 
   it('🔴 the parent reads the answer as `<label> · <title> was answered by <holder>: <outcome>.` and no project is in it', async () => {

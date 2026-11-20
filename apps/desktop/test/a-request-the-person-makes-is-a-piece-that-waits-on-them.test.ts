@@ -962,11 +962,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(
       events(pm).filter((event) => event.type === 'work_rebriefed' && event.piece === taken.piece),
     ).toHaveLength(1)
-    const closed = await callOn(pmTools, 'update_work', { piece: taken.label, close: true })
-    expect(closed.outcome, JSON.stringify(closed)).toBe('refused')
-    expect(closed.rail).toBe('the-giver-briefs-and-closes-a-piece')
-    expect(taskOf(pm, taken.piece)?.state).toBe('working')
-
     const meddled = await callOn(stranger.tools, 'update_work', {
       piece: taken.label,
       title: 'mine now',

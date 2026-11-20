@@ -1059,8 +1059,7 @@ describe('347 · the five tools', () => {
         // ⚑ **D-016 · a file kept for a piece** — `read_document` reads a resource by its id.
         | 'a resource'
         | 'a piece it was given'
-        // ⚑ **D-016** — `withdraw_task` names the piece it takes back, and no agent.
-        | 'a piece it gave'
+        | 'an open child task to withdraw'
         // ⚑ **D-016** — `update_work` and `list_tasks` name a piece the caller holds or gave.
         | 'a piece it holds or gave'
         // ⚑ **D-024 · R2 — `list_tasks` reads further than `update_work` changes**: a piece another
@@ -1125,15 +1124,8 @@ describe('347 · the five tools', () => {
         // list**: it cannot hand work to somebody who is not named yet, because there is nobody at
         // all. It writes one row, starts nothing and sends nothing.
         create_agent: 'an agent that does not exist yet',
-        // 🔴 **`withdraw_task` is not a dispatch tool under the rule above** (429). ⛔ It hands nobody
-        // anything to do — it takes back something already handed over — so the *"work for somebody
-        // to pick up later"* it could queue is none. ⚠️ It reaches only a piece this caller gave,
-        // which is the strongest entitlement on this list.
-        //
-        // ⚑ **D-016 · it names the PIECE, and no agent**: the piece's owner is the conversation it is
-        // taken back from. ⛔ `reply_to_parent` names a piece too, from the other end of one edge: a
-        // child names the piece it was given, a giver the piece it gave.
-        withdraw_task: 'a piece it gave',
+        // Withdrawal ends a named child task. The optional reason is included in its notices.
+        withdraw_task: 'an open child task to withdraw',
         // 🔴 **437, and it names A TASK IT WAS GIVEN — `reply_to_parent`'s subject exactly** (437).
         // ⛔ **It does not name an agent and it cannot**: the conversation it reaches is derived
         // from the task edge, and every spelling of an addressee is refused by the same list
@@ -1210,7 +1202,10 @@ describe('347 · the five tools', () => {
           expect(shape, tool.name).toContain('url')
           expect(shape, tool.name).not.toContain('agent')
         }
-        if (names === 'a piece it gave') expect(shape, tool.name).toEqual(['piece'])
+        if (names === 'an open child task to withdraw') {
+          expect(shape, tool.name).toEqual(['piece', 'reason'])
+          expect(tool.input.reason?.safeParse(undefined).success).toBe(true)
+        }
         if (names === 'a piece it holds or gave') expect(shape, tool.name).toContain('piece')
         if (names === 'a piece it or its profile holds or gave') {
           expect(shape, tool.name).toContain('piece')

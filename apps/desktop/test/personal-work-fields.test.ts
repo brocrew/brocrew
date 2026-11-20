@@ -208,14 +208,42 @@ describe('personal work fields and their existing ownership boundaries', () => {
     expect(
       world.store.piecesOwnedBy(caller).find((row) => row.piece === piece)?.definitionOfDone,
     ).toBe(condition)
-    expect((await call(caller, 'update_work', { piece, close: true })).structured).toMatchObject({
-      outcome: 'refused',
-      rail: 'the-giver-briefs-and-closes-a-piece',
-    })
     const other = await world.aPersonOpens(host, 'worker')
     expect(
       (await call(other, 'update_work', { piece, brief: 'A foreign revision.' })).structured,
     ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
+    expect(
+      (await call(other, 'update_work', { piece, close: true, title: 'A foreign title.' }))
+        .structured,
+    ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
+    const reason = 'The person has the result from another source.'
+    const closed = (await call(other, 'update_work', { piece, close: true, status: reason }))
+      .structured
+    expect(closed).toMatchObject({ outcome: 'ok', state: 'closed' })
+    expect(closed).not.toHaveProperty('status')
+    expect(world.store.piecesOwnedBy(caller).find((row) => row.piece === piece)).toMatchObject({
+      state: 'closed',
+      endedBy: other,
+      title: old.title,
+      brief: 'A revised short brief.',
+      definitionOfDone: condition,
+      statusLine: revised.statusLine,
+    })
+    await vi.waitFor(() => {
+      const notice = world
+        .ledger(caller)
+        .find(
+          (event) =>
+            (event.type === 'user_turn' || event.type === 'message_queued') &&
+            event.appNotice === 'a-piece-closed',
+        )
+      expect(notice).toMatchObject({
+        text: expect.stringContaining(
+          `${host.whatToCallTheConversation(other)}, ${host.nameByItsWork(other)}, closed your task`,
+        ),
+      })
+      expect(notice).toMatchObject({ text: expect.stringContaining(`Reason: ${reason}`) })
+    })
   })
 
   it('refuses a foreign parent before creating work, while an ended owned parent anchors without reopening', async () => {

@@ -35,7 +35,7 @@ describe('personal work requires its own recorded request', () => {
     if (!given.ok) throw new Error('fictional give failed')
     const tool = agentToolsFor(host, given.owner).tools.find((one) => one.name === 'take_on_work')!
     expect(tool.description).toBe(
-      "Only for a request a person typed in your own conversation. For work an agent gave you, keep working on that piece; don't call this. Give a short brief and definition_of_done. The piece goes under your current work; name piece if that is unclear. A recorded agent giver is told. Finish with reply_to_parent, then tell the person here. Use the returned navigation links; clicking them does not move work.",
+      "Only for a request a person typed in your own conversation. For work an agent gave you, keep working on that piece; don't call this. Give a short brief and definition_of_done. The piece goes under your current work; name piece if that is unclear. A recorded agent giver is told. Leave work the person gave to the person, or ask them before closing or withdrawing it. Finish with reply_to_parent, then tell the person here. Use the returned navigation links; clicking them does not move work.",
     )
   })
 

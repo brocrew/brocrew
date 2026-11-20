@@ -260,7 +260,7 @@ export const REFUSAL_REMEDIES = [
    * session **or fail and abandon the reservation** — and on that arm the retry at `message_agent`
    * and `interrupt_agent` meets `no-such-agent`, which is permanent: `abandon` deletes the
    * reservation, so the retry finds no slot at all. ⚠️ At `withdraw_task` (since `657`) the same arm
-   * meets `not-a-piece-you-gave`, the ended-child fold that door already answers. ⛔ **This
+   * meets `no-piece-by-that-name`, the lookup that door already answers. ⛔ **This
    * said `that-conversation-has-already-ended` until `650`, and it was false**
    * (`a-refusal-that-clears-on-its-own.test.ts` §2). ⚠️ **Whether a retry can work is
    * `retryable`'s answer and the row already carries it**; a remedy that also promised the outcome
@@ -448,9 +448,6 @@ export const TOOL_REFUSALS = [
   'agent-name-taken',
   // A service was requested while services are off; no identity is made.
   'services-are-off-so-none-is-made',
-  // No piece given by this caller to the named recipient matches. Missing, other-giver
-  // and other-recipient pieces share this answer; use a label from the caller’s work list.
-  'not-a-piece-you-gave',
   // The piece has a completed reply and cannot be withdrawn. New work requires a new give.
   'that-piece-was-already-answered',
   // The piece was already withdrawn; a repeated withdrawal cannot report a new success.
@@ -487,9 +484,9 @@ export const TOOL_REFUSALS = [
   'the-giver-names-a-piece',
   // The piece ended, so status, brief, close and kept-file changes are refused. Its title may change.
   'that-piece-has-ended',
-  // The caller did not give the piece it is trying to brief or close. Other holder operations remain available.
-  'the-giver-briefs-and-closes-a-piece',
-  // The giver already closed the piece. It has ended; another withdrawal cannot close it again.
+  // The caller did not give the piece it is trying to rebrief or give a new done condition.
+  'the-giver-briefs-a-piece',
+  // The piece already closed. Another ending has nothing to do.
   'that-piece-was-already-closed',
   // The caller has no person-given root under which to take on work.
   'no-work-of-your-own',

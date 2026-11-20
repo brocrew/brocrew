@@ -727,7 +727,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     // ⚠️ **The control, one fact over**: a piece this caller never gave is still the old word —
     // the launch in flight is not disclosed to a caller the piece lookup would have refused.
     expect(payload(await call('withdraw_task', { piece: pieceCalled([99, 1]) })).rail).toBe(
-      'not-a-piece-you-gave',
+      'no-piece-by-that-name',
     )
 
     hold.open()
@@ -742,7 +742,7 @@ describe('657 · hold the second message instead of refusing it', () => {
     const closing = host.close(child, window)
     closing.catch(() => undefined)
     // ⛔ **The fold, as `message_agent` keeps it**: this reservation will never come up.
-    expect(payload(await call('withdraw_task', { piece })).rail).toBe('not-a-piece-you-gave')
+    expect(payload(await call('withdraw_task', { piece })).rail).toBe('no-piece-by-that-name')
     hold.open()
     homeHold = null
     await Promise.allSettled([reopening, closing])

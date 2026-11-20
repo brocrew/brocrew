@@ -731,8 +731,7 @@ describe('425 · a refusal carries its remedy', () => {
       // `name-the-piece-you-ask-about` and `no-piece-to-ask-about`; and the document registry's ten
       // quiet words became the resource store's seven.
       // ⚑ **D-016, commit 5 (the giver's verbs)** — +2, both `permanent` and so both `null` by the
-      // biconditional: `TOOL_REFUSALS`' `the-giver-briefs-and-closes-a-piece` (an owner asking for
-      // a brief or a close — the giver's acts, whatever the moment) and
+      // biconditional: `TOOL_REFUSALS`' `the-giver-briefs-a-piece` (an owner asking to rebrief work another conversation gave) and
       // `that-piece-was-already-closed` (a take-back of a piece its giver closed).
       // ⚑ **D-016, commit 6 (a request the person makes)** — +1, `permanent` and so `null` by the
       // biconditional: `TOOL_REFUSALS`' `no-work-of-your-own` (`take_on_work` from a caller that
@@ -760,7 +759,7 @@ describe('425 · a refusal carries its remedy', () => {
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(quiet).toHaveLength(83)
+      expect(quiet).toHaveLength(82)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['its-provider-is-fixed', 'permanent'],
@@ -998,7 +997,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // No per-agent grant rail is left; a service's conversation has its own word at the message door.
-      expect(walked).toHaveLength(112)
+      expect(walked).toHaveLength(111)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

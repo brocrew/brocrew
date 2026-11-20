@@ -690,28 +690,29 @@ describe('429 · taking work back', () => {
       )
     })
 
-    it('⛔ another parent’s task cannot be withdrawn, and the lookup is what refuses', async () => {
-      const { pm, worker, piece, label } = await aPmAndItsWorker('the first piece')
-
-      // ⚑ **A second PM, which can see nothing of the first one's work.** ⛔ The entitlement is the
-      // LOOKUP — the pieces the CALLER gave — so there is no label a caller can spell that reaches
-      // another parent's piece.
-      //
-      // 🔴 **549 · which of two rails answers FIRST moved, and the claim did not** (HO-058 §1). ⚑ The
-      // lookup is what refuses, which is the sentence this test was always making, and the direct
-      // assertion at the bottom is the one that says so without depending on an order.
+    it('withdraws a piece from another conversation and gives the work again as a fresh piece', async () => {
+      const { pm, pmTools, worker, piece, label } = await aPmAndItsWorker('the first piece')
       await bringIdentityIntoBeing('other-pm')
       const rival = await personOpens('other-pm')
-      const rivalTools = theToolsetJustHandedOut()
-      const refused = await callOn(rivalTools, 'withdraw_task', { piece: label })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('not-a-piece-you-gave')
-      expect(piecesOf(worker)[0]?.state).not.toBe('withdrawn')
-      // ⚑ **And the lookup itself, asked directly**, so the claim is about the lookup rather than
-      // about the order two rails happen to be in: the rival gave nothing, and the parent that
-      // really gave the work did. (⚑ D-016 · `theTaskYouGave`, the predicate this asked, is gone.)
+      const reason = 'The first assignment is obsolete.'
+      const withdrawn = await callOn(theToolsetJustHandedOut(), 'withdraw_task', {
+        piece: label,
+        reason,
+      })
+      expect(withdrawn).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
+      expect(piecesOf(worker).find((one) => one.piece === piece)).toMatchObject({
+        state: 'withdrawn',
+        endedBy: rival,
+      })
       expect(store.piecesGivenBy(rival).map((one) => one.piece)).not.toContain(piece)
       expect(store.piecesGivenBy(pm).map((one) => one.piece)).toContain(piece)
+      const next = await aGive(pmTools, 'worker', 'the first piece', label)
+      expect(next.piece).not.toBe(piece)
+      expect(next.label).not.toBe(label)
+      expect(piecesOf(worker).find((one) => one.piece === piece)?.state).toBe('withdrawn')
+      expect(
+        piecesOf(worker).some((one) => one.piece === next.piece && TASK_IS_OPEN[one.state]),
+      ).toBe(true)
     })
 
     it('⚠️ the withdrawal survives a restart, which is what the narrow read is for', async () => {
@@ -771,7 +772,6 @@ describe('429 · taking work back', () => {
       // `Record<ToolRefusal, RefusalRemedy | null>` is what refuses to compile until it does.
       // ⚑ **D-016 renamed three of them** — a task is a piece, and a withdrawal is a take-back.
       const added = [
-        'not-a-piece-you-gave',
         'that-piece-was-already-answered',
         'that-piece-was-already-taken-back',
         'that-work-is-being-sent',

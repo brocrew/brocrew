@@ -305,7 +305,12 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
     const time = at === undefined ? '' : clockTimeFrom(at, context.readAt)
     const how = outcome === undefined ? '' : ` ${outcome}`
     const when = time === '' ? '' : ` at ${time}`
-    const said = [`${label} was answered${how}${when}.`]
+    const said =
+      detail['state'] === 'answered'
+        ? outcome === undefined
+          ? []
+          : [`The reply outcome was ${outcome}.`]
+        : [`${label} was answered${how}${when}.`]
     const resources = texts(detail['resources'])
     if (resources.length > 0) said.push(`Its reply handed in ${resources.join(', ')}.`)
     return said

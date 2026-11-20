@@ -5,7 +5,7 @@ import type {
   ConversationOnARecord,
   PieceOnARecord,
 } from '../agent-records'
-import type { MadeByItsProfile, APieceItHolds, EndedPieceDetail } from '../work-records'
+import type { MadeByItsProfile, EndedPieceDetail } from '../work-records'
 import type { AgentIdentity, IdentityCreator } from '../../../shared/runtime-ipc'
 import type { OwnInstructionsVersion } from '../../../shared/own-instructions'
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
@@ -58,30 +58,25 @@ export type TakeBackOutcome =
   | { readonly ok: false; readonly refused: TakeBackRefused }
 
 export type TakeBackRefused =
+  | { readonly rail: Extract<ToolRefusal, 'no-piece-by-that-name'> }
   | {
-      readonly rail: Extract<ToolRefusal, 'not-a-piece-you-gave'>
-
-      /** Present for the caller's own piece, absent for an unknown or unreadable record. */
-      readonly itHoldsIt?: APieceItHolds
+      readonly rail: Extract<ToolRefusal, 'that-is-your-own-work'>
+      readonly label: string
     }
   | {
       readonly rail: Extract<ToolRefusal, 'that-piece-was-already-answered'>
-      readonly label: string
-
+      readonly ended: EndedPieceDetail
+      readonly readAt: number
       readonly outcome: TaskOutcome | null
-
-      /** Resource ids actually carried by the completed reply; empty when it carried none. */
       readonly resources: readonly string[]
-
-      readonly endedAt: number | null
     }
   | {
-      readonly rail: Extract<ToolRefusal, 'that-piece-was-already-taken-back'>
-      readonly label: string
-    }
-  | {
-      readonly rail: Extract<ToolRefusal, 'that-piece-was-already-closed'>
-      readonly label: string
+      readonly rail: Extract<
+        ToolRefusal,
+        'that-piece-was-already-taken-back' | 'that-piece-was-already-closed'
+      >
+      readonly ended: EndedPieceDetail
+      readonly readAt: number
     }
   | {
       readonly rail: Extract<ToolRefusal, 'that-work-is-being-sent'>

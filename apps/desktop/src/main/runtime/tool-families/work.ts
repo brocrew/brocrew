@@ -1,8 +1,5 @@
 import {
   AS_A_DELIVERY,
-  aTakeBackOfAPieceYouHold,
-  aTakeBackOfAPieceYouHoldThatEnded,
-  aTakeBackOfYourOwnWork,
   anEndedPieceSaid,
   takeBackDetail,
   theQuestionsItEnded,
@@ -44,10 +41,12 @@ import { z } from 'zod'
 interface WithdrawTaskArguments {
   /** The piece being taken back — its label or its id. */
   readonly piece: string
+  readonly reason?: string
 }
 
 /** The advertised name, as a key of {@link WithdrawTaskArguments} — see that interface (429). */
 const WITHDRAW_PIECE_ARGUMENT = 'piece' satisfies keyof WithdrawTaskArguments
+const WITHDRAW_REASON_ARGUMENT = 'reason' satisfies keyof WithdrawTaskArguments
 
 /**
  * **D-016 · every argument `update_work` advertises, as a TYPE** — `415`'s device. All five
@@ -69,7 +68,7 @@ interface UpdateWorkArguments {
   readonly on?: WaitOnAsked
   /** **R1** — a new brief for a piece the caller gave, kept verbatim, as `give_work`'s is. */
   readonly brief?: string
-  /** **R1** — only `true` closes: a piece the caller gave, ended without a reply. */
+  /** Only true closes the named open child piece without a reply. */
   readonly close?: boolean
   /** **R2** — files to keep for the piece, as its inputs or as what was made for it. */
   readonly resources?: readonly string[]
@@ -158,7 +157,7 @@ export function createWithdrawTaskTool(
     // **D-016 · ruling 8 — and the owner is told**, woken to hear it if nothing runs in it.
     // **D-022 · R3 — at once or once its turn ends, and the answer says which.**
     description:
-      'Take back a piece of work you gave, so it is no longer owed. The agent holding it is told — at once when it is free or has stopped (it is woken to hear it), else once its turn ends: the answer says which, and interrupt_agent asks that turn to stop. Nothing it is doing is stopped by this, and the pieces it gave under it stay its own to take back. A piece that has already ended — answered, or closed with update_work — cannot be taken back.',
+      "Withdraw an open child task when needed. Any conversation may withdraw it. Leave work the person gave to the person, or ask them before withdrawing it. Its holder is told to stop it and who took it back, with the reason if supplied. When the task has a conversation giver and a different conversation withdraws it, that giver is told too. This acts on the task with that label, not on its conversation, which keeps its other tasks and can take new ones. Give a reason when you end someone else's work, so its holder knows why. Structural conversation roots are unchanged. A service is told only if the work reached it.",
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** (415's
      * device, `429`'s door) — see {@link WithdrawTaskArguments}.
@@ -173,12 +172,19 @@ export function createWithdrawTaskTool(
       piece: z
         .string()
         .describe(
-          'The piece you are taking back — its label (W1.2) or its id, as list_tasks names it.',
+          'The open child task to withdraw, by its label or id. Structural conversation roots are unchanged.',
+        ),
+      reason: z
+        .string()
+        .optional()
+        .describe(
+          'Why you are withdrawing this task. The holder reads it with your name; when the task has a conversation giver other than you, that giver reads it too. Leave it out when you have no reason to add.',
         ),
     } satisfies Readonly<Record<keyof WithdrawTaskArguments, z.ZodType>>,
     call: (args) =>
       guarded(async () => {
         const piece = args[WITHDRAW_PIECE_ARGUMENT]
+        const reason = args[WITHDRAW_REASON_ARGUMENT]
         if (typeof piece !== 'string' || piece.length === 0) {
           return refusalAnswer(
             refuseTool('malformed-request', {
@@ -186,35 +192,18 @@ export function createWithdrawTaskTool(
             }),
           )
         }
-        // **The rails are the HOST's and this file asks none of them** — the module note's
-        // design, and `create_agent`'s shape one verb over. The host answers with a rail word and
-        // the facts that rail may state; all that happens here is that they become a payload.
-        const outcome = await host.takeBackPiece({ piece }, by)
-        // **F089 · a piece the caller HOLDS, said as what it is** — `not-a-piece-you-gave`, true
-        // of it, with the act left. The word's own sentence, whose guess is that the name may
-        // belong to nothing, is kept for a name that is none of the caller's.
-        if (
-          !outcome.ok &&
-          outcome.refused.rail === 'not-a-piece-you-gave' &&
-          outcome.refused.itHoldsIt !== undefined
-        ) {
-          const held = outcome.refused.itHoldsIt
-          const detail = takeBackDetail(piece, outcome.refused)
-          if (held.is === 'its-root') {
-            return refusalAnswer({
-              ...refuseTool('not-a-piece-you-gave', detail),
-              reason: aTakeBackOfYourOwnWork(held.label),
-            })
-          }
-          if (held.is === 'open') {
-            return refusalAnswer({
-              ...refuseTool('not-a-piece-you-gave', detail),
-              reason: aTakeBackOfAPieceYouHold(held.label),
-            })
-          }
+        if (reason !== undefined && typeof reason !== 'string') {
+          return refusalAnswer(
+            refuseTool('malformed-request', { problems: ['reason must be text or left out'] }),
+          )
+        }
+        const words = reason?.trim() ? reason : undefined
+        const outcome = await host.takeBackPiece({ piece, ...(words ? { reason: words } : {}) }, by)
+        if (!outcome.ok && 'ended' in outcome.refused) {
+          const refused = outcome.refused
           return refusalAnswer({
-            ...refuseTool('not-a-piece-you-gave', detail),
-            reason: aTakeBackOfAPieceYouHoldThatEnded(held),
+            ...refuseTool(refused.rail, takeBackDetail(piece, refused)),
+            reason: anEndedPieceSaid(refused.ended, refused.readAt),
           })
         }
         if (
@@ -296,13 +285,11 @@ export function createUpdateWorkTool(
      * nobody.
      */
     description:
-      'For a non-root piece taken on for the person, the brief changes here. The giver may change the done condition, or the holder of person-given work. Name a piece of work, say where it stands, give it a new brief, close it, or keep files for it. Title your own conversation’s work — its root, or a piece you took on for a person — or a piece you gave; set the current status line of a piece you hold or gave, or mark it as waiting on purpose with on, which names what will end the wait: another piece or an agent’s answer, a person’s answer or to-do, a time, or a job or background task. A question in your reply is not a request: to wait on a person, ask with ask_question first and name its id. resources keeps files for any piece you hold, your own conversation’s work included, as what you made — and for a piece you gave, as its inputs: the agent holding it is told their ids. A close is only for a piece you gave. For work you gave, brief replaces its brief and is sent to the agent holding it as a message of its own, in your words — or, while the piece’s first brief is still held for that agent, goes out in its place; close ends it without a reply, and that agent is told to stop. What that agent is told reaches it at once when it is free or has stopped, else once its turn ends: the answer says which, and interrupt_agent asks that turn to stop. If your conversation’s work has no title yet, name it after what the person asked for. Name the piece by its label (W1.2) or id — you must name it to brief or close it — or leave it out when you hold only one. The newest title, status line, brief and done condition stand; a title, a status line and what you made are sent to nobody. Only a title changes on a piece that has ended.',
+      "For a non-root piece taken on for the person, the brief changes here. The giver may change the done condition, or the holder of person-given work. Name a piece of work, say where it stands, give it a new brief, close it, or keep files for it. Title your own conversation’s work — its root, or a piece you took on for a person — or a piece you gave; set the current status line of a piece you hold or gave, or mark it as waiting on purpose with on, which names what will end the wait: another piece or an agent’s answer, a person’s answer or to-do, a time, or a job or background task. A question in your reply is not a request: to wait on a person, ask with ask_question first and name its id. resources keeps files for any piece you hold, your own conversation’s work included, as what you made — and for a piece you gave, as its inputs: the agent holding it is told their ids. close: true ends an open child task without a reply. Any conversation may close it. Leave work the person gave to the person, or ask them before closing it. The holder is told who closed it, with the reason if supplied. When the task has a conversation giver and a different conversation closes it, that giver is told too. A closed task keeps its outcome; to have more work done, give it again to the same conversation. Give a reason when you end someone else's work, so its holder knows why. Structural conversation roots are unchanged. For work you gave, brief replaces its brief and is sent to the agent holding it as a message of its own, in your words — or, while the piece’s first brief is still held for that agent, goes out in its place. A service is told only if the work reached it. What that agent is told reaches it at once when it is free or has stopped, else once its turn ends: the answer says which, and interrupt_agent asks that turn to stop. If your conversation’s work has no title yet, name it after what the person asked for. Name the piece by its label (W1.2) or id — you must name it to brief or close it — or leave it out when you hold only one. The newest title, status line, brief and done condition stand; a title, a status line and what you made are kept without a notice. A close can send its reason as part of the holder notice. Only a title changes on a piece that has ended.",
     /**
      * **Rows in this app's own ledger, and the rails are the whole gate** (HO-031 §2.4): who
      * may title, brief, close, keep files and say where a piece stands are the host's answers,
-     * from the piece's row. **A new brief, a close or inputs are told to a conversation the
-     * caller gave the piece to** — which wakes it, as `message_agent` and `withdraw_task` wake one
-     * — and it never starts a new conversation (D-016 spec D6).
+     * from the piece's row. A new brief, a close or inputs can wake the holder to receive them.
      */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
@@ -322,7 +309,7 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          `Where it stands now, in a line, at most ${String(REPLY_SUMMARY_LIMIT)} characters. Refused on a piece that has ended.`,
+          `Where it stands now, or why you are closing it, in a line of at most ${String(REPLY_SUMMARY_LIMIT)} characters. Refused on a piece that has ended.`,
         ),
       on: z
         .looseObject({
@@ -371,7 +358,7 @@ export function createUpdateWorkTool(
         .boolean()
         .optional()
         .describe(
-          'true closes a piece you gave without a reply: it is no longer owed and no longer stalls, and the agent holding it is told to stop. A status line in the same call is set first. Refused with brief or resources.',
+          'true ends an open child task without a reply; any conversation may close it. Leave work the person gave to the person, or ask them before closing it. Its holder is told who closed it, with the reason if supplied. When the task has a conversation giver and a different conversation closes it, that giver is told too. A closed task stays closed: to have more work done, give it again to its conversation. Refused with brief, definition_of_done or resources.',
         ),
       resources: z
         .array(z.string())
@@ -620,7 +607,7 @@ export function createTakeOnWorkTool(
     handlerOwnsMissingInput: true,
     // It opens new personal work; an assigned piece already holds the agent's work.
     description:
-      "Only for a request a person typed in your own conversation. For work an agent gave you, keep working on that piece; don't call this. Give a short brief and definition_of_done. The piece goes under your current work; name piece if that is unclear. A recorded agent giver is told. Finish with reply_to_parent, then tell the person here.",
+      "Only for a request a person typed in your own conversation. For work an agent gave you, keep working on that piece; don't call this. Give a short brief and definition_of_done. The piece goes under your current work; name piece if that is unclear. A recorded agent giver is told. Leave work the person gave to the person, or ask them before closing or withdrawing it. Finish with reply_to_parent, then tell the person here.",
     /**
      * **A row in this app's own ledger, in the caller's own conversation** (HO-031 §2.4): nothing
      * is sent and nobody is woken, so the rails are the whole gate.
