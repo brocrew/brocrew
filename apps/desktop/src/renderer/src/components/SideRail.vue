@@ -1276,6 +1276,7 @@ const platform = platformHere()
                   >
                   <small
                     :id="`rail-state-${row.sessionId}`"
+                    :class="{ 'rail-standing-with-age': row.activityAt !== undefined }"
                     :data-standing="row.standing"
                     :aria-description="row.detail"
                     :data-needing="row.facets.needing"
@@ -1292,26 +1293,33 @@ const platform = platformHere()
                         .filter(Boolean)
                         .join(' · ')
                     "
-                    ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
-                      ><span>{{ row.label }}</span></template
-                    ><template v-if="!identities.get(row.sessionId) && row.provider">
-                      <template v-if="row.named && !row.worker"> · </template
-                      >{{ row.provider }} </template
-                    ><template v-if="!row.worker || identities.get(row.sessionId)">
-                      <template v-if="row.provider || row.named || identities.get(row.sessionId)">
-                        ·
-                      </template>
-                      <span :data-cy="`rail-state-word-${row.sessionId}`">
-                        {{ row.worker ? workerState(row.word, row.named) : row.word }}
-                      </span></template
-                    ><template v-if="row.activityAt !== undefined">
-                      ·
+                    ><span class="rail-standing-prefix"
+                      ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
+                        ><span>{{ row.label }}</span></template
+                      ><template v-if="!identities.get(row.sessionId) && row.provider">
+                        <template v-if="row.named && !row.worker"> · </template
+                        >{{ row.provider }} </template
+                      ><template v-if="!row.worker || identities.get(row.sessionId)">
+                        <template v-if="row.provider || row.named || identities.get(row.sessionId)">
+                          ·
+                        </template>
+                        <span :data-cy="`rail-state-word-${row.sessionId}`">
+                          {{ row.worker ? workerState(row.word, row.named) : row.word }}
+                        </span></template
+                      ></span
+                    ><span v-if="row.activityAt !== undefined" class="rail-standing-age">
+                      <span> · </span>
                       <time
                         :title="`${agoWords(row.activityAt, railMinute)} · ${fullTime(row.activityAt)}`"
                         >{{ agoWords(row.activityAt, railMinute) }}</time
-                      > </template
-                    ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
-                    ><template v-if="row.place"> · {{ row.place }}</template></small
+                      > </span
+                    ><span
+                      v-if="row.elsewhere || row.place"
+                      class="rail-standing-tail"
+                      :data-cy="`rail-place-${row.sessionId}`"
+                      ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
+                      ><template v-if="row.place"> · {{ row.place }}</template></span
+                    ></small
                   >
                   <small
                     v-if="identities.get(row.sessionId)"
@@ -1849,6 +1857,29 @@ const platform = platformHere()
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
   overflow: hidden;
+}
+.rail-copy small.rail-standing-with-age {
+  display: flex;
+}
+.rail-standing-with-age .rail-standing-prefix {
+  flex: none;
+}
+.rail-standing-age {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.rail-standing-age > span {
+  flex: none;
+}
+.rail-standing-age time,
+.rail-standing-with-age .rail-standing-tail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-standing-with-age .rail-standing-tail {
+  flex: 1 1 0;
 }
 
 .rail-live {

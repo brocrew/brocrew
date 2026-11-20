@@ -1,5 +1,5 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import {
@@ -28,11 +28,15 @@ import {
  * full text; a repaired cut must leave the roster. The rhythm suite checks the wide breakpoint.
  */
 const WIDE_RAIL_W = 266.2
-const ON_WINDOWS = /^win/i.test(navigator.platform)
 
 /* ------------------------------------------------------------------ the fixture */
 
 const NOW = 1_700_000_000_000
+const DRAWN_AT = NOW + 1102 * 86_400_000
+
+beforeEach(() => {
+  vi.spyOn(Date, 'now').mockReturnValue(DRAWN_AT)
+})
 
 const conversation = (id: string, where: string, said: string | null): unknown => {
   const record = createSessionRecord(id)
@@ -148,6 +152,7 @@ async function rail(width: number): Promise<Mounted> {
 
 afterEach(() => {
   unmountAll()
+  vi.restoreAllMocks()
 })
 
 /* ------------------------------------------------------------------ the sweep */
@@ -172,8 +177,7 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   {
     cy: 'open-session-sess_named',
     starts: /^\d+d ago$/,
-    widths: ON_WINDOWS ? [251.68] : undefined,
-    because: 'The activity on a crowded metadata line remains on hover.',
+    because: 'The activity has its own ellipsis and retains its full age and timestamp on hover.',
   },
   {
     cy: 'session-opening-sess_a',
@@ -186,14 +190,14 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
     because: 'The long folder cannot expand the status line; the full text remains on hover.',
   },
   {
-    cy: 'open-session-sess_openable',
-    starts: 'claude · ',
-    because: 'The full status, other-window notice and folder remain on hover.',
+    cy: 'rail-place-sess_openable',
+    starts: '·',
+    because: 'The other-window notice and folder retain their full text on the standing hover.',
   },
   {
-    cy: 'open-session-sess_named',
-    starts: 'default · ',
-    because: 'The full agent, provider, status and folder remain on hover.',
+    cy: 'rail-place-sess_named',
+    starts: '· /x/brobot-2',
+    because: 'The shortened folder remains on the standing hover.',
   },
 ]
 
@@ -437,13 +441,24 @@ describe('§1 · the roster, at both shipped widths', () => {
     })
   }
 
-  it('266.2px · draws the named row’s full activity age on Windows', async (ctx) => {
-    ctx.skip(!ON_WINDOWS)
-    const m = await rail(WIDE_RAIL_W)
-    const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
-    expect(activity.textContent?.trim()).toMatch(/^\d+d ago$/)
-    assertDrawn(activity, 'the named row’s activity age is drawn in full')
-  })
+  it.each([251.68, WIDE_RAIL_W])(
+    '%spx · bounds the activity age and owns its ellipsis',
+    async (width) => {
+      const m = await rail(width)
+      const activity = m.q('open-session-sess_named').querySelector<HTMLElement>('time')!
+      const standing = activity.closest('small')!
+      const ageBox = activity.getBoundingClientRect()
+      const lineBox = standing.getBoundingClientRect()
+      expect(activity.textContent?.trim()).toBe('1102d ago')
+      expect(ageBox.width).toBeGreaterThan(Number.parseFloat(getComputedStyle(activity).fontSize))
+      expect(ageBox.left).toBeGreaterThanOrEqual(lineBox.left)
+      expect(ageBox.right).toBeLessThanOrEqual(lineBox.right + 0.01)
+      expect(cutsOf(activity).every(({ by }) => by === activity)).toBe(true)
+      expect(getComputedStyle(activity).overflowX).toBe('hidden')
+      expect(getComputedStyle(activity).textOverflow).toBe('ellipsis')
+      expect(titleRecovers(activity)).toBe(true)
+    },
+  )
 
   it.each([251.68, WIDE_RAIL_W])(
     '%spx · wraps the long title without losing any of it',
