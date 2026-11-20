@@ -177,6 +177,24 @@ it('rechecks the old view identity after yielding instead of following a replace
   }
 })
 
+it('sweeps one home at a time, so sweeps of several homes do not stack their slices', async () => {
+  const large = legacy(0, 40)
+  const otherHome = join(root, 'homes', 'birch-writer', 'provider')
+  const small = join(otherHome, `brobot-skills-${'c'.repeat(64)}-Birch1`)
+  mkdirSync(join(small, 'codex', 'skills', 'birch-0'), { recursive: true, mode: 0o700 })
+  writeFileSync(join(small, 'codex', 'skills', 'birch-0', 'SKILL.md'), 'A fictional birch skill.')
+  // One step per slice, so the large copy takes many slices.
+  let clock = 0
+  vi.spyOn(performance, 'now').mockImplementation(() => (clock += 20))
+  const interleaved: boolean[] = []
+  scheduling.wait = async () => {
+    interleaved.push(existsSync(large) && !existsSync(small))
+  }
+  await Promise.all([sweepSkillViews(root, home, ''), sweepSkillViews(root, otherHome, '')])
+  expect(existsSync(large) || existsSync(small)).toBe(false)
+  expect(interleaved.some(Boolean)).toBe(false)
+})
+
 it('contains a background setup failure and allows a later sweep to retry', async () => {
   const missing = join(root, 'missing-home')
   const failed = sweepSkillViews(root, missing, '')
