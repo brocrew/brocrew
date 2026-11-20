@@ -85,7 +85,7 @@ describe('renaming a conversation', () => {
     })
     const taskLabel = recordFirstTask(service, serviceTask, 'Complete the service task.')
     expect(world.store.firstTaskOf(service)?.label).toBe(taskLabel)
-    expect(world.store.latestTaskTitle(service)).toBe(serviceTask)
+    expect(world.store.defaultTaskTitle(service)).toBe(serviceTask)
     world.store.titleConversation(
       target,
       world.store.nextOrdinal(target),
