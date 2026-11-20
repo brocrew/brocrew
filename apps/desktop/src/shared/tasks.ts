@@ -2232,31 +2232,13 @@ export function derivePieces(
       }
       continue
     }
-    if (event.type === 'work_taken_back') {
-      // 🔴 **The giver took the work back** (429). ⛔ **`settle` is the whole rule, exactly as it is
-      // for a reply**: a take-back naming a piece this ledger never opened, or one it has already
-      // closed, finds nothing in `open` and changes nothing. ⚑ So the door's own ended-piece rails
-      // and this fold agree without either checking the other, and a ledger holding two take-backs
-      // of one piece derives the same row as one.
-      //
-      // ⚠️ **It carries none of the owner's words onto the row** — `carried` is a reply's alone. A
-      // take-back is the giver speaking about its own decision; `outcome`, `summary` (719),
-      // `resources` and `needsUserAction` are the owner's words about work it did, and a piece taken
-      // back has none of them. ⚑ **D-025 · only who took it back** ({@link PieceRow.endedBy}).
-      // Unlike a cancelled message, an explicit null by on this row records a person.
+    if (event.type === 'work_taken_back' || event.type === 'work_closed') {
+      // Settle only an open piece. Neither ending carries the holder's reply fields (D-025).
+      // A null `by` on these rows records a person. A cancelled message can have an unknown actor.
       const actor =
         event.actor === undefined && event.by === null ? { who: 'a-person' as const } : event.actor
-      settle(event.piece, 'withdrawn', entry.at, event.by, null, actor)
-      continue
-    }
-    if (event.type === 'work_closed') {
-      // 🔴 **D-016 · the giver closed the work without a reply** — `work_taken_back`'s arm in its own
-      // state. ⛔ **`settle` is the whole rule**: a close of a piece this ledger never opened, or one
-      // already ended, changes nothing. ⚠️ It carries none of the owner's words onto the row, for
-      // the take-back's reason: nobody replied — ⚑ only who closed it (D-025).
-      const actor =
-        event.actor === undefined && event.by === null ? { who: 'a-person' as const } : event.actor
-      settle(event.piece, 'closed', entry.at, event.by, null, actor)
+      const outcome = event.type === 'work_taken_back' ? 'withdrawn' : 'closed'
+      settle(event.piece, outcome, entry.at, event.by, null, actor)
       continue
     }
     if (
