@@ -620,7 +620,6 @@ defineExpose({
             Clear dates
           </button>
         </div>
-
         <ul
           v-if="drawn"
           id="palette-rows"
@@ -759,23 +758,19 @@ defineExpose({
   font-size: var(--type-caption);
   font-weight: var(--fw-normal);
 }
-
 .palette-search-controls,
 .palette-more {
   align-self: start;
   margin: var(--space-3) var(--space-8);
 }
-
 .palette-search-controls {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-6);
 }
-
 .palette-row.expand strong {
   color: var(--accent-2-text);
 }
-
 .palette-profile {
   display: flex;
   align-items: center;
@@ -783,13 +778,11 @@ defineExpose({
   color: var(--muted);
   font-size: var(--type-caption);
 }
-
 .palette-profile :is(select, input[type='date']) {
   min-width: 0;
   max-width: 100%;
   font: inherit;
 }
-
 .palette-scrim {
   position: fixed;
   z-index: 60;

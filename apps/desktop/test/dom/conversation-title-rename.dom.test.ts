@@ -425,8 +425,23 @@ it('pages Other tasks, then rereads Current task when its saved cursor no longer
   expect(m.q('card-task-counts').textContent?.trim()).toBe('0 active · 1 open · 8 closed')
   expect(m.q('card-other-tasks-more').textContent?.trim()).toBe('Show 5 more · 5 of 8')
   expect(m.q('card-tasks-all').textContent).toContain('All tasks')
+  const readAll = vi.fn<RuntimeBridge['readAllConversationTasks']>().mockResolvedValue({
+    ok: true,
+    conversation: sessionId,
+    root: null,
+    tasks: [],
+    counts: { all: 0, active: 0, open: 0, closed: 0 },
+    matched: 0,
+    newestOpenMatch: null,
+    next: null,
+    rowsUnread: 0,
+    ledgersSkipped: 0,
+  })
+  window.api.runtime.readAllConversationTasks = readAll
   const popup = await allTasks(m)
   expect(popup.host.getAttribute('aria-labelledby')).toBe('all-tasks-title')
+  await expect.poll(() => popup.all('all-tasks-empty').length).toBe(1)
+  expect(readAll).toHaveBeenCalledExactlyOnceWith({ sessionId, filter: 'all' })
   popup.q('close-overlay').click()
   await nextTick()
 

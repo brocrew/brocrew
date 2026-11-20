@@ -3064,6 +3064,10 @@ const readTaskPage: TaskPageSource['read'] = (input) =>
   appClosing.value
     ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
     : window.api.runtime.readConversationTasks(input)
+const readAllTasks: NonNullable<TaskPageSource['readAll']> = (input) =>
+  appClosing.value
+    ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
+    : window.api.runtime.readAllConversationTasks(input)
 let identityRead = 0
 let identitySelection = 0
 
@@ -3996,7 +4000,11 @@ onUnmounted(() => {
             :named="listedNamedOfActive"
             :identity="conversationIdentity"
             :title-history="{ read: readTitleHistory, revision: workRevision }"
-            :task-page-source="{ read: readTaskPage, revision: workRevision }"
+            :task-page-source="{
+              read: readTaskPage,
+              readAll: readAllTasks,
+              revision: workRevision,
+            }"
             :rename="renameConversation"
             :archive="archiveOfActive"
             :identities="agentStore.identities.value?.identities ?? null"

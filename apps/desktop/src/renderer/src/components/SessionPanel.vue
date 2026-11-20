@@ -403,8 +403,12 @@ const panel = computed(() => sessionPanel(props.state))
       @close="agent.tasksDialogOpen.value = false"
     >
       <AllTasksDialog
-        :tasks="band?.taken ?? []"
+        :tasks="props.taskPageSource?.readAll ? [] : (band?.taken ?? [])"
         :root="root"
+        :conversation="props.conversation"
+        :source="props.taskPageSource"
+        :parent="parent"
+        :identities="props.identities ?? null"
         :can-open="props.canOpenConversation ?? false"
         :state="props.state"
         @close="agent.tasksDialogOpen.value = false"

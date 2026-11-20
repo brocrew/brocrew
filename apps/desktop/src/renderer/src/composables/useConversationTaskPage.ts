@@ -5,6 +5,7 @@ import { readableError } from '../lib/session-record'
 
 export interface TaskPageSource {
   readonly read: RuntimeBridge['readConversationTasks']
+  readonly readAll?: RuntimeBridge['readAllConversationTasks']
   readonly revision: number
 }
 

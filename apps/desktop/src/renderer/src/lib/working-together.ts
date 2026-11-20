@@ -439,7 +439,6 @@ export function workingTogetherView(input: WorkingTogetherInput): WorkingTogethe
   // Key activity once for the whole band, from this relationship reading's own refinement.
   const atWork = atWorkOf(reading)
 
-  const work = (row: WorkEdge): CastWork => workOf(row, input, read.readAt)
   const children = read.children.rows.map((row) => cardOf(row, input, atWork))
 
   // ⛔ **Every recipient the spawn list does not name, in the order the work rows first name them.**
@@ -464,12 +463,9 @@ export function workingTogetherView(input: WorkingTogetherInput): WorkingTogethe
     childrenEmpty: childList.count === 0 ? NO_SPAWNED_CONVERSATIONS : null,
     others,
     gaveOutShort: unreadSays(gaveOut.short, gaveOut.skipped),
-    // Fold work given to this conversation. The giver's plate is known only when it is the held parent card; other givers get null facets so the row omits a plate instead of inventing one.
-    taken: read.workTakenIn.rows.map(work).map((piece) => ({
-      piece,
-      facets: parent !== null && piece.from === parent.conversation ? parent.facets : null,
-      toName: piece.fromName,
-    })),
+    taken: read.workTakenIn.rows.map((row) =>
+      taskGivenToThisOne(row, input.identities, parent, read.readAt),
+    ),
     tookInShort: unreadSays(tookIn.short, tookIn.skipped),
     // ⛔ **Folded here and not in the component**: a derivation written inside an SFC is reachable
     // by no mutation row.
@@ -606,8 +602,13 @@ export function theWorkAPersonGave(
   return pieceNumbersOf(named.label)?.length === 1 ? named : null
 }
 
-function workOf(row: WorkEdge, input: WorkingTogetherInput, at: number): CastWork {
-  return {
+export function taskGivenToThisOne(
+  row: WorkEdge,
+  identities: WorkingTogetherInput['identities'],
+  parent: CastCard | null,
+  at: number,
+): CastTask {
+  const piece: CastWork = {
     piece: row.piece,
     // ⛔ **`workReading` over the EDGE**, which is legal because `WorkEdge`'s `label`, `state` and
     // absent `outcome` are `WorkWords`' shape — the narrowing `508` introduced so one vocabulary
@@ -620,11 +621,13 @@ function workOf(row: WorkEdge, input: WorkingTogetherInput, at: number): CastWor
     from: row.from,
     // ⚑ **D-016 · commit 6 · a person gave it** — the window's one word for the person reading it,
     // never `agentName(null)`, which is BroBot.
-    fromName:
-      row.from === null
-        ? A_PERSON_ADDRESSED
-        : agentName(row.fromIdentity, input.identities ?? null),
+    fromName: row.from === null ? A_PERSON_ADDRESSED : agentName(row.fromIdentity, identities),
     given: agoWords(row.givenAt, at),
+  }
+  return {
+    piece,
+    facets: parent !== null && piece.from === parent.conversation ? parent.facets : null,
+    toName: piece.fromName,
   }
 }
 

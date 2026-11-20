@@ -31,6 +31,8 @@ const props = defineProps<{
    * `current` shows only current work on the card. `all` shows every item oldest first in the All tasks popup.
    */
   mode: 'current' | 'all' | 'other'
+  /** The last open match in the full result when All Tasks is paged. */
+  currentPiece?: string | null
 }>()
 
 /**
@@ -46,11 +48,16 @@ const shown = computed(() => {
 /**
  * Expand the newest open work with its label, state, title and brief. Keep the other items to one line.
  */
-const current = computed(() =>
-  props.mode === 'other' ? null : (shown.value.filter((one) => one.piece.open).at(-1) ?? null),
-)
+const current = computed(() => {
+  if (props.mode === 'other') return null
+  if (props.currentPiece !== undefined)
+    return shown.value.find((one) => one.piece.piece === props.currentPiece) ?? null
+  return shown.value.filter((one) => one.piece.open).at(-1) ?? null
+})
 /** ⚑ **UI-008 · the root is the current piece where no other is open** — see {@link root}. */
-const rootIsCurrent = computed(() => current.value === null)
+const rootIsCurrent = computed(() =>
+  props.currentPiece === undefined ? current.value === null : props.currentPiece === null,
+)
 const briefOf = (one: CastTask): string | null =>
   props.briefs?.get(one.piece.reading.heading) ?? null
 
