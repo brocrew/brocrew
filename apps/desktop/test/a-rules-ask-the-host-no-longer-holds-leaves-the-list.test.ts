@@ -91,7 +91,9 @@ function aScreen(asks: readonly ReturnType<typeof anAsk>[], ack: AnswerAck) {
     approve: boolean,
   ) => Promise<void>
   const listed = () =>
-    ((refs.instructionAsks!.value ?? []) as ReturnType<typeof anAsk>[]).map((one) => one.asked.askId)
+    ((refs.instructionAsks!.value ?? []) as ReturnType<typeof anAsk>[]).map(
+      (one) => one.asked.askId,
+    )
   return {
     look: context.lookForWhatIsYours as () => Promise<void>,
     decide,
@@ -119,17 +121,20 @@ describe('352 · an ask the host no longer holds leaves Waiting on you', () => {
     expect(screen.lastAskLookAnswered()).toBe(false)
   })
 
-  it.each([true, false])('an Approve or Refuse it took (approve %s) leaves at once', async (approve) => {
-    const screen = aScreen([anAsk('iprop_1')], { outcome: 'taken' })
-    await screen.look()
+  it.each([true, false])(
+    'an Approve or Refuse it took (approve %s) leaves at once',
+    async (approve) => {
+      const screen = aScreen([anAsk('iprop_1')], { outcome: 'taken' })
+      await screen.look()
 
-    await screen.decide('iprop_1', approve)
+      await screen.decide('iprop_1', approve)
 
-    expect(screen.listed()).toEqual([])
-    expect(screen.agentStore.decideInstruction).toHaveBeenCalledWith('iprop_1', approve)
-    expect(screen.said).toEqual([])
-    expect(screen.store.personsQueue).toHaveBeenCalledTimes(2)
-  })
+      expect(screen.listed()).toEqual([])
+      expect(screen.agentStore.decideInstruction).toHaveBeenCalledWith('iprop_1', approve)
+      expect(screen.said).toEqual([])
+      expect(screen.store.personsQueue).toHaveBeenCalledTimes(2)
+    },
+  )
 
   it('keeps an ask the host says is still open', async () => {
     const failed: AnswerAck = { outcome: 'refused', reason: 'the call failed', stillOpen: true }
