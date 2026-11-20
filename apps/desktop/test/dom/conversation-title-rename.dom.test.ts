@@ -284,7 +284,7 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
   expect(read).toHaveBeenCalledExactlyOnceWith({ sessionId })
   expect(history.textContent).toContain('Current saved title')
   expect(history.textContent).toContain('Named by you')
-  expect(history.querySelector('time')?.getAttribute('title')).toBe(fullTime(savedAt))
+  expect(history.querySelector('time')?.textContent).toBe(fullTime(savedAt))
 
   m.q('conversation-title-history-more').click()
   await expect.poll(() => m.all('conversation-saved-title').length).toBe(2)
