@@ -614,20 +614,7 @@ const waitsShort = computed(() =>
 
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
 
-/**
- * ⛔ **The conversation that is ON SCREEN — one derivation, three consumers.**
- *
- * ⚠️ **`activeId` alone is not it.** `useSurface` is explicit that `activeId` is *"the conversation
- * the surface is about, whether or not it is the thing being drawn"* — so on a destination, on the
- * Sessions page or on the launcher it still names a conversation nobody is looking at. The rail already knew
- * that: its row's `active` class has always been `sessionId === activeId && place === null`.
- *
- * ⚑ **249 gave that expression a third reader and therefore a name.** The palette's *This
- * conversation* band would otherwise offer *"Export this conversation"* while the reader is on the
- * Sessions page, naming a conversation that is not on screen — `104`'s control describing a state it
- * is not in. Written once here, the highlighted row and the palette's band cannot come to disagree
- * about which conversation "this" is.
- */
+/** Only a conversation surface has an on-screen identity; destinations keep activeId too. */
 const onScreenId = computed(() => (props.place === null ? props.activeId : null))
 const paletteSearchCaller = computed(
   () =>
@@ -779,25 +766,7 @@ function fold(key: RailSectionKey): void {
   sectionOpen[key].value = !sectionOpen[key].value
 }
 
-/**
- * ⛔ **What the conversation on screen's own agent will answer to** (279) — the palette's fourth
- * consumer of {@link onScreenId}.
- *
- * ⚠️ **`control`, not `transcript`, and 064 is why.** They are the same object for every ordinary
- * moment of a conversation and part when a reader pages back far enough to release the newest
- * events. `transcript` is then a fold of OLD HISTORY; the command list is a statement about what the
- * agent can do RIGHT NOW, which is exactly what `control` is for — *"the fold that says what this
- * session IS"*. A palette reading the reading-window would go quiet about a live agent's commands
- * because somebody scrolled up.
- *
- * ⚑ **`provider` comes from the session's own `meta` and is PRINTED, never compared.** `039`'s rule
- * forbids the renderer branching on which provider a session runs; a heading that says the name is
- * not a branch, and `provider-neutrality.test.ts` is what keeps that honest.
- *
- * ⛔ **`null` when there is no conversation on screen, and that is a different null from
- * `agent.set === null`** — see `PaletteInput.agent`. The record's own registry supplies the second
- * one and this supplies the first, so neither has to stand in for the other.
- */
+/** Palette actions use the present control fold, not a transcript scrolled into old history. */
 const paletteAgent = computed<PaletteAgent | null>(() => {
   const id = onScreenId.value
   if (id === null) return null
@@ -812,13 +781,7 @@ const paletteAgent = computed<PaletteAgent | null>(() => {
   }
 })
 
-/**
- * ⛔ **Where a palette row's navigation LANDS, and why it lands through this component** — every case
- * below is an event this rail already emits and `RuntimeScreen` already handles: `place` and
- * `activeId` live on the one `useSurface` inside `RuntimeScreen`, and the palette borrows the rail's
- * voice rather than growing a second route into the routing `095` collected into one place.
- * ⚑ **D-017b** — a conversation row is one press whatever it is doing: `select`.
- */
+/** The palette uses the same navigation events as the rail. */
 function fromPalette(action: PaletteNavigation): void {
   if (action.kind === 'select') return emit('select', action.sessionId)
   if (action.kind === 'read-conversation') return emit('readConversation', action.sessionId)
