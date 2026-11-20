@@ -138,6 +138,60 @@ describe('an archived conversation in an agent’s lists', () => {
   })
 })
 
+describe('the person’s Restore', () => {
+  it('waits for an archive to settle before restoring the conversation', async () => {
+    const { helper } = await aGiverAndItsHelper()
+    const { handle } = world.end.newest()
+    let letItClose = (): void => {}
+    const held = new Promise<void>((resolve) => (letItClose = resolve))
+    const close = handle.close.bind(handle)
+    Object.defineProperty(handle, 'close', {
+      value: async (): Promise<void> => {
+        await held
+        await close()
+      },
+      configurable: true,
+    })
+    const archiving = host.archiveConversation(helper)
+    try {
+      expect(host.restoreConversation(helper)).toEqual({
+        done: false,
+        refusal: 'This conversation is being archived now. Restore it once that is done.',
+      })
+    } finally {
+      letItClose()
+      await archiving
+    }
+    expect(host.restoreConversation(helper)).toEqual({ done: true, conversations: [helper] })
+    expect(agentsIn(await call(helper, 'list_agents', { archived: true }), 'archived')).toEqual([])
+  })
+
+  it('keeps archive membership when its write fails and succeeds once writing works', async () => {
+    const { pm, helper } = await aGiverAndItsHelper()
+    expect(await host.archiveConversation(helper)).toMatchObject({ done: true })
+    const kept = host as unknown as { archived: { remove(ids: readonly string[]): void } }
+    const remove = kept.archived.remove.bind(kept.archived)
+    kept.archived.remove = () => {
+      throw new Error('The archived-conversation list could not be saved.')
+    }
+    try {
+      expect(host.restoreConversation(helper)).toEqual({
+        done: false,
+        refusal: 'The archived-conversation list could not be saved.',
+      })
+      expect(agentsIn(await call(pm, 'list_agents', { archived: true }), 'archived')).toEqual([
+        helper,
+      ])
+      expect(world.ledger(helper).filter((event) => event.type === 'restored_from_archive')).toEqual(
+        [],
+      )
+    } finally {
+      kept.archived.remove = remove
+    }
+    expect(host.restoreConversation(helper)).toEqual({ done: true, conversations: [helper] })
+  })
+})
+
 describe('the archive controls offered to agents', () => {
   it('offers archived reads without an explicit restore tool', () => {
     const tools = agentToolsFor(host, 'sess_x').tools

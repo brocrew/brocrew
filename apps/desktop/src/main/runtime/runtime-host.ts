@@ -31864,22 +31864,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** Brings an archived conversation back to a person's lists, with its archived tree. */
-  restoreConversation(sessionId: string, by?: Caller): ArchiveOutcome {
-    const agent = by === undefined ? null : sessionSpeakingAs(by)
-    return this.restoreFromTheArchive(
-      sessionId,
-      agent === null
-        ? null
-        : `Brought back from the archive: ${this.whatToCallTheConversation(agent)} restored it.`,
-    )
-  }
-
-  /**
-   * The restore itself, a person's or an agent's. Each conversation carries on as after any stop:
-   * one that held messages starts to send them, and one with a schedule wakes for it. `saying`,
-   * an agent's, is written into each one's transcript first, so it reads before any start.
-   */
-  private restoreFromTheArchive(sessionId: string, saying: string | null): ArchiveOutcome {
+  restoreConversation(sessionId: string): ArchiveOutcome {
     if (this.deps.store.recordedOne(sessionId) === null) {
       return { done: false, refusal: 'There is no conversation by that name to restore.' }
     }
@@ -31898,17 +31883,6 @@ export class RuntimeHost implements LiveHost {
       this.removeArchiveMarks(archived)
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
-    }
-    if (saying !== null) {
-      for (const conversation of archived) {
-        try {
-          this.writeIntoItsLedger(conversation, { type: 'restored_from_archive', saying })
-        } catch (error) {
-          console.warn(
-            `runtime host could not say in ${conversation} who restored it: ${errorMessage(error)}`,
-          )
-        }
-      }
     }
     this.carryOnAfterTheStop(archived, NEWER_WORDS_AFTER_THE_ARCHIVE)
     this.theWorldMoved('conversations')

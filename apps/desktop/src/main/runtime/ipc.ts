@@ -2951,10 +2951,7 @@ export async function executeRuntimeCommand(
     case 'archiveConversation':
       return host.archiveConversation(command.sessionId) satisfies Answer<'archiveConversation'>
     case 'restoreConversation':
-      return host.restoreConversation(
-        command.sessionId,
-        sink,
-      ) satisfies Answer<'restoreConversation'>
+      return host.restoreConversation(command.sessionId) satisfies Answer<'restoreConversation'>
     case 'checkDeleteConversation':
       return host.deleteVerdict(command.sessionId) satisfies Answer<'checkDeleteConversation'>
     case 'deleteConversation':
