@@ -113,7 +113,6 @@ describe('508 · the work this conversation gave out', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
@@ -122,6 +121,7 @@ describe('508 · the work this conversation gave out', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
+      ...snapshotWindowReads(join(userData, 'brobot2.sqlite'), db),
     })
     hosts.push(built)
     return built
