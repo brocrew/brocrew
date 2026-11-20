@@ -202,12 +202,11 @@ export function createWithdrawTaskTool(
         if (!outcome.ok && 'ended' in outcome.refused) {
           const refused = outcome.refused
           const { nextSteps, ...ended } = refused.ended
-          const reason = anEndedPieceSaid(refused.ended, refused.readAt)
           const payload = {
             ...refuseTool(refused.rail, takeBackDetail(piece, { ...refused, ended })),
-            reason,
+            reason: anEndedPieceSaid(refused.ended, refused.readAt),
           }
-          return nextSteps === undefined ? refusalAnswer(payload) : answer(payload, reason)
+          return nextSteps === undefined ? refusalAnswer(payload) : answer(payload, payload.reason)
         }
         if (
           !outcome.ok &&
@@ -501,16 +500,23 @@ export function createUpdateWorkTool(
           }
           if (updated.rail === 'that-piece-has-ended') {
             const { nextSteps, ...detail } = updated.detail
-            const reason = anEndedPieceSaid(updated.detail, updated.readAt)
-            const payload = { ...refuseTool(updated.rail, detail), reason }
-            return nextSteps === undefined ? refusalAnswer(payload) : answer(payload, reason)
+            const payload = {
+              ...refuseTool(updated.rail, detail),
+              reason: anEndedPieceSaid(updated.detail, updated.readAt),
+            }
+            return nextSteps === undefined
+              ? refusalAnswer(payload)
+              : answer(payload, payload.reason)
           }
           if (
             updated.rail === 'malformed-request' &&
             typeof updated.detail.taskChoice === 'string'
           ) {
-            const reason = updated.detail.taskChoice
-            return answer({ ...refuseTool(updated.rail, updated.detail), reason }, reason)
+            const taskChoice = updated.detail.taskChoice
+            return answer(
+              { ...refuseTool(updated.rail, updated.detail), reason: taskChoice },
+              taskChoice,
+            )
           }
           if (updated.rail === 'a-conversation-with-its-questions-is-starting') {
             return refusalAnswer({

@@ -909,6 +909,7 @@ import {
 } from '../../shared/external-mcp'
 import type { RefusalFacts } from '../../shared/refusals'
 import type { ToolName, ToolRefusal } from './agent-tools'
+import { aTaskChoiceSaid } from './tool-families/delivery'
 import type { AgentStatusRead } from './tool-families/host'
 import {
   aTurnOfSeveral,
@@ -24778,11 +24779,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private missingTaskChoice(held: readonly HeldPiece[]): string {
-    const names = this.heldTaskLines(held, 5)
-    if (names.length === 0) return 'Name the task in piece. Nothing was changed.'
-    const remaining = held.length - names.length
-    const more = remaining === 0 ? '' : ` and ${String(remaining)} more (list_tasks)`
-    return `Name the task in piece. You hold ${String(held.length)}: ${names.join(', ')}${more}. Nothing was changed.`
+    return aTaskChoiceSaid(this.heldTaskLines(held, 5), held.length)
   }
 
   replyTaskChoice(caller: string): string | undefined {

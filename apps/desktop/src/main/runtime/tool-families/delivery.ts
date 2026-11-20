@@ -87,6 +87,13 @@ export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): stri
   return `${act} ${ended}, so nothing was changed.`
 }
 
+export function aTaskChoiceSaid(names: readonly string[], count: number): string {
+  if (names.length === 0) return 'Name the task in piece. Nothing was changed.'
+  const remaining = count - names.length
+  const more = remaining === 0 ? '' : ` and ${String(remaining)} more (list_tasks)`
+  return `Name the task in piece. You hold ${String(count)}: ${names.join(', ')}${more}. Nothing was changed.`
+}
+
 /** `that-piece-is-still-queued`'s sentence, naming the piece by its label. */
 export function aMessageAboutAQueuedPiece(label: string): string {
   return `Not sent: ${label} is still queued. Change its brief with update_work.`

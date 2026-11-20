@@ -17,6 +17,7 @@ import {
   anEndedPieceSaid,
   refuseTool,
 } from '../src/main/runtime/agent-tools'
+import { aTaskChoiceSaid } from '../src/main/runtime/tool-families/delivery'
 import { SPAWN_RAILS, refuse, type SpawnRefusalDetail } from '../src/main/runtime/spawn-rails'
 import { REPLY_RAILS, refuseReply, replyUnkeptFileReason } from '../src/main/runtime/reply-rails'
 import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rails'
@@ -514,6 +515,15 @@ const OVERRIDES: readonly {
       3 * 24 * 60 * 60_000,
     ),
   },
+  {
+    key: 'TOOL_REFUSALS|malformed-request/task-choice',
+    rail: 'malformed-request',
+    spreadAs: 'taskChoice',
+    sentence: aTaskChoiceSaid(
+      Array.from({ length: 5 }, (_, index) => `W3.4.1.${String(index + 1)} · ${LONG_SLUG}`),
+      9,
+    ),
+  },
   // ⚑ A message about a piece still queued at a service, said with its label.
   {
     key: 'TOOL_REFUSALS|that-piece-is-still-queued/its-label',
@@ -616,6 +626,7 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|that-agent-has-several-conversations':
     'make the same call with agent set to one of that agent\u2019s conversations',
   'TOOL_REFUSALS|malformed-request': 'The problems are listed in the detail',
+  'TOOL_REFUSALS|malformed-request/task-choice': 'Name the task in piece',
   'TOOL_REFUSALS|agent-cannot-take-a-message':
     'ask a person to inspect why that conversation cannot take a message',
   'TOOL_REFUSALS|that-conversation-has-not-started': 'make the same call again in a moment',
@@ -892,6 +903,35 @@ const NO_ACT_PAST_THE_BOUND: readonly string[] = [
 
 describe('675 · the act inside the cut', () => {
   const rows = everyRow()
+
+  it('keeps the next act in the full reply for an ended task with long details', () => {
+    const heldTasks = Array.from(
+      { length: 3 },
+      (_, index) => `W3.4.2.${String(index + 1)} · ${LONG_SLUG}`,
+    )
+    const full = anEndedPieceSaid(
+      {
+        piece: 'work_1',
+        label: 'W3.4.1.2',
+        state: 'answered',
+        at: 0,
+        called: LONG_SLUG,
+        yoursToRetitle: true,
+        nextSteps: {
+          title: LONG_SLUG,
+          outcome: 'done',
+          actor: undefined,
+          heldByCaller: false,
+          address: 'W7.8',
+          heldTasks,
+        },
+      },
+      3 * 24 * 60 * 60_000,
+    )
+    expect(full.length).toBeGreaterThan(TOOL_SUMMARY_MAX)
+    expect(full).toContain(heldTasks.join(', '))
+    expect(full.endsWith('To have more done, give_work with to: W7.8.')).toBe(true)
+  })
 
   it('⚑ the bound is the one the normalizers cut at, and it is not a formality', () => {
     expect(TOOL_SUMMARY_MAX).toBe(200)
