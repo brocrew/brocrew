@@ -41,8 +41,8 @@ const UNKNOWN_PIECE =
   'no piece by that name is available to this call, so nothing was done. Check its label or id with search_work or list_tasks.'
 const OWN_ROOT =
   'that is this conversation’s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Close or withdraw a piece under a conversation’s own work.'
-const endedWords = (label: string, title: string, outcome: string, address: string): string =>
-  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome; only its title can still change. To have more done, give_work with to: ${address}.`
+const heldEndedWords = (label: string, title: string, outcome: string): string =>
+  `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome. Stop work on that piece; no further reply is owed.`
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for word', () => {
@@ -218,17 +218,12 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         const at = endedAt(holder, named)
         const tools = holder === worker ? workerTools : agentToolsFor(host, holder)
         const refused = await callWithWords(tools, 'withdraw_task', { piece: named })
-        expectRefused(
-          refused,
-          rail,
-          endedWords(named, title, outcome, host.addressOf(holder)),
-          named,
-        )
+        expectRefused(refused, rail, heldEndedWords(named, title, outcome), named)
         expect(refused.structured.detail).toMatchObject({ label: named, at, ...actor })
       }
     })
 
-    it('🔴 read days after it ended: the ending is said with its day, and the detail keeps the ending’s own moment', async () => {
+    it('read days after it ended: the detail keeps the original ending timestamp', async () => {
       const { workerTools, worker, label } = await aPmAndItsWorker('the piece')
       expect(
         (
@@ -248,7 +243,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       expectRefused(
         refused,
         'that-piece-was-already-answered',
-        endedWords(label, 'the piece', 'done', host.addressOf(worker)),
+        heldEndedWords(label, 'the piece', 'done'),
         label,
       )
       expect(refused.structured.detail).toMatchObject({ label, state: 'answered', at })
@@ -281,16 +276,8 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
       expect(row?.state).toBe('withdrawn')
       expect(row?.endedBy).toBeNull()
       const at = endedAt(worker, waited.label)
-      const words = endedWords(
-        waited.label,
-        'the piece that never reached it',
-        'withdrawn',
-        host.addressOf(worker),
-      )
-      const withOtherTask = words.replace(
-        ' To have more done,',
-        ` To note something, set the status of a task you hold: ${label} · the first piece. To have more done,`,
-      )
+      const words = heldEndedWords(waited.label, 'the piece that never reached it', 'withdrawn')
+      const withOtherTask = `${words} To note something, set the status of a task you hold: ${label} · the first piece.`
       for (const args of [
         { piece: waited.label, close: true },
         { piece: waited.label, brief: 'again' },

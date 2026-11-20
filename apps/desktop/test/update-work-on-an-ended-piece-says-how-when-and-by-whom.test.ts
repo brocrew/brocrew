@@ -314,7 +314,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
   }
 
   const endedOpening = (label: string, title: string, outcome: string): string =>
-    `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome; only its title can still change.`
+    `Not changed: task ${label} · ${title} has ended (${outcome}) and keeps that outcome`
 
   it('an answered piece keeps its actor and outcome and only the giver can retitle it', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker()
@@ -353,7 +353,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     if (root === null) throw new Error('expected the giver root')
     const rootLine = root.title === null ? root.label : `${root.label} · ${root.title}`
     expect(toTheGiver.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')} To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
+      `${endedOpening(label, 'the work', 'done')}; only its title can still change. To note something, set the status of a task you hold: ${rootLine}. To have more done, give_work with to: ${host.addressOf(worker)}.`,
     )
     expect(JSON.stringify(toTheGiver)).not.toMatch(/sess_/)
 
@@ -369,10 +369,20 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     })
     expect(toTheHelper.detail).not.toHaveProperty('called')
     expect(toTheHelper.reason).toBe(
-      `${endedOpening(label, 'the work', 'done')} To have more done, give_work with to: ${host.addressOf(worker)}.`,
+      `${endedOpening(label, 'the work', 'done')}. Stop work on that piece; no further reply is owed.`,
     )
 
-    // Nothing was written by either refusal, and the piece is still answered.
+    const other = await personOpens('other')
+    const thirdParty = await refusedAsEnded(other, { piece: label, close: true })
+    expect(thirdParty.detail).toMatchObject({
+      called: helper,
+      at: answeredAt,
+      yoursToRetitle: false,
+    })
+    expect(thirdParty.reason).toContain(`${endedOpening(label, 'the work', 'done')}.`)
+    expect(thirdParty.reason).not.toMatch(/title can still change|give_work|Stop work/)
+
+    // Nothing was written by these refusals, and the piece is still answered.
     expect(rowsOf(worker, 'work_status_set')).toBe(statusRowsBefore)
     expect(rowsOf(worker, 'work_closed')).toBe(0)
     expect(pieceOf(worker, piece)?.state).toBe('answered')
@@ -666,8 +676,9 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     ]) {
       const ended = await refusedAsEnded(pm, args)
       expect(ended.reason, JSON.stringify(args)).toContain(
-        endedOpening(label, 'Plan the trip', 'done'),
+        `${endedOpening(label, 'Plan the trip', 'done')}; only its title can still change. Stop work on that piece; no further reply is owed.`,
       )
+      expect(ended.reason).not.toContain('give_work')
       expect(ended.detail, JSON.stringify(args)).toEqual({
         piece,
         label,

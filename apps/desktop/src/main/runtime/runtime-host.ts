@@ -11669,7 +11669,9 @@ export class RuntimeHost implements LiveHost {
             nextSteps: {
               title: piece.title,
               outcome: piece.outcome,
-              address: this.addressOf(piece.owner),
+              heldByCaller: piece.owner === caller,
+              address:
+                yoursToRetitle && piece.owner !== caller ? this.addressOf(piece.owner) : null,
               heldTasks: this.heldTaskLines(
                 this.heldBy(caller).filter((task) => task.received),
                 3,
