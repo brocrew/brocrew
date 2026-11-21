@@ -81,6 +81,7 @@ describe('Claude sign-in failures', () => {
     expect(notice?.id).toBe(id)
     expect(notice?.signIn).toEqual({
       state: 'refused',
+      captions: expect.objectContaining({ expired: 'Claude sign-in expired.' }),
       details: [
         retry(1).message,
         retry(2).message,

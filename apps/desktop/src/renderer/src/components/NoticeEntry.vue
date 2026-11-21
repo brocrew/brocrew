@@ -66,7 +66,7 @@ const stopOrAsked = computed(() =>
 const said = computed(() =>
   props.item.signIn?.state === 'refused'
     ? expired.value
-      ? 'Claude sign-in expired.'
+      ? (props.item.signIn.captions?.expired ?? props.item.text)
       : "Couldn't continue with the old sign-in."
     : props.item.lostReply === undefined
       ? stopOrAsked.value

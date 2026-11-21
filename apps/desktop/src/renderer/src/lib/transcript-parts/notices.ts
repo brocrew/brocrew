@@ -148,7 +148,7 @@ export function signInNotice(
     text,
     signIn: {
       state: retrying ? 'retrying' : 'refused',
-      ...(retrying && captions !== undefined ? { captions } : {}),
+      ...(captions !== undefined ? { captions } : {}),
       ...(needsSignIn ? { needsSignIn: true as const } : {}),
       details: [...details, detail],
     },
