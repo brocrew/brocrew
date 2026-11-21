@@ -241,6 +241,7 @@ const runtime: RuntimeBridge = Object.freeze({
 
   close: (input: SessionInput): Promise<void> => command({ kind: 'close', ...input }),
 
+  compact: (input: SessionInput): Promise<void> => command({ kind: 'compact', ...input }),
   refreshConfig: (input: SessionInput): Promise<ProviderConfigInfo> =>
     command({ kind: 'refreshConfig', ...input }),
 

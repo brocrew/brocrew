@@ -89,6 +89,7 @@ import {
   resolveReasoningEffort,
   ResumeError,
   type ResumeOptions,
+  type CompactResult,
   type SessionHandle,
   type StartOptions,
   type BuiltInSkillsContext,
@@ -1554,7 +1555,7 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   // Compaction is a local turn. Its empty response starts a deadline; its notification binds the id.
-  async compact(): Promise<void> {
+  async compact(instructions?: string): Promise<CompactResult> {
     if (this.compactionOutstanding) throw new Error(A_COMPACTION_IS_STILL_OUTSTANDING)
     const turn = this.machine.beginTurn()
     if (turn === null) throw this.machine.refusedTurn()
@@ -1577,6 +1578,9 @@ export class CodexSessionHandle implements SessionHandle {
         this.machine.failTurn(`thread/compact/start failed: ${errorMessage(error)}`)
       },
     )
+    return instructions?.trim()
+      ? { compacted: true, note: 'Codex compacts without instructions; your words were not used.' }
+      : { compacted: true }
   }
 
   private onCompactStartAnswered(localId: number): void {

@@ -25,6 +25,7 @@ import {
   resolveReasoningEffort,
   ResumeError,
   type ResumeOptions,
+  type CompactResult,
   type SessionHandle,
   type SessionSettingsState,
   type StartOptions,
@@ -920,15 +921,14 @@ export class FakeSessionHandle implements SessionHandle {
   }
 
   /**
-   * 🔴 **713 · `R59`'s door, on a double that is told to have it** — see {@link SessionHandle.compact}.
-   *
-   * ⛔ **Absent until {@link compactsOnRequest} installs it**, because the host decides whether a
-   * person's `/compact` becomes this call by asking whether it EXISTS: a double that always had it
-   * would send every fake conversation's `/compact` down Codex's road and none down `R42`'s.
+   * 🔴 **The double compacts the way Claude does by default**: its own `/compact`, the reason as its
+   * instructions. {@link compactsOnRequest} swaps in Codex's, a turn of its own.
    */
-  // ⚠️ `declare`, so the base double has NO such member — not one set to `undefined`, which
-  // `member in handle` (the conformance ledger's question) would read as present.
-  declare compact?: () => Promise<void>
+  compact: (instructions?: string) => Promise<CompactResult> = async (instructions) => {
+    const words = instructions?.trim()
+    await this.send(words ? `/compact ${words}` : '/compact')
+    return { compacted: true }
+  }
 
   /** ⚑ 713 · how many compactions this double ran — the host's handover, counted. */
   compactions = 0
@@ -938,12 +938,18 @@ export class FakeSessionHandle implements SessionHandle {
    * that begins — or is refused — as {@link send}'s does, carries one `compaction`, and completes.
    */
   compactsOnRequest(): void {
-    this.compact = async (): Promise<void> => {
+    this.compact = async (instructions?: string): Promise<CompactResult> => {
       const turn = this.machine.beginTurn()
       if (turn === null) throw this.machine.refusedTurn()
       this.compactions += 1
       this.push({ type: 'compaction', source: 'fake/thread/compact/start' })
       this.machine.completeTurn('completed')
+      return instructions?.trim()
+        ? {
+            compacted: true,
+            note: 'This double compacts without instructions; your words were not used.',
+          }
+        : { compacted: true }
     }
   }
 

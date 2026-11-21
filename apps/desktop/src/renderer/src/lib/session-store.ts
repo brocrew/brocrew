@@ -702,6 +702,7 @@ export interface SessionStore {
   /** Say something to one child (296) — refused while that child is working. */
   sendToChild(sessionId: string, agentId: string, text: string): Promise<ChildSendResult>
   refreshConfig(sessionId: string): Promise<void>
+  compact(sessionId: string): Promise<void>
   /**
    * Start or stop prompting for consequential actions, from this session's next turn (034).
    *
@@ -2454,6 +2455,10 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       // and the fold's `ended` is the newer fact of the two.
       else if (record.phase === 'closing' && was !== undefined) record.phase = was
       return ok
+    },
+
+    async compact(sessionId) {
+      await forSession(sessionId, () => bridge.compact({ sessionId }))
     },
 
     async refreshConfig(sessionId) {

@@ -219,6 +219,7 @@ export interface RuntimeBridge {
   stopBackgroundWork(input: StopBackgroundWorkInput): Promise<boolean>
   close(input: SessionInput): Promise<void>
   refreshConfig(input: SessionInput): Promise<ProviderConfigInfo>
+  compact(input: SessionInput): Promise<void>
   /** Stop proposing, start doing — and say so to the agent, in one step (060). */
   endPlanMode(input: EndPlanModeInput): Promise<void>
   /** Start or stop prompting, from this session's next turn (034). */

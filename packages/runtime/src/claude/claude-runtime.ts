@@ -86,6 +86,7 @@ import {
   resolveReasoningEffort,
   ResumeError,
   type ResumeOptions,
+  type CompactResult,
   type SessionHandle,
   type SessionSettingsState,
   type StartOptions,
@@ -1725,6 +1726,16 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   get signInSuperseded(): boolean {
     return this._signInSuperseded
+  }
+
+  /** The CLI's own `/compact`, when it lists one, with the reason as its instructions. */
+  async compact(instructions?: string): Promise<CompactResult> {
+    const { commands } = await this.providerCommands()
+    if (!commands.some((command) => command.name === 'compact' && command.skill === undefined))
+      return { compacted: false, reason: 'Claude lists no compact command for this conversation.' }
+    const words = instructions?.trim()
+    await this.send(words ? `/compact ${words}` : '/compact')
+    return { compacted: true }
   }
 
   async send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {

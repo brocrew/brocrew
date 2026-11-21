@@ -264,34 +264,3 @@ export function aPersonsCompaction(
     .trim()
   return { word: `${THE_SLASH}${THE_COMPACTION}`, instructions: rest === '' ? null : rest }
 }
-
-/**
- * 🔴 **713 · the sentence a person reads when their `/compact` carries instructions the provider
- * cannot take** (`R59`'s last clause).
- *
- * ⚑ **It names the provider, says what would have happened, says what to do, and ends on the fact
- * they need** — the shape of {@link aCommandTakesNoAttachments}. ⚠️ **The name is rendered, never
- * written** (rule 8.2): `R59` is about Codex today, and the sentence is about whichever conversation
- * the door refused.
- */
-export function aCompactionTakesNoInstructions(provider: Provider): string {
-  return (
-    `${providerName(provider)} compacts without instructions, so they would be dropped — send ` +
-    `${THE_SLASH}${THE_COMPACTION} on its own to compact now. Nothing has been sent.`
-  )
-}
-
-/**
- * ⛔ **713 · that refusal, as a CLASS** — so a caller and a test can tell it by type.
- *
- * ⚠️ **Not for {@link ACommandTakesNoAttachments}'s flush reason**: a held message never meets it.
- * The queue's own gate refuses `/compact <instructions>` before anything is held, and a
- * conversation's handle — which decides whether the rule applies — is fixed for its life, so the
- * flush's gate can only repeat the queue's answer. `RuntimeHost.runFlush` has no arm for it.
- */
-export class ACompactionTakesNoInstructions extends Error {
-  constructor(readonly provider: Provider) {
-    super(aCompactionTakesNoInstructions(provider))
-    this.name = 'ACompactionTakesNoInstructions'
-  }
-}

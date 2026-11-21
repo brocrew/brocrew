@@ -63,6 +63,7 @@ export type RuntimeCommand =
   | ({ kind: 'stopBackgroundWork' } & StopBackgroundWorkInput)
   | ({ kind: 'close' } & SessionInput)
   | ({ kind: 'refreshConfig' } & SessionInput)
+  | ({ kind: 'compact' } & SessionInput)
   | ({ kind: 'setApprovalMode' } & SetApprovalModeInput)
   | ({ kind: 'setSessionSetting' } & SetSessionSettingInput)
   | ({ kind: 'endPlanMode' } & EndPlanModeInput)

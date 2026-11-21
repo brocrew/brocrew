@@ -108,3 +108,13 @@ describe('708 · the Claude adapter answers an ask for its commands', () => {
     expect(PROVIDER_COMMAND_PREFIX).toEqual({ claude: '/', codex: '$' })
   })
 })
+
+describe('compact on the Claude adapter', () => {
+  it('says in a line that it cannot compact when its list has no compact command', async () => {
+    const handle = await opened(new AskableQuery([{ name: 'clear', description: 'Clear' }]))
+    expect(await handle.compact('keep the plan')).toEqual({
+      compacted: false,
+      reason: 'Claude lists no compact command for this conversation.',
+    })
+  })
+})

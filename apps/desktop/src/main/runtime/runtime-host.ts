@@ -266,6 +266,7 @@ import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
   withManagedPluginAttachments,
+  type CompactResult,
 } from '@brobot2/runtime'
 import type { FilesLibraryRequest, FilesLibraryResult } from '../../shared/files-library'
 import type {
@@ -931,7 +932,6 @@ import { EMPTY_TURN_BLOCK, turnBlockChanges, type TurnBlockSnapshot } from './tu
 
 import {
   ACommandTakesNoAttachments,
-  ACompactionTakesNoInstructions,
   aPersonsCommand,
   aPersonsCompaction,
   mightBeAPersonsCommand,
@@ -1223,7 +1223,6 @@ import { admitInterrupt } from './interrupt-rails'
 import { explicitStopWords, stopTurn, type ExplicitStopNotice } from './stop-turn'
 import {
   compactConversation,
-  nativeCompaction,
   type CompactConversationInput,
   type CompactConversationOutcome,
   type CompactionRequest,
@@ -2046,6 +2045,9 @@ function itTakesTheHeldNotices(
     authorship.appNotice === undefined || authorship.appNotice === 'a-work-wait-needs-attention'
   )
 }
+
+/** Who a compaction a person asked for says it came from: nobody is told. */
+const A_PERSON_ASKED = 'a-person'
 
 /** The reason a notice says when its sender gave none. */
 const NO_REASON_GIVEN = 'no reason given'
@@ -21604,9 +21606,21 @@ export class RuntimeHost implements LiveHost {
     // at the gate every one of those paths passes first** ({@link assertCanTakeTurn}) — the request
     // carries neither, so nothing is left here to drop. ⚠️ **Returned, not awaited**, for `662`'s
     // ordering reason below: the person's `/compact` row lands before the compaction does.
-    if (session.handle.compact !== undefined && aPersonsCompaction(text, from) !== null) {
+    const compaction = aPersonsCompaction(text, from)
+    if (compaction !== null) {
       this.aTurnIsHandedOver(session, whose, askedForTheStop)
-      return { accepted: session.handle.compact() }
+      return {
+        accepted: session.handle.compact(compaction.instructions ?? undefined).then((result) => {
+          if (!result.compacted) throw new Error(result.reason)
+          if (result.note !== undefined)
+            this.emit(session, {
+              sessionId: session.id,
+              ordinal: session.ordinal++,
+              at: this.now(),
+              event: { type: 'error', message: result.note, fatal: false },
+            })
+        }),
+      }
     }
     // 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.** See
     // `a-command-goes-as-typed.ts`, which holds the ruling whole.
@@ -26586,15 +26600,10 @@ export class RuntimeHost implements LiveHost {
     // `R42`'s, below. ⛔ **Refused here, before any interrupt and before any hold**, for the two
     // things that request cannot carry: attachments (`R42`'s fourth clause, one command over) and
     // instructions (`R59`'s last). ⚠️ No list is asked — the word is BroBot's own, not the provider's.
-    if (session.handle.compact !== undefined) {
-      const compaction = aPersonsCompaction(content.text, content.from)
-      if (compaction !== null) {
-        if (content.attached > 0) throw new ACommandTakesNoAttachments(compaction.word, true)
-        if (compaction.instructions !== null) {
-          throw new ACompactionTakesNoInstructions(session.provider)
-        }
-        return { command: null }
-      }
+    const compaction = aPersonsCompaction(content.text, content.from)
+    if (compaction !== null) {
+      if (content.attached > 0) throw new ACommandTakesNoAttachments(compaction.word, true)
+      return { command: null }
     }
     // 🔴 **713 · `708` H-4 — an earlier gate's answer stands** (see `decided` above).
     if (content.decided !== undefined) return content.decided
@@ -27088,7 +27097,7 @@ export class RuntimeHost implements LiveHost {
   private goesAlone(session: HostedSession, text: string, from: TurnOrigin | null): boolean {
     return (
       mightBeAPersonsCommand(text, from, PROVIDER_COMMAND_PREFIX[session.provider]) ||
-      (session.handle.compact !== undefined && aPersonsCompaction(text, from) !== null)
+      aPersonsCompaction(text, from) !== null
     )
   }
 
@@ -29349,6 +29358,22 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
+  /** A person's compaction, on the one schedule every compaction takes. */
+  async compactForAPerson(sessionId: string): Promise<void> {
+    const result = await this.compactConversation({
+      conversation: sessionId,
+      agent: A_PERSON_ASKED,
+    })
+    if (result.ok) return
+    throw new Error(
+      result.refusal === 'compaction-not-possible'
+        ? result.reason
+        : result.refusal === 'no-such-agent'
+          ? 'That conversation is gone.'
+          : `${result.display} could not be compacted now. Try again in a moment.`,
+    )
+  }
+
   compactConversation(input: CompactConversationInput): Promise<CompactConversationOutcome> {
     return compactConversation<HostedSession>(input, {
       currentConversation: (id) => this.theOneInItsPlace(id),
@@ -29372,6 +29397,12 @@ export class RuntimeHost implements LiveHost {
         if (!this.writeWhileNothingRunsIt(id, { type: 'pending_compaction', request })) {
           throw new Error('the compaction request could not be recorded')
         }
+        // A stopped conversation is started to compact, unless it is kept stopped or a reopen is
+        // being decided: that reopen carries the request.
+        if (!this.keptStopped(id) && !this.aReopenIsBeingDecidedFor.has(id))
+          void this.ensureRunning(id, null).catch((error: unknown) =>
+            console.warn(`runtime host could not start ${id} to compact: ${errorMessage(error)}`),
+          )
         return 'queued'
       },
       deferred: (session) =>
@@ -29386,7 +29417,6 @@ export class RuntimeHost implements LiveHost {
         !somethingRunnableIsHeld(session) &&
         session.explicitCompaction === undefined,
       checkSignIn: (session) => this.assertSignInCurrent(session, 'send'),
-      providerCommands: (session) => this.theCommandsItAnswersTo(session),
       request: (session, requestedBy, run) =>
         this.requestNativeCompaction(session, requestedBy, run),
       reportFailure: (id, error) => {
@@ -29453,13 +29483,12 @@ export class RuntimeHost implements LiveHost {
   ): Promise<void> {
     try {
       await this.assertSignInCurrent(session, 'send')
-      const run = await nativeCompaction(session, {
-        providerCommands: (target) => this.theCommandsItAnswersTo(target),
-      })
       if (session.explicitCompaction !== request) return
       if (this.slots.get(session.id)?.session !== session || session.finalizing !== null) return
-      if (run === null) throw new Error('the provider offers no native compaction')
-      await this.requestNativeCompaction(session, request, run)
+      const result = await this.requestNativeCompaction(session, request, () =>
+        session.handle.compact(request.reason),
+      )
+      if (!result.compacted) throw new Error(result.reason)
     } catch (error) {
       if (session.explicitCompaction === request) delete session.explicitCompaction
       console.warn(
@@ -29472,24 +29501,30 @@ export class RuntimeHost implements LiveHost {
   private async requestNativeCompaction(
     session: HostedSession,
     requestedBy: CompactionRequest,
-    run: () => Promise<void>,
-  ): Promise<void> {
+    run: () => Promise<CompactResult>,
+  ): Promise<CompactResult> {
     session.explicitCompaction = requestedBy
     const previous = this.aTurnIsHandedOver(session, { aPersons: false, names: [] }, false)
     session.wordsItWasHandedFor = []
     session.wordsJustHandedOver = null
-    try {
-      await run()
-    } catch (error) {
+    const undo = (): void => {
       if (session.explicitCompaction === requestedBy) {
         delete session.explicitCompaction
         session.itsTurnIs = previous
       }
+    }
+    try {
+      const result = await run()
+      if (!result.compacted) undo()
+      return result
+    } catch (error) {
+      undo()
       throw error
     }
   }
 
   private tellItWhatCompactedIt(session: HostedSession, request: CompactionRequest): void {
+    if (request.agent === A_PERSON_ASKED) return
     const actor = this.whatToCallTheConversation(request.agent)
     const { line: address } = describeConversation(
       this.deps.store,

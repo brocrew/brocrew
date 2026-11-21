@@ -292,15 +292,15 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
   describe('§1 · the composer — `send`', () => {
     it('🔴 a person’s published command reaches the provider bare — and their own stamp rides it', async () => {
       const id = await personOpens()
-      await host.send(id, '/compact', window)
+      await host.send(id, '/usage', window)
       await waitFor(() => providerHeard(id).length === 1, 'the provider to hear the command')
-      expect(providerHeard(id)).toEqual(['/compact'])
+      expect(providerHeard(id)).toEqual(['/usage'])
       // ⚑ **`662`'s field still says who**, beside the words rather than in them.
       expect(handleOf(id).origins).toEqual([{ kind: 'person' }])
       // ⚑ …and the ledger still records the person's turn, as they typed it.
       const turns = ledger(id).filter((event) => event.type === 'user_turn')
       expect(turns.map((event) => (event.type === 'user_turn' ? event.text : ''))).toEqual([
-        '/compact',
+        '/usage',
       ])
     })
 
@@ -316,11 +316,11 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
 
     it('⚑ the whole text goes, arguments and leading space included — the CLI trims, this does not', async () => {
       const id = await personOpens()
-      await host.send(id, '  /compact keep the test plan', window)
+      await host.send(id, '  /usage keep the test plan', window)
       await host.send(id, '/cost', window)
       await waitFor(() => providerHeard(id).length === 2, 'the provider to hear both')
       // ⚠️ `/cost` is an ALIAS of `/usage` — the CLI resolves aliases, so the decision does too.
-      expect(providerHeard(id)).toEqual(['  /compact keep the test plan', '/cost'])
+      expect(providerHeard(id)).toEqual(['  /usage keep the test plan', '/cost'])
     })
 
     it('⛔ once the list is known, a `/word` the provider did not publish keeps the frame', async () => {
@@ -427,9 +427,9 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       const id = await personOpens()
       handleOf(id).commandsAnswer = 'never-answers'
       const began = Date.now()
-      await host.send(id, '/compact', window)
+      await host.send(id, '/usage', window)
       await waitFor(() => providerHeard(id).length === 1, 'the provider to hear it')
-      expect(providerHeard(id)).toEqual(['/compact'])
+      expect(providerHeard(id)).toEqual(['/usage'])
       // ⚠️ A bound, not a length: the host's own deadline ended the wait (60 ms here).
       expect(Date.now() - began).toBeLessThan(3_000)
       expect(handleOf(id).commandsAsked, 'the premise: it was asked').toBe(1)
