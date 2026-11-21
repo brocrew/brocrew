@@ -220,7 +220,9 @@ for (const available of [true, false]) {
 
 for (const reason of ['read timed out', 'read denied', 'no current local token']) {
   it(`lets native Claude decide its sign-in after ${reason}`, async () => {
-    const health = vi.fn(async () => ({ ok: false, reason }))
+    const health = vi.fn(async () => {
+      throw new Error(reason)
+    })
     const module = createClaudeModule(
       {
         managedRoot: '/fictional/homes',
@@ -247,6 +249,6 @@ for (const reason of ['read timed out', 'read denied', 'no current local token']
     })
     expect(prepared.home).toBe('/fictional/homes/fern/claude')
     expect(prepared.runtime.provider).toBe('claude')
-    expect(health).toHaveBeenCalledOnce()
+    expect(health).not.toHaveBeenCalled()
   })
 }
