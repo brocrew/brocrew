@@ -1,6 +1,8 @@
 import { expectDistinctSentGiveAndPersonMessage } from './lib/recorded-send'
 import { callNewConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
+import { callOn } from './helpers/call-tool'
+import { personOpener } from './helpers/person-opens-session'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -16,7 +18,6 @@ import {
   FakeSessionHandle,
   TURN_REFUSED,
   type AgentRuntime,
-  type AgentToolset,
   type SessionHandle,
   type StartOptions,
   type TurnProvenance,
@@ -31,7 +32,7 @@ import {
 } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type Caller } from './helpers/giver-notice-host'
-import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -387,23 +388,7 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
   const turnsCarrying = (sessionId: string, words: string): TranscriptEvent[] =>
     ledger(sessionId).filter((event) => event.type === 'user_turn' && event.text.includes(words))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /**
    * A PM a person opened, and one worker it gave a piece to, whose first turn has finished.

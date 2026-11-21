@@ -1,4 +1,5 @@
 import { giveParkedWorker } from './lib/give-fixture'
+import { callOn as callTool } from './helpers/call-tool'
 import { personOpener } from './helpers/person-opens-session'
 import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -138,15 +139,8 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callTool(agentToolsFor(host, caller), name, args)
 
   const cardsOn = (id: string): number =>
     events(id).filter((event) => event.type === 'permission_request').length

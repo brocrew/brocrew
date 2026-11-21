@@ -1,6 +1,11 @@
 import { newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  latestToolset,
+  neutralHostDeps,
+  syntheticProviderHome,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -95,12 +100,6 @@ describe('M77 · a second answer to an already-answered question', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const lastToolset = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed out')
-    return last
-  }
-
   const bringIntoBeing = async (profileId: string): Promise<void> => {
     const { sessionId } = await host.createSession(
       { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
@@ -115,14 +114,14 @@ describe('M77 · a second answer to an already-answered question', () => {
       { provider: 'claude', profileId: 'lead', approvalMode: 'ask', cwd: root },
       window,
     )
-    const leadTools = lastToolset()
+    const leadTools = latestToolset(handed)
     const given = await callOn(
       leadTools,
       'give_work',
       newConversationGive('mock-dev', 'answer a question', 'pick one of the two'),
     )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    return { asker: given.agent as string, askerTools: lastToolset() }
+    return { asker: given.agent as string, askerTools: latestToolset(handed) }
   }
 
   it("hands the second answer the app's own FULL sentence, word for word", async () => {

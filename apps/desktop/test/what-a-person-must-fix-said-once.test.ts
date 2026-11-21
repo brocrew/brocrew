@@ -1,8 +1,9 @@
+import { stopAGivenWorker, wakeWithAFollowUp } from './lib/stopped-worker-fixture'
+import { callOn as callTool } from './helpers/call-tool'
+import { personOpener } from './helpers/person-opens-session'
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
-import { newConversationGive } from './lib/give-fixture'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
-import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +17,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
@@ -136,23 +137,10 @@ describe('what a person must fix, said once', () => {
     throw new Error('the mkdir under a read-only directory was allowed — is this running as root?')
   }
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'auto', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'auto')
 
-  const callOn = async (
-    caller: string,
-    name: tools.ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = tools.agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: tools.ToolName, args: Record<string, unknown> = {}) =>
+    callTool(tools.agentToolsFor(host, caller), name, args)
 
   const aPmThatMaySpawn = async (): Promise<string> => {
     await host.close(await personOpens('worker'), window)
@@ -174,46 +162,10 @@ describe('what a person must fix, said once', () => {
       brief: 'the work',
     })
 
-  /**
-   * A worker the PM gave work, and that then STOPPED — the conversation a wake brings back
-   * (`wake-one-conversation.test.ts` §4's `aWorkerOver`: a wake is for a child holding the caller's
-   * open work). ⚑ **D-017** — the PM's `end_agent` stopped it here, and is gone; the app's own close
-   * is the same stop. ⚑ **D-016** — the give starts it and gives it the work in one act.
-   */
-  const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
-    const given = await callOn(
-      pm,
-      'give_work',
-      newConversationGive('worker', 'The schema', 'migrate the schema'),
-    )
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    await waitFor(
-      () => store.piecesOwnedBy(worker).some((piece) => piece.giver === pm),
-      'the give to open a piece',
-    )
-    await host.close(worker, THE_APP_ITSELF)
-    await waitFor(() => !host.sessionIds.includes(worker), 'the worker to be over')
-    return { worker, label: given.label as string }
-  }
+  const aWorkerThatStopped = (pm: string) => stopAGivenWorker({ host, store }, callOn, pm)
 
-  /**
-   * ⚑ **D-017 · R1 — the wake is the start a message makes**: `resume_agent` is gone, and a
-   * `message_agent` to a conversation that is not running starts it, answering a start that did not
-   * happen in the wake's words. ⚠️ A follow-up naming the piece, because the worker holds the PM's
-   * open work (D-016: a second give would be refused `its-work-has-stalled` before any start).
-   */
-  const wakeByMessage = (
-    pm: string,
-    worker: string,
-    label: string,
-  ): Promise<Record<string, unknown>> =>
-    callOn(pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
+  const wakeByMessage = (pm: string, worker: string, label: string) =>
+    wakeWithAFollowUp(callOn, pm, worker, label)
 
   // ───────────────────────────────────────────────────────────────────────────────
   const programFailure = 'could not run its provider’s program'

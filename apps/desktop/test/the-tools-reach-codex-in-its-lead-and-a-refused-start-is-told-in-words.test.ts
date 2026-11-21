@@ -1,3 +1,4 @@
+import { stopAGivenWorker, wakeWithAFollowUp } from './lib/stopped-worker-fixture'
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { openPmWithSeededWorker } from './lib/give-fixture'
 import { expectRecordedCannotRun, expectTaskKept, logKeepsFailure } from './lib/recorded-send'
@@ -62,7 +63,7 @@ import {
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import {
   AGENT_TOOL_INSTRUCTIONS,
@@ -1117,30 +1118,10 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       ...over,
     })
 
-  const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
-    const given = await giveWork(pm, { title: 'The schema', brief: 'migrate the schema' })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    const worker = given.agent as string
-    await waitFor(
-      () => store.piecesOwnedBy(worker).some((piece) => piece.giver === pm),
-      'the give to open a piece',
-    )
-    await host.close(worker, THE_APP_ITSELF)
-    await waitFor(() => !host.sessionIds.includes(worker), 'the worker to be over')
-    return { worker, label: given.label as string }
-  }
+  const aWorkerThatStopped = (pm: string) => stopAGivenWorker({ host, store }, callOn, pm)
 
-  const wakeByMessage = (
-    pm: string,
-    worker: string,
-    label: string,
-  ): Promise<Record<string, unknown>> =>
-    callOn(pm, 'message_agent', {
-      agent: worker,
-      text: 'carry on',
-      kind: 'follow-up',
-      piece: label,
-    })
+  const wakeByMessage = (pm: string, worker: string, label: string) =>
+    wakeWithAFollowUp(callOn, pm, worker, label)
 
   /**
    * A provider's refusal of a start, as the Codex adapter makes one: the protocol's own refusal, with
