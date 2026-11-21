@@ -1,21 +1,13 @@
 import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { CODEX_TOOLS_DESCRIPTION, CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
 import { qualifyWith } from '@brobot2/runtime'
 import { sizesAdded } from '../../../shared/what-this-agent-was-given'
-import { repositoryConventionChain } from '../repository-instructions'
+import { conventionFileIn, repositoryConventionChain } from '../repository-instructions'
 import type { GivenPolicy } from '../given-policy'
 import { launchSetting } from './launch-settings'
 
 export function filesCodexWouldRead(cwd: string): string[] {
-  return repositoryConventionChain(cwd).flatMap((dir) => {
-    for (const name of ['AGENTS.override.md', 'AGENTS.md']) {
-      const path = join(dir, name)
-      if (existsSync(path)) return [path]
-    }
-    return []
-  })
+  return repositoryConventionChain(cwd).flatMap((dir) => conventionFileIn(dir) ?? [])
 }
 
 const CODEX_PROJECT_DOC_BUDGET = 32 * 1024

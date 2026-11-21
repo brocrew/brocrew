@@ -1830,6 +1830,37 @@ export class CodexRuntime implements AgentRuntime {
     assertAuthHealthy(providerHome, this.authHealth)
   }
 
+  // A resumed session keeps the mode, effort and plan state its context carries, like a new one.
+  private createHandle(
+    transport: CodexTransport,
+    context: ProviderRuntimeContext,
+    memoryConfig: CodexMemoryConfigResult,
+    cwd: string,
+    rotation: number,
+    targetRef?: SessionRef,
+  ): CodexSessionHandle {
+    return new CodexSessionHandle(
+      transport,
+      cwd,
+      rotation,
+      context.providerHome,
+      targetRef,
+      context.approvalMode,
+      resolveReasoningEffort(context),
+      planPhaseOf(context),
+      context.model,
+      context.agentTools,
+      context.externalMcp,
+      context.workFolders,
+      memoryConfig,
+      context.builtInSkills,
+      context.sharedSkillsRoot,
+      context.beforeSkillDiscovery,
+      context.managedPluginMcp,
+      context.observeManagedPlugins,
+    )
+  }
+
   // Acquire the home boot lease before spawning; cancellation owns the transport until begin settles.
   async start(opts: StartOptions): Promise<SessionHandle> {
     assertNotCancelled(opts.signal, 'codex start')
@@ -1857,26 +1888,7 @@ export class CodexRuntime implements AgentRuntime {
     }
     phase('spawned')
     const cancel = cancelWith(opts.signal, () => transport.close())
-    const handle = new CodexSessionHandle(
-      transport,
-      opts.cwd,
-      0,
-      opts.providerHome,
-      undefined,
-      opts.approvalMode,
-      resolveReasoningEffort(opts),
-      planPhaseOf(opts),
-      opts.model,
-      opts.agentTools,
-      opts.externalMcp,
-      opts.workFolders,
-      memoryConfig,
-      opts.builtInSkills,
-      opts.sharedSkillsRoot,
-      opts.beforeSkillDiscovery,
-      opts.managedPluginMcp,
-      opts.observeManagedPlugins,
-    )
+    const handle = this.createHandle(transport, opts, memoryConfig, opts.cwd, 0)
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
     try {
@@ -1985,26 +1997,7 @@ export class CodexRuntime implements AgentRuntime {
       throw new ResumeError(ref, `resume setup failed: ${errorMessage(error)}`, { cause: error })
     }
     const cancel = cancelWith(options.signal, () => transport.close()) // as in `start` above (070)
-    const handle = new CodexSessionHandle(
-      transport,
-      ref.cwd,
-      ref.rotation,
-      options.providerHome,
-      ref,
-      options.approvalMode, // a resumed yolo session keeps its mode (078)
-      resolveReasoningEffort(options), // …and the effort it was created with (024)
-      planPhaseOf(options),
-      options.model,
-      options.agentTools,
-      options.externalMcp,
-      options.workFolders,
-      memoryConfig,
-      options.builtInSkills,
-      options.sharedSkillsRoot,
-      options.beforeSkillDiscovery,
-      options.managedPluginMcp,
-      options.observeManagedPlugins,
-    )
+    const handle = this.createHandle(transport, options, memoryConfig, ref.cwd, ref.rotation, ref)
     handle.noteLaunchAccount(launchAccount, launchCopy)
     handle.noteStartPhases(phase)
     try {
