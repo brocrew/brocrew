@@ -433,7 +433,11 @@ it('rechecks footprint at unchanged RSS and reports each warning step once', asy
   expect(warnings[0]).toBe(
     theAppItselfHeadline(4.5 * gib, 'footprint') +
       ' [physical breakdown] [main-thread memory bytes: heapUsed=202 heapTotal=303 external=404 arrayBuffers=505]' +
-      ' [held root counts: filesToSayEntries=2]',
+      ' [held root counts: filesToSayEntries=2]' +
+      ' [worker isolate memory bytes: window-reader:not-started; limits-reader:not-started; ' +
+      'files-library:not-started; work-search:not-started; past-work-search:not-started; ' +
+      'team-profile-graph:not-started; storage:not-started; recovery-verify:not-started; ' +
+      'settings-locator:not-started] [main SQLite settings: no-open-connection]',
   )
   expect(memoryUsage).toHaveBeenCalledTimes(1)
   expect(footprintCounts).toHaveBeenCalledTimes(1)

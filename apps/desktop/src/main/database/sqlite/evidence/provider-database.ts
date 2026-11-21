@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../../../database-memory'
 import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ export function readProviderDatabase<T>(
     if (existsSync(`${path}-wal`)) copyFileSync(`${path}-wal`, `${copy}-wal`)
 
     const db = new Database(copy, { readonly: true, fileMustExist: true })
+    observeDatabaseMemory(db, 'provider-evidence')
     try {
       return read(db)
     } finally {

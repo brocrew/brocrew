@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { SnapshotFoldAnswers } from './ledger-fold-state'
@@ -48,6 +49,7 @@ export class WindowReadEngine {
     try {
       this.db.pragma('query_only = ON')
       this.db.pragma('cache_size = -4096')
+      observeDatabaseMemory(this.db, 'window-reader')
       if (this.db.pragma('journal_mode', { simple: true }) !== 'wal')
         throw new WindowReadUnavailable()
     } catch (error) {

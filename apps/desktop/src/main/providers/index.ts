@@ -1,5 +1,6 @@
 /// <reference types="electron-vite/node" />
 
+import { withWorkerMemory } from '../worker-memory'
 import { CLAUDE_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/claude'
 import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
 
@@ -260,7 +261,7 @@ export { workspaceInstructionNames } from './workspace-layout.mjs'
 
 export async function startSettingsLocator() {
   const { default: start } = await import('./claude/local-settings-locator.worker?nodeWorker')
-  return start({})
+  return withWorkerMemory('settings-locator', () => start({}))
 }
 
 import type { AgentRuntime, AuthHealth } from '@brobot2/runtime'

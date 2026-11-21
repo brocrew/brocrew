@@ -122,7 +122,8 @@ describe('window reader owns its native connection until confirmed exit', () => 
     const port = Object.assign(new EventEmitter(), { postMessage: vi.fn(), close: vi.fn() })
     const read = vi.fn(() => result)
     vi.resetModules()
-    vi.doMock('node:worker_threads', () => ({
+    vi.doMock('node:worker_threads', async () => ({
+      ...(await vi.importActual<typeof import('node:worker_threads')>('node:worker_threads')),
       parentPort: port,
       workerData: { file: 'fictional' },
     }))

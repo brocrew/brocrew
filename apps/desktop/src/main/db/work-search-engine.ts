@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import type { Provider } from '@brobot2/shared'
 import { z } from 'zod'
@@ -143,6 +144,7 @@ export class WorkSearchEngine {
     try {
       this.db.pragma('query_only = ON')
       this.db.pragma('cache_size = -4096')
+      observeDatabaseMemory(this.db, 'work-search')
     } catch (error) {
       this.db.close()
       throw error

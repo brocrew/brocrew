@@ -1,3 +1,5 @@
+import { observeDatabaseMemory } from './database-memory'
+import './worker-memory'
 import Database from 'better-sqlite3'
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
@@ -32,6 +34,7 @@ if (parentPort !== null) {
     .parse(workerData).file
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 1000 })
   db.pragma('cache_size = -4096')
+  observeDatabaseMemory(db, 'past-work-search')
   const store = createSessionStore(db)
   port.on('message', (value: unknown) => {
     if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'close') {

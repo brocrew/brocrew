@@ -1,3 +1,4 @@
+import './worker-memory'
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
 import { LimitsReadEngine } from './db/limits-read-engine'

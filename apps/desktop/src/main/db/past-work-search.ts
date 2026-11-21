@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
@@ -186,6 +187,7 @@ class ProfilePastWorkSearch {
           this.profiles.delete(oldest)
         }
         const memory = new Database(':memory:')
+        observeDatabaseMemory(memory, 'past-work-index')
         try {
           memory.pragma('max_page_count = 65536')
           memory.exec(`CREATE VIRTUAL TABLE documents USING fts5(conversation UNINDEXED, piece UNINDEXED, field UNINDEXED, text);

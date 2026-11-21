@@ -1,3 +1,4 @@
+import '../../worker-memory'
 import { parentPort } from 'node:worker_threads'
 import { projectLocalSettingsFile } from '@brobot2/runtime/claude'
 

@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import { setTimeout as pause, setImmediate as seeMessages } from 'node:timers/promises'
 import {
@@ -106,6 +107,7 @@ export async function trimOldEvents(
   now: number = Date.now(),
 ): Promise<EventTrimResult> {
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 })
+  observeDatabaseMemory(db, 'event-retention')
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0
   let batches = 0

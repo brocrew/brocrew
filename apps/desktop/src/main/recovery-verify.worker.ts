@@ -1,3 +1,4 @@
+import './worker-memory'
 import { parentPort, workerData } from 'node:worker_threads'
 import { checkTheCopy, type CopyCheckRequest } from './recovery/copy-check'
 import { sha256Of } from './recovery/files'

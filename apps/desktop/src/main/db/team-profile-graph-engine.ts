@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import type { Provider } from '@brobot2/shared'
 import Database from 'better-sqlite3'
 import { providerSchema } from '@brobot2/shared'
@@ -107,6 +108,7 @@ export class TeamProfileGraphEngine {
     try {
       this.db.pragma('query_only=ON')
       this.db.pragma('cache_size=-4096')
+      observeDatabaseMemory(this.db, 'team-profile-graph')
       if (this.db.pragma('journal_mode', { simple: true }) !== 'wal') throw new Failed('worker')
     } catch (error) {
       this.db.close()

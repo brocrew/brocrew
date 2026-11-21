@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import { existsSync } from 'node:fs'
 import { closeDatabase } from './close-database'
@@ -12,6 +13,7 @@ export interface CompactionFacts {
 export function inspectCompaction(file: string): CompactionFacts | null {
   if (!existsSync(file)) return null
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 0 })
+  observeDatabaseMemory(db, 'compaction-source')
   try {
     const size = Number(db.pragma('page_size', { simple: true }))
     const pages = Number(db.pragma('page_count', { simple: true }))
@@ -31,6 +33,7 @@ export function inspectCompaction(file: string): CompactionFacts | null {
 /** The app has not opened its database yet. This worker never installs its output. */
 export function writeCompactedWorkspace(file: string, output: string): void {
   const db = new Database(file, { fileMustExist: true, timeout: 0 })
+  observeDatabaseMemory(db, 'compaction-source')
   try {
     const [checkpoint] = db.pragma('wal_checkpoint(TRUNCATE)') as { busy: number }[]
     if (checkpoint?.busy !== 0) throw new Error('The workspace database is still in use.')
@@ -45,6 +48,7 @@ export function writeCompactedWorkspace(file: string, output: string): void {
     }
   }
   const compacted = new Database(output, { readonly: true, fileMustExist: true, timeout: 0 })
+  observeDatabaseMemory(compacted, 'compaction-output')
   try {
     if (Number(compacted.pragma('auto_vacuum', { simple: true })) !== 2)
       throw new Error('The smaller database does not support incremental compaction.')

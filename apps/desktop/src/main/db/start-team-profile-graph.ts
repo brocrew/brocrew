@@ -1,3 +1,4 @@
+import { withWorkerMemory } from '../worker-memory'
 import startWorker from '../team-profile-graph.worker?nodeWorker'
 import { TeamProfileGraphLifetime } from './team-profile-graph-reader'
 export function startTeamProfileGraph(
@@ -7,9 +8,11 @@ export function startTeamProfileGraph(
 ): TeamProfileGraphLifetime {
   return new TeamProfileGraphLifetime(
     () =>
-      startWorker({
-        workerData: { file },
-      }),
+      withWorkerMemory('team-profile-graph', () =>
+        startWorker({
+          workerData: { file },
+        }),
+      ),
     () => performance.now(),
     undefined,
     admission,

@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../../database-memory'
 import Database from 'better-sqlite3'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { isMainThread } from 'node:worker_threads'
@@ -77,6 +78,7 @@ export class PluginFence {
       )
         refuseState('unsafe-path')
       db = new Database(path, { timeout: 0, fileMustExist: true })
+      observeDatabaseMemory(db, 'plugin-state')
       const holder = new PluginFence(fd, stat, db)
       holder.check(path)
       holders.set(identity(stat), holder)

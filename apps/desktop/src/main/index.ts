@@ -1,3 +1,4 @@
+import { withWorkerMemory } from './worker-memory'
 import { closeDatabase } from './db/close-database'
 import electronLog from 'electron-log/main'
 import { pluginStartupTrace } from './plugins/startup-failure'
@@ -372,24 +373,30 @@ let saidItDidNotStart = false
 let saidOpenedForRecovery = false
 let stoppingTheStart: Promise<void> | null = null
 const recoveryCopyVerifier = verifyInAWorker((request) =>
-  startRecoveryVerifier({
-    workerData: request,
-    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-  }),
+  withWorkerMemory('recovery-verify', () =>
+    startRecoveryVerifier({
+      workerData: request,
+      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+    }),
+  ),
 )
 const recoveryWork = new Set<Promise<unknown>>()
 const recoveryCaptureAbort = new AbortController()
 const launchCompaction = workspaceCompaction((maintenance) =>
-  startStorageWorker({
-    workerData: { maintenance },
-    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-  }),
+  withWorkerMemory('storage', () =>
+    startStorageWorker({
+      workerData: { maintenance },
+      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+    }),
+  ),
 )
 const recoveryCopyHasher = verifyInAWorker((request) =>
-  startRecoveryVerifier({
-    workerData: { ...request, hashOnly: true },
-    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-  }),
+  withWorkerMemory('recovery-verify', () =>
+    startRecoveryVerifier({
+      workerData: { ...request, hashOnly: true },
+      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+    }),
+  ),
 )
 
 let stoppingRecoveryWork: Promise<void> | null = null
@@ -1123,10 +1130,12 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       resources: resourcesRoot(storageData),
     },
     (roots, request) =>
-      startStorageWorker({
-        workerData: { roots, request },
-        resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-      }),
+      withWorkerMemory('storage', () =>
+        startStorageWorker({
+          workerData: { roots, request },
+          resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+        }),
+      ),
   )
   stopStorageIpc = registerStorageIpc(ipcMain, storage, {
     reveal: (path) => shell.showItemInFolder(path),
@@ -2263,12 +2272,14 @@ function start(ownership: HostGateVerdict): void {
       eventRetention = startEventRetention(
         db!,
         () =>
-          startStorageWorker({
-            workerData: {
-              maintenance: { kind: 'trim', file: databaseFile(app.getPath('userData')) },
-            },
-            resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-          }),
+          withWorkerMemory('storage', () =>
+            startStorageWorker({
+              workerData: {
+                maintenance: { kind: 'trim', file: databaseFile(app.getPath('userData')) },
+              },
+              resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+            }),
+          ),
         async () => {},
         (error) => console.warn('BroCrew could not trim old event history:', error),
       )

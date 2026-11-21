@@ -1,3 +1,4 @@
+import './worker-memory'
 import { parentPort, workerData } from 'node:worker_threads'
 import { trimOldEvents, type EventTrimWrite } from './db/event-retention'
 import { inspectCompaction, writeCompactedWorkspace } from './db/workspace-compaction'

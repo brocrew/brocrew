@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import { headerOf } from './sqlite-header'
 import { providerSchema } from '@brobot2/shared'
 import Database from 'better-sqlite3'
@@ -159,6 +160,7 @@ async function mayBeReadInPlace(file: string, fs: RecoveryFs): Promise<void> {
 
 function connect(file: string): Connection {
   const db = new Database(file, { readonly: true, fileMustExist: true })
+  observeDatabaseMemory(db, 'recovery-history')
   try {
     return {
       db,

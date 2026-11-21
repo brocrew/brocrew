@@ -1,3 +1,4 @@
+import { sampleWorkerMemoryAfterRead } from './worker-memory'
 import { parentPort, workerData } from 'node:worker_threads'
 import { z } from 'zod'
 import { WindowReadEngine } from './db/window-read-engine'
@@ -81,6 +82,8 @@ if (parentPort !== null) {
               ? (error.reason ?? 'worker-read-failed')
               : 'worker-read-failed',
         })
+      } finally {
+        sampleWorkerMemoryAfterRead()
       }
     })
   }

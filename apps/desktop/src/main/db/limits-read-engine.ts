@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import { serialize } from 'node:v8'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
@@ -33,6 +34,7 @@ export class LimitsReadEngine {
     try {
       this.db.pragma('query_only = ON')
       this.db.pragma('cache_size = -4096')
+      observeDatabaseMemory(this.db, 'limits-reader')
       if (this.db.pragma('journal_mode', { simple: true }) !== 'wal')
         throw new LimitsReadUnavailable('failed')
       const tables = this.db

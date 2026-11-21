@@ -1,3 +1,5 @@
+import { memoryDiagnostic } from './worker-memory'
+import { pruneDatabaseMemory } from './database-memory'
 /**
  * Leave a trail when the app itself starts growing (052) — or its agents climb as only a runaway does.
  *
@@ -144,6 +146,7 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
 
   const tick = (): void => {
     if (stopped) return
+    pruneDatabaseMemory()
     const rss = options.sample()
     if (options.rearmBelowBytes !== undefined && rss < options.rearmBelowBytes) reported = 0
     if (rss < floor) return
@@ -160,7 +163,11 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
           if (result === null) {
             if (crossed <= reported) return
             reported = crossed
-            options.log(theAppItselfHeadline(rss, 'resident') + (detail ? ` ${detail}` : ''))
+            options.log(
+              theAppItselfHeadline(rss, 'resident') +
+                (detail ? ` ${detail}` : '') +
+                ` ${memoryDiagnostic()}`,
+            )
             return
           }
           if (result.bytes < floor) return
@@ -173,7 +180,8 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
             theAppItselfHeadline(result.bytes, 'footprint') +
               ` ${result.detail} [main-thread memory bytes: heapUsed=${heapUsed} heapTotal=${heapTotal}` +
               ` external=${external} arrayBuffers=${arrayBuffers}]` +
-              (counts === undefined ? '' : ` [held root counts: ${counts}]`),
+              (counts === undefined ? '' : ` [held root counts: ${counts}]`) +
+              ` ${memoryDiagnostic()}`,
           )
         })
         .finally(() => {
@@ -182,7 +190,11 @@ export function startMemoryWatch(options: MemoryWatchOptions): MemoryWatch {
       return
     }
     reported = crossed
-    options.log((options.headline ?? theAppItselfHeadline)(rss) + (detail ? ` ${detail}` : ''))
+    options.log(
+      (options.headline ?? theAppItselfHeadline)(rss) +
+        (detail ? ` ${detail}` : '') +
+        (options.headline === undefined ? ` ${memoryDiagnostic()}` : ''),
+    )
   }
 
   const handle = options.setInterval(tick, options.intervalMs ?? MEMORY_INTERVAL_MS)

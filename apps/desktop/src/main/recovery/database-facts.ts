@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import { headerOf } from './sqlite-header'
 import { gzipCheckpoint, type PlainDatabaseFacts } from './checkpoint-compression'
 import Database from 'better-sqlite3'
@@ -345,6 +346,7 @@ async function removeScratch(userData: string, folder: string, fs: RecoveryFs): 
 
 function readMigrations(path: string, readonly: boolean): MigrationsOnDisk {
   const db = new Database(path, { readonly, fileMustExist: true })
+  observeDatabaseMemory(db, 'recovery-migrations')
   try {
     return migrationsRecordedIn(db)
   } finally {
@@ -369,6 +371,7 @@ export function prepareDatabaseSnapshot(
 ): DatabaseSnapshotPlan {
   const fs = options.fs ?? nodeFs
   const readonlySource = new Database(file, { readonly: true, fileMustExist: true })
+  observeDatabaseMemory(readonlySource, 'recovery-source')
   let bytes: number
   let wasWal: boolean
   try {
@@ -386,6 +389,7 @@ export function prepareDatabaseSnapshot(
       await options.verifySource?.()
       try {
         const source = new Database(file, { fileMustExist: true })
+        observeDatabaseMemory(source, 'recovery-source')
         let recorded: MigrationsOnDisk
         try {
           if (String(source.pragma('journal_mode = DELETE', { simple: true })) !== 'delete')
@@ -413,6 +417,7 @@ export function prepareDatabaseSnapshot(
       } finally {
         if (wasWal) {
           const source = new Database(file, { fileMustExist: true })
+          observeDatabaseMemory(source, 'recovery-source')
           try {
             source.pragma('journal_mode = WAL')
           } finally {

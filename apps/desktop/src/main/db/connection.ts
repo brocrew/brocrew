@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import { statSync } from 'node:fs'
 import Database from 'better-sqlite3'
 
@@ -33,5 +34,6 @@ export function openDatabase(
     )
   }
   db.pragma('foreign_keys = ON')
+  observeDatabaseMemory(db, 'writer')
   return db
 }

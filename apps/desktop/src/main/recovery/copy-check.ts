@@ -1,3 +1,4 @@
+import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import type { Worker } from 'node:worker_threads'
 
@@ -36,6 +37,7 @@ export function checkTheCopy(copy: string, holdMs = 0, readonly = false): CopyCh
   let db: Database.Database
   try {
     db = new Database(copy, { fileMustExist: true, readonly })
+    observeDatabaseMemory(db, 'recovery-check')
   } catch (error) {
     return { kind: 'failed', message: messageOf(error) }
   }
