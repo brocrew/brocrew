@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { MAX_TURN_PARTS } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { answerOn } from './helpers/call-tool'
 import { recordFailedQuestionTurn } from './lib/question-wake'
@@ -136,11 +137,12 @@ it('reads a taskless failure for the question’s successor and stops saying it 
 
   const read = (me: string) =>
     answerOn(agentToolsFor(host, me), 'get_agent_status', { agent: holder })
-  const readOrdinary = async (me: string) => {
+  const readWithoutRecordedCause = async (me: string) => {
     const answer = await read(me)
     expect(answer.structured).toMatchObject({ outcome: 'ok', agent: { agent: holder } })
     expect(answer.structured).not.toHaveProperty('provider_question_failure')
     expect(answer.text).not.toContain(message)
+    return answer.text
   }
   expect(w.store.rootOf(holder)).toBeNull()
   expect(await read(successor)).toMatchObject({
@@ -151,7 +153,7 @@ it('reads a taskless failure for the question’s successor and stops saying it 
     },
     text: expect.stringContaining(message),
   })
-  await readOrdinary(observer)
+  expect(await readWithoutRecordedCause(observer)).not.toContain('Cause unknown.')
 
   const writeTerminal = w.db.prepare(
     'UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?',
@@ -162,7 +164,14 @@ it('reads a taskless failure for the question’s successor and stops saying it 
     turnOrdinal,
   )
   expect(w.store.providerFailureEpisode(holder)).toBe('unknown')
-  await readOrdinary(successor)
+  expect(await readWithoutRecordedCause(successor)).toContain(
+    'Cause unknown. No recent turn ending could be checked.',
+  )
+  append(holder, { type: 'user_turn', text: 'Retry once.' })
+  append(holder, { type: 'turn', state: 'interrupted' })
+  expect(await readWithoutRecordedCause(successor)).toContain(
+    'Cause unknown. Checked 1 recent turn ending.',
+  )
   writeTerminal.run(JSON.stringify(terminal), holder, turnOrdinal)
   expect((await read(successor)).structured).toHaveProperty('provider_question_failure', {
     message,
@@ -172,5 +181,36 @@ it('reads a taskless failure for the question’s successor and stops saying it 
   append(holder, { type: 'user_turn', text: 'Do an ordinary recovery check.' })
   append(holder, { type: 'turn', state: 'completed' })
   expect(w.store.providerFailureEpisode(holder)).toBe('none')
-  await readOrdinary(successor)
+  expect(await readWithoutRecordedCause(successor)).not.toContain('Cause unknown.')
+})
+
+it('describes only the evidence examined within the closed-turn and part limits', async () => {
+  const w = (world = aServiceWorld())
+  w.anAgent('reader', 'normal')
+  w.anAgent('holder', 'normal')
+  const host = w.aHost()
+  const reader = await w.aPersonOpens(host, 'reader')
+  const holder = await w.aPersonOpens(host, 'holder')
+  const append = (event: TranscriptEvent) =>
+    w.store.append(holder, w.store.nextOrdinal(holder), event, w.clock++)
+  const status = async () =>
+    (await answerOn(agentToolsFor(host, reader), 'get_agent_status', { agent: holder })).text
+  const interruptedTurn = () => {
+    append({ type: 'user_turn', text: 'Try again.' })
+    append({ type: 'turn', state: 'interrupted' })
+  }
+
+  expect(await status()).not.toContain('Cause unknown.')
+  for (let turn = 0; turn < 7; turn++) interruptedTurn()
+  expect(await status()).not.toContain('Cause unknown.')
+  interruptedTurn()
+  expect(await status()).toContain('Cause unknown. Checked 8 recent turn endings.')
+
+  append({ type: 'user_turn', text: 'Try with a long turn.' })
+  for (let part = 0; part < MAX_TURN_PARTS; part++)
+    append({ type: 'work_interrupted', by: 'a-person' })
+  append({ type: 'turn', state: 'interrupted' })
+  expect(await status()).toContain(
+    'Cause unknown. No recent turn ending could be checked. A turn exceeded the 64-part limit.',
+  )
 })
