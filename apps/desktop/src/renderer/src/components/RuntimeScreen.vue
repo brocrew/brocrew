@@ -262,6 +262,7 @@ import RuntimeOverlaySheets, { type SheetStart } from './RuntimeOverlaySheets.vu
 import { createPlaceHistory, type HistoryEntry, type Place } from '../lib/place-history'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
 import { conversationTitle } from '../lib/conversation-list'
+import { firstHumanMessageOf } from '../../../shared/human-turn-answer'
 import { platformHere } from '../lib/this-computer'
 import { provideMainTab, type MainTab } from '../composables/useMainTab'
 import { providePlaceNavigator } from '../composables/usePlaceNavigator'
@@ -2995,6 +2996,7 @@ const selectedForIdentity = computed(() =>
 const conversationIdentity = ref<ConversationIdentity | null>(null)
 const workRevision = ref(0)
 const agentIdentityRevision = ref(0)
+const personIdentityRevision = ref(0)
 const readTitleHistory: TitleHistorySource['read'] = (input) =>
   appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
 const readTaskPage: TaskPageSource['read'] = (input) =>
@@ -3076,12 +3078,18 @@ let stopProviderFacts: (() => void) | null = null
  * the states, and a message that kept a file reads the files again ({@link readTheFiles}, UI-002).
  */
 let stopHearingStates: (() => void) | null = null
+let stopHearingIdentityEvents: (() => void) | null = null
 onMounted(() => {
   if (typeof window.api.runtime.onProvidersChanged === 'function')
     stopProviderFacts = window.api.runtime.onProvidersChanged((message) => {
       if (message.what === 'login' || message.what === 'key')
         authChangedFor(DEFAULT_PROFILE_ID, message.provider)
     })
+  stopHearingIdentityEvents = window.api.runtime.onEvent((message) => {
+    if (message.event.type !== 'user_turn' || firstHumanMessageOf(message.event) === null) return
+    if (selectedForIdentity.value?.sessionId === message.sessionId) void readSelectedIdentity()
+    personIdentityRevision.value += 1
+  })
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
     rail.value?.hearStates(message)
     teamProfileGraph.markStale()
@@ -3227,6 +3235,8 @@ onUnmounted(() => {
   stopListening = null
   stopHearingStates?.()
   stopHearingStates = null
+  stopHearingIdentityEvents?.()
+  stopHearingIdentityEvents = null
   if (looking !== null) clearInterval(looking)
   if (readingActivity !== null) clearInterval(readingActivity)
   if (glancing !== null) clearInterval(glancing)
@@ -3800,7 +3810,7 @@ onUnmounted(() => {
           @new-conversation="place = 'new'"
           @select="select"
           :read-identities="readRailIdentities"
-          :identity-revision="workRevision + agentIdentityRevision"
+          :identity-revision="workRevision + agentIdentityRevision + personIdentityRevision"
           :search-conversations="searchConversations"
           @read-conversation="openFoundConversation"
           @go="

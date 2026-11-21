@@ -755,9 +755,8 @@ watch(
 function rowTitle(row: RailRow): string {
   const identity = identities.value.get(row.sessionId)
   if (row.brobot) {
-    const address = identity?.address ?? row.named?.label
-    const title = identity?.author ? identity.title : row.named?.title
-    return [address, title?.trim()].filter(Boolean).join(' · ')
+    const title = identity?.profileFallback ? null : (identity?.title ?? row.named?.title)
+    return [identity?.address ?? row.sessionId, title?.trim()].filter(Boolean).join(' · ')
   }
   return identity?.title ?? conversationTitle(row.label, row.named)
 }
@@ -1231,7 +1230,7 @@ const platform = platformHere()
                     .join(' ') || undefined
                 "
                 :aria-describedby="
-                  !row.brobot && row.opening
+                  !row.brobot && row.opening && !identities.get(row.sessionId)
                     ? `rail-opening-${row.sessionId} rail-state-${row.sessionId}`
                     : `rail-state-${row.sessionId}`
                 "
@@ -1269,6 +1268,7 @@ const platform = platformHere()
                   }"
                 >
                   <strong
+                    :class="{ 'rail-canonical-title': identities.get(row.sessionId) }"
                     :data-cy="
                       row.brobot
                         ? `rail-brobot-title-${row.sessionId}`
@@ -1385,7 +1385,7 @@ const platform = platformHere()
                     >
                   </template>
                   <small
-                    v-if="!row.brobot && row.opening"
+                    v-if="!row.brobot && row.opening && !identities.get(row.sessionId)"
                     :id="`rail-opening-${row.sessionId}`"
                     class="opening"
                     :title="row.opening"
@@ -1866,15 +1866,15 @@ const platform = platformHere()
   white-space: nowrap;
 }
 .rail-group-rows .rail-copy strong {
-  overflow: visible;
   line-height: var(--leading-normal);
+}
+.rail-group-rows .rail-copy:not(.rail-brobot-copy) strong:not(.rail-canonical-title) {
+  overflow: visible;
   overflow-wrap: anywhere;
   white-space: normal;
 }
 .rail-group-rows .rail-brobot-copy strong {
-  overflow: hidden;
   line-height: var(--leading-snug);
-  white-space: nowrap;
 }
 .rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
   font-weight: var(--fw-normal);

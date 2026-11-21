@@ -36,7 +36,7 @@ it('keeps its address and title across reads with work from two callers', async 
   expect(one).toMatchObject({ outcome: 'ok', receipt: { recipient } })
   expect(two).toMatchObject({ outcome: 'ok', agent: service, receipt: { recipient } })
   expect(world.store.firstTaskOf(service)?.label).toBe(one.label)
-  expect(world.store.defaultTaskTitle(service)).toBe('First caller job')
+  expect(world.store.defaultConversationTitle(service)).toBe('First caller job')
   expect(host.addressOf(service)).toBe(service)
   expect(host.nameByItsWork(service)).toBe(line)
   expect(
@@ -44,7 +44,13 @@ it('keeps its address and title across reads with work from two callers', async 
       kind: 'readConversationIdentity',
       sessionId: service,
     }),
-  ).toEqual({ conversation: service, address: service, title: serviceName, author: null })
+  ).toEqual({
+    conversation: service,
+    address: service,
+    title: serviceName,
+    author: null,
+    profileFallback: true,
+  })
 
   const directory = await answerOn(firstTools, 'list_agents', { profile: 'browser-driver' })
   const status = await answerOn(secondTools, 'get_agent_status', { agent: service })

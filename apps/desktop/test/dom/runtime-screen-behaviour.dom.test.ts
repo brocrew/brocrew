@@ -640,8 +640,8 @@ it.each(['launch', 'sign-in'] as const)(
 async function launchFromAgentSheet(words: string) {
   const answer = deferred<CreatedSession | RefusedLaunch>()
   runtime.createSession.mockReturnValueOnce(answer.promise)
-  const listeners = runtime.onEvent.mock.calls.length
   const m = mount(RuntimeScreen, {})
+  const listeners = runtime.onEvent.mock.calls.length
   useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
   await expect.poll(() => m.all('start-as-agent').length).toBe(1)
   const sheet = m.q('start-as-agent')

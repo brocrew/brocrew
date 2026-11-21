@@ -52,6 +52,7 @@ async function draw(
   activeId: string | null = null,
   renamed?: ConversationIdentity,
   rosterMode: 'full' | 'absent' | 'partial' = 'full',
+  pending?: Promise<readonly ConversationIdentity[]>,
 ) {
   const selected: string[] = []
   const reads: string[][] = []
@@ -85,6 +86,7 @@ async function draw(
       onSelect: (id: string) => selected.push(id),
       readIdentities: async ({ sessionIds }: { sessionIds: string[] }) => {
         reads.push(sessionIds)
+        if (pending) return pending
         return rows
           .filter((row) => sessionIds.includes(row.sessionId))
           .map((row) =>
@@ -95,6 +97,7 @@ async function draw(
                   address: row.named?.label ?? row.sessionId,
                   title: row.named?.title?.trim() || 'BroBot',
                   author: null,
+                  ...(!row.named?.title?.trim() ? { profileFallback: true } : {}),
                 },
           )
       },
@@ -217,6 +220,11 @@ for (const width of [251.68, 266.2]) {
     })
     m.host.style.width = `${width}px`
     await expect.poll(() => m.all('rail-address-person-90').length).toBe(1)
+    const other = m.q('open-session-person-90')
+    expect(other.querySelector('strong')!.getBoundingClientRect().height).toBeCloseTo(
+      other.querySelector('small')!.getBoundingClientRect().height,
+      1,
+    )
     expect(m.q('rail-brobot-title-person-21').textContent?.trim()).toBe('W21')
     expect(m.q('rail-brobot-title-person-4').textContent?.trim()).toBe(
       'W44 · Saved conversation name',
@@ -337,5 +345,71 @@ for (const rosterMode of ['absent', 'partial'] as const) {
     expect(label.title).toBe('recipe-worker · W90.1')
     expect(label.textContent).not.toContain(row.worker!.identity)
     expect(m.q('rail-address-recipe-1').textContent).toBe('W90.1')
+  })
+}
+
+for (const width of [251.68, 266.2]) {
+  it(`uses a canonical opening without confusing a real profile-named title at ${width}px`, async () => {
+    for (const title of ['Plan a garden with a shaded path '.repeat(8), 'BroBot']) {
+      const row = person(21)
+      row.named = { label: 'W21', title: null }
+      const m = await draw([row], null, {
+        conversation: row.sessionId,
+        address: 'W21',
+        title,
+        author: null,
+      })
+      m.host.style.width = `${width}px`
+      await expect
+        .poll(() => m.q('rail-brobot-title-person-21').textContent?.trim())
+        .toBe(`W21 · ${title.trim()}`)
+      const strong = m.q('rail-brobot-title-person-21')
+      expect(strong.title).toBe(`W21 · ${title.trim()}`)
+      expect([...strong.parentElement!.children].map((one) => one.tagName)).toEqual([
+        'STRONG',
+        'SMALL',
+      ])
+      expect(m.q('open-session-person-21').getAttribute('aria-describedby')).toBe(
+        'rail-state-person-21',
+      )
+      expect(m.all('session-opening-person-21')).toHaveLength(0)
+      m.q('open-session-person-21').click()
+      expect(m.selected).toEqual(['person-21'])
+      m.unmount()
+    }
+  })
+}
+
+for (const width of [251.68, 266.2]) {
+  it(`keeps a task label out of the pending BroBot address at ${width}px`, async () => {
+    const row = person(21)
+    const listingTitle = 'Listing title '.repeat(12).trim()
+    row.named = { label: 'W99.4', title: listingTitle }
+    let finish!: (identities: readonly ConversationIdentity[]) => void
+    const pending = new Promise<readonly ConversationIdentity[]>((resolve) => {
+      finish = resolve
+    })
+    const m = await draw([row], null, undefined, 'full', pending)
+    m.host.style.width = `${width}px`
+    const title = m.q('rail-brobot-title-person-21')
+    expect(title.textContent?.trim()).toBe(`person-21 · ${listingTitle}`)
+    expect(title.title).toBe(`person-21 · ${listingTitle}`)
+    expect(title.textContent).not.toContain('W99.4')
+    expect(getComputedStyle(title).whiteSpace).toBe('nowrap')
+    expect(title.getBoundingClientRect().height).toBeCloseTo(
+      parseFloat(getComputedStyle(title).lineHeight),
+      1,
+    )
+    finish([
+      { conversation: row.sessionId, address: 'W21', title: 'Canonical opening', author: null },
+    ])
+    await expect.poll(() => title.textContent?.trim()).toBe('W21 · Canonical opening')
+    expect(title.title).toBe('W21 · Canonical opening')
+    expect([...title.parentElement!.children].map((one) => one.tagName)).toEqual([
+      'STRONG',
+      'SMALL',
+    ])
+    m.q('open-session-person-21').click()
+    expect(m.selected).toEqual(['person-21'])
   })
 }

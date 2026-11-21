@@ -9,7 +9,11 @@ import type {
   ConversationTaskPageResult,
   ConversationTaskPageRow,
 } from '../../src/shared/conversation-task-page'
-import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  ResumableSessionInfo,
+  RuntimeBridge,
+  RuntimeEventMessage,
+} from '../../src/shared/runtime-ipc'
 import { META, allTasks, mount } from './harness'
 import {
   changed,
@@ -509,3 +513,75 @@ it('ignores a former selection’s task page and refreshes the selected task on 
   await expect.poll(currentText).toContain('Refreshed service task')
   expect(read).toHaveBeenNthCalledWith(3, { sessionId: serviceId })
 })
+
+it.each([
+  { interrupting: false, brobot: false },
+  { interrupting: true, brobot: false },
+  { interrupting: false, brobot: true },
+  { interrupting: true, brobot: true },
+])(
+  'refreshes a profile fallback on delivered person input, $interrupting/$brobot',
+  async ({ interrupting, brobot }) => {
+    let identity: ConversationIdentity = {
+      conversation: sessionId,
+      address: 'W17',
+      title: 'BroBot',
+      author: null,
+      profileFallback: true,
+    }
+    const read = vi.fn<RuntimeBridge['readConversationIdentity']>(async () => identity)
+    const batch = vi.fn<RuntimeBridge['readConversationIdentities']>(async () => [identity])
+    window.api.runtime.readConversationIdentity = read
+    window.api.runtime.readConversationIdentities = batch
+    const listed = { ...row(sessionId, null), personStarted: brobot, profileId: 'brobot' }
+    const m = await mountWith([listed])
+    await expect.poll(() => m.q('conversation-title').textContent?.trim()).toBe('BroBot')
+    await expect
+      .poll(() => m.q(`open-session-${sessionId}`).querySelector('strong')?.textContent)
+      .toBe(brobot ? 'W17' : 'BroBot')
+    const listeners = vi.mocked(window.api.runtime.onEvent).mock.calls.map(([listener]) => listener)
+    expect(listeners.length).toBeGreaterThan(1)
+    const deliver = (event: RuntimeEventMessage['event'], ordinal: number) => {
+      for (const listener of listeners) listener({ sessionId, ordinal, at: Date.now(), event })
+    }
+    const before = read.mock.calls.length
+    const beforeBatch = batch.mock.calls.length
+    const beforeFiles = runtime.filesKept.mock.calls.length
+    deliver(
+      {
+        type: 'message_queued',
+        kind: 'notice',
+        messageId: 'held-person-opening',
+        text: 'Queued but not delivered',
+      },
+      0,
+    )
+    deliver({ type: 'user_turn', text: 'App-authored notice', attribution: 'app_authored' }, 1)
+    await nextTick()
+    expect(read.mock.calls).toHaveLength(before)
+    expect(batch.mock.calls).toHaveLength(beforeBatch)
+    identity = { ...identity, title: 'Plan the garden for spring', profileFallback: false }
+    deliver(
+      {
+        type: 'user_turn',
+        text: 'Plan the garden for spring\nConsider the shade.',
+        humanInitiated: true,
+        askedForTheStop: interrupting ? true : undefined,
+      },
+      2,
+    )
+    await expect.poll(() => m.q('conversation-title').textContent?.trim()).toBe(identity.title)
+    await expect
+      .poll(() => m.q(`open-session-${sessionId}`).querySelector('strong')?.textContent)
+      .toBe(brobot ? `W17 · ${identity.title}` : identity.title)
+    if (brobot) expect(m.all(`rail-address-${sessionId}`)).toHaveLength(0)
+    else expect(m.q(`rail-address-${sessionId}`).textContent).toBe('W17')
+    expect(m.all(`session-opening-${sessionId}`)).toHaveLength(0)
+    expect(runtime.filesKept.mock.calls).toHaveLength(beforeFiles)
+    expect(
+      [...m.q(`open-session-${sessionId}`).querySelector('.rail-copy')!.children].map(
+        ({ tagName }) => tagName,
+      ),
+    ).toEqual(brobot ? ['STRONG', 'SMALL'] : ['STRONG', 'SMALL', 'SMALL'])
+  },
+)

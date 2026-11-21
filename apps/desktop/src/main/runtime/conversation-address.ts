@@ -1,5 +1,5 @@
 import { agentIdentityRowId } from '../db/identity'
-import { aConversationTitle, type ConversationTitle } from '../../shared/conversation-title'
+import type { ConversationTitle } from '../../shared/conversation-title'
 import { profileLabel } from '../../shared/runtime-ipc'
 
 /** What resolving an address reads. */
@@ -33,7 +33,7 @@ export function canonicalAddressOf(
 
 interface DisplayTitleReads {
   conversationTitle(conversation: string): ConversationTitle | null
-  defaultTaskTitle(conversation: string): string | null
+  defaultConversationTitle(conversation: string, includeOpening?: boolean): string | null
   conversationBinding(conversation: string): { readonly identity: string | null } | null
   agentIdentityNameById(
     identity: string,
@@ -45,16 +45,20 @@ function conversationDisplayTitle(
   conversation: string,
   service: boolean,
   savedTitle = reads.conversationTitle(conversation),
-): string {
-  if (savedTitle !== null) return savedTitle.title
+  includeOpening = false,
+): { readonly title: string; readonly profileFallback?: true } {
+  if (savedTitle !== null) return { title: savedTitle.title }
   if (!service) {
-    const taskTitle = aConversationTitle(reads.defaultTaskTitle(conversation))
-    if (taskTitle !== null) return taskTitle
+    const defaultTitle = reads.defaultConversationTitle(conversation, includeOpening)
+    if (defaultTitle !== null) return { title: defaultTitle }
   }
   const identity = reads.conversationBinding(conversation)?.identity
   const profile =
     identity == null ? null : reads.agentIdentityNameById(agentIdentityRowId(identity))
-  return profile?.displayName ?? (profile === null ? 'untitled' : profileLabel(profile.slug))
+  return {
+    title: profile?.displayName ?? (profile === null ? 'untitled' : profileLabel(profile.slug)),
+    profileFallback: true,
+  }
 }
 
 export function describeConversation(
@@ -62,10 +66,22 @@ export function describeConversation(
   conversation: string,
   service: boolean,
   savedTitle?: ConversationTitle | null,
-): { readonly address: string; readonly title: string; readonly line: string } {
+  includeOpening = false,
+): {
+  readonly address: string
+  readonly title: string
+  readonly line: string
+  readonly profileFallback?: true
+} {
   const address = canonicalAddressOf(reads, conversation, service)
-  const title = conversationDisplayTitle(reads, conversation, service, savedTitle)
-  return { address, title, line: conversationLine(address, title) }
+  const resolved = conversationDisplayTitle(
+    reads,
+    conversation,
+    service,
+    savedTitle,
+    includeOpening,
+  )
+  return { address, ...resolved, line: conversationLine(address, resolved.title) }
 }
 
 export function conversationLine(address: string, title: string): string {
@@ -96,6 +112,7 @@ export function describeConversationForRead(
   conversation: string,
   itIsAService = isRecordedServiceConversation(reads, conversation),
   savedTitle?: ConversationTitle | null,
+  includeOpening = false,
 ) {
-  return describeConversation(reads, conversation, itIsAService, savedTitle)
+  return describeConversation(reads, conversation, itIsAService, savedTitle, includeOpening)
 }

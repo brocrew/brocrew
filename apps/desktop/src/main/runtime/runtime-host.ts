@@ -18865,13 +18865,20 @@ export class RuntimeHost implements LiveHost {
     const { store } = this.deps
     if (store.conversationBinding(conversation) === null) return null
     const savedTitle = store.conversationTitle(conversation)
-    const { address, title } = describeConversationForRead(
+    const { address, title, profileFallback } = describeConversationForRead(
       store,
       conversation,
       this.itIsAService(conversation),
       savedTitle,
+      true,
     )
-    return { conversation, address, title, author: savedTitle?.author ?? null }
+    return {
+      conversation,
+      address,
+      title,
+      author: savedTitle?.author ?? null,
+      ...(profileFallback ? { profileFallback } : {}),
+    }
   }
 
   readConversationIdentities(
