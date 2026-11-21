@@ -25,7 +25,6 @@ import type {
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import {
-  AuthUnavailableError,
   QUESTION_REQUEST_KEYS,
   askedOfTheChannel,
   ResumeError,

@@ -2619,7 +2619,7 @@ export class ClaudeRuntime implements AgentRuntime {
     apiKeyProvider?: ClaudeApiKeyProviderAsync,
     platform: NodeJS.Platform = process.platform,
 
-    whyNoLogin: () => string = () => whyNoClaudeLogin({ platform }),
+    _whyNoLogin: () => string = () => whyNoClaudeLogin({ platform }),
     program?: string,
     launchTokenProvider?: ClaudeAuthTokenProviderAsync,
     private readonly managedProviderHomesRoot?: string,
@@ -2631,7 +2631,6 @@ export class ClaudeRuntime implements AgentRuntime {
     this.spawnChild = spawnChild
     this.apiKeyProvider = apiKeyProvider
     this.platform = platform
-    this.whyNoLogin = whyNoLogin
     this.program = program
     this.launchTokenProvider = launchTokenProvider
   }
@@ -2641,8 +2640,6 @@ export class ClaudeRuntime implements AgentRuntime {
     if (key !== null && key !== '') return { key }
     return { key: null, login: await this.launchTokenProvider?.() }
   }
-
-  private readonly whyNoLogin: () => string
 
   private queryOrWhyNot(params: Parameters<QueryFactory>[0]): ClaudeQuery {
     const program = this.program
