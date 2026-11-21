@@ -5,11 +5,7 @@ import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
 import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
 import { createHash } from 'node:crypto'
-import manifest from '../resources/built-in-skills/manifest.json'
-import {
-  BuiltInSkillCatalogueSchema,
-  builtInSkillReminders,
-} from '../src/main/skills/built-in-catalogue'
+import { builtInSkillReminders } from '../src/main/skills/built-in-catalogue'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -51,6 +47,9 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
+const shipped = readBuiltInSkills(
+  join(import.meta.dirname, '../resources/built-in-skills'),
+).catalogue
 
 /**
  * Every turn this app hands an agent ends with a block of the app's own words: the time; on a turn
@@ -158,8 +157,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
               pack?: TextPackRead
             }) => {
               packsGivenToSkills.push(input.pack)
-              const catalogue = BuiltInSkillCatalogueSchema.parse(manifest)
-              const selected = catalogue.skills
+              const selected = shipped.skills
               return {
                 context: {
                   root: `/fictional/skills/${input.provider}`,
@@ -170,7 +168,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
                   })),
                 },
                 reminder: builtInSkillReminders(input.provider, selected),
-                version: catalogue.version,
+                version: shipped.version,
                 isCurrent: input.isCurrent,
               }
             },
@@ -638,10 +636,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       host = buildHost(true)
       const { worker, surface } = await aWorkerBetweenTurns(provider)
       await itsTurnEnds(worker, surface)
-      const expected = builtInSkillReminders(
-        provider,
-        BuiltInSkillCatalogueSchema.parse(manifest).skills,
-      )
+      const expected = builtInSkillReminders(provider, shipped.skills)
       expect(handedOver(worker).at(-1)).toContain(expected)
       const person = await theBlockOfATurn(worker, 'Fictional person request.', surface, surface)
       expect(person).toContain(expected)

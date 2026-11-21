@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,7 @@ import {
   type VerifiedBuiltInSkills,
 } from '../src/main/skills/built-in-catalogue'
 import { SqliteSkillCatalogue, SkillCatalogueError } from '../src/main/skills/catalogue-store'
+import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import type { SkillDraft } from '../src/shared/skills-catalogue'
@@ -271,6 +272,21 @@ describe('the SQLite skills catalogue', () => {
     expect(
       catalogue.resolve('aid:recipe-worker').choices.find((one) => one.skill.id === previous.id),
     ).toMatchObject({ selection: 'off', ready: false })
+  })
+  it('an upgraded install takes an edited shipped text whose manifest carries no digest', () => {
+    const newer = join(folder, 'newer-build')
+    cpSync(resources, newer, { recursive: true })
+    const body = join(newer, 'delegate', 'SKILL.md')
+    writeFileSync(body, `${readFileSync(body, 'utf8')}\nA fictional newer line.\n`)
+    const manifest = JSON.parse(readFileSync(join(newer, 'manifest.json'), 'utf8')) as object
+    expect(JSON.stringify(manifest)).not.toMatch(/sha256|bytes/)
+    writeFileSync(join(newer, 'manifest.json'), JSON.stringify({ ...manifest, version: 'v99' }))
+    expect(catalogue.detail('built-in/delegate')?.body).not.toContain('A fictional newer line.')
+    catalogue = new SqliteSkillCatalogue(db, readBuiltInSkills(newer))
+    expect(catalogue.detail('built-in/delegate')).toMatchObject({
+      version: 'v99',
+      body: readFileSync(body, 'utf8'),
+    })
   })
   it.each([
     ['path', { path: '../recipe-check/SKILL.md' }],

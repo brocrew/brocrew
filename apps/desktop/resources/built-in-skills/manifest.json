@@ -5,58 +5,42 @@
     {
       "name": "delegate",
       "description": "Before assigning work or choosing helpers, reuse the best-fitting profile or service, name one result owner, and choose a supported model for each handoff.",
-      "reminder": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model.",
-      "sha256": "14412fc4d4706ba18ce4e1b4f6eab2e665bbab204c84dc192f89c813acf15dfb",
-      "bytes": 4547
+      "reminder": "delegate — Before handoff: one fitting owner, reusable profile or service, and supported model."
     },
     {
       "name": "hand-back",
       "description": "During work or before completion, keep evidence findable, resolve required results and questions, and hand back once.",
-      "reminder": "hand-back — Before returning: resolve dependencies, keep evidence and report once.",
-      "sha256": "55087e599478896fb26cf51848b03b3d67809b88d245703c7c90956fbc427eca",
-      "bytes": 3486
+      "reminder": "hand-back — Before returning: resolve dependencies, keep evidence and report once."
     },
     {
       "name": "split-work",
       "description": "Before dividing an outcome, choose bounded pieces by project kind, outputs and dependencies; keep one owner responsible for integration.",
-      "reminder": "split-work — Before dividing: bounded pieces, dependencies and integration.",
-      "sha256": "7e7fac8f41e9c60d577d29bf62e96d2a43f041bdc30891466836e1460903df3c",
-      "bytes": 3052
+      "reminder": "split-work — Before dividing: bounded pieces, dependencies and integration."
     },
     {
       "name": "ask-and-wait",
       "description": "When the person must answer or act, track the question or task, name what ends the wait, and manage the follow-up.",
-      "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait.",
-      "sha256": "d9ecd202b386e83249c2fc10e816daeaff1c05ca7365e1b553102859f204da37",
-      "bytes": 4469
+      "reminder": "ask-and-wait — When the person must answer or act: track it and name the wait."
     },
     {
       "name": "remember",
       "description": "Before unfamiliar work, after a tested reusable lesson, or on a memory request, use permitted saved methods and memory.",
-      "reminder": "remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed.",
-      "sha256": "7bdea6798bfa01c06751be52784eb00e0a97b0e9048f0738a1298c36de1e7769",
-      "bytes": 2756
+      "reminder": "remember — Before unfamiliar work or handback: use relevant methods; save tested lessons if allowed."
     },
     {
       "name": "build-a-team",
       "description": "Use delegate to choose helpers.",
-      "reminder": "build-a-team — Before choosing helpers: see delegate.",
-      "sha256": "abbc7334ecd7bc78c5d81fca224e9a2653581696458d0bcb0bcea6a289d97b7f",
-      "bytes": 225
+      "reminder": "build-a-team — Before choosing helpers: see delegate."
     },
     {
       "name": "add-a-capability",
       "description": "When the needed tool is missing, check available tools and existing connections; propose a reviewed local build only if the person wants one.",
-      "reminder": "add-a-capability — When a tool is missing: existing connection first; build only if wanted.",
-      "sha256": "fd7f379e9db0211ece943b3d8051e6815df819df5c726d4ecd5e6165027a0419",
-      "bytes": 2751
+      "reminder": "add-a-capability — When a tool is missing: existing connection first; build only if wanted."
     },
     {
       "name": "build-software",
       "description": "Before building software or any file-changing script or command, name one owner and an independent checker and verify the result.",
-      "reminder": "build-software — Before building or file-changing code: owner and checker verify it.",
-      "sha256": "39a4b1e8c996872657aa97d9d0fba93e0048d15dd8226d709e4b3167e8555e79",
-      "bytes": 2782
+      "reminder": "build-software — Before building or file-changing code: owner and checker verify it."
     }
   ]
 }

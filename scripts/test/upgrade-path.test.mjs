@@ -2064,8 +2064,6 @@ describe('skill catalogue upgrade evidence', () => {
         name,
         description: 'A fictional instruction.',
         reminder: { codex: `${name} — Use fake data.`, claude: `brobot:${name} — Use fake data.` },
-        bytes: bodies.get(name).length,
-        sha256: sha256(bodies.get(name)),
       })),
     }
     return { manifest, bodies }
@@ -2169,21 +2167,17 @@ describe('skill catalogue upgrade evidence', () => {
       'a changed catalogue did not advance its revision',
     )
   })
-  it.each(['body', 'missing', 'hash', 'bytes', 'frontmatter', 'duplicate', 'path'])(
+  it.each(['body', 'missing', 'frontmatter', 'duplicate', 'path'])(
     'does not trust candidate membership with invalid %s evidence',
     (fault) => {
       const { manifest, bodies } = candidateBundle(['delegate'])
       if (fault === 'body') bodies.set('delegate', Buffer.from('Different.'))
       if (fault === 'missing') bodies.clear()
-      if (fault === 'hash') manifest.skills[0].sha256 = '0'.repeat(64)
-      if (fault === 'bytes') manifest.skills[0].bytes++
       if (fault === 'frontmatter') {
         const body = Buffer.from(
           bodies.get('delegate').toString().replace('name: delegate', 'name: other'),
         )
         bodies.set('delegate', body)
-        manifest.skills[0].bytes = body.length
-        manifest.skills[0].sha256 = sha256(body)
       }
       if (fault === 'duplicate') {
         manifest.skills.push({ ...manifest.skills[0] })

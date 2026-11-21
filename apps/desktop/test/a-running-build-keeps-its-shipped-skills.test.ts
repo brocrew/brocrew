@@ -2,7 +2,6 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { scratchFolders } from './helpers/scratch-folders'
-import { skillDigest } from '../src/main/skills/built-in-catalogue'
 import {
   keptShippedSkills,
   prepareBuiltInSkills,
@@ -22,18 +21,13 @@ const aShippedFolder = (): string => {
   cpSync(shipped, folder, { recursive: true })
   return folder
 }
-/** A newer commit's rewrite: another label, and an edited skill body its manifest names. */
+/** A newer commit's rewrite: another label and an edited skill body. */
 function rewrite(folder: string): void {
   const body = join(folder, 'delegate', 'SKILL.md')
   const newer = `${readFileSync(body, 'utf8')}\nA fictional newer line.\n`
   writeFileSync(body, newer)
   const path = join(folder, 'manifest.json')
-  const manifest = JSON.parse(readFileSync(path, 'utf8')) as {
-    skills: { name: string; sha256: string; bytes: number }[]
-  }
-  const delegate = manifest.skills.find((one) => one.name === 'delegate')!
-  delegate.sha256 = skillDigest(newer)
-  delegate.bytes = Buffer.byteLength(newer, 'utf8')
+  const manifest = JSON.parse(readFileSync(path, 'utf8')) as object
   writeFileSync(path, JSON.stringify({ ...manifest, version: 'v99' }))
 }
 

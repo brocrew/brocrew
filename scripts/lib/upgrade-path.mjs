@@ -329,7 +329,7 @@ export function verifyCandidateSkills(manifest, bodies) {
   const names = new Set()
   for (const item of manifest.skills) {
     requireEvidence(
-      hasExactKeys(item, ['name', 'description', 'reminder', 'sha256', 'bytes']) &&
+      hasExactKeys(item, ['name', 'description', 'reminder']) &&
         typeof item.name === 'string' &&
         /^[a-z][a-z0-9-]{0,99}$/.test(item.name) &&
         !names.has(item.name) &&
@@ -337,19 +337,11 @@ export function verifyCandidateSkills(manifest, bodies) {
         item.description.length > 0 &&
         item.description.length <= 500 &&
         validSkillReminder(item, manifest.formatVersion) &&
-        !/[\r\n]/.test(item.description) &&
-        Number.isInteger(item.bytes) &&
-        item.bytes > 0 &&
-        item.bytes <= 65_536 &&
-        typeof item.sha256 === 'string' &&
-        /^[a-f0-9]{64}$/.test(item.sha256),
+        !/[\r\n]/.test(item.description),
       'A candidate skill manifest entry is invalid.',
     )
     const body = bodies.get(item.name)
-    requireEvidence(
-      Buffer.isBuffer(body) && body.length === item.bytes && sha256(body) === item.sha256,
-      'A candidate skill body does not match its manifest.',
-    )
+    requireEvidence(Buffer.isBuffer(body), 'A candidate skill body is missing.')
     const text = body.toString('utf8')
     const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text)?.[1]
     const lines = frontmatter?.split(/\r?\n/) ?? []

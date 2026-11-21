@@ -70,7 +70,7 @@ const neutralCatalogue = z
   })
 
 /** Old pairs are checked before normalization; both formats have the same canonical digest. */
-export const BuiltInSkillCatalogueSchema = z
+const BuiltInSkillCatalogueSchema = z
   .union([
     neutralCatalogue,
     legacyCatalogue.transform((catalogue) => ({
