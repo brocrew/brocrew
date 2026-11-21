@@ -139,6 +139,7 @@ import {
   keepTasklessSendFiles,
   keepTasklessSendText,
   outboundOverflowSaid,
+  questionPromptForModel,
   sendFilesSaid,
   sendOverflowAttachment,
   textWithOverflowResource,
@@ -13355,7 +13356,12 @@ export class RuntimeHost implements LiveHost {
     const task = request.piece == null ? null : this.onePieceAsItStandsNow(request.piece)
     return outboundQuestionText(
       { called: this.whatToCallTheConversation(asker), address, line },
-      { ...request, label: request.label ?? task?.label, taskTitle: task?.title },
+      {
+        ...request,
+        prompt: questionPromptForModel(request.prompt, request.files),
+        label: request.label ?? task?.label,
+        taskTitle: task?.title,
+      },
       this.questionConversation(receiver).line,
     )
   }
@@ -13389,6 +13395,7 @@ export class RuntimeHost implements LiveHost {
       id: string
       prompt: string
       questions: readonly UserInputQuestion[]
+      files?: SendReceipt['attachments']
       /** ⚑ **D-016 · the label of the piece it is about.** */
       label?: string | null
       /**
@@ -14279,7 +14286,7 @@ export class RuntimeHost implements LiveHost {
       prepared.overflow === undefined
         ? files.files
         : [...files.files, sendOverflowAttachment(prepared.overflow)]
-    const prompt = prepared.text + sendFilesSaid(files.files)
+    const prompt = prepared.preview ?? prepared.text
     const requestId = newAskedQuestionId()
     // ⛔ **One part, built here rather than taken from the caller** (437). ⚑ The shape is
     // `answer_question`'s per-part payload. ⚠️ **`allowOther` is set only where there is a list to be other THAN**: with no
@@ -14298,7 +14305,7 @@ export class RuntimeHost implements LiveHost {
     this.publishOurs(session, {
       type: 'question_asked',
       ...(move === undefined ? {} : { move }),
-      ...(input.action === undefined ? {} : { action: input.action }),
+      ...(input.action === undefined ? { files: attachments } : { action: input.action }),
       requestId,
       // ⚑ **D-009** — absent for a peer question about no piece (`QuestionAskedEvent.piece`).
       ...(piece === null ? {} : { piece: piece.piece, label: piece.label }),
@@ -14321,6 +14328,7 @@ export class RuntimeHost implements LiveHost {
         id: requestId,
         prompt,
         questions,
+        files: attachments,
         ...(piece === null ? {} : { piece: piece.piece, label: piece.label }),
       })
       delivery = this.receiptForSend({
@@ -14413,7 +14421,7 @@ export class RuntimeHost implements LiveHost {
     return this.raiseAQuestion(
       {
         piece: piece.piece,
-        question: prepared.text,
+        question: prepared.preview ?? prepared.text,
         ...(overflow === undefined ? {} : { actionOverflowSaid: outboundOverflowSaid(overflow) }),
         options: [A_TO_DO_DONE, A_TO_DO_NOT_DONE],
         who: 'a-person',
@@ -24083,6 +24091,7 @@ export class RuntimeHost implements LiveHost {
     return {
       ok: true,
       text: textWithOverflowResource(kept.inline, actual.resource),
+      preview: kept.inline,
       overflow: { ...overflow, file: { ...overflow.file, resource: actual.resource } },
     }
   }

@@ -1,8 +1,9 @@
 import type { SendReceipt } from '../../shared/tool-outcome'
-import type { ReadableSendOverflow } from './send-overflow'
+import { questionPromptForModel, type ReadableSendOverflow } from './send-overflow'
 import { ANSWER_QUESTION_INSTRUCTION, questionPartWords } from './outbound-question-words'
 import type { ResourceRefusal } from '../resources/resources'
 import type {
+  QuestionFiles,
   QuestionRecipient,
   RequestState,
   RoutedRequest,
@@ -947,6 +948,7 @@ export function questionText(
     prompt: string
     questions: readonly UserInputQuestion[]
     raisedBy?: 'this-app' | 'the-provider'
+    files?: QuestionFiles
     /**
      * 🔴 **611 · what a PASSER added, beside the original words rather than instead of them**
      * (HO-088 §3.1) — absent on a question the asker raised itself.
@@ -965,7 +967,7 @@ export function questionText(
     // ⚑ **679 · the asker beside the id** — a provider's id is session-local, so two children's can
     // be one string (`675` F-b), and a door handed the pair never has to refuse the id as shared.
     `${asker.called} is waiting on an answer${about} before it can go on. Answer it with answer_question, quoting ${request.id} with asked_by ${asker.address}.`,
-    request.prompt,
+    questionPromptForModel(request.prompt, request.files),
   ]
   // 🔴 **611 · a separate paragraph, and the separation is the ruling** (HO-088 §3.1). ⛔ *"The
   // parent MAY add context; it may NOT replace the question."* ⚠️ A sentence that merged the two

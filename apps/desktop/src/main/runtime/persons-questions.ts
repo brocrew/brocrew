@@ -197,6 +197,7 @@ export class PersonsQuestions {
               ? null
               : {
                   prompt: raised.prompt,
+                  ...(raised.files === undefined ? {} : { files: raised.files }),
                   context: raised.context,
                   passedUp: raised.passedUpFrom !== null,
                   ...(raised.move === undefined ? {} : { move: raised.move }),

@@ -252,6 +252,7 @@ import {
   openQuestionsByWork,
   permissionShaped,
   anActionAsked,
+  questionFilesOf,
   aPersonsSince,
   aWaitIsReadFrom,
 } from '../../shared/questions'
@@ -431,6 +432,7 @@ interface SessionSnapshot {
 }
 
 interface RaisedQuestionRow {
+  files: string | null
   move: string | null
   action: string | null
   id: string | null
@@ -2616,6 +2618,7 @@ export function createSessionStore(
             json_extract(payload, '$.context') AS context,
             json_extract(payload, '$.move') AS move,
             json_extract(payload, '$.action') AS action,
+            json_extract(payload, '$.files') AS files,
             -- 671 · R18: which rows were torn, and where, so the reader COUNTS them.
             ordinal AS ordinal,
             readable AS readable
@@ -4119,7 +4122,10 @@ export function createSessionStore(
       if (fromThisApp && row.move !== null && move === undefined) return null
       const action: unknown = fromThisApp && row.action !== null ? JSON.parse(row.action) : null
       if (fromThisApp && row.action !== null && !anActionAsked(action)) return null
+      const files =
+        fromThisApp && row.files !== null ? questionFilesOf(JSON.parse(row.files)) : undefined
       return {
+        ...(files === undefined ? {} : { files }),
         prompt: row.prompt,
         questions,
         piece: row.piece,

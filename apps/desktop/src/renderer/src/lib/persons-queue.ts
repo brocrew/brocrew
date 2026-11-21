@@ -1423,7 +1423,7 @@ export function personsQueueView(
         // 🔴 **UI-009 · the ONE population this app can raise**, answered on its own card — the
         // offer is `whatTheAskerOffered`'s, run main-side beside the read that answered `raisedBy`.
         one.raisedBy === 'this-app' ? { offered: one.offered } : null,
-        one.asked === null ? null : wordsAsked(one.asked),
+        one.asked === null ? null : wordsAsked(one.asked, one.raisedBy === 'this-app'),
       ),
     ),
     ...settled.map((one) =>

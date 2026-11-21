@@ -28,7 +28,7 @@ export function keepSendOverflow(
   if (root === undefined)
     return { ok: false, refusal: refuseResource('resource-store-unavailable') }
 
-  const name = `${field.replaceAll('_', '-')}.txt`
+  const name = overflowFilename(field)
   const bytes = Buffer.from(text, 'utf8')
   const kept = keepPlainSendFile(root, name, bytes)
   if (!kept.ok) return kept
@@ -77,7 +77,11 @@ export function sendOverflowAttachment(
   overflow: ReadableSendOverflow,
 ): SendReceipt['attachments'][number] {
   return 'path' in overflow
-    ? { path: overflow.path, overflowField: overflow.field }
+    ? {
+        path: overflow.path,
+        name: overflowFilename(overflow.field),
+        overflowField: overflow.field,
+      }
     : { resource: overflow.file.resource, name: overflow.file.name, overflowField: overflow.field }
 }
 
@@ -88,7 +92,12 @@ function sendOverflowPointer(overflow: ReadableSendOverflow): string {
 }
 
 export type PreparedSendText =
-  | { readonly ok: true; readonly text: string; readonly overflow?: ReadableSendOverflow }
+  | {
+      readonly ok: true
+      readonly text: string
+      readonly preview?: string
+      readonly overflow?: ReadableSendOverflow
+    }
   | { readonly ok: false; readonly refusal: ResourceRefusal }
 
 export type PreparedSendFiles =
@@ -121,6 +130,21 @@ export function sendFilesSaid(files: SendReceipt['attachments']): string {
       .join('\n')
   )
 }
+
+export function questionPromptForModel(
+  prompt: string,
+  files: SendReceipt['attachments'] = [],
+): string {
+  const overflow = files.find((file) => file.overflowField === 'question')
+  if (overflow === undefined) return prompt + sendFilesSaid(files)
+  const pointer =
+    'path' in overflow
+      ? `The full text is saved at ${overflow.path}: read the file.`
+      : resourcePointer(overflow.resource)
+  return `${prompt} ${pointer}` + sendFilesSaid(files.filter((file) => file !== overflow))
+}
+
+const overflowFilename = (field: string): string => `${field.replaceAll('_', '-')}.txt`
 
 function overflowPreview(text: string): string {
   return previewOf(text.trimStart(), INLINE_TEXT_LIMIT)
@@ -171,12 +195,14 @@ export function answerPreview(
 }
 
 export function keepTasklessSendText(cwd: string, field: string, text: string): PreparedSendText {
-  const kept = writeTasklessFile(cwd, `${field.replaceAll('_', '-')}.txt`, text)
+  const kept = writeTasklessFile(cwd, overflowFilename(field), text)
   if (!kept.ok) return kept
   const overflow = { field, characters: text.length, path: kept.path }
+  const preview = overflowPreview(text)
   return {
     ok: true,
-    text: `${overflowPreview(text)} ${sendOverflowPointer(overflow)}`,
+    text: `${preview} ${sendOverflowPointer(overflow)}`,
+    preview,
     overflow,
   }
 }

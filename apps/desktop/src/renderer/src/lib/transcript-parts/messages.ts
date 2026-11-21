@@ -13,7 +13,7 @@ import type { QueuedMessageEvent } from '../../../../shared/conversation-events'
 import type { QuestionAskedEvent } from '../../../../shared/question-contracts'
 import type { AgentMessageKind, WorkReport } from '../../../../shared/task-contracts'
 import { moveOfferOf, moveOriginOf } from '../../../../shared/move-request'
-import { anActionAsked } from '../../../../shared/questions'
+import { anActionAsked, questionFilesOf } from '../../../../shared/questions'
 import { isAgentMessageKind, isAWorkReport } from '../../../../shared/tasks'
 import { splitQualified } from '../tool-inventory'
 import { argumentExcerpt } from '../argument-excerpt'
@@ -491,7 +491,9 @@ export function questionAsked(event: QuestionAskedEvent): OutgoingQuestion | nul
   if (!isAnId(event.requestId)) return null
   const piece = isAnId(event.piece) ? event.piece : undefined
   const parts = Array.isArray(event.questions) ? event.questions : []
+  const files = questionFilesOf(event.files)
   return {
+    ...(files === undefined ? {} : { files }),
     requestId: event.requestId,
     ...(anActionAsked(event.action) ? { action: event.action } : {}),
     ...(moveOfferOf(event.move) === undefined ? {} : { move: moveOfferOf(event.move) }),

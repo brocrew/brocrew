@@ -1,5 +1,9 @@
 import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
-import type { AskedQuestion, OfferedAnswer } from '../../../shared/question-contracts'
+import type {
+  AskedQuestion,
+  OfferedAnswer,
+  QuestionFiles,
+} from '../../../shared/question-contracts'
 
 import { agentName, type AgentIdentity, type UserInputResponse } from '../../../shared/runtime-ipc'
 
@@ -27,6 +31,7 @@ import {
 import { THIS_CONVERSATION_FIRST } from './from-outside'
 import type { QueueQuestionContext } from './question-queue-contracts'
 import { sinceWords } from './queue-time'
+import { legacyQuestionFiles } from './legacy-question-files'
 
 export type QuestionState =
   | 'asking'
@@ -85,6 +90,7 @@ export interface QuestionPart {
 }
 
 export interface QuestionWords {
+  readonly files?: QuestionFiles
   readonly move?: MoveOffer
   readonly prompt: string
   readonly context: string | null
@@ -102,6 +108,7 @@ export type QueuePress =
   { readonly is: 'sending' } | { readonly is: 'refused'; readonly said: string }
 
 export interface QuestionCardReading {
+  readonly files?: QuestionFiles
   readonly move?: MoveOffer
   readonly movedTo?: MoveReceipt
   readonly requestId: string | null
@@ -148,10 +155,15 @@ function partOf(part: AskedPart, words: string | null): QuestionPart {
   }
 }
 
-export function wordsAsked(asked: AskedQuestion): QuestionWords {
+export function wordsAsked(asked: AskedQuestion, appQuestion = false): QuestionWords {
+  const { text, files } =
+    appQuestion && asked.files === undefined
+      ? legacyQuestionFiles(asked.prompt)
+      : { text: asked.prompt, files: asked.files ?? [] }
   return {
+    ...(files.length === 0 ? {} : { files }),
     ...(asked.move === undefined ? {} : { move: asked.move }),
-    prompt: asked.prompt,
+    prompt: text,
     context: asked.context,
     passedUp: asked.passedUp,
     parts: asked.parts.map((part) => partOf(part, asked.prompt)),
@@ -203,9 +215,13 @@ export function questionInTheConversation(
   const recorded = asked !== null && asked.prompt.trim() !== '' ? asked.prompt : null
   const excerpt =
     recorded === null && tool === 'ask_question' ? argumentExcerpt(item.summary, 'question') : null
-  const words = recorded ?? excerpt?.text ?? null
-  const parts = (asked?.parts ?? []).map((part) => partOf(part, words))
+  const { text: words, files } =
+    recorded !== null && asked?.files === undefined
+      ? legacyQuestionFiles(recorded)
+      : { text: recorded ?? excerpt?.text ?? null, files: asked?.files ?? [] }
+  const parts = (asked?.parts ?? []).map((part) => partOf(part, recorded ?? words))
   return {
+    files,
     requestId: asked?.requestId ?? null,
     ...(asked?.move === undefined ? {} : { move: asked.move }),
     ...(asked?.movedTo === undefined ? {} : { movedTo: asked.movedTo }),
@@ -292,6 +308,7 @@ export function questionOnTheQueue(
     via: plain ? null : row.sentence,
     at: row.since ?? 'no time recorded',
     atTitle: row.blockedSince === null ? sinceWords(row) : fullTime(row.blockedSince),
+    ...(words?.files === undefined ? {} : { files: words.files }),
     words: words === null || words.prompt.trim() === '' ? null : words.prompt,
     wordsAreCut: false,
     wordsMissing: words === null,

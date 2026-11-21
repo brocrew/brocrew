@@ -1,6 +1,10 @@
 import type { MessageSentEvent } from '../../../shared/conversation-events'
 import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
-import type { ActionAsked, RequestRoutedEvent } from '../../../shared/question-contracts'
+import type {
+  ActionAsked,
+  QuestionFiles,
+  RequestRoutedEvent,
+} from '../../../shared/question-contracts'
 import type { RefusalTold } from '../../../shared/refusals'
 import type {
   PermissionDecision,
@@ -287,6 +291,7 @@ export interface OutgoingQuestionPart {
  * stops offering an answer once one was given.
  */
 export interface OutgoingQuestion {
+  files?: QuestionFiles
   action?: ActionAsked
   move?: MoveOffer
   movedTo?: MoveReceipt

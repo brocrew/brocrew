@@ -43,11 +43,14 @@ import {
 } from '../lib/question-card'
 import { useClientMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 import MarkdownWords from './MarkdownWords.vue'
+import FileRows from './FileRows.vue'
 
 const props = defineProps<{
   reading: QuestionCardReading
   /** The outer exchange heading already names the recipient. */
   withoutRecipient?: boolean
+  withoutFiles?: boolean
+  canOpenDocument?: boolean
   /**
    * ⚑ **Where the typed words and the in-flight mark live** — the session record's draft in the
    * conversation (`TranscriptView.draftFor`), so they outlive a remount. Absent: the card keeps its own.
@@ -71,6 +74,7 @@ const emit = defineEmits<{
   answer: [response: UserInputResponse]
   move: [decision: 'move' | 'here']
   openConversation: [sessionId: string]
+  openDocument: [resourceId: string]
 }>()
 
 const ownDraft = reactive<RequestDraft>({
@@ -258,6 +262,13 @@ watch(
     >
       <MarkdownWords :text="props.reading.words" :paths="props.paths ?? queuePaths" />
     </div>
+    <FileRows
+      v-if="!withoutFiles"
+      :files="props.reading.files ?? []"
+      :can-open="canOpenDocument ?? false"
+      :paths="props.paths ?? queuePaths"
+      @open-document="emit('openDocument', $event)"
+    />
     <!-- ⛔ A cut body SAYS it was cut, in words and outside the words' box (`678`). -->
     <p v-if="props.reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
     <!-- ⚑ What the conversation that passed it up added — beside the words, never instead. -->

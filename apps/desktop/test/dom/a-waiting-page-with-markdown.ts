@@ -76,6 +76,11 @@ export async function aWaitingPageWithMarkdown(
   long = false,
   relativeLink = false,
   prompt = MARKDOWN_PROMPT,
+  fixture?: {
+    asked?: AskedQuestion
+    action?: NonNullable<PersonsQuestion['action']>
+    openFile: (resource: string) => void
+  },
 ) {
   const words: AskedQuestion = {
     prompt: relativeLink
@@ -94,11 +99,11 @@ export async function aWaitingPageWithMarkdown(
       },
     ],
   }
-  const app = question('req_app', 'this-app', words)
+  const app = question('req_app', 'this-app', fixture?.asked ?? words)
   const provider = question('req_provider', 'the-provider', words)
   const todo = {
     ...question('req_todo', 'this-app', null),
-    action: {
+    action: fixture?.action ?? {
       text: relativeLink
         ? 'Read [the draft](notes.md).'
         : '**Check the preview**\n\n- Read `notes.md`\n- Open [the preview](https://example.test/preview)\n\nSee /work/sample/notes.md.' +
@@ -177,7 +182,7 @@ export async function aWaitingPageWithMarkdown(
       open: () => {},
       answer: async () => null,
       answerTodo: async () => null,
-      openFile: () => {},
+      openFile: fixture?.openFile ?? (() => {}),
     },
   )
   const m = mount(WaitingOnYou, { needsYou: [], clock: MARKDOWN_NOW }, { width, height })

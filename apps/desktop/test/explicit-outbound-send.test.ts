@@ -941,8 +941,14 @@ describe('explicit outbound sends', () => {
     const action = await send('request_action', { piece: task.label, action: fullAction })
     expect(action.text).toContain('The to-do is under Waiting on you')
     expect(action.text).toContain('the full text is attached')
-    expect(action.structured?.attachments).toEqual([
+    const files = action.structured?.attachments
+    expect(files).toEqual([
       expect.objectContaining({ resource: expect.any(String), name: 'action.txt' }),
     ])
+    const actionId = action.structured?.question
+    if (typeof actionId !== 'string') throw new Error('The to-do has no recorded id.')
+    const recorded = world.store.questionsRaisedIn(sender).get(actionId)
+    expect(recorded?.prompt).toBe(fullAction.slice(0, 2000))
+    expect(recorded?.action?.files).toEqual(files)
   })
 })

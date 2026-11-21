@@ -154,6 +154,7 @@ const heading = computed(() => {
       >
         <slot v-if="!exchange || revealed" />
       </div>
+      <slot name="after" />
     </article>
   </div>
 </template>
