@@ -172,7 +172,9 @@ class ProfilePastWorkSearch {
       file: this.source.name,
       profile: identity,
       externalVersion: Number(this.source.pragma('data_version', { simple: true })),
-      versions: sessions.map((row) => [row.id, row.version] as const),
+      versions: sessions.map((row) =>
+        recent === undefined ? [row.id, row.version] as const : [row.id, row.version, row.at] as const,
+      ),
       next,
       ...(recent === undefined ? {} : { recent }),
     }
@@ -249,11 +251,12 @@ class ProfilePastWorkSearch {
               sessions: db
                 .prepare(
                   `
-          SELECT s.id, s.updated_at AS at, json_extract(page.value, '$[1]') AS version
+          SELECT s.id, coalesce(json_extract(page.value, '$[2]'), s.updated_at) AS at,
+            json_extract(page.value, '$[1]') AS version
           FROM json_each(@versions) page
           JOIN provider_session s ON s.id = json_extract(page.value, '$[0]')
           WHERE (@profile IS NULL OR s.agent_identity_id = @profile)
-          ORDER BY page.key
+          ${recent === undefined ? '' : 'ORDER BY page.key'}
         `,
                 )
                 .all({ versions: JSON.stringify(revision.versions), profile }) as Source[],
@@ -553,6 +556,7 @@ class ProfilePastWorkSearch {
       )
       .iterate(session.id)
     for (const value of resources) {
+      if (stopAt !== Infinity && performance.now() >= stopAt) throw PREVIEW_DEADLINE
       const resource = value as { work_id: string; name: string; owner_session_id: string }
       add(
         resource.owner_session_id === session.id ? resource.work_id : conversationPiece,

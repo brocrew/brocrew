@@ -136,7 +136,7 @@ export interface PastWorkSource {
   readonly file: string
   readonly profile: string | null
   readonly externalVersion: number
-  readonly versions: readonly (readonly [string, number])[]
+  readonly versions: readonly (readonly [string, number, number?])[]
   readonly next: string | null
   readonly transcript?: PastWorkTranscriptScope
   readonly recent?: { readonly after: PastWorkRecentPoint | null; readonly preview?: true }

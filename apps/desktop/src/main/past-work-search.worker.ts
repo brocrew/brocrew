@@ -19,7 +19,7 @@ const request = z
         profile: z.string().min(1).max(200).nullable(),
         externalVersion: z.number().int(),
         versions: z
-          .array(z.tuple([z.string().max(200), z.number().int()]))
+          .array(z.tuple([z.string().max(200), z.number().int(), z.number().finite().optional()]))
           .max(WORK_SEARCH_BOUNDS.candidates),
         next: z.string().min(1).max(200).nullable(),
         transcript: pastWorkTranscriptScope.optional(),
