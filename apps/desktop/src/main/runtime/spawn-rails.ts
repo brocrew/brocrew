@@ -588,8 +588,8 @@ export const takeOnWorkRequestSchema = giveRequestSchema
  *
  * ⚑ **Read after the brief was delivered**, from the running conversation or its row, so a start
  * that named the provider's default reports the name it sent. ⚑ `how` is what the give did:
- * `started` it, `switched` its pair from this piece on, left it `unchanged`, kept the pair a person
- * chose for it (F1), or reached a conversation that took its place on `another-provider`, whose
+ * `started` it, `switched` its pair from this piece on, left it `unchanged`, or reached a
+ * conversation that took its place on `another-provider`, whose
  * list never judged the choice. ⚑ `from` says, for a start, where its MODEL came from — R1's order.
  */
 export interface WhatItRunsOn {
@@ -600,7 +600,7 @@ export interface WhatItRunsOn {
   readonly effort: string | null
   /** ⚑ R5 — `true` only when its provider last reported running that very effort; else asked for. */
   readonly effortReported: boolean
-  readonly how: 'started' | 'switched' | 'unchanged' | 'a-person-chose-it' | 'another-provider'
+  readonly how: 'started' | 'switched' | 'unchanged' | 'another-provider'
   readonly from: WhereItCameFrom | null
   /** ⚑ What the give itself named, so the answer claims no half it did not. */
   readonly named: { readonly model: boolean; readonly effort: boolean }

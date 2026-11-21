@@ -8471,14 +8471,11 @@ export class RuntimeHost implements LiveHost {
     const head = queue.waiting[0]
     if (head === undefined || head.messageId === null) return
     if (slot !== undefined && (session === null || !this.freeForItsNextPiece(session))) return
-    // ⚑ The pair its give asked for, else its agent's own: never the one a caller before it asked.
-    let pair = head.asked ?? this.theServicesOwnPair(conversation)
+    // An omitted choice keeps the person's pair; an explicit Give replaces it.
+    const personChose = this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt != null
+    let pair = head.asked ?? (personChose ? null : this.theServicesOwnPair(conversation))
     let unread: string | null = null
-    if (
-      pair === null &&
-      session !== null &&
-      this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt == null
-    ) {
+    if (pair === null && session !== null && !personChose) {
       // ⚑ Its agent names none: the pair it starts on is read first, and nothing is placed until
       // it is. A read is used only by the life and the piece it was read for.
       if (read === undefined || read.life !== session || read.piece !== head.piece) {
@@ -8531,7 +8528,7 @@ export class RuntimeHost implements LiveHost {
       this.heldAtAStop.set(conversation, [...(this.heldAtAStop.get(conversation) ?? []), brief])
       if (pair !== null) this.switchedFor(conversation, pair)
       // ⚑ With none named, its start reads the pair its agent starts on: none a caller before asked.
-      else if (this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt == null) {
+      else if (!personChose) {
         this.thePairSetOn(conversation, null)
       }
       this.startTheServiceFor(conversation, brief.id)
@@ -21063,10 +21060,7 @@ export class RuntimeHost implements LiveHost {
           () => this.deps.store.setModel(sessionId, named.model),
           'provider_session',
         )
-        // 🔴 **682 · `R31c` — a PERSON set this conversation's model**, and since D-042 that keeps it
-        // when a give names another (F1). ⚑ This door is reached only from a person's window
-        // (`ipc.ts` `setSessionSetting`; no agent tool calls it), so the stamp's name
-        // is a claim this line keeps. ⛔ After the write, and only once the provider took it.
+        // Record the person's choice after the provider accepted it.
         this.record(
           session,
           () => this.deps.store.aPersonSetItsModelOrEffort(sessionId, this.now()),
@@ -24006,9 +24000,8 @@ export class RuntimeHost implements LiveHost {
    * the reservation. ⚑ **A start runs on the pair judged; a conversation it has SWITCHES from this
    * piece on** — applied as the brief is handed over ({@link switchedFor}), and
    * taken back if the brief then does not arrive — and the provider never changes: ⛔ a conversation
-   * that took its place on ANOTHER provider takes none of it. ⛔ **A conversation whose model or
-   * effort a PERSON chose keeps both** (F1, held for the PM), and the answer says what it runs
-   * instead. ⚑ A give never writes an agent's default (R2).
+   * that took its place on ANOTHER provider takes none of it. A give never writes an agent's
+   * default (R2).
    */
   /**
    * 🔴 **W4.189 · the grants a conversation's open pieces hold** — each piece whose give granted a
@@ -24302,17 +24295,12 @@ export class RuntimeHost implements LiveHost {
    * 🔴 **D-042 · R4 — a give's choice, applied to the conversation the brief is handed to** — as it
    * is handed over, so it holds from this piece on: the running handle asks for it from its next
    * turn, and the row records it for every later start. ⚑ **A pair it already runs is `unchanged`**,
-   * asked first, so a give naming what a person chose is not told its choice went unused. ⛔ **A
-   * conversation whose model or effort a PERSON chose keeps both** (F1). ⚑ Its caller asks the
-   * provider first: the choice was judged against the list of the provider the brief was meant for.
+   * asked first. The choice was judged against the list of the provider the brief was meant for.
    */
   private switchedFor(conversation: string, choice: ModelAndEffort): WhatItRunsOn['how'] {
     const now = this.thePairItRunsOn(conversation)
     if (now !== null && sameModel(now.model, choice.model) && now.effort === choice.effort) {
       return 'unchanged'
-    }
-    if (this.deps.store.whatItRunsOn(conversation)?.aPersonChoseItAt != null) {
-      return 'a-person-chose-it'
     }
     this.thePairSetOn(conversation, choice)
     return 'switched'

@@ -1,7 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -12,71 +12,25 @@ import {
   type ProviderRuntimeContext,
   type ResumeOptions,
   type SessionRef,
-  type StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { waitFor } from './lib/scripted-codex-host'
+import { homesUnder } from './helpers/scratch-host'
 
-/**
- * # 🔴 D-042 · F1 — a give naming another pair keeps the one a PERSON set live
- *
- * ⚑ **682's `R31c` stamp, where it still decides since D-042**: a wake replays every row (R1), so
- * the stamp a person's live change writes (`aPersonSetItsModelOrEffort`, the window's
- * `setSessionSetting` door) matters at ONE place — a give to a conversation its giver already has,
- * naming another model and effort (`give_work`'s `model` / `effort`, D-042 · R4). There
- * `RuntimeHost.switchedFor` answers `a-person-chose-it` and leaves the pair alone, and the give's
- * answer says so (`whatItRunsOnSaid`'s *"a person chose that for this conversation"*).
- *
- * ⚑ **Mutation row `682` M27** deletes that check; the wake tests could no longer see it, since a
- * wake replays the row whether a person stamped it or not. This file is its killer: the same give,
- * once over a person's live pair and once over none (the CONTROL), and the two must differ — kept
- * and said kept, against switched and said switched.
- *
- * ⚑ Harness: `a-persons-choice-holds-the-whole-launch.test.ts`' — each HOME answers its own list,
- * a PM on Claude in `auto`, the worker given its first piece by the PM's give; and
- * `a-spawn-reaches-the-provider-with-a-persons-model.test.ts`' switch — the first piece taken back
- * (a helper still holding stalled work refuses a give: `its-work-has-stalled`), then a second give
- * naming the pair.
- */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  readonly messages: RuntimeEventMessage[] = []
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 const levels = (...ids: string[]): { id: string; label: string }[] =>
   ids.map((id) => ({ id, label: id }))
 
-/**
- * ⚑ Two listed models: `wide` offers low and high, `narrow` low, medium and high. ⚑ `wide` names
- * `low` as its own default, so the person's pick of `wide` lands on `low` whichever way the door
- * resolves the effort — the one it runs at (`low`, which `wide` offers) or the row's default.
- */
 const WIDE: ModelChoice = {
   id: 'wide',
   label: 'Wide',
@@ -92,42 +46,11 @@ const NARROW: ModelChoice = {
 }
 
 interface World {
-  started: { provider: Provider; options: StartOptions }[]
+  handles: FakeSessionHandle[]
   resumed: { provider: Provider; options: ResumeOptions }[]
-  listed: string[]
-  lists: Record<string, ModelChoice[] | Error>
 }
 
-/** `394`'s double, keeping every start and resume, answering each HOME its own list. */
-class HomeListDouble extends ProviderDouble {
-  constructor(
-    provider: Provider,
-    handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-    gate: ResumeGate,
-    private readonly world: World,
-  ) {
-    super(provider, handles, sessions, gate)
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    this.world.started.push({ provider: this.provider, options })
-    return super.start(options)
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    this.world.resumed.push({ provider: this.provider, options })
-    return super.resume(ref, options)
-  }
-  override async listModels(context: ProviderRuntimeContext): Promise<ModelChoice[]> {
-    await super.listModels(context)
-    const profile = basename(dirname(context.providerHome))
-    this.world.listed.push(`${profile}/${this.provider}`)
-    const answer = this.world.lists[`${profile}/${this.provider}`] ?? this.world.lists['*'] ?? []
-    if (answer instanceof Error) throw answer
-    return answer
-  }
-}
-
-describe('D-042 · F1 — a give naming another pair keeps the one a person set live (682 M27)', () => {
+describe('a give applies named settings after a person choice', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -136,7 +59,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
   let counter: number
   let clock: number
   let world: World
-  const window = new Window('webContents:1')
+  const window = new RecordingSink('webContents:1')
   const tick = (): number => clock++
   const homes = (): string => join(userData, 'provider-homes')
 
@@ -149,28 +72,32 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     store = createSessionStore(db, tick)
     counter = 0
     world = {
-      started: [],
+      handles: [],
       resumed: [],
-      listed: [],
-      // ⚑ The worker's own home lists BOTH models, so the person's pick and the give's are each a
-      // listed pair, and neither is refused for being unknown.
-      lists: { 'worker/claude': [WIDE, NARROW], '*': [NARROW] },
     }
-    const handles: FakeSessionHandle[] = []
+    const handles = world.handles
     const issued = new FakeProviderSessions()
     const gate = anOpenGate()
+    class ListedChoices extends ProviderDouble {
+      override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
+        world.resumed.push({ provider: this.provider, options })
+        return super.resume(ref, options)
+      }
+      override async listModels(context: ProviderRuntimeContext): Promise<ModelChoice[]> {
+        await super.listModels(context)
+        return [WIDE, NARROW]
+      }
+    }
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) =>
-        new HomeListDouble(provider, handles, issued, gate, world),
+      ...homesUnder(() => userData),
+      createRuntime: (provider: Provider) => new ListedChoices(provider, handles, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(homes(), profileId ?? 'brobot', provider)
         mkdirSync(home, { recursive: true })
         return home
       },
-      providerHomePath: (provider: Provider) => join(homes(), provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       listProfiles: () => [
         'brobot',
         ...(existsSync(homes()) ? readdirSync(homes()).filter((one) => one !== 'brobot') : []),
@@ -218,15 +145,8 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
   const structured = (answer: AgentToolAnswer): Record<string, unknown> =>
     answer.structured as Record<string, unknown>
 
-  /**
-   * ⚑ A worker the PM's give started on `narrow` at `low`, its brief's turn over; a person then
-   * TAKES IT OVER in their window and — when `personPicks` — sets its model live through the
-   * window's door (`setSessionSetting`, the path that stamps the row); the person closes it; the PM
-   * takes its stalled first piece back, which wakes the worker to hear so. ⚑ The control walks the
-   * identical path and changes nothing in the window.
-   */
   const aWorkerReadyForMore = async (
-    personPicks: boolean,
+    personPicks: 'model' | 'effort' | 'both' | false,
   ): Promise<{ pm: string; worker: string }> => {
     expect(
       store.createAgentIdentity(
@@ -256,22 +176,24 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     await waitFor(() => turnsIn(worker) > 0, 'the first piece’s turn to end')
     expect(rowOf(worker)).toMatchObject({ model: 'narrow', reasoning_effort: 'low', setLive: null })
 
-    // ⚑ A person takes it over in their window — in both arms, so the two differ by the pick alone.
     host.claimSession(worker, window)
-    if (personPicks) {
-      // 🔴 **The window's live door** — `wide` keeps the `low` it runs at, since `wide` offers it.
+    if (personPicks === 'model' || personPicks === 'both') {
       await executeRuntimeCommand(host, window, {
         kind: 'setSessionSetting',
         sessionId: worker,
         body: { kind: 'model', value: 'wide' },
       })
     }
+    if (personPicks === 'effort' || personPicks === 'both') {
+      await executeRuntimeCommand(host, window, {
+        kind: 'setSessionSetting',
+        sessionId: worker,
+        body: { kind: 'reasoningEffort', value: 'high' },
+      })
+    }
     await host.close(worker, window)
     await waitFor(() => runningOf(worker) === 'not-running', 'the worker to be over')
 
-    // ⚑ Its first piece taken back: a give to a helper still holding stalled work is refused
-    // (`its-work-has-stalled`). The take-back notice waits for its next input, and a message is
-    // that input: it starts the helper, on its row's pair, and carries the notice.
     const turns = turnsIn(worker)
     const resumed = world.resumed.length
     const took = await callOn(pm, 'withdraw_task', { piece: first })
@@ -286,49 +208,93 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     return { pm, worker }
   }
 
-  /** ⚑ The SAME give in both arms: more work, naming `narrow` at `high` — another listed pair. */
-  const giveMoreNaming = async (pm: string, worker: string): Promise<AgentToolAnswer> => {
+  const giveMoreNaming = async (
+    pm: string,
+    worker: string,
+    choice: Record<string, string> = { model: 'narrow', effort: 'high' },
+  ): Promise<AgentToolAnswer> => {
     const answered = await callOn(pm, 'give_work', {
       to: worker,
       definition_of_done: 'The requested result and its checks are recorded.',
       profile: 'worker',
       title: 'and then',
       brief: 'and then',
-      model: 'narrow',
-      effort: 'high',
+      ...choice,
     })
     expect(structured(answered).outcome, answered.text).toBe('ok')
-    // ⚑ The conversation it HAS: no start, so the pair is the give's to switch or to leave.
     expect(structured(answered).started, answered.text).toBe(false)
     return answered
   }
 
-  it('🔴 a pair a PERSON set live is KEPT by a give naming another — and the answer says a person chose it', async () => {
-    const { pm, worker } = await aWorkerReadyForMore(true)
-    // ⚑ The premise: the person's pick is on the row, and stamped as theirs.
-    expect(rowOf(worker)).toMatchObject({ model: 'wide', reasoning_effort: 'low' })
-    expect(rowOf(worker).setLive).toEqual(expect.any(Number))
-
-    const answered = await giveMoreNaming(pm, worker)
-
-    // ⛔ Not switched: the answer names the person's pair, and why the named one went unused.
-    expect(structured(answered).runs_on).toEqual({ model: 'wide', effort: 'low' })
-    expect(structured(answered).receipt).toMatchObject({ recipient: { id: worker } })
-    // ⛔ …and the recorded pair every later start replays is the person's, still stamped.
-    expect(rowOf(worker)).toMatchObject({ model: 'wide', reasoning_effort: 'low' })
-    expect(rowOf(worker).setLive).toEqual(expect.any(Number))
+  describe.each(['model', 'effort', 'both'] as const)('after a person sets %s', (prior) => {
+    it.each(['model', 'effort', 'both', 'omitted'] as const)(
+      'applies requested %s and retains provenance',
+      async (requested) => {
+        const { pm, worker } = await aWorkerReadyForMore(prior)
+        const was = rowOf(worker)
+        expect(was.setLive).toEqual(expect.any(Number))
+        const choice = {
+          ...(requested === 'model' || requested === 'both'
+            ? { model: was.model === 'wide' ? 'narrow' : 'wide' }
+            : {}),
+          ...(requested === 'effort' || requested === 'both'
+            ? { effort: was.reasoning_effort === 'high' ? 'low' : 'high' }
+            : {}),
+        }
+        const turns = turnsIn(worker)
+        const answered = await giveMoreNaming(pm, worker, choice)
+        const pair = {
+          model: choice.model ?? was.model,
+          effort: choice.effort ?? was.reasoning_effort,
+        }
+        expect(structured(answered).runs_on).toEqual(pair)
+        expect(structured(answered).receipt).toMatchObject({ recipient: { id: worker } })
+        expect(rowOf(worker)).toEqual({
+          model: pair.model,
+          reasoning_effort: pair.effort,
+          setLive: was.setLive,
+        })
+        expect(store.recordedOne(worker)?.provider).toBe('claude')
+        await waitFor(() => turnsIn(worker) > turns, 'the new brief to finish its turn')
+        expect(world.handles.at(-1)?.settings).toMatchObject({
+          model: { requested: pair.model, effective: pair.model },
+          reasoningEffort: { requested: pair.effort, effective: pair.effort },
+        })
+      },
+    )
   })
+
+  it.each([
+    [{ model: 'missing' }, 'model-not-in-the-list'],
+    [{ effort: 'missing' }, 'effort-not-offered'],
+    [{ provider: 'codex', model: 'narrow' }, 'its-provider-is-fixed'],
+  ] as const)(
+    'refuses invalid choices %j without changing person settings',
+    async (choice, rail) => {
+      const { pm, worker } = await aWorkerReadyForMore('both')
+      const was = rowOf(worker)
+      const answered = await callOn(pm, 'give_work', {
+        to: worker,
+        profile: 'worker',
+        title: 'invalid',
+        brief: 'invalid',
+        definition_of_done: 'Done.',
+        ...choice,
+      })
+      expect(structured(answered)).toMatchObject({ outcome: 'refused', rail })
+      expect(rowOf(worker)).toEqual(was)
+      expect(store.recordedOne(worker)?.provider).toBe('claude')
+    },
+  )
 
   it('⛔ CONTROL · the identical give over a pair NOBODY set live switches it — from this piece on', async () => {
     const { pm, worker } = await aWorkerReadyForMore(false)
-    // ⚑ The premise: the give's own pair, and no stamp.
     expect(rowOf(worker)).toMatchObject({ model: 'narrow', reasoning_effort: 'low', setLive: null })
 
     const answered = await giveMoreNaming(pm, worker)
 
     expect(structured(answered).runs_on).toEqual({ model: 'narrow', effort: 'high' })
     expect(structured(answered).receipt).toMatchObject({ recipient: { id: worker } })
-    // ⚑ …and the row every later start replays holds the give's pair.
     expect(rowOf(worker)).toMatchObject({
       model: 'narrow',
       reasoning_effort: 'high',

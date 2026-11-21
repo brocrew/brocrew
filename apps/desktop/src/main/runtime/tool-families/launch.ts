@@ -46,7 +46,7 @@ import { z } from 'zod'
  * **Rendered from {@link WhatItRunsOn}** — read off the conversation after the brief was handed
  * over — and never asserted about the mechanism (standing rule 8.2). A start says where its model
  * came from (R1's order); a give whose choice was not used says which half of what it named, and
- * why (F1, or a conversation that took its place on another provider). An effort its provider has
+ * why (a conversation that took its place on another provider). An effort its provider has
  * not reported is said as *requested* (R5), as `get_agent_status` says it. `''` only for a
  * conversation that has named no pair yet.
  */
@@ -72,8 +72,6 @@ export function whatItRunsOnSaid(runsOn: WhatItRunsOn): string {
       return `It now runs ${pair}, from this piece on.`
     case 'unchanged':
       return `It runs ${pair}.`
-    case 'a-person-chose-it':
-      return `It keeps running ${pair}: a person chose that for this conversation, ${unused}.`
     case 'another-provider':
       return `It runs ${pair}: the conversation that took its place runs on ${PROVIDER_NAME[runsOn.provider]}, ${unused}.`
   }
@@ -190,7 +188,7 @@ export function createGiveWorkTool(
   return {
     name: 'give_work',
     handlerOwnsMissingInput: true,
-    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. A service has one conversation: name its profile and leave to out. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with inputs; the brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. If a person set either, it keeps both. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
+    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. A service has one conversation: name its profile and leave to out. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with inputs; the brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
     /**
      * **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
      *
@@ -253,7 +251,7 @@ export function createGiveWorkTool(
           .string()
           .optional()
           .describe(
-            "The model from this task on, from the list a person keeps for its provider (an alias such as opus stands for the model it points at). Leave it out: a new conversation starts on the profile's default, an existing one keeps what it runs on. If the person set either model or effort, both are kept." +
+            "The model from this task on, from the list a person keeps for its provider (an alias such as opus stands for the model it points at). Leave it out: a new conversation starts on the profile's default, an existing one keeps what it runs on." +
               theModels,
           ),
         effort: z

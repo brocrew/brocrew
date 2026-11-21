@@ -257,15 +257,6 @@ describe('677 §1b · the launch SAYS what it runs on — `give_work`’s answer
     expect(said({ how: 'unchanged', from: null, model: 'haiku', effort: null })).toBe(
       'It runs on “haiku”.',
     )
-    // ⛔ **F1 — a person's pair is kept**, and the answer says which half of the give went unused.
-    expect(said({ how: 'a-person-chose-it', from: null, named: NAMED_BOTH })).toBe(
-      'It keeps running on “opus” at high effort (requested): a person chose that for this conversation, so the model and effort you named were not used.',
-    )
-    expect(
-      said({ how: 'a-person-chose-it', from: null, named: { model: false, effort: true } }),
-    ).toBe(
-      'It keeps running on “opus” at high effort (requested): a person chose that for this conversation, so the effort you named was not used.',
-    )
     // ⚑ …and a replacement on another provider, whose list never judged the choice.
     expect(
       said({
