@@ -341,6 +341,9 @@ describe('the list says when it is a window, and only then (104 §1)', () => {
 
 describe('a readable row is the target, and carries no action-column button (104 §2)', () => {
   const rowOf = (m: Mounted, id: string): HTMLElement => m.q(`library-row-${id}`)
+  // The shared row's title, and its folder: the first part after the provider.
+  const titleOf = (r: HTMLElement) => r.querySelector<HTMLElement>('.rail-copy strong')!
+  const folderOf = (r: HTMLElement) => r.querySelector<HTMLElement>('.rail-standing-tail > span')!
 
   it('a current file can be rebuilt, archived or deleted, and the row is the read target', async () => {
     const m = await open(page())
@@ -368,7 +371,7 @@ describe('a readable row is the target, and carries no action-column button (104
     const m = await open(page())
     const row = rowOf(m, 'ours::current')
     // The title, which is as far from the cue as this row gets.
-    ;(row.querySelector('.r-title') as HTMLElement).click()
+    titleOf(row).click()
     expect(m.opened.map((e) => e.id)).toEqual(['ours::current'])
   })
 
@@ -380,7 +383,7 @@ describe('a readable row is the target, and carries no action-column button (104
       '[data-cy=library-archive-ours::nothing]',
       '[data-cy=library-delete-ours::nothing]',
     ])
-    ;(row.querySelector('.r-title') as HTMLElement).click()
+    titleOf(row).click()
     expect(m.opened).toEqual([])
     // The control: a row this app holds no record of offers no Delete.
     expect(m.all('library-delete-home::unimported')).toEqual([])
@@ -415,7 +418,7 @@ describe('a readable row is the target, and carries no action-column button (104
 
   it('a click that ends a text selection is a copy, not a navigation', async () => {
     const m = await open(page())
-    const cwd = rowOf(m, 'ours::current').querySelector('.r-cwd') as HTMLElement
+    const cwd = folderOf(rowOf(m, 'ours::current'))
     const range = document.createRange()
     range.selectNodeContents(cwd)
     const selection = window.getSelection()!
@@ -439,7 +442,7 @@ describe('a readable row is the target, and carries no action-column button (104
      * stayed highlighted — silently, with nothing on screen to explain it.
      */
     const elsewhere = document.createRange()
-    elsewhere.selectNodeContents(rowOf(m, 'home::stale').querySelector('.r-cwd')!)
+    elsewhere.selectNodeContents(folderOf(rowOf(m, 'home::stale')))
     selection.removeAllRanges()
     selection.addRange(elsewhere)
     expect(selection.toString().trim()).not.toBe('')
@@ -562,13 +565,12 @@ describe('a readable row is the target, and carries no action-column button (104
 
   it('the chip is rendered, once per row, and “only here” is not painted as a caution', async () => {
     const m = await open(page())
-    for (const e of ZOO) {
-      expect(rowOf(m, e.id).querySelectorAll('.chip')).toHaveLength(1)
-    }
-    expect(rowOf(m, 'only::here').querySelector('.chip')!.textContent!.trim()).toBe('only here')
+    for (const e of ZOO) expect(rowOf(m, e.id).querySelectorAll('.row-mark')).toHaveLength(1)
+    const only = rowOf(m, 'only::here').querySelector('.row-mark')!
+    expect(only.textContent!.trim()).toBe('only here')
     // 104's rule: it is the sweep's value, not a warning. The amber ramp is reserved for `behind`.
     const amber = getComputedStyle(m.q('library-behind-home::stale').querySelector('.txt')!).color
-    expect(getComputedStyle(rowOf(m, 'only::here').querySelector('.chip')!).color).not.toBe(amber)
+    expect(getComputedStyle(only).color).not.toBe(amber)
   })
 
   it('the row that offers nothing says why it cannot be carried on — and no other row does', async () => {
@@ -933,13 +935,13 @@ describe('every state the design draws renders, at three widths (104 §3)', () =
     // The property, stated positively — the sweep above says "nothing sticks out", which a row that
     // had simply been deleted would also satisfy. At 300px the second line's last part sits BELOW
     // its first; at 1095 they are on one line. Both halves, so neither can pass alone.
-    // ⚠️ Bands, not `top` values. The line mixes a monospace `cwd` with sans asides and sits on a
-    // shared BASELINE, so three parts of one visual line legitimately have three different `top`s.
+    // ⚠️ Bands, not `top` values. The parts of the line sit on a shared BASELINE, so parts of one
+    // visual line can legitimately have different `top`s.
     // "Wrapped" is the only unambiguous reading: the last part starts below the first part ends.
     const measure = async (width: number): Promise<{ wrapped: boolean; count: number }> => {
       const m = await open(page(), { width })
-      const line = m.q('library-row-home::unimported').querySelector('.r-line2')!
-      const parts = [...line.children] as HTMLElement[]
+      const line = m.q('library-row-home::unimported').querySelector('.rail-copy > small')!
+      const parts = [...line.querySelectorAll<HTMLElement>(':scope > span > span')]
       const first = parts[0]!.getBoundingClientRect()
       const last = parts.at(-1)!.getBoundingClientRect()
       const out = { wrapped: last.top >= first.bottom, count: parts.length }

@@ -3,7 +3,8 @@ import type {
   HeldWork,
   WhatEachConversationIsWaitingOn,
 } from '../src/shared/task-contracts'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { answerTheCatalogue } from './dom/answered-catalogue'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
@@ -26,6 +27,9 @@ import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import type { CreatedSession } from '../src/shared/runtime-ipc'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
+
+// The window names providers as the catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 const NOW = 1_800_000_000_000
 
@@ -220,8 +224,8 @@ describe('the rail and the header draw it', () => {
 
   it('the rail rows tell the finished agent from the stuck one — and without the work, they did not', async () => {
     const told = await rail(THREE)
-    expect(told).toContain('claude · answered (done)')
-    expect(told).toContain('claude · not being worked on')
+    expect(told).toContain('Claude · answered (done)')
+    expect(told).toContain('Claude · not being worked on')
     expect(told).toContain('data-standing="answered"')
     expect(told).toContain('data-standing="stalled"')
     expect(told).toContain('data-standing="idle"')
@@ -229,7 +233,7 @@ describe('the rail and the header draw it', () => {
     expect(untold).not.toContain('answered (done)')
     expect(untold).not.toContain('not being worked on')
     expect(untold.split('data-standing="idle"').length - 1).toBe(3)
-    expect(untold).toContain('claude · idle')
+    expect(untold).toContain('Claude · idle')
   })
 
   const pane = (heldWork?: HeldWork): Promise<string> =>

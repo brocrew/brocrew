@@ -504,8 +504,8 @@ describe('the Current task box belongs to the newest piece still open', () => {
 
 /* ------------------------------------------------------------------ the chips */
 
-describe('every chip wears the dot of the plate beside it', () => {
-  it('🔴 each chip’s dot is the colour of the plate beside it — the rail’s reading, not the band’s own', async () => {
+describe('every chip says the state of the plate beside it', () => {
+  it('🔴 each chip’s plate and word are the rail’s reading, not the band’s own', async () => {
     const m = show(
       answer({
         children: walk([spawn('sess_a'), spawn('sess_b')], 'every-conversation-this-one-spawned'),
@@ -518,20 +518,38 @@ describe('every chip wears the dot of the plate beside it', () => {
     )
     await drawnReady()
     // ⚑ With no screen above the drawer a chip is no button (`f1fa1e2e`): found by its conversation.
-    const dotOf = (conversation: string): HTMLElement => {
-      const dot = m
+    const chipOf = (conversation: string): HTMLElement => {
+      const chip = m
         .q('cast-children-strip')
-        .querySelector<HTMLElement>(`.agent-chip[data-conversation="${conversation}"] .chip-dot`)
-      expect(dot, `no dot on ${conversation}'s chip`).not.toBeNull()
-      expect(visible(dot!)).toBe(true)
-      return dot!
+        .querySelector<HTMLElement>(`.agent-chip[data-conversation="${conversation}"]`)
+      expect(chip, `no chip for ${conversation}`).not.toBeNull()
+      return chip!
     }
-    const a = paintedBy(dotOf('sess_a'))
-    const b = paintedBy(dotOf('sess_b'))
-    expect(a).toBe(fillOf(m.host, '--waiting'))
-    expect(b).toBe(fillOf(m.host, '--accent'))
-    // ⚑ Two chips, two colours: a dot that ignored the rail would give both the same one.
-    expect(a).not.toBe(b)
+    // The chip has no dot of its own: its plate says the state, and its word is the rail's word.
+    const plateOf = (conversation: string): HTMLElement => {
+      const plate = chipOf(conversation).querySelector<HTMLElement>('[data-cy="agent-state"]')
+      expect(plate, `no plate on ${conversation}'s chip`).not.toBeNull()
+      expect(visible(plate!)).toBe(true)
+      return plate!
+    }
+    const wordOf = (conversation: string): string | null => {
+      const word = chipOf(conversation).querySelector<HTMLElement>(
+        `[data-cy="cast-tile-word-${conversation}"]`,
+      )
+      expect(word, `no word on ${conversation}'s chip`).not.toBeNull()
+      expect(visible(word!)).toBe(true)
+      return read(word!)
+    }
+    expect(chipOf('sess_a').querySelector('.chip-dot')).toBeNull()
+    expect(plateOf('sess_a').getAttribute('data-needing')).toBe('permission')
+    expect(plateOf('sess_b').getAttribute('data-needing')).toBeNull()
+    expect(plateOf('sess_b').getAttribute('data-doing')).toBe('idle')
+    expect(wordOf('sess_a')).toBe('Waiting')
+    expect(wordOf('sess_b')).toBe('Idle')
+    // ⚑ Two chips, two states: a chip that ignored the rail would draw both the same.
+    expect(plateOf('sess_a').getAttribute('data-needing')).not.toBe(
+      plateOf('sess_b').getAttribute('data-needing'),
+    )
   })
 
   it('🔴 every section of a card is a framed box — Current task, Sub agents and Images draw the same line, corners and fill', async () => {

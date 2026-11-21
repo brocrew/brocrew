@@ -373,7 +373,8 @@ describe('Sub agents view preferences', () => {
     assertDrawn(name, 'the complete piece-labelled name within its worker card', card)
     expect(lineCount(name)).toBe(1)
     expect(inkRects(state)[0]!.top).toBeGreaterThanOrEqual(inkRects(name)[0]!.bottom)
-    expect(state.title).toBe(word)
+    // The whole state is on the title of the status line that holds it.
+    expect(state.closest('small')!.title).toBe(`${PROFILE} · ${word}`)
     expect(lineCount(state)).toBeLessThanOrEqual(2)
     assertDrawn(state, 'the two-line state within the worker card', card)
     screenFacts().update({
@@ -382,27 +383,32 @@ describe('Sub agents view preferences', () => {
       ),
     })
     await settle()
-    assertDrawn(name, 'the complete name beside a short state', card)
-    assertDrawn(state, 'the short state at the top right', card)
+    assertDrawn(name, 'the complete name above a short state', card)
+    assertDrawn(state, 'the short state under the name, after the profile', card)
     expect(lineCount(name)).toBe(1)
     expect(lineCount(state)).toBe(1)
-    expect(inkRects(state)[0]!.left).toBeGreaterThan(inkRects(name)[0]!.right)
-    expect(inkRects(state)[0]!.top).toBeLessThan(inkRects(name)[0]!.bottom)
+    // The state is on the line under the name, after the profile, as every chip draws it.
+    const profile = m.q('cast-tile-profile-ada-worker-2')
+    expect(inkRects(state)[0]!.top).toBeGreaterThanOrEqual(inkRects(name)[0]!.bottom)
+    expect(inkRects(state)[0]!.left).toBeGreaterThan(inkRects(profile)[0]!.right)
   })
 
   it.each([false, true])(
-    'keeps the name and lone state dot together before a rail row arrives, worker metadata=%s',
+    'keeps the name whole beside the faceless plate before a rail row arrives, worker metadata=%s',
     async (workerKnown) => {
       if (workerKnown) listed()
       screenFacts().update({ railSays: new Map<string, RailSays>() })
       const m = await band(320)
       const name = m.q('cast-tile-name-ada-worker-2')
       const card = name.closest<HTMLElement>('.agent-chip')!
-      const dot = card.querySelector<HTMLElement>('.chip-dot')!
+      // No word yet: the plate alone says the state, and the chip draws no dot of its own.
+      const plate = card.querySelector<HTMLElement>('[data-cy="agent-state"]')!
+      expect(card.querySelector('.chip-dot')).toBeNull()
+      expect(plate.getAttribute('data-doing')).toBe('unknown')
       expect(m.all('cast-tile-word-ada-worker-2')).toHaveLength(0)
       expect(card.hasAttribute('data-worker')).toBe(workerKnown)
-      assertDrawn(name, 'agent name beside its lone dot before the rail row arrives', card)
-      expect(inkRects(name)[0]!.right).toBeLessThanOrEqual(dot.getBoundingClientRect().left)
+      assertDrawn(name, 'agent name beside its plate before the rail row arrives', card)
+      expect(plate.getBoundingClientRect().right).toBeLessThanOrEqual(inkRects(name)[0]!.left)
       expect(lineCount(name)).toBe(1)
     },
   )

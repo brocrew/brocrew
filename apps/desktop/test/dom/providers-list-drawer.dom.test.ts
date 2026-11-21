@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
 import { userEvent } from 'vitest/browser'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import OverlayHost, { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
 import type { Provider } from '../../src/shared/runtime-ipc'
 import { providersBridge } from '../../look/fixtures/providers'
@@ -131,7 +133,24 @@ describe('the Providers list opens the existing controls in one drawer', () => {
       displayName: 'Fable',
       debugOnly: false,
     }
-    const m = screen({ descriptors: [...PROVIDER_DESCRIPTORS, cedar] })
+    // A provider's name comes from the Client API's catalogue, so this window's catalogue lists the
+    // made-up one too.
+    const client = Object.create(desktopProviderApi, {
+      providerCatalogue: { value: async () => [...PROVIDER_DESCRIPTORS, cedar] },
+    })
+    const listed = defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, client)
+        return () =>
+          h(ProvidersScreen, {
+            descriptors: [...PROVIDER_DESCRIPTORS, cedar],
+            capabilities: null,
+            warnings: { walls: [], unread: false },
+            clock: NOW,
+          })
+      },
+    })
+    const m = mount(listed, {}, { width: 1180, height: 900 })
     await settle()
     expect(m.all('provider-row')).toHaveLength(3)
     expect(row(m, 'fable').textContent).toContain('Fable')

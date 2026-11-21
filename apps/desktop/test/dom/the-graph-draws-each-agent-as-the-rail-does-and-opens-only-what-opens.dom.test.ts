@@ -544,14 +544,14 @@ describe('the graph draws each conversation as the rail does, and opens only wha
   /**
    * ⚑ **Vue Flow pans the whole drawing inside the tab** (2053fd25/3d53e6af), and the first view is
    * centred on the conversation a person is in when the forest is too wide to read whole.
-   * ⚠️ **This conversation is the FIRST of nine siblings**, so a view merely fitted to the middle of
+   * ⚠️ **This conversation is the FIRST of twelve siblings**, so a view merely fitted to the middle of
    * the family would leave it off the box's left edge — the landing's *"the first stays
    * reachable"*, as it is now. ⚑ **And the landing's *"the last is reachable"***: the row's own
    * scroller is gone, and the tab's *Fit* control is what brings every card into the box — measured
    * from a first view that left some of them outside it.
    */
   it('🔴 a family too big for the tab is panned inside it — this conversation is in view, Fit brings in the rest, and the page never scrolls sideways', async () => {
-    const kids = Array.from({ length: 8 }, (_, i) => `sess_kid_${String(i)}`)
+    const kids = Array.from({ length: 11 }, (_, i) => `sess_kid_${String(i)}`)
     const inspectors = kids.map((_, i) =>
       identity(`inspector-${String(i)}`, `Inspector ${String(i)}`),
     )
@@ -570,11 +570,12 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     const graph = m.q('conversation-graph')
     const drawing = m.q('forest-rows').getBoundingClientRect()
     // Distinct agents stay separate; same-agent siblings now share one expandable card.
-    // These nine cards are taller than the tab, preserving the pan-and-Fit premise.
+    // These twelve cards are taller than the tab, preserving the pan-and-Fit premise (a card is
+    // one name line and one `slug · says` line, so nine no longer reach past the tab).
     const row = [ID, ...kids].map((id) => card(m, id).getBoundingClientRect())
     expect(
       Math.max(...row.map((one) => one.bottom)) - Math.min(...row.map((one) => one.top)),
-      'the nine fit the tab, so nothing here overflowed',
+      'the twelve fit the tab, so nothing here overflowed',
     ).toBeGreaterThan(drawing.height)
     // ⚑ This conversation is inside the drawing's box, and its name is drawn.
     const self = card(m, ID).getBoundingClientRect()

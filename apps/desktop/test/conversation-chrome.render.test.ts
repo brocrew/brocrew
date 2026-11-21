@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { answerTheCatalogue } from './dom/answered-catalogue'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import type { CreatedSession } from '../src/shared/runtime-ipc'
@@ -15,6 +16,9 @@ import {
   type DrawerFit,
   type DrawerTab,
 } from '../src/renderer/src/lib/drawer'
+
+// The window names providers as the catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * The chrome half of 080: one quiet top bar, one tabbed drawer, and the attention model built.
@@ -339,7 +343,9 @@ describe('the top bar states and does not act (079 §1)', () => {
     // marker is therefore tested against a surface that demonstrably rendered its settings. ⚑ The shelf's plan cell left with its four
     // settings, so the reading is the bar's provider chip — the setting the bar states, unmarked.
     // The usage cells left the conversation for the title bar.
-    expect(html).toMatch(/data-cy="provider-chip"[^>]*><span class="dot"[^>]*><\/span>claude</)
+    expect(html).toMatch(
+      /data-cy="provider-chip"[^>]*><span class="dot"[^>]*><\/span><span[^>]*>Claude<\/span></,
+    )
   })
 })
 

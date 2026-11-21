@@ -155,25 +155,30 @@ describe('UI-001 · the right panel draws each agent as its rail row does', () =
 
 /* ------------------------------------------------------------------ §3 · UI-004 */
 
-const wordOf = (chip: HTMLElement): string | null =>
-  chip.querySelector('.chip-word')?.textContent?.trim() ?? null
-const profileOf = (chip: HTMLElement): string | null =>
-  chip.querySelector('.chip-profile')?.textContent?.trim() ?? null
+const wordEl = (chip: HTMLElement): HTMLElement | null =>
+  chip.querySelector<HTMLElement>('[data-cy^="cast-tile-word-"]')
+const profileEl = (chip: HTMLElement): HTMLElement | null =>
+  chip.querySelector<HTMLElement>('[data-cy^="cast-tile-profile-"]')
+const wordOf = (chip: HTMLElement): string | null => wordEl(chip)?.textContent?.trim() ?? null
+const profileOf = (chip: HTMLElement): string | null => profileEl(chip)?.textContent?.trim() ?? null
 
 describe('UI-004 · each chip says its profile and its state in words (F041)', () => {
   it('🔴 §3 · under the name, the profile and the rail row’s word — the one the plate beside it draws', () => {
     // ⚑ The identity has a name a person gave it, so the name and the profile are two strings.
     const { band } = show(RAIL, READ, [{ id: 'aid:worker', slug: 'worker', displayName: 'Wendy' }])
     const ana = chipOf(band, 'sess_ana')
-    expect(ana.querySelector('.chip-name')?.textContent?.trim()).toBe('Wendy')
+    expect(ana.querySelector('[data-cy="cast-tile-name-sess_ana"]')?.textContent?.trim()).toBe(
+      'Wendy',
+    )
     expect(profileOf(ana)).toBe('worker')
     expect(wordOf(ana)).toBe(agentStateWords({ is: 'scheduled', dueAt: DUE }))
     expect(ana.querySelector('[data-cy="cast-tile-word-sess_ana"]')).not.toBeNull()
     expect(ana.querySelector('[data-cy="cast-tile-profile-sess_ana"]')).not.toBeNull()
     expect(wordOf(chipOf(band, 'sess_ayo'))).toBe('waiting on an answer from BroBot')
-    // ⚑ Each on its own title, for a chip too narrow to hold it.
-    expect(ana.querySelector('.chip-word')!.getAttribute('title')).toBe(wordOf(ana))
-    expect(ana.querySelector('.chip-profile')!.getAttribute('title')).toBe('worker')
+    // ⚑ Each on a title, for a chip too narrow to hold it: the profile on its own, and the word
+    // on the status line that holds it (profile · word, the line a narrow chip cuts).
+    expect(wordEl(ana)!.closest('small')!.getAttribute('title')).toBe(`worker · ${wordOf(ana)}`)
+    expect(profileEl(ana)!.getAttribute('title')).toBe('worker')
   })
 
   it('⛔ §3 · a chip the rail does not name says no word, and keeps its profile — the named one beside it says its own', () => {
@@ -181,7 +186,7 @@ describe('UI-004 · each chip says its profile and its state in words (F041)', (
     const { band } = show(new Map([['sess_ana', RAIL.get('sess_ana')!]]), READ, null, DRAWER_W_MAX)
     const ayo = chipOf(band, 'sess_ayo')
     expect(profileOf(ayo)).toBe('worker')
-    expect(ayo.querySelector('.chip-word')).toBeNull()
+    expect(wordEl(ayo)).toBeNull()
     const ana = chipOf(band, 'sess_ana')
     expect(wordOf(ana)).toBe(agentStateWords({ is: 'scheduled', dueAt: DUE }))
     // ⚑ Side by side, one with a word and one without, and still one row's height.
@@ -193,7 +198,7 @@ describe('UI-004 · each chip says its profile and its state in words (F041)', (
   it('⛔ §3 · with no rail above the drawer, no chip says a word — every profile still drawn', () => {
     const { band } = show(null)
     for (const id of ['sess_ana', 'sess_ayo']) {
-      expect(chipOf(band, id).querySelector('.chip-word'), id).toBeNull()
+      expect(wordEl(chipOf(band, id)), id).toBeNull()
       expect(profileOf(chipOf(band, id)), id).toBe('worker')
     }
   })
@@ -208,7 +213,7 @@ describe('UI-004 · each chip says its profile and its state in words (F041)', (
     }
     const { band } = show(RAIL, bare)
     const ana = chipOf(band, 'sess_ana')
-    expect(ana.querySelector('.chip-profile')).toBeNull()
+    expect(profileEl(ana)).toBeNull()
     expect(wordOf(ana)).toBe(agentStateWords({ is: 'scheduled', dueAt: DUE }))
     expect(profileOf(chipOf(band, 'sess_ayo'))).toBe('worker')
   })

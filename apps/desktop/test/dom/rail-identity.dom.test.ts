@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import {
@@ -84,6 +85,7 @@ async function rail(
     runtime: {
       listResumable: () => Promise.resolve(recorded),
       listUnresumable: () => Promise.resolve([]),
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     },
   }
   const m = mount(
@@ -138,7 +140,7 @@ describe('211 §3 · a rail row says which conversation it is', () => {
     expect(rowText(m, 'sess_bug')).toBe(rowText(m, 'sess_plan'))
     // …and this is what they both read, which is 210's sentence.
     expect(rowText(m, 'sess_bug')).toContain('workspace-a')
-    expect(rowText(m, 'sess_bug')).toContain('codex')
+    expect(rowText(m, 'sess_bug')).toContain('Codex')
   })
 
   it('⛔ THE FIX: the same two, once each has been asked something, are tellable apart', async () => {
@@ -157,13 +159,13 @@ describe('211 §3 · a rail row says which conversation it is', () => {
     // another, and 099's `data-standing` hook is still where every cross-surface test reads it.
     for (const text of [bug, plan]) {
       expect(text).toContain('workspace-a')
-      expect(text).toContain('codex')
+      expect(text).toContain('Codex')
     }
     const row = m.q('open-session-sess_bug')
     const status = row.querySelector('small[data-standing]')
     const opening = m.q('session-opening-sess_bug')
     expect(row.querySelectorAll('small')).toHaveLength(2)
-    expect(status?.textContent).toContain('codex')
+    expect(status?.textContent).toContain('Codex')
     expect(opening.textContent).toBe('Fix the line count in summarize.mjs')
     expect(opening).not.toBe(status)
   })
@@ -332,7 +334,7 @@ describe('449 §A · the row names the agent, and still places it', () => {
     )
     const line = m.q('open-session-sess_long').querySelector('small[data-standing]') as HTMLElement
     await drawnReady()
-    expect(line.textContent?.trim().startsWith('codex · ')).toBe(true)
+    expect(line.textContent?.trim().startsWith('Codex · ')).toBe(true)
     expect(line.textContent?.trim().endsWith(long)).toBe(true)
     expect(line.getAttribute('title')).toContain(long)
     // The status is shortened visually; the full status and folder remain on hover.

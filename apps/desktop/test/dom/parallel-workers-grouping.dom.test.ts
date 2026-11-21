@@ -185,7 +185,9 @@ describe('parallel workers beside their agent', () => {
     async (count) => {
       const { m, opened } = await team(workerRows(count))
       expect(m.all('team-worker-group')).toHaveLength(1)
-      const names = [...m.q('team-worker-group').querySelectorAll<HTMLElement>('.team-worker-name')]
+      const names = [
+        ...m.q('team-worker-group').querySelectorAll<HTMLElement>('[data-cy^="team-worker-name-"]'),
+      ]
       expect(names.map((el) => el.textContent)).toEqual(
         Array.from({ length: count }, (_, i) => `Mira · W90.${i + 1}`),
       )

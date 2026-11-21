@@ -12,7 +12,17 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type MockInstance,
+  vi,
+} from 'vitest'
+import { answerTheCatalogue } from './dom/answered-catalogue'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
@@ -72,6 +82,9 @@ import {
   type ResumeGate,
   settleFixtureTurns,
 } from './lib/host-fixture'
+
+// The window names providers as the catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * # D-036 · a giver says who holds the work it gave out
@@ -422,13 +435,13 @@ describe('§5 · the rail row of a conversation this window is fed says who hold
     // ⛔ THE PAIR — the same record and the same component, the host naming nobody: a row that
     // really is drawn, saying idle, with none of the words above.
     const nobody = visible(await rail(aReading(hostRow([]))))
-    expect(rowWord(nobody)).toContain('claude · idle')
+    expect(rowWord(nobody)).toContain('Claude · idle')
     expect(nobody).toContain('data-standing="idle"')
     expect(nobody).not.toContain('waiting on')
 
     // …and with no reading at all, which is what the first frame draws.
     const unread = visible(await rail())
-    expect(rowWord(unread)).toContain('claude · idle')
+    expect(rowWord(unread)).toContain('Claude · idle')
     expect(unread).not.toContain('waiting on')
   })
 })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { computed, nextTick, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useTeamProfileGraph } from '../composables/useTeamProfileGraph'
 import { useTeamProfileCanvas } from '../composables/useTeamProfileCanvas'
@@ -373,7 +374,11 @@ onScopeDispose(() => controller?.setActive(false))
         <div class="agent-preview" :tabindex="preview ? 0 : -1" aria-label="Agent preview">
           <p v-if="preview">
             {{ preview.name }} · {{ preview.profile }} · {{ preview.kind }} ·
-            {{ preview.configured.provider ?? 'Unknown provider' }} /
+            <ProviderLabel
+              v-if="preview.configured.provider"
+              :provider="preview.configured.provider"
+            /><template v-else>Unknown provider</template>
+            /
             {{ preview.configured.model ?? 'Unknown model'
             }}<span v-for="[key, label] in counts" :key="key">
               · {{ label }}: {{ preview[key] }}</span
@@ -407,7 +412,12 @@ onScopeDispose(() => controller?.setActive(false))
             <dt>Kind read</dt>
             <dd>{{ date(selected.kindReadAt) }}</dd>
             <dt>Configured provider</dt>
-            <dd>{{ selected.configured.provider ?? 'Unknown' }}</dd>
+            <dd>
+              <ProviderLabel
+                v-if="selected.configured.provider"
+                :provider="selected.configured.provider"
+              /><template v-else>Unknown</template>
+            </dd>
             <dt>Configured model</dt>
             <dd>{{ selected.configured.model ?? 'Unknown' }}</dd>
             <dt>Setting source</dt>

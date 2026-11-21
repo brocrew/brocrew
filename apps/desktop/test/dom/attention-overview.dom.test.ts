@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -92,11 +93,16 @@ let view: Mounted | null = null
 afterEach(() => {
   view = null
   unmountAll()
+  delete (window as { api?: unknown }).api
 })
 
 describe('the overview, painted', () => {
   it('⛔ draws all six facts for a real pending request', async () => {
     const requests = queueOf(conversation('sess_a', PERMISSION, NOW - 63_000))
+    // The provider's name comes from the Client API's catalogue.
+    ;(window as { api?: unknown }).api = {
+      runtime: { providerCatalogue: async () => PROVIDER_DESCRIPTORS },
+    }
     view = mount(AttentionQueue, { requests, now: NOW })
     await nextTick()
 
@@ -106,7 +112,9 @@ describe('the overview, painted', () => {
 
     // 1 · which conversation · 2 · what kind
     expect(row!.querySelector('[data-cy="attention-where"]')?.textContent).toBe('sess_a')
-    expect(row!.querySelector('[data-cy="attention-provider"]')?.textContent).toBe('codex')
+    await expect
+      .poll(() => row!.querySelector('[data-cy="attention-provider"]')?.textContent)
+      .toBe('Codex')
     expect(row!.querySelector('[data-cy="attention-standing"]')?.textContent).toBe(
       'waiting: permission',
     )

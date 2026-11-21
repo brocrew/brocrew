@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { ConversationIdentity } from '../../src/shared/conversation-title'
@@ -69,6 +70,7 @@ async function rail(
   const selected: string[] = []
   const api = {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       listRecentConversations: first === undefined ? undefined : async () => first.rows,
       listConversations: async (): Promise<ListingAnswer> => {
         if (first !== undefined) await first.until
@@ -234,7 +236,7 @@ it('keeps canonical rows to title, standing and address for open and answered ta
     expect(lines[0]!.textContent?.trim()).toBe(index === 0 ? 'A33' : `Saved conversation ${index}`)
     expect(lines[1]!.getAttribute('data-standing')).toBe(index < 2 ? 'waiting' : 'idle')
     expect(lines[2]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      `Conversation W${18 + index} · claude · Named by you`,
+      `Conversation W${18 + index} · Claude · Named by you`,
     )
     expect(entry.textContent).not.toContain(named.title)
     expect(entry.textContent).not.toContain('(answered)')
@@ -401,7 +403,7 @@ it('keeps a folded section’s rows reachable from the existing palette', async 
   m.q('command-palette').click()
   await nextTick()
   const row = document.querySelector('[data-cy="palette-row-open-latest"]')
-  expect(row?.textContent).toContain('claude · idle')
+  expect(row?.textContent).toContain('Claude · idle')
 })
 
 it.each([251.68, 266.2])(

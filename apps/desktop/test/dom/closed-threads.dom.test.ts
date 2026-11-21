@@ -162,6 +162,13 @@ afterEach(() => {
   delete stubbed().api
 })
 
+/** The first row's title, which is drawn in the row's own ink rather than the muted one. */
+const titleOf = (view: ReturnType<typeof mount>): HTMLElement => {
+  const title = view.q('resumable-row').querySelector<HTMLElement>('.conversation-row strong')
+  expect(title, 'the row draws no title').not.toBeNull()
+  return title!
+}
+
 describe('a row that cannot take input does not offer a button that would (118)', () => {
   it('⛔ D-017b · the child and the parent get the SAME one press — and no row offers a Resume', async () => {
     // ⚑ **Re-aimed from *"the child gets no Resume — and the parent beside it still does"*.** 118's
@@ -205,10 +212,10 @@ describe('a row that cannot take input does not offer a button that would (118)'
     // ⛔ **`not.toBe('')` was inert and review said so** — Chromium never returns an empty computed
     // colour, so the guard it advertised could not fire, and the comparison below would then have
     // passed for two elements both inheriting the same default black. The non-vacuity check that
-    // BITES is a contrast: this text is muted and the row's own path is not, so if the stylesheet
+    // BITES is a contrast: this text is muted and the row's own title is not, so if the stylesheet
     // had failed to load they would be equal and this fails.
-    expect(ink).not.toBe(getComputedStyle(view.host.querySelector('.cwd')!).color)
-    expect(ink).toBe(getComputedStyle(view.q('resumable-profile')).color)
+    expect(ink).not.toBe(getComputedStyle(titleOf(view)).color)
+    expect(ink).toBe(getComputedStyle(view.q('resumable-approvals')).color)
     // The paired positive: the row that CAN be resumed carries no such sentence.
     expect(view.all('resume-refused-sess_parent')).toHaveLength(0)
   })
@@ -422,9 +429,9 @@ describe('an adopted row with no messages offers the import it has been naming (
     const ink = getComputedStyle(view.q('import-result-sess_empty')).color
     // ⛔ **The contrast FIRST, and this file already learned why** (see the refusal test above).
     // Comparing two elements for equal ink passes over nothing if the stylesheet failed to load and
-    // both inherited the same default. The row's own path is not muted, so this is what bites.
-    expect(ink).not.toBe(getComputedStyle(view.host.querySelector('.cwd')!).color)
-    expect(ink).toBe(getComputedStyle(view.q('resumable-profile')).color)
+    // both inherited the same default. The row's own title is not muted, so this is what bites.
+    expect(ink).not.toBe(getComputedStyle(titleOf(view)).color)
+    expect(ink).toBe(getComputedStyle(view.q('resumable-approvals')).color)
   })
 
   it('⚠️ an outcome that changed nothing is reported, not swallowed', async () => {
@@ -529,24 +536,25 @@ describe('a profile that is not the default, on the surfaces that show one (167 
     return view
   }
 
-  // ⚑ **714 · R41 (`712` F-4) — *agent:* and a NAME since `714`**; with no roster handed in, the
-  // name is the slug (`agentName`'s own answer), which is what these rows were already about.
+  // ⚑ **714 · R41 (`712` F-4) — a NAME since `714`**, drawn as the row's agent with no *agent:*
+  // prefix; with no roster handed in, the name is the slug (`agentName`'s own answer), which is
+  // what these rows were already about.
   // `names-a-new-project-and-a-command-with-files.dom.test.ts` §1 hands a roster and reads *Ada*.
   it('the Sessions page names a non-default agent as itself', async () => {
     const view = await list([{ ...PARENT, profileId: 'developer' }])
-    expect(view.q('resumable-profile').textContent?.trim()).toBe('agent: developer')
+    expect(view.q('resumable-profile').textContent?.trim()).toBe('developer')
   })
 
   it('…and names the default one as BroBot, the same word the launcher offers it under', async () => {
     // The paired positive, and 167 §2: `default` is the product's own identity rather than an unset
     // field, so it is labelled the same way wherever it appears.
     const view = await list([PARENT])
-    expect(view.q('resumable-profile').textContent?.trim()).toBe(`agent: ${DEFAULT_PROFILE_LABEL}`)
+    expect(view.q('resumable-profile').textContent?.trim()).toBe(DEFAULT_PROFILE_LABEL)
 
     // A row older than the column reaches the same place honestly: `resumable()` drops the
     // user-home rows, so the only `null` that gets here really did run in the default profile.
     const older = await list([{ ...PARENT, profileId: null }])
-    expect(older.q('resumable-profile').textContent?.trim()).toBe(`agent: ${DEFAULT_PROFILE_LABEL}`)
+    expect(older.q('resumable-profile').textContent?.trim()).toBe(DEFAULT_PROFILE_LABEL)
   })
 
   it('⛔ does NOT call a conversation from the user’s own home a BroBot profile', async () => {
@@ -572,9 +580,8 @@ describe('a profile that is not the default, on the surfaces that show one (167 
     // The pairing. Without it the negative above passes on a surface that stopped saying anything
     // about profiles at all, which would lose the fact 085 put there.
     const view = await listBoth([], [RECORDED])
-    expect(view.q('unresumable-profile').textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'agent: developer',
-    )
+    // The shared row names the agent once, with no *agent:* prefix.
+    expect(view.q('unresumable-profile').textContent?.replace(/\s+/g, ' ').trim()).toBe('developer')
   })
 
   /**

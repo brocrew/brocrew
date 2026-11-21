@@ -1,5 +1,5 @@
 import { computed, onUnmounted, ref, watch, type Ref } from 'vue'
-import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
+import { agentName, type AgentIdentity, type Provider } from '../../../shared/runtime-ipc'
 import type {
   ConversationSearchHit,
   GroupedWorkSearch,
@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/work-search'
 import { appClosing } from '../lib/app-closing'
 import { fullTime } from '../lib/clock'
+import { useProviderLabel } from './useProviderLabel'
 import type { PaletteCommand, PaletteOpenRow } from '../lib/command-palette'
 import { readableError } from '../lib/session-record'
 
@@ -159,6 +160,7 @@ export function usePaletteSearch(
     () => new Map(props.conversations.map((row) => [row.sessionId, row])),
   )
   const profileName = (slug: string): string => agentName(slug, props.profiles ?? null)
+  const providerLabel = useProviderLabel()
 
   function readerCommand(hit: GroupedWorkSearchPreview, profileId: string | null): SearchRow {
     const row = loadedConversations.value.get(hit.conversation)
@@ -169,7 +171,7 @@ export function usePaletteSearch(
       recordedStatus: hit.status,
       detail: [
         profileId ? profileName(profileId) : null,
-        hit.metadata?.provider,
+        hit.metadata?.provider ? providerLabel(hit.metadata.provider as Provider) : null,
         row?.word,
         fullTime(hit.last_active_at),
         `Conversation ${hit.address}`,
@@ -185,6 +187,47 @@ export function usePaletteSearch(
       group: 'conversations',
       keywords: [],
       action: { kind: 'read-conversation', sessionId: hit.conversation },
+      row: {
+        id: hit.conversation,
+        facets: row?.facets ?? null,
+        plateLabel: hit.title,
+        head: 'plain',
+        title: hit.title,
+        marks: [
+          ...(hit.metadata?.archived_at != null
+            ? [
+                {
+                  key: 'archived',
+                  text: 'Archived',
+                  tone: 'archived',
+                  hint: fullTime(hit.metadata.archived_at),
+                  cy: 'palette-recorded-archive',
+                },
+              ]
+            : []),
+          ...(hit.metadata?.title_author?.kind === 'person'
+            ? [{ key: 'named', text: 'Named by you', cy: 'palette-recorded-title-author' }]
+            : []),
+        ],
+        status: {
+          profile: profileId ? profileName(profileId) : null,
+          provider: (hit.metadata?.provider ?? null) as Provider | null,
+          word: row?.word ?? null,
+          place: row?.place ?? null,
+          tail: [
+            fullTime(hit.last_active_at),
+            `Conversation ${hit.address}`,
+            ...hit.matched_task_labels,
+            ...(hit.tasks_omitted
+              ? [`${hit.tasks_omitted} more matching ${hit.tasks_omitted === 1 ? 'task' : 'tasks'}`]
+              : []),
+            ...(row?.opening ? [row.opening] : []),
+            ...(hit.status
+              ? [{ text: `Status: ${hit.status}`, cy: 'palette-recorded-status', hint: hit.status }]
+              : []),
+          ],
+        },
+      },
     }
   }
 

@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { answerTheCatalogue } from './answered-catalogue'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+
+// Rows name providers as the window's catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * # 🔴 421 · a live conversation is never drawn as ended — at the width the rail really is
@@ -184,7 +188,7 @@ describe('the rail draws a running conversation as a conversation, never as ende
       expect(plate(row).getAttribute('aria-label'), row.dataset.cy).not.toContain('ended')
       expect(row.textContent, row.dataset.cy).not.toContain('ended')
       // ⚑ **What the row SAYS is the one state** — the host's word, the one `list_agents` says.
-      expect(row.textContent, row.dataset.cy).toContain('codex · idle')
+      expect(row.textContent, row.dataset.cy).toContain('Codex · idle')
     }
     // ⛔ **No process word, and no where-word that is a process word** (`05` rule 5): it said
     // *"not open in any window"* (D-017 · F024), and before that *"nobody is watching it"*.
@@ -249,7 +253,7 @@ describe('the rail draws a running conversation as a conversation, never as ende
     // the rail — and since D-017b there is no per-state heading to draw at all.
     expect(quiet.all('rail-running-unwatched')).toHaveLength(0)
     // ⚑ …and the mount really did paint: the row's words are there to read.
-    expect(rowOf(quiet, STOPPED.sessionId).textContent).toContain('codex')
+    expect(rowOf(quiet, STOPPED.sessionId).textContent).toContain('Codex')
     quiet.unmount()
 
     const m = await rail({ resumable: [UNWATCHED, STOPPED], unresumable: [IN_A_WINDOW] })

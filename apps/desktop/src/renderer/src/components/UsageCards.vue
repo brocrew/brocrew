@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { TOTALS, type UsageCell } from '../composables/useUsageCells'
 
 /**
@@ -25,7 +26,10 @@ const props = defineProps<{ cells: readonly UsageCell[] }>()
       tabindex="0"
     >
       <span class="fact-label usage-label">
-        <span>{{ cell.label }}</span>
+        <span v-if="cell.provider"
+          ><ProviderLabel :provider="cell.provider" /> · {{ cell.window }}</span
+        >
+        <span v-else>{{ cell.label }}</span>
         <span v-if="cell.age !== null" class="usage-age" data-cy="shelf-usage-age">{{
           cell.age
         }}</span>

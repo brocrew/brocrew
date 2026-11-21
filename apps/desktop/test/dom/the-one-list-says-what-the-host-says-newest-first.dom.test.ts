@@ -1,5 +1,6 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { answerTheCatalogue } from './answered-catalogue'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
@@ -7,6 +8,9 @@ import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/sha
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+
+// Rows name providers as the window's catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * **D-017b · the ONE list says what the host says, newest first** — the rail's list as a person
@@ -315,12 +319,12 @@ describe('a row the host lists says the host’s state', () => {
     // A · one row per arm of the one state.
     const all = await rail({ resumable: stateRows() })
     const expected: [string, string, string][] = [
-      ['sess_needs', 'waiting', 'claude · needs you'],
-      ['sess_answer', 'elsewhere', 'claude · waiting on an answer from Ada'],
-      ['sess_bg', 'background', 'claude · running in the background · npm run build'],
-      ['sess_sched', 'scheduled', 'claude · scheduled'],
-      ['sess_active', 'working', 'claude · active'],
-      ['sess_idle', 'idle', 'claude · idle'],
+      ['sess_needs', 'waiting', 'Claude · needs you'],
+      ['sess_answer', 'elsewhere', 'Claude · waiting on an answer from Ada'],
+      ['sess_bg', 'background', 'Claude · running in the background · npm run build'],
+      ['sess_sched', 'scheduled', 'Claude · scheduled'],
+      ['sess_active', 'working', 'Claude · active'],
+      ['sess_idle', 'idle', 'Claude · idle'],
     ]
     for (const [id, standing, words] of expected) {
       const line = standingOf(all, id)
@@ -478,7 +482,7 @@ describe('the palette the rail hosts', () => {
     const paletteRow = inPalette('palette-row-open-sess_openable')
     expect(paletteRow, 'the host-only row is not in the palette').not.toBeNull()
     expect(visible(paletteRow!)).toBe(true)
-    expect(said(paletteRow!.querySelector('small')!)).toContain('claude · idle')
+    expect(said(paletteRow!.querySelector('small')!)).toContain('Claude · idle')
     // The row found in a person's own folder is on neither the rail nor the palette.
     expect(inPalette('palette-row-open-sess_userhome')).toBeNull()
     expect(m.all('open-session-sess_userhome')).toHaveLength(0)

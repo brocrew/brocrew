@@ -665,3 +665,36 @@
   flex-direction: column;
   overflow-y: auto;
 }
+
+/* A row's words beside its plate: the rail's menu items and every conversation row
+   (ConversationRow) share them. The title and each line under it stay on one line. */
+.rail-copy {
+  min-width: 0;
+}
+.rail-copy strong {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--type-caption);
+  font-weight: var(--fw-medium);
+  line-height: var(--leading-snug);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-copy small {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--space-1);
+  color: var(--row-muted, var(--muted));
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-copy small.says {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
