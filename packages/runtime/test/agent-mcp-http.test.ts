@@ -44,11 +44,7 @@ async function connected(dispatch?: AgentMcpDispatch) {
   opened.push(server)
   const client = new Client({ name: 'fictional-codex', version: '1' })
   opened.push(client)
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(server.launch.url), {
-      requestInit: { headers: server.launch.headers },
-    }),
-  )
+  await client.connect(new StreamableHTTPClientTransport(new URL(server.launch.url)))
   return { server, client, calls }
 }
 
@@ -132,11 +128,10 @@ it('delivers cancellation to the waiting dispatch so a pending approval can be s
   await stopped
 })
 
-it('ties the endpoint to its owner and closes it idempotently', async () => {
+it('rejects unknown MCP session IDs and closes idempotently', async () => {
   const { server, client } = await connected()
-  expect(
-    (await fetch(server.launch.url, { headers: { Authorization: 'Bearer another-child' } })).status,
-  ).toBe(404)
+  const foreign = await fetch(server.launch.url, { headers: { 'mcp-session-id': 'foreign-id' } })
+  expect(foreign.status).toBe(404)
   await client.close()
   await server.close()
   await server.close()

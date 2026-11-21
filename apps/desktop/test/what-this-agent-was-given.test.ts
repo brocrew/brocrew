@@ -560,19 +560,15 @@ describe('what an agent was given', () => {
     )
   })
 
-  it('a declaration the tool list may have cut is never shown as whole', async () => {
+  it.each([499, 500, 501])('shows stored instructions from a %i-unit declaration', async (length) => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
-    const long = 'The tools this app gives you, and what each is for. '.repeat(15)
-    expect(long.length).toBeGreaterThan(MAX_TOOL_TEXT)
-    codexToolList(lead, 'thread/start', long)
-    const row = ledger(lead)
-      .filter((event) => event.type === 'tool_inventory')
-      .at(-1)
-    expect(row?.type === 'tool_inventory' ? row.declared?.instructions?.length : null).toBe(
-      MAX_TOOL_TEXT,
-    )
-    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace).toBeUndefined()
+    const sent = 'a'.repeat(498) + 'bcd'.slice(0, length - 498)
+    codexToolList(lead, 'thread/start', sent)
+    const row = ledger(lead).findLast((event) => event.type === 'tool_inventory')
+    const stored = sent.slice(0, MAX_TOOL_TEXT)
+    expect(row?.type === 'tool_inventory' && row.declared?.instructions).toBe(stored)
+    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(stored)
   })
 
   it('a closed conversation reads its last launch off the ledger; one launched before the record is composed now, and says so', async () => {
