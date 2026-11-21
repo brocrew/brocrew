@@ -567,7 +567,9 @@ describe('what an agent was given', () => {
       const lead = await open(host, 'codex', 'lead')
       const sent = 'a'.repeat(498) + 'bcd'.slice(0, length - 498)
       codexToolList(lead, 'thread/start', sent)
-      const row = ledger(lead).findLast((event) => event.type === 'tool_inventory')
+      const row = ledger(lead)
+      .filter((event) => event.type === 'tool_inventory')
+      .at(-1)
       const stored = length > MAX_TOOL_TEXT ? sent.slice(0, MAX_TOOL_TEXT - 1) + '…' : sent
       expect(row?.type === 'tool_inventory' && row.declared?.instructions).toBe(stored)
       expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(stored)
