@@ -41,3 +41,21 @@ chain of executable imports. These rules run with `tsPreCompilationDeps: false` 
 scan in `depcruise.cjs` still includes type dependencies for the other module and cycle checks.
 Both scans use dependency-cruiser's native rules and feed `baseline/depcruise.json`; new
 violations fail the gate.
+
+## Desktop provider branches
+
+The desktop provider-branch check runs in the Gate rules step with
+`node --test scripts/code-health/gate.test.mjs`. It scans tracked production files under
+`apps/desktop/src` outside `main/providers`. It reads provider IDs from the shared descriptor
+registry and checks direct equality and inequality in either direction, switch cases, and inline
+array membership on provider-named values. Parentheses, TypeScript assertions and line breaks
+do not hide these forms. Vue script blocks, template interpolations and directive expressions
+are included. The SQL scan covers provider column comparisons, literal IN lists and the
+historical JSON-provider equality. Each exception names an expression, a file and a reason,
+and matches at most once. The temporary sign-in-copy exception retires with W14.44.
+
+This is a syntax check. It does not follow arbitrary aliases or computed provider IDs, resolve
+types or data flow, inspect embedded SQL in JavaScript strings, or parse the full SQL and Vue
+directive grammars. The historical `read-by-codex` file-kind branches have separate Card 47
+exceptions. Provider registry declarations, display strings, type declarations and comments
+can still name providers.
