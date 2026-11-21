@@ -47,11 +47,14 @@ export class WorkSearch {
     transcript?: PastWorkTranscriptScope,
   ): Promise<PastWorkSearchResult> {
     const workCursor = cursor !== undefined && /^work:[01]:/u.test(cursor)
-    const preview = transcript === undefined && cursor === undefined
-    if (preview || (transcript === undefined && workCursor)) {
+    const combined = transcript === undefined || transcript.includeWork === true
+    const dates = { from: transcript?.from, to: transcript?.to }
+    const preview = combined && cursor === undefined
+    if (preview || (combined && workCursor)) {
       const work = await this.searchWork(asAgent, {
         words,
         profile,
+        ...dates,
         cursor: cursor?.slice(7),
         limit: 5,
         titlesAndBriefs: true,
@@ -73,7 +76,7 @@ export class WorkSearch {
             words,
             profile,
             undefined,
-            {},
+            dates,
             { after: null, preview: true },
           )
         : { ok: true, hits: [], complete: true, next_cursor: null }
@@ -114,12 +117,11 @@ export class WorkSearch {
 
     const recentCursor = cursor?.startsWith('recent:') === true
     if (recentCursor) {
-      if (transcript === undefined || transcript.from !== undefined || transcript.to !== undefined)
-        return { ok: false, reason: 'invalid' }
+      if (combined) return { ok: false, reason: 'invalid' }
       const identity = profile === undefined ? null : agentIdentityRowId(profile)
-      const point = pastWorkRecentStart(cursor!, words, identity)
+      const point = pastWorkRecentStart(cursor!, words, identity, dates)
       if (point === undefined) return { ok: false, reason: 'invalid' }
-      return this.readPastWork(asAgent, words, profile, undefined, transcript, { after: point })
+      return this.readPastWork(asAgent, words, profile, undefined, dates, { after: point })
     }
     return this.readPastWork(asAgent, words, profile, cursor, transcript)
   }

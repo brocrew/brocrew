@@ -568,7 +568,9 @@ export function createSearchPastWorkTool(
               input.data.cursor,
               input.data.in === 'transcripts'
                 ? { from: input.data.from, to: input.data.to }
-                : undefined,
+                : input.data.from === undefined && input.data.to === undefined
+                  ? undefined
+                  : { from: input.data.from, to: input.data.to, includeWork: true },
             )) ?? {
               ok: false as const,
               reason: 'unavailable' as const,
@@ -594,7 +596,14 @@ export function createSearchPastWorkTool(
             found,
             input.success && input.data.cursor !== undefined,
             input.success && input.data.in === 'transcripts',
-            input.success ? { words: input.data.words, profile: input.data.profile } : undefined,
+            input.success
+              ? {
+                  words: input.data.words,
+                  profile: input.data.profile,
+                  from: input.data.from,
+                  to: input.data.to,
+                }
+              : undefined,
           ),
         )
       }),

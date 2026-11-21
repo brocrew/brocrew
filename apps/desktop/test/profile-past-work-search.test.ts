@@ -594,6 +594,13 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     ],
   })
   expect(transcript.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
+  const dated = await tool.call({ words: 'archivequartz', from: '2027-01-15', to: '2027-01-15' })
+  expect(dated.structured).toMatchObject({
+    outcome: 'ok',
+    hits: [{ conversation: 'fictional-target', turn: { ordinal: 0 } }],
+  })
+  const outside = await tool.call({ words: 'archivequartz', from: '2027-01-16' })
+  expect(outside.structured).toMatchObject({ outcome: 'ok', hits: [] })
   const narrowed = await tool.call({ words: 'archivequartz', profile: 'fictional-reader' })
   expect(narrowed.structured).toMatchObject({ outcome: 'ok', hits: [] })
   archived.remove(['fictional-target'])
@@ -622,7 +629,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     { words: 'x'.repeat(201) },
     { words: 'x '.repeat(21) },
     { words: 'archivequartz', scope: 'all' },
-    { words: 'archivequartz', from: '2027-01-15' },
+    { words: 'archivequartz', from: '2027-02-30' },
     { words: 'archivequartz', in: 'transcripts', from: '2027-02-30' },
   ]) {
     expect(pastWorkSearchQuery.safeParse(input).success).toBe(false)
@@ -818,7 +825,10 @@ it('continues a recent-first transcript preview through the real worker', async 
     { closed: false },
     archivedInMemory(),
   )
-  const preview = await search.searchPastWork(caller, 'previewquartz')
+  const words = 'previewquartz'
+  const dates = { from: '2027-01-15', to: '2027-01-15' }
+  const both = { ...dates, includeWork: true as const }
+  const preview = await search.searchPastWork(caller, words, undefined, undefined, both)
   if (!preview.ok || preview.transcript_next_cursor === undefined)
     throw new Error('missing continuation')
   expect(preview.hits.map((hit) => hit.conversation)).toEqual([
@@ -828,24 +838,27 @@ it('continues a recent-first transcript preview through the real worker', async 
     'fictional-3',
     'fictional-2',
   ])
-  const words = 'previewquartz'
-  const instructions = pastWorkSearchInWords(preview, false, false, { words })
+  const instructions = pastWorkSearchInWords(preview, false, false, { words, ...dates })
   expect(instructions).toContain('Continue with cursor: "work:0:work-next"')
   expect(instructions).toContain(
     `Transcript search is incomplete. Continue with search_past_work(${JSON.stringify({
       words,
+      ...dates,
       in: 'transcripts',
       cursor: preview.transcript_next_cursor,
     })}).`,
   )
-  const work = await search.searchPastWork(caller, words, undefined, preview.next_cursor!)
+  const work = await search.searchPastWork(caller, words, undefined, preview.next_cursor!, both)
   expect(work).toEqual({ ok: true, complete: true, next_cursor: null, hits: [] })
   const cursor = preview.transcript_next_cursor
-  expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, {})).toEqual({
+  expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, dates)).toEqual({
     ok: false,
     reason: 'invalid',
   })
-  const next = await search.searchPastWork(caller, 'previewquartz', undefined, cursor, {})
+  expect(await search.searchPastWork(caller, words, undefined, cursor, {})).toEqual({
+    ok: false, reason: 'invalid',
+  })
+  const next = await search.searchPastWork(caller, words, undefined, cursor, dates)
   if (!next.ok) throw new Error(next.reason)
   expect(next.hits.map((hit) => hit.conversation)).toEqual(['fictional-1', 'fictional-0'])
   expect(next.complete).toBe(true)

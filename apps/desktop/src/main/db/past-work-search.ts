@@ -173,7 +173,9 @@ class ProfilePastWorkSearch {
       profile: identity,
       externalVersion: Number(this.source.pragma('data_version', { simple: true })),
       versions: sessions.map((row) =>
-        recent === undefined ? [row.id, row.version] as const : [row.id, row.version, row.at] as const,
+        recent === undefined
+          ? ([row.id, row.version] as const)
+          : ([row.id, row.version, row.at] as const),
       ),
       next,
       ...(recent === undefined ? {} : { recent }),
@@ -327,10 +329,17 @@ class ProfilePastWorkSearch {
             .prepare(
               `WITH recent AS MATERIALIZED (SELECT key, value FROM json_each(@scanned))
               SELECT ${fields} FROM documents JOIN recent ON recent.value = conversation
-              WHERE documents MATCH @match AND recorded_at IS NOT NULL
+              WHERE documents MATCH @match AND recorded_at BETWEEN @from AND @to
               ORDER BY recent.key, rank, ordinal DESC`,
             )
-            .iterate({ match, scanned: JSON.stringify([...scanned.keys()]) }) as Iterable<Document>
+            .iterate({
+              match,
+              scanned: JSON.stringify([...scanned.keys()]),
+              from: transcript?.from === undefined ? Number.MIN_SAFE_INTEGER : Date.parse(transcript.from),
+              to: transcript?.to === undefined
+                ? Number.MAX_SAFE_INTEGER
+                : Date.parse(transcript.to) + 86_399_999,
+            }) as Iterable<Document>
           return
         }
         if (transcript !== undefined) {
@@ -460,7 +469,7 @@ class ProfilePastWorkSearch {
               ? null
               : pastWorkNext(query.data.words, profile, nextPage, transcript)
             : moreRecent
-              ? pastWorkRecentNext(query.data.words, profile, recentAfter)
+              ? pastWorkRecentNext(query.data.words, profile, recentAfter, transcript ?? {})
               : null,
       }
     } catch (error) {
