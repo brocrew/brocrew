@@ -38,7 +38,7 @@ function realOfNearest(path) {
   try {
     real = realpathSync(head)
   } catch {
-    // ⚠️ an unreadable ancestor keeps its spelling — the comparison is then by the path as given
+    // An unreadable ancestor keeps its spelling, so the comparison uses the path as given.
   }
   return rest.length === 0 ? real : join(real, ...rest)
 }

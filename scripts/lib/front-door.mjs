@@ -10,12 +10,10 @@
  */
 
 /**
- * ⛔ **The nine fields the front door cannot be asked for** — `417`, HO-022 §2.
- *
- * ⚠️ **Spelled as the CALLERS spell them, not as the wire does.** `profile`/`newProfile` are the
- * smokes' own two ways of naming an identity and `autoApprove` is their boolean for what the wire
- * calls `approvalMode: 'auto'` — so this list is what a STEP might ask for, which is the only
- * thing a refusal in front of `startSession` can check. {@link PLACEABLE} is the other spelling.
+ * The nine fields the front door cannot be asked for, spelled as the callers spell them rather than
+ * as the wire does: `profile`/`newProfile` are the smokes' two ways of naming an identity and
+ * `autoApprove` is their boolean for `approvalMode: 'auto'`. This is what a step might ask for, the
+ * only thing a refusal in front of `startSession` can check. {@link PLACEABLE} is the wire spelling.
  */
 export const FRONT_DOOR_CANNOT_ASK = Object.freeze([
   'provider',
@@ -30,11 +28,11 @@ export const FRONT_DOOR_CANNOT_ASK = Object.freeze([
 ])
 
 /**
- * Every field a placement may put on the wire — `CreateSessionInput`, minus `launchKey`.
+ * Every field a placement may put on the wire: `CreateSessionInput`, minus `launchKey`.
  *
- * ⛔ **The wire schema STRIPS unknown keys** (`ipc.ts`'s `.strict()`-less object), so a misspelled
- * field is dropped in silence and the session starts on a shape nobody asked for. An instrument
- * that places sessions checks against this list so the typo fails where it was written.
+ * The wire schema strips unknown keys (`ipc.ts`'s object is not strict), so a misspelled field is
+ * dropped silently. An instrument that places sessions checks against this list so the typo fails
+ * where it was written.
  */
 export const PLACEABLE = Object.freeze([
   'provider',
@@ -48,22 +46,16 @@ export const PLACEABLE = Object.freeze([
 ])
 
 /**
- * Which of {@link FRONT_DOOR_CANNOT_ASK} this call actually asked for — `[]` when none.
+ * Which of {@link FRONT_DOOR_CANNOT_ASK} this call actually asked for, `[]` when none.
  *
- * 🔴 **A BLACKLIST, and {@link whatTheFrontDoorCannotCarry} is the whitelist beside it.** This
- * answers *"did the step ask for something the product cannot express?"*, which needs the
- * callers' own spellings and cannot be derived from the wire. ⛔ On its own it is not enough:
- * found by an adversarial pass over `420`'s diff, `startSession(cdp, { prompt, profileId: 'x' })`
- * passed it — nine names checked, `profileId` not among them — and started a `default` session
- * with the field dropped and nothing said. **That is the wire schema's own silent-strip defect,
- * on the door in front of it**, and it is the exact spelling `420` introduced at forty-odd
- * placement call sites one screen away.
+ * This is the blacklist half; {@link whatTheFrontDoorCannotCarry} is the whitelist beside it. On its
+ * own it is not enough: a misspelled field such as `profileId` is not on the list and would be
+ * dropped silently.
  *
- * ⚑ **The predicate is the shared half and it is not obvious.** `undefined` is *not asked for*;
- * so is `false`, because `planMode`/`autoApprove`/`ultracode` are booleans a caller may pass off;
- * and so is `''`, because a blank folder means *nobody chose* everywhere else in this app
- * (`scratch-cwd.ts`'s own blank branch). ⛔ A file that re-derived this would be free to treat
- * `autoApprove: false` as a request, and its refusal would fire on steps that asked for nothing.
+ * The predicate is shared and not obvious: `undefined` is not asked for; neither is `false`, because
+ * `planMode`/`autoApprove`/`ultracode` are booleans a caller may pass off; neither is `''`, because
+ * a blank folder means nobody chose (as in `scratch-cwd.ts`). A file that re-derived this could treat
+ * `autoApprove: false` as a request and refuse steps that asked for nothing.
  *
  * @param {Record<string, unknown>} asked the options object a step handed to the front door
  * @returns {string[]} the offending field names, in list order
@@ -85,37 +77,34 @@ export function whatIsNotPlaceable(placement) {
 }
 
 /**
- * ⛔ **Everything the front door was handed that it will not carry** — the whitelist half.
+ * Everything the front door was handed that it will not carry: the whitelist half.
  *
  * The front door sends three fields and none of them is the caller's to choose, so a call that
- * carries ANYTHING but a prompt is a call whose author believed otherwise. ⚑ Checked as a
- * closed set rather than a list of known-bad names, because the failure that made this necessary
- * was a field nobody had thought to forbid.
+ * carries anything but a prompt was written by someone who believed otherwise. Checked as a closed
+ * set rather than a list of known-bad names, so a field nobody thought to forbid is still caught.
  *
  * @param {Record<string, unknown>} asked the options object, prompt already removed
  */
 export function whatTheFrontDoorCannotCarry(asked) {
   const named = whatTheFrontDoorWasAskedFor(asked)
-  // ⚠️ The named ones first and in list order, so the message leads with the field a reader is
-  // most likely to have meant — then anything else, which is the half the blacklist cannot see.
+  // The named ones first and in list order, so the message leads with the field a reader most likely
+  // meant, then anything else, which is the half the blacklist cannot see.
   return [...named, ...Object.keys(asked).filter((field) => !named.includes(field))]
 }
 
 /**
- * 🔴 **What the PLACED door cannot carry either — the count that says how much of the interim is
- * waiting on a surface, and how much on nothing** (`427` §3).
+ * What the placed door cannot carry either: the count that says how much of the interim is waiting
+ * on a surface and how much on nothing.
  *
- * ⛔ **`423` relay 1 shipped the real placed door and it did NOT retire `placeSession`.**
- * `StartAsAgent.vue` sends the identity and, since D-016, the folder a person chose — the interim
- * door's load-bearing per-step `cwd` — so what still holds a placement is a field no launch-time
- * control sets. ⚑ So the honest question an instrument can answer is not *"is there a real door
- * yet"* but **which placements are held up by a field some surface could carry, and which by a
- * field no door in this product will ever have.**
+ * `StartAsAgent.vue` sends the identity and the folder a person chose, so what still holds a
+ * placement is a field no launch-time control sets. The question an instrument can answer is which
+ * placements are held up by a field some surface could carry, and which by a field no door in this
+ * product will ever have.
  *
- * ⚠️ **`approvalMode` needs its VALUE, which is why this is a function and not a set difference.**
- * The sheet sends the literal `'ask'`, so a placement that asked for `'ask'` is carryable and one
- * that asked for `'auto'` is not — and `420`'s own finding is that every live approval control is
- * queued for the NEXT message, so `'auto' on turn 1` has no surface at all.
+ * `approvalMode` needs its value, which is why this is a function and not a set difference: the
+ * sheet sends the literal `'ask'`, so a placement asking for `'ask'` is carryable and one asking for
+ * `'auto'` is not (every live approval control applies to the next message, so `'auto'` on turn 1
+ * has no surface).
  *
  * @param {Record<string, unknown>} placement everything but `prompt` and `forced`
  * @param {readonly string[]} sends what the sheet really sends — {@link placedDoorSends}, passed

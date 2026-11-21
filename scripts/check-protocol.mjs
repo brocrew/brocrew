@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
- * Assert the vendored Codex protocol types are exactly what the BUNDLED CLI generates
- * (043, closing 036 P2-6; retargeted from PATH codex to the pinned binary in 014).
- * Regenerates into a temp dir and diffs against `packages/runtime/src/codex/protocol` —
- * catching CLI/protocol drift at build time rather than as confusing mis-parsing at runtime.
+ * Assert the vendored Codex protocol types are exactly what the bundled CLI generates.
+ * Regenerates into a temp dir and diffs against `packages/runtime/src/codex/protocol`, catching
+ * CLI/protocol drift at build time rather than as confusing mis-parsing at runtime.
  *
  *   pnpm run protocol:check      # this script
  *   pnpm run protocol:generate   # rewrite the vendored types in place
  *
- * NOT part of `pnpm run ci`: it runs a live codex binary, which only exists on a darwin-arm64
+ * Not part of `pnpm run ci`: it runs a live codex binary, which only exists on a darwin-arm64
  * install. It exits 0 with a SKIP notice when the bundled binary is unavailable (another
  * platform, optional deps skipped); a genuine drift is always a non-zero exit.
  *
  * It also asserts that the bundled program still holds the one sentence of Codex's the product
- * matches (`CODEX_SIGN_IN_REFUSED_AT_ROUTING`), for the same reason: a change is found here.
+ * matches (`CODEX_SIGN_IN_REFUSED_AT_ROUTING`), so a change is found here.
  *
  * The generation flags are load-bearing and verified byte-identical for 0.160.0:
  *   --experimental   emits the experimental surface we vendor (without it, 7 vendored types

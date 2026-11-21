@@ -18,35 +18,14 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const describeOnPosix = process.platform === 'win32' ? describe.skip : describe
 
 /**
- * 🔴 **325 · when the directory comes off** — the two facts `fixture:check`'s teardown was missing.
+ * Teardown ordering for the Electron gates. A `codex app-server` spawned by the provider-auth probe
+ * is `detached`, so it leads its own process group and the group kill never reaches it; it exits
+ * cooperatively, on its own schedule, and can write its model cache into the temp home while the
+ * directory is being removed (`ENOTEMPTY`).
  *
- * ## ⚠️ What made this a dispatch rather than a re-run
- *
- * `fixture:check` failed a merge with `ENOTEMPTY, Directory not empty:` on its own temp directory
- * and passed twice straight afterwards. The directory from that failure was still on disk when this
- * was investigated, and it holds exactly one thing:
- *
- * ```
- *   provider-homes/default/default/codex/models_cache.json
- *     { "fetched_at": "2026-09-04T14:37:58.877182Z", "client_version": "0.146.0", … }
- * ```
- *
- * ⛔ **A `codex app-server`, writing its model cache into the check's temp home at the second the
- * check was tearing down.** The app spawns one for the provider-auth health probe; `codex-transport`
- * spawns it `detached: true`, so it leads its OWN process group and `kill(-child.pid)` never
- * reaches it. `202` measured that it still dies — cooperatively, on stdin EOF — which is the whole
- * problem: *cooperatively* means *on its own schedule*, and the removal was racing that schedule.
- *
- * ⚑ **Six such directories were on disk**, one per run whose late write landed after the removal
- * instead of during it. The gate had been leaving them behind, green, for as long as the probe has
- * existed.
- *
- * ## ⛔ Why the rule is ordering and not a retry
- *
- * A retry around `rmSync` turns the loud failure into a silent one: the gate goes green while it
- * deletes the user-data directory of a process that is still writing to it. The two functions below
- * are the ordering instead — find what we launched by ancestry, and remove the directory only once
- * every one of them is verified gone.
+ * The rule is ordering, not a retry: a retry around `rmSync` would turn the loud failure into a
+ * silent one and delete the directory of a process that is still writing. Find what we launched by
+ * ancestry, and remove the directory only once every one of them is verified gone.
  */
 
 /** `ps -A -o pid=,ppid=` output, written the way the real command lays it out. */
@@ -54,7 +33,6 @@ const table = (rows) => rows.map(([pid, ppid]) => `  ${String(pid)} ${String(ppi
 
 describe('descendantsOf · the whole family, parents first', () => {
   it('finds children and grandchildren, and never the root itself', () => {
-    // The real shape: shim → browser → {gpu, utility, renderer, a provider child of its own}.
     const readTable = () =>
       table([
         [1, 0],
@@ -71,10 +49,10 @@ describe('descendantsOf · the whole family, parents first', () => {
     const found = descendantsOf(100, { readTable })
 
     expect(found.map((p) => p.pid)).toEqual([110, 120, 121, 122, 130])
-    // ⛔ **The order is the contract.** `createOwnedProcessLifecycle.remember()` accepts a pid only
-    // when its parent is already remembered, so a child offered before its parent is REFUSED and
-    // the subtree under it is never signalled. A depth-first or reversed walk passes the "finds
-    // them all" assertion above and still leaves an Electron running.
+    // The order is the contract. `createOwnedProcessLifecycle.remember()` accepts a pid only when its
+    // parent is already remembered, so a child offered before its parent is refused and the subtree
+    // under it is never signalled. A depth-first or reversed walk passes the "finds them all"
+    // assertion above and still leaves an Electron running.
     for (const [child, parent] of [
       [110, 100],
       [120, 110],
@@ -86,15 +64,10 @@ describe('descendantsOf · the whole family, parents first', () => {
   })
 
   it('terminates on a cycle inside the family, and names each pid once', () => {
-    // ⛔ **A REACHABLE cycle, which is the only kind that matters.** The table is text read from a
-    // live `ps`, so a torn read can name a parent that is also a descendant — here 110's parent is
-    // 100 on one line and 120 on another, and 120 is 110's own child. Without the `seen` set the
-    // walk never returns, and a teardown that hangs removes nothing and reports nothing.
-    //
-    // ⚠️ Written this way after `325 M7` SURVIVED: the first version of this test put the bad row
-    // OUTSIDE the subtree, where the walk never reaches it, so it proved nothing about either
-    // guard — and the row it was supposed to kill was a `pid === parent` check that the `seen` set
-    // had already made dead code. The one-element cycle below is that case, reachable.
+    // A reachable cycle is the only kind that matters. The table is text read from a live `ps`, so a
+    // torn read can name a parent that is also a descendant: here 110's parent is 100 on one line and
+    // 120 on another, and 120 is 110's own child. Without the `seen` set the walk never returns. The
+    // bad row must sit inside the subtree, or the walk never reaches it and the test proves nothing.
     const readTable = () =>
       table([
         [100, 1],
@@ -125,8 +98,7 @@ describe('descendantsOf · the whole family, parents first', () => {
   })
 
   it('returns nothing when the launch has no children, and says so as an empty list', () => {
-    // 193's pair for the three positives above: the walk is answering the table, not returning a
-    // family it invented.
+    // The pair for the three positives above: the walk answers the table, not a family it invented.
     expect(
       descendantsOf(100, {
         readTable: () =>
@@ -162,8 +134,8 @@ describe('tearDownAndRemove · the directory comes off last, or not at all', () 
       remove: (path) => log.push(`remove:${path}`),
     })
 
-    // ⛔ The one ordering this module exists for. A removal that happens before the reap is exactly
-    // the shape that failed 324's merge, and it passes every assertion about the RESULT.
+    // The one ordering this module exists for. A removal before the reap passes every assertion about
+    // the result and is exactly the shape that failed a merge.
     expect(log).toEqual(['kill9', 'remove:/tmp/brobot2-fixture-XXXX'])
     expect(result.removed).toBe(true)
   })
@@ -178,16 +150,15 @@ describe('tearDownAndRemove · the directory comes off last, or not at all', () 
 
     expect(log).toEqual(['kill9'])
     expect(result.removed).toBe(false)
-    // ⚠️ The pid has to survive into the caller's error, or the gate reports "could not reap" and
-    // names nobody — which is a line a person cannot act on.
+    // The pid has to survive into the caller's error, or the gate reports "could not reap" and names
+    // nobody.
     expect(result.remaining).toEqual([4242])
   })
 
   it('does NOT remove it when nothing is alive but something could not be verified', () => {
-    // ⛔ The fail-open this replaces. The old teardown read `lsof` through a `catch` that returned
-    // an empty list, so *"I could not find out"* and *"nothing holds the port"* were the same
-    // answer — and the second one removes the directory. `complete` is false here for the reason
-    // `owned-process.mjs` makes it false: an unverifiable process is not a gone one.
+    // Fail-closed: a `lsof` read that failed must not look like "nothing holds the port", because the
+    // second answer removes the directory. `complete` is false for the reason `owned-process.mjs`
+    // makes it false: an unverifiable process is not a gone one.
     const log = []
     const result = tearDownAndRemove({
       lifecycle: fakeLifecycle({ complete: false, remaining: [], unverifiable: [4243] }, log),
@@ -201,10 +172,9 @@ describe('tearDownAndRemove · the directory comes off last, or not at all', () 
   })
 
   it('kills rather than asking politely — this gate has no graceful path to measure', () => {
-    // `quit:check` is the instrument that measures a graceful quit and it takes seconds over it.
-    // Here the app has already answered every question the check had, and `stop()` would spend
-    // `owned-process`'s ten SIGTERM attempts before escalating — time in which the provider child
-    // this dispatch is about goes on writing.
+    // `quit:check` measures a graceful quit and takes seconds over it. Here the app has already
+    // answered every question, and `stop()` would spend `owned-process`'s ten SIGTERM attempts before
+    // escalating, while the provider child goes on writing.
     const log = []
     tearDownAndRemove({
       lifecycle: fakeLifecycle({ complete: true }, log),
@@ -218,24 +188,10 @@ describe('tearDownAndRemove · the directory comes off last, or not at all', () 
 })
 
 /**
- * 🔴 **333 · a removal that failed, and what the line has to say about it.**
- *
- * ## ⚠️ The message that started this dispatch, in full
- *
- * ```
- *   the window opened, but the teardown itself failed: ENOTEMPTY, Directory not empty:
- *   /var/folders/…/T/brobot2-window-oAuZlk
- * ```
- *
- * 6,310 tests and a green `build` above it, three consecutive re-runs clean below it. ⛔ **That
- * message is everything `rmSync` knew and nothing a person can act on**, and its one identifier is
- * misleading: Node's recursive `rmSync` has been C++ since v22 and names the path it was HANDED, so
- * the root appears in the error whether the race was in the root or three levels down. Measured, with
- * a writer racing a walk at depth: still the root.
- *
- * ⚑ What settles it is what is LEFT and WHEN it was written, taken at the throw. An entry whose
- * mtime is after the moment the removal was asked is a writer the reap could not see — 241's failure
- * — and one whose mtime is before it is a slow unlink, which is a different question entirely.
+ * A failed removal reports what survived and when it was written. Node's recursive `rmSync` names
+ * the path it was handed, so the root appears in the error whether the race was in the root or
+ * deeper. What settles it is what is left and when it was written: an entry whose mtime is after
+ * the removal was asked is a writer the reap could not see; one before it is a slow unlink.
  */
 describe('tearDownAndRemove · a failed removal reports what survived it', () => {
   const complete = {
@@ -259,9 +215,8 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
         lifecycle: complete,
         directory: '/tmp/brobot2-window-oAuZlk',
         remove: enotempty,
-        // ⛔ **A clock that MOVES**, because a constant one cannot tell "stamped when asked" from
-        // "stamped when it answered" — both would read 1,000 and the row would be a no-op that
-        // recorded as a survivor. The removal walk is the slow part; these are its two ends.
+        // A clock that moves: a constant one cannot tell "stamped when asked" from "stamped when it
+        // answered". The removal walk is the slow part; these are its two ends.
         now: nextOf([1_000, 1_020]),
         survivors: () => [
           { path: 'provider-homes/default/default/codex', mtimeMs: 995, isDirectory: true },
@@ -286,18 +241,17 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
     expect(thrown.message).toContain('3 entries survived the removal')
     expect(thrown.message).toContain('2 of them FILES written AT OR AFTER the moment it was asked')
     expect(thrown.message).toContain('something was still WRITING')
-    // ⛔ It names what to LOOK for and does not assert whose process it was — nothing here
-    // establishes that, and a line that did would send a reader looking for the wrong thing.
+    // It names what to look for and does not assert whose process it was; nothing here establishes
+    // that.
     expect(thrown.message).toContain('a process it never owned')
     expect(thrown.message).not.toContain('this check launched')
-    // ⛔ The age is per entry and measured from the ASK, so the two late writes carry their own
-    // offsets and the one that predates the ask carries none.
+    // The age is per entry and measured from the ask, so each late write carries its own offset.
     expect(thrown.message).toContain('logs_2.sqlite ← written 9ms AFTER the removal was asked')
     expect(thrown.message).toContain('logs_2.sqlite-wal ← written 7ms AFTER the removal was asked')
-    // ⛔ …and the entry written BEFORE the ask carries no offset at all: the whole line, so this
-    // cannot be satisfied by a neighbouring one that happens to end in the same word.
+    // The entry written before the ask carries no offset: the whole line, so a neighbour ending in the
+    // same word cannot satisfy this.
     expect(thrown.message).toContain('\n   · provider-homes/default/default/codex\n')
-    // ⚠️ The original is not discarded — a `cause` is what a reader follows to the syscall.
+    // The original error is kept as `cause`, which a reader follows to the syscall.
     expect(thrown.cause).toMatchObject({ code: 'ENOTEMPTY' })
   })
 
@@ -316,18 +270,9 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   /**
-   * 🔴 **360 · a directory's mtime is our own footprint, and the sentence used to call it a writer.**
-   *
-   * ⛔ **`rmSync` removing an entry sets its parent's mtime**, so a removal that gets part-way
-   * through stamps every directory it emptied with a time at or after the ask. Measured on this
-   * machine with no process running at all — a tree whose deepest directory is `0500` — one of four
-   * survivors reported as *"written AT OR AFTER … so something was still WRITING"*. On a `codex`
-   * provider home, whose `skills/.system` tree alone is dozens of directories, that arithmetic is
-   * most of the count, and it is what sent this dispatch looking for a process on the strength of
-   * its own footprints.
-   *
-   * ⚑ **The pair is the point.** The directory below carries a LATER mtime than the file, so a rule
-   * that read "the latest thing wins" would still accuse it; only `isDirectory` tells them apart.
+   * `rmSync` removing an entry sets its parent's mtime, so a partial removal stamps every directory
+   * it emptied with a time at or after the ask. That is our own footprint, not a writer. The
+   * directory below has a later mtime than the file, so only `isDirectory` tells them apart.
    */
   it('⛔ a directory stamped by our own unlinks is not reported as a writer', () => {
     expect(() =>
@@ -356,9 +301,8 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   /**
-   * ⚑ **The paired positive, and it must differ from the default.** The same shape with the LATE
-   * entry marked a file has to reach the other sentence — otherwise the test above passes over a
-   * function that never accuses anything, which is not the rule being asserted.
+   * The paired positive: the same shape with the late entry marked a file has to reach the other
+   * sentence, or the test above passes over a function that never accuses anything.
    */
   it('⚑ …and the same tree with a FILE written late still is', () => {
     expect(() =>
@@ -380,21 +324,10 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   /**
-   * 🔴 **387 · the millisecond `Date.now()` throws away, and who pays for it.**
-   *
-   * ⛔ **`Date.now()` floors to the integer millisecond and an mtime does not.** The ask happened at
-   * some real instant inside `[askedAt, askedAt + 1)`, so a file stamped anywhere in that same
-   * millisecond was written before the ask as often as after it — and until 387 every one of them
-   * was reported as *"written 0ms AFTER the removal was asked — so something was still WRITING"*.
-   *
-   * ⚠️ **Measured**: 200 files, each written and then followed by a `Date.now()` reading, on Node 20
-   * and Node 24 alike — **193 of 200** carried an `mtimeMs` at or above a stamp taken AFTER the
-   * write (median `+0.49ms`). ⛔ That is 360's false accusation arriving by arithmetic instead of by
-   * directories, and it is what made the real-directory fixture below accuse three files on a
-   * runtime where the removal could not remove them.
-   *
-   * ⚑ **The pair below is the rule**: inside the ask's own millisecond accuses nobody, a whole
-   * millisecond later still does.
+   * `Date.now()` floors to the integer millisecond and an mtime does not. A file stamped inside the
+   * ask's own millisecond was written before the ask as often as after it (measured on Node 20 and
+   * 24: 193 of 200 writes carried an `mtimeMs` at or above a later `Date.now()`). The pair below is
+   * the rule: inside the ask's own millisecond accuses nobody, a whole millisecond later still does.
    */
   it("⛔ a file stamped inside the ask's OWN millisecond is not a writer", () => {
     expect(() =>
@@ -403,8 +336,8 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
         directory: '/tmp/brobot2-window-floor',
         remove: enotempty,
         now: () => 5_000,
-        // ⚠️ A fractional mtime is not a contrivance: `lstat().mtimeMs` is a float and every real
-        // survivor has one. This is the value a file written 0.4ms BEFORE the ask reports.
+        // A fractional mtime is realistic: `lstat().mtimeMs` is a float. This is what a file written 0.4ms
+        // before the ask reports.
         survivors: () => [{ path: 'Cache/index', mtimeMs: 5_000.4, isDirectory: false }],
       }),
     ).toThrow(/NO surviving file was written after it was asked/)
@@ -423,14 +356,11 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   /**
-   * ⛔ **387 · the headroom is on the ACCUSATION only, and this is the other half of that.**
-   *
-   * A directory's late mtime does not accuse anybody — it explains, *"this removal emptied it"*
-   * (360). ⚠️ Applying the millisecond here as well was measured and rejected: the real-directory
-   * fixture lost the clause in **4 of 10 runs on Node 24**, because a whole failed removal fits
-   * inside one millisecond and the footprint it left then reads as too early to mention. ⛔ Both
-   * errors have to fall the same way — toward accusing nobody — and that is not the same threshold
-   * on both sides.
+   * The headroom is on the accusation only. A directory's late mtime does not accuse anybody, it
+   * explains "this removal emptied it". Applying the millisecond there as well was measured and
+   * rejected: the real-directory fixture lost the clause in 4 of 10 runs on Node 24, because a whole
+   * failed removal fits inside one millisecond. Both errors must fall toward accusing nobody, which
+   * is not the same threshold on both sides.
    */
   it('⛔ …while a DIRECTORY stamped inside that same millisecond is still named as our own', () => {
     expect(() =>
@@ -448,12 +378,9 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   /**
-   * ⛔ **360 · the one line that carries the claim must survive the cap.**
-   *
-   * ⚠️ **`MAX_SURVIVORS_SHOWN` is 25 and a `codex` provider home is dozens of directories.** In walk
-   * order the single late FILE can sit past the cut, so the message would say *"something was still
-   * WRITING"* and then print twenty-five directories, none of which is the thing it is talking
-   * about. ⚑ The writers go first; everything else keeps its walk order behind them.
+   * The line that carries the writer claim must survive the cap. `MAX_SURVIVORS_SHOWN` is 25 and a
+   * `codex` provider home is dozens of directories, so in walk order the late file could sit past the
+   * cut. The writers go first; everything else keeps its walk order behind them.
    */
   it('⛔ shows the file that carries the writer claim even when 40 directories precede it', () => {
     let thrown = null
@@ -477,19 +404,17 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
     }
 
     expect(thrown.message).toContain('1 of them FILES written AT OR AFTER')
-    // ⚑ …and it says what the other forty are, rather than leaving the count to be misread as
-    // forty-one writers — which is the sentence this dispatch was named after.
+    // It says what the other forty are, so the count is not read as forty-one writers.
     expect(thrown.message).toContain('40 more survivors are directories whose mtime this removal')
     expect(thrown.message).toContain('imagegen/SKILL.md ← written 20ms AFTER')
-    // ⛔ The cap still admits to itself, and it is the DIRECTORIES that fall off the end now.
+    // The cap still admits to itself, and it is the directories that fall off the end.
     expect(thrown.message).toContain('16 more, counted but not shown')
   })
 
   /**
-   * ⛔ **360 · a teardown that could not say what it owns removes nothing**, and the refusal is the
-   * reason rather than a pid. ⚠️ The lifecycle below reports `complete: false` with EVERY pid list
-   * empty, which is exactly the shape `refused` exists for: nothing is running, and the question of
-   * what was running could not be asked.
+   * A teardown that could not say what it owns removes nothing, and the refusal is the reason rather
+   * than a pid. The lifecycle below reports `complete: false` with every pid list empty, which is
+   * the shape `refused` exists for: nothing is running, and what was running could not be asked.
    */
   it('⛔ leaves the directory alone when the reap refused to decide, and never calls remove', () => {
     let removals = 0
@@ -519,7 +444,7 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
   })
 
   it('admits its own cap instead of pointing at a list as if it were the set', () => {
-    // ⛔ A pointer clause is a claim: *"listed below"* asserts the list is the set. This one shows
+    // A pointer clause is a claim: "listed below" asserts the list is the set. This one shows
     // twenty-five and says how many more it counted, so the sentence stays true at any size.
     let thrown = null
     try {
@@ -571,28 +496,17 @@ describe('tearDownAndRemove · a failed removal reports what survived it', () =>
 })
 
 /**
- * ⛔ **The hazard on the path the code walks** — a real directory, the real `rmSync`, the real walk.
- *
- * ⚠️ A fixture that hands `tearDownAndRemove` a stub `remove` proves the message and nothing about
- * the removal. This one makes the removal fail the way a filesystem makes it fail, and lets the
- * default survivor walk find what is actually left.
+ * A real directory, the real `rmSync`, the real walk. A stub `remove` proves the message and
+ * nothing about the removal; this one makes the removal fail the way a filesystem does and lets
+ * the default survivor walk find what is left.
  */
-// These refusal witnesses use POSIX chmod to prevent directory removal.
 describeOnPosix('tearDownAndRemove · against a real directory it cannot empty', () => {
   const made = []
 
   /**
-   * ⛔ **Unlock every directory under `root`, not the one this suite happens to name** (387).
-   *
-   * ⚠️ Until 387 this cleanup did `chmod 0700` on `<root>/locked` and nothing else, so a fixture
-   * whose unremovable directory sits four levels down — the `codex` provider-home shape below — was
-   * beyond it, and the `rmSync` after it threw. **A failing test therefore leaked its whole tree**,
-   * and the `afterEach` failed on the way out, which reads as a second broken test.
-   *
-   * 🔴 Measured on this machine, 2026-09-08: `$TMPDIR` held **61 `brobot2-teardown-*` trees**, one
-   * per run of this suite that went red — 22 of them from the runs that opened this dispatch and
-   * the rest from its own Node 20 and 22 reproductions. ⚑ A test's cleanup has to survive the test
-   * failing, or the failure grows a second symptom that outlives it.
+   * Unlock every directory under `root`, not just `<root>/locked`. An unremovable directory sits
+   * four levels down in the `codex` provider-home shape, so a shallower cleanup threw and leaked the
+   * whole tree. A test's cleanup has to survive the test failing.
    */
   const unlockEverything = (directory) => {
     let entries
@@ -620,8 +534,8 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     mkdirSync(join(root, 'locked'))
     writeFileSync(join(root, 'locked', 'held.sqlite'), 'x')
     writeFileSync(join(root, 'loose.json'), 'y')
-    // ⛔ r-x: the entry can be listed and never unlinked, so `rmSync` throws from inside the walk
-    // exactly as it does when it loses a race — and the survivor walk still has to read it.
+    // r-x: the entry can be listed and never unlinked, so `rmSync` throws from inside the walk as it
+    // does when it loses a race, and the survivor walk still has to read it.
     chmodSync(join(root, 'locked'), 0o500)
 
     let thrown = null
@@ -635,24 +549,18 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     expect(thrown.message).toContain(`could not remove ${root}`)
     expect(thrown.message).toContain('locked/held.sqlite')
     expect(thrown.message).toContain('the reap reported COMPLETE')
-    // ⛔ And nothing has been removed out from under it — 325's rule, on the failure path.
+    // Nothing has been removed out from under it, on the failure path too.
     expect(readFileSync(join(root, 'locked', 'held.sqlite'), 'utf8')).toBe('x')
   })
 
   /**
-   * **A `codex` provider home, the shape that makes the removal fail part-way through.**
+   * A `codex` provider home, the shape that makes the removal fail part-way through. One copy, so the
+   * two tests that use it (nothing writing, and a writer touching a survivor) differ only by the
+   * writer.
    *
-   * ⚑ **Hoisted out of the test below by 387**, which needed the same tree twice — once with
-   * nothing writing, and once with a writer that touched a survivor. ⛔ One copy, because two would
-   * be free to disagree about what *"the same tree"* means, and the pair only measures anything if
-   * the ONLY difference between them is the writer.
-   *
-   * ⚠️ **Every entry is pushed a minute into the past, files included.** Until 387 the three
-   * `skills/*.md` files were left at their write time, and the fixture got away with it only
-   * because a runtime whose `rmSync` makes partial progress removes them before the survivor walk
-   * can see them. On a runtime that removes nothing they survive stamped at the ask, and the test
-   * that exists to prove *"no writer is accused"* accused three — measured, `node v20.19.3`, 3 of 8
-   * runs. 🔴 **A fixture must not depend on the subject removing its evidence.**
+   * Every entry, files included, is pushed a minute into the past. On a runtime that removes nothing
+   * the `skills/*.md` files would survive stamped at the ask and be accused as writers. A fixture
+   * must not depend on the subject removing its evidence.
    */
   const aCodexShapedTree = () => {
     const root = mkdtempSync(join(tmpdir(), 'brobot2-teardown-'))
@@ -665,9 +573,9 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     const files = ['a.md', 'b.md', 'c.md'].map((name) => join(skills, name))
     for (const file of files) writeFileSync(file, 'x')
     writeFileSync(join(locked, 'held.sqlite'), 'x')
-    // ⚠️ **`utimesSync` rather than a sleep**: a fixture written a millisecond before the ask shares
-    // its clock tick — `Date.now()` floors and an mtime does not — and a test that flakes on the
-    // boundary it is testing proves nothing. 387 measured that collision at 193 of 200 writes.
+    // `utimesSync` rather than a sleep: a fixture written a millisecond before the ask shares its
+    // clock tick (`Date.now()` floors, an mtime does not), and a test that flakes on the boundary it
+    // is testing proves nothing.
     const past = new Date(Date.now() - 60_000)
     for (const path of [
       ...files,
@@ -682,29 +590,23 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     ]) {
       utimesSync(path, past, past)
     }
-    // ⛔ r-x: `held.sqlite` can be listed and never unlinked, so the removal fails from inside the
-    // walk exactly as it does when it loses a race.
+    // r-x: `held.sqlite` can be listed and never unlinked, so the removal fails from inside the walk
+    // as it does when it loses a race.
     chmodSync(locked, 0o500)
     return { root, locked, held: join(locked, 'held.sqlite'), codex }
   }
 
   /**
-   * ⛔ **The precondition this fixture cannot establish for itself, said out loud** (387 §4).
+   * The precondition this fixture cannot establish for itself. `rmSync` is the JS `rimraf` on Node
+   * 20 and 22 and a C++ binding on 24. The JS one throws on the first failed unlink and empties
+   * nothing; the binding carries on and empties what it can. Measured with `held.sqlite` locked:
    *
-   * `rmSync` is the JS `rimraf` on Node 20 and 22 and a C++ binding on 24. **The JS one throws on
-   * the first failed unlink and empties nothing**; the binding carries on and empties what it can.
-   * ⚠️ Measured on this machine, same fixture, `held.sqlite` locked away behind `0500`:
-   *
-   * ```
    *   v20.19.3 / v22.22.0   EACCES     10 survivors   0 directories emptied
-   *   v24.0.2               ENOTEMPTY   6 survivors   1 directory emptied  ← the footprint to misread
-   * ```
+   *   v24.0.2               ENOTEMPTY   6 survivors   1 directory emptied
    *
-   * ⛔ **So a runtime below the one this repo declares has no footprint for the test below to be
-   * about**, and the test would assert its conclusion with its own premise false — which is how it
-   * spent two days red while `owned-teardown.mjs` and its suite were byte-identical to the commit
-   * that shipped them. ⚑ `scripts/engine-check.mjs` refuses the whole gate first; this says the
-   * same thing where the dependence actually lives, so a direct `vitest` run names it too.
+   * A runtime below the declared one leaves no footprint for the test below to be about, and the
+   * test would assert its conclusion with its premise false. `scripts/engine-check.mjs` refuses the
+   * gate first; this names it where the dependence lives, so a direct `vitest` run does too.
    */
   const theRuntimeThisFixtureNeeds = () => {
     const major = Number(process.versions.node.split('.')[0])
@@ -719,22 +621,18 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
   }
 
   /**
-   * 🔴 **360 · the false accusation, reproduced on a real filesystem with nothing running.**
+   * The false accusation, reproduced on a real filesystem with nothing running. Every survivor was
+   * written a minute ago, so the only entry that can carry a post-ask time is one the removal
+   * itself stamped.
    *
-   * ⛔ **`rmSync` bumps the mtime of every directory it empties**, so a removal that gets part-way
-   * through leaves its own footprints looking exactly like a writer's. ⚑ There is no process in
-   * this test at all — every survivor was written a minute ago, so the only entry that can carry a
-   * post-ask time is one the removal itself stamped.
-   *
-   * ⚠️ **What this asserts is the CLASSIFICATION, and 387 took one sentence out of it.** The exact
-   * wording of the clause is pinned upstairs against injected survivors, where it is a fact about
-   * the message and nothing else; down here the same pin was also a bet on how far `rmSync` got.
-   * ⛔ The pair that matters is this test and the one under it: **no writer accused when nothing
-   * wrote, and a writer accused when something did.**
+   * This asserts the classification. The exact wording of the clause is pinned upstairs against
+   * injected survivors; down here the same pin would also be a bet on how far `rmSync` got. This test
+   * and the one under it are the pair: no writer accused when nothing wrote, a writer accused when
+   * something did.
    */
   it('⛔ does not accuse a writer when the only late mtimes are directories it emptied itself', (ctx) => {
-    // ⚠️ **darwin only** (T-001): its premise is how far the Mac's `rmSync` gets before a locked folder stops it; on ext4 it empties nothing.
-    // CI runs on Linux and skips it; the Mac's own gate runs it.
+    // darwin only: its premise is how far the Mac's `rmSync` gets before a locked folder stops it; on
+    // ext4 it empties nothing. CI runs on Linux and skips it; the Mac's own gate runs it.
     ctx.skip(process.platform !== 'darwin')
     theRuntimeThisFixtureNeeds()
     const { root, locked } = aCodexShapedTree()
@@ -747,43 +645,36 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     }
 
     expect(thrown).toBeInstanceOf(Error)
-    // ⛔ The claim this dispatch came from, and it must not be made here.
+    // This is the claim that must not be made here.
     expect(thrown.message).not.toContain('something was still WRITING')
     expect(thrown.message).toContain('NO surviving file was written after it was asked')
-    // ⛔ **The premise, asserted rather than assumed**: the removal really did empty a directory, so
-    // the line above is the answer to a question that was actually put. ⚠️ Without this the test
-    // passes on a tree the removal never touched, which is the state it spent two days failing in.
+    // The premise, asserted rather than assumed: the removal really did empty a directory. Without
+    // this the test passes on a tree the removal never touched.
     expect(thrown.message).toMatch(
       /· provider-homes\/default\/default\/codex ← a directory whose mtime moved \d+ms after the ask/,
     )
-    // ⚑ …and every entry the message flags is a directory. This is the classification the title is
-    // about, said over the whole list rather than over one sentence: nothing here may be flagged as
-    // written, whatever the removal got through.
+    // Every entry the message flags is a directory: nothing here may be flagged as written, whatever
+    // the removal got through.
     const flagged = [...thrown.message.matchAll(/^ {3}· (\S+) ← (.+)$/gm)]
     expect(flagged.length).toBeGreaterThan(0)
     expect(flagged.filter(([, , tail]) => tail.startsWith('written '))).toEqual([])
 
-    // ⚠️ This fixture's unremovable directory is deeper than the shared `afterEach` reaches, so it
-    // unlocks its own — a test that leaves a `0500` tree behind takes the NEXT one down with it.
+    // This fixture's unremovable directory is deeper than the shared `afterEach` reaches, so it
+    // unlocks its own; a `0500` tree left behind takes the next test down with it.
     chmodSync(locked, 0o700)
   })
 
   /**
-   * ⚑ **387 · the paired positive, on the same real tree** — and it has to differ from the default.
+   * The paired positive on the same real tree. An assertion with no failing case is a comment: this
+   * is the same fixture with the one fact changed that must flip it.
    *
-   * ⛔ **An assertion with no failing case is a comment.** The test above says *"no writer accused"*
-   * about a function that could simply never accuse anybody; this is the same fixture with the one
-   * fact changed that must flip it, so the pair measures the rule rather than the silence.
-   *
-   * ⚠️ **`utimesSync` into the future is what a writer looks like to this code**, and that is not a
-   * shortcut: the survivor walk reads `lstat().mtimeMs` and nothing else, so *"a file stamped at or
-   * after the ask"* IS the observation a live writer produces. ⛔ Spawning a process that races the
-   * walk would measure the scheduler instead, and the reap has already reported complete — a real
-   * process here would contradict the fixture's own premise.
+   * `utimesSync` into the future is what a writer looks like to this code, since the survivor walk
+   * reads `lstat().mtimeMs` and nothing else. Spawning a real process would measure the scheduler
+   * instead, and would contradict the premise that the reap already reported complete.
    */
   it('⚑ …and a real surviving FILE stamped after the ask still is accused', (ctx) => {
-    // ⚠️ **darwin only** (T-001): its premise is how far the Mac's `rmSync` gets before a locked folder stops it; on ext4 it empties nothing.
-    // CI runs on Linux and skips it; the Mac's own gate runs it.
+    // darwin only: its premise is how far the Mac's `rmSync` gets before a locked folder stops it; on
+    // ext4 it empties nothing. CI runs on Linux and skips it; the Mac's own gate runs it.
     ctx.skip(process.platform !== 'darwin')
     theRuntimeThisFixtureNeeds()
     const { root, locked, held } = aCodexShapedTree()
@@ -800,13 +691,11 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     expect(thrown).toBeInstanceOf(Error)
     expect(thrown.message).toContain('1 of them FILES written AT OR AFTER the moment it was asked')
     expect(thrown.message).toContain('something was still WRITING')
-    // ⛔ …and it names the file, first, ahead of the directories the removal stamped itself — the
-    // one line a reader needs is not allowed to sit behind the footprints.
+    // The file is named first, ahead of the directories the removal stamped itself.
     expect(thrown.message).toMatch(
       /· provider-homes\/default\/default\/codex\/locked\/held\.sqlite ← written \d+ms AFTER the removal was asked/,
     )
-    // ⚑ …and the removal's own footprint is still named as one, in the same message: the two
-    // claims coexist and are not one verdict about the latest mtime.
+    // The removal's own footprint is still named in the same message: the two claims coexist.
     expect(thrown.message).toContain('whose mtime this removal moved itself, which is evidence of')
 
     chmodSync(locked, 0o700)
@@ -817,10 +706,8 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     made.push(root)
     mkdirSync(join(root, 'locked'))
     writeFileSync(join(root, 'locked', 'held.sqlite'), 'x')
-    // ⚠️ **Pushed into the past before the mode changes** (360). A fixture written a millisecond
-    // before the removal is asked can share its clock tick, and this test now asserts what the
-    // message does NOT say about mtimes — an assertion that must not turn on the boundary it is
-    // standing next to.
+    // Pushed into the past before the mode changes: a fixture written a millisecond before the ask can
+    // share its clock tick, and this test asserts what the message does not say about mtimes.
     const past = new Date(Date.now() - 60_000)
     utimesSync(join(root, 'locked', 'held.sqlite'), past, past)
     utimesSync(join(root, 'locked'), past, past)
@@ -835,13 +722,12 @@ describeOnPosix('tearDownAndRemove · against a real directory it cannot empty',
     }
     expect(thrown).toBeInstanceOf(Error)
     expect(thrown.message).toContain('locked/ (could not be listed: EACCES)')
-    // ⛔ **…and it is not evidence of a process** (360). An entry whose mtime could not be read has
-    // no time to compare, so it must fall on the side that accuses nobody — stamping the walk's own
-    // clock here would turn a permissions problem into *"something was still WRITING"*, which is the
-    // sentence this dispatch spent its first hour disproving.
+    // Not evidence of a process. An entry whose mtime could not be read has no time to compare, so it
+    // must fall on the side that accuses nobody; stamping the walk's own clock here would turn a
+    // permissions problem into "something was still WRITING".
     expect(thrown.message).not.toContain('something was still WRITING')
-    // ⛔ …and not from the other direction either: nothing was unlinked in this fixture, so the
-    // clause that explains a moved directory mtime has nothing to explain and must not appear.
+    // Nothing was unlinked in this fixture, so the clause explaining a moved directory mtime has
+    // nothing to explain and must not appear.
     expect(thrown.message).not.toContain("this removal's own unlinks")
     expect(thrown.message).not.toContain('a directory whose mtime moved')
   })
@@ -860,12 +746,9 @@ function complete9() {
 }
 
 /**
- * ⛔ **…and the removal is still the plain one** (333 §3.2).
- *
- * The tempting fix for an intermittent `ENOTEMPTY` is `maxRetries` — and it would make every one of
- * these failures green while the directory of a live app came off underneath it. `241` is what that
- * costs and `066` is what it then perturbs. The remedy is upstream: `complete` waits for the process
- * table, so there is nothing left to race.
+ * The removal is still the plain one. `maxRetries` would make an intermittent `ENOTEMPTY` green
+ * while the directory of a live app came off underneath it. The remedy is upstream: `complete`
+ * waits for the process table, so there is nothing left to race.
  */
 describe('the removal itself', () => {
   const source = readFileSync(join(HERE, '..', 'lib', 'owned-teardown.mjs'), 'utf8')
@@ -879,18 +762,10 @@ describe('the removal itself', () => {
 })
 
 /**
- * ⛔ **…and the instruments actually go through it** — the rule above is worth nothing if a check
- * keeps its own copy of the removal.
- *
- * ⚠️ **Being in `ci` covers a check going red when the product breaks; it does not cover the check
- * being quietly rewritten.** This is that sentence said about the teardown, which `ci` cannot see at
- * all — a green run and a run that removed a live app's directory look identical from outside.
- *
- * ⚑ **Every Electron gate, since 326.** `325` fixed `fixture:check` and wrote down why it left the
- * other two: `window:check` had the same teardown character for character, and `quit:check` had it
- * plus a sampling loop that reported the machine. Both are through this module now, so the pins are
- * a table rather than a file. ⚠️ `fixture:check` left the chain at D-016 with the demo seed it
- * followed.
+ * The instruments actually go through it: the rule above is worth nothing if a check keeps its own
+ * copy of the removal. Being in `ci` does not cover a check being quietly rewritten. Every Electron
+ * gate (`fixture:check`, `window:check`, `quit:check`) goes through this module, so the pins are a
+ * table rather than a file.
  */
 describe.each([
   ['window:check', 'window-opens-check.mjs'],
@@ -908,24 +783,18 @@ describe.each([
   })
 
   it('remembers the family while the app is still up, not only at teardown', () => {
-    // ⛔ `refreshDescendants` is a no-op once the launcher is gone and `remember()` refuses a pid
-    // whose parent it never saw, so a crash between the app appearing and the teardown would leave
-    // Electron helpers that nothing has authority to signal.
+    // `refreshDescendants` is a no-op once the launcher is gone and `remember()` refuses a pid whose
+    // parent it never saw, so a crash between the app appearing and the teardown would leave Electron
+    // helpers that nothing has authority to signal.
     expect(check.split('lifecycle.refreshDescendants()').length - 1).toBe(1)
   })
 
   /**
-   * 🔴 **360 · the third answer has to reach the person reading the red line.**
-   *
-   * ⛔ **A guard only a live run can trip is dark by default** (310, which broke `smoke:ui` step 31
-   * where `ci` could not see it). `outcome.refused` is populated only when a real teardown cannot
-   * freeze a real tree — something no unit test on this machine will ever cause and `ci` will
-   * almost never see. ⚠️ So the thing `ci` CAN check is that the gate still says it: a report that
-   * drops the clause turns a refusal into a bare *"could not reap"*, with the one sentence that
-   * says WHY missing.
-   *
-   * ⚑ Asserted on the call and the arithmetic rather than on the word, because the word is in the
-   * prose above it in every one of these files.
+   * The third answer has to reach the person reading the red line. `outcome.refused` is populated
+   * only when a real teardown cannot freeze a real tree, which no unit test will cause, so what `ci`
+   * can check is that the gate still says it: a report that drops the clause turns a refusal into a
+   * bare "could not reap". Asserted on the call and the arithmetic rather than the word, because the
+   * word is in the prose above it in every one of these files.
    */
   it('says what the teardown refused to decide about, not only which pids it counted', () => {
     expect(check.split('refusals(outcome)').length - 1).toBe(1)
@@ -934,10 +803,9 @@ describe.each([
   })
 
   it('has no removal of the user-data directory anywhere BELOW the launch', () => {
-    // ⛔ Positional, not a bare absence (316): the pre-launch `sun_path` guard removes the directory
-    // too and must keep doing so — nothing has been started at that point. What may not exist is a
-    // second removal after the `spawn`, because that is the one that can race the app. A row that
-    // puts `rmSync(userDataDir, …)` back into a teardown goes red here and only here.
+    // Positional, not a bare absence: the pre-launch `sun_path` guard removes the directory too and
+    // must keep doing so, since nothing has been started at that point. What may not exist is a second
+    // removal after the `spawn`, because that is the one that can race the app.
     expect(launchedAt).toBeGreaterThan(0)
     const removals = [...check.matchAll(/rmSync\(userDataDir/g)].map((m) => m.index)
     expect(removals).toHaveLength(1)
@@ -945,17 +813,15 @@ describe.each([
   })
 
   it('names a pid still on its way out as its own fact on the red line', () => {
-    // ⚑ 333: `remaining` is an app still RUNNING (241) and `exiting` is one that outlasted the
-    // reap's bound leaving the table. Folding the second into the first would send a reader looking
-    // for a leak; dropping it would put the gate back where this dispatch found it.
+    // `remaining` is an app still running and `exiting` is one that outlasted the reap's bound leaving
+    // the table. Folding the second into the first would send a reader looking for a leak.
     expect(check).toContain('outcome.exiting.length > 0')
     expect(check).toContain('are still in the process table on their way out')
   })
 
   it('does not let the teardown REPLACE the failure it was reporting', () => {
-    // 🔴 325, found reviewing its own diff: an `rmSync` that threw from inside the catch would
-    // overwrite the real error with itself — the exact shape of the merge failure 325 was
-    // dispatched for. Every one of these calls the teardown from inside a `try`.
+    // An `rmSync` that threw from inside the catch would overwrite the real error with itself. Every
+    // one of these calls the teardown from inside a `try`.
     expect(check).toContain('…and the teardown itself failed: ${teardownFailure.message}')
   })
 })

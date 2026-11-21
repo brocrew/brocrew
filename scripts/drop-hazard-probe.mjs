@@ -27,11 +27,11 @@ const ELECTRON = join(REPO_ROOT, 'apps/desktop/node_modules/.bin/electron')
 const ESBUILD = join(REPO_ROOT, 'node_modules/.pnpm/node_modules/.bin/esbuild')
 
 /**
- * The five zones §1 names, laid out as disjoint bands so a drop lands unambiguously in one.
+ * The five zones, laid out as disjoint bands so a drop lands unambiguously in one.
  *
- * ⚠️ These are POSITIONS, not the app's components. What is being measured is what the window and
- * the guard do with a trusted drop at a point — which is all the app can currently distinguish,
- * because it handles no drops anywhere.
+ * These are positions, not the app's components: what is measured is what the window and the guard
+ * do with a trusted drop at a point, which is all the app can currently distinguish because it
+ * handles no drops anywhere.
  */
 const ZONES = [
   { name: 'rail', x: 60, y: 300 },
@@ -162,7 +162,7 @@ function build(dir) {
   ])
 }
 
-/** ⚑ Every CDP command is bounded (standing rule 13): a stalled one is NOT PERFORMED, never waited on. */
+/** Every CDP command is bounded: a stalled one is reported as not performed, never waited on. */
 const CDP_COMMAND_MS = 10_000
 
 /** A minimal CDP client — one socket, request/response by id. */
@@ -210,10 +210,9 @@ const wait = (ms) => new Promise((done) => setTimeout(done, ms))
 /** A port nothing holds, from the kernel (`listen(0)`) — never a fixed one another tool may own. */
 
 /**
- * 🔒 **The debugger this probe drives is its OWN launch's** — polled until it listens, and refused
- * unless every listener is a process this launch owns (§6: every launch asserts its own pid is the
- * listener). ⚠️ Owned means the lifecycle's identities, not `child.pid`: `.bin/electron` is a shim
- * whose child is the real binary, and the listener is that child.
+ * The debugger this probe drives is its own launch's: polled until it listens, and refused unless
+ * every listener is a process this launch owns. Owned means the lifecycle's identities, not
+ * `child.pid`: `.bin/electron` is a shim whose child is the real binary, and the listener is that child.
  */
 async function ownDebugger(port, lifecycle, budgetMs = 20_000) {
   const until = Date.now() + budgetMs
@@ -279,14 +278,13 @@ async function drive(cdp, file, accept) {
 }
 
 /**
- * ⛔ **THE CONTROL THAT MAKES PASS 1 MEAN ANYTHING.**
+ * The control that makes pass 1 mean anything.
  *
  * Pass 1 observes no navigation for a dropped file. That is only evidence if a synthesised drop
- * performs DEFAULT actions at all — otherwise "nothing happened" is a fact about CDP, not about the
- * window. So: drop a URL on the refusing page. The default for that is a navigation, and the guard
- * will refuse it — so a `will-frame-navigate` here proves defaults DO run, and pass 1's silence is
- * the window's answer. ⚠️ If this is silent too, the whole §1 measurement is inconclusive and must
- * say so rather than claim SAFE.
+ * performs default actions at all; otherwise "nothing happened" is a fact about CDP, not the window.
+ * So drop a URL on the refusing page: the default is a navigation, which the guard refuses, so a
+ * `will-frame-navigate` here proves defaults do run. If this is silent too, the measurement is
+ * inconclusive and must say so rather than claim SAFE.
  */
 async function urlControl(cdp) {
   await cdp.send('Runtime.evaluate', { expression: 'window.ACCEPT = false' })
@@ -314,10 +312,10 @@ async function waitFor(what, read, budgetMs) {
 }
 
 /**
- * ⚑ **What the reap established, for the directory's sake.** `unknown` until a launch is made;
- * `reaped` only when `tearDownAndRemove` says the whole tree is gone AND it removed the user data;
- * anything else leaves the directory where it is — a teardown that could not establish the tree is
- * gone must not remove what it was writing to (`owned-teardown.mjs`' own rule).
+ * What the reap established, for the directory's sake: `unknown` until a launch is made; `reaped`
+ * only when `tearDownAndRemove` says the whole tree is gone and it removed the user data. Anything
+ * else leaves the directory where it is, since a teardown that could not establish the tree is gone
+ * must not remove what it was writing to (`owned-teardown.mjs`' own rule).
  */
 let reap = 'unknown'
 
@@ -340,9 +338,8 @@ async function run(dir, file, port, userData) {
   child.stderr.on('data', (chunk) => (output += chunk))
   const exited = new Promise((resolve) => child.on('exit', resolve))
 
-  // ⛔ **Owned, or not driven** — `.bin/electron` is a shim, so `child.kill()` kills the shim and
-  // orphans the real binary (697's first run of this probe did exactly that). The lifecycle takes
-  // the whole tree's identities while it is alive and reaps THEM.
+  // Owned, or not driven: `.bin/electron` is a shim, so `child.kill()` kills the shim and orphans the
+  // real binary. The lifecycle takes the whole tree's identities while it is alive and reaps them.
   let lifecycle
   try {
     lifecycle = await waitFor(
@@ -368,10 +365,10 @@ async function run(dir, file, port, userData) {
   try {
     await ownDebugger(port, lifecycle)
     cdp = await connect(port)
-    // PASS 1 — the page REFUSES, which is the app as it stands: the browser takes its default.
+    // Pass 1: the page refuses, which is the app as it stands, so the browser takes its default.
     perZone = await drive(cdp, file, false)
-    // PASS 2 — the page ACCEPTS, which is what the feature will be: proves the pipeline can
-    // deliver a real file, so pass 1's silence is the window's answer and not the probe's.
+    // Pass 2: the page accepts, which is what the feature will be. It proves the pipeline can deliver a
+    // real file, so pass 1's silence is the window's answer and not the probe's.
     accepting = await drive(cdp, file, true)
     // …and the control, LAST, so its navigation attempt cannot contaminate the two passes.
     await urlControl(cdp)
@@ -384,12 +381,12 @@ async function run(dir, file, port, userData) {
         .send('Runtime.evaluate', { expression: "document.title = 'PROBE-DONE'" })
         .catch(() => {})
       cdp.close()
-      // ⚑ The main prints its result and exits on PROBE-DONE — waited on for a bounded time.
-      // ⚠️ Only when PROBE-DONE could be SAID: with no debugger the main cannot print, and waiting
-      // would buy fifteen seconds of nothing before the same reap.
+      // The main prints its result and exits on PROBE-DONE, so wait for it for a bounded time. Only when
+      // PROBE-DONE could be said: with no debugger the main cannot print, and waiting would buy fifteen
+      // seconds of nothing before the same reap.
       await Promise.race([exited, wait(15_000)])
     }
-    // ⚑ The whole tree is reaped whatever it did, and only then is its user data removed.
+    // The whole tree is reaped whatever it did, and only then is its user data removed.
     teardown = tearDownAndRemove({ lifecycle, directory: userData })
     reap = teardown.complete && teardown.removed ? 'reaped' : 'not-reaped'
     child.stdout.destroy()
@@ -401,7 +398,7 @@ async function run(dir, file, port, userData) {
   const start = output.indexOf('===PROBE-JSON-START===')
   const end = output.indexOf('===PROBE-JSON-END===')
   if (start < 0 || end < 0) {
-    // ⛔ The driver's own reason first — an ownership refusal must not read as a silent main.
+    // The driver's own reason first, so an ownership refusal does not read as a silent main.
     throw new Error(
       `NOT PERFORMED: ${driverFailed ?? 'the probe printed no result'}\n${output.slice(-2000)}`,
     )
@@ -412,7 +409,7 @@ async function run(dir, file, port, userData) {
 
 const dir = mkdtempSync(join(tmpdir(), 'brobot2-drop-probe-'))
 const userData = join(dir, 'userdata')
-// ⚑ 697 · 695 F-a: every look at the screen for the whole run, not one moment of it.
+// Every look at the screen for the whole run, not one moment of it.
 const offScreen = watchOffScreen(() => [userData], 250)
 try {
   build(dir)
@@ -469,17 +466,17 @@ try {
   )
 
   const navigated = result.perZone.filter((z) => z.navigated).map((z) => z.zone)
-  // ⛔ **Blind instruments do not get to say SAFE.** Every zone must have received a TRUSTED drop
-  // carrying a file, or "nothing happened" is a statement about the probe rather than the app.
-  // ⚠️ **An unaccepted drop fires NO page `drop` event — that is the browser taking the default, by
-  // design.** Requiring one conflated "the drag arrived" with "the page accepted it", and voided a
-  // run that was working. What proves the drag arrived is the PAYLOAD: a trusted dragover carrying
-  // a file kind. And pass 2 proves the pipeline can go all the way.
+  // Blind instruments do not get to say SAFE. Every zone must have received a trusted drop carrying a
+  // file, or "nothing happened" is a statement about the probe rather than the app.
+  // An unaccepted drop fires no page `drop` event: that is the browser taking the default, by design.
+  // Requiring one conflated "the drag arrived" with "the page accepted it". What proves the drag
+  // arrived is the payload: a trusted dragover carrying a file kind. Pass 2 proves the pipeline can
+  // go all the way.
   const blind = result.perZone.filter(
     (z) => !z.saw.some((e) => e.trusted && e.kinds.includes('file:')),
   )
   const fileNavigations = result.events.filter((e) => !e.url.includes('example.com'))
-  // ⛔ A window on a person's screen voids the run whatever it measured, and so does a run nobody
+  // A window on a person's screen voids the run whatever it measured, and so does a run nobody
   // looked at: no look is not a clean look.
   const verdict =
     sighted > 0
@@ -498,10 +495,10 @@ try {
   process.exitCode = verdict.startsWith('SAFE') ? 0 : 1
 } finally {
   offScreen.stop()
-  // ⛔ **Nothing is removed from under a live process.** The directory comes off only when no launch
-  // was made, or the reap PROVED the tree gone and removed the user data itself. ⚠️ The argv scan is
-  // an extra veto, never the proof: macOS rewrites a dying process's command to `(Electron)`, so a
-  // process still flushing into this directory can be invisible to it (`owned-process.mjs`).
+  // Nothing is removed from under a live process. The directory comes off only when no launch was
+  // made, or the reap proved the tree gone and removed the user data itself. The argv scan is an extra
+  // veto, never the proof: macOS rewrites a dying process's command to `(Electron)`, so a process
+  // still flushing into this directory can be invisible to it (`owned-process.mjs`).
   const alive = await pidsLaunchedOn(userData)
   if (reap === 'unknown' || (reap === 'reaped' && alive.length === 0)) {
     rmSync(dir, { recursive: true, force: true })

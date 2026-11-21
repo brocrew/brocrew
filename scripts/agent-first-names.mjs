@@ -89,7 +89,7 @@ export async function generated() {
   return prettier.format(JSON.stringify(data), { ...options, parser: 'json' })
 }
 
-// ⚠️ Only when this file IS the command.
+// Only when this file is the command.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const next = await generated()
   if (process.argv.includes('--check')) {

@@ -22,12 +22,12 @@ import { join } from 'node:path'
  * `MATRIX_NOT_MEASURED_EXIT` for NOT PERFORMED, NOT ASSERTED or absent results, including deadlines.
  */
 
-/** ⚑ Outside `/tmp`, and outside every root `beginSmokeRun` prunes. */
+/** Outside `/tmp`, and outside every root `beginSmokeRun` prunes. */
 export const MATRIX_RECORD_ROOT = join(homedir(), 'brobot2-scratch', 'permission-matrix-records')
 
 /**
- * ⚑ **Every file the record may take — top-level names of the evidence root, nothing else.**
- * ⛔ Anchored at both ends, no `/`, no pattern that can match a directory's contents.
+ * Every file the record may take: top-level names of the evidence root, nothing else.
+ * Anchored at both ends, no `/`, no pattern that can match a directory's contents.
  */
 export const MATRIX_RECORD_INCLUDE = Object.freeze([
   /^permission-matrix\.json$/,
@@ -39,14 +39,14 @@ export const MATRIX_RECORD_INCLUDE = Object.freeze([
   /^stall-[a-z0-9-]+\.txt$/,
 ])
 
-/** ⚑ A selected step-82 run that FAILED nothing but measured nothing either. `1` stays FAIL's. */
+/** A selected matrix run that FAILED nothing but measured nothing either. `1` stays FAIL's. */
 export const MATRIX_NOT_MEASURED_EXIT = 3
 
 /**
- * ⚑ **The exit status of a SELECTED step-82 run.** `failed` is the run's FAIL count; `verdict` is
- * step 82's own (`null` when it never recorded one — a deadline that fired before the step began);
- * `measuredFailures` is how many product failures the matrix WROTE DOWN before anything ended it.
- * ⛔ FAIL outranks everything: a product failure measured before a deadline is still a failure.
+ * The exit status of a selected matrix run. `failed` is the run's FAIL count; `verdict` is the
+ * matrix step's own (`null` when it never recorded one, e.g. a deadline fired before it began);
+ * `measuredFailures` is how many product failures the matrix wrote down before anything ended it.
+ * FAIL outranks everything: a product failure measured before a deadline is still a failure.
  */
 export function matrixRunExitCode({ failed, verdict, measuredFailures = 0 }) {
   if (failed > 0 || measuredFailures > 0) return 1
@@ -54,9 +54,9 @@ export function matrixRunExitCode({ failed, verdict, measuredFailures = 0 }) {
 }
 
 /**
- * ⚑ **How many units `permission-matrix.json` records as a PRODUCT failure** — rows and retakes,
- * classified by the step itself. A record that does not exist (the step never began) counts none;
- * one that cannot be read throws, because a count the finisher could not take is not zero.
+ * How many units `permission-matrix.json` records as a product failure (rows and retakes,
+ * classified by the step itself). A missing record counts none; an unreadable one throws, because
+ * a count the finisher could not take is not zero.
  */
 export function productFailuresRecordedIn(path) {
   if (!existsSync(path)) return 0
@@ -76,12 +76,11 @@ export function recordFilesIn(evidence) {
 }
 
 /**
- * 🔴 **Copy the run's record out of `/tmp`, and write what was kept beside it.**
- *
- * ⚑ `manifest` is whatever the caller wants on record with the files — the price, the exit status,
- * the reason the run ended. ⛔ Each file is re-checked with `lstat` at copy time, so a name that
- * became a symlink after the listing is refused rather than followed; `COPYFILE_EXCL` refuses to
- * overwrite a record already kept.
+ * Copy the run's record out of `/tmp`, and write what was kept beside it.
+ * `manifest` is whatever the caller wants on record with the files (price, exit status, why the
+ * run ended). Each file is re-checked with `lstat` at copy time, so a name that became a symlink
+ * after the listing is refused rather than followed; `COPYFILE_EXCL` refuses to overwrite a
+ * record already kept.
  */
 export function keepMatrixRecord({ evidence, runId, root = MATRIX_RECORD_ROOT, manifest = {} }) {
   const destination = join(root, runId)

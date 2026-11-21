@@ -12,15 +12,10 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const smoke = readFileSync(join(here, '../ui-live-smoke.mjs'), 'utf8')
 /**
- * ⚑ **665 · R14 — where this fixture CAME FROM, because the census below is only as good as it.**
- * Copied by a program, never typed, out of
- * `Agent Sessions/BroBot2/Slice 5/704-runtimedev-the-smokes-tell-the-truth-prompt.md`:
- * its standing rules' §6, from the `## 6 · 🔒` heading to the end of §6.1 (the line before
- * `### ⛔ 8.1`), trailing whitespace trimmed. ⚠️ `.txt`, so no formatter has a parser for it.
- * ⚑ **`697` re-copied it**: `665`'s copy still carried the frontend seat's 2026-09-21 exception,
- * which 2026-09-24 withdrew (*"NO SEAT IS EXEMPT"*) — the same program, the same bounds.
- * ⚑ **`704` re-copied it again**: the PM replaced *"Until the app can launch hidden (a dispatch is
- * queued)…"* with *"Since `695` the app launches hidden: pass `--brobot-hidden`…"* (`697` H-h).
+ * Where this fixture came from: copied by a program, never typed, out of the runtime-dev
+ * prompt's standing rules, from the `## 6` heading to the end of section 6.1, trailing
+ * whitespace trimmed. It is `.txt` so no formatter has a parser for it. It must carry the
+ * current rules: no seat is exempt, and the app launches hidden (`--brobot-hidden`).
  */
 const fixtureBlock = readFileSync(join(here, 'fixtures/security-block-704.txt'), 'utf8')
 const matrixCompleteAnchor = "await cdp.screenshot('480-permission-matrix-complete')"
@@ -96,9 +91,8 @@ describe('480 permission-matrix source boundaries', () => {
     expect(matrixStep).toContain("type: 'special'")
     expect(matrixStep).toContain("value: { kind: 'unknown', path: specialPath }")
     expect(matrixStep).toContain("const providerCommand = `/bin/zsh -lc '${command}'`")
-    // ⚑ **697 · `672` F1 — read in criterion 17's OWN body.** The step also holds a Claude Write check
-    // that says `persistence !== 'session'`, so a whole-step `toContain` was satisfied by that
-    // neighbour while this unit still demanded `session` of a card with no positive on it.
+    // Read in criterion 17's own body. The step also holds a Claude Write check that says
+    // `persistence !== 'session'`, so a whole-step `toContain` would be satisfied by that neighbour.
     const criterion17Start = matrixStep.indexOf('const runCriterion17Retake = async')
     const criterion17 = matrixStep.slice(
       criterion17Start,
@@ -172,7 +166,7 @@ describe('480 permission-matrix source boundaries', () => {
   })
 
   it("⛔ 660: reads today's screens — Waiting on you, the in-flow queue, and main's two checks", () => {
-    // ⚑ The product side: the destination, the root it renders and the place the queue names.
+    // The product side: the destination, the root it renders and the place the queue names.
     const renderer = (file) =>
       readFileSync(join(here, '../../apps/desktop/src/renderer/src/components', file), 'utf8')
     expect(renderer('SideRail.vue')).toContain('data-cy="rail-waiting"')
@@ -184,7 +178,7 @@ describe('480 permission-matrix source boundaries', () => {
       `:data-place="props.floating ? 'overlay' : 'in-flow'"`,
     )
 
-    // ⛔ Home still has a rail button, so a click on it SUCCEEDS and then finds no queue.
+    // Home still has a rail button, so a click on it succeeds and then finds no queue.
     expect(matrixStep).not.toContain("'rail-home'")
     const clicks = [...matrixStep.matchAll(/clickWhenReady\(cdp, '([^']+)'\)/g)].map((m) => m[1])
     expect(clicks.length).toBeGreaterThan(0)
@@ -202,11 +196,11 @@ describe('480 permission-matrix source boundaries', () => {
     expect(observe).toContain("home.persons.kind !== 'a-decision' ||")
     expect(observe).toContain('!home.persons.runtimeFrozen ||')
 
-    // ⚠️ A settled card is read back by its word, derived from the card: a teardown is not a Cancel.
+    // A settled card is read back by its word, derived from the card: a teardown is not a Cancel.
     expect(matrixStep).toContain('const cardVerdictsMatch = permissionCardSource.match(')
     expect(matrixStep).toContain('if (card.verdict !== cardVerdicts[outcome] || card.note) {')
 
-    // 🔴 An absence read where the projections are never drawn passes without looking.
+    // An absence read where the projections are never drawn passes without looking.
     const settle = matrixStep.slice(matrixStep.indexOf('const waitForProjectionSettlement = async'))
     expectOrdered(
       settle.indexOf("if (!document.querySelector('[data-cy=waiting-on-you]')) return null"),
@@ -232,33 +226,33 @@ describe('480 §6 security propagation', () => {
     expect(fixtureBlock.endsWith('⚠️ **Paraphrasing it is how it was breached** (`417` §8).')).toBe(
       true,
     )
-    // ⛔ Today's and not `480`'s: the narrowing is in it, and `480`'s retired rule is not.
+    // The current block, not an older one: the narrowing is in it, and the retired rule is not.
     expect(fixtureBlock).toContain('NEVER READ, COPY OR WRITE A CREDENTIAL')
     expect(fixtureBlock).toContain('NARROWED 2026-09-21')
     expect(fixtureBlock).not.toContain(
       '⛔ **Do not read, copy or write anything under his `provider-homes/`, and never an `auth.json`.**',
     )
-    // ⛔ 697 · 695 F-g: and not 2026-09-21's either — the frontend seat's exception was WITHDRAWN on
-    // 2026-09-24, so a block that still grants it tells a live identity a seat may use `:9444`.
+    // Not the older block either: the frontend seat's exception was withdrawn, so a block that
+    // still grants it tells a live identity a seat may use `:9444`.
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).toContain('NO SEAT IS EXEMPT — not even the frontend')
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).toContain('AND NO OTHER BROBOT WINDOW ON HIS SCREEN')
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).not.toContain('ONE SEAT IS EXEMPT')
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).not.toContain(
       "the frontend seat's dev-server exception",
     )
-    // ⛔ 704 · 697 H-h: and not the sentence `695` made false — the app launches hidden now, so a
-    // block that still says a live smoke's windows appear tells an identity a shown window is normal.
+    // Not the sentence that became false: the app launches hidden now, so a block that still says a
+    // live smoke's windows appear tells an identity a shown window is normal.
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).toContain('Since `695` the app launches hidden')
     expect(PERMISSION_MATRIX_SECURITY_BLOCK).not.toContain('Until the app can launch hidden')
   })
 
   it('🔴 665 · R14: no prompt or relay carries §6 — each identity’s own instructions do', () => {
-    // ⛔ No model transcribes it: nothing in the step concatenates it into text a turn carries.
+    // No model transcribes it: nothing in the step concatenates it into text a turn carries.
     expect(matrixStep).not.toMatch(/\+\s*(?:PERMISSION_MATRIX_)?SECURITY_BLOCK/)
     expect(matrixStep).not.toContain('${SECURITY_BLOCK}')
     expect(matrixStep).not.toContain('U+0060')
     expect(matrixStep).toMatch(/const workPrompt = [\s\S]*?\n {12}return instruction\n {10}\}/)
-    // ⚑ The carrier: both live identities, after their handshakes, before the first give.
+    // The carrier: both live identities, after their handshakes, before the first give.
     const carrier = matrixStep.indexOf(
       "const carrier = await carrySecurityBlock(\n            cdp,\n            [matrixController, 'project-manager'],\n            SECURITY_BLOCK,\n          )",
     )
@@ -267,7 +261,7 @@ describe('480 §6 security propagation', () => {
       carrier,
       matrixStep.indexOf('const giveChild = async'),
     )
-    // ⚑ And every launch is READ BACK for it: the controller's first, and each child's.
+    // And every launch is read back for it: the controller's first, and each child's.
     expect(giveController).toContain(
       "await blockCarriedBy(matrixController, 'codex', 'the controller')",
     )
@@ -276,7 +270,7 @@ describe('480 §6 security propagation', () => {
     )
     expect(matrixStep).toContain("readFileSync(leaf, 'utf8').includes(SECURITY_BLOCK)")
     expect(matrixStep).toContain('/export const BUNDLE_LEAF\\b')
-    // ⚑ The helper writes through the person's door and reads the bytes back.
+    // The helper writes through the person's door and reads the bytes back.
     const helperStart = smoke.indexOf('async function carrySecurityBlock(')
     const helper = smoke.slice(helperStart, smoke.indexOf('\n}\n', helperStart))
     expect(helper).toContain('window.api.runtime.instructAgent({ profileId, text: block })')
@@ -284,8 +278,8 @@ describe('480 §6 security propagation', () => {
     expect(helper).toContain('byteEqual: newest?.text === block,')
     expect(helper).toContain('versions: 1,')
     expect(helper).toContain("whoWroteIt: 'a-person',")
-    // ⚑ The brief arrives byte-exact — the short work sentence alone — as the one piece the
-    // controller gave (D-016: a brief is known by its piece).
+    // The brief arrives byte-exact, the short work sentence alone, as the one piece the controller
+    // gave.
     expect(giveController).toContain('text: childWork,')
     expect(giveController).toContain("attribution: 'app_authored'")
     expect(giveController).toContain('relayedFrom: parentSessionId')
@@ -305,15 +299,14 @@ describe('480 §6 security propagation', () => {
     expect(giveController).toContain("decision: { outcome: 'allow' }")
     expect(giveController).toContain('settled.calls.length !== 1')
     expect(giveController).toContain('settled.requests.length !== 1')
-    // ⚑ D-016 · the give carries the brief: no second verb, and no second card to answer.
+    // The give carries the brief: no second verb, and no second card to answer.
     expect(giveController).not.toContain('message_agent')
     expect(giveController).not.toContain('handWork')
   })
 
   it('🔴 D-014: the controller runs on the one default set — nothing is granted before its give', () => {
-    // ⚑ Every agent may give any agent work, so `'default'` gives `project-manager` its piece holding
-    // what every identity holds. ⛔ A grant here would be the step rebuilding a rule the product no
-    // longer has.
+    // Every agent may give any agent work, so `'default'` gives `project-manager` its piece holding
+    // what every identity holds. A grant here would rebuild a rule the product no longer has.
     expect(matrixStep).not.toContain('grantExactly(')
     expect(matrixStep).not.toContain('setCapabilities')
     expect(smoke).not.toContain('async function grantExactly(')
@@ -323,7 +316,7 @@ describe('480 §6 security propagation', () => {
       matrixStep.indexOf('the 495 project-manager profile handshake could not be created'),
       matrixStep.indexOf('const criterion17 = await attemptUnit('),
     )
-    // ⚑ Since `545` a relayed turn names who relayed it, so the exact brief check expects it.
+    // A relayed turn names who relayed it, so the exact brief check expects it.
     expect(giveController).toContain('relayedFromProfile: matrixController,')
   })
 
@@ -341,10 +334,9 @@ describe('480 §6 security propagation', () => {
       'matrixPageIsVisible(await cdp.evaluate(`return document.visibilityState`))',
     )
     const queueVisibility = queueBoundary.indexOf('await ensureMatrixPageVisible(')
-    // ⚑ **606 · the row this boundary reads is on `Waiting on you` now** — `EXT-008` §3 took the
-    // person's own queue off Home, so the press that puts it on screen names the destination that
-    // draws it. ⛔ The ORDER is what this case is about and it is unchanged: make the page
-    // visible, navigate, then read the durable row.
+    // The row this boundary reads is on `Waiting on you`, so the press that puts it on screen names
+    // the destination that draws it. The order is what this case is about: make the page visible,
+    // navigate, then read the durable row.
     const home = queueBoundary.indexOf("await clickWhenReady(cdp, 'rail-waiting')")
     const durableRead = queueBoundary.indexOf(
       'const walked = await window.api.runtime.decisionsForAPerson()',
@@ -528,35 +520,35 @@ describe('480 §6 security propagation', () => {
     const rows = matrixLoop.indexOf('for (const provider of providerRunOrder) {', c17Stop)
     const row = matrixLoop.indexOf('const row = await attemptUnit(', rows)
     expectOrdered(unit, c17, c17Stop, rows, row)
-    // ⛔ C17 is never called bare again — a bare call is outside the catch by construction.
+    // C17 is never called bare: a bare call is outside the catch by construction.
     expect(matrixStep).not.toContain('await runCriterion17Retake()')
     expect(matrixLoop).toContain('runCriterion17Retake,')
-    // ⚑ Its failure is kept under a kind `repairRetakesComplete` never counts as done.
+    // Its failure is kept under a kind `repairRetakesComplete` never counts as done.
     expect(matrixLoop).toContain(
       "if (failed) retakes.push({ kind: 'criterion-17-failed', ...record })",
     )
-    // ⛔ Rule 13: a stall before the give settled is NOT PERFORMED, though the run still stops.
+    // A stall before the give settled is NOT PERFORMED, though the run still stops.
     expect(matrixLoop).toContain(
       "if (error instanceof MatrixStop && error.kind === 'not-performed') {",
     )
     expect(matrixLoop).toContain(
       'return { stop: notPerformed(why, { deadlineMs: error.deadlineMs }) }',
     )
-    // ⚑ F9: every record carries its clock — each of the three failure paths stamps it before it
-    // keeps the failure, and a finished unit stamps its result.
+    // Every record carries its clock: each of the three failure paths stamps it before it keeps the
+    // failure, and a finished unit stamps its result.
     const unitBody = matrixLoop.slice(unit, c17)
     expect(unitBody.match(/failure\.clock = clockNow\(\)\n\s*keep\(failure, true\)/g)).toHaveLength(
       3,
     )
     expect(unitBody.match(/keep\(failure, true\)/g)).toHaveLength(3)
     expect(unitBody).toContain('result.clock = clockNow()\n              keep(result, false)')
-    // ⚑ And a C20 unit, which runs inside a Codex row, carries its own.
+    // And a C20 unit, which runs inside a Codex row, carries its own.
     expect(matrixStep).toContain('criterion20.clock = {')
   })
 
   it('⛔ 665 · F7 + F8: a selected run ends through ONE finisher on every path, never 0 unmeasured', () => {
     const deadlineStart = smoke.indexOf('const reportPermissionMatrixDeadline = (error) => {')
-    // ⚠️ Comments stripped: the reporter's own note quotes the call it replaced.
+    // Comments stripped: the reporter's own note quotes the call it replaced.
     const deadline = smoke
       .slice(deadlineStart, smoke.indexOf('\n  }\n', deadlineStart))
       .replace(/^\s*\/\/.*$/gm, '')
@@ -605,16 +597,16 @@ describe('480 §6 security propagation', () => {
   })
 
   it('🔴 665 · R14: the give TELLS the controller its child already holds §6, so it adds nothing', () => {
-    // ⛔ §6 in the controller's own instructions ends *"if you spawn agents of your own, this block
-    // goes into their prompts"* — without this sentence an obedient controller breaks the brief.
+    // The controller's own instructions end with "if you spawn agents of your own, this block goes
+    // into their prompts"; without this sentence an obedient controller breaks the brief.
     const prompt = giveController.slice(giveController.indexOf('const givePrompt ='))
     expect(prompt).toContain(
       "'That agent already holds the security block from your own instructions, verbatim, as its ' +",
     )
     expect(prompt).toContain("'add that block, or anything else, to the brief. ' +")
-    // ⚑ And it is TRUE when it is said: the carrier wrote the block as `project-manager`'s own
+    // And it is true when it is said: the carrier wrote the block as `project-manager`'s own
     // instructions before the prompt is built, and the child's launch is read back for it after
-    // the give. ⚠️ D-016 · the give starts the child, so the read-back can no longer come first.
+    // the give. The give starts the child, so the read-back cannot come first.
     expectOrdered(
       matrixStep.indexOf('const carrier = await carrySecurityBlock('),
       matrixStep.indexOf('const givePrompt ='),
@@ -630,7 +622,7 @@ describe('480 §6 security propagation', () => {
     expect(ended).toMatch(
       /^const endedEarly = \(stop\) => \{\s*if \(productFailures\.length > 0\) \{\s*throw new Error\(/,
     )
-    // ⚑ Before the give settled, a provider that did something else is NOT ASSERTED, not FAIL.
+    // Before the give settled, a provider that did something else is NOT ASSERTED, not FAIL.
     expect(matrixLoop).toContain(
       'if (error instanceof MatrixStop) return { stop: claims(unasserted(why)) }',
     )

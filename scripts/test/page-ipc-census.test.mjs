@@ -6,7 +6,7 @@ import { censusOf, pageTemplatesIn, typescriptAt } from '../lib/page-ipc-census.
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
-// ⚑ DERIVED, never listed: every smoke script whose text names the bridge. A new smoke joins the
+// Derived, never listed: every smoke script whose text names the bridge. A new smoke joins the
 // census by existing; one that stops naming the bridge leaves it by not.
 const files = ['scripts', 'scripts/lib']
   .flatMap((directory) =>
@@ -17,11 +17,11 @@ const files = ['scripts', 'scripts/lib']
   .filter((file) => file !== 'scripts/lib/page-ipc-census.mjs')
   .filter((file) => /\bwindow\.api\b/.test(readFileSync(join(root, file), 'utf8')))
 
-// 🔴 The planted control (rule 12): SEVEN drifts across THREE pages — two stale reads in ONE page,
-// so a census that stopped at the first finding per page is caught — beside reads that exist, a
-// correct compare, and a DOM read the page's own lib cannot type, none of which may be reported.
-// ⚠️ `because` is the field `611` retired and `660` died on; `aFieldNoTypeWillEverHave665` is the
-// plant that stays stale when a future dispatch adds some other field back (rule 12's second half).
+// The planted control: seven drifts across three pages, two stale reads in one page (so a census
+// that stopped at the first finding per page is caught), beside reads that exist, a correct
+// compare, and a DOM read the page's own lib cannot type, none of which may be reported.
+// `aFieldNoTypeWillEverHave665` is the plant that stays stale when a later change adds some other
+// field back.
 const planted = [
   {
     file: 'planted',
@@ -46,8 +46,8 @@ const planted = [
     ].join('\n'),
   },
   {
-    // ⚑ The INPUT side and the comparison: a key the bridge does not take, a value outside a field's
-    // union, and a literal no answer can ever carry — beside a correct call and a correct compare.
+    // The input side and the comparison: a key the bridge does not take, a value outside a field's
+    // union, and a literal no answer can ever carry, beside a correct call and a correct compare.
     file: 'planted',
     line: 40,
     body: [
@@ -73,18 +73,18 @@ describe('665 · every field a smoke reads off the bridge exists on the type the
       { read: 'row.request.because', type: 'RequestOnlyAPersonCanSettle' },
       { read: 'row.request.aFieldNoTypeWillEverHave665', type: 'RequestOnlyAPersonCanSettle' },
       { read: 'aFieldNoTypeWillEverHave665', type: 'AgentIdentity' },
-      // ⚑ A member of the bridge OUTSIDE `runtime` — typed only because the page's own declaration is.
-      // ⚠️ And a zod-INFERRED one: `AppInfo`'s field declarations live in zod's types, not ours.
+      // A member of the bridge outside `runtime`, typed only because the page's own declaration is,
+      // and a zod-inferred one: `AppInfo`'s field declarations live in zod's types, not ours.
       {
         read: 'info.db.aFieldNoTypeWillEverHave665',
         type: '{ migrationsApplied: number; providerSessionCount: number; }',
       },
-      // ⚑ **742 · re-aimed, not stripped**: `respondPermission` answers `ProviderAnswerAck` now (`739`
-      // F-6 — the provider may not have taken it yet), and the literal is still in none of its arms.
+      // `respondPermission` answers `ProviderAnswerAck` (the provider may not have taken it yet), and
+      // the literal is still in none of its arms.
       { read: "ack.outcome === 'takenNever665'", type: 'ProviderAnswerAck' },
-      // ⚑ **716 · the input is `createSession`'s generic parameter now** — `CreateSessionInput` and
-      // the opt-in that asks for a refusal answered (`710` F-7). Both drifts are still found, key by
-      // key: that is what this pair measures, and why the bridge has ONE signature, not two overloads.
+      // The input is `createSession`'s generic parameter: `CreateSessionInput` and the opt-in that asks
+      // for a refusal answered. Both drifts are still found, key by key: that is what this pair
+      // measures, and why the bridge has one signature, not two overloads.
       {
         read: 'aKeyNoInputWillEverTake665: 1',
         type: 'CreateSessionInput & { readonly answerARefusal?: undefined; }',
@@ -123,7 +123,7 @@ describe('665 · every field a smoke reads off the bridge exists on the type the
     ].join('\n')
     const found = pageTemplatesIn(ts, 'sorted', source)
     expect(found.pages.map((one) => one.line)).toEqual([1])
-    // ⚑ Line 5: every page executor counts, whatever follows `evaluate` in its name.
+    // Line 5: every page executor counts, whatever follows `evaluate` in its name.
     expect(found.unparsed.map((one) => one.line)).toEqual([2, 3, 5])
     expect(found.prose.map((one) => one.line)).toEqual([4])
   })

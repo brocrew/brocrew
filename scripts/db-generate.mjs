@@ -3,20 +3,16 @@
  * Run `pnpm run db:generate`, then correct only the journal entry just appended by Drizzle.
  * The SQLite applier compares the newest recorded `created_at` strictly with the journal's
  * `when`; an equal or smaller stamp silently skips an upgrade even when fresh installs work.
- * Write `max(now, previous + 1)` so the stamp is strictly increasing without adding a fixed
- * spacing that keeps pushing it ahead of the clock.
- *
- * Drizzle's generation prefixes affect filenames, not `when`, so repair follows generation.
- * Later generation reads the previous `idx` without regenerating its timestamp. Snapshots
- * hold schema and identifiers, not a timestamp, so only the journal needs this correction.
+ * Write `max(now, previous + 1)` so the stamp is strictly increasing without a fixed spacing
+ * that keeps pushing it ahead of the clock.
  *
  * Shipped stamps are immutable: lowering one can skip it, and raising one can reapply it
  * against an existing table. Refuse an already nonmonotonic journal, modified prior entries,
  * or anything other than one appended entry instead of repairing historical migrations.
+ * Snapshots hold no timestamp, so only the journal needs this correction.
  *
- * Leave clean-base's `MIGRATIONS` update manual. Its source census checks the count; its
- * fresh-install explanation also needs review when schema contents change. Automatically
- * fixing only the count could leave that explanation stale.
+ * Leave clean-base's `MIGRATIONS` update manual: its source census checks the count, but its
+ * fresh-install explanation also needs review when schema contents change.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -31,18 +27,15 @@ export const JOURNAL = join(ROOT, 'apps/desktop/src/main/db/migrations/meta/_jou
 /**
  * The package script that actually calls `drizzle-kit`, named here so the census in
  * `scripts/test/db-generate.test.mjs` can prove there is no second door into the generator.
- *
- * ⚠️ **`db:generate` in `apps/desktop` was RENAMED to this.** A person who still types the old
- * name gets pnpm's *no such script* and the list of the ones that exist, which is loud; leaving the
- * old name in place would have left an unstamped path that looks like the supported one.
+ * `db:generate` in `apps/desktop` was renamed to this so the old name fails loudly instead of
+ * leaving an unstamped path that looks supported.
  */
 export const UNSTAMPED_SCRIPT = 'db:generate:unstamped'
 
 /**
  * The smallest stamp that cannot be skipped after `previous`, given the clock.
- *
- * ⛔ **`+ 1` because the applier's test is `<` and not `<=`** — a stamp equal to the newest applied
- * row is skipped exactly like one below it.
+ * `+ 1` because the applier's test is `<`, not `<=`: a stamp equal to the newest applied row
+ * is skipped exactly like one below it.
  */
 export function stampAfter(previous, now) {
   if (previous === undefined) return now
@@ -60,10 +53,7 @@ export function outOfOrder(entries) {
   return entries.filter((entry, index) => index > 0 && entry.when <= entries[index - 1].when)
 }
 
-/**
- * What to do about the entry the generator left, as data — so the CLI prints an outcome rather than
- * a plan (`a-report-must-be-computed-from-the-outcome`).
- */
+/** What to do about the entry the generator left, as data, so the CLI prints an outcome rather than a plan. */
 export function planStamp(before, after, now) {
   const already = outOfOrder(before)
   if (already.length > 0) {
@@ -121,8 +111,7 @@ export function report(plan) {
     return 'db:generate · no schema changes — the journal is untouched.'
   }
   if (plan.outcome === 'refused') return `⛔ db:generate · ${plan.why}`
-  // ⚑ **The first migration has nothing before it to be skipped behind** (D-016 generated the one
-  // this repository holds), so neither sentence below is about it: it takes the clock and says so.
+  // The first migration has nothing before it to be skipped behind, so it takes the clock and says so.
   if (plan.previousTag === null) {
     return (
       `db:generate · ${plan.tag} is the first migration: stamped ${String(plan.is)}, the clock's ` +
@@ -144,12 +133,10 @@ export function report(plan) {
 }
 
 /**
- * ⛔ **The last thing the generator does is read back what it wrote.**
- *
- * ⚠️ Nothing a correct `planStamp` can produce reaches this throw, and that is the point: it is the
- * artefact being checked rather than the arithmetic that produced it, so an edit to `stampAfter`
- * that got the direction wrong stops the command instead of printing a cheerful sentence over a
- * journal whose newest migration will never run.
+ * The last thing the generator does is read back what it wrote.
+ * Nothing a correct `planStamp` produces reaches this throw, on purpose: it checks the artefact
+ * rather than the arithmetic, so a wrong-direction edit to `stampAfter` stops the command instead
+ * of reporting success over a journal whose newest migration will never run.
  */
 export function refuseIfSkippable(entries, tag) {
   const left = outOfOrder(entries)
@@ -171,10 +158,9 @@ export async function generateWithStamp({ journalPath = JOURNAL, generate, now =
   const { journal } = readJournal(journalPath)
   const plan = planStamp(was.journal.entries, journal.entries, now)
   if (plan.outcome !== 'stamped') return plan
-  // ⚑ **The COMMITTED file's trailing newline, not the generator's.** `meta/` is in
-  // `.prettierignore`, so nothing else in this repository normalises these bytes — and drizzle ends
-  // its write without one. ⛔ Taking the byte from what drizzle left would silently strip it from a
-  // committed file on the next generate, which is a diff nobody made and nobody can explain.
+  // Keep the committed file's trailing newline, not the generator's. `meta/` is in `.prettierignore`
+  // and drizzle writes none, so taking the byte from what drizzle left would silently strip it from
+  // a committed file on the next generate.
   journal.entries[journal.entries.length - 1].when = plan.is
   writeFileSync(
     journalPath,
@@ -184,7 +170,7 @@ export async function generateWithStamp({ journalPath = JOURNAL, generate, now =
   return plan
 }
 
-// ⚠️ Only when this file IS the command. Importing it from the test must not spawn drizzle.
+// Only when this file is the command; importing it from the test must not spawn drizzle.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const passThrough = process.argv.slice(2)
   const plan = await generateWithStamp({

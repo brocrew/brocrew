@@ -15,9 +15,9 @@ import { createServer } from 'node:net'
 /**
  * How long `lsof` may run before its answer is `unknown` rather than late.
  *
- * ⚠️ **Generous on purpose.** Nothing times anything across this call any more — 326 moved the
- * deciding to {@link couldBindPort} — so this bound exists only so that a wedged `lsof` becomes an
- * answer instead of a hang. The observed legitimate maximum under load is 622 ms.
+ * Generous on purpose: deciding is done by {@link couldBindPort}, so this bound exists only so that
+ * a wedged `lsof` becomes an answer instead of a hang. The observed legitimate maximum under load is
+ * 622 ms.
  */
 const LSOF_TIMEOUT_MS = 30_000
 
@@ -26,7 +26,7 @@ const held = (pids) => Object.freeze({ state: 'held', pids: Object.freeze(pids) 
 const unknown = (why) => Object.freeze({ state: 'unknown', why })
 
 /**
- * **Which pids are listening on `port`** — `free`, `held` with their numbers, or `unknown`.
+ * Which pids are listening on `port`: `free`, `held` with their numbers, or `unknown`.
  *
  * @param {number} port
  * @param {{ run?: (port: number) => { found: string } | { empty: true } | { failed: string } }} [options]
@@ -39,8 +39,8 @@ export function whoHoldsPort(port, { run = runLsof } = {}) {
     .split('\n')
     .map((line) => Number(line.trim()))
     .filter((pid) => Number.isInteger(pid) && pid > 0)
-  // ⛔ A zero exit means `lsof` MATCHED. A match whose pids this cannot read is not an empty port —
-  // reporting it as `free` here would rebuild the fail-open one layer in from where it was removed.
+  // A zero exit means `lsof` matched. A match whose pids this cannot read is not an empty port;
+  // reporting it as `free` would rebuild the fail-open one layer in.
   if (pids.length === 0) {
     return unknown(
       `lsof matched something on port ${String(port)} that this check could not read: ` +
@@ -53,12 +53,11 @@ export function whoHoldsPort(port, { run = runLsof } = {}) {
 /**
  * Run `lsof` and separate its three outcomes, which the exit code alone does not.
  *
- * ⚑ Exported for `port-probe.test.mjs`: the classification below is the whole of this module's
- * claim, and testing it through the real binary alone would leave the four failure shapes — none of
- * which a healthy machine produces — asserted by nothing.
+ * Exported for `port-probe.test.mjs`: the classification below is the whole of this module's claim,
+ * and testing it through the real binary alone would leave the four failure shapes, none of which a
+ * healthy machine produces, asserted by nothing.
  *
- * ⚠️ **`stderr` is the discriminator and it used to be thrown away** (`stdio: […, 'ignore']`).
- * Measured on this machine, `lsof 4.91`:
+ * `stderr` is the discriminator. Measured with `lsof 4.91`:
  *
  * | | status | signal | code | stderr |
  * |---|---|---|---|---|
@@ -78,10 +77,10 @@ export function runLsof(port, { exec = execFileSync } = {}) {
       }),
     }
   } catch (error) {
-    // ⚠️ `undefined` on a spawn failure, a string once the process actually ran.
+    // `undefined` on a spawn failure, a string once the process actually ran.
     const complaint = typeof error.stderr === 'string' ? error.stderr.trim() : ''
-    // ⛔ **The ordinary answer, and the only one that may become `free`**: it ran, it exited 1, it
-    // was not stopped, and it did not complain. Anything else is a failure wearing the same code.
+    // The ordinary answer, and the only one that may become `free`: it ran, it exited 1, it was not
+    // stopped, and it did not complain. Anything else is a failure wearing the same code.
     if (
       error.status === 1 &&
       error.signal === null &&
@@ -101,10 +100,10 @@ export function runLsof(port, { exec = execFileSync } = {}) {
 }
 
 /**
- * **Could the next process have this port?** — asked of the kernel's allocator, in ~0 ms.
+ * Could the next process have this port? Asked of the kernel's allocator, in about 0 ms.
  *
- * ⚠️ A `held` here carries no pids by design; {@link whoHoldsPort} is what names them, and keeping
- * the two apart is what stops a fast decision from pretending to be an identification.
+ * A `held` here carries no pids by design; {@link whoHoldsPort} names them, and keeping the two
+ * apart stops a fast decision from pretending to be an identification.
  *
  * @param {number} port
  * @param {{ bind?: (port: number) => Promise<object> }} [options]
@@ -113,15 +112,14 @@ export function couldBindPort(port, { bind = bindOnce } = {}) {
   return bind(port)
 }
 
-/** ⚑ Exported for the test, which drives the `unknown` branch by injecting a refusing server. */
+/** Exported for the test, which drives the `unknown` branch by injecting a refusing server. */
 export function bindOnce(port, { openServer = createServer } = {}) {
   return new Promise((resolve) => {
     const server = openServer()
     server.once('error', (error) => {
-      // ⛔ **`EADDRINUSE` is the only error that means `held`.** `EACCES` on a privileged port,
-      // `EMFILE` on a machine out of descriptors and `EADDRNOTAVAIL` are all this check being
-      // unable to ask — which is a third thing, and reporting any of them as an answer about the
-      // app is the mistake this module exists to make impossible.
+      // `EADDRINUSE` is the only error that means `held`. `EACCES` on a privileged port, `EMFILE` on a
+      // machine out of descriptors and `EADDRNOTAVAIL` are this check being unable to ask, and reporting
+      // any of them as an answer about the app is the mistake this module exists to make impossible.
       resolve(
         error.code === 'EADDRINUSE'
           ? Object.freeze({ state: 'held' })

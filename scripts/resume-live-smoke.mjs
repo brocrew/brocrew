@@ -47,39 +47,31 @@ import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 /**
- * ⛔ **What the front door starts a conversation on, which this script does not choose** (420,
- * from 417 / HO-022 §2).
+ * The provider the front door starts a conversation on; this script does not choose it.
  *
  * The front door sends exactly `{ provider: <what a launch as BroBot resolves to>, profileId:
- * 'default', approvalMode: 'ask' }`. ⚠️ **That resolution is `providerForALaunch`: BroBot's own
- * identity row FIRST (`423`), and `RuntimeScreen.vue`'s `DEFAULT_PROVIDER` only as a fallback.**
- * ⛔ **This paragraph said the frame's constant WAS the answer, and `433` is where that stopped
- * being true**: a person can now write that row, on the identity's own sheet. ⚑ `417 §3`'s other
- * half is untouched and is what this script still rests on — nothing in the app can move a
- * session's provider once it is open. So this is the provider for THIS run, or there is no run.
+ * 'default', approvalMode: 'ask' }`. That resolution is `providerForALaunch`: BroBot's own identity
+ * row first, then `RuntimeScreen.vue`'s `DEFAULT_PROVIDER` as a fallback. A person can write that
+ * row on the identity's own sheet. Nothing can move a session's provider once it is open, so this
+ * is the provider for this run.
  *
- * ⚑ **DERIVED, and CHECKED against the running app in step 1** — belt and braces, and both halves
- * earn their place. The declaration is `const DEFAULT_PROVIDER: Provider = 'codex'` inside a
- * `.vue` and is not exported; `lib/app-source.mjs` reads that spelling too, so this is the app's
- * own value rather than a second copy of it (standing rule 1). ⚠️ And step 1 still reads the
- * session's provider HOME, which ends `…/<profile>/<provider>`, because a constant read correctly
- * out of a file the renderer stopped using would be right about the source and wrong about the app.
+ * Derived from the app's source (`lib/app-source.mjs` reads the `.vue` spelling), then checked in
+ * step 1 against the session's provider HOME, which ends `.../<profile>/<provider>`: a constant
+ * read correctly from a file the renderer stopped using would be right about the source and wrong
+ * about the app.
  */
 const FRONT_DOOR_PROVIDER = constantFrom('DEFAULT_PROVIDER')
 
 /**
- * ⛔ **`BROBOT_SMOKE_PROVIDER` cannot be honoured, and must not be quietly ignored** (420 §4).
+ * `BROBOT_SMOKE_PROVIDER` cannot be honoured, and must not be quietly ignored.
  *
- * ⚠️ **Refused rather than dropped, and refused rather than obeyed.** Dropping it would run the
- * whole §7 demo on Codex under a banner reading `provider claude` — a green run reporting evidence
- * it never gathered, which is the class this dispatch exists to close. Obeying it is impossible:
- * there is no surface, and `420` §6 is explicit that the gap is REPORTED rather than worked around
- * with a picker behind a flag.
+ * Dropping it would run the whole demo on Codex under a banner reading `provider claude`, a green
+ * run reporting evidence it never gathered. Obeying it is impossible: there is no surface for it,
+ * and the gap is reported rather than worked around with a picker behind a flag.
  *
- * 🔴 **What goes with it, said plainly**: the resume path — start, quit, relaunch, reopen, continue
- * — is no longer exercised on Claude by any instrument in this repo. Claude's resume stays covered
- * by the unit suites, and a unit suite cannot see a real process restart. That is a capability
- * finding rather than a defect in this script, and it is the reason this block is loud.
+ * Consequence: the resume path (start, quit, relaunch, reopen, continue) is not exercised on Claude
+ * by any instrument in this repo. Claude's resume is covered only by unit suites, which cannot see
+ * a real process restart.
  */
 const providerAsked = process.env.BROBOT_SMOKE_PROVIDER
 if (providerAsked !== undefined && providerAsked !== FRONT_DOOR_PROVIDER) {
@@ -92,27 +84,24 @@ if (providerAsked !== undefined && providerAsked !== FRONT_DOOR_PROVIDER) {
   )
 }
 /**
- * The workspace instruction marker — proves the rendered files came from the canonical source.
- *
- * ⚑ **Derived since `420`** (standing rule 1). Its own docblock in `workspace.ts` is why an
- * instrument may lean on it — *"a token no model would produce unprompted"* — and a hand-copy of
- * a token whose whole purpose is to be unmistakable is a token that can quietly stop matching.
+ * The workspace instruction marker: proves the rendered files came from the canonical source.
+ * Derived from `workspace.ts`, whose docblock calls it "a token no model would produce unprompted";
+ * a hand-copied token like that can quietly stop matching.
  */
 /**
- * ⛔ **One directory per RUN, and a lock so there is only ever one run** (188 §2, from 182 M7) —
- * the same treatment `ui-live-smoke.mjs` got, from the same shared module. This script had the
- * identical shape: two fixed roots, both wiped at start, so a second run destroyed the first one's
- * evidence and two concurrent runs destroyed each other's live tree.
+ * One directory per run, and a lock so there is only ever one run (same treatment as
+ * `ui-live-smoke.mjs`, from the same shared module). Fixed roots wiped at start would let a second
+ * run destroy the first one's evidence and live tree.
  *
- * ⚠️ **`USER_DATA` stays inside the run**, which is exactly what makes the relaunch a relaunch: both
- * app instances share it, and nothing else does.
+ * `USER_DATA` stays inside the run: both app instances share it and nothing else does, which is
+ * what makes the relaunch a relaunch.
  */
 const {
   evidence: EVIDENCE,
   scratch: SCRATCH,
   runId: RUN_ID,
 } = beginSmokeRun({
-  // ⛔ 242 §1 — short enough that `236` §3's gate socket fits `sun_path`. See `smoke-run.mjs`.
+  // Short enough that the gate socket fits `sun_path`. See `smoke-run.mjs`.
   evidenceRoot: smokeTmpRoot('brobot2-resume-smoke'),
   scratchRoot: join(homedir(), 'brobot2-scratch', 'resume-smoke'),
   // Cheaper and smaller than the UI smoke's tree, so more of them fit.
@@ -125,14 +114,14 @@ const USER_DATA = smokeUserDataDir(EVIDENCE, 'user-data')
 const WORKSPACE = brobotWorkspace(USER_DATA)
 
 /**
- * ⚑ **738 · How many `turn` events the LEDGER holds for one conversation** — the count the page a
- * stopped conversation's start replays puts back on Events, so step `6`'s baseline. ⛔ Not a count
- * remembered from before the quit: `738`'s batch 3 measured a turn begin AFTER that count was taken
- * (BroBot's delegated child answered, and the quit interrupted the delivery), so the replay held one
- * more turn than remembered and step `6`'s wait returned at once, on the old reply.
+ * How many `turn` events the LEDGER holds for one conversation: the count the replay of a stopped
+ * conversation puts back on Events, so step 6's baseline. Not a count remembered from before the
+ * quit: a turn can begin after that count is taken (BroBot's delegated child answers and the quit
+ * interrupts the delivery), so the replay holds one more turn and step 6's wait would return at
+ * once on the old reply.
  *
- * ⚠️ Read through a PRIVATE COPY, never in place — `ui-live-smoke.mjs`' `queryDatabase`, for `055`'s
- * reason: a read-only open of a live WAL database is refused, or creates the `-shm` itself.
+ * Read through a private copy, never in place (`ui-live-smoke.mjs`' `queryDatabase`): a read-only
+ * open of a live WAL database is refused, or creates the `-shm` itself.
  */
 function ledgerTurnCount(sessionId) {
   const db = join(USER_DATA, 'brobot2.sqlite')
@@ -158,66 +147,44 @@ function ledgerTurnCount(sessionId) {
   }
 }
 /**
- * Where this run's app writes its stdout and stderr. See the launch below, and step 7.
- *
- * ⚑ **One file for both launches, appended, and that is right here** — unlike `ui-live-smoke.mjs`,
- * which needs one per launch because step 38b runs two apps at once. This suite stops `first` before
- * it starts `second`, so the two never write concurrently, and step 7's question spans the seam: an
- * ordinal published out of order BEFORE the quit is exactly as interesting as one after it.
+ * Where this run's app writes its stdout and stderr. One file for both launches, appended: this
+ * suite stops `first` before it starts `second`, so they never write concurrently, and step 7's
+ * question spans the seam (an ordinal published out of order before the quit matters as much as
+ * one after it). `ui-live-smoke.mjs` needs one file per launch because it runs two apps at once.
  */
 const APP_LOG = join(EVIDENCE, 'app.log')
 /**
- * The profile every session from this page runs in. Fixed by 013 — the new-conversation page
- * starts BroBot, and BroBot's profile is `default`; the UI no longer offers a choice. What this
- * smoke still proves about 085 is the part a person can reach: the session RECORDS its home, and a
- * resume lands back in that recorded home rather than in whatever the default would be that day.
- * Named-profile resume stays covered by the unit suite (session-profile.test.ts).
- *
- * ⚠️ **This paragraph was false between 167 and 417, and is true again** — `167` put a profile
- * picker on the page (which is what `openLauncher`'s old docblock was complaining about) and `417`
- * deleted it with the rest of the settings block. Left standing WITH that history, so the next
- * reader does not "correct" a sentence that currently describes the product.
+ * The profile every session from this page runs in. The new-conversation page starts BroBot, whose
+ * profile is `default`, and the UI offers no choice. What this smoke still proves is the part a
+ * person can reach: the session RECORDS its home, and a resume lands back in that recorded home
+ * rather than in whatever the default would be that day. Named-profile resume is covered by the
+ * unit suite (session-profile.test.ts).
  */
-// ⛔ 665 · READ from the app, never restated: since `592` the front door runs as BroBot, whose slug
-// is `brobot`, and a literal `'default'` here made step 1's home check throw on every run.
+// Read from the app, never restated: the front door runs as BroBot, whose slug is `brobot`, and a
+// literal `'default'` here made step 1's home check throw on every run.
 const PROFILE = constantFrom('DEFAULT_PROFILE_ID')
 const TURN_BUDGET_MS = 180_000
 /**
- * ⛔ **There is no model constant here any more, and that is a LOSS rather than a tidy-up** (420,
- * from 417 / HO-022 §2).
+ * There is no model constant here: the front door sends no model, so nothing is recorded on the
+ * row or replayed into the resume, and `describeModel`'s "our request, marked `(requested)`" branch
+ * cannot be produced by any gesture a person can make. This is a lost capability, not a tidy-up.
  *
- * This file named the model each run ASKED for (`BROBOT_SMOKE_MODEL`, defaulting per provider) and
- * its paragraph said why: *"Not a cost choice — it is what makes the model assertions mean
- * anything… a named model, recorded on the row, replayed into the resume."* ⚠️ **Every word of
- * that is still the right ambition and none of it is reachable.** `417` deleted the launcher's
- * model field, so the front door sends no model at all: there is nothing to record on the row and
- * nothing to replay, and `describeModel`'s *"our request, marked `(requested)`"* branch — 179's
- * own subject — cannot be produced by any gesture a person can make.
- *
- * ⛔ **What went with it, named at the two places it used to act:**
- *
- *  - **The launcher pre-flight is DROPPED, not moved.** It read the offered list and refused a
- *    stale id *"loudly, in the launcher, rather than silently launching onto something else"*. The
- *    drawer's live model control is the surface that carries model choice now, and it cannot
- *    stand in: its change is QUEUED for the NEXT message, so it cannot pre-flight a launch that
- *    has already happened, and setting it would silently change what step `6` runs on. A check
- *    with no launch behind it is a check nothing depends on, so there is none.
- *  - **The two model ASSERTIONS are re-anchored, not deleted.** Step `1` asks whether a
- *    conversation that has answered NAMES a model; step `6` asks whether a genuinely new app
- *    process names the SAME one once it has answered again (since `738`: step `5` reads none
- *    before). What neither can ask any more is *which* model — and step `5b` is where
- *    that is reported rather than left for a reader to notice.
+ *  - No launcher pre-flight of the model list. The drawer's live model control cannot stand in:
+ *    its change is queued for the NEXT message, so it cannot check a launch that already happened,
+ *    and setting it would silently change what step 6 runs on.
+ *  - The two model assertions stay, re-anchored. Step 1 asks whether a conversation that has
+ *    answered NAMES a model; step 6 asks whether a genuinely new app process names the SAME one
+ *    once it has answered again (step 5 reads none before). Which model it is, step 5b reports.
  */
 
 /**
- * ⛔ **What the model row says when nobody chose and nobody reported** — `describeModel`'s third
- * answer (`runtime-host.ts`), and the exact string 179 is about.
+ * What the model row says when nobody chose and nobody reported: `describeModel`'s third answer
+ * (`runtime-host.ts`).
  *
- * ⚠️ **Written down rather than derived, because it cannot be derived today**: it is a literal
- * inside a function rather than an `export const`, so `lib/app-source.mjs` has nothing to read.
- * ⚑ It is used in one direction only — a row that reads it is a FAILURE — so a drift makes this
- * assertion weaker rather than wrong. The remedy is to export the ellipsis from the host beside
- * the other three constants that module already owns.
+ * Written down rather than derived, because it is a literal inside a function rather than an
+ * `export const`, so `lib/app-source.mjs` has nothing to read. It is used in one direction only
+ * (a row that reads it is a FAILURE), so drift makes the assertion weaker rather than wrong. The
+ * remedy is to export the ellipsis from the host beside that module's other three constants.
  */
 const MODEL_UNREPORTED = '…'
 
@@ -284,19 +251,13 @@ function portIsFree(port) {
 }
 
 /**
- * ⛔ **`fetch` with a deadline, because `waitFor`'s own deadline is unreachable without one**
- * (162 §2, found by running).
+ * `fetch` with a deadline, because `waitFor`'s own deadline is unreachable without one: it awaits
+ * its predicate and only THEN looks at the clock, so a request that never returns ends the run.
+ * Measured: the app SIGTERMed at the quit went on holding its debug port for about four and a half
+ * minutes while answering nothing, and `curl` against it hung the same way.
  *
- * `waitFor` awaits its predicate and only THEN looks at the clock — so a request that never returns
- * is not a slow poll, it is the end of the run. Measured today, on the first `smoke:resume` to
- * reach step `2` since `075`: the app SIGTERMed at the quit went on holding its debug port for
- * about four and a half minutes while answering nothing, and `curl` against it hung exactly the
- * same way. That is `066`'s rule — a harness that hangs is worse than one that fails — arriving
- * over HTTP instead of over the CDP socket.
- *
- * Every caller already treats a throw as "not answering yet", so an abort reads correctly at all of
- * them **except one**: see step `2`, which asks whether the app is GONE and must not read silence
- * as an answer.
+ * Every caller treats a throw as "not answering yet", so an abort reads correctly at all of them
+ * except step 2, which asks whether the app is GONE and must not read silence as an answer.
  */
 function probe(url, timeoutMs = 4_000) {
   return fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
@@ -309,16 +270,14 @@ function probe(url, timeoutMs = 4_000) {
 async function launchApp({ reuseUserData, rendererPort: reusePort }) {
   if (!reuseUserData) rmSync(USER_DATA, { recursive: true, force: true })
   const [port, hmrPort] = [await freePort(), await freePort()]
-  // The RELAUNCH reuses the renderer port, so the second app loads from the same origin as the
-  // first. In dev the renderer is served over http, and `localStorage` is keyed by origin — so a
-  // fresh random port made every per-machine preference (the debug eye, the reading light) look
-  // like it had been forgotten, when what actually changed was the address it was stored under.
-  // Production loads from `file://` and has one origin for the life of the install; this makes the
-  // harness match that, which is the only way a preference can be tested across a real restart.
-  // Reusing it races the previous Vite server letting go of the socket, and the dev server is
-  // strict about its port — so it would fail to bind and this script would sit waiting for CDP
-  // until the 180s timeout, reporting "the app never came up" for a port that was simply still in
-  // TIME_WAIT. Wait for it to actually be free, and say so plainly if it never is.
+  // The RELAUNCH reuses the renderer port so the second app loads from the same origin as the first.
+  // In dev the renderer is served over http and `localStorage` is keyed by origin, so a fresh random
+  // port made every per-machine preference look forgotten. Production loads from `file://` with one
+  // origin for the life of the install; this matches that.
+  // Reusing the port races the previous Vite server letting go of the socket, and the dev server is
+  // strict about its port, so it would fail to bind and this script would wait for CDP until the 180s
+  // timeout, reporting "the app never came up" for a port still in TIME_WAIT. Wait for it to be free,
+  // and say so plainly if it never is.
   const rendererPort = reusePort ?? (await freePort())
   if (reusePort !== undefined) {
     await waitFor(
@@ -329,14 +288,13 @@ async function launchApp({ reuseUserData, rendererPort: reusePort }) {
     )
   }
   assertPortNotShared(port)
-  // 🔴 **The app's own output goes to a FILE, and until 345 it went nowhere** (345 §3, from 342).
-  // `runtime-host.ts`'s out-of-order tripwire reports on a bare `console.error` in the MAIN process,
-  // and this suite spawned the app with `stdio: 'ignore'` — ⛔ **so the one live suite that really
-  // falsifies event ordering (step 7's dense-ordinal check across the quit seam) was deaf to the
-  // app's own alarm about it.** A clean negative from a deaf instrument is worth almost nothing.
+  // The app's own output goes to a FILE. `runtime-host.ts`'s out-of-order tripwire reports on a bare
+  // `console.error` in the MAIN process; with `stdio: 'ignore'` the one live suite that falsifies
+  // event ordering (step 7's dense-ordinal check across the quit seam) would be deaf to the app's
+  // own alarm.
   //
-  // ⚠️ **A file rather than a pipe**, for `app-closes-check.mjs`'s reason: Node makes stdout/stderr
-  // synchronous when they are files, so the last line before a quit is never queued and lost — and
+  // A file rather than a pipe, for `app-closes-check.mjs`'s reason: Node makes stdout/stderr
+  // synchronous when they are files, so the last line before a quit is never queued and lost, and
   // this suite quits the app on purpose, twice.
   const appLog = openSync(APP_LOG, 'a')
   const child = spawn(
@@ -351,7 +309,7 @@ async function launchApp({ reuseUserData, rendererPort: reusePort }) {
       String(port),
       '--',
       `--user-data-dir=${USER_DATA}`,
-      // ⚑ 695 §1 · this run's window is nobody's: never shown, titled `BroBot2 — test`.
+      // This run's window is nobody's: never shown, titled `BroBot2 — test`.
       HIDDEN_LAUNCH_ARG,
     ],
     {
@@ -427,14 +385,12 @@ async function launchApp({ reuseUserData, rendererPort: reusePort }) {
     180_000,
   )
   assertPortOwnedByTree({ port, repoRoot: REPO_ROOT })
-  // ⛔ **The gate ran and ANSWERED** (242 §1). Unconditional and on every launch, because the one
-  // thing this instrument could never see was a shipped feature that did nothing — see
-  // `host-gate-witness.mjs`. ⚠️ On the RELAUNCH the socket may be the first app's artefact that the
-  // second app broke and re-claimed; what is asserted either way is that a live gate holds this
-  // `userData`, which is exactly what `236` §3 promises and what was false here until today.
-  // ⚠️ **And it reaps what it launched if it fails.** `launchApp` hands the caller the only handle
-  // that can stop this app, so throwing before the return would leave a live Electron on the
-  // machine for the rest of the run — 066's leak, through the door 242 just added.
+  // The gate ran and ANSWERED. Unconditional on every launch, because a shipped feature that did
+  // nothing is the one thing this instrument could not otherwise see; see `host-gate-witness.mjs`.
+  // On the RELAUNCH the socket may be the first app's artefact that the second app broke and
+  // re-claimed; what is asserted either way is that a live gate holds this `userData`.
+  // It also reaps what it launched if it fails: `launchApp` hands the caller the only handle that can
+  // stop this app, so throwing before the return would leave a live Electron on the machine.
   try {
     const { token } = await witnessGate(USER_DATA)
     console.log(`one-host gate engaged on ${USER_DATA} — token ${token}`)
@@ -446,13 +402,10 @@ async function launchApp({ reuseUserData, rendererPort: reusePort }) {
 }
 
 /**
- * ⛔ **How long one CDP request may go unanswered before it becomes a failing step** (162 §2).
- *
- * Same value and same reasoning as `ui-live-smoke.mjs`, which carries the long version: 161's run
- * sat 17 minutes inside a single step on a socket that stayed ESTABLISHED at both ends while one
- * reply went missing, and `066`'s `close`/`error` guard cannot see that. This file needs it more
- * than the other one does, because its `step()` re-throws — a wedge here does not cost one step, it
- * costs every step behind it, which is exactly what "not run since 075" is made of.
+ * How long one CDP request may go unanswered before it becomes a failing step. Same value and
+ * reasoning as `ui-live-smoke.mjs`: a socket can stay ESTABLISHED at both ends while one reply goes
+ * missing, which the `close`/`error` guard cannot see. This file needs it more, because its
+ * `step()` re-throws: a wedge costs every step behind it, not just one.
  */
 const CDP_SEND_BUDGET_MS = 90_000
 
@@ -705,11 +658,11 @@ async function openLauncher(cdp) {
 }
 
 /**
- * Put the drawer on a tab, opening it first if it is shut (080).
+ * Put the drawer on a tab, opening it first if it is shut.
  *
- * ⚠️ **Both the openness and the tab are remembered per machine**, so a script that assumed either
- * would be reporting on a preference rather than on the session. One tab's body is on screen at a
- * time, so every read out of the drawer says which tab it wants.
+ * Both the openness and the tab are remembered per machine, so a script that assumed either would
+ * report on a preference rather than on the session. Only one tab's body is on screen at a time,
+ * so every read out of the drawer says which tab it wants.
  */
 async function ensureTab(cdp, tab) {
   const on = `
@@ -767,7 +720,7 @@ async function ensureHistoryAvailable(cdp) {
   )
 }
 
-/** The paths — the drawer's Info tab since 080, the header's debug strip before it. */
+/** The paths: the drawer's Info tab. */
 async function ensureInfoOpen(cdp) {
   await ensureTab(cdp, 'info')
   await waitFor(
@@ -779,11 +732,9 @@ async function ensureInfoOpen(cdp) {
 }
 
 /**
- * ⛔ **Refuse to wait on a counter that is not on screen** (093's guard, brought to this file by
- * `162`). `ui-live-smoke.mjs` has had it since `093`; this file never did, and `161` paid for the
- * difference: `smoke:resume` aborted at step `1` in both of its attempts with *"the turn never
- * finished"* — about a turn that had finished, had written its file, and had its approval card
- * answered. Six of its eight steps did not run, and had not run since `075`.
+ * Refuse to wait on a counter that is not on screen. Without it, a turn that had finished (written
+ * its file, had its approval card answered) read as "the turn never finished" and aborted the run
+ * at step 1.
  */
 function assertHistoryAvailable(now, what) {
   if (now.historyRead) return
@@ -797,47 +748,39 @@ function assertHistoryAvailable(now, what) {
 const HAS_DRAWER = `return Boolean(document.querySelector('[data-cy=toggle-session-panel]'))`
 
 /**
- * Send a prompt and answer every approval it raises until the turn terminalizes — with whatever
- * decision the card actually offers, preferring the permissive one. The two providers do not
- * share a vocabulary, and a script that only knows one of them stalls on the other's cards.
+ * Send a prompt and answer every approval it raises until the turn terminalizes, with whatever
+ * decision the card actually offers, preferring the permissive one. The two providers do not share
+ * a vocabulary, and a script that only knows one of them stalls on the other's cards.
  *
- * ⛔ **This opens Events itself, and the order is the whole repair** (`162` §1). The terminal
- * condition is `now.turns > before.turns`, counted off `[data-cy=event-log] li` — so both readings
- * have to come from the same tab or the comparison is between two different questions:
+ * This opens Events itself, and the order matters. The terminal condition is
+ * `now.turns > before.turns`, counted off `[data-cy=event-log] li`, so both readings must come from
+ * the same tab:
  *
- *   - **A conversation already exists** → open Events *before* the baseline. Reading `before` off
- *     the wrong tab and `now` off the right one would make the loop return on the FIRST poll, on
- *     turns that ended long ago, which is a false green rather than a hang.
- *   - **No conversation yet** (step `1`, the very first send) → the drawer toggle does not exist to
- *     click, and the baseline is `0` by construction because there is no session to have had a
- *     turn. Open Events once the send has created the session, then start counting.
- *
- * `161` §4 traced the abort to the second case: `ensureTranscriptReady` runs before step `1` and its drawer
- * half returns early — correctly — so the suite's first turn was always counted blind, and nothing
- * re-opened Events until *after* this function had already given up.
+ *   - A conversation already exists: open Events BEFORE the baseline. Reading `before` off the
+ *     wrong tab and `now` off the right one would return on the first poll, on turns that ended
+ *     long ago, a false green.
+ *   - No conversation yet (step 1, the very first send): the drawer toggle does not exist and the
+ *     baseline is `0` by construction. Open Events once the send has created the session, then
+ *     start counting.
  */
 async function driveTurn(cdp, prompt, { turnsBefore = 0 } = {}) {
   const fresh = !(await cdp.evaluate(HAS_DRAWER))
   if (!fresh) await ensureHistoryAvailable(cdp)
-  // ⚑ **D-017b · a conversation the quit left behind opens in its FULL view** — drawer and all — so
-  // it takes the road above, counted off its own Events; `turnsBefore` is only the no-drawer road's
-  // baseline, and a caller hands the LEDGER's count ({@link ledgerTurnCount}) for it.
+  // A conversation the quit left behind opens in its FULL view, drawer and all, so it takes the road
+  // above, counted off its own Events; `turnsBefore` is only the no-drawer road's baseline, and a
+  // caller hands the LEDGER's count ({@link ledgerTurnCount}) for it.
   const before = fresh ? { turns: turnsBefore } : await cdp.evaluate(SNAPSHOT)
   if (!fresh) assertHistoryAvailable(before, 'a turn to end')
   await cdp.evaluate(SET_VALUE('prompt-input', prompt))
-  // ⛔ **A send that cannot work is a SILENT no-op** (094, and 163 paid for its absence HERE).
-  // `PromptComposer.send()` opens `if (!canSend(text.value, props.state, props.blocked,
-  // props.attachments.length)) return`, and under sustained load the launcher can lose what was
-  // typed between the fill and the press — so the press lands on a composer holding nothing, with
-  // nothing on screen to say so. `ui-live-smoke.mjs` has guarded this since 094; this file never
-  // did, and under sustained load step `1` failed twice in a row on the very commit that then
-  // passed it 10/10 on a quiet machine — reporting only *"timed out waiting for the conversation
-  // the send created"*, which is a sentence about a send that may never have left.
+  // A send that cannot work is a SILENT no-op. `PromptComposer.send()` opens
+  // `if (!canSend(text.value, props.state, props.blocked, props.attachments.length)) return`, and
+  // under sustained load the launcher can lose what was typed between the fill and the press, so the
+  // press lands on a composer holding nothing and nothing on screen says so. Without this guard the
+  // failure reads only "timed out waiting for the conversation the send created".
   //
-  // ⚑ **223 changed the mechanism and NOT the need for this guard.** The button is no longer
-  // *"disabled only on `!canType`"* — it is dark whenever there is nothing to send — so a lost
-  // message now leaves a DARK button rather than a lit and inert one. `ready.typed <= 0` still
-  // fires first and still names the real cause; `ready.disabled` below is the second net.
+  // The send button is dark whenever there is nothing to send, so a lost message leaves a DARK
+  // button. `ready.typed <= 0` fires first and names the real cause; `ready.disabled` below is the
+  // second net.
   await waitFor(
     'the composer to offer its send button',
     async () =>
@@ -855,18 +798,16 @@ async function driveTurn(cdp, prompt, { turnsBefore = 0 } = {}) {
     )
   }
   if (ready.disabled) {
-    // ⚠️ **223 · the box is checked ABOVE, so an empty one is not what this is reporting.** Since
-    // 223 an empty box darkens the button too, and naming only the old cause would send a reader
-    // hunting for the wrong thing.
+    // The box is checked ABOVE, so an empty one is not what this reports: an empty box darkens the
+    // button too, and naming only that cause would send a reader hunting for the wrong thing.
     throw new Error(
       'the send button is disabled with a message in the box — something else forbids this turn',
     )
   }
   await cdp.evaluate(CLICK('send-prompt'))
   if (fresh) {
-    // ⚠️ **And when it still does not appear, say what the screen holds** (162's rule, applied to
-    // the one wait in this file that had no diagnostic). "Timed out" is compatible with a refused
-    // launch, a stale credential and a send that no-opped, and they are three different problems.
+    // When it still does not appear, say what the screen holds: "timed out" fits a refused launch, a
+    // stale credential and a send that no-opped, which are three different problems.
     await waitFor(
       'the conversation the send created',
       async () => await cdp.evaluate(HAS_DRAWER),
@@ -919,35 +860,24 @@ async function driveTurn(cdp, prompt, { turnsBefore = 0 } = {}) {
 }
 
 /**
- * 🔴 **What the front door cannot be asked for, and what to do instead** (420 §4, from 417).
+ * What the front door cannot be asked for, and what to do instead.
  *
- * ⛔ **`417` did not take a control away; it took a CAPABILITY away.** The front door sends
- * exactly `{ provider: <the app frame's default>, profileId: DEFAULT_PROFILE_ID, approvalMode: 'ask' }`,
- * and there is no other surface in the product that creates a session — `417 §2` measured it. A
- * step that needs Claude, a named profile, a folder of its own, a launch-time model, a reasoning
- * rung, plan mode or yolo is asking for a shape **no gesture a person can make can express**.
- * This list is what says so AT THE ASK, by name, instead of thirty seconds later at a hook that
- * has not existed since `417`.
+ * The front door sends exactly `{ provider: <the app frame's default>, profileId:
+ * DEFAULT_PROFILE_ID, approvalMode: 'ask' }`, and no other surface creates a session. A step that
+ * needs Claude, a named profile, a folder of its own, a launch-time model, a reasoning rung, plan
+ * mode or yolo asks for a shape no gesture a person can make can express. This list says so at the
+ * ask, by name, instead of later at a hook that no longer exists.
  *
- * ⚑ **Every field here has exactly one honest answer** (420 §4): drive the live control in the
- * drawer after the launch, place the conversation through the interim door and say which field
- * forced it, or report the step `notPerformed(…)` and file the capability as a finding. ⛔ **Do
- * not answer it by re-adding a picker** — `417` and `420` §6 both say the gap is to be REPORTED.
+ * Each field has one honest answer: drive the live control in the drawer after the launch, place
+ * the conversation through the interim door and say which field forced it, or report the step
+ * `notPerformed(...)` and file the capability as a finding. Do not re-add a picker.
  *
- * ## ⚠️ This is the sibling of `ui-live-smoke.mjs`'s list, and only half of that is comfortable
- *
- * The two {@link startSession}s genuinely cannot be shared: that one is a closure inside its own
- * `main()` over its `cdp`, its `snapshot()`, its `watchTurn()` and a `SNAPSHOT` of a different
- * shape (its baseline carries streaming blocks, composer state and activity phases; this file's
- * carries the provider chip, the session home and the agent rows), while every helper here is top
- * level and takes a connection. A shared one would have to be handed four of those, which is a
- * bigger change than the thing it removes.
- *
- * ⚑ **The LIST is shared and lives in `scripts/lib/front-door.mjs`.** It is pure data and a
- * predicate; two copies of one roster are two copies that will differ once — the day a tenth
- * field becomes impossible, one of them learns about it. ⚠️ **The SENTENCE below stays here**,
- * because this suite's honest remedy is not `ui-live-smoke.mjs`'s: that one has an interim door
- * and points at it, and this one deliberately does not.
+ * This is the sibling of `ui-live-smoke.mjs`'s list. The two {@link startSession}s cannot be
+ * shared: that one is a closure inside its own `main()` over its `cdp`, `snapshot()`, `watchTurn()`
+ * and a `SNAPSHOT` of a different shape, while every helper here is top level and takes a
+ * connection. The LIST is shared and lives in `scripts/lib/front-door.mjs` (pure data and a
+ * predicate, so two copies cannot drift). The SENTENCE below stays here, because this suite's
+ * remedy differs: that one has an interim door and points at it, this one deliberately does not.
  */
 
 function refuseWhatTheFrontDoorCannotAsk(asked) {
@@ -963,25 +893,18 @@ function refuseWhatTheFrontDoorCannotAsk(asked) {
 }
 
 /**
- * Start THE session through the front door: open the surface, type the first message, send.
- * **That is the whole of it now** (420, from 417 / HO-022 §2).
+ * Start the session through the front door: open the surface, type the first message, send.
+ * Every conversation this opens is `{ provider: <the app frame's default>, profileId:
+ * DEFAULT_PROFILE_ID, approvalMode: 'ask' }`, running wherever the host resolves, which is
+ * {@link WORKSPACE} for this run (step 1 asserts it).
  *
- * ⚑ **013's "one door" is still true and is still the point** — *"the second way was the one that
- * ignored the provider you picked"*. What changed is that the door has nothing on it to fill in.
- * Every conversation this opens is `{ provider: <the app frame's default>, profileId: DEFAULT_PROFILE_ID,
- * approvalMode: 'ask' }`, running wherever the host resolves — {@link WORKSPACE} for this run,
- * which step `1` asserts rather than assumes.
+ * It takes a prompt and nothing else, with {@link refuseWhatTheFrontDoorCannotAsk} in front: a step
+ * that asks for a placement fails at the ask, with the honest alternatives in the message, rather
+ * than timing out against a missing hook.
  *
- * ⛔ **It takes a prompt and nothing else**, with {@link refuseWhatTheFrontDoorCannotAsk} in front
- * of it, and that guard is the entire reason a two-line gesture gets a helper: a future step that
- * asks for a placement fails at the ask, with the honest alternatives in the message, rather than
- * timing out against a deleted hook and reporting it as a product regression.
- *
- * ⚠️ **The composer guards and the turn watch are `driveTurn`'s** rather than a second copy of
- * them. It already refuses a send that would be a silent no-op (094, and 163 paid for its absence
- * here), waits for the conversation the send creates and says what the screen held if it never
- * arrives, opens Events before it starts counting (162 §1), and answers whatever cards the turn
- * raises in either provider's vocabulary. A first `driveTurn` on the launcher IS the front door.
+ * The composer guards and the turn watch are `driveTurn`'s: it refuses a silent no-op send, waits
+ * for the conversation the send creates, opens Events before counting, and answers the cards of
+ * either provider. A first `driveTurn` on the launcher IS the front door.
  */
 async function startSession(cdp, { prompt, ...asked }) {
   refuseWhatTheFrontDoorCannotAsk(asked)
@@ -990,22 +913,16 @@ async function startSession(cdp, { prompt, ...asked }) {
 }
 
 async function main() {
-  // Both roots are this run's own — see `beginSmokeRun`. Nothing is wiped, because there is
-  // nothing of anyone else's here to wipe.
+  // Both roots are this run's own (see `beginSmokeRun`), so nothing is wiped.
   console.log(`run ${RUN_ID} · evidence ${EVIDENCE} · scratch ${SCRATCH}`)
 
   /**
-   * ⛔ **Inside the session's own working directory, which is where it always was** (420 §3).
+   * Inside the session's own working directory. The front door gives no folder, so the cwd is
+   * {@link WORKSPACE} and the marker lives there. This matters: Codex's sandbox is scoped to the
+   * working directory, so a marker in SCRATCH would make step 1's first tool call an escalation that
+   * must be approved, and the outcome would depend on a card being offered and answered.
    *
-   * This was `join(SCRATCH, …)` because SCRATCH was the folder the launcher was GIVEN. The front
-   * door gives none, so the cwd is {@link WORKSPACE} and the marker moves with it. ⚠️ **Not a
-   * cosmetic move**: Codex's sandbox is scoped to the working directory, so a marker left in
-   * SCRATCH would make step `1`'s first tool call an ESCALATION that has to be approved — which
-   * is a different thing to measure than *"the agent used its shell tool and a file appeared"*,
-   * and it would make the step's outcome depend on a card being offered and answered.
-   *
-   * ⚑ **SCRATCH still exists and still rotates with the run**, and nothing places a session in it
-   * any more. The day a surface can place one (417 §11.2) it is where that placement goes.
+   * SCRATCH still exists and rotates with the run, but nothing places a session in it.
    */
   const marker = join(WORKSPACE, 'resume-marker.txt')
   let first
@@ -1013,12 +930,11 @@ async function main() {
   let firstRef = null
   let firstHome = null
   /**
-   * ⚑ **738 · the conversation step `1` started, by its app id** — what steps `4` and `5` find it by
-   * in the rail. ⛔ Not by being the run's only one: `738`'s final batch found BroBot had delegated in
-   * step `1` and the first life left TWO conversations behind.
+   * The conversation step 1 started, by its app id: what steps 4 and 5 find it by in the rail. Not
+   * "the run's only conversation": BroBot may delegate in step 1, leaving TWO behind.
    */
   let firstSessionId = null
-  /** What the header said the model was BEFORE the quit — step `6`'s comparison, after the provider has spoken again (179, R34b). */
+  /** What the header said the model was BEFORE the quit: step 6's comparison, after the provider has spoken again. */
   let startedModel = null
   /** The highest ordinal the renderer saw before the quit — the seam has to go past it. */
   let preQuitLast = -1
@@ -1028,8 +944,8 @@ async function main() {
     first = await launchApp({ reuseUserData: false })
     let cdp = await Cdp.attach(first.port)
     await ensureTranscriptReady(cdp)
-    // ⚠️ **"the front door's own default" rather than "provider codex"** (420): this script does
-    // not pick one any more, and step 1 is where the claim is checked against the app's answer.
+    // "the front door's own default" rather than "provider codex": this script does not pick one, and
+    // step 1 checks the claim against the app's answer.
     record(
       true,
       `0 first app is up — pid ${first.pid}, front door default ${FRONT_DOOR_PROVIDER}`,
@@ -1057,26 +973,18 @@ async function main() {
     )
 
     await step('1 start a session and do real work in it', async () => {
-      // ⛔ **The one door (013) — and since 417 there is nothing on it to fill in** (420, HO-022
-      // §2). This read *"the settings are visible"* and then wrote four of them: the provider, the
-      // folder, a check against the offered model list, the model. ⚠️ **All four controls are
-      // gone**, and none of those four lines is what a run actually hit: `openLauncher`'s gate
-      // above them waited ten seconds for the provider picker and threw *"timed out waiting for
-      // the new-conversation settings"* — a loud failure naming the APP rather than the ask — and
-      // `step()` re-throws, which is how steps 2 to 7 stopped running. What is left is the gesture
-      // a person makes: open the surface, type the first message, send. {@link startSession} is
-      // that, with the refusal in front of it.
+      // The front door has nothing to fill in: open the surface, type the first message, send.
+      // {@link startSession} does that, with the refusal in front of it.
       //
-      // ⚑ **What this step no longer chooses, and where each one went:** the provider is the app
-      // frame's default and is CHECKED below against the session's own home; the folder is the
-      // host's resolution and is CHECKED below against {@link WORKSPACE}; the approval mode is
-      // `ask` by construction and, since `738` (R34b), no surface reads it back (step `4` says so); the model is nobody's and
-      // step `5b` says so.
+      // What this step does not choose: the provider is the app frame's default and is CHECKED below
+      // against the session's own home; the folder is the host's resolution and is CHECKED below against
+      // {@link WORKSPACE}; the approval mode is `ask` by construction and no surface reads it back (step
+      // 4 says so); the model is nobody's and step 5b says so.
       //
-      // The confirmation is REQUESTED as a fence (017): after the quit, step 5 asserts the
-      // rehydrated reply renders it as a real code block — replay-path markdown, on a message a
-      // provider actually wrote. Described rather than dictated: asked to echo literal backtick
-      // lines, a model may helpfully strip them; asked to produce a fenced block, it produces one.
+      // The confirmation is REQUESTED as a fence: after the quit, step 5 asserts the rehydrated reply
+      // renders it as a real code block (replay-path markdown, on a message a provider actually wrote).
+      // Described rather than dictated: asked to echo literal backtick lines, a model may helpfully strip
+      // them; asked to produce a fenced block, it produces one.
       const after = await startSession(cdp, {
         prompt:
           `Use your shell tool to write the single word BANANA into the file ${marker}, ` +
@@ -1087,16 +995,10 @@ async function main() {
       if (!existsSync(marker)) throw new Error(`${marker} was not written`)
       if (readFileSync(marker, 'utf8').trim() !== 'BANANA')
         throw new Error('marker has wrong content')
-      // ⛔ **The ref is an INFO row, so it is read on the Info tab** (162 §1, found by running).
-      //
-      // This was `firstRef = after.ref`, off the snapshot `driveTurn` returns — which is taken on
-      // Events, where `[data-cy=session-ref]` is not mounted. So `firstRef` was `null` every time,
-      // and step `5`'s *"resumed a DIFFERENT thread"* check compared `null` against the real ref and
-      // could only fail. Latent since 080 gave the drawer tabs, and unreachable until step `1`
-      // started passing today: the file's own `SNAPSHOT` has carried the warning — *"the two below
-      // are Info-tab rows and read null unless the drawer is on Info"* — the whole time.
-      //
-      // Both facts come from ONE snapshot on the right tab, so they cannot drift apart again.
+      // The ref is an INFO row, so it is read on the Info tab. `driveTurn`'s snapshot is taken on Events,
+      // where `[data-cy=session-ref]` is not mounted, so reading it there gives `null` and step 5's
+      // "resumed a DIFFERENT thread" check could only fail. Both facts come from ONE snapshot on the
+      // right tab so they cannot drift apart.
       await ensureInfoOpen(cdp)
       const info = await cdp.evaluate(SNAPSHOT)
       firstRef = info.ref
@@ -1106,17 +1008,13 @@ async function main() {
           .find((el) => el.dataset.active === 'true')
         return row ? row.dataset.sessionId : null`)
       if (!firstSessionId) throw new Error('no active conversation on the rail to name step 1 by')
-      // ⛔ **The paired positive for step `5`** (179, 175's rule): a conversation that has answered
-      // names the model it answered with. Without this line, "the reopened one says `…`" would not
-      // be a finding — it would be the app's normal state.
+      // The paired positive for step 5: a conversation that has answered names the model it answered
+      // with. Without this, "the reopened one says `...`" would be the app's normal state, not a finding.
       //
-      // ⛔ **Re-anchored by 420, and what it lost is named rather than absorbed.** This compared
-      // the row against the model the LAUNCHER was given; `417` deleted that field, so there is no
-      // left-hand side to compare with. ⚑ **What survives is the half 179 was really about**:
-      // `describeModel` answers `…` when nothing was asked for AND the provider has reported
-      // nothing, so an ellipsis HERE — on a conversation that has just finished a turn — is the
-      // app refusing to say a fact it is holding. ⚠️ **What is gone is WHICH model**, and that is
-      // step `5b`'s row rather than a silence.
+      // The front door gives no model, so there is nothing to compare the row against. What survives:
+      // `describeModel` answers `...` when nothing was asked for AND the provider has reported nothing,
+      // so an ellipsis HERE, on a conversation that has just finished a turn, is the app refusing to say
+      // a fact it holds. WHICH model it is, step 5b reports.
       startedModel = info.agentModel
       if (!startedModel || startedModel === MODEL_UNREPORTED) {
         throw new Error(
@@ -1125,12 +1023,10 @@ async function main() {
         )
       }
       if (!firstRef) throw new Error('the session never announced a ref on the Info tab')
-      // ⛔ **The home answers BOTH questions the front door decides on a person's behalf** (420).
-      // It is `<userData>/provider-homes/default/<profile>/<provider>`
-      // (`provider-homes.ts:95`), so one string says which profile ran and which provider ran it.
-      // ⚠️ `includes('/default/')` was ambiguous — the home's first segment is `default` too, so
-      // the check passed on that segment alone — and it could not see the provider at all, which
-      // is the fact this file used to take from an env var and must now read off the app.
+      // The home answers BOTH questions the front door decides on a person's behalf. It is
+      // `<userData>/provider-homes/default/<profile>/<provider>` (`provider-homes.ts:95`), so one string
+      // says which profile ran and which provider ran it. `includes('/default/')` would be ambiguous (the
+      // home's first segment is `default` too) and cannot see the provider at all.
       if (!firstHome.includes(`/${PROFILE}/${FRONT_DOOR_PROVIDER}`)) {
         throw new Error(
           `the front door did not start ${FRONT_DOOR_PROVIDER} in profile ${PROFILE}: ` +
@@ -1139,11 +1035,10 @@ async function main() {
             `somewhere the rest of this suite does not expect`,
         )
       }
-      // ⛔ **…and WHERE it ran, because four later steps depend on the answer** (420 §3). The
-      // front door sends no cwd, so this is the HOST's resolution rather than our instruction:
-      // BroBot's workspace. The marker, step `3b` and the home all assume this path (since `738`
-      // steps `4` and `5` find the row in the rail by step `1`'s own id), so a launch that landed
-      // anywhere else has to fail here — with the path in hand.
+      // ...and WHERE it ran, because later steps depend on the answer. The front door sends no cwd, so
+      // this is the HOST's resolution: BroBot's workspace. The marker, step 3b and the home all assume
+      // this path (steps 4 and 5 find the row in the rail by step 1's own id), so a launch that landed
+      // anywhere else must fail here, with the path in hand.
       const cwd = await cdp.evaluate(
         `return document.querySelector('[data-cy=session-cwd]')?.textContent?.trim() ?? null`,
       )
@@ -1153,12 +1048,10 @@ async function main() {
             `workspace (${WORKSPACE}) — and the marker, step 3b and the home all assume this path`,
         )
       }
-      // ⚠️ **Back to Events before reading ORDINALS.** `ensureInfoOpen` above switched tabs, and
-      // the event log is unmounted on any tab but its own — so read here and this baseline is `-1`,
-      // which makes the post-relaunch seam check (`last > preQuitLast`) true for ANY ordinal
-      // including zero. The check would still pass, having stopped checking anything. Found in
-      // review, and it is the sharpest example of what a tabbed drawer costs a script that used to
-      // be able to read everything at once.
+      // Back to Events before reading ORDINALS. `ensureInfoOpen` switched tabs, and the event log is
+      // unmounted on any tab but its own; read here, the baseline would be `-1`, which makes the
+      // post-relaunch seam check (`last > preQuitLast`) true for ANY ordinal, so it would pass while
+      // checking nothing.
       await ensureHistoryAvailable(cdp)
       preQuitLast = await cdp.evaluate(ORDINALS).then((o) => o.at(-1) ?? -1)
       if (preQuitLast < 0)
@@ -1174,13 +1067,11 @@ async function main() {
       if (preQuitTheme !== 'light') {
         throw new Error(`the conversation is not on paper before the quit: ${preQuitTheme}`)
       }
-      // ⚑ **The retired key is PLANTED here, and step 5 is where it has to be gone** (344 §3.2).
-      //
-      // ⛔ **Asserting it is absent on a fresh profile would prove nothing** — it was never there.
-      // A machine that used the reading light holds `"true"` under this name, and the claim worth
-      // making is about THAT machine: `RuntimeScreen` forgets the key on its first render, so a
-      // genuinely new app process comes up clean. This profile is made into that machine, and only
-      // a real relaunch can answer for it — which is exactly what this file is.
+      // The retired key is PLANTED here, and step 5 is where it has to be gone. Asserting it absent on a
+      // fresh profile would prove nothing, since it was never there. A machine that used the reading
+      // light holds `"true"` under this name; `RuntimeScreen` forgets the key on its first render, so a
+      // genuinely new app process comes up clean. This profile is made into that machine, and only a real
+      // relaunch can answer for it.
       await cdp.evaluate(
         `window.localStorage.setItem('brobot2.chatLightTheme', 'true'); return null`,
       )
@@ -1189,11 +1080,9 @@ async function main() {
       )
       if (planted !== 'true') throw new Error(`the retired key would not plant: ${planted}`)
 
-      // ⛔ **Claims, not one sentence** (206 H1). This step makes four genuinely different
-      // assertions and returned them as a single string, which `record` then counted as one — and
-      // in this file the claims never reached `summarize` at all. They are data now, so the
-      // headline can say how many of a run's claims were reached rather than how many steps
-      // returned without throwing.
+      // Claims, not one sentence: this step makes four different assertions, and returning them as a
+      // single string would count as one. As data, the headline can say how many of a run's claims were
+      // reached rather than how many steps returned without throwing.
       return claims(
         asserted(
           `ref=${firstRef}, ${after.turns} turn(s) counted on Events, last ordinal ` +
@@ -1213,19 +1102,14 @@ async function main() {
       cdp.close()
       const quitAt = Date.now()
       first.stop()
-      // ⛔ **Gone means the PORT is free, not that HTTP stopped answering** (162, found by running).
+      // Gone means the PORT is free, not that HTTP stopped answering. A SIGTERMed Electron in dev goes on
+      // holding its debug port while answering nothing (measured at four and a half minutes). Polling
+      // `/json/version` and reading any throw as "nothing is listening" would either hang on a request
+      // that never returns, or, with a deadline, call the abort a clean exit and relaunch on a port the
+      // previous app still owns.
       //
-      // This polled `/json/version` and read any throw as *"nothing is listening any more"*. Both
-      // halves of that were wrong on the first run ever to reach this step. A SIGTERMed Electron in
-      // dev goes on **holding its debug port while answering nothing** — measured today at four and
-      // a half minutes — so the old predicate had two ways to be useless and took the worse one
-      // each time: with a bare `fetch` it hung the whole suite on a request that never returned,
-      // and with a deadline on that fetch it would have called the abort a clean exit and moved on
-      // to relaunch on a port the previous app still owned.
-      //
-      // ⚑ Binding the port is the question the step is actually asking, it cannot hang, and it
-      // cannot be answered by silence. `stop()` above now chases the reparented Electron until this
-      // is true, so the wait is a check rather than a hope.
+      // Binding the port is the question the step is asking; it cannot hang and cannot be answered by
+      // silence. `stop()` above chases the reparented Electron until this is true.
       await waitFor(
         `the app on port ${first.port} to be gone`,
         async () => await portIsFree(first.port),
@@ -1255,10 +1139,9 @@ async function main() {
     })
 
     await step('4 the session is offered back', async () => {
-      // 🔴 **D-017b · ONE Conversations list in the rail** — a conversation the quit left behind is a
-      // row of it like any other (`open-session-<id>`), with the one press every row has. ⛔ No
-      // kept-open row, no *Closed conversations* group, and nothing on the row about whether a
-      // process runs (`05` rule 5). (738 · R34b read a `kept-open-session-<id>` row here.)
+      // One Conversations list in the rail: a conversation the quit left behind is a row of it like any
+      // other (`open-session-<id>`), with the one press every row has. No kept-open row, no "Closed
+      // conversations" group, and nothing on the row about whether a process runs.
       const rows = await waitFor(
         'the rail to list the conversation the quit left behind',
         async () =>
@@ -1272,10 +1155,9 @@ async function main() {
         30_000,
       )
       await cdp.screenshot('4-listed-in-the-rail')
-      // ⚑ **738 · the discriminator is step `1`'s own app id.** The rail row prints the folder's
-      // BASENAME, which every conversation in the workspace shares — and the first life may leave more
-      // than one (BroBot and the project manager it delegated to) — so the row is found by the id
-      // step `1` read.
+      // The discriminator is step 1's own app id. The rail row prints the folder's BASENAME, which every
+      // conversation in the workspace shares, and the first life may leave more than one (BroBot and the
+      // project manager it delegated to), so the row is found by the id step 1 read.
       const mine = rows.find((row) => row.id === firstSessionId)
       if (!mine) {
         throw new Error(
@@ -1286,25 +1168,24 @@ async function main() {
         asserted(
           `listed in the rail after the quit (${rows.length} row(s)): "${mine.text.slice(0, 90)}"`,
         ),
-        // ⚠️ The recorded approval mode (171) was read off the reopen list's row; the rail row does
-        // not print it.
+        // The recorded approval mode was read off the reopen list's row; the rail row does not print it.
         unasserted('the recorded approval mode — the rail row does not print it'),
       )
     })
 
     await step('5 reopen it and find the prior transcript there', async () => {
-      // ⚑ **D-017b · the row's press OPENS it** (`look`): nothing is launched until its first
-      // message, which starts and sends in one act (`startAndSend`) — step `6`.
+      // The row's press OPENS it (`look`): nothing is launched until its first message, which starts and
+      // sends in one act (`startAndSend`), in step 6.
       const id = await cdp.evaluate(`
         const row = [...document.querySelectorAll('[data-cy^=open-session-]')]
           .find((el) => el.dataset.sessionId === ${JSON.stringify(firstSessionId)})
         row.click()
         return row.dataset.sessionId`)
 
-      // 🔴 **D-017b · …and it opens in the ONE full view** — header, controls and the right panel,
-      // whether or not anything runs it, with the transcript read from its ledger. ⛔ No sentence says
-      // whether a process runs (`05` rule 5). So this waits on the rail naming THIS conversation as
-      // the one on screen, and on the view's header and panel toggle being drawn.
+      // ...and it opens in the ONE full view (header, controls and the right panel, whether or not
+      // anything runs it), with the transcript read from its ledger. No sentence says whether a process
+      // runs. So this waits on the rail naming THIS conversation as the one on screen, and on the view's
+      // header and panel toggle being drawn.
       const after = await waitFor(
         'this conversation in its full view',
         async () => {
@@ -1335,39 +1216,28 @@ async function main() {
       if (after.assistantMessages === 0) throw new Error('the agent’s prior replies are missing')
       if (after.toolEntries === 0) throw new Error('the prior tool call is missing')
       /**
-       * ⚠️ **A gap-notice assertion was written HERE and REMOVED, measured rather than reasoned**
-       * (242 §3).
+       * No gap-notice assertion is made here, deliberately. The defect (an "event stream gap: expected
+       * ordinal 108, got 111" notice printed into the conversation on every Codex Resume) is fixed in
+       * `session-store.ts` and pinned by `session-store.test.ts`, but an assertion here could not catch
+       * it: with the fix reverted, this step still passed 10/10.
        *
-       * 🔴 239 reported *"event stream gap: expected ordinal 108, got 111"* printed into the
-       * ordinary conversation on **every Codex Resume**, and the defect is real — it is fixed in
-       * `session-store.ts` and pinned by `session-store.test.ts` and 242 M12/M13. ⛔ **But an
-       * assertion here could not have caught it, and an A/B proved that rather than argued it**:
-       * with the fix reverted, this step still PASSED, 10/10.
-       *
-       * ⚑ **The ledger says why.** In that run the second life opened `40 session:resumed ·
-       * 41 status:idle · 42-45 unknown` — six events inside the hand-over window, 320 ms before the
-       * user's own turn at 46 — so the events were there. What is not there is a RECORD for them to
-       * be mis-routed into: this smoke **quits and relaunches**, so the reopen happens in a brand-new
-       * renderer where `sessions.get(id)` is undefined and the events take the `earlyEvents` road
-       * that has always worked. The defect needs a record that already has `meta` — a conversation
-       * closed and reopened INSIDE one window.
-       *
-       * ⛔ **So this is a blind spot, not a check**, and it is written down as one rather than left
-       * as a negative assertion that can never fail. See `smoke-run.mjs`'s audit table, row 11.
+       * The events were there (a second life opened `session:resumed`, `status:idle` and unknown events
+       * inside the hand-over window), but this smoke quits and relaunches, so the reopen happens in a
+       * brand-new renderer where `sessions.get(id)` is undefined and the events take the `earlyEvents`
+       * road. The defect needs a record that already has `meta`: a conversation closed and reopened
+       * INSIDE one window. So this is a blind spot, recorded as one; see `smoke-run.mjs`'s audit table.
        */
       // A transcript that replays the old ending must not leave the session looking dead.
-      // ⚑ **`typable`, not `sendLit`** (223): a reopened conversation with no kept draft has an
-      // empty box, so its Send button is legitimately dark (a kept one would light it — 744 · R100).
-      // What must be true is that the FIELD takes input — which is the sentence this error has always
-      // carried.
+      // `typable`, not `sendLit`: a reopened conversation with no kept draft has an empty box, so its
+      // Send button is legitimately dark (a kept draft would light it). What must be true is that the
+      // FIELD takes input.
       if (!after.typable) throw new Error('the reopened session cannot be typed into')
 
-      // 017: the reply the provider wrote before the quit was a fenced code block, and the
-      // REHYDRATED message renders it as one — markdown on the replay path, not just live.
-      // Found by the CODE BLOCK, not by the first message mentioning the marker: a provider may
-      // narrate before it acts ("I'll write the file and confirm with WROTE-BANANA"), and that
-      // preamble is its own message — picking it would report a rendering failure for a rendering
-      // that worked.
+      // The reply the provider wrote before the quit was a fenced code block, and the REHYDRATED message
+      // renders it as one: markdown on the replay path, not just live.
+      // Found by the CODE BLOCK, not by the first message mentioning the marker: a provider may narrate
+      // before it acts ("I'll write the file and confirm with WROTE-BANANA"), and that preamble is its
+      // own message; picking it would report a rendering failure for a rendering that worked.
       const md = await cdp.evaluate(`
         const messages = [...document.querySelectorAll('[data-cy=assistant-message]')]
         const body = messages.find((el) =>
@@ -1400,18 +1270,15 @@ async function main() {
         throw new Error(`the relaunched conversation is not on paper: ${JSON.stringify(theme)}`)
       }
       const paper = paperVerdict(theme, 'the reopened conversation')
-      // ⛔ **The chrome control, DERIVED** (402 §2). This read `!== '#e7ecf3'` until `391` moved
-      // `--text` to `#e3e8f4`, and then fired *"the rail was re-themed with the conversation"* at a
-      // rail that had not moved — the same palette dispatch, the same class, one row later than the
-      // ground. `chromeInkVerdict` compares the rail against `:root` and against the pane it sits
-      // beside, so nothing here is a colour anyone typed.
+      // The chrome control, DERIVED: `chromeInkVerdict` compares the rail against `:root` and against the
+      // pane it sits beside, so no colour here is typed by hand and a palette change cannot make the
+      // check fire at a rail that did not move.
       if (theme.noRail) throw new Error('there is no side rail on screen to check')
       const chrome = chromeInkVerdict(theme, 'the rail beside the reopened conversation')
 
-      // ⚑ **And the key step 1 planted is gone, after a genuinely new app process** (344 §3.2).
-      // This is the half a reload cannot prove: the renderer that forgot it is not the renderer
-      // that had it. `null` here is the same answer a machine that never pressed the toggle gives,
-      // which is the point — after this build the two are the same machine.
+      // And the key step 1 planted is gone, after a genuinely new app process. This is the half a reload
+      // cannot prove: the renderer that forgot it is not the renderer that had it. `null` is the same
+      // answer a machine that never pressed the toggle gives, which is the point.
       const retired = await cdp.evaluate(
         `return window.localStorage.getItem('brobot2.chatLightTheme')`,
       )
@@ -1426,7 +1293,7 @@ async function main() {
             `as a code block) + ${after.toolEntries} tool call(s) · on ${paper} with nothing stored, ` +
             `the retired key forgotten by the new process, ${chrome}`,
         ),
-        // ⚠️ 179's pairing BEFORE it is spoken to again is not read here — step `6` reads the model
+        // The model pairing BEFORE the provider is spoken to again is not read here; step 6 reads the model
         // once the provider has answered again.
         unasserted(
           '179 · the model named before it is spoken to again — not read off the view before its first message',
@@ -1435,17 +1302,14 @@ async function main() {
     })
 
     /**
-     * 🔴 **The half of 179 that no gesture can produce any more** (420 §4, from 417 / HO-022 §2).
+     * The model-at-launch check, which no gesture can produce any more. It is not a blank (a blank
+     * asked and the provider declined) and not a skip (not selected for this run): it asked nobody,
+     * because the control it needed is gone, and it says so on every run until a surface can request a
+     * model at launch. An instrument may lose a step; it may not lose one silently.
      *
-     * ⛔ **It is not a blank and it is not a skip.** A blank asked and the provider declined; a
-     * skip was not selected for this run. This asked nobody, because the control it needed is
-     * gone — and it will say so on every run until a surface can request a model at launch. `420`
-     * §4: *"An instrument may lose a step. It may not lose a step silently."*
-     *
-     * ⚠️ **Why it is a row of its own rather than a sentence inside step `5`.** Until today it
-     * WAS a sentence inside step 5 — one of two accepted spellings — and a sentence inside a
-     * passing step is exactly how a suite gets smaller while staying green. The headline counts
-     * this cell apart and names the line, which is the only form of the fact anybody can act on.
+     * It is a row of its own rather than a sentence inside step 5, because a sentence inside a passing
+     * step is how a suite gets smaller while staying green. The headline counts this cell apart and
+     * names the line.
      */
     await step(
       '5b a reopened conversation names the model the app REQUESTED, before the provider speaks',
@@ -1462,10 +1326,10 @@ async function main() {
     )
 
     await step('6 it carries on — a second turn continues the same thread', async () => {
-      // ⚑ **D-017b · step `5` leaves the conversation in its FULL view**, drawer and all, and this
-      // first message is what starts it (`startAndSend`). So `driveTurn` counts off its Events; the
-      // LEDGER's count is handed for the no-drawer road all the same, never a count remembered from
-      // before the quit ({@link ledgerTurnCount} says why).
+      // Step 5 leaves the conversation in its FULL view, drawer and all, and this first message is what
+      // starts it (`startAndSend`). So `driveTurn` counts off its Events; the LEDGER's count is handed
+      // for the no-drawer road all the same, never a count remembered from before the quit
+      // ({@link ledgerTurnCount} says why).
       const before = await cdp.evaluate(SNAPSHOT)
       const turnsBefore = ledgerTurnCount(firstSessionId)
       const after = await driveTurn(
@@ -1476,26 +1340,23 @@ async function main() {
       await cdp.screenshot('6-continued')
 
       if (after.turns <= turnsBefore) throw new Error('the second turn never completed')
-      // ⛔ **The ref is an INFO row, read where it lives** (162 — the third instance of one root
-      // cause). `after` is `driveTurn`'s snapshot, taken on Events so the counters mean something;
-      // `session-ref` is not mounted there, so this was `null` and the identity check read *"the
-      // thread changed: <ref> → null"* about a thread that had not changed at all. Step `1` had the
-      // same bug and step `5` already did it correctly — the difference is that `5` is the only one
-      // of the three that had ever executed.
+      // The ref is an INFO row, read where it lives. `after` is `driveTurn`'s snapshot, taken on Events,
+      // where `session-ref` is not mounted; reading it there gives `null` and the identity check would
+      // report "the thread changed: <ref> -> null" about a thread that had not changed.
       await ensureInfoOpen(cdp)
       const live = await cdp.evaluate(SNAPSHOT)
       const ref = live.ref
       // …and back, because step 7 reads ORDINALS off the event log.
       await ensureHistoryAvailable(cdp)
       if (ref !== firstRef) throw new Error(`the thread changed: ${firstRef} → ${ref}`)
-      // ⚑ **738 · moved here from step `5`**: the home and the model are read once this first message
-      // has started the conversation and the provider has answered. Reopened into the
-      // home it RAN in, from the recorded profile — not the default (085).
+      // The home and the model are read once this first message has started the conversation and the
+      // provider has answered. Reopened into the home it RAN in, from the recorded profile, not the
+      // default.
       if (live.home !== firstHome) {
         throw new Error(`resumed into a different home: ${firstHome} → ${live.home}`)
       }
-      // ⚠️ 179's pairing, read AFTER the provider has spoken — the only moment a surface names it
-      // since `701` — so it proves the same thread and model came back, not 179's pre-start line.
+      // The model pairing, read AFTER the provider has spoken (the only moment a surface names it), so it
+      // proves the same thread and model came back, not the pre-start line.
       if (live.agentModel !== startedModel) {
         throw new Error(
           `the reopened conversation runs a different model than before the quit: ` +
@@ -1529,14 +1390,12 @@ async function main() {
       if (!(last > preQuitLast)) {
         throw new Error(`the seam rewound: ended at ${preQuitLast} before the quit, ${last} now`)
       }
-      // 🔴 **…and what the HOST said about the same question**, which nothing has ever read
-      // (345 §3, from 342). `runtime-host.ts`'s `emit` compares every ordinal against the highest
-      // it has sent and reports a regression on `console.error`. ⛔ **That line went to `/dev/null`
-      // in every live suite**, so this step's dense-ordinal negative was the only evidence there
-      // was — and the two detectors are not the same one: this reads the LEDGER, which `recordOurs`
-      // makes monotonic by construction, while the tripwire watches the WIRE, where 320's defect
-      // actually lived. ⚠️ **The count is part of the claim**: a sweep that read no bytes cannot be
-      // reported as a sweep that found nothing.
+      // ...and what the HOST said about the same question. `runtime-host.ts`'s `emit` compares every
+      // ordinal against the highest it has sent and reports a regression on `console.error`, which went
+      // to `/dev/null` in live suites until the app log was captured. The two detectors differ: this
+      // step reads the LEDGER, which `recordOurs` makes monotonic by construction, while the tripwire
+      // watches the WIRE. The count is part of the claim: a sweep that read no bytes cannot be reported
+      // as a sweep that found nothing.
       const said = existsSync(APP_LOG) ? readFileSync(APP_LOG, 'utf8') : ''
       const outOfOrder = said.split('\n').filter((line) => /went out after/.test(line))
       if (outOfOrder.length > 0) {
@@ -1561,12 +1420,8 @@ async function main() {
 }
 
 /**
- * ⛔ **The headline, and the lines under it that a count cannot replace** (420 §4, 206 H1).
- *
- * ⚑ **One function, called from both endings.** The two tails were a copy of each other and had
- * already drifted — only one of them read `failed` — which is how a cell added to `summarize`
- * reaches the happy path and not the one a failing run takes.
-
+ * The headline, and the lines under it that a count cannot replace. One function, called from both
+ * endings, so a cell added to `summarize` reaches both the happy path and the failing one.
  */
 function report() {
   const summary = summarize(results, { evidence: EVIDENCE })

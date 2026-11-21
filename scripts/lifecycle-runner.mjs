@@ -39,30 +39,24 @@ const { evidence: ROOT, runId: RUN_ID } = beginSmokeRun({
 })
 
 /**
- * ⛔ **The probe lock the STAGE takes, which a `SIGKILL` cannot release** (`smoke-run.mjs`: *"a
- * leftover lock from a killed run"*).
- *
- * `vitest.smoke.config.ts`'s globalSetup claims `<probe root>/.lock` and releases it on `exit`;
- * phase `a` is killed, so it never runs that handler and phase `b` would refuse to start. ⚠️ **Only
- * a lock this run's own killed pid owns is removed**, read out of the lock's own `owner` file — the
- * one case the module's error message says is safe to clear, and never anybody else's run.
+ * The probe lock the stage takes, which a `SIGKILL` cannot release. `vitest.smoke.config.ts`'s
+ * globalSetup claims `<probe root>/.lock` and releases it on `exit`; phase `a` is killed, so it
+ * never runs that handler and phase `b` would refuse to start. Only a lock whose `owner` file
+ * names this run's own killed pid is removed, the one case the module's error message says is
+ * safe to clear, and never anybody else's run.
  */
 const PROBE_LOCK = join(smokeTmpRoot('brobot2-probe-runs'), '.lock')
 
 /**
- * 🔴 **§13 · the phase bounds, DERIVED from the stage's own per-step bounds** (410 §5).
+ * The phase bounds, derived from the stage's own per-step bounds. A phase bound cannot name the
+ * step that failed to happen, so a chain that died at row 3 and one that was merely slow would exit
+ * identically; and a healthy-but-slow run would be cut off and reported `NOT REACHED`, a table
+ * computed from this process's patience rather than the outcome.
  *
- * ⛔ **Each of these used to be a fifty-minute literal, written twice** — one wait covering the whole
- * first half of the diagram. ⚠️ Two things were wrong with that and only one of them is the size.
- * **A phase bound cannot name the step that failed to happen**, so a chain that died at row 3 and a
- * chain that was merely slow exited identically; and the stage's own waits summed to MORE than the
- * bound, so a healthy-but-slow run was guillotined at minute fifty and reported `NOT REACHED` — a
- * table computed from this process's patience rather than from the outcome.
- *
- * ⚑ **Now the steps are bounded and this is the backstop**: the sum of every wait phase `a` can make,
- * plus a margin for two process starts, the migrations and the provider handshakes, which are not
- * steps. ⛔ **Reaching it is a finding about the run** — it means the stage stopped spending its own
- * bounds — and never a reason to wait longer.
+ * The steps are bounded and this is the backstop: the sum of every wait phase `a` can make, plus a
+ * margin for two process starts, the migrations and the provider handshakes, which are not steps.
+ * Reaching it is a finding about the run (the stage stopped spending its own bounds), never a
+ * reason to wait longer.
  */
 const PHASE_A_MS = LIFECYCLE_BUDGET_MS.phaseA + LIFECYCLE_BUDGET_MS.margin
 const PHASE_B_MS = LIFECYCLE_BUDGET_MS.phaseB + LIFECYCLE_BUDGET_MS.margin
@@ -106,10 +100,10 @@ function groupIsGone(pid) {
 /**
  * Start one stage, detached so it leads its own process group.
  *
- * ⚠️ **Inherited stdio, never a pipe** — this process kills that one, and a pipe's last buffered
- * lines go with it. ⛔ **The stage's JOURNAL is the evidence and the console is not**: every line the
- * table is computed from is `appendFileSync`d before it is printed, so a killed stage loses nothing
- * a row depends on.
+ * Stdio is inherited, never a pipe: this process kills that one, and a pipe's last buffered lines
+ * go with it. The stage's journal is the evidence and the console is not: every line the table is
+ * computed from is `appendFileSync`d before it is printed, so a killed stage loses nothing a row
+ * depends on.
  */
 function startStage(phase) {
   const child = spawn(
@@ -132,10 +126,9 @@ function startStage(phase) {
         BROBOT_LIFECYCLE_ROOT: ROOT,
         BROBOT_LIFECYCLE_PHASE: phase,
         BROBOT_LIFECYCLE_PROVIDER: PROVIDER,
-        // ⛔ **The bounds travel from HERE, so the number stated up front and the number the stage
-        // spends are one value** (410 §5). ⚠️ A second copy of this table in the stage would be a
-        // budget a reader could not check against the run that obeyed it; the stage refuses to run
-        // without it rather than falling back to a literal of its own.
+        // The bounds travel from here, so the number stated up front and the number the stage spends are
+        // one value. A second copy of this table in the stage would be a budget a reader could not check
+        // against the run that obeyed it; the stage refuses to run without it rather than using a literal.
         BROBOT_LIFECYCLE_STEP_MS: JSON.stringify(STEP_MS),
         ...(MODEL === '' ? {} : { BROBOT_LIFECYCLE_MODEL: MODEL }),
       },
@@ -147,13 +140,11 @@ function startStage(phase) {
 }
 
 /**
- * ⛔ **Every stage group this run has started, so nothing outlives the runner** (066's reaper, one
- * instrument over).
- *
- * ⚠️ **Found by leaving one behind.** A stage killed with `pkill -f lifecycle` misses the vitest FORK
- * — its argv names no file — and that fork is reparented to init still holding three live provider
- * children. ⚑ The group is the only handle that reaches all of them, which is why the stage is
- * spawned detached in the first place, and this is what makes an interrupted runner reap it too.
+ * Every stage group this run has started, so nothing outlives the runner. A stage killed with
+ * `pkill -f lifecycle` misses the vitest fork, whose argv names no file, and that fork is
+ * reparented to init still holding three live provider children. The group is the only handle that
+ * reaches all of them, which is why the stage is spawned detached, and this makes an interrupted
+ * runner reap it too.
  */
 const started = new Set()
 
@@ -187,11 +178,9 @@ async function killGroup(pid) {
 }
 
 /**
- * ⛔ **Release the probe lock ONLY when its owner file names the pid this run just killed.**
- *
- * ⚠️ Any other owner is somebody else's run and is left exactly alone — the failure mode this guards
- * is a runner that clears a live run's lock and lets two live suites into one set of provider homes,
- * which is the incident `196` H4 exists to prevent.
+ * Release the probe lock only when its owner file names the pid this run just killed. Any other
+ * owner is somebody else's run and is left alone: clearing a live run's lock would let two live
+ * suites into one set of provider homes.
  */
 function releaseTheKilledLock() {
   const ownerFile = join(PROBE_LOCK, 'owner')
@@ -233,9 +222,9 @@ async function main() {
   mkdirSync(ROOT, { recursive: true })
   writeFileSync(journalPath, '')
   say(`run ${RUN_ID} · provider ${PROVIDER} · root ${ROOT}`)
-  // ⛔ **§13: *"a live runner states its own total budget up front"*** — before the first process
-  // starts, computed from the same table the stage spends, so the number a reader is given and the
-  // number the instrument obeys cannot drift apart.
+  // A live runner states its own total budget up front: before the first process starts, computed
+  // from the same table the stage spends, so the number a reader is given and the number the
+  // instrument obeys cannot drift apart.
   say(
     `budget · phase a ${minutes(PHASE_A_MS)} · phase b ${minutes(PHASE_B_MS)} · ` +
       `total ${minutes(PHASE_A_MS + PHASE_B_MS)} — a step past its own deadline is NOT PERFORMED`,
@@ -267,11 +256,11 @@ async function main() {
     )
     await killGroup(first.pid)
   } else {
-    // ⛔ **The stage declares WHAT it was killed inside, and this row may not soften it.** `working`
-    // is a conversation driving a piece; anything else is a piece nobody was driving, and killing
-    // the app over one of those exercises nothing the ledger did not already say. ⚑ Row 11b makes
-    // the same distinction on the same three lines — the piece's label, the conversation and its
-    // state — so the two cannot disagree.
+    // The stage declares what it was killed inside, and this row may not soften it. `working` is a
+    // conversation driving a piece; anything else is a piece nobody was driving, and killing the app
+    // over one of those exercises nothing the ledger did not already say. Row 11b makes the same
+    // distinction on the same three lines (the piece's label, the conversation and its state), so the
+    // two cannot disagree.
     const declared = readFileSync(killSignal, 'utf8').trim().split('\n')
     const wasAlive = !groupIsGone(first.pid)
     const gone = await killGroup(first.pid)
@@ -309,9 +298,8 @@ async function main() {
       `${String(table.failed)} FAILED · ${String(table.notPerformed)} NOT PERFORMED · ` +
       `${String(table.notReached)} NOT REACHED · provider ${PROVIDER}`,
   )
-  // ⛔ **One line, and it is only printed when every row passed.** §3.3: *"a preview and a partial
-  // run must not be able to print a success line."* There is no other place in this file that says
-  // the loop was performed.
+  // One line, printed only when every row passed: a preview or a partial run must not be able to
+  // print a success line. No other place in this file says the loop was performed.
   if (table.complete) say(`✔ the lifecycle was performed end to end on ${PROVIDER}`)
   say(`evidence in ${ROOT}`)
   process.exitCode = table.complete ? 0 : 1

@@ -96,8 +96,8 @@ async function startApp(root, plan, workspace, global, processes, diagnose = fal
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     })
-    // The nested app's own stdout and stderr, byte for byte and unclassified, go into this
-    // journey's stderr, which the owner echoes into the uploaded fixture-output.log.
+    // The nested app's stdout and stderr go unclassified into this journey's stderr, which the
+    // owner echoes into the uploaded fixture-output.log.
     child.stdout?.on('data', (bytes) => process.stderr.write(bytes))
     child.stderr?.on('data', (bytes) => process.stderr.write(bytes))
     const observed = observeApp(child)

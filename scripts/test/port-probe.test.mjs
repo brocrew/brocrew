@@ -8,18 +8,16 @@ import { bindOnce, couldBindPort, runLsof, whoHoldsPort } from '../lib/port-prob
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /**
- * 🔴 **326 · three answers about a port, and what the third one may never become.**
+ * Three answers about a port, and what the third one may never become.
  *
- * ⛔ **Every *"the port is free"* this repository ever printed came out of a `catch` block.**
- * `lsof -t` exits 1 when it matches nothing, so the ORDINARY answer arrives as a thrown
- * `Command failed` — and the `holdersOf` this replaces returned `[]` from that catch, which its own
- * callers read as *"nothing is listening"*. `325` measured the cost: a stand-in `lsof` that exits
- * non-zero declares a held port free in 4 ms, 3 of 3.
+ * Every "the port is free" this repository used to print came out of a `catch` block: `lsof -t`
+ * exits 1 when it matches nothing, so the ordinary answer arrives as a thrown `Command failed`, which
+ * callers read as "nothing is listening". A stand-in `lsof` that exits non-zero declared a held port
+ * free in 4 ms.
  *
- * ⚠️ **The tests below are the classification, not the plumbing.** A healthy machine produces
- * exactly one of the five shapes; the other four are the ones that matter and the only way to see
- * them is to hand them in. They are transcribed from what Node actually produced on this machine
- * (`lsof 4.91`, Node 24.0.2) rather than from what the documentation implies.
+ * The tests below are the classification, not the plumbing. A healthy machine produces exactly one
+ * of the five shapes; the other four are the ones that matter and the only way to see them is to
+ * hand them in. They are transcribed from what Node produced with `lsof 4.91` on Node 24.0.2.
  */
 
 /** The five `execFileSync` outcomes, measured — see the table in `port-probe.mjs`. */
@@ -40,8 +38,7 @@ describe('runLsof · the ordinary answer arrives as an error, and so do four fai
   })
 
   it('refuses to read exit 1 as empty when lsof COMPLAINED', () => {
-    // ⛔ The same status code as "nothing listening". `stderr` is the discriminator, and the
-    // instrument this replaces threw it away (`stdio: […, 'ignore']`).
+    // The same status code as "nothing listening"; `stderr` is the discriminator.
     const result = runLsof(4242, {
       exec: failing({ status: 1, stderr: 'lsof: unknown service nope for tcp in: -i TCP:nope\n' }),
     })
@@ -60,8 +57,7 @@ describe('runLsof · the ordinary answer arrives as an error, and so do four fai
   })
 
   it('refuses to read a TIMED OUT lsof as empty', () => {
-    // 🔴 The reason `326` §1 says bounding `lsof` used to turn a false red into a false green: with
-    // two states a timeout landed in the same catch as an empty result. Here it has a name.
+    // With only two states a timeout would land in the same catch as an empty result. Here it has a name.
     const result = runLsof(4242, {
       exec: failing({ status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' }),
     })
@@ -88,8 +84,8 @@ describe('whoHoldsPort · held, free, or "I do not know" — and never the wrong
     const answer = whoHoldsPort(4242, { run: () => ({ failed: 'lsof failed with ENOENT' }) })
     expect(answer.state).toBe('unknown')
     expect(answer.why).toBe('lsof failed with ENOENT')
-    // ⛔ The pair that is the whole point: a failure is not the free answer, and it is not the held
-    // one either. Asserting only `!== 'free'` would pass on a probe that called everything `held`.
+    // The pair that is the whole point: a failure is neither the free answer nor the held one.
+    // Asserting only `!== 'free'` would pass on a probe that called everything `held`.
     expect(answer.state).not.toBe('free')
     expect(answer.state).not.toBe('held')
   })
@@ -105,21 +101,17 @@ describe('whoHoldsPort · held, free, or "I do not know" — and never the wrong
   it.skipIf(process.platform === 'win32')(
     'answers about the REAL lsof on this machine, both ways',
     async () => {
-      // ⚑ **The oracle.** Everything above is this file's model of `lsof`'s conventions; this is
-      // `lsof`. Without it the five classification tests are a closed loop between the model and a
-      // test of the model, and `M20` is the row that proves this one is doing work.
+      // The oracle. Everything above is this file's model of `lsof`'s conventions; this is `lsof`.
+      // Without it the five classification tests are a closed loop between the model and a test of the
+      // model.
       //
-      // 🔴 **This test caught itself doing 326's own disease.** Written as
-      // `expect(whileHeld.state).toBe('held')` on vitest's 5 s default, it went RED inside 326's
-      // first table baseline — not because anything was wrong, but because `lsof` took longer than
-      // five seconds on a machine at load ≈ 60 with a second mutation run on it. ⛔ **An assertion
-      // that fails when the host is busy is the thing this whole dispatch is about**, so it is
-      // three-valued now and bounded on purpose:
+      // It is three-valued and bounded on purpose, because `lsof` can take longer than vitest's 5 s
+      // default on a loaded machine and an assertion that fails when the host is busy is worthless:
       //
       //  - `free` while something IS listening is the fail-open, and no amount of load produces it.
       //  - `held` after it stopped is the opposite error, and the same is true.
-      //  - `unknown` in ONE direction is the machine, and is tolerated — but not in both, because
-      //    then this test asserted nothing at all (193), which is exactly what `M20` does to it.
+      //  - `unknown` in ONE direction is the machine, and is tolerated, but not in both, because then
+      //    this test would assert nothing at all.
       const server = createServer()
       const port = await new Promise((resolve) => {
         server.listen(0, '127.0.0.1', () => resolve(server.address().port))
@@ -134,7 +126,7 @@ describe('whoHoldsPort · held, free, or "I do not know" — and never the wrong
       }
       const afterClose = whoHoldsPort(port)
       expect(afterClose.state).not.toBe('held')
-      // ⛔ …and at least one direction was actually ANSWERED.
+      // ...and at least one direction was actually answered.
       expect(whileHeld.state === 'held' || afterClose.state === 'free').toBe(true)
     },
     90_000,
@@ -147,8 +139,8 @@ describe('couldBindPort · the kernel is asked instead of a subprocess', () => {
     const port = await new Promise((resolve) => {
       server.listen(0, '127.0.0.1', () => resolve(server.address().port))
     })
-    // ⛔ The positive half. Without it, a probe that answered `free` unconditionally would pass the
-    // half below and `quit:check`'s port assertion would be vacuous (193, 241).
+    // The positive half. Without it, a probe that answered `free` unconditionally would pass the half
+    // below and `quit:check`'s port assertion would be vacuous.
     expect(await couldBindPort(port)).toEqual({ state: 'held' })
     await new Promise((resolve) => server.close(resolve))
     expect(await couldBindPort(port)).toEqual({ state: 'free' })
@@ -167,10 +159,9 @@ describe('couldBindPort · the kernel is asked instead of a subprocess', () => {
   })
 
   it('is UNKNOWN for any bind failure that is not EADDRINUSE', async () => {
-    // 🔴 `EACCES` on a privileged port and `EMFILE` on a machine out of descriptors are this check
-    // being unable to ask. Reporting either as an answer about the app is the mistake this module
-    // exists to make impossible — and a machine out of descriptors is exactly a LOADED machine,
-    // which is when every failure in this dispatch's family happens.
+    // `EACCES` on a privileged port and `EMFILE` on a machine out of descriptors are this check being
+    // unable to ask. Reporting either as an answer about the app is the mistake this module exists to
+    // make impossible, and a machine out of descriptors is exactly a loaded machine.
     const refusing = () => ({
       once: (_event, handler) => {
         const error = new Error('permission denied')
@@ -188,18 +179,17 @@ describe('couldBindPort · the kernel is asked instead of a subprocess', () => {
 })
 
 /**
- * ⛔ **…and the two gates actually go through it** — a rule is worth nothing if a check keeps its
- * own copy of the question. ⚠️ `ci` covers these files going red when the product breaks; it does
- * not cover them being quietly rewritten, and a green run and a run that measured its own `lsof`
- * look identical from outside.
+ * The two gates actually go through this module: a rule is worth nothing if a check keeps its own
+ * copy of the question. `ci` covers these files going red when the product breaks, not their being
+ * quietly rewritten.
  */
 describe('…and the gates ask the port through this module', () => {
   const quit = readFileSync(join(HERE, '../app-closes-check.mjs'), 'utf8')
   const window = readFileSync(join(HERE, '../window-opens-check.mjs'), 'utf8')
 
   it('leaves no fail-open `holdersOf` CALL in either gate', () => {
-    // ⚠️ The call, not the word: `app-closes-check.mjs`'s header quotes the probe line from the run
-    // that made 326 exist (`holdersOf 21295ms`), and that evidence stays where a reader finds it.
+    // The call, not the word: `app-closes-check.mjs`'s header quotes the old probe line as evidence,
+    // and that stays where a reader finds it.
     expect(quit).not.toContain('holdersOf(port)')
     expect(quit).not.toContain('function holdersOf')
     expect(window).not.toContain('holdersOf')
@@ -209,9 +199,9 @@ describe('…and the gates ask the port through this module', () => {
   })
 
   it('samples the FREE fact — which costs nothing — before the two that cost something', () => {
-    // 🔴 326 §1's subject in one assertion. `alive()` used to run third, so "has the app gone?" was
-    // stamped only after a CDP probe and an `lsof` had returned — one of which was measured at
-    // 21,295 ms, and the gate reported that as the app still running.
+    // `alive()` must run first, so "has the app gone?" is stamped before a CDP probe and an `lsof`
+    // return; the old order let a slow `lsof` (measured at 21,295 ms) make the gate report the app as
+    // still running.
     const alive = quit.indexOf('if (processGoneAt === null && !alive(appPid))')
     const port = quit.indexOf('const answer = await couldBindPort(port)')
     const cdp = quit.indexOf('if (windowGoneAt === null) {\n      const list = await targets(port)')
@@ -228,14 +218,14 @@ describe('…and the gates ask the port through this module', () => {
   })
 
   it('measures the port budget from the process, not from the gesture', () => {
-    // ⛔ The old assertion charged the app for the time this check spent inside its own `lsof`.
+    // The check must not charge the app for the time it spent inside its own `lsof`.
     expect(quit).toContain('portFreeAt - processGoneAt > PORT_RELEASE_MS')
     expect(quit).not.toContain('portFreeAt - askedAt')
   })
 
   it('proves the port instrument can see this app before depending on it', () => {
-    // 241's lesson aimed at the new probe: without this line `couldBindPort` could answer `free`
-    // unconditionally and nothing in that file would go red.
+    // Without this line `couldBindPort` could answer `free` unconditionally and nothing in that file
+    // would go red.
     expect(quit).toContain('const heldWhileUp = await couldBindPort(port)')
     expect(quit).toContain("if (heldWhileUp.state !== 'held')")
   })

@@ -11,17 +11,14 @@ import {
 } from '../lib/lifecycle-steps.mjs'
 
 /**
- * ⛔ **402 §3.3 · the runner reports from the OUTCOME, and this is where that is decidable.**
+ * The runner reports from the outcome, and this is where that is decidable. A live runner cannot
+ * test its own report: "a partial run cannot print a success line" is only observable on a run cut
+ * short, which costs a provider's worth of tokens. So the report is a pure function of a journal,
+ * and every shape a real run can hand it is constructed here.
  *
- * ⚠️ **A live runner cannot test its own report**: the one thing that must be true — *a partial run
- * cannot print a success line* — is only observable on a run that was cut short, and cutting one
- * short costs a provider's worth of tokens. ⚑ So the report is a pure function of a journal, and
- * every shape a real run can hand it is constructed here.
- *
- * ⛔ **The census at the bottom is the half that keeps the two files honest.** The roster lives in
- * the runner and the observations live in the stage; two lists of the same strings are two things
- * that can disagree, and the disagreement would be invisible — a roster row nothing ever writes
- * reads as `NOT REACHED` on every run, forever, and looks like a model's fault.
+ * The census at the bottom keeps the two files honest. The roster lives in the runner and the
+ * observations live in the stage; a roster row nothing ever writes would read as `NOT REACHED` on
+ * every run, forever, and look like a model's fault.
  */
 describe('lifecycleTable (402 §3.3)', () => {
   const allPassed = LIFECYCLE_STEP_IDS.map((step) => ({ step, verdict: 'PASS', what: 'x' }))
@@ -33,7 +30,7 @@ describe('lifecycleTable (402 §3.3)', () => {
     expect(table.complete, 'three passing rows read as a performed lifecycle').toBe(false)
     expect(table.passed).toBe(3)
     expect(table.notReached).toBe(LIFECYCLE_STEP_IDS.length - 3)
-    // ⚑ …and the paired positive, which is the only input that may print it.
+    // …and the paired positive, the only input that may print it.
     expect(lifecycleTable(allPassed).complete).toBe(true)
   })
 
@@ -113,11 +110,9 @@ describe('the roster and the observations are one list (402 §3)', () => {
   const runner = readFileSync(join(here, '../lifecycle-runner.mjs'), 'utf8')
 
   /**
-   * Every string literal handed to `note(` as its first argument, in either file.
-   *
-   * ⛔ **Read from the CALL SITE and not from a table of names** — the defect this is here for is a
-   * roster row that no call ever writes, and a census that read a second list would be blind to it
-   * in exactly the same way the roster is.
+   * Every string literal handed to `note(` as its first argument, in either file. Read from the call
+   * site and not from a table of names: the defect this catches is a roster row that no call ever
+   * writes, and a census reading a second list would be blind to it in the same way.
    */
   const noted = (source) =>
     [...source.matchAll(/\bnote\(\s*\n?\s*'([^']+)'/g)].map((match) => match[1])
@@ -125,9 +120,8 @@ describe('the roster and the observations are one list (402 §3)', () => {
   it('⛔ every roster row is written by SOMETHING, and its owner is the file that writes it', () => {
     const fromStage = new Set(noted(stage))
     const fromRunner = new Set(noted(runner))
-    // ⚠️ Two positive controls, so a regex that matched nothing would fail here rather than pass
-    // this test by finding no violations. `319`'s rule: a census with no control is a census that
-    // cannot tell "clean" from "blind".
+    // Two positive controls, so a regex that matched nothing would fail here rather than pass by
+    // finding no violations. A census with no control cannot tell "clean" from "blind".
     expect(fromStage.size, 'the stage census found no note() calls at all').toBeGreaterThan(10)
     expect(fromRunner.size, 'the runner census found no note() calls at all').toBeGreaterThan(0)
 
@@ -138,9 +132,9 @@ describe('the roster and the observations are one list (402 §3)', () => {
   })
 
   it('⛔ …and the runner owns exactly the row a killed process could not report', () => {
-    // 🔴 **The whole reason `owner` exists.** A stage that reported its own kill would be reporting
-    // an intention: the row is written before the signal, and the process that would correct it is
-    // the one that dies. Exactly one row may be the runner's, and this is which.
+    // The whole reason `owner` exists. A stage that reported its own kill would be reporting an
+    // intention: the row is written before the signal, and the process that would correct it is the one
+    // that dies. Exactly one row may be the runner's, and this is which.
     const runnerRows = LIFECYCLE_STEPS.filter((step) => step.owner === 'runner')
     expect(runnerRows.map((step) => step.id)).toEqual([
       '12 the app is killed while that work is open',
@@ -151,21 +145,17 @@ describe('the roster and the observations are one list (402 §3)', () => {
   })
 
   /**
-   * 🔴 **410 §5 · the budget is two files and a typo in it is invisible until minute twenty.**
-   *
-   * ⛔ **The runner OWNS the table and the stage SPENDS it, by name, through one env var.** That is
-   * the right shape — a second copy in the stage would be a budget a reader could not check against
-   * the run that obeyed it — ⚠️ **but a name is a string, and `bound('workerSpwan')` compiles.** The
-   * stage refuses at that call rather than defaulting, which is correct and is also a LIVE-ONLY
-   * guard: it fires eight minutes into a provider run, having already spent them.
-   *
-   * ⚑ So the two ends are held together here, where it costs nothing.
+   * The budget is two files and a typo in it is invisible until minute twenty. The runner owns the
+   * table and the stage spends it by name through one env var; but a name is a string, and
+   * `bound('workerSpwan')` compiles. The stage refuses at that call rather than defaulting, which is
+   * a live-only guard: it fires eight minutes into a provider run. So the two ends are held together
+   * here, where it costs nothing.
    */
   it('⛔ every bound the stage spends is a bound the runner states', () => {
     const asked = [...stage.matchAll(/\bbound\('([a-zA-Z]+)'\)/g)].map((match) => match[1])
-    // Two positive controls — `319`'s rule. A regex that matched nothing would otherwise pass this
-    // by finding no violations, and the count is the second half: the stage spends more than a
-    // couple of these, so a pattern that found one would be as wrong as one that found none.
+    // Two positive controls. A regex that matched nothing would otherwise pass by finding no
+    // violations, and the count is the second half: the stage spends more than a couple of these, so a
+    // pattern that found one would be as wrong as one that found none.
     expect(asked.length, 'the bound census found no call sites at all').toBeGreaterThan(10)
     expect(new Set(asked).size, 'the bound census found only one distinct bound').toBeGreaterThan(8)
     for (const name of new Set(asked)) {
@@ -177,9 +167,9 @@ describe('the roster and the observations are one list (402 §3)', () => {
   })
 
   it('⛔ …and every bound the runner states is spent by something', () => {
-    // 🔴 **The other direction, and it is the one that rots quietly.** A key nothing asks for is a
-    // number in the stated budget that no step can consume — so the total a reader is promised is
-    // larger than the total the run can possibly spend, and the promise stops being a bound.
+    // The other direction, the one that rots quietly. A key nothing asks for is a number in the stated
+    // budget that no step can consume, so the total a reader is promised is larger than the total the
+    // run can spend, and the promise stops being a bound.
     const spent = new Set([...stage.matchAll(/\bbound\('([a-zA-Z]+)'\)/g)].map((match) => match[1]))
     for (const name of Object.keys(STEP_MS)) {
       expect(spent.has(name), `the runner states \`${name}\`, which nothing spends`).toBe(true)
@@ -187,50 +177,44 @@ describe('the roster and the observations are one list (402 §3)', () => {
   })
 
   it('⛔ the stated budget is the SUM of what phase a can spend, and nothing rounder', () => {
-    // ⚠️ **A total written as a number is a number that stops tracking the table.** `402`'s runner
-    // held fifty minutes on one wait while the stage's own waits summed to seventy-one; the figure
-    // and the instrument had never been the same thing. ⛔ This asserts they are one derivation.
+    // A total written as a number stops tracking the table. This asserts the total and the instrument
+    // are one derivation.
     const { phaseA, phaseB, margin } = LIFECYCLE_BUDGET_MS
     const everyBound = Object.values(STEP_MS).reduce((sum, ms) => sum + ms, 0)
-    // 🔴 **EVERY bound is in the sum since `445`, and the subtraction that used to be here is the
-    // change.** ⛔ It read `everyBound - STEP_MS.questionCodex`, because the question step had a
-    // provider-specific twin and a run spent one or the other. ⚑ `437` published `ask_parent`, so
-    // the step is one step on both providers and the table states one number for it — and a
-    // subtraction left in place would be a key nothing spends, which the test above this one
-    // exists to catch from the other side.
+    // Every bound is in the sum. The question step is one step on both providers, so the table states
+    // one number for it; a subtraction left in place would be a key nothing spends, which the test
+    // above exists to catch from the other side.
     expect(phaseA + phaseB).toBe(everyBound)
     expect(margin).toBeGreaterThan(0)
   })
 
   it('⛔ the diagram note HO-018 amended is performed nowhere', () => {
-    // ⚠️ **`399` §5's readings are of a tree that no longer exists**, and the two words that carried
-    // the amended behaviour are the ones to keep out: nothing in this instrument may fail a task on
-    // a timeout, and nothing may treat a restart as terminal. `400` retired both.
+    // Earlier readings are of a tree that no longer exists, and the two words that carried the amended
+    // behaviour are the ones to keep out: nothing in this instrument may fail a task on a timeout, and
+    // nothing may treat a restart as terminal.
     for (const [file, source] of [
       ['the stage', stage],
       ['the runner', runner],
     ]) {
       expect(source, `${file} still names a retired task state`).not.toMatch(/'abandoned'|'silent'/)
     }
-    // ⚑ The paired positive: the words that REPLACED them are both here, on the rows that assert
-    // the amendment.
+    // The paired positive: the words that replaced them are both here, on the rows that assert the
+    // amendment.
     expect(stage).toContain("'app_restarted'")
     expect(stage).toContain('work_restarted')
   })
 })
 
 /**
- * 🔴 **669 · R17 — the lifecycle stage measures the product as it ships, and never rebuilds an old
- * one.**
+ * The lifecycle stage measures the product as it ships, and never rebuilds an old one.
  *
- * ⛔ A fresh install ships `brobot` alone, so a stage that set up a tier by hand,
- * brought the worker into being by a handshake, or asked
- * BroBot to give work to a name nobody created would describe a product that does not exist. ⚑ Each check
- * below fails on such a story. {@link r17Findings} is run on planted copies of it — a person's grant,
- * the worker's handshake, the old brief — and of the review's defects — a late read, a misplaced
- * 1c — so its NEGATIVE checks are shown able to fire (rule 12). ⚠️ Its presence checks match one
- * line of code each: they prove the verdict's clause exists, not that it is reached, which is what
- * the rows' own evidence strings are for.
+ * A fresh install ships `brobot` alone, so a stage that set up a tier by hand, brought the worker
+ * into being by a handshake, or asked BroBot to give work to a name nobody created would describe a
+ * product that does not exist. Each check below fails on such a story. {@link r17Findings} is run on
+ * planted copies of it (a person's grant, the worker's handshake, the old brief) and of defects
+ * (a late read, a misplaced 1c), so its negative checks are shown able to fire. Its presence checks
+ * match one line of code each: they prove the verdict's clause exists, not that it is reached,
+ * which is what the rows' own evidence strings are for.
  */
 describe('669 · R17 — the lifecycle stage performs the product as it ships', () => {
   const here = dirname(fileURLToPath(import.meta.url))
@@ -278,7 +262,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     if (!/if \(rows\.some\(\(row\) => row === null\)\) \{\s*noteChoice\(\s*'1c/.test(code)) {
       found.push('row 1c lets a missing tier count as measured')
     }
-    // ⚠️ Where, not how many: each call sits right before the park on its path (the third round).
+    // Where, not how many: each call sits right before the park on its path.
     if (
       (code.match(/\bnoteTheTiers\(\)/g) ?? []).length !== 2 ||
       !/noteTheTiers\(\)\s*return await parkForTheKill\('no project manager to work through'\)/.test(
@@ -290,14 +274,14 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     ) {
       found.push('row 1c is not written on both paths past row 2')
     }
-    // ⛔ 1b's only window: after BroBot's first conversation, before any model has had a turn.
+    // 1b's only window: after BroBot's first conversation, before any model has had a turn.
     const read = code.indexOf('const shippedIdentities = store.agentIdentities()')
     const firstClose = code.indexOf('await host.close(firstBroBot.sessionId, person)')
     const firstTurn = code.indexOf('await host.send(brobot.sessionId, personsBrief(), person)')
     if (!(firstClose > -1 && read > firstClose && firstTurn > read)) {
       found.push('row 1b reads the identities after a model has had a turn')
     }
-    // ⛔ …and every other fact it reports is read in the same window (the third round).
+    // …and every other fact it reports is read in the same window.
     const pmRead = code.indexOf(
       'const projectManagerShipped = store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID) !== null',
     )
@@ -312,8 +296,8 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
 
   it('starts only what a tier created, without setting up identities by hand', () => {
     expect(r17Findings(stage)).toEqual([])
-    // ⚑ The two briefs name what to CREATE and what it is — and no tool (347's rule). ⚑ D-016: the
-    // verbs a brief could name instead are the two that bring an agent into being.
+    // The two briefs name what to create and what it is, and no tool. The verbs a brief could name
+    // instead are the two that bring an agent into being.
     expect(stage).toContain("'1. Bring one new agent into existence, called `' +")
     const start = stage.indexOf('function personsBrief(')
     expect(start, 'function personsBrief(').toBeGreaterThan(-1)
@@ -323,14 +307,14 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
   })
 
   it('🔴 the planted old story is caught — twice over (rule 12)', () => {
-    // ⛔ A person's tier-2 grant, the shape the stage had before R17.
+    // A person's tier-2 grant, the shape the stage had before.
     const personGrants = stage.replace(
       'const shippedIdentities = store.agentIdentities()',
       "store.setCapabilities(PROJECT_MANAGER_PROFILE_ID, { canCreateAgents: 'any' })\n" +
         '    const shippedIdentities = store.agentIdentities()',
     )
     expect(r17Findings(personGrants)).toEqual(['it grants a capability through the store'])
-    // ⛔ The old brief, asking BroBot to give work to a project manager nobody created.
+    // The old brief, asking BroBot to give work to a project manager nobody created.
     const oldBrief = stage.replace(
       "'1. Bring one new agent into existence, called `' +\n      PROJECT_MANAGER_PROFILE_ID +\n" +
         "      '`, as a project manager, and give it this ticket as a piece of work whose brief is',",
@@ -338,7 +322,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     )
     expect(oldBrief).not.toBe(stage)
     expect(r17Findings(oldBrief)).toEqual(['a brief asks to give work to a name nobody created'])
-    // ⛔ The worker brought into being by a handshake, as the old row 1 did.
+    // The worker brought into being by a handshake, as the old row 1 did.
     const handshake = stage.replace(
       'const shippedIdentities = store.agentIdentities()',
       'await host.createSession({ provider: PROVIDER, profileId: WORKER_PROFILE_ID, cwd: work }, person)\n' +
@@ -346,7 +330,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     )
     expect(handshake).not.toBe(stage)
     expect(r17Findings(handshake)).toEqual(['it opens a conversation as the worker'])
-    // ⛔ 1b read after the ticket's first turn — where any agent could have minted an identity.
+    // 1b read after the ticket's first turn, where any agent could have minted an identity.
     const lateRead = stage
       .replace('    const shippedIdentities = store.agentIdentities().map((one) => one.slug)\n', '')
       .replace(
@@ -358,7 +342,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     expect(r17Findings(lateRead)).toEqual([
       'row 1b reads the identities after a model has had a turn',
     ])
-    // ⛔ The project manager's row read in the verdict again — a second read of it.
+    // The project manager's row read in the verdict again: a second read of it.
     const latePmRead = stage.replace(
       '&& !projectManagerShipped',
       '&& store.agentIdentityOf(PROJECT_MANAGER_PROFILE_ID) === null',
@@ -367,7 +351,7 @@ describe('669 · R17 — the lifecycle stage performs the product as it ships', 
     expect(r17Findings(latePmRead)).toEqual([
       'row 1b reads the project manager’s row after a model has had a turn',
     ])
-    // ⛔ Row 4's 1c moved below the worker's park — two calls still, and one path without it.
+    // Row 4's 1c moved below the worker's park: two calls still, and one path without it.
     const misplaced = stage.replace(
       "    noteTheTiers()\n    if (explorer === null) return await parkForTheKill('no worker to be mid-turn')",
       "    if (explorer === null) return await parkForTheKill('no worker to be mid-turn')\n    noteTheTiers()",

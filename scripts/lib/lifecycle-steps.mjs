@@ -183,44 +183,26 @@ export const LIFECYCLE_STEPS = [
 export const LIFECYCLE_STEP_IDS = LIFECYCLE_STEPS.map((step) => step.id)
 
 /**
- * 🔴 **Every wait this instrument makes, as one table, because §13 bounds STEPS and not phases**
- * (410 §5).
+ * Every wait this instrument makes, as one table, because the budget rule bounds steps and not phases.
  *
- * ## ⛔ What this replaced, and why the old shape could not be corrected in place
+ * A phase bound cannot say which step failed to happen. The stage spends these bounds one step at a
+ * time, and the runner's phase bound is derived from their sum plus a margin: it is a backstop for a
+ * stage that stopped spending them, not what times anything.
  *
- * ⚠️ **The runner held `Date.now() + 3_000_000` — fifty minutes, on ONE wait covering the whole
- * first half of the diagram.** ⛔ A phase bound cannot say which step failed to happen, so a healthy
- * run that was merely slow and a run that died at row 3 exited the same way; and the stage's own
- * per-step waits already summed to MORE than that bound, so a chain still working at minute fifty
- * was guillotined and reported `NOT REACHED` — a report computed from the runner's patience rather
- * than from the outcome.
+ * `question` is one bound for every provider: `ask_question` is offered to all of them and none has
+ * to raise it, so no provider has a cheap path because the step cannot happen. Two bounds would give
+ * a Codex worker a fraction of a Claude worker's patience on a step whose subject is which of them
+ * chooses the verb.
  *
- * ⚑ **So the bounds live here, the stage spends them one step at a time, and the runner's phase
- * bound is DERIVED from their sum plus a margin.** ⛔ The phase bound is now a backstop for a stage
- * that has stopped spending them at all; it is not what times anything.
- *
- * ## ⚠️ Two of them are not a guess
- *
- * 🔴 **`question` is ONE bound at `445`, and the provider-specific twin it replaced is a retired
- * fact rather than a simplification.** ⛔ `questionCodex` was 45s *"on purpose"* because v3 records
- * *"Codex raises no question from a spawned worker"* and `402` F7 measured why — `requestUserInput`
- * exists only in a planning conversation and a conversation an agent starts runs in no plan mode.
- * ⚑ **`437` published `ask_parent`** (`ask_question` since D-009), which no provider has to raise and
- * every provider is offered, so there is no
- * longer a provider on which this step is cheap because it cannot happen. ⚠️ **Two bounds for one
- * step would now be a budget that says a Codex worker is given four seconds of patience for every
- * fifteen a Claude worker gets, on a step whose whole subject is which of them chooses the verb.**
- *
- * ⚠️ **`park` is a wait that can only time out**, deliberately: phase `a`'s exit condition is a signal
- * from outside it, so the only thing that loop can report is that the signal never came.
+ * `park` is a wait that can only time out, deliberately: phase `a`'s exit condition is a signal from
+ * outside it, so the only thing that loop can report is that the signal never came.
  */
 export const STEP_MS = {
-  // ⚑ D-016 · rows 2, 4 and 6 are ONE give each — the new agent, its conversation and its brief —
-  // where 669 asked for a create, a start and a message. Each bound is the one-call start bound
-  // before 669 (120s for the project manager, 180s a tier down) plus the message's 120s.
+  // Rows 2, 4 and 6 are one give each (the new agent, its conversation and its brief). Each bound is
+  // the one-call start bound (120s for the project manager, 180s a tier down) plus the message's 120s.
   pmGive: 240_000,
   workerGive: 300_000,
-  // ⚑ D-014 · row 6 is the worker's give, carded like row 4's, so it gets row 4's bound.
+  // Row 6 is the worker's give, carded like row 4's, so it gets row 4's bound.
   helperGive: 300_000,
   permission: 180_000,
   question: 180_000,
@@ -237,14 +219,12 @@ export const STEP_MS = {
 }
 
 /**
- * ⛔ **The total this run may spend, stated before the first one starts** (§13: *"a live runner states
- * its own total budget up front"*).
+ * The total this run may spend, stated before the first step starts.
  *
- * ⚠️ **`phaseA` is the SERIAL sum** — the concurrent watchers (`theKillWindow`, the person's queue)
- * spend no wall clock of their own — and `margin` covers two process starts, the migrations and the
- * provider handshakes that are not steps. ⚑ **A derailed run costs far less than this**: the stage
- * collapses to a 20s bound after two consecutive misses, so the number below is the ceiling on a run
- * that keeps ALMOST working, which is the expensive shape.
+ * `phaseA` is the serial sum (the concurrent watchers, `theKillWindow` and the person's queue, spend
+ * no wall clock of their own) and `margin` covers two process starts, the migrations and the provider
+ * handshakes that are not steps. A derailed run costs far less: the stage collapses to a 20s bound
+ * after two consecutive misses, so this is the ceiling for a run that keeps almost working.
  */
 export const LIFECYCLE_BUDGET_MS = {
   phaseA:
@@ -268,9 +248,8 @@ export const LIFECYCLE_BUDGET_MS = {
  * The table, computed from `journal` — one row per {@link LIFECYCLE_STEPS} entry plus anything the
  * journal recorded that the diagram does not name.
  *
- * ⛔ **The LAST line wins for a step, and a step with no line is `NOT REACHED`.** ⚠️ There is no
- * branch here that can invent a verdict: `NOT REACHED` is the absence of evidence and is counted
- * against the run, never toward it.
+ * The last line wins for a step, and a step with no line is `NOT REACHED`. Nothing here invents a
+ * verdict: `NOT REACHED` is the absence of evidence and counts against the run, never toward it.
  *
  * @param {readonly {step: string, verdict: string, what: string}[]} journal
  */
@@ -294,9 +273,9 @@ export function lifecycleTable(journal) {
   return {
     rows,
     extra,
-    // ⛔ **A run is complete only when every diagram row PASSED.** Anything else — a FAIL, a step the
-    // models declined to perform, a step nothing reached — is not a performance of the diagram, and
-    // the headline says which of the three it was rather than collapsing them.
+    // A run is complete only when every diagram row PASSED. A FAIL, a step the models declined to
+    // perform and a step nothing reached are not a performance of the diagram, and the headline says
+    // which of the three it was.
     complete:
       rows.every((row) => row.verdict === 'PASS') && extra.every((row) => row.verdict === 'PASS'),
     passed: counted.filter((row) => row.verdict === 'PASS').length,

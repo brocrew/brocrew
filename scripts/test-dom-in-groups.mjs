@@ -4,11 +4,9 @@
  *
  *   node scripts/test-dom-in-groups.mjs [VITEST ARG ...]
  *
- * `BROBOT_DOM_GROUPS` overrides the default 16. Each invocation uses `--shard=i/N` and exits
- * with its browser. Removing test iframes does not release the renderer's shared-memory
- * allocations; on Linux, `--disable-dev-shm-usage` puts them in deleted `/tmp` files that
- * `du` cannot show. Ending the renderer between groups prevents a whole-suite accumulation.
- * The default group size was measured within the CI runner's disk and memory limits.
+ * `BROBOT_DOM_GROUPS` overrides the default 16. Removing test iframes does not release the
+ * renderer's shared-memory allocations (on Linux, `--disable-dev-shm-usage` puts them in deleted
+ * `/tmp` files that `du` cannot show), so each group runs `--shard=i/N` and ends its browser.
  */
 
 import { spawnSync } from 'node:child_process'

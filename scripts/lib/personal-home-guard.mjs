@@ -17,28 +17,17 @@ import { join } from 'node:path'
 export const MIN_MARKER_LENGTH = 8
 
 /**
- * How deep a personal home is walked.
- *
- * ⛔ **It was 6, and 6 did not reach most of either home** (196 M2). The comment justified it from
- * `~/.codex/sessions/YYYY/MM/DD/<file>`, which is 5 — true of the path this guard was written for
- * and of nothing else in the tree around it. Measured at 196 on this machine: at depth 6,
- * **156 directories under `~/.claude` and 1,627 under `~/.codex`** were never descended into, and
- * the scan reported `{ hits: [], truncated: false }` — indistinguishable from a clean home. Plugin
- * caches, marketplace checkouts and their `node_modules` all live below the old bound.
- *
- * ⚑ **The whole walk costs 113 ms and 204 ms respectively**, measured the same way, so the bound
- * was buying nothing. It is a loop guard now — deep enough that reaching it is a fact worth
- * reporting rather than the ordinary case — and {@link pathsNaming} reports it either way.
+ * How deep a personal home is walked. The whole walk costs ~113 ms under `~/.claude` and ~204 ms
+ * under `~/.codex`, so this is only a loop guard, deep enough that reaching it is worth
+ * reporting; {@link pathsNaming} reports it either way. Plugin caches, marketplace checkouts and
+ * their `node_modules` sit well below depth 6.
  */
 export const DEFAULT_MAX_DEPTH = 64
 
 /**
- * ⛔ **A scan with no markers finds nothing and proves nothing.**
- *
- * This throws rather than returning `[]` on purpose: an empty marker list is how a control of this
- * shape dies quietly — the caller's session id turns out to be `undefined`, every `expect` still
- * passes, and the file reads as coverage forever after (`129`'s trap, and the vacuous-test class
- * `113` audited). The same goes for a marker too short to be distinctive.
+ * A scan with no markers finds nothing and proves nothing, so this throws rather than returning
+ * `[]`: an empty marker list (say the caller's session id is `undefined`) lets every `expect`
+ * pass and reads as coverage forever. The same goes for a marker too short to be distinctive.
  *
  * @param {readonly Marker[]} markers
  * @returns {readonly Marker[]}
@@ -61,39 +50,23 @@ export function requireMarkers(markers) {
 }
 
 /**
- * Every path under `root` whose NAME contains one of `markers`.
+ * Every path under `root` whose name contains one of `markers`.
  *
  * Directory names count: a leaked Claude session shows up as
  * `projects/<sanitized-cwd>/<sessionId>.jsonl`, and the sanitized cwd is a marker in its own right
  * even before a transcript lands in it.
  *
- * ⚠️ **Symlinks are not followed.** A personal home contains links out to plugin checkouts and
- * worktrees; following them would walk half the disk and could loop. `withFileTypes` reports a link
- * as neither file nor directory, so it is named-and-skipped rather than descended into.
+ * Symlinks are not followed: a personal home links out to plugin checkouts and worktrees, and
+ * following them would walk half the disk and could loop. `withFileTypes` reports a link as
+ * neither file nor directory, so it is named and skipped.
  *
- * ⛔ **It says when it STOPPED LOOKING, and until 188 it did not** (182 M8). The walk gives up at
- * `limit` hits, and the caller received an array that looks exactly like a complete one — so on a
- * machine with more than fifty matching paths, a leak later in the traversal was unexamined and the
- * step reporting on it was green. ⚑ **This is `176`'s own rule turned on the instrument that
- * enforces it**: "covered everything" and "stopped looking" must not read the same. The truncation
- * is now a value the caller has to receive, and both callers in `ui-live-smoke.mjs` fail on it.
- *
- * ⚠️ **Reported rather than thrown**, unlike `requireMarkers`: a vacuous marker list is always a
- * programming error, while hitting the cap is a fact about the machine the scan is running on — the
- * caller is the one that knows whether it can widen the limit or must fail.
- *
- * ⛔ **AND when it stopped for either of the other two reasons** (196 M2, from 193). `188` closed
- * the hit cap and left the other two exits silent: a walk that hit `maxDepth` returned, and a
- * directory that would not open returned, and both then reported `truncated: false`. A matching file
- * at `.claude/a/b/c/d/e/f/g/<session-id>.jsonl`, or one nested directory that happened to be
- * unreadable at that moment, produced `{ hits: [], truncated: false }` — the exact shape of a clean
- * machine. ⚑ **Three ways to stop early and one of them reported: that is the same defect as having
- * none.** All three are now values the caller receives, and `complete` is the single question worth
- * asking of them.
- *
- * ⚠️ **An unreadable directory is still not a FINDING** — the old comment was right that we could
- * not have written there either. It is a hole in the EVIDENCE, which is a different claim, and the
- * caller is the one that decides what to do about it.
+ * The walk says when it stopped looking, so "covered everything" and "stopped looking" never read
+ * the same. It can stop early three ways: it hits `limit` hits (`truncated`), it hits `maxDepth`
+ * (`tooDeep`), or a directory will not open (`unreadable`). Each is a value the caller receives,
+ * and `complete` is the single question to ask of them. They are reported rather than thrown,
+ * unlike `requireMarkers`: hitting a cap is a fact about the machine, and the caller knows
+ * whether to widen the limit or fail. An unreadable directory is not a finding (we could not have
+ * written there either) but it is a hole in the evidence.
  *
  * @param {string} root
  * @param {readonly Marker[]} markers
@@ -125,11 +98,9 @@ export function pathsNaming(root, markers, options = {}) {
     try {
       entries = readdirSync(dir, { withFileTypes: true })
     } catch (error) {
-      // ⚠️ **A directory that is not THERE is not a directory we failed to see.** An absent personal
-      // home, or a path that vanished between the parent listing and this call, leaves nothing
-      // unexamined — it is the cleanest possible answer. A directory that exists and will not open
-      // is the opposite: it is a part of the home this scan did not see, and 196 M2 is that it used
-      // to return exactly like the first case.
+      // A directory that is not there is not one we failed to see: an absent home, or a path that
+      // vanished between the parent listing and this call, leaves nothing unexamined. A directory that
+      // exists and will not open is a part of the home this scan did not see.
       if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') unreadable.push(dir)
       return
     }
@@ -150,16 +121,15 @@ export function pathsNaming(root, markers, options = {}) {
     truncated,
     tooDeep,
     unreadable,
-    // ⚑ The one question a caller should ask before believing an empty `hits`.
+    // The one question a caller should ask before believing an empty `hits`.
     complete: !truncated && tooDeep.length === 0 && unreadable.length === 0,
   }
 }
 
 /**
- * Why a scan is not complete, in one sentence — or `null` when it is.
+ * Why a scan is not complete, in one sentence, or `null` when it is.
  *
- * ⚠️ It names the FIRST few paths rather than counting them: "3 directories were unreadable" sends
- * nobody anywhere, and the point of the sentence is that a person can go and look.
+ * It names the first few paths rather than counting them, so a person can go and look.
  *
  * @param {{ truncated: boolean, tooDeep: string[], unreadable: string[], complete: boolean }} scan
  * @returns {string | null}
@@ -238,16 +208,12 @@ export function describeHits(hits) {
 }
 
 /**
- * The one sentence a leak assertion needs, over one or more walks: `'none'` **only** when every walk
- * FINISHED and none of them found anything.
+ * The one sentence a leak assertion needs, over one or more walks: `'none'` only when every walk
+ * finished and none of them found anything.
  *
- * ⛔ **`describeHits(scan.hits)` is not that sentence, and 202 is why it is worth its own function.**
- * Nine TypeScript callers asked the question in eight slightly different ways, every one of them
- * against a declaration that said `pathsNaming` returned an array — so five threw on the line meant
- * to prove nothing leaked, and four passed over an object whose `.length` is `undefined`. The walk
- * has reported its own incompleteness since 196; what was missing was one idiom that cannot be
- * spelled in a way that ignores it. An incomplete walk says what it could not see, and an incomplete
- * walk that also found something says both.
+ * Use this rather than `describeHits(scan.hits)`: `pathsNaming` returns an object, not an array,
+ * so an array idiom either throws or passes over a `.length` of `undefined`. An incomplete walk
+ * says what it could not see, and one that also found something says both.
  *
  * @param {...{ hits: Hit[], truncated: boolean, tooDeep: string[], unreadable: string[], complete: boolean }} scans
  * @returns {string}
@@ -261,22 +227,18 @@ export function describeScan(...scans) {
 }
 
 /**
- * The OTHER direction, in one sentence: **is everything of ours THERE?** `'none'` — nothing is
- * missing — only when every marker was found.
+ * The other direction, in one sentence: is everything of ours there? `'none'` (nothing missing)
+ * only when every marker was found.
  *
- * ⛔ **`describeScan` cannot answer this and neither can a boolean** (206 H3, from 193's class).
- * {@link describeScan} asks *is anything of ours in a place it should not be*, where a hit is the
- * finding. An isolation row also has to make the opposite claim — *every session this run created is
- * in the isolated home* — and there the ABSENCE of a hit is the finding, which is precisely where
- * "I looked and it is not there" and "I could not look" stop being the same answer. A walk that
- * gave up at the hit cap, hit the depth bound, or met one unreadable directory returns the same
- * empty `hits` as a home that genuinely lacks the file.
+ * {@link describeScan} asks whether anything of ours is somewhere it should not be, where a hit
+ * is the finding. An isolation row also claims every session this run created is in the isolated
+ * home, where the absence of a hit is the finding, and "I looked and it is not there" must not
+ * read the same as "I could not look".
  *
- * ⚑ **Asymmetric on purpose, and this is the load-bearing line.** For a marker that WAS found the
- * walk's completeness is irrelevant: a hit is proof, and failing the claim because the walk also
- * stopped early somewhere else would be a red nobody could act on (176's rule about measuring the
- * machine). Incompleteness is reported only where it bears on the answer — beside a marker that is
- * missing, whose absence the walk is not entitled to assert.
+ * Asymmetric on purpose: for a marker that was found, the walk's completeness is irrelevant (a hit
+ * is proof, and failing over an early stop elsewhere would be a red nobody could act on).
+ * Incompleteness is reported only beside a missing marker, whose absence the walk is not entitled
+ * to assert.
  *
  * @param {{ hits: Hit[], truncated: boolean, tooDeep: string[], unreadable: string[], complete: boolean }} scan
  * @param {readonly Marker[]} markers

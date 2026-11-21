@@ -5,7 +5,7 @@
  */
 import { execFileSync } from 'node:child_process'
 
-/** A port nobody should be driving by accident — the shared default that caused the 049 incident. */
+/** A port nobody should be driving by accident: the shared default that once collided across trees. */
 export const FORBIDDEN_DEFAULT_PORT = 9222
 /**
  * The person's running BroBot uses this protected port. Measurement launches must never inspect or
@@ -47,9 +47,9 @@ export function defaultExecutablePath(pid) {
 /**
  * Throw unless the process listening on `port` belongs to `repoRoot`.
  *
- * Called BEFORE attaching, so a foreign or unidentifiable target is refused with **no side
- * effects on it**. `listeners`/`executablePath` are seams so the guard can be tested against a
- * foreign path without standing up another app.
+ * Called before attaching, so a foreign or unidentifiable target is refused with no side effects
+ * on it. `listeners`/`executablePath` are seams so the guard can be tested against a foreign path
+ * without standing up another app.
  */
 export function assertPortOwnedByTree({
   port,
@@ -76,7 +76,7 @@ export function assertPortOwnedByTree({
   )
 }
 
-/** Refuse the shared well-known port outright: it is the one that collided across trees (049). */
+/** Refuse the shared well-known port outright: it is the one that collided across trees. */
 export function assertPortNotShared(port) {
   if (port === FORBIDDEN_DEFAULT_PORT) {
     throw new Error(

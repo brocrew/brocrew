@@ -23,11 +23,9 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const ELECTRON = join(REPO_ROOT, 'apps/desktop/node_modules/.bin/electron')
 
 /**
- * The whole app under test.
- *
- * ⚠️ **The verdict is appended to a file rather than printed.** `app.exit()` is immediate — 202 §7
- * chose it for exactly that reason — and a process that exits that way can lose buffered stdout.
- * `appendFileSync` of one short line is atomic enough for two writers that each write once.
+ * The whole app under test. The verdict is appended to a file rather than printed: `app.exit()`
+ * is immediate and a process that exits that way can lose buffered stdout. `appendFileSync` of one
+ * short line is atomic enough for two writers that each write once.
  */
 const PROBE_MAIN = String.raw`
 const { app } = require('electron')
@@ -41,14 +39,12 @@ setTimeout(() => app.exit(0), Number(process.env.PROBE_HOLD_MS))
 const HOLD_MS = 2500
 
 /**
- * How far apart the two launches are, and how many trials each separation gets.
- *
- * ⛔ The last row's gap is longer than {@link HOLD_MS} on purpose — see the note at the top.
+ * How far apart the two launches are, and how many trials each separation gets. The last row's
+ * gap is longer than {@link HOLD_MS} on purpose.
  */
 const CASES = [
-  // ⚠️ Twice `202`'s twelve. Its 3/12 and a first pass of this probe's 5/12 are the same rate
-  // inside the noise of twelve trials, and the point of re-measuring is to say something twelve
-  // trials could not.
+  // Twice the earlier twelve trials: 3/12 and 5/12 are the same rate inside the noise of twelve,
+  // and the point of re-measuring is to say something twelve trials could not.
   { label: 'same instant', gapMs: 0, trials: 24 },
   { label: '+50 ms', gapMs: 50, trials: 4 },
   { label: '+200 ms', gapMs: 200, trials: 4 },
@@ -66,10 +62,9 @@ function appDir() {
 }
 
 /**
- * One trial: two Electrons onto one `--user-data-dir`, both started by one shell.
- *
- * ⚑ The gap is `sleep` INSIDE the shell rather than a second `spawn`, so the non-zero cases differ
- * from the zero case in exactly one thing.
+ * One trial: two Electrons onto one `--user-data-dir`, both started by one shell. The gap is a
+ * `sleep` inside the shell rather than a second `spawn`, so the non-zero cases differ from the
+ * zero case in exactly one thing.
  */
 function trial(app, gapMs) {
   const userData = mkdtempSync(join(tmpdir(), 'one-app-probe-ud-'))
@@ -112,8 +107,8 @@ async function main() {
       let incomplete = 0
       for (let n = 0; n < runCase.trials; n += 1) {
         const { launches, won } = await trial(app, runCase.gapMs)
-        // ⛔ A trial where a launch never reported is not a trial where one lost. Counted apart, so
-        // a broken instrument cannot read as a clean result.
+        // A trial where a launch never reported is not a trial where one lost. Counted apart, so a
+        // broken instrument cannot read as a clean result.
         if (launches !== 2) incomplete += 1
         else if (won === 2) both += 1
         else if (won === 0) neither += 1
