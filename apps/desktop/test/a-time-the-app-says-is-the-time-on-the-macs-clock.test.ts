@@ -1235,8 +1235,9 @@ describe('§5 · the window, main and the host agree on the zone', () => {
     }
     // The workspace's theme is waited for beside the zone, never instead of it.
     const MOUNT = inOrder(
-      'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>',
-      'draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {',
+      'void Promise.all([keepTheMacZone(desktopBootstrap.zone), themeBeforeDrawing(windowTheme)]).then(',
+      '() =>',
+      'draftHandoffBeforeDrawing(desktopBootstrap.savedDrafts).then((handoff) => {',
       'createApp(App)',
       '.provide(SAVED_DRAFTS, handoff)',
       '.provide(CLIENT_PROVIDERS, desktopProviderApi)',
@@ -1274,8 +1275,8 @@ describe('§5 · the window, main and the host agree on the zone', () => {
       MOUNT.test(
         planted(
           screen,
-          'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>',
-          'void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)])\n;(() =>',
+          'void Promise.all([keepTheMacZone(desktopBootstrap.zone), themeBeforeDrawing(windowTheme)]).then(',
+          'void Promise.all([keepTheMacZone(desktopBootstrap.zone), themeBeforeDrawing(windowTheme)])\n;(() =>',
         ),
       ),
     ).toBe(false)

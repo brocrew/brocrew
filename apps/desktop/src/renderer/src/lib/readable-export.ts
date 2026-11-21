@@ -147,7 +147,7 @@ const block = (who: string, at: number | undefined, body: string): string =>
  *
  * ## ⚠️ Page-fetchers rather than the store, and that is what makes it testable
  *
- * ⛔ **It takes two functions and touches no global.** A caller wires `window.api.runtime`; a test
+ * ⛔ **It takes two functions and touches no global.** A caller supplies the history reads. A test
  * hands it two arrays. ⚑ The renderer's own `session-store` is not imported here at all — this
  * module stays pure over its arguments, exactly as its note says.
  *

@@ -16,11 +16,7 @@ import type {
 import type { PagePerformanceReport, PageReportAnswer } from '../../shared/page-performance'
 import type { SavedDrafts } from '../../shared/saved-drafts'
 import type { LocalZone } from '../../shared/local-time'
-import type {
-  UpdateRestartWorkspace,
-  UpdatesSettingsChange,
-  UpdatesSnapshot,
-} from '../../shared/updates'
+import type { UpdatesBridge } from '../../shared/updates'
 import type {
   NewWorkspace,
   WorkspaceChanged,
@@ -56,17 +52,7 @@ declare global {
       /** The page's own freeze report, for the stall log beside main's stalls. */
       recordPagePerformance: (report: PagePerformanceReport) => Promise<PageReportAnswer>
       /** 🔴 **B1 · updates** — every call answers the new snapshot (`shared/updates.ts`). */
-      updates: {
-        read: () => Promise<UpdatesSnapshot>
-        checkNow: () => Promise<UpdatesSnapshot>
-        set: (change: UpdatesSettingsChange) => Promise<UpdatesSnapshot>
-        download: () => Promise<UpdatesSnapshot>
-        restartPlan: () => Promise<readonly UpdateRestartWorkspace[]>
-        restartNow: () => Promise<UpdatesSnapshot>
-        restartWhenQuiet: () => Promise<UpdatesSnapshot>
-        cancelRestart: () => Promise<UpdatesSnapshot>
-        onChanged: (listener: (snapshot: UpdatesSnapshot) => void) => () => void
-      }
+      updates: UpdatesBridge
       attentionSignals: (signal: AttentionSignal) => Promise<void>
       /** This workspace's short name and colour on the Dock icon (`shared/dock-label.ts`). */
       recoveryRetention?: RecoveryRetentionClient

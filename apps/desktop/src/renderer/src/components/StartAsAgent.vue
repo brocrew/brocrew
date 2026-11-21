@@ -10,6 +10,7 @@ import {
   type Provider,
   type ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'
+import { useClientApi } from '../client-provider/injection'
 import { useAgentStore } from '../composables/useAgentStore'
 import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
@@ -198,8 +199,11 @@ function startOn(pick: PickedModel): Promise<string | null> {
  */
 const folderRefusal = ref<string | null>(null)
 
+const client = useClientApi()
 async function chooseFolder(): Promise<void> {
-  const chosen = await window.api.chooseCwd()
+  const desktop = client.desktop
+  if (!desktop) return
+  const chosen = await desktop.chooseCwd()
   // ⚑ **A cancel is a changed mind** (`ChosenCwd`), and it changes nothing here.
   if (chosen === null) return
   folderRefusal.value = chosen.refusal ?? null

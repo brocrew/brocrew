@@ -1,6 +1,6 @@
 import type { ClientComposerApi } from '../../../shared/client-composer-api'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
-import type { ClientApi } from '../../../shared/client-api'
+import type { ClientApi, ClientDesktopApi } from '../../../shared/client-api'
 import type { ClientAgentApi } from '../../../shared/client-agent-api'
 import type { StorageBridge } from '../../../shared/storage'
 import type { WorkspacesClient } from '../../../shared/workspaces'
@@ -50,6 +50,7 @@ export function createDesktopProviderApi(
   storage: () => StorageBridge | undefined = () => undefined,
   workspaces: () => WorkspacesClient | undefined = () => undefined,
   themes: () => ThemesBridge | undefined = () => undefined,
+  desktop: () => ClientDesktopApi | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -98,6 +99,9 @@ export function createDesktopProviderApi(
     },
     get themes() {
       return themes()
+    },
+    get desktop() {
+      return desktop()
     },
     get recoveryCopies() {
       return recoveryCopies()

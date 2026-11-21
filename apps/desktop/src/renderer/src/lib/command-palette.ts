@@ -77,7 +77,7 @@ export function groupLabel(group: PaletteGroup, agent: PaletteAgent | null): str
  *
  * ⚠️ **Split by who may perform it, because that split is the whole shape of this dispatch.**
  * `navigate` actions are the ones the left rail already emits and `RuntimeScreen` already handles;
- * `export` is the one verb reachable straight off `window.api`.
+ * `export` is the one verb dispatched through the session client.
  */
 export type PaletteAction =
   /**
@@ -100,7 +100,7 @@ export type PaletteAction =
     }
   /** The rail's `newConversation`. */
   | { readonly kind: 'new' }
-  /** `window.api.runtime.exportSession` — the only verb here that is not a rail emit. */
+  /** `ClientSessionApi.exportSession` — the only verb here that is not a rail emit. */
   | {
       readonly kind: 'export'
       readonly sessionId: string

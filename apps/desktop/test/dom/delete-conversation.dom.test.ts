@@ -1,6 +1,8 @@
 import { NOTE, RECOVERY, HISTORY, LISTED } from './delete-conversation-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick } from 'vue'
+import { defineComponent, h, nextTick, provide } from 'vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import DeleteConversation from '../../src/renderer/src/components/DeleteConversation.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { RECOVERY_COPIES_STAY } from '../../src/renderer/src/lib/archive-and-delete'
@@ -140,6 +142,26 @@ describe('the check is read first', () => {
     expect(m.q('delete-title').textContent).toBe('Delete W1 · Bakery website?')
     expect(visible(m.q('delete-conversation'))).toBe(true)
   })
+})
+
+it('shows a refusal when the selected client has no session operations', async () => {
+  stub()
+  const fixture = createDesktopProviderApi(
+    () => window.api.runtime,
+    () => undefined,
+  )
+  const m = mount(
+    defineComponent({
+      setup() {
+        provide(CLIENT_PROVIDERS, fixture)
+        return () => h(DeleteConversation, { sessionId: 'sess_root' })
+      },
+    }),
+    {},
+  )
+  await settle()
+  expect(m.q('delete-refusal').textContent?.trim()).toBe('Conversation actions are unavailable.')
+  expect(checks).toEqual([])
 })
 
 describe('a delete main refuses', () => {

@@ -774,7 +774,9 @@ const scanError = ref<string | null>(null)
 const { bundlePath, restoring, restored, restoreBundle } = useBundleImport(selectedClientApi, load)
 
 async function chooseBundle(): Promise<void> {
-  const picked = await window.api.chooseBundle()
+  const desktop = selectedClientApi.desktop
+  if (!desktop) return
+  const picked = await desktop.chooseBundle()
   // Null is CANCELLED, which is not a failure and must not clear what was already typed.
   if (picked === null) return
   bundlePath.value = picked

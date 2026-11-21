@@ -14,6 +14,7 @@ import {
 import { agentName, type RuntimeBridge } from '../../../shared/runtime-ipc'
 import type { RulesBaseline } from '../../../shared/agent-rules'
 import type { AgentStore } from '../lib/agent-store'
+import { useClientApi } from '../client-provider/injection'
 import { fullTime } from '../lib/clock'
 import { useAgentStore } from '../composables/useAgentStore'
 
@@ -74,9 +75,8 @@ const props = withDefaults(
 )
 
 const store = computed(() => props.store ?? useAgentStore())
-const bridge = computed(
-  () => props.bridge ?? (typeof window === 'undefined' ? undefined : window.api?.runtime),
-)
+const client = useClientApi()
+const bridge = computed(() => props.bridge ?? client.sessions)
 
 /**
  * 🔴 **712 · R41 (`707` GAP-5) — the agent that asked, NAMED** (`agentName`, over the roster this

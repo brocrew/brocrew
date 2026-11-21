@@ -81,3 +81,15 @@ export const UPDATES_CHANNELS = {
 export interface UpdatesSettingsChange {
   readonly checkAutomatically?: boolean
 }
+
+export interface UpdatesBridge {
+  read: () => Promise<UpdatesSnapshot>
+  checkNow: () => Promise<UpdatesSnapshot>
+  set: (change: UpdatesSettingsChange) => Promise<UpdatesSnapshot>
+  download: () => Promise<UpdatesSnapshot>
+  restartPlan: () => Promise<readonly UpdateRestartWorkspace[]>
+  restartNow: () => Promise<UpdatesSnapshot>
+  restartWhenQuiet: () => Promise<UpdatesSnapshot>
+  cancelRestart: () => Promise<UpdatesSnapshot>
+  onChanged: (listener: (snapshot: UpdatesSnapshot) => void) => () => void
+}

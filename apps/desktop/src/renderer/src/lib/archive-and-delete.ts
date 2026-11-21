@@ -22,11 +22,14 @@ export type ArchiveBridge = Pick<
   'archiveConversation' | 'restoreConversation' | 'checkDeleteConversation' | 'deleteConversation'
 >
 
+const UNAVAILABLE = 'Conversation actions are unavailable.'
+
 /** Archive one conversation and the helpers below it. A call that threw reads as a refusal. */
 export async function archiveConversation(
-  bridge: Pick<ArchiveBridge, 'archiveConversation'>,
+  bridge: Pick<ArchiveBridge, 'archiveConversation'> | undefined,
   sessionId: string,
 ): Promise<ArchiveOutcome> {
+  if (bridge === undefined) return { done: false, refusal: UNAVAILABLE }
   try {
     return await bridge.archiveConversation({ sessionId })
   } catch (cause) {
@@ -48,9 +51,10 @@ export async function restoreConversation(
 
 /** Read what a delete would remove. A call that threw reads as a refusal. */
 export async function checkDelete(
-  bridge: ArchiveBridge,
+  bridge: ArchiveBridge | undefined,
   sessionId: string,
 ): Promise<DeleteVerdict> {
+  if (bridge === undefined) return { ok: false, refusal: UNAVAILABLE }
   try {
     return await bridge.checkDeleteConversation({ sessionId })
   } catch (cause) {
@@ -60,11 +64,12 @@ export async function checkDelete(
 
 /** Delete the ticked parts, and nothing else. */
 export async function deleteTicked(
-  bridge: ArchiveBridge,
+  bridge: ArchiveBridge | undefined,
   sessionId: string,
   parts: readonly DeletePart[],
   ticked: ReadonlySet<string>,
 ): Promise<DeleteOutcome> {
+  if (bridge === undefined) return { done: false, refusal: UNAVAILABLE }
   try {
     return await bridge.deleteConversation({ sessionId, parts: partsToSend(parts, ticked) })
   } catch (cause) {

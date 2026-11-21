@@ -9,6 +9,15 @@ import type { ClientAgentApi } from './client-agent-api'
 import type { StorageBridge } from './storage'
 import type { WorkspacesClient } from './workspaces'
 import type { ThemesBridge } from './theme-library'
+import type { UpdatesBridge } from './updates'
+import type { ChosenCwd } from './runtime-ipc'
+
+export interface ClientDesktopApi {
+  chooseBundle(): Promise<string | null>
+  chooseCwd(): Promise<ChosenCwd>
+  onClosing?(listener: () => void): () => void
+  readonly updates?: UpdatesBridge
+}
 
 /** Client reads and intents composed at the existing injected application boundary. */
 export interface ClientApi extends ClientProviderApi {
@@ -22,4 +31,5 @@ export interface ClientApi extends ClientProviderApi {
   readonly storage?: StorageBridge
   readonly workspaces?: WorkspacesClient
   readonly themes?: ThemesBridge
+  readonly desktop?: ClientDesktopApi
 }

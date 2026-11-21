@@ -1,8 +1,10 @@
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick, provide, ref } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import UpdatesMenu from '../../src/renderer/src/components/UpdatesMenu.vue'
 import { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
+import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
+import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { forgetUpdates } from '../../src/renderer/src/composables/useUpdates'
 import type { UpdateState, UpdatesSnapshot } from '../../src/shared/updates'
 import { mount, unmountAll } from './harness'
@@ -14,29 +16,14 @@ const snapshotOf = (state: UpdateState, over: Partial<UpdatesSnapshot> = {}): Up
   ...over,
 })
 
-type Fake = {
-  read: ReturnType<typeof vi.fn>
-  checkNow: ReturnType<typeof vi.fn>
-  set: ReturnType<typeof vi.fn>
-  download: ReturnType<typeof vi.fn>
-  restartPlan: ReturnType<typeof vi.fn>
-  restartNow: ReturnType<typeof vi.fn>
-  restartWhenQuiet: ReturnType<typeof vi.fn>
-  cancelRestart: ReturnType<typeof vi.fn>
-  onChanged: ReturnType<typeof vi.fn>
-  /** What `onChanged`'s unsubscribe was called. */
-  stopped: ReturnType<typeof vi.fn>
-  tell: (next: UpdatesSnapshot) => void
-}
-
 const api = (): { api?: Record<string, unknown> } =>
   window as unknown as { api?: Record<string, unknown> }
 
-function fakeUpdates(first: UpdatesSnapshot): Fake {
+function fakeUpdates(first: UpdatesSnapshot) {
   let listener: ((next: UpdatesSnapshot) => void) | null = null
   const stopped = vi.fn()
   const answer = (next: UpdatesSnapshot) => vi.fn(async () => next)
-  const fake: Fake = {
+  const fake = {
     read: answer(first),
     checkNow: answer(snapshotOf({ kind: 'checking' })),
     set: vi.fn(async (change: Partial<UpdatesSnapshot>) => ({ ...first, ...change })),
@@ -56,7 +43,7 @@ function fakeUpdates(first: UpdatesSnapshot): Fake {
       return stopped
     }),
     stopped,
-    tell: (next) => listener?.(next),
+    tell: (next: UpdatesSnapshot) => listener?.(next),
   }
   api().api = {
     updates: fake,
@@ -85,6 +72,42 @@ async function menuIn(state: UpdateState, over: Partial<UpdatesSnapshot> = {}) {
   await settle()
   return { m, fake }
 }
+
+it('uses each injected desktop client’s updates and preserves the method receiver', async () => {
+  const idle = { kind: 'idle', checkedAt: null, upToDate: false } as const
+  const first = fakeUpdates(snapshotOf(idle, { version: '0.1.1' }))
+  const second = fakeUpdates(snapshotOf(idle, { version: '0.1.2' }))
+  const noProvider = (): never => {
+    throw new Error('Unexpected provider read')
+  }
+  function menuWith(updates: ReturnType<typeof fakeUpdates>) {
+    const client = {
+      ...createDesktopProviderApi(noProvider, () => undefined),
+      desktop: { updates, chooseCwd: noProvider, chooseBundle: noProvider },
+    }
+    return mount(
+      defineComponent({
+        setup() {
+          provide(CLIENT_PROVIDERS, client)
+          return () => h(UpdatesMenu)
+        },
+      }),
+      {},
+      { width: 300, height: 400 },
+    )
+  }
+
+  const one = menuWith(first)
+  const two = menuWith(second)
+  await settle()
+  expect(text(one.q('updates-version'))).toBe('BroCrew 0.1.1')
+  expect(text(two.q('updates-version'))).toBe('BroCrew 0.1.2')
+  two.q('updates-check').click()
+  await settle()
+  expect(first.checkNow).not.toHaveBeenCalled()
+  expect(second.checkNow).toHaveBeenCalledOnce()
+  expect(second.checkNow.mock.contexts[0]).toBe(second)
+})
 
 describe('B2 · the menu, state by state', () => {
   it('⚑ the version, always', async () => {

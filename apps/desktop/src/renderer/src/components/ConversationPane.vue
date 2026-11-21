@@ -39,7 +39,7 @@ import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
-import { useClientProviders } from '../client-provider/injection'
+import { useClientApi } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
 import { useProviderSetup } from '../composables/useProviderSetup'
 import {
@@ -788,7 +788,7 @@ const needsGoAhead = computed(() => props.record.meta?.planNeedsGoAhead ?? false
  */
 const signInSuperseded = computed(() => props.record.meta?.liveness.signInSuperseded === true)
 /** Probe only for each on-screen refusal; renew this profile here, or null if it runs as nobody. */
-const signInClient = useClientProviders()
+const signInClient = useClientApi()
 const providerName = useProviderNames(signInClient)
 const profileSignIn = computed<ProfileSignIn | null>(() => {
   const meta = props.record.meta
@@ -1669,9 +1669,10 @@ const inputsFor = ref<string | null>(null)
  * and in the popup's Per message tab — this pane is what knows the session.
  */
 provide(READ_WHAT_THE_MODEL_GOT, (ordinal: number) => {
-  const read = (window as Partial<Window>).api?.runtime?.whatTheModelGot
+  const sessions = signInClient.sessions
+  const read = sessions?.whatTheModelGot
   if (read === undefined) return Promise.reject(new Error('This window cannot read it.'))
-  return read(props.record.sessionId, ordinal)
+  return read.call(sessions, props.record.sessionId, ordinal)
 })
 const inputsOpen = computed(() =>
   inputsFor.value === props.record.sessionId ? props.record.meta : null,

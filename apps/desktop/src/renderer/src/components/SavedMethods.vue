@@ -11,6 +11,7 @@ import type {
   MethodLibraryItem,
   MethodProblem,
 } from '../../../shared/saved-method-library'
+import { useClientApi } from '../client-provider/injection'
 import { fullTime } from '../lib/clock'
 
 type MethodsBridge = Pick<
@@ -23,9 +24,8 @@ type MethodsBridge = Pick<
   | 'checkInterruptedAgentMethods'
 >
 const props = defineProps<{ profileSlug: string; bridge?: MethodsBridge }>()
-const bridge = computed(
-  () => props.bridge ?? (typeof window === 'undefined' ? undefined : window.api?.runtime),
-)
+const client = useClientApi()
+const bridge = computed(() => props.bridge ?? client.agents)
 const PAGE = 20
 const library = ref<MethodLibrary | null>(null)
 const inventoryLoading = ref(false)

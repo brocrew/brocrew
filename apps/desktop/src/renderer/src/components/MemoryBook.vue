@@ -3,7 +3,7 @@ import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
-import { useClientProviders } from '../client-provider/injection'
+import { useClientApi } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
 import {
   AMENDMENT_MEANS,
@@ -23,9 +23,9 @@ type MemoryBridge = Pick<
   'agentMemory' | 'amendAgentMemory' | 'undoAgentMemory' | 'checkInterruptedMemory'
 >
 const props = defineProps<{ profileSlug: string; bridge?: MemoryBridge }>()
-const providerClient = useClientProviders()
-const providerName = useProviderNames(providerClient)
-const api = computed(() => props.bridge ?? window.api?.runtime)
+const client = useClientApi()
+const providerName = useProviderNames(client)
+const api = computed(() => props.bridge ?? client.agents)
 const reading = ref<AgentMemoryReading | null>(null)
 const loading = ref(false)
 const busy = ref(false)

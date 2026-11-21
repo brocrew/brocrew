@@ -2,7 +2,7 @@ import './lib/logging'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { CLIENT_PROVIDERS } from './client-provider/injection'
-import { desktopProviderApi } from './client-provider/window'
+import { desktopBootstrap, desktopProviderApi } from './client-provider/window'
 import './assets/base.css'
 import { draftHandoffBeforeDrawing, SAVED_DRAFTS } from './lib/kept-drafts'
 import { keepTheMacZone } from './lib/local-zone'
@@ -12,8 +12,8 @@ import { themeChangeNotices } from './lib/theme-change-notice'
 import { startWindowTheme, themeBeforeDrawing } from './lib/window-theme'
 
 const pageWatch =
-  window.top === window && window.api?.recordPagePerformance
-    ? startPageStallWatch((report) => window.api.recordPagePerformance(report))
+  window.top === window && desktopBootstrap.canReportPagePerformance
+    ? startPageStallWatch((report) => desktopBootstrap.recordPagePerformance(report))
     : null
 import.meta.hot?.dispose(() => pageWatch?.stop())
 
@@ -22,17 +22,21 @@ import.meta.hot?.dispose(() => pageWatch?.stop())
 // `draftHandoffBeforeDrawing` bounds the restore wait; an unreadable file must not prevent drawing.
 // The workspace's theme is read alongside, so the first paint is already in it. Bounded like the
 // drafts: past the wait the window draws in its own look and the theme follows.
-const windowTheme = startWindowTheme(window.top === window ? window.api?.themes : undefined, {
-  onChange: themeChangeNotices(useOverlays()),
-})
+const windowTheme = startWindowTheme(
+  window.top === window ? desktopProviderApi.themes : undefined,
+  {
+    onChange: themeChangeNotices(useOverlays()),
+  },
+)
 import.meta.hot?.dispose(() => windowTheme.stop())
 
-void Promise.all([keepTheMacZone(window.api), themeBeforeDrawing(windowTheme)]).then(() =>
-  draftHandoffBeforeDrawing(window.api?.savedDrafts).then((handoff) => {
-    createApp(App)
-      .provide(SAVED_DRAFTS, handoff)
-      .provide(CLIENT_PROVIDERS, desktopProviderApi)
-      .mount('#app')
-    pageWatch?.mounted()
-  }),
+void Promise.all([keepTheMacZone(desktopBootstrap.zone), themeBeforeDrawing(windowTheme)]).then(
+  () =>
+    draftHandoffBeforeDrawing(desktopBootstrap.savedDrafts).then((handoff) => {
+      createApp(App)
+        .provide(SAVED_DRAFTS, handoff)
+        .provide(CLIENT_PROVIDERS, desktopProviderApi)
+        .mount('#app')
+      pageWatch?.mounted()
+    }),
 )

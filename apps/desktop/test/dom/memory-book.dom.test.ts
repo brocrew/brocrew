@@ -117,7 +117,7 @@ afterEach(async () => {
   unmountAll()
   await page.viewport(original.width, original.height)
 })
-async function open(value = initial()) {
+async function open(value = initial(), useBridgeProp = true) {
   await page.viewport(1000, 1100)
   const parts = fixture(value)
   const profile = ref('quill')
@@ -132,14 +132,21 @@ async function open(value = initial()) {
       if (previous) Object.defineProperty(window, 'api', previous)
     }
   })()
-  const client = createDesktopProviderApi(
-    () => transport,
-    () => undefined,
-  )
+  const client = {
+    ...createDesktopProviderApi(
+      () => transport,
+      () => undefined,
+    ),
+    agents: { ...transport, ...parts.bridge },
+  }
   const wrapper = defineComponent({
     setup() {
       provide(CLIENT_PROVIDERS, client)
-      return () => h(MemoryBook, { profileSlug: profile.value, bridge: parts.bridge })
+      return () =>
+        h(MemoryBook, {
+          profileSlug: profile.value,
+          bridge: useBridgeProp ? parts.bridge : undefined,
+        })
     },
   })
   const view = mount(wrapper, {}, { width: 780, height: 1000 })
@@ -148,6 +155,12 @@ async function open(value = initial()) {
 }
 
 describe('memory in the agent book', () => {
+  it('reads memory from the injected agent client when no bridge prop is supplied', async () => {
+    const { view, reads } = await open(initial(), false)
+    expect(view.q('memory-store-claude').textContent).toContain('Original note')
+    expect(reads).toEqual([{ profileId: 'quill', offset: 0, limit: 20 }])
+  })
+
   it('keeps same-named notes in separate labelled stores and names the selected provider on an amendment', async () => {
     const reading = initial()
     const codex = reading.stores.find((store) => store.provider === 'codex')!

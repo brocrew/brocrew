@@ -17,6 +17,7 @@ import {
 } from '../lib/agent-inputs'
 import { requestTabs, SKILL_CUT, skillsNotShown, TRUST, type ReaderRow } from '../lib/request-order'
 import { MODE_DIFFERS, modeDiffersFromCopy, settingRows } from '../lib/launch-settings'
+import { useClientApi } from '../client-provider/injection'
 import { fullTime } from '../lib/clock'
 import { groupTokens } from '../lib/context-meter'
 import { readableError } from '../lib/session-record'
@@ -71,22 +72,21 @@ function onTabKey(event: KeyboardEvent): void {
     chosen?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   })
 }
-
-/* the read */
+const client = useClientApi()
 const given = ref<WhatThisAgentWasGiven | null>(null)
 const givenWhy = ref<string | null>('Reading…')
 /** The press made last wins, not the read that answers last. */
 let asked = 0
 async function read(): Promise<void> {
-  const runtime = (window as Partial<Window>).api?.runtime
-  if (runtime?.whatThisAgentWasGiven === undefined) {
+  const sessions = client.sessions
+  if (sessions?.whatThisAgentWasGiven === undefined) {
     givenWhy.value = 'This window cannot read what the agent was given.'
     return
   }
   const mine = (asked += 1)
   givenWhy.value = given.value === null ? 'Reading…' : null
   try {
-    const answer = await runtime.whatThisAgentWasGiven(props.sessionId)
+    const answer = await sessions.whatThisAgentWasGiven(props.sessionId)
     if (mine !== asked) return
     given.value = answer
     givenWhy.value = null

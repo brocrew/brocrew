@@ -11,8 +11,8 @@ import {
   theTreeOf,
   tickedAtFirst,
   whatItCannotRemove,
-  type ArchiveBridge,
 } from '../lib/archive-and-delete'
+import { useClientApi } from '../client-provider/injection'
 import { sizeWords } from '../lib/files-kept'
 
 /**
@@ -33,7 +33,7 @@ const emit = defineEmits<{
   deleted: [conversations: readonly string[]]
 }>()
 
-const bridge = (): ArchiveBridge => window.api.runtime
+const client = useClientApi()
 
 /** Main's answer to the check, or null while it is being read. Held whole, never proxied. */
 const verdict = shallowRef<DeleteVerdict | null>(null)
@@ -77,7 +77,7 @@ async function read(): Promise<void> {
   outcome.value = null
   archiveRefused.value = null
   try {
-    const answer = await checkDelete(bridge(), props.sessionId)
+    const answer = await checkDelete(client.sessions, props.sessionId)
     verdict.value = answer
     ticked.value = answer.ok ? tickedAtFirst(answer.parts) : []
   } finally {
@@ -95,7 +95,12 @@ async function confirm(): Promise<void> {
   if (asked === null || busy.value || ticked.value.length === 0) return
   busy.value = true
   try {
-    const did = await deleteTicked(bridge(), props.sessionId, asked.parts, new Set(ticked.value))
+    const did = await deleteTicked(
+      client.sessions,
+      props.sessionId,
+      asked.parts,
+      new Set(ticked.value),
+    )
     outcome.value = did
     if (recordsWent(did)) emit('deleted', theTreeOf(asked))
   } finally {
@@ -108,7 +113,7 @@ async function archiveInstead(): Promise<void> {
   busy.value = true
   archiveRefused.value = null
   try {
-    const answer = await archiveConversation(bridge(), props.sessionId)
+    const answer = await archiveConversation(client.sessions, props.sessionId)
     if (!answer.done) {
       archiveRefused.value = answer.refusal
       return

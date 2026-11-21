@@ -2069,7 +2069,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
      * algorithm refuses a Proxy by name — so every send carrying a path threw at the bridge.
      *
      * ⚑ **Nothing caught it because nothing had ever driven the gesture end to end.** `216`'s live
-     * step and `217`'s both call `window.api.runtime.send` directly with object literals — the
+     * step and `217`'s both call the preload's send operation with object literals — the
      * native picker is modal and OS-owned, so the sheet is deliberately never opened (step `46`) —
      * and `217`'s own step `11e` names the hole in as many words: *"not here: the pick itself, and
      * the four renderer hops between the chip and `store.send`."* This was in that hole. `218`'s

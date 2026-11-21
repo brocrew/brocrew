@@ -1,12 +1,15 @@
 import { shallowRef, type ShallowRef } from 'vue'
 import type {
   UpdateRestartWorkspace,
+  UpdatesBridge,
   UpdatesSettingsChange,
   UpdatesSnapshot,
 } from '../../../shared/updates'
+import type { ClientApi } from '../../../shared/client-api'
+import { useClientApi } from '../client-provider/injection'
 
 /**
- * 🔴 **B2 · where updates stand, for the rail's footer and its menu** (`window.api.updates`, B1).
+ * 🔴 **B2 · where updates stand, for the rail's footer and its menu** (desktop updates, B1).
  *
  * ⚑ **One snapshot for the whole window**, read once and kept by `onChanged`: the footer's avatar
  * carries a dot while an update is offered, so the snapshot must be held while the menu is closed.
@@ -29,40 +32,33 @@ export interface Updates {
   refresh(): Promise<void>
 }
 
-type UpdatesBridge = Window['api']['updates']
-
-/** The window's one holder, and how to stop its listener. */
-let held: { readonly updates: Updates; readonly stop: () => void } | null = null
-
-/**
- * ⚑ The window's one {@link Updates}. Its listener belongs to the window, not to a menu or a footer:
- * one closing leaves it for the others, and only {@link forgetUpdates} lets it go.
- */
-export function useUpdates(): Updates {
-  held ??= updatesOver(bridgeOrNull())
-  return held.updates
+interface UpdatesHolder {
+  readonly updates: Updates
+  readonly stop: () => void
 }
 
-/**
- * ⚑ Let the window's one go, listener and all, so the next {@link useUpdates} reads a new bridge:
- * a test's teardown, and a hot reload that re-evaluates this module.
- */
+// The footer and its menu share one subscription for the same client.
+const holders = new Map<ClientApi, UpdatesHolder>()
+
+export function useUpdates(): Updates {
+  const client = useClientApi()
+  let holder = holders.get(client)
+  if (holder === undefined) {
+    holder = updatesOver(client.desktop?.updates ?? null)
+    holders.set(client, holder)
+  }
+  return holder.updates
+}
+
+/** Release the subscriptions on test teardown or hot reload. */
 export function forgetUpdates(): void {
-  held?.stop()
-  held = null
+  for (const holder of holders.values()) holder.stop()
+  holders.clear()
 }
 
 import.meta.hot?.dispose(forgetUpdates)
 
-function bridgeOrNull(): UpdatesBridge | null {
-  if (typeof window === 'undefined') return null
-  return (window as Partial<Window>).api?.updates ?? null
-}
-
-function updatesOver(bridge: UpdatesBridge | null): {
-  readonly updates: Updates
-  readonly stop: () => void
-} {
+function updatesOver(bridge: UpdatesBridge | null): UpdatesHolder {
   const snapshot = shallowRef<UpdatesSnapshot | null>(null)
   let stop = (): void => {}
   if (bridge !== null) {
@@ -78,7 +74,7 @@ function updatesOver(bridge: UpdatesBridge | null): {
   }
   const take = async (call: (() => Promise<UpdatesSnapshot>) | undefined): Promise<void> => {
     if (call === undefined) return
-    snapshot.value = await call()
+    snapshot.value = await call.call(bridge)
   }
   return {
     updates: {
