@@ -36,6 +36,7 @@ function app() {
     handle.compact = async () => {
       compactions++
       await gate.promise
+      return { compacted: true as const }
     }
     handles.push(handle)
     return handle

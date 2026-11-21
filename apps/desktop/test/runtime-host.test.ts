@@ -708,6 +708,7 @@ class QuietRuntime implements AgentRuntime {
     return {
       ref: null,
       send: async () => {},
+      compact: async () => ({ compacted: true as const }),
       events: (): AsyncIterable<RuntimeEvent> => ({
         async *[Symbol.asyncIterator]() {
           yield { type: 'status', state: 'working' } as RuntimeEvent
@@ -788,6 +789,7 @@ class ExplodingRuntime implements AgentRuntime {
     return {
       ref: null,
       send: async () => {},
+      compact: async () => ({ compacted: true as const }),
       events: (): AsyncIterable<RuntimeEvent> => ({
         [Symbol.asyncIterator]: (): AsyncIterator<RuntimeEvent> => ({
           next: () => Promise.reject(new Error('stream died')),

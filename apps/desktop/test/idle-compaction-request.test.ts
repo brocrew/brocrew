@@ -13,8 +13,7 @@ describe('a compaction request without a provider', () => {
     deferred: () => false,
     idle: () => true,
     checkSignIn: vi.fn(async () => {}),
-    providerCommands: vi.fn(async () => null),
-    request: vi.fn(async () => {}),
+    request: vi.fn(async () => ({ compacted: true as const })),
     reportFailure: vi.fn(),
   })
 
@@ -28,7 +27,6 @@ describe('a compaction request without a provider', () => {
       display: 'conversation W1 · Plan',
     })
     expect(deps.checkSignIn).not.toHaveBeenCalled()
-    expect(deps.providerCommands).not.toHaveBeenCalled()
     expect(deps.request).not.toHaveBeenCalled()
   })
 

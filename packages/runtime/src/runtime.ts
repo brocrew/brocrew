@@ -216,6 +216,11 @@ export type TurnProvenance =
     }
 
 /** One event stream owns lifecycle: working per accepted turn, terminal turn before idle, and frozen state after session end or fatal error. */
+/** What a compaction request came to, in words the app shows as they are. */
+export type CompactResult =
+  | { readonly compacted: true; readonly note?: string }
+  | { readonly compacted: false; readonly reason: string }
+
 export interface SessionHandle {
   /** Carry deliveries past retirement; an idle-looking retiring handle cannot accept another turn. */
   isRetiring?(): boolean
@@ -280,8 +285,12 @@ export interface SessionHandle {
   /** Fetch and publish current provider commands; rejection or absence is not an empty catalogue. */
   providerCommands?(): Promise<ProviderCommandAnswer>
 
-  /** Start native compaction as a turn; it takes no instructions, and absence leaves the provider command path in use. */
-  compact?(): Promise<void>
+  /**
+   * Start the provider's own compaction as a turn, with the words as its instructions when the
+   * provider takes them. It answers whether it compacted: a provider that cannot says why in one
+   * line, and one that compacts without taking instructions says so in a note.
+   */
+  compact(instructions?: string): Promise<CompactResult>
 
   /** Single-consumer normalized events preserve unmapped provider payloads as unknown events. */
   events(): AsyncIterable<RuntimeEvent>

@@ -93,7 +93,7 @@ describe('queued native compaction precedes the next input', () => {
               for await (const message of prompt) {
                 const text = message.message.content
                 if (typeof text !== 'string') throw new Error('expected plain input')
-                if (text === '/compact') {
+                if (text === '/compact Keep the measured plan') {
                   compactions++
                   await confirmation.promise
                   wire.push({

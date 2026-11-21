@@ -438,7 +438,7 @@ function hasCompleteRefusalWords(rail: string | undefined): boolean {
   switch (rail) {
     case 'compaction-target-busy':
     case 'compaction-target-not-running':
-    case 'compaction-unavailable':
+    case 'compaction-not-possible':
     case 'compaction-request-failed':
     case 'no-conversation-gave-this-work':
     case 'person-addressed-request':

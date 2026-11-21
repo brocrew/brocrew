@@ -205,6 +205,7 @@ export {
   type EffortChoice,
   type ModelChoice,
   type ReasoningEffort,
+  type CompactResult,
   type SessionHandle,
   type SessionSettingsState,
   type StartOptions,

@@ -256,28 +256,6 @@ export const SEND_REFUSALS: readonly SendRefusal[] = [
   },
   {
     /**
-     * 🔴 **713 · `R59` — a person's `/compact` with instructions, on a conversation that compacts
-     * through a request that takes none** (Codex's `thread/compact/start`: `{ threadId }`, and an
-     * `instructions` field measured accepted and DROPPED). ⛔ *"Refuse at the door with a sentence
-     * saying Codex compacts without instructions, and never drop them silently."* ⚠️ Its
-     * attachments are refused one throw above it, by `R42`'s own row — `send-refusals.test.ts`'s
-     * `REPEATS_A_ROW` names that line.
-     */
-    id: 'a-compaction-takes-no-instructions',
-    thrownBy: 'whatTheseWordsAre',
-    hostSays: 'throw new ACompactionTakesNoInstructions(session.provider)',
-    knowable: 'never',
-    gate:
-      'Nothing, and nothing published says it as data. Whether a conversation compacts through a ' +
-      'request that takes no instructions is a fact about its ADAPTER — the host asks whether the ' +
-      'handle has `compact` — and the window holds only the capability’s `note`, which says it in ' +
-      'words for a person to read, not in a field a gate could test. ⛔ A gate keyed on the provider ' +
-      'would be the renderer branching on which provider it is (`039`). So the press is refused with ' +
-      'the host’s sentence — it names the provider, says what would have happened and what to do, and ' +
-      'ends *Nothing has been sent* — and the words go back in the box (`019`).',
-  },
-  {
-    /**
      * 🔴 **708 · `R42` — a person's command takes no attachments** (`a-command-goes-as-typed.ts`).
      *
      * ⛔ **Refused at the door, before anything moves**: the command would go bare, so its

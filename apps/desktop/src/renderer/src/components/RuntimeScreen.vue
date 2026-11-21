@@ -212,7 +212,6 @@ import { readForestPages, type ForestSnapshot } from '../lib/forest-reading'
 import { foldGraphReading } from '../lib/forest-graph-reading'
 import { ROSTER_EVERY_MS } from '../lib/team-roster'
 import { refusedToOpen } from '../lib/taking-over'
-import { THE_COMPACT_COMMAND } from '../lib/compaction-offer'
 import { type WorkGivenOutReading } from '../lib/work-given-out'
 import type {
   ConversationIdentity,
@@ -1903,14 +1902,9 @@ async function continueIt(
  * (`session-error`), as every refused send is, and their draft is left as they left it.
  * ⚑ **D-017b** — a recorded conversation takes it as it takes any message ({@link continueIt}).
  */
-function compactNow(intent: 'now' | 'queue'): void {
+function compactNow(): void {
   const sessionId = activeId.value
-  if (!sessionId) return
-  if (store.get(sessionId)?.phase === 'recorded' && !store.isLaunching(sessionId)) {
-    void continueIt(sessionId, THE_COMPACT_COMMAND, [], false)
-    return
-  }
-  void store.send(sessionId, THE_COMPACT_COMMAND, intent, [])
+  if (sessionId) void store.compact(sessionId)
 }
 
 /**

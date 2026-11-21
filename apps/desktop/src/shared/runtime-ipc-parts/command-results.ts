@@ -177,6 +177,7 @@ export interface RuntimeCommandResults {
    */
   stopBackgroundWork: boolean
   close: void
+  compact: void
   /** A fresh read of the home — the snapshot taken at creation goes stale the moment a file changes. */
   refreshConfig: ProviderConfigInfo
   /** The disclosure AFTER the change — which will still say `ask` if a turn is in flight (034). */

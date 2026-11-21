@@ -1735,6 +1735,9 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       return ok
     },
 
+    compact: async (sessionId) =>
+      void (await forSession(sessionId, () => bridge.compact({ sessionId }))),
+
     async refreshConfig(sessionId) {
       const { value: config } = await forSession(sessionId, () =>
         bridge.refreshConfig({ sessionId }),

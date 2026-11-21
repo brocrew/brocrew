@@ -62,6 +62,7 @@ export type ClientSessionApi = Pick<
   | 'rebuildLedger'
   | 'recentActivity'
   | 'refreshConfig'
+  | 'compact'
   | 'release'
   | 'removeKeptRule'
   | 'respondPermission'

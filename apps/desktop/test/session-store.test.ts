@@ -610,6 +610,7 @@ function fakeBridge() {
       }
     },
     close: async ({ sessionId }) => void calls.push(`close:${sessionId}`),
+    compact: async () => {},
     refreshConfig: async ({ sessionId }) => {
       calls.push(`refreshConfig:${sessionId}`)
       return { home: '/homes/x', homeEnv: 'X', model: 'reread', authNote: null, files: [] }

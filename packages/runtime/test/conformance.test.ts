@@ -572,13 +572,6 @@ const claudeDriver: Driver = {
         'over a 12 s command and the first to carry a byte of it was the receipt. While it runs ' +
         'the only reader is the model itself, through its own tools (245, 300 §3; `TaskOutput` until 0.3.281, 680) — ' +
         'except a background command, whose last 8 KiB 0.3.287’s `get_task_output` hands a host that asks; BroBot does not',
-      // ⚑ **713 · a gap by design, and the host asks whether it EXISTS.** The CLI compacts on its
-      // own `/compact`, which `R42` sends exactly as typed (`708`), so there is no request for an
-      // adapter method to make — and one that sent `/compact` itself would be a second road to the
-      // same command, with nobody's words on it.
-      compact:
-        'Claude compacts on its own `/compact`, which R42 already sends to the CLI exactly as a ' +
-        'person typed it — there is no separate request to wire (708, 713)',
     },
   },
   async tell(ctx, id, outcome) {
@@ -1091,12 +1084,6 @@ const fakeDriver: Driver = {
         'the Fake spawns no children, so there is no thread whose status it could report; ' +
         '`child-conversation.test.ts` drives the rule against a stub instead (296)',
       childInput: 'same — there is nobody on the other end to say it to',
-      // ⚑ **713 · absent until a test asks for it**, because the host decides whether a person's
-      // `/compact` goes to this door by asking whether it EXISTS. `compactsOnRequest()` installs a
-      // Codex-shaped one; a base double that always had it would send every fake `/compact` there.
-      compact:
-        'the base Fake has no compaction door, so a person’s `/compact` takes R42’s as-typed road — ' +
-        'which it echoes and does not run; `compactsOnRequest()` installs a Codex-shaped door (713)',
     },
   },
   async tell(ctx, id, outcome) {
@@ -1703,8 +1690,6 @@ describe('conformance · the gap ledger (186)', () => {
           // child and being able to speak to one are different claims.
           'childState',
           'childInput',
-          // 713: absent until `compactsOnRequest()` — the host asks whether it exists.
-          'compact',
         ],
       ],
       // ⚑ **`providerPid` LEFT this list in 233**, and that is the ledger doing its job: the
@@ -1742,7 +1727,6 @@ describe('conformance · the gap ledger (186)', () => {
           'childState',
           'childInput',
           'commandOutput',
-          'compact',
         ],
       ],
       // ⚑ **`backgroundWork`/`stopBackgroundWork` JOINED this list in 247, by ruling rather than by

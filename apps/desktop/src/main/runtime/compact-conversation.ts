@@ -1,4 +1,4 @@
-import type { ProviderCommandSet, SessionHandle } from '@brobot2/runtime'
+import type { CompactResult, SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 
 export interface CompactionRequest {
@@ -19,6 +19,15 @@ export type CompactConversationOutcome =
       readonly queued?: true
       readonly afterTurn?: true
       readonly empty?: true
+      /** What the provider said about the request, shown as it is. */
+      readonly note?: string
+    }
+  | {
+      readonly ok: false
+      readonly refusal: 'compaction-not-possible'
+      readonly conversation: string
+      readonly display: string
+      readonly reason: string
     }
   | { readonly ok: false; readonly refusal: 'no-such-agent'; readonly conversation: string }
   | {
@@ -26,13 +35,6 @@ export type CompactConversationOutcome =
       readonly refusal: 'compaction-target-not-running' | 'compaction-target-busy'
       readonly conversation: string
       readonly display: string
-    }
-  | {
-      readonly ok: false
-      readonly refusal: 'compaction-unavailable'
-      readonly conversation: string
-      readonly display: string
-      readonly provider: Provider
     }
   | {
       readonly ok: false
@@ -44,7 +46,7 @@ export type CompactConversationOutcome =
 
 interface CompactionTarget {
   readonly provider: Provider
-  readonly handle: Pick<SessionHandle, 'compact' | 'send'>
+  readonly handle: Pick<SessionHandle, 'compact'>
 }
 
 export interface CompactConversationDependencies<Target extends CompactionTarget> {
@@ -59,8 +61,11 @@ export interface CompactConversationDependencies<Target extends CompactionTarget
   display(conversation: string): string
   idle(target: Target): boolean
   checkSignIn(target: Target): Promise<void>
-  providerCommands(target: Target): Promise<ProviderCommandSet | null>
-  request(target: Target, requestedBy: CompactionRequest, run: () => Promise<void>): Promise<void>
+  request(
+    target: Target,
+    requestedBy: CompactionRequest,
+    run: () => Promise<CompactResult>,
+  ): Promise<CompactResult>
   reportFailure(conversation: string, error: unknown): void
 }
 
@@ -102,41 +107,21 @@ export async function compactConversation<Target extends CompactionTarget>(
 
   try {
     await deps.checkSignIn(target)
-    const run = await nativeCompaction(target, deps)
     if (deps.running(conversation) !== target) {
       return { ok: false, refusal: 'compaction-target-busy', ...said }
     }
     if (!deps.idle(target)) return queue()
-    if (run === null) {
-      return { ok: false, refusal: 'compaction-unavailable', provider: target.provider, ...said }
-    }
-    await deps.request(
+    const result = await deps.request(
       target,
       { agent: input.agent, ...(input.reason === undefined ? {} : { reason: input.reason }) },
-      run,
+      () => target.handle.compact(input.reason),
     )
-    return { ok: true, ...said }
+    if (!result.compacted) {
+      return { ok: false, refusal: 'compaction-not-possible', reason: result.reason, ...said }
+    }
+    return { ok: true, ...(result.note === undefined ? {} : { note: result.note }), ...said }
   } catch (error) {
     deps.reportFailure(conversation, error)
     return { ok: false, refusal: 'compaction-request-failed', provider: target.provider, ...said }
   }
-}
-
-export async function nativeCompaction<Target extends CompactionTarget>(
-  target: Target,
-  deps: Pick<CompactConversationDependencies<Target>, 'providerCommands'>,
-): Promise<(() => Promise<void>) | null> {
-  const { handle } = target
-  if (handle.compact !== undefined) return handle.compact.bind(handle)
-  if (target.provider !== 'claude') return null
-
-  const catalogue = await deps.providerCommands(target)
-  if (
-    catalogue?.prefix !== '/' ||
-    !catalogue.commands.some((command) => command.name === 'compact' && command.skill === undefined)
-  ) {
-    return null
-  }
-  // The app invokes the listed built-in as a command. Its caller is reported after confirmation.
-  return () => handle.send('/compact')
 }
