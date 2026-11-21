@@ -46,6 +46,7 @@ const cursorSchema = z
       .extend({ offset: z.number().int().positive().max(WORK_SEARCH_BOUNDS.ledgerRows) })
       .optional(),
     groupOffset: z.int().positive().max(WORK_SEARCH_BOUNDS.candidates).optional(),
+    groupScan: z.literal(true).optional(),
   })
   .strict()
 type Point = z.infer<typeof point>
@@ -161,8 +162,6 @@ export class WorkSearchEngine {
     const query = parsed.data
     if (query.from !== undefined && query.to !== undefined && query.from > query.to)
       return { ok: false, reason: 'invalid' }
-    if (query.grouped === true && (query.scope !== undefined || query.state !== undefined))
-      return { ok: false, reason: 'invalid' }
     const words = searchWords(query.words)
     const profile = query.profile?.toLocaleLowerCase('en') ?? null
     if (
@@ -181,6 +180,7 @@ export class WorkSearchEngine {
       query.limit,
       ...(query.includeConversationMetadata === true ? [true] : []),
       ...(query.grouped === true ? ['grouped'] : []),
+      ...(query.titlesAndBriefs === true ? ['titles-and-briefs'] : []),
     ])
     let cursor: Cursor | null = null
     if (query.cursor !== undefined) {
@@ -198,8 +198,10 @@ export class WorkSearchEngine {
               (cursor.titleDetails.after !== null &&
                 !before(cursor.titleDetails.through, cursor.titleDetails.after)))) ||
           (query.grouped === true
-            ? cursor.after !== null || cursor.groupOffset === undefined
-            : cursor.groupOffset !== undefined) ||
+            ? cursor.groupScan === true
+              ? cursor.groupOffset !== undefined
+              : cursor.after !== null || cursor.groupOffset === undefined
+            : cursor.groupOffset !== undefined || cursor.groupScan !== undefined) ||
           (cursor.after !== null &&
             (cursor.after.at > cursor.high.at ||
               (cursor.after.at === cursor.high.at && cursor.after.id > cursor.high.id)))
@@ -270,6 +272,7 @@ export class WorkSearchEngine {
     const unread = rowsUnreadOnce()
     const hits: ConversationSearchHit[] = []
     const groups = query.grouped === true ? new SearchGroups(cursor?.groupOffset ?? 0) : null
+    let groupPrefix: { after: Point; grouped: NonNullable<WorkSearchPage['grouped']> } | undefined
     let searched = 0
     let matchedTasks = 0
     let tooLarge = 0
@@ -280,21 +283,29 @@ export class WorkSearchEngine {
       const complete =
         finished && unread.count === 0 && unread.ledgersSkipped === 0 && unreadDetails === 0
       if (groups !== null) {
-        const grouped = groups.page(complete)
+        const countIsExact = complete && cursor?.groupScan !== true
+        const prefix = countIsExact ? undefined : groupPrefix
+        const grouped = prefix?.grouped ?? groups.page(countIsExact)
         const groupOffset = groups.offset + grouped.groups.length
-        const hasNext = complete && grouped.groups.length > 0 && groupOffset < groups.counts.size
+        const next =
+          countIsExact && grouped.groups.length > 0 && groupOffset < groups.counts.size
+            ? { after: null, groupOffset }
+            : !finished || prefix !== undefined
+              ? { after: prefix?.after ?? through, groupScan: true }
+              : null
         return {
           hits: [],
           searched,
           rows_unread: unread.count,
           ledgers_skipped: unread.ledgersSkipped,
           ...(tooLarge === 0 ? {} : { candidates_too_large: tooLarge }),
-          complete,
-          next_cursor: hasNext
-            ? Buffer.from(
-                JSON.stringify({ version: 2, query: queryKey, high, after: null, groupOffset }),
-              ).toString('base64url')
-            : null,
+          complete: complete && prefix === undefined,
+          next_cursor:
+            next === null
+              ? null
+              : Buffer.from(
+                  JSON.stringify({ version: 2, query: queryKey, high, ...next }),
+                ).toString('base64url'),
           grouped,
         }
       }
@@ -485,8 +496,18 @@ export class WorkSearchEngine {
       )
         break
       if (match !== null && !titleIds.has(candidate.id)) {
-        if (groups !== null) groups.add(match)
-        else {
+        if (groups !== null) {
+          if (
+            groupPrefix === undefined &&
+            through !== null &&
+            groups.counts.size >= groups.offset + WORK_SEARCH_GROUP_BOUNDS.groups &&
+            !groups.counts.has(match.hit.profile)
+          ) {
+            // If the scan stops, continue before the first profile that could not be shown.
+            groupPrefix = { after: through, grouped: groups.page(false) }
+          }
+          groups.add(match)
+        } else {
           hits.push(match.hit)
           matchedTasks += match.hit.matched_tasks.length
         }
@@ -585,7 +606,12 @@ export class WorkSearchEngine {
       candidate.provider === null
         ? undefined
         : store.conversationTitle(id, query.grouped === true ? unread : undefined)
-    const { address, title, line } = describeConversationForRead(store, id, service, savedTitle)
+    const { address, title, line, profileFallback } = describeConversationForRead(
+      store,
+      id,
+      service,
+      savedTitle,
+    )
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
     const pieces =
@@ -645,16 +671,18 @@ export class WorkSearchEngine {
           eligible(task) &&
           matches(
             words,
-            query.scope === undefined
-              ? [
-                  task.label,
-                  task.title,
-                  task.brief,
-                  task.done,
-                  task.status?.text ?? null,
-                  task.piece?.summary ?? null,
-                ]
-              : [task.title, task.done, task.piece?.summary ?? null],
+            query.titlesAndBriefs === true
+              ? [task.title, task.brief]
+              : query.scope === undefined
+                ? [
+                    task.label,
+                    task.title,
+                    task.brief,
+                    task.done,
+                    task.status?.text ?? null,
+                    task.piece?.summary ?? null,
+                  ]
+                : [task.title, task.done, task.piece?.summary ?? null],
           ),
       )
       .sort((left, right) => right.givenAt - left.givenAt || right.id.localeCompare(left.id))
@@ -662,7 +690,12 @@ export class WorkSearchEngine {
     const matchesConversation =
       query.scope === undefined &&
       query.state === undefined &&
-      matches(words, [address, title, candidate.profile, latest?.text ?? null])
+      matches(
+        words,
+        query.titlesAndBriefs === true
+          ? [profileFallback ? null : title]
+          : [address, title, candidate.profile, latest?.text ?? null],
+      )
     if (!matchesConversation && matched.length === 0) return null
 
     const toShow = matched.slice(0, taskLimit)
