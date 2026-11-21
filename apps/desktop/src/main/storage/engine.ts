@@ -32,8 +32,9 @@ export type StorageRequest =
   | { readonly kind: 'children'; readonly location: StorageLocation }
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
 export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
-const STORAGE_BOUNDS = { entries: 100_000, depth: 64, milliseconds: 10_000 } as const
-export const STORAGE_MEASURE_TIMEOUT = STORAGE_PART_IDS.length * STORAGE_BOUNDS.milliseconds + 5000
+const STORAGE_BOUNDS = { entries: 100_000, depth: 64 } as const
+/** A worker that reports no progress for this long is judged stalled; a slow walk that keeps reporting is not. */
+export const STORAGE_STALL_TIMEOUT = 15_000
 
 export class StorageFailure extends Error {
   constructor(readonly reason: StorageError) {
@@ -47,25 +48,21 @@ const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).co
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
   private visited = 0
-  private started = performance.now()
   private canonicalData = ''
   constructor(
     private readonly roots: StorageRoots,
     private readonly bounds: {
       entries: number
       depth: number
-      milliseconds: number
     } = STORAGE_BOUNDS,
     private readonly cancelled: () => boolean = () => false,
+    private readonly progressed: () => void = () => {},
   ) {}
 
   private checkpoint(): void {
     if (this.cancelled()) throw new StorageFailure('cancelled')
-    if (
-      ++this.visited > this.bounds.entries ||
-      performance.now() - this.started > this.bounds.milliseconds
-    )
-      throw new StorageFailure('limit')
+    if (++this.visited > this.bounds.entries) throw new StorageFailure('limit')
+    this.progressed()
   }
 
   private async initialise(): Promise<void> {
@@ -240,7 +237,6 @@ export class StorageEngine {
       for (const id of STORAGE_PART_IDS) {
         // A large or slow part must not spend the budget of every later part.
         this.visited = 0
-        this.started = performance.now()
         let bytes = 0
         const state: { error?: StorageError } = {}
         try {

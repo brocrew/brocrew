@@ -432,11 +432,7 @@ it('root reveal selects the first existing database-family file or backup folder
 
 it('reports finite traversal limits and cancellation, including a depth limit', async () => {
   await file(join(roots.workspace, 'one', 'two', 'file'), 3)
-  const limited = await new StorageEngine(roots, {
-    entries: 2,
-    depth: 64,
-    milliseconds: 10_000,
-  }).measure()
+  const limited = await new StorageEngine(roots, { entries: 2, depth: 64 }).measure()
   expect(limited.partial).toBe(true)
   expect(limited.parts.some((part) => part.error === 'limit')).toBe(true)
   expect(
@@ -445,9 +441,9 @@ it('reports finite traversal limits and cancellation, including a depth limit', 
     ),
   ).toBe(true)
   expect(
-    (
-      await new StorageEngine(roots, { entries: 100, depth: 1, milliseconds: 10_000 }).measure()
-    ).parts.find((part) => part.id === 'workspace')?.error,
+    (await new StorageEngine(roots, { entries: 100, depth: 1 }).measure()).parts.find(
+      (part) => part.id === 'workspace',
+    )?.error,
   ).toBe('limit')
 })
 
@@ -455,21 +451,53 @@ class FakeWorker extends EventEmitter {
   terminate = vi.fn(async () => 0)
 }
 
-it('allows bounded measurements of several slow parts while keeping drill requests short', async () => {
+it('does not cut off a slow walk that keeps reporting progress', async () => {
+  vi.useFakeTimers()
+  const worker = new FakeWorker()
+  const service = new StorageService(roots, () => worker, 1_000)
+  const measure = service.run({ kind: 'measure' })
+  for (let n = 0; n < 10; n++) {
+    await vi.advanceTimersByTimeAsync(900)
+    worker.emit('message', { progress: true })
+  }
+  expect(worker.terminate).not.toHaveBeenCalled()
+  worker.emit('message', { ok: true, value: { totalBytes: 41 } })
+  expect(await measure).toEqual({ ok: true, value: { totalBytes: 41 } })
+  service.close()
+})
+
+it('stops a walk that has stopped reporting progress, for every kind of request', async () => {
   vi.useFakeTimers()
   const workers: FakeWorker[] = []
-  const service = new StorageService(roots, () => {
-    const worker = new FakeWorker()
-    workers.push(worker)
-    return worker
-  })
+  const service = new StorageService(
+    roots,
+    () => {
+      const worker = new FakeWorker()
+      workers.push(worker)
+      return worker
+    },
+    1_000,
+  )
   const measure = service.run({ kind: 'measure' })
   const drill = service.run({ kind: 'children', location: { part: 'backups', segments: [] } })
-  await vi.advanceTimersByTimeAsync(16_000)
+  await vi.advanceTimersByTimeAsync(900)
+  workers[0]!.emit('message', { progress: true })
+  await vi.advanceTimersByTimeAsync(900)
   expect(await drill).toEqual({ ok: false, error: 'limit' })
   expect(workers[0]!.terminate).not.toHaveBeenCalled()
-  workers[0]!.emit('message', { ok: true, value: { totalBytes: 41 } })
-  expect(await measure).toEqual({ ok: true, value: { totalBytes: 41 } })
+  await vi.advanceTimersByTimeAsync(200)
+  expect(await measure).toEqual({ ok: false, error: 'limit' })
+  expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true)
+  service.close()
+})
+
+it('reports a worker that exits as unavailable without waiting out a clock', async () => {
+  vi.useFakeTimers()
+  const worker = new FakeWorker()
+  const service = new StorageService(roots, () => worker, 1_000)
+  const measure = service.run({ kind: 'measure' })
+  worker.emit('exit', 1)
+  expect(await measure).toEqual({ ok: false, error: 'unavailable' })
   service.close()
 })
 

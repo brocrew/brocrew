@@ -2,7 +2,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { win32 } from 'node:path'
 
 const disk = vi.hoisted(() => ({
-  elapsed: 0,
   entries: new Map<string, { bytes?: number; children?: string[] }>(),
 }))
 vi.mock('node:process', async (original) => {
@@ -15,7 +14,6 @@ vi.mock('node:path', async (original) => {
 })
 vi.mock('node:fs/promises', () => ({
   lstat: async (path: string) => {
-    disk.elapsed += 2
     const entry = disk.entries.get(win32.normalize(path).toLowerCase())
     if (!entry) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
     return {
@@ -39,10 +37,9 @@ import { StorageEngine, insideData, type StorageRoots } from '../src/main/storag
 afterEach(() => {
   vi.restoreAllMocks()
   disk.entries.clear()
-  disk.elapsed = 0
 })
 
-it('measures later Windows categories even when the workspace reaches its own time limit', async () => {
+it('measures later Windows categories even when the workspace reaches its own entry limit', async () => {
   const data = 'C:\\Users\\Avery\\AppData\\Roaming\\@brobot2\\desktop'
   const roots: StorageRoots = {
     data,
@@ -72,12 +69,7 @@ it('measures later Windows categories even when the workspace reaches its own ti
   directory(roots.plugins!)
   directory(roots.cache!)
   directory(roots.resources)
-  vi.spyOn(performance, 'now').mockImplementation(() => disk.elapsed)
-  const reading = await new StorageEngine(roots, {
-    entries: 1000,
-    depth: 64,
-    milliseconds: 30,
-  }).measure()
+  const reading = await new StorageEngine(roots, { entries: 30, depth: 64 }).measure()
   expect(reading.parts.find((part) => part.id === 'workspace')).toMatchObject({
     partial: true,
     error: 'limit',

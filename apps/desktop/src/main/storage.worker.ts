@@ -53,7 +53,13 @@ if (port) {
         return
       }
       const { roots, request } = workerData as { roots: StorageRoots; request: StorageRequest }
-      const engine = new StorageEngine(roots)
+      let lastReport = 0
+      const engine = new StorageEngine(roots, undefined, undefined, () => {
+        const now = Date.now()
+        if (now - lastReport < 1000) return
+        lastReport = now
+        port.postMessage({ progress: true })
+      })
       const value =
         request.kind === 'measure'
           ? await engine.measure()
