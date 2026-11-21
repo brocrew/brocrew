@@ -23,6 +23,7 @@ export interface ReconciliationPiece {
   readonly holder: string
   readonly waitsFor?: readonly string[]
   readonly giver: string | null
+  readonly unhandedBrief?: string
   readonly stalledBy?: PieceRow['stalledBy']
   readonly nameOf?: (conversation: string) => string
   readonly stoppedByPerson?: true

@@ -200,6 +200,7 @@ import { createLedgerFoldState, type SnapshotFoldAnswers } from './ledger-fold-s
 import { createDigestWindowRead } from './digest-window-read'
 import { createWorkerRecordsRead } from './worker-records-read'
 import {
+  A_RESTART_LEFT_THE_MESSAGE_WAITING,
   createTurnEvidenceRead,
   type OpenTurn,
   type LeftRunning,
@@ -927,6 +928,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   whatBecameOfAMessage(
     sessionId: string,
     messageId: string,
+    keepRestartedBrief?: boolean,
   ): 'sent' | 'ended' | 'waiting' | 'absent'
   startupRepairOwners(phase?: 'builds' | 'runs' | 'requests' | 'work'): readonly string[]
   settleStrandedMessagesInSteps(
@@ -4630,7 +4632,7 @@ export function createSessionStore(
             messageId: held.message_id,
             reason: 'abandoned',
             text: held.text ?? '',
-            detail: 'the app stopped while this message was still waiting to be sent',
+            detail: A_RESTART_LEFT_THE_MESSAGE_WAITING,
             ...authorshipStoredOn(held.payload),
             ...attachmentsStoredOn(held.payload),
           },
