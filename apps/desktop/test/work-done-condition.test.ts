@@ -61,12 +61,10 @@ describe('work has an explicit bounded done condition', () => {
           schema.safeParse({ ...fields, ...request, definition_of_done: condition }).success,
         ).toBe(acceptsOverflow)
       }
-      const tooLong = schema.safeParse({ ...fields, ...request, brief: 'x'.repeat(2001) })
-      expect(tooLong.success).toBe(acceptsOverflow)
-      if (!tooLong.success)
-        expect(tooLong.error.issues.map((issue) => issue.message)).toContain(
-          'The brief is limited to 2000 characters. Put the rest in an input file.',
-        )
+      // Both doors keep a long brief whole as a file instead of refusing it.
+      expect(schema.safeParse({ ...fields, ...request, brief: 'x'.repeat(2001) }).success).toBe(
+        true,
+      )
       expect(
         schema.safeParse({ ...fields, ...request, brief: 'list item\n'.repeat(100) }).success,
       ).toBe(true)

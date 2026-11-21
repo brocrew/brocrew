@@ -134,6 +134,7 @@ import {
   answerPreview,
   answerTextForFile,
   keepPlainSendFile,
+  inputsWithOverflow,
   keepSendOverflow,
   keepTasklessSendFiles,
   keepTasklessSendText,
@@ -493,7 +494,7 @@ import {
   takeOnWorkRequestSchema,
   workRequestRefused,
   doneConditionSchema,
-  workBriefSchema,
+  workBriefText,
 } from './spawn-rails'
 import type { ListsAsLastRead, ModelRefusal, TheListAsked } from '../connections/model-rails'
 import type {
@@ -1228,7 +1229,7 @@ import {
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
-import { newAskedQuestionId, newMcpServerRequestId, newResourceId, newWorkId } from '../db/ids'
+import { newAskedQuestionId, newMcpServerRequestId, newWorkId } from '../db/ids'
 import {
   MCP_SERVER_REQUESTS_IN_ALL,
   MCP_SERVER_REQUESTS_PER_CONVERSATION,
@@ -12480,8 +12481,7 @@ export class RuntimeHost implements LiveHost {
       () => {
         const committed = this.deps.store.atomically(() => {
           const rows = this.recordMadeFiles(piece.piece, kept.files, speaking, at)
-          if (overflow !== null)
-            rows.push(this.recordMadeOverflow(piece.piece, overflow, speaking, at))
+          if (overflow !== null) rows.push(this.recordOverflow(piece.piece, overflow, speaking, at))
           this.deps.store.append(session.id, ordinal, repliedWith(rows), at)
           // ⚑ …and the questions passed up about the piece end in the same transaction.
           return {
@@ -12610,14 +12610,15 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private recordMadeOverflow(
+  private recordOverflow(
     piece: string,
     { file: { name, title, sha256, bytes } }: SendOverflow,
     sender: string,
     at: number,
+    role: ResourceRole = 'made',
   ): ResourceRow {
     return this.deps.store.addResource(
-      { piece, role: 'made', name, title, summary: null, sha256, bytes, addedBy: sender },
+      { piece, role, name, title, summary: null, sha256, bytes, addedBy: sender },
       at,
     )
   }
@@ -24238,7 +24239,7 @@ export class RuntimeHost implements LiveHost {
     const overflow = kept.overflow
     if (overflow === null) return { ok: true, text }
     const actual = this.writeRecord(sender, 'work_resource', () =>
-      this.recordMadeOverflow(on, overflow, sender, this.now()),
+      this.recordOverflow(on, overflow, sender, this.now()),
     )
     return {
       ok: true,
@@ -24261,7 +24262,7 @@ export class RuntimeHost implements LiveHost {
         console.warn(`give_work: could not read context for ${facts.to}: ${errorMessage(error)}`)
       }
     }
-    return sendReceipt({ ...facts, context }, this.deps.store, service)
+    return sendReceipt({ ...facts, context, readAt: this.now() }, this.deps.store, service)
   }
 
   private contextOfConversation(
@@ -24567,6 +24568,9 @@ export class RuntimeHost implements LiveHost {
     }
     const kept = this.keptFor(session.id, asked.inputs ?? [])
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
+    const brief = keepSendOverflow(this.deps.resourcesRoot?.(), 'brief', asked.brief)
+    if (!brief.ok) return { ok: false, resourceRefusal: brief.refusal }
+    const overflow = brief.overflow
     const queued = this.itIsAService(session.id)
     const recorded = this.deps.store.atomically(() => {
       parent ??= this.deps.store.ensurePersonalRoot(session.id, this.now())
@@ -24578,17 +24582,11 @@ export class RuntimeHost implements LiveHost {
         label: `${parent.label}.${String(number)}`,
         giver: null,
         title: asked.title,
-        brief: asked.brief,
+        brief: textWithOverflowResource(brief.inline, overflow?.file.resource),
         definitionOfDone: asked.definition_of_done,
         folder: null,
         givenFolder: null,
-        inputs: kept.files.map((file) => ({
-          resource: newResourceId(),
-          title: file.title,
-          name: file.name,
-          sha256: file.sha256,
-          bytes: file.bytes.length,
-        })),
+        inputs: inputsWithOverflow(kept.files, overflow === null ? [] : [overflow]),
       }
       const messageId = queued ? newQueuedMessageId() : null
       const event: WorkGivenEvent = {
@@ -24652,6 +24650,7 @@ export class RuntimeHost implements LiveHost {
       root: parent!.label,
       notice,
       queued,
+      ...(overflow === null ? {} : { overflow }),
     }
   }
 
@@ -25021,7 +25020,7 @@ export class RuntimeHost implements LiveHost {
       detail: { problems },
     })
     if (input.brief !== null) {
-      const read = workBriefSchema.safeParse(input.brief)
+      const read = workBriefText.safeParse(input.brief)
       if (!read.success) return invalid(read.error.issues.map((issue) => issue.message))
     }
     if (input.definitionOfDone != null) {
@@ -25171,6 +25170,12 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **R2 · the files, read, hashed and kept — the last thing that can refuse.**
     const kept = this.keptFor(caller, input.resources)
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
+    const brief =
+      input.brief === null
+        ? null
+        : keepSendOverflow(this.deps.resourcesRoot?.(), 'brief', input.brief)
+    if (brief !== null && !brief.ok) return { ok: false, resourceRefusal: brief.refusal }
+    const overflow = brief?.overflow ?? null
 
     if (input.title !== null) {
       this.writeIntoItsLedger(row.owner, {
@@ -25194,11 +25199,11 @@ export class RuntimeHost implements LiveHost {
     // every window is told**, on `runtime:states`, once they are down.
     const role: ResourceRole = itsGiver ? 'input' : 'made'
     const at = this.now()
-    const rows =
-      kept.files.length === 0
-        ? []
-        : this.deps.store.atomically(() =>
-            kept.files.map((file) =>
+    const written =
+      kept.files.length === 0 && overflow === null
+        ? { rows: [], overflowRow: null }
+        : this.deps.store.atomically(() => ({
+            rows: kept.files.map((file) =>
               this.deps.store.addResource(
                 {
                   piece: named.piece,
@@ -25213,12 +25218,20 @@ export class RuntimeHost implements LiveHost {
                 at,
               ),
             ),
-          )
+            overflowRow:
+              overflow === null
+                ? null
+                : this.recordOverflow(named.piece, overflow, caller, at, 'input'),
+          }))
+    const rows = written.rows
+    // The holder reads the brief's start with a pointer; the whole text is the kept file.
+    const newBrief =
+      brief === null ? null : textWithOverflowResource(brief.inline, written.overflowRow?.resource)
     if (revises) {
       this.writeIntoItsLedger(row.owner, {
         type: 'work_rebriefed',
         piece: row.piece,
-        ...(input.brief === null ? {} : { brief: input.brief }),
+        ...(newBrief === null ? {} : { brief: newBrief }),
         ...(condition === null ? {} : { definitionOfDone: condition }),
         by: caller,
         // ⚑ **D-022 · R1 — the held give it rides**, said once, as the row is written.
@@ -25256,7 +25269,7 @@ export class RuntimeHost implements LiveHost {
     const title = input.title ?? folded?.title ?? row.title
     let told: Told<NewBriefDelivery> | null = null
     // ⚑ Only its giver gives a new brief, so `folded` was given by a conversation: the guard narrows.
-    if (input.brief !== null && folded !== undefined && givenByAConversation(folded)) {
+    if (newBrief !== null && folded !== undefined && givenByAConversation(folded)) {
       const rebriefed = {
         ...folded,
         title: input.title ?? folded.title,
@@ -25270,11 +25283,11 @@ export class RuntimeHost implements LiveHost {
         as: 'rebriefed',
         to: folded.owner,
         title: rebriefed.title,
-        brief: input.brief,
+        brief: newBrief,
       })
       told = queued
         ? { delivery: 'with-its-give' }
-        : await this.tellItsOwnerItsNewBrief(rebriefed, input.brief, by, withItsGive)
+        : await this.tellItsOwnerItsNewBrief(rebriefed, newBrief, by, withItsGive)
     } else if (closed !== null && folded !== undefined) {
       const endedPiece = { ...folded, title: input.title ?? folded.title }
       const reason = input.status ?? undefined
@@ -25301,6 +25314,14 @@ export class RuntimeHost implements LiveHost {
       rebriefed: input.brief !== null,
       definitionOfDone: condition,
       kept: rows.map((one) => ({ resource: one.resource, name: one.name, role })),
+      ...(overflow === null || written.overflowRow === null
+        ? {}
+        : {
+            overflow: {
+              ...overflow,
+              file: { ...overflow.file, resource: written.overflowRow.resource },
+            },
+          }),
       closed,
       // ⚑ At a service, its close notice asks the turn working on it to stop, as a take-back's does.
       askedItsTurnToStop:

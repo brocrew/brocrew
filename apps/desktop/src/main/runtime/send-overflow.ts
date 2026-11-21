@@ -43,6 +43,28 @@ export function keepSendOverflow(
   }
 }
 
+/** A task's inputs: the files its sender handed over, then each long field's kept file. */
+export function inputsWithOverflow(
+  files: readonly {
+    readonly title: string
+    readonly name: string
+    readonly sha256: string
+    readonly bytes: { readonly length: number }
+  }[],
+  overflow: readonly SendOverflow[],
+): GivenInput[] {
+  return [
+    ...files.map((file) => ({
+      resource: newResourceId(),
+      title: file.title,
+      name: file.name,
+      sha256: file.sha256,
+      bytes: file.bytes.length,
+    })),
+    ...overflow.map((one) => one.file),
+  ]
+}
+
 interface OverflowOnDisk {
   readonly field: string
   readonly characters: number

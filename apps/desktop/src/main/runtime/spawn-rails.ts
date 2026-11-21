@@ -1,7 +1,7 @@
 import type { SendRecipientState, ToolOutcome } from '../../shared/tool-outcome'
 import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
 import type { TaskStallCause } from '../../shared/task-contracts'
-import { DONE_CONDITION_CHARS, WORK_BRIEF_CHARS, WORK_FIELD_WORDS } from '../../shared/work-fields'
+import { DONE_CONDITION_CHARS, WORK_FIELD_WORDS } from '../../shared/work-fields'
 import { refusalReason } from '../../shared/refusals'
 import { isAbsolute, join } from 'node:path'
 import type { GivenFolder } from '../../shared/work-folders'
@@ -335,8 +335,8 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'service-queue-not-owned':
       return 'this app may be open twice. Ask the person with request_action to close any other BroCrew instance using this workspace and reopen this one, or give the work to another agent.'
     case 'its-kind-is-unknown':
-      if (detail.executionProblem) return `Not given: ${detail.executionProblem}`
-      return `Not given: the services list can’t be read. Give the work to another agent, or ask a person; this app can’t tell whether “${detail.profileId ?? '?'}” is a service.`
+      if (detail.executionProblem) return `Not sent: ${detail.executionProblem}`
+      return `Not sent: the services list can’t be read. Give the work to another agent, or ask a person; this app can’t tell whether “${detail.profileId ?? '?'}” is a service.`
     case 'name-the-conversation': {
       const recent = (detail.recent ?? []).map(
         (one) => `${one.address}${one.title === null ? '' : ` · ${one.title}`}`,
@@ -358,13 +358,13 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'a-service-has-one-conversation':
       return `Not sent: ${detail.profileId ?? '?'} is a service with one conversation; leave to out.`
     case 'that-is-this-conversation':
-      return 'Not given: that agent is you. Do this part within the piece you are working on.'
+      return 'Not sent: that agent is you. Do this part within the piece you are working on.'
     case 'it-would-wait-on-itself':
-      return 'Not given: that service is waiting on work you hold, so it would never reach this. Finish or take back that work, then give this again.'
+      return 'Not sent: that service is waiting on work you hold, so it would never reach this. Finish or take back that work, then give this again.'
     case 'its-waits-cannot-all-be-checked':
-      return `Not given: its waits can’t all be checked. Give the work to another agent, or give it again once some of the work “${detail.profileId ?? '?'}” waits on has ended.`
+      return `Not sent: its waits can’t all be checked. Give the work to another agent, or give it again once some of the work “${detail.profileId ?? '?'}” waits on has ended.`
     case 'its-record-cannot-be-read':
-      return `Not given: part of this app’s record of what “${detail.profileId ?? '?'}” gave can’t be read. Give the work to another agent.`
+      return `Not sent: part of this app’s record of what “${detail.profileId ?? '?'}” gave can’t be read. Give the work to another agent.`
     case 'no-such-profile':
       return `Not sent: no agent is called ${detail.profileId ?? '?'}. list_profiles names them; create_agent makes one.`
     case 'service-provider-is-fixed':
@@ -420,13 +420,12 @@ const doneConditionText = z
   .string({ error: WORK_FIELD_WORDS.required })
   .refine((value) => value.trim() !== '', WORK_FIELD_WORDS.blank)
 
-const workBriefText = z.string().refine((value) => value.trim() !== '', 'must say something')
+export const workBriefText = z.string().refine((value) => value.trim() !== '', 'must say something')
 
 export const doneConditionSchema = doneConditionText.max(
   DONE_CONDITION_CHARS,
   WORK_FIELD_WORDS.conditionLimit,
 )
-export const workBriefSchema = workBriefText.max(WORK_BRIEF_CHARS, WORK_FIELD_WORDS.briefLimit)
 
 /** What a value sent for a field is, in a word or two. */
 function aValueOf(value: unknown): string {
@@ -582,7 +581,7 @@ export type GiveRequest = z.infer<typeof giveRequestSchema>
 export const takeOnWorkRequestSchema = giveRequestSchema
   .pick({ title: true, inputs: true })
   .extend({
-    brief: workBriefSchema,
+    brief: workBriefText,
     definition_of_done: doneConditionSchema,
     piece: z.string().min(1).max(200).optional(),
   })
@@ -821,6 +820,8 @@ export type GiveOutcome = ToolOutcome<
     readonly piece: string
     readonly label: string
     readonly targetKind: 'new' | 'continued'
+    /** When the continued conversation was last active, read before this give; absent for a new one. */
+    readonly lastActiveAt?: number | null
     /** 🔴 **The conversation the brief reached** — after a replacement, not the one looked up (R2). */
     readonly owner: string
     /** The conversation the lookup found or the start made, before any replacement. */

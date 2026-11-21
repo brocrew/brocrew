@@ -15,11 +15,8 @@ import {
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { DONE, doneWithThePiece, keptResources, tookOnForPerson } from '../agent-tool-answer-words'
-import {
-  DONE_CONDITION_CHARS,
-  WORK_BRIEF_CHARS,
-  WORK_FIELD_WORDS,
-} from '../../../shared/work-fields'
+import { DONE_CONDITION_CHARS, WORK_FIELD_WORDS } from '../../../shared/work-fields'
+import { sendOverflowSaid } from '../send-overflow'
 import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
@@ -354,7 +351,7 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          'A new brief for a piece you gave or took on for the person, at most 2000 characters. Put longer detail in an input file. A root’s brief stays as recorded. For a piece you gave, the holder is told; while its first brief is still held, the new brief goes out in its place. Refused with close.',
+          'A new brief for a piece you gave or took on for the person. Anything over 2,000 characters arrives as a file the reader is pointed to. A root’s brief stays as recorded. For a piece you gave, the holder is told; while its first brief is still held, the new brief goes out in its place. Refused with close.',
         ),
       close: z
         .boolean()
@@ -400,8 +397,6 @@ export function createUpdateWorkTool(
         if (brief !== undefined && (typeof brief !== 'string' || brief.trim() === '')) {
           problems.push(`${UPDATE_BRIEF_ARGUMENT} must say something`)
         }
-        if (typeof brief === 'string' && brief.length > WORK_BRIEF_CHARS)
-          problems.push(WORK_FIELD_WORDS.briefLimit)
         if (condition !== undefined) {
           if (typeof condition !== 'string' || condition.trim() === '')
             problems.push(WORK_FIELD_WORDS.blank)
@@ -555,6 +550,7 @@ export function createUpdateWorkTool(
           ...(updated.kept.length === 0
             ? []
             : [keptResources(updated.kept.map((one) => one.resource))]),
+          ...(updated.overflow === undefined ? [] : [sendOverflowSaid(updated.overflow).trim()]),
           ...(updated.closed === null
             ? []
             : [
@@ -692,6 +688,7 @@ export function createTakeOnWorkTool(
                       : 'The giver could not be told.',
                 ]),
             ...(taken.queued ? ['The work is queued.'] : []),
+            ...(taken.overflow === undefined ? [] : [sendOverflowSaid(taken.overflow).trim()]),
           ].join(' '),
         )
       }),

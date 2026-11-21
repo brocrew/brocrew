@@ -11,6 +11,7 @@ import type { OwnInstructionsVersion } from '../../../shared/own-instructions'
 import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import type { McpServerRequestWho } from '../../../shared/mcp-server-requests'
 import type { Told, NewBriefDelivery } from '../message-records'
+import type { SendOverflow } from '../send-overflow'
 import type { TaskOutcome } from '../../../shared/task-contracts'
 import type { UnreadQuestion } from '../../../shared/questions'
 import type { ResourceRefusal } from '../../resources/resources'
@@ -158,6 +159,9 @@ export type UpdateWorkOutcome =
         readonly role: ResourceRole
       }[]
 
+      /** The new brief was longer than the inline limit; its whole text is this kept input. */
+      readonly overflow?: SendOverflow
+
       /** Actual close facts, or null when this call did not close the piece. */
       readonly closed: {
         readonly tookBackTheMessage: boolean
@@ -203,6 +207,8 @@ export type TakeOnWorkOutcome =
       readonly root: string
       readonly notice: 'sent' | 'held' | 'not-delivered' | null
       readonly queued: boolean
+      /** The brief was longer than the inline limit; its whole text is this kept input. */
+      readonly overflow?: SendOverflow
     }
   | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }
   | {

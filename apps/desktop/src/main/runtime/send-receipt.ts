@@ -1,6 +1,7 @@
 import type { ContextReading } from '@brobot2/runtime'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
 import { describeConversation } from './conversation-address'
+import { howLongAgo } from './what-this-app-adds-to-a-turn'
 
 export const THE_ANSWER_ARRIVES_AS_A_MESSAGE = 'The answer arrives as a message.'
 
@@ -19,6 +20,9 @@ export type SendFacts = DeliveryFacts &
         readonly state: SendRecipientState
         readonly profile: string
         readonly targetKind: 'new' | 'continued'
+        readonly lastActiveAt?: number | null
+        /** When this receipt is written, to say how long ago the conversation was last active. */
+        readonly readAt?: number
         readonly context?: ContextReading | null
       }
     | {
@@ -56,9 +60,13 @@ export function sendReceipt(
   if (state.kind === 'started' || state.kind === 'queued') {
     const delivery = state.kind === 'started' ? 'sent to' : 'held for'
     const target = facts.targetKind === 'new' ? 'a new' : 'the existing'
+    const lastActive =
+      facts.targetKind === 'continued' && facts.lastActiveAt != null && facts.readAt !== undefined
+        ? `, last active ${howLongAgo(facts.lastActiveAt, facts.readAt)}`
+        : ''
     return {
       receipt,
-      said: `${task} ${delivery} ${facts.profile} in ${target} ${conversation}. ${contextInTheReceipt(facts.context)}`,
+      said: `${task} ${delivery} ${facts.profile} in ${target} ${conversation}${lastActive}. ${contextInTheReceipt(facts.context)}`,
     }
   }
   const cause = state.cause.reason

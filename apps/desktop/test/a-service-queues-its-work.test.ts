@@ -637,7 +637,7 @@ describe('a service queues the work it is given', () => {
         const refused = await aGiveAfterTheServiceGaveAHelper(false, 'an-ended-row')
         expect(refusedAs(refused)).toBe('its-record-cannot-be-read')
         expect(refused.ok ? '' : refused.refusal.reason).toBe(
-          'Not given: part of this app’s record of what “browser-driver” gave can’t be read. ' +
+          'Not sent: part of this app’s record of what “browser-driver” gave can’t be read. ' +
             'Give the work to another agent.',
         )
       })
@@ -1146,7 +1146,10 @@ describe('a service queues the work it is given', () => {
       const caller = await world.aPersonOpens(host, 'caller')
       const ordinary = accepted(await world.gives(host, caller, 'lost-service'))
       expect(world.store.parentOf(ordinary.owner)).toBe(caller)
-      expect(refusedAs(await world.gives(host, caller, 'born-service'))).toBe('its-kind-is-unknown')
+      const unknown = await world.gives(host, caller, 'born-service')
+      expect(refusedAs(unknown)).toBe('its-kind-is-unknown')
+      // The give answer adds "Not sent: " only to a reason without it, so the reason opens with it once.
+      expect(unknown.ok ? '' : unknown.refusal.reason).toMatch(/^Not sent: (?!Not )/)
     })
 
     it('records a public Message from the queued caller and keeps the internal queue rule', async () => {

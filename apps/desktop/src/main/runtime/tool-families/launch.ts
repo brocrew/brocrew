@@ -317,6 +317,7 @@ export function createGiveWorkTool(
           to: given.owner,
           profile: given.profile,
           targetKind: given.targetKind,
+          ...(given.lastActiveAt === undefined ? {} : { lastActiveAt: given.lastActiveAt }),
           state: given.recipientState,
           attachments: given.inputs.map((file) => {
             const overflow = given.overflow?.find((part) => part.file.resource === file.resource)

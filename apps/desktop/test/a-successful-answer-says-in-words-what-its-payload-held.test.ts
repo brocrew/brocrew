@@ -484,6 +484,8 @@ describe('a successful answer says in words what its payload held', () => {
           () => store.newestOfType?.(worker, 'context_reading')?.event.type === 'context_reading',
           'the worker’s recorded context reading',
         )
+        // Five minutes pass after the worker's last activity; the receipt says so, not the give's own time.
+        clock += 5 * 60_000
         const result = await ok(pmTools, 'give_work', {
           profile: 'worker',
           to: address,
@@ -494,7 +496,7 @@ describe('a successful answer says in words what its payload held', () => {
         const action = result.structured?.delivery === 'sent' ? 'sent to' : 'held for'
         expect(result.structured?.delivery).toMatch(/^(sent|held)$/)
         expect(result.text.split('\n')[0]).toBe(
-          `Task ${String(result.structured?.label)} ${action} worker in the existing conversation ${address} · Inventory project. ${context}`,
+          `Task ${String(result.structured?.label)} ${action} worker in the existing conversation ${address} · Inventory project, last active 5 minutes ago. ${context}`,
         )
       },
     )

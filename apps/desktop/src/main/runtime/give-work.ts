@@ -1,6 +1,6 @@
 import type { Provider } from '@brobot2/shared'
 import { withDeadline } from '@brobot2/runtime'
-import { newResourceId, newWorkId } from '../db/ids'
+import { newWorkId } from '../db/ids'
 import type { SessionStore } from '../db/session-store'
 import type { GivenFolder, ProtectedPlaceNotice } from '../../shared/work-folders'
 import type { ItsProvider } from '../../shared/agent-roster'
@@ -13,7 +13,7 @@ import type { OfferedFile, ResourceRefusal } from '../resources/resources'
 import { THE_APP_ITSELF, sessionSpeakingAs, type Caller } from './conversation-caller'
 import { RecordWriteFailed } from './record-write'
 import { AGiveThatGaveNothing } from './session-unavailable'
-import { keepSendOverflow } from './send-overflow'
+import { inputsWithOverflow, keepSendOverflow } from './send-overflow'
 import type { Giving } from './message-records'
 import type { SendRecipientState } from '../../shared/tool-outcome'
 import {
@@ -167,6 +167,9 @@ export class GiveWork {
     const hasOverflow = overflow.length === 0 ? {} : { overflow }
     const choice = chosen?.chosen ?? null
     const store = h.store()
+    const continued = goes.to === 'a-new-conversation' ? null : goes.conversation
+    const lastActiveAt =
+      continued === null ? null : (store.recordedOne(continued)?.updatedAt ?? null)
     const number = store.numberUnder(under.piece)
     const giving: Giving = {
       piece: newWorkId(),
@@ -179,16 +182,7 @@ export class GiveWork {
       definitionOfDone: done.inline,
       folder: asked.folder ?? null,
       givenFolder: this.theFolderItGave(asked.folder, goes),
-      inputs: [
-        ...kept.files.map((file) => ({
-          resource: newResourceId(),
-          title: file.title,
-          name: file.name,
-          sha256: file.sha256,
-          bytes: file.bytes.length,
-        })),
-        ...overflow.map((one) => one.file),
-      ],
+      inputs: inputsWithOverflow(kept.files, overflow),
       ...(goes.to === 'a-new-conversation' ? { conversationTitle: goes.title } : {}),
     }
     const inputs = giving.inputs.map(({ resource, name }) => ({ resource, name }))
@@ -248,6 +242,7 @@ export class GiveWork {
         label: giving.label,
         owner: service,
         targetKind: goes.conversation === null ? 'new' : 'continued',
+        ...(continued === null ? {} : { lastActiveAt }),
         recipientState: { kind: 'queued', behind },
         found: service,
         profile: asked.profile,
@@ -296,6 +291,7 @@ export class GiveWork {
         label: giving.label,
         owner,
         targetKind: 'continued',
+        lastActiveAt,
         found: goes.conversation,
         profile: asked.profile,
         delivery: sent ? 'sent' : 'held',

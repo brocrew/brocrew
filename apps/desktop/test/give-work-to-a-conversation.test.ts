@@ -365,6 +365,8 @@ describe('give_work goes to the conversation the giver names', () => {
 
     host.claimSession(named.agent, window)
     await host.close(named.agent, window)
+    // Five minutes pass after the conversation's last activity; the receipt says so, not the give's own time.
+    clock += 5 * 60_000
     const result = await give({
       ...task('Book the named hotel'),
       to: named.label,
@@ -388,7 +390,7 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(delivery === 'sent' || delivery === 'held').toBe(true)
     const action = delivery === 'sent' ? 'sent to' : 'held for'
     expect(navigationReply(result.text).prose).toBe(
-      `Task ${label} ${action} pm in the existing conversation ${named.label} · Lisbon trip. Context: no current reading.`,
+      `Task ${label} ${action} pm in the existing conversation ${named.label} · Lisbon trip, last active 5 minutes ago. Context: no current reading.`,
     )
   })
 

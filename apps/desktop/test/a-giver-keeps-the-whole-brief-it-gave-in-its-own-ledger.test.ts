@@ -3,7 +3,7 @@ import type { SendReceipt } from '../src/shared/tool-outcome'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { WorkGivenEvent } from '../src/shared/task-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -203,7 +203,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
   // §1 · a give that starts a new conversation
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('keeps an oversized give readable and still refuses an oversized rebrief before recording it', async () => {
+  it('keeps an oversized give readable', async () => {
     const pm = await aPm()
     const kept: string[] = []
     for (const brief of ['x'.repeat(2001), HISTORICAL_BRIEF]) {
@@ -231,20 +231,110 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
     }
     expect(new Set(kept).size).toBe(2)
     expect(sentBy(pm)).toHaveLength(2)
+  })
+
+  it('keeps an oversized rebrief whole as an input of the piece and sends its start with a pointer', async () => {
+    const pm = await aPm()
     const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
+    const oversized = HISTORICAL_BRIEF
+    expect(oversized.length).toBeGreaterThan(2000)
+
+    const updated = await callTimed(pm, 'update_work', { piece: label, brief: oversized })
+
+    expect(updated.structured).toMatchObject({ outcome: 'ok', label, rebriefed: true })
+    const inputs = store.resourcesOf(piece).filter((one) => one.name === 'brief.txt')
+    expect(inputs).toHaveLength(1)
+    const file = inputs[0]!
+    expect(file.role).toBe('input')
+    const read = host.readResource(file.resource)
+    if (!read.ok || read.content.as !== 'file') throw new Error('the kept brief is not readable')
+    expect(readFileSync(read.content.path, 'utf8')).toBe(oversized)
+    const pointer = `The full text is attached as ${file.resource}: read it with read_document.`
+    const rebriefs = rowsOf(worker, 'work_rebriefed')
+    expect(rebriefs.at(-1)?.brief).toBe(`${oversized.slice(0, 2000)} ${pointer}`)
+    expect(sentBy(pm).at(-1)).toMatchObject({ as: 'rebriefed', brief: rebriefs.at(-1)?.brief })
+    expect(updated.text).toContain(
+      `Your brief was ${oversized.length.toLocaleString('en-US')} characters, so the full text is attached as brief.txt (${file.resource}).`,
+    )
+  })
+
+  it('refuses an oversized rebrief whose file cannot be kept, and records nothing of it', async () => {
+    const pm = await aPm()
+    const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
+    // A plain file where the resource folder should be: no overflow file can be written under it.
+    rmSync(resourcesRoot(userData), { recursive: true, force: true })
+    writeFileSync(resourcesRoot(userData), 'not a folder\n')
     const sentBefore = sentBy(pm)
     const rebriefsBefore = rowsOf(worker, 'work_rebriefed')
-    const refused = await callOn(pm, 'update_work', { piece: label, brief: NEW_BRIEF + '!' })
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'malformed-request',
-      detail: {
-        problems: ['The brief is limited to 2000 characters. Put the rest in an input file.'],
-      },
-    })
+
+    const refused = await callOn(pm, 'update_work', { piece: label, brief: HISTORICAL_BRIEF })
+
+    expect(refused).toMatchObject({ outcome: 'refused', rail: 'resource-could-not-be-kept' })
     expect(sentBy(pm)).toEqual(sentBefore)
     expect(rowsOf(worker, 'work_rebriefed')).toEqual(rebriefsBefore)
+    expect(store.resourcesOf(piece)).toEqual([])
     expect(store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.brief).toBe(LONG_BRIEF)
+  })
+
+  describe('a brief over the inline limit taken on for a person', () => {
+    const LONG_REQUEST = briefSteps(40)
+
+    const takeOn = async (conversation: string) => {
+      await host.send(conversation, 'Please take on this long fictional request.', window)
+      const tool = agentToolsFor(host, conversation).tools.find(
+        (one) => one.name === 'take_on_work',
+      )!
+      return tool.call({
+        definition_of_done: 'The fictional plan is checked.',
+        title: 'Check the long plan',
+        brief: LONG_REQUEST,
+      })
+    }
+
+    it('keeps the whole brief as an input of the piece and records its start with a pointer', async () => {
+      expect(LONG_REQUEST.length).toBeGreaterThan(2000)
+      const conversation = await personOpens('pm')
+
+      const taken = await takeOn(conversation)
+
+      const structured = taken.structured as Record<string, unknown>
+      expect(structured, JSON.stringify(structured)).toMatchObject({ outcome: 'ok' })
+      const piece = structured.piece as string
+      const files = store.resourcesOf(piece).filter((one) => one.name === 'brief.txt')
+      expect(files).toHaveLength(1)
+      const file = files[0]!
+      expect(file.role).toBe('input')
+      const read = host.readResource(file.resource)
+      if (!read.ok || read.content.as !== 'file') throw new Error('the kept brief is not readable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(LONG_REQUEST)
+      const given = events(conversation).find(
+        (event) => event.type === 'work_given' && event.piece === piece,
+      )
+      expect(given).toMatchObject({
+        givenBy: null,
+        brief: `${LONG_REQUEST.slice(0, 2000)} The full text is attached as ${file.resource}: read it with read_document.`,
+      })
+      expect(taken.text).toContain(
+        `Your brief was ${LONG_REQUEST.length.toLocaleString('en-US')} characters, so the full text is attached as brief.txt (${file.resource}).`,
+      )
+    })
+
+    it('refuses when the whole brief cannot be kept, and takes nothing on', async () => {
+      const conversation = await personOpens('pm')
+      const before = store.piecesOwnedBy(conversation)
+      // A plain file where the resource folder should be: no overflow file can be written under it.
+      rmSync(resourcesRoot(userData), { recursive: true, force: true })
+      writeFileSync(resourcesRoot(userData), 'not a folder\n')
+
+      const taken = await takeOn(conversation)
+
+      expect(taken.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'resource-could-not-be-kept',
+      })
+      expect(store.piecesOwnedBy(conversation)).toEqual(before)
+      expect(events(conversation).filter((event) => event.type === 'work_given')).toEqual([])
+    })
   })
 
   it('reads historical over-limit gives and rebriefs whole without applying the new-write cap', () => {
