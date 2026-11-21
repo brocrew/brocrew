@@ -41,16 +41,17 @@ import {
 const HOW_TO_LIST_MORE_QUESTIONS =
   'list_questions takes state — open, ended or all — and limit, which is how many ended questions it lists, newest first.'
 
+/** Whether this caller may answer it: not a person's to decide, and not its asker's provider's own. */
+const answerableByYou = (one: VisibleQuestion): boolean =>
+  one.request.went.is !== 'the-person-the-channel-left-it-with' && one.byItsProvider !== true
+
 const questionPayload = (one: VisibleQuestion): Readonly<Record<string, unknown>> => ({
   question: one.request.requestId,
   asked_by: one.request.askedBy,
   state: one.request.state,
-  // **611 · the REFUSED arm is the only thing this caller may not answer** (HO-088 §2.3).
-  // It was `because === null`, which was the same set until an asker could address a question
-  // to a person. **Addressing is where a question GOES, not a lock on who may answer it** —
-  // `admitAnswer` still admits one, so a payload saying `false` here would tell a model it would
-  // be refused by a door that would have taken it.
-  answerable_by_you: one.request.went.is !== 'the-person-the-channel-left-it-with',
+  // A question addressed to a person is still this caller's to answer if it knows (`admitAnswer`);
+  // a channel-refused request and a provider's own question are not.
+  answerable_by_you: answerableByYou(one),
   because: theChannelRefusalIn(one.request),
   // **611 · where it went, in this app's own word** — see {@link WhereARequestWent}. It is
   // what tells a model the difference between *a person was ASKED this* and *a person is the only
@@ -130,7 +131,7 @@ const questionLine = (one: VisibleQuestion): string => {
         ? ' · addressed to a person, and it is still yours to answer if you know'
         : ''
       : ` · a person answers this one (${refused})`
-  }${delivery}${wordsMissingClause(one)}`
+  }${one.byItsProvider === true ? ' · a person answers this one at its card' : ''}${delivery}${wordsMissingClause(one)}`
 }
 
 /** A question that is over, as a line says it: who asked, and how it ended. */
@@ -502,14 +503,10 @@ export function createListQuestionsTool(
         const listed = host.questionsListedFor(me)
         const waiting = listed.questions
         const open = waiting.filter((one) => REQUEST_IS_OPEN[one.request.state])
-        const yours = open.filter(
-          (one) => one.request.went.is !== 'the-person-the-channel-left-it-with',
-        )
+        const yours = open.filter(answerableByYou)
         // **Counted independently of `yours`, so the two halves are separable** — a change to
         // one must not silently move the other.
-        const aPersons = open.filter(
-          (one) => one.request.went.is === 'the-person-the-channel-left-it-with',
-        )
+        const aPersons = open.filter((one) => !answerableByYou(one))
         // **Requests are counted; CONVERSATIONS are what is frozen, and they are not the same
         // number** (the review caught it). `402` measured three permissions on ONE worker — the
         // first version of this clause would have said *"those conversations are frozen"* about

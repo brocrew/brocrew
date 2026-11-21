@@ -28,59 +28,6 @@ import {
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
 
-/**
- * 🔴 **397 · the word for a question nobody stopped** — Slice 4 S6, the last build dispatch of the
- * slice, and the residue `396` §7 reported and refused to fix in passing.
- *
- * ## ⛔ The defect, in one sentence
- *
- * **Both adapters call `settleRequests()` inside `interrupt()`, and it writes nothing.**
- * `RequestBroker.settleAll` safe-rejects every pending card — a permission as `{outcome:'deny'}`, a
- * question as `{kind:'reject'}` — so the provider is told *no* on somebody's behalf and no row
- * anywhere says so. ⚠️ The derived request went on reading `open`: *nobody has ended this*, about a
- * thing this app had just ended.
- *
- * ## 🔴 Where the brief was wrong, and it is the reason the word matters
- *
- * ⛔ **`397` §1 says *"until the next launch, `list_questions` lists it as `open`"*, which reads as
- * though the launch repairs it.** It does not. `396`'s sweep closes anything still open at a launch
- * as `stranded` — ***the app had stopped*** — and the app had not stopped: somebody pressed Stop and
- * it kept running. ⚑ So the residue was not a stale row that ages out; it was a row that ages into
- * the WRONG WORD, written by the newest thing in the tree. §5 measures both halves.
- *
- * ## ⚠️ Why the word is not one of the six that already existed
- *
- *  - **not `rejected`** — nobody DECIDED. `settleAll` answers the socket because the socket needs an
- *    answer, and recording that as a decision is HO-005 Q2 written into the ledger.
- *  - **not `withdrawn`** — that is the PROVIDER clearing a request (`051`), and this is the app.
- *  - **not `abandoned`** — the conversation did not end. §3 is the case that proves the two must
- *    stay different: `endAgent` stops the turn AND ends the conversation, and its questions are
- *    `abandoned`, because *ask it again* is the wrong advice about a conversation that is gone.
- *    ⚑ **D-017** — `endAgent` is gone; a person's Close stops the turn and the conversation, and
- *    its questions are `abandoned` too (the census of every word, below).
- *  - **not `stranded`** — the app did not stop.
- *
- * ## ⛔ And the word says WHAT, never WHO — which is `395`'s ruling, not an omission
- *
- * `how-work-stopped.ts`: *"`HowWorkStopped` is about the WORK; `WhoAskedItToStop` is about a
- * GESTURE… folding them into one vocabulary is how 'it was stopped' comes to imply 'a person did
- * it'"* — the false sentence `395` spent a dispatch removing. ⚑ **So the actor is a NEIGHBOURING
- * ROW**: `askTheWorkToStop` writes `work_interrupted` and then one `request_interrupted` per open
- * request, in one synchronous stretch, at adjacent ordinals. §6 pins the adjacency.
- *
- * ## ⚑ The fourth door nobody had noticed
- *
- * ⛔ **`395` claimed one function recorded every stop and there were four doors, not three.**
- * `runSendInterrupting` — *type while it is working* — interrupted a turn and wrote only
- * `noteUserCommand`'s breadcrumb, which is gated on `mayControl` and silent for every commanded
- * caller. ⚑ `396` §2.1's lesson one shape over: an early `return` made gate membership a property of
- * POSITION; a write repeated at N call sites makes it a property of MEMORY. **`askTheWorkToStop` is
- * now the only path to `SessionHandle.interrupt()`**, and §7 asserts that rather than trusting it.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools, real filesystem.** The only double is the
- * provider.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -314,43 +261,17 @@ describe('397 · the word for a question nobody stopped', () => {
       expect(pm).toBeTruthy()
     })
 
-    it('⛔ `list_questions` stops calling it open, and the line says what happened', async () => {
+    it('an interrupted native question ends on its own ledger and never enters the agent list', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       const pmTools = agentToolsFor(host, pm)
       const asked = await childAsks(worker, workerHandle)
-      // ⚠️ **The reader is measured BEFORE as well**, because *"it no longer says open"* is only a
-      // repair if it said `open` a moment ago — `396` shipped this reader, and a reader that reports
-      // `open` for something nobody can answer is *nothing unwired implies a working state*.
-      const before = await callOn(pmTools, 'list_questions')
-      expect(JSON.stringify(before.questions)).toContain('"state":"open"')
-      expect(await textOf(pmTools, 'list_questions')).toContain('1 waiting on you')
-
+      expect(rowFor(worker, asked.id).state).toBe('open')
+      expect((await callOn(pmTools, 'list_questions')).questions).toEqual([])
       host.claimSession(worker, window)
       claimed.add(worker)
       await host.interrupt(worker, window)
-
-      // ⚑ A question that is over is listed when asked for.
-      const after = await callOn(pmTools, 'list_questions', { state: 'all' })
-      const rows = after.questions as { question: string; state: string }[]
-      expect(rows.find((one) => one.question === asked.id)?.state).toBe('interrupted')
-      const said = await textOf(pmTools, 'list_questions', { state: 'all' })
-      expect(said).toContain('nothing is waiting on you')
-      // ⛔ **Scoped to THIS request's line, not to the whole answer** — *a file-level `contains`
-      // cannot tell sibling declarations apart*, and this reader prints one line per question.
-      const line = said.split('\n').find((one) => one.includes(asked.id)) ?? ''
-      expect(line).toContain('interrupted')
-      // ⛔ **The sentence, by name** (standing rule 5): a word a model has never seen needs the fact
-      // it stands for, and the fact is that the conversation is still there.
-      // 🔴 **709 · R43 — `interrupted` is written at the ASK**, before the provider answers, so the
-      // sentence says the ask: the turn it was raised in may yet have completed.
-      expect(line).toContain(
-        '(the work it was raised in was asked to stop, so it was never answered — that conversation is still there, ask it again)',
-      )
-      // ⚠️ **And it never names an actor.** `WHO_ASKED_IT_TO_STOP` is about a gesture and belongs to
-      // `work_interrupted`; *"a person stopped it"* here would be `222`'s false sentence in a tool
-      // payload — it is as often the reading agent's own `interrupt_agent`.
-      expect(line).not.toContain('a person')
-      expect(line).not.toContain('an agent')
+      expect(rowFor(worker, asked.id).state).toBe('interrupted')
+      expect((await callOn(pmTools, 'list_questions', { state: 'all' })).questions).toEqual([])
     })
 
     it('⚑ TWO open questions, one interruption, and both get the ending', async () => {
@@ -402,15 +323,19 @@ describe('397 · the word for a question nobody stopped', () => {
       // than a state that swallowed the vocabulary.
       const seen = new Map<string, RequestState>()
 
-      // — answered, by the parent through the real door
+      // — answered by the person on the native card
       {
-        const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+        const { pm, worker, workerHandle } = await aPmAndItsWorker()
         const asked = await childAsks(worker, workerHandle)
-        const said = await callOn(pmTools, 'answer_question', {
-          question: asked.id,
-          answers: [{ part: 'q0', answer: ['main'] }],
-        })
-        expect(said.outcome, JSON.stringify(said)).toBe('ok')
+        host.claimSession(worker, window)
+        claimed.add(worker)
+        const said = await host.respondUserInput(
+          worker,
+          asked.id,
+          { kind: 'answer', answers: { q0: ['main'] } },
+          window,
+        )
+        expect(said.outcome, JSON.stringify(said)).toBe('taken')
         seen.set('answered', rowFor(worker, asked.id).state)
         expect(pm).toBeTruthy()
       }
@@ -626,8 +551,8 @@ describe('397 · the word for a question nobody stopped', () => {
       const resumed = await next.resumeSession(pm, window)
       expect(resumed.sessionId).toBe(pm)
       const listed = await textOf(agentToolsFor(next, pm), 'list_questions')
-      expect(listed).toContain('interrupted')
-      expect(listed).toContain('nothing is waiting on you')
+      expect(listed).not.toContain(asked.id)
+      expect(listed).toBe('no conversation you started has asked you anything')
     })
 
     it('⚑ `stranded` is still REACHABLE — a request nobody stopped, left open by a crash', async () => {
@@ -652,7 +577,7 @@ describe('397 · the word for a question nobody stopped', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§6 · what a parent is told when it answers too late', () => {
-    it('🔴 `question-has-already-ended` now carries `detail.state: interrupted`', async () => {
+    it('an agent cannot answer an interrupted native question', async () => {
       // ⛔ **`394` shipped this refusal WITHOUT a state on this path, and said why**: the adapter
       // bounced the answer as `not-pending`, the fold still said `open`, and *"reporting that word
       // would be this app stating the wrong half."* ⚑ There is a right word now, so the rail fires
@@ -667,9 +592,9 @@ describe('397 · the word for a question nobody stopped', () => {
         question: asked.id,
         answers: [{ part: 'q0', answer: ['main'] }],
       })
-      expect(said.rail).toBe('question-has-already-ended')
+      expect(said.rail).toBe('no-question-by-that-name')
       expect(said.permanence).toBe('permanent')
-      expect((said.detail as { state?: string }).state).toBe('interrupted')
+      expect(rowFor(worker, asked.id).state).toBe('interrupted')
       expect(pm).toBeTruthy()
     })
   })

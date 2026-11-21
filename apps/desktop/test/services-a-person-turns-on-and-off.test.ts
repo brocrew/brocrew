@@ -466,7 +466,7 @@ describe('Service lifecycle', () => {
       })
     })
 
-    it('names a service by its agent in a question it asks its caller, never by the piece', async () => {
+    it('names a service by its agent and its conversation’s address in a question it asks its caller', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceWithWorkQueued()
       const asked = await call(host, service, 'ask_question', {
         piece: one.label,
@@ -484,10 +484,12 @@ describe('Service lifecycle', () => {
       await vi.waitFor(() => {
         expect(told()).toBeDefined()
       })
+      // Its conversation is addressed by its first task, like any conversation.
+      const address = host.addressOf(service)
       expect(told()).toContain(
-        `${host.whatToCallTheConversation(service)} (conversation ${service} · Ada) asks you ${asked.structured?.question}`,
+        `${host.whatToCallTheConversation(service)} (conversation ${address} · Ada) asks you ${asked.structured?.question}`,
       )
-      expect(told()).toContain(`Use asked_by ${service} with this question id.`)
+      expect(told()).toContain(`Use asked_by ${address} with this question id.`)
       expect(told()).toContain(`About task ${one.label} · One.`)
       expect(told()).not.toContain(`the owner of ${one.label}`)
       // Its caller waits on it by its agent's name too, never by the caller's own piece it holds.
@@ -733,13 +735,12 @@ describe('Service lifecycle', () => {
   })
 
   describe('what is shown of a service', () => {
-    it('names it by its conversation id and agent name while it holds callers’ tasks', async () => {
+    it('names it by its first task and its agent name while it holds callers’ tasks', async () => {
       const { host, service, one, two, releaseTheTurn } = await aServiceWithWorkQueued()
       const named = host.nameByItsWork(service)
-      expect(named).toBe(`conversation ${service} · ${host.whatToCallTheConversation(service)}`)
-      expect(named).not.toContain(one.label)
+      expect(named).toBe(`conversation ${one.label} · ${host.whatToCallTheConversation(service)}`)
       expect(named).not.toContain(two.label)
-      expect(host.addressOf(service)).toBe(service)
+      expect(host.addressOf(service)).toBe(one.label)
       releaseTheTurn()
     })
 

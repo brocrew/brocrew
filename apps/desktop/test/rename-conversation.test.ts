@@ -120,9 +120,10 @@ describe('renaming a conversation', () => {
         author: null,
         profileFallback: true,
       },
+      // A service is addressed by its first task, like any conversation; its title stays its name.
       {
         conversation: service,
-        address: service,
+        address: taskLabel,
         title: 'Rail Service',
         author: null,
         profileFallback: true,

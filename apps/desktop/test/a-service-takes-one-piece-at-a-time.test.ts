@@ -593,8 +593,9 @@ describe('a service takes one piece at a time', () => {
       delivery: 'held',
       receipt: { recipient: { state: { kind: 'queued', behind: 1 } } },
     })
+    // The other caller's task is never said; the service's own address is its first task's label.
     expect(given.text).not.toContain('Secret')
-    expect(given.text).not.toContain(one.label)
+    expect(given.text).not.toContain(`task ${one.label}`)
     const board = await call(host, other, 'list_tasks', {})
     expect(board.text).toContain(`queued behind 1; the active piece stalled at ${stalledAt}`)
     expect(board.text).not.toContain('Secret')

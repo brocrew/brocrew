@@ -1486,6 +1486,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
         // ⚑ **D-016** · the spawn's time and reason went with `spawn_agent`; the card names the work
         // the conversation holds instead.
         pieces: true,
+        // ⚑ A service's queue length; absent on any other conversation's card.
+        queued: true,
         // 🔴 **D-042 · R6 — what it runs on, so a giver can check what its helper runs**: the pair
         // it is selected to run and what its provider last reported. ⚑ About the present, not the
         // past — so neither of the two nulls below is about it (`AgentCard.runsOn`).
@@ -1504,10 +1506,11 @@ describe('395 · the interruption that looks like a provider fault', () => {
       }
       expect(Object.keys(card ?? {}).sort()).toEqual(
         Object.keys(shape)
-          .filter((key) => key !== 'worker')
+          .filter((key) => key !== 'worker' && key !== 'queued')
           .sort(),
       )
       expect(card?.worker).toBeUndefined()
+      expect(card?.queued).toBeUndefined()
       expect(card?.rowsUnread).toBe(0)
       expect(card?.lastEndedTurn).toBeNull()
       expect(card?.lastAskToStop).toBeNull()

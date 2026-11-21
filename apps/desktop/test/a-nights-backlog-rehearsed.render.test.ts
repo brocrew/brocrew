@@ -1,3 +1,4 @@
+import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-which-database'
 import { callNewConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -414,25 +415,7 @@ describe("463 · a night's backlog, rehearsed", () => {
     )
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
-    const workerHandle = handles.at(-1)
-    if (workerHandle === undefined) throw new Error('the worker received no provider handle')
-    const asked = workerHandle.simulateUserInput('Which database?', ['Postgres', 'SQLite'])
-    await waitFor(
-      () =>
-        store
-          .events(worker)
-          .some(({ event }) => event.type === 'request_routed' && event.requestId === asked.id),
-      'the worker question to route',
-    )
-    const answered = await host.answerQuestion(
-      {
-        questionId: asked.id,
-        answers: [{ part: 'q0', answer: ['Postgres'] }],
-      },
-      { ownerId: `agent:${opened.sessionId}` },
-    )
-    expect(answered.ok, JSON.stringify(answered)).toBe(true)
-    await expect(asked.answered).resolves.toMatchObject({ kind: 'answer' })
+    const asked = { id: await theParentAnswersWhichDatabase(host, worker, opened.sessionId) }
     await waitFor(
       () => store.events(opened.sessionId).some(({ event }) => event.type === 'turn'),
       'the turn the travelling question opened in the PM to end',
@@ -852,8 +835,8 @@ describe("463 · a night's backlog, rehearsed", () => {
       {
         register: 'observed',
         kind: 'question-about-work',
-        count: 1,
-        text: '1 question says which piece of work it is about — the most recent is W40.11.',
+        count: 2,
+        text: `2 questions say which piece of work it is about — the most recent is ${agentAnswer.label}.`,
         saidBy: null,
       },
       // ⚑ **Tools** — the answer's SHORT FORM, which is the only durable half (457).
@@ -900,9 +883,9 @@ describe("463 · a night's backlog, rehearsed", () => {
       },
       {
         kind: 'question-without-work',
-        // ⚑ The provider's question in `waiting`, and the rumour worker's.
-        count: 2,
-        says: '2 questions do not say which piece of work it is about.',
+        // The provider's question is unbound; the agent's app question names its work.
+        count: 1,
+        says: '1 question does not say which piece of work it is about.',
       },
       {
         kind: 'open-is-not-waiting',

@@ -221,13 +221,22 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     )
     expect(questionOf(child.id, raised.id)?.state).toBe('open')
     expect(await settledYet(raised.answered)).toBe(false)
-    // ⚑ **THE PAIR**: still the parent's to answer, and the answer reaches the model that asked.
-    const answered = await callOn(pm, 'answer_question', {
+    // ⚑ **THE PAIR**: it is the person's, not the parent's, and the person's answer at its card
+    // reaches the model that asked.
+    const byThePm = await callOn(pm, 'answer_question', {
       question: raised.id,
       asked_by: child.id,
       answers: [{ part: 'q0', answer: ['main'] }],
     })
-    expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+    expect(byThePm.outcome, JSON.stringify(byThePm)).toBe('refused')
+    host.claimSession(child.id, window)
+    const answered = await host.respondUserInput(
+      child.id,
+      raised.id,
+      { kind: 'answer', answers: { q0: ['main'] } },
+      window,
+    )
+    expect(answered.outcome, JSON.stringify(answered)).toBe('taken')
     await expect(raised.answered).resolves.toMatchObject({ kind: 'answer' })
   })
 
@@ -258,16 +267,14 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     expect(questionOf(child.id, ours)?.state).toBe('open')
     // ⛔ **The provider that held it is gone**: nothing could ever answer it, so it stays ended.
     expect(questionOf(child.id, raised.id)?.state).toBe('abandoned')
-    // ⚑ …and the parent's list says so: its own question is offered open, the model's is over.
+    // ⚑ …and the parent's list offers its own question open; the model's was the person's and never
+    // reached the parent's list.
     await host.resumeSession(pm, window)
     const listed = await callOn(pm, 'list_questions', { state: 'all' })
     const stateOf = (id: string): unknown =>
       (listed.questions as { question: string; state: string }[]).find((one) => one.question === id)
         ?.state
-    expect([stateOf(ours), stateOf(raised.id)], JSON.stringify(listed)).toEqual([
-      'open',
-      'abandoned',
-    ])
+    expect([stateOf(ours), stateOf(raised.id)], JSON.stringify(listed)).toEqual(['open', undefined])
   })
 
   it('⛔ its parent’s conversation stops — the model’s question stays open, and the child is not told nobody will answer', async () => {
@@ -340,15 +347,24 @@ describe('D-009 · a model’s own question stays the model’s', () => {
     ).toEqual([])
   })
 
-  it('⛔ “cannot answer” to a model’s question is said to the MODEL — its request is declined, not only recorded', async () => {
+  it('⛔ a model’s question is declined to the MODEL by the person, and the parent cannot decline it', async () => {
     const { pm, child } = await aPmAndAChild()
     const raised = await itsModelAsks(child)
-    const declined = await callOn(pm, 'answer_question', {
+    const byThePm = await callOn(pm, 'answer_question', {
       question: raised.id,
       asked_by: child.id,
       cannot_answer: 'I do not know which branch',
     })
-    expect(declined.outcome, JSON.stringify(declined)).toBe('ok')
+    expect(byThePm.outcome, JSON.stringify(byThePm)).toBe('refused')
+    expect(questionOf(child.id, raised.id)?.state).toBe('open')
+    host.claimSession(child.id, window)
+    const declined = await host.respondUserInput(
+      child.id,
+      raised.id,
+      { kind: 'reject', reason: 'I do not know which branch' },
+      window,
+    )
+    expect(declined.outcome, JSON.stringify(declined)).toBe('taken')
     expect(questionOf(child.id, raised.id)?.state).toBe('rejected')
     // 🔴 **A `rejected` row alone leaves the model parked forever**: the provider is told, as a
     // person's reject at the card tells it.

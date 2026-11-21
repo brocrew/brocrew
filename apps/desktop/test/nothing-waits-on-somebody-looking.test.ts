@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AgentToolset, FakeSessionHandle, UserInputResponse } from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -26,6 +26,7 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
+import { nativeQuestionOn } from './helpers/native-question'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -141,16 +142,6 @@ describe('396 · nothing waits on somebody looking', () => {
     return last?.type === 'status' && last.state === 'idle'
   }
 
-  /**
-   * `393`'s helper: a PM in a window with one child of its own, started through the real door.
-   *
-   * ⚑ **D-016 · the door is `give_work`, and its brief is the child's first turn** — where
-   * `spawn_agent` started a child that had been sent nothing. ⛔ So that the pair stands where a
-   * spawn left it — both idle, the child holding no open work and no card routed from it — the brief
-   * runs unattended (`auto`, which a child takes from its giver), the child answers it, and only
-   * then does each conversation go back to `ask`, from its next turn. ⚠️ Nobody claims the child on
-   * the way: its sink is the one a give leaves, which is what §1 is about.
-   */
   const aPmAndItsWorker = async (): Promise<{
     pm: string
     pmProfile: string
@@ -197,33 +188,6 @@ describe('396 · nothing waits on somebody looking', () => {
     expect(store.routedRequestsOf(worker)).toEqual([])
     expect(claimed.has(worker)).toBe(false)
     return { pm, pmProfile, worker, pmTools, workerHandle }
-  }
-
-  /**
-   * ⚑ **Raise a question on the child exactly as its provider would**, and wait for the app to have
-   * DECIDED where it goes — `394`'s helper, and its two waits for its reason: without the first, a
-   * routing that never happened and a request that never reached the ledger fail identically.
-   */
-  const childAsks = async (
-    child: string,
-    handle: FakeSessionHandle,
-    prompt = 'which branch?',
-    options: readonly string[] = ['main', 'dev'],
-    extra: { secret?: boolean } = {},
-  ): Promise<{ id: string; answered: Promise<UserInputResponse> }> => {
-    const raised = handle.simulateUserInput(prompt, options, false, extra)
-    await waitFor(
-      () => ledger(child).some((event) => event.type === 'user_input_request'),
-      `the request ${raised.id} to reach ${child}'s ledger`,
-    )
-    await waitFor(
-      () =>
-        ledger(child).some(
-          (event) => event.type === 'request_routed' && event.requestId === raised.id,
-        ),
-      `the routing of ${raised.id}`,
-    )
-    return raised
   }
 
   const cardOn = async (sessionId: string): Promise<string> => {
@@ -278,6 +242,34 @@ describe('396 · nothing waits on somebody looking', () => {
       kind: 'note',
     })
     expect(held.delivery, JSON.stringify(held)).toBe('queued')
+  }
+
+  const nativeQuestion = nativeQuestionOn(ledger)
+
+  /** A provider's own question is the person's: no agent's answer_question reaches it. */
+  const anAgentCannotAnswer = async (on: RuntimeHost, pm: string, question: string) => {
+    expect(
+      await callOn(agentToolsFor(on, pm), 'answer_question', {
+        question,
+        answers: [{ part: 'answer', answer: ['main'] }],
+      }),
+    ).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-question-by-that-name',
+      permanence: 'permanent',
+      retryable: false,
+    })
+  }
+
+  const childAsks = async (child: string): Promise<{ id: string }> => {
+    const asked = await callOn(agentToolsFor(host, child), 'ask_question', {
+      who_answers: 'an-agent',
+      agent: store.parentOf(child),
+      question: 'which branch?',
+      options: ['main', 'dev'],
+    })
+    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+    return { id: asked.question as string }
   }
 
   describe('the flush is not under an attention gate', () => {
@@ -345,9 +337,9 @@ describe('396 · nothing waits on somebody looking', () => {
   })
 
   describe('the request a crash left open', () => {
-    it('a launch settles it, and the refusal NAMES the ending rather than the id', async () => {
+    it('a launch strands the native question, and the agent cannot answer it', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
       // ⚑ **The premise**: nothing has ended it, so the ledger reads `open` — which is exactly what
       // a live wait reads, and is why no fold can be the repair.
       expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['open'])
@@ -357,59 +349,31 @@ describe('396 · nothing waits on somebody looking', () => {
       // believes, and the reason the sweep is safe there.
       const next = buildHost(createSessionStore(db, tick))
       await next.resumeSession(pm, window)
-      expect(next.questionsVisibleTo(pm).map((one) => one.state)).toEqual(['stranded'])
+      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['stranded'])
 
-      const refused = await callOn(agentToolsFor(next, pm), 'answer_question', {
-        question: asked.id,
-        answers: [{ part: 'q0', answer: ['main'] }],
-      })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'question-has-already-ended',
-        permanence: 'permanent',
-        retryable: false,
-        detail: { state: 'stranded' },
-      })
+      await anAgentCannotAnswer(next, pm, asked.id)
       // ⛔ **Nothing was sent.** The repair records a fact; it does not answer on anybody's behalf.
       expect(ledger(worker).some((event) => event.type === 'user_decision')).toBe(false)
     })
 
-    it('⛔ `running` is honoured — and that is what keeps `394`’s rail REACHABLE', async () => {
-      // 🔴 **Two claims in one test because they are one mechanism.**
-      //
-      //  1. A second host over the SAME ledger object finds the conversation in
-      //     `workRunningElsewhere` and must NOT strand a request the first host is still holding —
-      //     `settleOrphanRuns`' rule, third venue.
-      //  2. ⚠️ **And that case is now the only demonstration of
-      //     `the-conversation-that-asked-has-gone`**, which `394` reached through the crash this
-      //     dispatch repaired. ⛔ A rail nothing reaches passes vacuously; this is what makes it
-      //     reachable, and it is stated here so nobody deletes the rail as dead.
+    it('a second host leaves a running native question open without exposing an agent answer route', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
 
       // ⚠️ **Constructed and NOT resumed into.** `reserve` refuses a session another live host is
       // running — which is `265`'s rail doing its job — and the sweep is a constructor act, so the
       // construction is the whole of what this test needs.
       const beside = buildHost()
       // ⛔ **Still `open`** — the first host is running it, so this launch left it exactly as it was.
-      expect(beside.questionsVisibleTo(pm).map((one) => one.state)).toEqual(['open'])
+      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['open'])
       expect(ledger(worker).some((event) => event.type === 'request_stranded')).toBe(false)
 
-      const refused = await callOn(agentToolsFor(beside, pm), 'answer_question', {
-        question: asked.id,
-        answers: [{ part: 'q0', answer: ['main'] }],
-      })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'the-conversation-that-asked-has-gone',
-        permanence: 'permanent',
-        retryable: false,
-      })
+      await anAgentCannotAnswer(beside, pm, asked.id)
     })
 
     it('a second launch writes nothing more — the sweep is idempotent', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await childAsks(worker, workerHandle)
+      await nativeQuestion(worker, workerHandle)
       const first = buildHost(createSessionStore(db, tick))
       await first.resumeSession(pm, window)
       const afterOne = ledger(worker).filter((event) => event.type === 'request_stranded').length
@@ -424,14 +388,20 @@ describe('396 · nothing waits on somebody looking', () => {
       // two rows at one ordinal, which the unique index refuses, and the launch would repair
       // nothing.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const first = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
-      const second = await childAsks(worker, workerHandle, 'which region?', ['eu', 'us'])
+      const first = await nativeQuestion(worker, workerHandle, 'which branch?', ['main', 'dev'])
+      const second = await nativeQuestion(worker, workerHandle, 'which region?', ['eu', 'us'])
       expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['open', 'open'])
 
       const next = buildHost(createSessionStore(db, tick))
       await next.resumeSession(pm, window)
-      expect(next.questionsVisibleTo(pm).map((one) => one.requestId)).toEqual([first.id, second.id])
-      expect(next.questionsVisibleTo(pm).map((one) => one.state)).toEqual(['stranded', 'stranded'])
+      expect(store.routedRequestsOf(worker).map((one) => one.requestId)).toEqual([
+        first.id,
+        second.id,
+      ])
+      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual([
+        'stranded',
+        'stranded',
+      ])
       // ⚑ **Two rows at two ordinals**, said as the fact the collision would have broken rather
       // than left to the state assertion above.
       const written = store
@@ -448,13 +418,13 @@ describe('396 · nothing waits on somebody looking', () => {
       // therefore no channel — is never a candidate. ⛔ The control is that the sweep DID run in
       // this test, which the second half asserts.
       const alone = await personOpens('nobody-spawned-me')
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await childAsks(worker, workerHandle)
+      const { worker, workerHandle } = await aPmAndItsWorker()
+      await nativeQuestion(worker, workerHandle)
 
-      const next = buildHost(createSessionStore(db, tick))
+      buildHost(createSessionStore(db, tick))
       expect(ledger(alone).some((event) => event.type === 'request_stranded')).toBe(false)
       expect(ledger(worker).filter((event) => event.type === 'request_stranded').length).toBe(1)
-      expect(next.questionsVisibleTo(pm).map((one) => one.state)).toEqual(['stranded'])
+      expect(store.routedRequestsOf(worker).map((one) => one.state)).toEqual(['stranded'])
     })
   })
 
@@ -470,17 +440,18 @@ describe('396 · nothing waits on somebody looking', () => {
     const askedWithNobodyHome = async (): Promise<{
       pm: string
       worker: string
-      asked: { id: string; answered: Promise<UserInputResponse> }
+      asked: { id: string }
     }> => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker()
       await host.close(pm, window)
       claimed.delete(pm)
       expect(host.sessionIds).not.toContain(pm)
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await childAsks(worker)
       // ⚑ **The premise, asserted**: the question travelled, and the parent that had stopped was
       // started for it and TOLD it.
       expect(store.routedRequestsOf(worker)[0]).toMatchObject({
-        went: { is: 'the-parent', to: 'the-parent' },
+        parent: pm,
+        went: { is: 'the-agent-the-asker-named', to: 'an-agent' },
       })
       await waitFor(
         () =>
@@ -505,25 +476,23 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(rows[0]).toMatchObject({ asked_by: worker, state: 'open', answerable_by_you: true })
       // 🔴 **The words, and they are what makes this a door rather than a list.** An id alone names a
       // thing the caller still cannot act on: `answer_question` takes one entry per PART.
-      expect(String(rows[0]?.words)).toContain('Part id "q0": which branch?')
+      expect(String(rows[0]?.words)).toContain('which branch?')
+      expect(String(rows[0]?.words)).toContain('Part id "answer": choose one:')
       expect(String(rows[0]?.words)).toContain('main')
 
       expect(
         await callOn(tools, 'answer_question', {
           question: asked.id,
-          answers: [{ part: 'q0', answer: ['dev'] }],
+          answers: [{ part: 'answer', answer: ['dev'] }],
         }),
       ).toMatchObject({ outcome: 'ok' })
-      await expect(asked.answered).resolves.toMatchObject({ answers: { q0: ['dev'] } })
+      expect(store.theDecisionOn(worker, asked.id)?.outcome).toBe('answered')
     })
 
-    it('⛔ the words are the SAME words a live parent is sent — two paths, one string', async () => {
-      // ⚠️ **Not compared against `questionText` called a second time**, which would be a fixture
-      // built with the helper under test. ⛔ The control is the OTHER path: a parent that WAS live
-      // receives the question as an ordinary turn, and what it received is what the reader hands
-      // back.
+    it('the live question and listing retain the same content and answering address', async () => {
+      // Compare what both doors actually returned; their surrounding conversation envelopes differ.
       const live = await aPmAndItsWorker()
-      const liveAsked = await childAsks(live.worker, live.workerHandle)
+      const liveAsked = await childAsks(live.worker)
       // ⚑ **D-016 · the turn that carries the QUESTION** — the parent's ledger also holds the turns
       // its piece's answer came back in.
       const theQuestion = (event: TranscriptEvent): boolean =>
@@ -536,7 +505,24 @@ describe('396 · nothing waits on somebody looking', () => {
       if (delivered === undefined || delivered.type !== 'user_turn') throw new Error('no turn')
       const rows = (await callOn(agentToolsFor(host, live.pm), 'list_questions'))
         .questions as Record<string, unknown>[]
-      expect(rows.find((one) => one.question === liveAsked.id)?.words).toBe(delivered.text)
+      const listed = rows.find((one) => one.question === liveAsked.id)
+      expect(listed).toMatchObject({
+        asked_by: live.worker,
+        state: 'open',
+        answerable_by_you: true,
+      })
+      for (const words of [delivered.text, String(listed?.words)]) {
+        const lines = words.split('\n')
+        expect(lines).toContain('which branch?')
+        expect(lines.filter((line) => line.startsWith('Part id '))).toEqual([
+          'Part id "answer": choose one:',
+        ])
+        expect(lines.filter((line) => /^\s+- /.test(line))).toEqual(['    - main', '    - dev'])
+      }
+      const address = host.addressOf(live.worker)
+      expect(delivered.text).toContain(`asks you ${liveAsked.id} in your conversation`)
+      expect(delivered.text).toContain(`Use asked_by ${address} with this question id.`)
+      expect(listed?.words).toContain(`quoting ${liveAsked.id} with asked_by ${address}.`)
     })
 
     it('🔴 a PERMISSION lists and carries NO words — and the `because` narrowing is what does it', async () => {
@@ -547,7 +533,7 @@ describe('396 · nothing waits on somebody looking', () => {
       // rather than by a type. ⚑ `questionsRaisedIn` hands its words back happily, which the second
       // assertion below states rather than leaves implied; the `because` gate is what does not.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const secret = await childAsks(worker, workerHandle, 'the token?', [], { secret: true })
+      const secret = await nativeQuestion(worker, workerHandle, 'the token?', [], { secret: true })
       const rows = (await callOn(agentToolsFor(host, pm), 'list_questions')).questions as Record<
         string,
         unknown
@@ -570,21 +556,12 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(
         await callOn(agentToolsFor(host, pm), 'answer_question', {
           question: secret.id,
-          answers: [{ part: 'q0', answer: ['hunter2'] }],
+          answers: [{ part: 'answer', answer: ['hunter2'] }],
         }),
       ).toMatchObject({ outcome: 'refused', rail: 'a-person-answers-this-one' })
     })
 
     it('⛔ …and a permission CARD has no words to leak — the shape, which is NOT a second gate', async () => {
-      // ⚠️ **This test used to claim it was the other half of a pair, and it is not.** `396` wrote a
-      // mutation row widening `selectQuestionsRaised` to admit `permission_request` and the row
-      // SURVIVED: that event carries `kind`, `action` and `detail` and has neither `prompt` nor
-      // `questions`, so the widened query returns SQL `NULL`s and the reader skips a row it cannot
-      // read. ⛔ The `type` filter is `053`'s narrow read, not a gate — the row was removed and both
-      // docblocks were corrected.
-      //
-      // ⚑ **What this still measures is worth keeping**: a permission card LISTS, so the refusal
-      // stays reachable and `permissionShaped` stays informative, and it carries no words.
       const { pm, worker } = await aPmAndItsWorker()
       await host.send(worker, 'a long piece of work', asPm(pm))
       await cardOn(worker)
@@ -601,28 +578,13 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(store.questionsRaisedIn(worker).size).toBe(0)
     })
 
-    it('⚠️ a stranded question lists with its ending, and the line SPELLS OUT what that means', async () => {
-      // ⛔ **A word cannot carry `stranded`**: a reader told only that would as likely conclude its
-      // child had gone away, which is the wrong thing to do about a conversation it can ask again.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await childAsks(worker, workerHandle)
-      const next = buildHost(createSessionStore(db, tick))
-      await next.resumeSession(pm, window)
-      const tool = agentToolsFor(next, pm).tools.find((one) => one.name === 'list_questions')
-      const answered = await tool!.call({ state: 'all' })
-      const listed = (answered.structured ?? {}) as Record<string, unknown>
-      expect((listed.questions as Record<string, unknown>[])[0]?.state).toBe('stranded')
-      expect(answered.text).toContain('the app restarted while it was waiting')
-      expect(answered.text).toContain('nothing is waiting on you')
-    })
-
     it('⛔ a caller sees only its OWN family — the entitlement is the lookup, and it takes no argument', async () => {
       // ⚑ **Structural rather than checked** (`394`'s rule): `me` is minted by the toolset from the
       // session it was built for, and `list_questions` advertises no argument that names a
       // conversation — so there is no id a caller could spell to reach somebody else's family.
       const mine = await aPmAndItsWorker()
       const theirs = await aPmAndItsWorker()
-      const asked = await childAsks(theirs.worker, theirs.workerHandle)
+      const asked = await childAsks(theirs.worker)
       const rows = (await callOn(agentToolsFor(host, mine.pm), 'list_questions'))
         .questions as Record<string, unknown>[]
       expect(rows).toEqual([])
@@ -638,40 +600,6 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(Object.keys(definition?.input ?? {})).toEqual(['state', 'limit'])
     })
 
-    it('⚠️ a request id REPEATED across a resume reads the LIVE question’s words', async () => {
-      // ⛔ **`394` §5's finding, met at a second door.** A request id is unique per PROVIDER SESSION
-      // and a resumed conversation is a new one, so one ledger holds `ui_1` twice — and a reader
-      // keyed by id has to say which. ⚑ Ordinal order, last wins, which is the same rule
-      // `answerQuestion` takes: the live request is the only one anybody can answer.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const before = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
-      await host.closeAll()
-      host = buildHost()
-      await host.resumeSession(pm, window)
-      await host.resumeSession(worker, window)
-      const after = await childAsks(worker, latestHandle(), 'which region?', ['eu', 'us'])
-      // ⚑ **The premise, asserted rather than assumed**: they really do share an id.
-      expect(after.id).toBe(before.id)
-
-      // ⚑ Every question, the ended ones too: an ended duplicate is what this guards against.
-      const rows = (await callOn(agentToolsFor(host, pm), 'list_questions', { state: 'all' }))
-        .questions as Record<string, unknown>[]
-      // 🔴 **675 · ONE entry for the id, the live one** (`661` F2). ⛔ This listed
-      // `['abandoned', 'open']` until `675`, and the abandoned entry carried the LIVE question's words
-      // (the last row wins in `questionsRaisedIn`) — an entry no call can reach, since the answer
-      // door takes the last row for an id, wearing words that were never its own.
-      expect(rows.map((one) => one.state)).toEqual(['open'])
-      // 🔴 **The live row's words are the live question's**, which is what the caller acts on.
-      expect(String(rows[0]?.words)).toContain('which region?')
-      expect(String(rows[0]?.words)).not.toContain('which branch?')
-      expect(
-        await callOn(agentToolsFor(host, pm), 'answer_question', {
-          question: after.id,
-          answers: [{ part: 'q0', answer: ['eu'] }],
-        }),
-      ).toMatchObject({ outcome: 'ok' })
-    })
-
     it('⚑ a conversation nobody has asked anything gets a sentence, not an empty list to interpret', async () => {
       const { pm } = await aPmAndItsWorker()
       const tool = agentToolsFor(host, pm).tools.find((one) => one.name === 'list_questions')
@@ -684,16 +612,16 @@ describe('396 · nothing waits on somebody looking', () => {
   describe('after the app comes back', () => {
     it('the stranding survives a relaunch, because it is a ROW rather than a decision', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await childAsks(worker, workerHandle)
+      await nativeQuestion(worker, workerHandle)
       const next = buildHost(createSessionStore(db, tick))
       await next.resumeSession(pm, window)
-      const atTheStranding = next.questionsVisibleTo(pm)
+      const atTheStranding = store.routedRequestsOf(worker)
       expect(atTheStranding.map((one) => one.state)).toEqual(['stranded'])
 
       // Derived again from the ledger alone, by a third host.
       const third = buildHost(createSessionStore(db, tick))
       await third.resumeSession(pm, window)
-      expect(third.questionsVisibleTo(pm)).toEqual(atTheStranding)
+      expect(store.routedRequestsOf(worker)).toEqual(atTheStranding)
       // …and the fold agrees when it is handed the raw ledger, which is the replayed path.
       expect(deriveRoutedRequests(worker, store.events(worker)).map((one) => one.state)).toEqual([
         'stranded',
@@ -736,12 +664,13 @@ describe('396 · nothing waits on somebody looking', () => {
     const askedThenAnswered = async (): Promise<{
       pm: string
       worker: string
-      asked: { id: string; answered: Promise<UserInputResponse> }
+      asked: { id: string }
     }> => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker()
+      await host.setApprovalMode(worker, 'auto', THE_APP_ITSELF)
       await host.close(pm, window)
       claimed.delete(pm)
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await childAsks(worker)
       await host.resumeSession(pm, window)
       claimed.add(pm)
       const tools = agentToolsFor(host, pm)
@@ -750,9 +679,17 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(
         await callOn(tools, 'answer_question', {
           question: asked.id,
-          answers: [{ part: 'q0', answer: ['main'] }],
+          answers: [{ part: 'answer', answer: ['main'] }],
         }),
       ).toMatchObject({ outcome: 'ok' })
+      await waitFor(
+        () =>
+          quiet(worker) &&
+          ledger(worker).some(
+            (event) => event.type === 'user_turn' && event.text.includes('answer: main'),
+          ),
+        'the answer turn to reach the worker and finish',
+      )
       return { pm, worker, asked }
     }
   })

@@ -33,12 +33,6 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-/**
- * What a Close does that a reopen never undoes, on one host with a real Close and a real Reopen:
- * an agent-started conversation is handed back rather than ended, a question the conversation was
- * asking stays open and answerable, and a parent is told about stopped work once.
- */
-
 /** What a Close of a worker mid-turn tells its parent: the turn it interrupted. */
 const ITS_TURN_WAS_STOPPED = undrivenSentence('turn_interrupted')
 
@@ -731,7 +725,7 @@ describe('what a close does that a reopen never undoes', () => {
         () =>
           store
             .routedRequestsOf(worker)
-            .some((one) => one.requestId === raised.id && one.went.is === 'the-parent'),
+            .some((one) => one.requestId === raised.id && one.went.to === 'a-person'),
         'the provider question to reach the parent',
       )
       await itsStreamFails(worker)
@@ -739,11 +733,14 @@ describe('what a close does that a reopen never undoes', () => {
       const early = await answerTo(pm, raised.id)
       expect(early).toMatchObject({
         outcome: 'refused',
-        rail: 'the-conversation-that-asked-has-gone',
+        rail: 'no-question-by-that-name',
         permanence: 'permanent',
       })
       await host.resumeSession(worker, window)
-      expect((await answerTo(pm, raised.id)).rail).toBe('question-has-already-ended')
+      expect((await answerTo(pm, raised.id)).rail).toBe('no-question-by-that-name')
+      expect(store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.state).toBe(
+        'open',
+      )
     })
 
     it('`list_questions` lists a question whose asker was closed ONCE, and open — before and after the reopen', async () => {

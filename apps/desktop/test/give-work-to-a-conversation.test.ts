@@ -851,7 +851,8 @@ it('a Give receipt says held and carries its place in line and the task folder',
       folder: { use: 'grant', folder: world.folder },
       receipt: {
         recipient: {
-          address: given.structured.agent,
+          // A service's first task names its conversation.
+          address: given.structured.label,
           title: expect.any(String),
           state: { kind: 'queued', behind: 0 },
         },
@@ -862,7 +863,7 @@ it('a Give receipt says held and carries its place in line and the task folder',
     expect(world.store.workById(String(given.structured.piece))?.owner).toBe(given.structured.agent)
     const label = String(given.structured.label)
     expect(given.text.split('\n')[0]).toContain(
-      `Task ${label} held for browser-driver in a new conversation ${String(given.structured.agent)} · `,
+      `Task ${label} held for browser-driver in a new conversation ${label} · `,
     )
     expect(given.text.split('\n')[0]).toMatch(/Context: no current reading\.$/)
     expect(given.text.split('\n')[0]).not.toContain('Book the room')
@@ -877,7 +878,7 @@ it('a Give receipt says held and carries its place in line and the task folder',
       recipient: { state: { kind: 'queued', behind: 1 } },
     })
     expect(behind.text.split('\n')[0]).toContain(
-      `Task ${String(behind.structured.label)} held for browser-driver in the existing conversation ${String(given.structured.agent)} · `,
+      `Task ${String(behind.structured.label)} held for browser-driver in the existing conversation ${label} · `,
     )
     expect(behind.structured).not.toHaveProperty('folder')
   } finally {

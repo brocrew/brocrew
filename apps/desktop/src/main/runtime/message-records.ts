@@ -188,15 +188,14 @@ export interface TurnFacts {
    * 🔴 **The conversation these words actually came from, when BroBot is carrying for somebody
    * else** (413) — see {@link UserTurnEvent.relayedFrom}.
    *
-   * ⛔ **Only {@link RuntimeHost.routeRequest} passes it**, through `queueMessage`. Every other
-   * relayed turn is derived from `by`, because there the caller IS the conversation that wrote the
-   * words.
+   * ⛔ **Only an `ask_question` question's delivery passes it**, through `queueMessage`. Every
+   * other relayed turn is derived from `by`, because there the caller IS the conversation that
+   * wrote the words.
    *
    * ⚠️ **It produces no origin line for the provider today, and the reason is the CALLER rather
-   * than this field** (414). {@link RuntimeHost.routeRequest} is the only site that sets it and it
-   * passes {@link THE_APP_ITSELF}, which {@link RuntimeHost.originOf} answers `null` — so the
-   * turn is BroBot's own sentence about a child, and {@link questionText} already names that
-   * child inside it. ⛔ **A future producer that set this from an AGENT caller would get both**,
+   * than this field** (414): that delivery passes {@link THE_APP_ITSELF}, which
+   * {@link RuntimeHost.originOf} answers `null` — so the turn is BroBot's own sentence about the
+   * asker, and the question's words already name the asker inside it. ⛔ **A future producer that set this from an AGENT caller would get both**,
    * a frame naming the relayer and a sentence naming the subject, and that is not obviously
    * wrong — they are different facts. ⚑ Nothing in the code couples them, deliberately; see
    * {@link messageNamingItsSender}.

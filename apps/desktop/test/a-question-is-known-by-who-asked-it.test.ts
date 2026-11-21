@@ -33,41 +33,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **679 · a question is known by who asked it** — `675` F-b.
- *
- * ## ⛔ The defect, and why a one-child fixture could never see it
- *
- * ⚠️ **A provider's request id is SESSION-LOCAL** ([[a-provider-request-id-is-session-local]]).
- * Codex's is the app-server's JSON-RPC server-request id, numbered per CONNECTION — every
- * conversation has its own — and this suite's double mints `ui_N` per handle for the same reason.
- * ⛔ **So two children's questions CAN carry one id** — here, each child's first — ⚠️ and on Codex
- * the probe measured the numbering for `item/tool/call`, not for a question. The answer door and
- * the pass-up door found a question by that id ALONE, across every asker routed to the caller: the
- * door reached only the NEWER, and an answer meant for the older child went to the newer one.
- *
- * ⚑ **The key is (the conversation that asked, its id)** — the one `675` gave `list_questions`.
- * What a caller NAMES is still the id it was shown; the asker is derived from the questions routed to
- * it, and only when two of those askers share the id does it have to say which — by `asked_by`, the
- * field `list_questions` already shows it beside every id.
- *
- * ## ⚠️ Every section pairs the arm where the ids COLLIDE with one where they differ
- *
- * ⛔ **A fixture in which the ids never collide passes against the old key**, by construction —
- * `a-comparison-tested-where-both-sides-agree-measures-nothing`. ⚑ The control is the same two
- * children with the second one's counter moved on, so the only fact that changes is the id.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools.** The only double is the provider — and
- * {@link mint}, which makes the app's own `req_<uuid>` spell a provider's id in §4, the one arm the
- * app-held map's key can be measured on.
- */
-
-/**
- * ⛔ **§4's plant: the app's own question id, made to spell a provider's.** `newAskedQuestionId` is
- * `req_<uuid>`, so across ORIGINS a collision needs a provider free to mint `req_…` — which
- * `answerQuestion`'s own note names as the case its map lookup must survive. ⚑ Null everywhere else,
- * so every other test here mints exactly as the app does.
- */
 const mint = vi.hoisted(() => ({ next: null as (() => string) | null }))
 vi.mock('../src/main/db/ids', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/main/db/ids')>()
@@ -226,12 +191,6 @@ describe('679 · a question is known by who asked it', () => {
 
   const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
-  /**
-   * ⚑ **A PM in a window with TWO children, given work through the real door, older first.** ⛔ Each
-   * child has its own handle, so each one's first question is `ui_1` — the shape this file is about.
-   * ⚑ **D-016 · each brief is its child's first turn**, which in the PM's `ask` parks on that
-   * child's own first card — `turn_1_perm` on each handle.
-   */
   const aPmAndTwoChildren = async (): Promise<{ pm: string; older: Child; newer: Child }> => {
     const nth = ++families
     const pmProfile = `pm-${String(nth)}`
@@ -257,13 +216,7 @@ describe('679 · a question is known by who asked it', () => {
     return { pm, older, newer }
   }
 
-  /**
-   * ⚑ **Raise a question on a child exactly as its provider would**, and wait for the app to have
-   * routed it. ⚠️ The SAME options on every child, on purpose: a question whose answer the other
-   * child would refuse turns a misroute into a refusal, and the case worth measuring is the one where
-   * the wrong child silently takes it.
-   */
-  const childAsks = async (
+  const nativeQuestion = async (
     child: Child,
     prompt: string,
   ): Promise<{ id: string; answered: Promise<UserInputResponse> }> => {
@@ -278,12 +231,41 @@ describe('679 · a question is known by who asked it', () => {
     return raised
   }
 
+  const childAsks = async (
+    child: Child,
+    prompt: string,
+  ): Promise<{ id: string; asker: string }> => {
+    const ordinal = Number(Reflect.get(child.handle, 'idCounter')) + 1
+    Reflect.set(child.handle, 'idCounter', ordinal)
+    mint.next = () => `ui_${String(ordinal)}`
+    const asked = await callOn(child.id, 'ask_question', {
+      who_answers: 'the-parent',
+      question: prompt,
+      options: ['main', 'dev'],
+    })
+    mint.next = null
+    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+    return { id: asked.question as string, asker: child.id }
+  }
+
   /**
-   * ⛔ **The control's one fact: the second child's counter moved on**, so its first question is
-   * `ui_41` rather than `ui_1`. ⚠️ `idCounter` is the double's own private field — reached here by
-   * name rather than by a second `simulateUserInput` answered away, which would leave a closed `ui_1`
-   * routing on that child and put the collision straight back.
+   * The older child asks its parent on the piece its brief opened, with its id minted as `ui_1` so
+   * it spells the newer child's first provider id.
    */
+  const theOlderAsksAsUi1 = async (older: Child): Promise<void> => {
+    const task = store.piecesOwnedBy(older.id).find((one) => TASK_IS_OPEN[one.state])
+    if (task === undefined) throw new Error('the give never opened a piece')
+    mint.next = () => 'ui_1'
+    const asked = await callOn(older.id, 'ask_question', {
+      who_answers: 'the-parent',
+      piece: task.piece,
+      question: 'postgres or sqlite?',
+      options: ['postgres', 'sqlite'],
+    })
+    mint.next = null
+    expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok', question: 'ui_1' })
+  }
+
   const moveTheCounterOn = (child: Child): void => {
     expect(Reflect.get(child.handle, 'idCounter')).toBe(0)
     Reflect.set(child.handle, 'idCounter', 40)
@@ -297,7 +279,7 @@ describe('679 · a question is known by who asked it', () => {
   ): Promise<Record<string, unknown>> =>
     callOn(pm, 'answer_question', {
       question,
-      answers: [{ part: 'q0', answer: [chosen] }],
+      answers: [{ part: 'answer', answer: [chosen] }],
       ...extra,
     })
 
@@ -332,8 +314,8 @@ describe('679 · a question is known by who asked it', () => {
         /^name which one you mean: make the same call again with asked_by/,
       )
       // ⛔ **And nothing moved**: neither provider was answered and neither ledger took a decision.
-      expect(await settledYet(a.answered)).toBe(false)
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(a.asker, a.id)).toBeNull()
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
       expect([decisionsOn(older.id), decisionsOn(newer.id)]).toEqual([0, 0])
     })
 
@@ -347,15 +329,36 @@ describe('679 · a question is known by who asked it', () => {
       // `asked_by` set to each asker the refusal named, lands on that asker.
       const toOlder = await answer(pm, a.id, { asked_by: older.id })
       expect(toOlder, JSON.stringify(toOlder)).toMatchObject({ outcome: 'ok', agent: older.id })
-      await expect(a.answered).resolves.toMatchObject({ kind: 'answer', answers: { q0: ['main'] } })
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(a.asker, a.id)?.outcome).toBe('answered')
+      expect(
+        ledger(older.id).some(
+          (event) =>
+            (event.type === 'user_turn' || event.type === 'message_queued') &&
+            event.text.includes('answer: main'),
+        ),
+      ).toBe(true)
+      expect(
+        ledger(newer.id).some(
+          (event) =>
+            (event.type === 'user_turn' || event.type === 'message_queued') &&
+            event.text.includes('answer: main'),
+        ),
+      ).toBe(false)
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
       expect(store.routedRequestsOf(newer.id).find((one) => one.requestId === b.id)?.state).toBe(
         'open',
       )
 
       const toNewer = await answer(pm, b.id, { asked_by: newer.id }, 'dev')
       expect(toNewer, JSON.stringify(toNewer)).toMatchObject({ outcome: 'ok', agent: newer.id })
-      await expect(b.answered).resolves.toMatchObject({ kind: 'answer', answers: { q0: ['dev'] } })
+      expect(store.theDecisionOn(b.asker, b.id)?.outcome).toBe('answered')
+      expect(
+        ledger(newer.id).some(
+          (event) =>
+            (event.type === 'user_turn' || event.type === 'message_queued') &&
+            event.text.includes('answer: dev'),
+        ),
+      ).toBe(true)
     })
 
     it('🔴 the words a parent is HANDED name the asker beside the id — and doing exactly what they say lands on that child', async () => {
@@ -371,7 +374,10 @@ describe('679 · a question is known by who asked it', () => {
           : [],
       )
       expect(told).toHaveLength(1)
-      const quoted = /quoting (\S+) with asked_by (\S+)\./.exec(told[0] ?? '')
+      const quoted =
+        /asks you (\S+) in your conversation[^\n]+\nUse asked_by (\S+) with this question id\./.exec(
+          told[0] ?? '',
+        )
       // ⚑ **D-016 · commit 7 · R3 — `asked_by` quotes the asker's ADDRESS**: the label of the piece
       // it owns, which `answer_question` takes (R1), where it used to quote the id. ⚠️ The premise
       // that it IS a label, so what is followed below goes through the door's label reading.
@@ -380,8 +386,8 @@ describe('679 · a question is known by who asked it', () => {
       // ⛔ **`402` · the door the words name does not refuse the caller they were written for.**
       const done = await answer(pm, quoted?.[1] ?? '', { asked_by: quoted?.[2] })
       expect(done, JSON.stringify(done)).toMatchObject({ outcome: 'ok', agent: older.id })
-      await expect(a.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(a.asker, a.id)?.outcome).toBe('answered')
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
     })
 
     it('⛔ an `asked_by` that is not a name is refused as malformed — never quietly dropped back to the id alone', async () => {
@@ -407,10 +413,10 @@ describe('679 · a question is known by who asked it', () => {
       expect(b.id).not.toBe(a.id)
 
       expect(await answer(pm, a.id)).toMatchObject({ outcome: 'ok', agent: older.id })
-      await expect(a.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(a.asker, a.id)?.outcome).toBe('answered')
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
       expect(await answer(pm, b.id, {}, 'dev')).toMatchObject({ outcome: 'ok', agent: newer.id })
-      await expect(b.answered).resolves.toMatchObject({ answers: { q0: ['dev'] } })
+      expect(store.theDecisionOn(b.asker, b.id)?.outcome).toBe('answered')
     })
 
     it('🔴 an `asked_by` that raised nothing by a LIVE id is told so, truthfully — one answer for a sibling, a stranger and nobody', async () => {
@@ -470,7 +476,7 @@ describe('679 · a question is known by who asked it', () => {
         rail: 'more-than-one-question-has-that-id',
         detail: { askers: [older.id, newer.id] },
       })
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
     })
 
     it('⚑ two children’s PERMISSIONS under one id are a person’s either way — refused as that, never as shared', async () => {
@@ -558,28 +564,35 @@ describe('679 · a question is known by who asked it', () => {
       })
     })
 
-    it('⚑ one asker that asked twice under one id is NOT ambiguous — the last routing is the live one, as `396` §3 has it', async () => {
+    it('a repeated id from one asker is unambiguous and selects its latest question', async () => {
       const { pm, older } = await aPmAndTwoChildren()
-      const a = await childAsks(older, 'which branch for the API?')
-      host.claimSession(older.id, window)
-      await host.respondUserInput(
-        older.id,
-        a.id,
-        { kind: 'answer', answers: { q0: ['dev'] } },
-        window,
+      await waitFor(
+        () => older.handle.status() === 'waiting_permission',
+        'the older child’s brief to park',
       )
-      await expect(a.answered).resolves.toMatchObject({ answers: { q0: ['dev'] } })
-      // ⛔ **A resumed conversation is a NEW provider session**, whose ids start again — so ONE asker
-      // routes `ui_1` twice, the first answered and the second open. ⚠️ Not the same handle's counter
-      // moved back: the double refuses an id it already settled, as a real provider would.
-      await host.close(older.id, window)
-      await host.resumeSession(older.id, window)
-      const resumed: Child = { id: older.id, handle: latestHandle() }
-      const again = await childAsks(resumed, 'and which branch for the tests?')
+      host.claimSession(older.id, window)
+      const a = await childAsks(older, 'which branch for the API?')
+      expect(await answer(pm, a.id, { interrupt: false }, 'dev')).toMatchObject({ outcome: 'ok' })
+      expect(store.theDecisionOn(a.asker, a.id)?.outcome).toBe('answered')
+      mint.next = () => a.id
+      const repeated = await callOn(older.id, 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'and which branch for the tests?',
+        options: ['main', 'dev'],
+      })
+      mint.next = null
+      expect(repeated.outcome, JSON.stringify(repeated)).toBe('ok')
+      const again = { id: repeated.question as string, asker: older.id }
       expect(again.id).toBe(a.id)
+      expect(
+        store
+          .routedRequestsOf(older.id)
+          .filter((row) => row.requestId === a.id)
+          .map((row) => row.state),
+      ).toEqual(['answered', 'open'])
 
       expect(await answer(pm, a.id)).toMatchObject({ outcome: 'ok', agent: older.id })
-      await expect(again.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
+      expect(store.theDecisionOn(again.asker, again.id)?.outcome).toBe('answered')
     })
   })
 
@@ -625,7 +638,7 @@ describe('679 · a question is known by who asked it', () => {
         const settled = await host.respondUserInput(
           pm,
           apiCopy,
-          { kind: 'answer', answers: { q0: ['main'] } },
+          { kind: 'answer', answers: { answer: ['main'] } },
           window,
         )
         expect(settled).toMatchObject({ outcome: 'taken' })
@@ -644,20 +657,8 @@ describe('679 · a question is known by who asked it', () => {
     it('⚑ a question that outlives a stop keeps its asker AND its id across the reopen — the same key, so a sibling sharing the id still makes it ambiguous and naming it still lands', async () => {
       const { pm, older, newer } = await aPmAndTwoChildren()
       host.claimSession(older.id, window)
-      // ⚑ **D-016** — the work is the older child's brief, and its piece is still open.
-      const task = store.piecesOwnedBy(older.id).find((one) => TASK_IS_OPEN[one.state])
-      if (task === undefined) throw new Error('the give never opened a piece')
-      // ⚑ **The app's own question**, whose id this test makes spell the newer child's provider id —
-      // so the reopen's second routing and the sibling's question share one id and differ by asker.
-      mint.next = () => 'ui_1'
-      const asked = await callOn(older.id, 'ask_question', {
-        who_answers: 'the-parent',
-        piece: task.piece,
-        question: 'postgres or sqlite?',
-        options: ['postgres', 'sqlite'],
-      })
-      mint.next = null
-      expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok', question: 'ui_1' })
+      // ⚑ The app's own question shares its id with the sibling's below and differs by asker.
+      await theOlderAsksAsUi1(older)
       const b = await childAsks(newer, 'which branch for the docs?')
       expect(b.id).toBe('ui_1')
 
@@ -680,7 +681,7 @@ describe('679 · a question is known by who asked it', () => {
         answers: [{ part: 'answer', answer: ['sqlite'] }],
       })
       expect(done, JSON.stringify(done)).toMatchObject({ outcome: 'ok', agent: older.id })
-      expect(await settledYet(b.answered)).toBe(false)
+      expect(store.theDecisionOn(b.asker, b.id)).toBeNull()
     })
   })
 
@@ -689,12 +690,6 @@ describe('679 · a question is known by who asked it', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the words this app holds are known by who asked them too', () => {
-    /**
-     * ⚑ **The older child asks its parent through the APP (`ask_question`), with its id planted to
-     * spell `ui_1`; the newer child's PROVIDER asks `ui_1` too.** ⛔ Across origins this needs a
-     * provider free to mint the app's spelling — the one case the map's key has to survive, and the
-     * only arm on which it can be measured, since `req_<uuid>` never repeats on its own.
-     */
     const anAppQuestionAndAProviderQuestionOneId = async (): Promise<{
       pm: string
       older: Child
@@ -704,24 +699,13 @@ describe('679 · a question is known by who asked it', () => {
       const { pm, older, newer } = await aPmAndTwoChildren()
       host.claimSession(older.id, window)
       host.claimSession(newer.id, window)
-      // ⚑ **D-016** — the work is the older child's brief, and its piece is still open.
-      const task = store.piecesOwnedBy(older.id).find((one) => TASK_IS_OPEN[one.state])
-      if (task === undefined) throw new Error('the give never opened a piece')
-      mint.next = () => 'ui_1'
-      const asked = await callOn(older.id, 'ask_question', {
-        who_answers: 'the-parent',
-        piece: task.piece,
-        question: 'postgres or sqlite?',
-        options: ['postgres', 'sqlite'],
-      })
-      mint.next = null
-      expect(asked, JSON.stringify(asked)).toMatchObject({ outcome: 'ok', question: 'ui_1' })
-      const providers = await childAsks(newer, 'which branch for the docs?')
+      await theOlderAsksAsUi1(older)
+      const providers = await nativeQuestion(newer, 'which branch for the docs?')
       expect(providers.id).toBe('ui_1')
       return { pm, older, newer, providers }
     }
 
-    it('🔴 the PROVIDER’s question is answered through its provider, never as the app’s held words', async () => {
+    it('a native card is refused to the agent and the person answers through its provider', async () => {
       const { pm, older, newer, providers } = await anAppQuestionAndAProviderQuestionOneId()
       // ⚠️ **Every part of BOTH questions answered** (this dispatch's review), so a door that took
       // the card for the sibling's held words would take it SILENTLY — `ok`, and the provider never
@@ -734,7 +718,19 @@ describe('679 · a question is known by who asked it', () => {
           { part: 'answer', answer: ['sqlite'] },
         ],
       })
-      expect(done, JSON.stringify(done)).toMatchObject({ outcome: 'ok', agent: newer.id })
+      expect(done, JSON.stringify(done)).toMatchObject({
+        outcome: 'refused',
+        rail: 'that-conversation-did-not-ask-that',
+      })
+      expect(await settledYet(providers.answered)).toBe(false)
+      expect(
+        await host.respondUserInput(
+          newer.id,
+          providers.id,
+          { kind: 'answer', answers: { q0: ['main'] } },
+          window,
+        ),
+      ).toMatchObject({ outcome: 'taken' })
       // ⛔ **Settled-yet first**, so the silent take fails here rather than hanging.
       expect(await settledYet(providers.answered)).toBe(true)
       await expect(providers.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
@@ -820,13 +816,9 @@ describe('679 · a question is known by who asked it', () => {
           .filter((one) => one.requestId === 'ui_1')
           .map((one) => one.state),
       ).toEqual(['open'])
-      // ⛔ **`has-gone`, and its *never* is true**: the provider that raised the card died with its
-      // stream. ⚠️ Read by the id alone, the held-words check found the SIBLING's app question and
-      // said `has-ended` — *"if it is reopened while this app runs, you can answer it then"* — false
-      // of a card no reopen will ever raise again (this dispatch's review).
       expect(await answer(pm, 'ui_1', { asked_by: newer.id })).toMatchObject({
         outcome: 'refused',
-        rail: 'the-conversation-that-asked-has-gone',
+        rail: 'that-conversation-did-not-ask-that',
       })
     })
   })

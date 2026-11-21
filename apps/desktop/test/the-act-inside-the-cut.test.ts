@@ -879,8 +879,6 @@ const NO_ACT: Readonly<Record<string, string>> = {
   // These endings say why no further answer is owed; none offers a repeatable act.
   'QUESTION_RAILS|question-has-already-ended':
     'the question ended, so no further answer is owed or repeatable',
-  'QUESTION_RAILS|the-conversation-that-asked-has-gone':
-    'the asking conversation is gone, so no further answer is owed or repeatable',
   'QUESTION_RAILS|this-app-does-not-hold-those-words':
     'the original words are gone, so the same id cannot be passed up',
 }

@@ -1034,7 +1034,6 @@ describe('437 · a question a worker can ask its parent', () => {
         'person-addressed-request',
         'question-has-already-ended',
         'that-answer-cannot-be-sent',
-        'the-conversation-that-asked-has-gone',
         // ⛔ **661's `the-conversation-that-asked-has-ended` is gone** (D-017 · R4): a question this
         // app asked outlives a stop and its answer starts the asker, so nothing is ever "ended, but a
         // reopen brings it back" — and there is no bring-back left to name.

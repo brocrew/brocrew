@@ -1,5 +1,9 @@
 import { afterEach, expect, it } from 'vitest'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
+import {
+  canonicalAddressOf,
+  resolveConversationAddress,
+} from '../src/main/runtime/conversation-address'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
@@ -11,7 +15,7 @@ afterEach(async () => {
   await world?.cleanUp()
 })
 
-it('keeps its address and title across reads with work from two callers', async () => {
+it('is addressed by its first task, keeps that address and its title across work from two callers', async () => {
   world = aServiceWorld()
   world.anAgent('browser-driver')
   for (const caller of ['caller', 'other-caller']) world.anAgent(caller, 'nothing kept')
@@ -31,14 +35,22 @@ it('keeps its address and title across reads with work from two callers', async 
   const one = await callOn(firstTools, 'give_work', give('First caller job'))
   const two = await callOn(secondTools, 'give_work', give('Second caller job'))
   const service = one.agent as string
-  const recipient = { id: service, address: service, title: serviceName }
-  const line = `conversation ${service} · ${serviceName}`
+  // The first task recorded in the service's conversation names it, whichever caller gave it; a
+  // later task from another caller leaves that address as it is.
+  const address = one.label as string
+  const recipient = { id: service, address, title: serviceName }
+  const line = `conversation ${address} · ${serviceName}`
   expect(one).toMatchObject({ outcome: 'ok', receipt: { recipient } })
   expect(two).toMatchObject({ outcome: 'ok', agent: service, receipt: { recipient } })
   expect(world.store.firstTaskOf(service)?.label).toBe(one.label)
   expect(world.store.defaultConversationTitle(service)).toBe('First caller job')
-  expect(host.addressOf(service)).toBe(service)
+  expect(host.addressOf(service)).toBe(address)
   expect(host.nameByItsWork(service)).toBe(line)
+  // Its own id and each of its tasks' labels still reach it.
+  const reads = { workByLabel: (label: string) => world!.store.workByLabel(label) }
+  expect(resolveConversationAddress(service, reads)).toBe(service)
+  expect(resolveConversationAddress(one.label as string, reads)).toBe(service)
+  expect(resolveConversationAddress(two.label as string, reads)).toBe(service)
   expect(
     await executeRuntimeCommand(host, world.window, {
       kind: 'readConversationIdentity',
@@ -46,7 +58,7 @@ it('keeps its address and title across reads with work from two callers', async 
     }),
   ).toEqual({
     conversation: service,
-    address: service,
+    address,
     title: serviceName,
     author: null,
     profileFallback: true,
@@ -85,7 +97,7 @@ it('keeps its address and title across reads with work from two callers', async 
     expect(search.read(first, { profile: 'browser-driver' })).toMatchObject({
       ok: true,
       page: {
-        hits: [{ conversation: service, address: service, title: serviceName, line }],
+        hits: [{ conversation: service, address, title: serviceName, line }],
       },
     })
     expect(search.read(first, { profile: 'normal-reader' })).toMatchObject({
@@ -110,4 +122,11 @@ it('keeps its address and title across reads with work from two callers', async 
     ok: true,
     hits: [{ conversation: service, line }],
   })
+})
+
+it('is reached by its own id until a first task is recorded in it', () => {
+  const none = { firstTaskOf: () => null }
+  const first = { firstTaskOf: () => ({ label: 'W1.4' }) }
+  expect(canonicalAddressOf(none, 'sess_service')).toBe('sess_service')
+  expect(canonicalAddressOf(first, 'sess_service')).toBe('W1.4')
 })

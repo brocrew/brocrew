@@ -26,49 +26,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
-/**
- * 🔴 **591 · a question does not expire on a clock** — HO-082 §1–§4.1.
- *
- * ## ⚑ The property
- *
- * > ⛔ **A question outlives the turn that asked it. An answer given hours later reaches the agent.
- * > What ends a question is an event — answered, or its work withdrawn or ended — and never
- * > elapsed time.**
- *
- * ## 🔴 What a person hit, because this suite exists for a person and not for a rule
- *
- * A question must remain answerable after it reaches the person. A five-minute `ASK_BOUND_MS`
- * with a thirty-second escalation could leave an `open` ledger row after `raiseAQuestion`
- * stopped waiting without writing an ending; the queue would then count it indefinitely, with
- * only “End conversation” clearing it.
- *
- * ## ⛔ The repair is a DELETION and a WRITE, and they are the same repair from two sides
- *
- *  - 🔴 **The deletion**: the in-memory `waiting` flag was a SECOND ending vocabulary. The queue
- *    folds {@link REQUEST_IS_OPEN}; both answer doors refused on the flag; after the bound the two
- *    disagreed for ever. ⚑ Now the ledger is the only thing that ends a question, which is
- *    `admitAnswer`'s own note — *a rail with its own idea of which states are endings would be free
- *    to disagree with the derivation it guards* — applied to the two places it was not.
- *  - 🔴 **The write**: `withdraw_task` wrote `task_withdrawn` and nothing about the questions raised
- *    under it. ⛔ HO-082 §4.1 — *an explicit ending rather than a render-time filter, so the queue
- *    reads a fact instead of inferring one.* ⚠️ **It became mandatory rather than merely right the
- *    moment a question outlived its turn**: without it, §1's repair would have made a question
- *    answerable for ever about work that no longer exists.
- *
- * ## ⚠️ What this suite does NOT claim
- *
- * ⛔ **It does not measure a clock.** Every bound here is a dependency read at construction, and
- * `§4` moves the wall clock by hand rather than sleeping — standing rule 22: *a bound in
- * milliseconds is a claim about the machine unless the test controls the machine.*
- *
- * ⛔ **And it does not claim `437`'s hold was wrong.** HO-082 §3.1 said that objection was now
- * answerable; `§7` measured the code and found it was NOT, so the hold stayed and only what
- * happens at its end moved.
- *
- * ⚑ **603 · the second half of that sentence has since been BUILT**, and `§7`'s census is re-aimed
- * rather than left standing (see it). ⛔ The hold is still here — removing it is B1, `HO-084` §4,
- * held behind `HO-085` §4 — so nothing this suite measures moved.
- */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -424,7 +381,7 @@ describe('591 · a question does not expire on a clock', () => {
       expect(code).not.toContain('aTurnIsWaiting')
       const agentAnswer = bodyOf(code, 'async answerQuestion(').replace(/\s+/g, '')
       expect(agentAnswer).toContain(
-        'consttold=this.deliverAnswer(held,request.requestId,speaking,said,null,null,stopAs,files.files,)',
+        'consttold=this.deliverAnswer(words,request.requestId,speaking,said,null,null,stopAs,files.files,)',
       )
       expect(bodyOf(code, 'async respondUserInput(')).toContain(
         'return await this.aPersonAnswersAQuestionThisAppAsked(',

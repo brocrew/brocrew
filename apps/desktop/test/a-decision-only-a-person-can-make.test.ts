@@ -34,47 +34,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **403 · the queue that cannot see a permission** — HO-007 criterion 11's other half, from
- * `402` F1 and HO-018 §5 item 3.
- *
- * ⚑ The PO's words, quoted in the brief that asked for this:
- *
- * > ⛔ **"A chain that stops before the person is not a chain — it is the feature not existing,
- * > disclosed as a backend."**
- *
- * ## ⛔ Three facts that only bite together, and a live run put them together
- *
- * 1. **Every spawned child is `ask` BY RAIL** — `spawnRequestSchema` defaults the mode to `ask`,
- *    its enum admits only `ask` and `auto`, and `admitSpawn` refuses `auto` by the named rail
- *    `spawn-must-prompt` — so the first consequential tool call an agent-created conversation
- *    makes parks on a permission card. ⚠️ **`admitSpawn`, not `assertMaySpawn`**: that name is in
- *    `402` F1 and in this dispatch's brief, and no such declaration exists in this repo.
- * 2. **Only a person may answer it**: the window that holds the conversation, or, while no window
- *    holds it, a person from the queue. A spawned child is reserved under no owner, and
- *    `releaseSession` hands a claimed one back to nobody.
- * 3. ⛔ **`questionsForAPerson` is structurally unable to list one.** It starts from
- *    `questionsAPersonMustAnswer`, and `escalationsDue` never returns a routing with a `because` — so a
- *    permission-shaped request has `escalatedAt === null` for ever.
- *
- * 🔴 **Measured on both of `402`'s final live runs: three permissions needed a person on the
- * worker alone, and `questionsForAPerson()` listed 0 of them.** So a child frozen on an answer
- * only a person can give was in NONE of Home's populations.
- *
- * ## ⛔ The fix is a SECOND reader, and never a widened first one
- *
- * ⚠️ **Knowledge escalates; authority does not.** A question may travel — worker to PM to a
- * person. A request refused entry to the channel may only ever reach a person, and criterion 10's
- * negative rides on `questionsForAPerson` being unable to return one. ⛔ **Widening a predicate
- * widens every question the field answers**, so §2 measures the two readers where their readings
- * DIVERGE rather than where they agree.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools, real filesystem.** The only double is
- * the provider, and every row here is planted the way `402` measured it: through `give_work` (D-016:
- * it took `spawn_agent`'s place), on a conversation with no surface, by a turn that really parked on
- * a card.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -599,9 +558,8 @@ describe('403 · a decision only a person can make', () => {
         forwarder: pm,
         to: 'a-person',
       })
-      // ⚑ **D-017 · R19 — and the PM's own card is a person's decision too.** The routed question
-      // opened a turn in the PM, which the double parks on a card, and the PM has no parent: its
-      // card is routed to a person, so the strict reader lists it beside the worker's.
+      await host.send(pm, 'review the waiting questions', window)
+      // The explicit PM turn also parks on a person's decision, independent of the worker's question.
       await waitFor(
         () =>
           store
@@ -613,7 +571,10 @@ describe('403 · a decision only a person can make', () => {
 
       // ⛔ **Tested where the two readings give DIFFERENT answers** (standing rule 3). Every row is
       // open, all are on one conversation family, and neither reader returns the other's.
-      expect(keysIn(host.questionsForAPerson().rows)).toEqual([`${pm}:${passed}`])
+      expect(keysIn(host.questionsForAPerson().rows)).toEqual([
+        `${worker}:${question.id}`,
+        `${pm}:${passed}`,
+      ])
       expect(keysIn(host.decisionsForAPerson().rows)).toEqual([
         `${worker}:${card}`,
         `${pm}:${String(pmCard)}`,
@@ -886,9 +847,13 @@ describe('403 · a decision only a person can make', () => {
 
   describe('§5 · what the PARENT is told, and it is not that it may answer', () => {
     it('🔴 `list_questions` no longer counts a permission as waiting on the caller', async () => {
-      const { worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { worker, pmTools } = await aPmAndItsWorker()
       await aChildParksOnAPermission(worker)
-      await raiseRegionQuestion(workerHandle, () => ledger(worker))
+      await callOn(agentToolsFor(host, worker), 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which region?',
+        options: ['eu', 'us'],
+      })
 
       // ⛔ **Two open rows, and exactly one of them is this caller's.** Until `403` the line read
       // *"2 waiting on you"* — about a row `answer_question` refuses it by name.
@@ -903,8 +868,12 @@ describe('403 · a decision only a person can make', () => {
     it('⚑ the paired positive · with nothing permission-shaped the sentence is unchanged', async () => {
       // ⚑ D-016 · an `auto` PM, so its worker runs its brief with no card: nothing is
       // permission-shaped.
-      const { worker, pmTools, workerHandle } = await aPmAndItsWorker('auto')
-      await raiseRegionQuestion(workerHandle, () => ledger(worker))
+      const { worker, pmTools } = await aPmAndItsWorker('auto')
+      await callOn(agentToolsFor(host, worker), 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which region?',
+        options: ['eu', 'us'],
+      })
       const line = await said(pmTools, 'list_questions')
       expect(line).toContain('1 waiting on you:')
       expect(line).not.toContain('waiting on a person')

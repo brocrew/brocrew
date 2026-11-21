@@ -16,7 +16,6 @@ import type {
   ResumeOptions,
   SessionRef,
   StartOptions,
-  UserInputResponse,
 } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS, CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -46,6 +45,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { nativeQuestionOn } from './helpers/native-question'
 
 /**
  * 🔴 **394 · a question finds a person, and a permission never travels** — Slice 4 S4, HO-007
@@ -261,33 +261,40 @@ describe('394 · a question finds a person, and a permission never travels', () 
     return { pm, worker: given.agent as string, pmTools, workerHandle: latestHandle() }
   }
 
-  /**
-   * ⚑ **Raise a question on the child, exactly as its provider would**, and wait for the app to have
-   * decided where it goes.
-   */
+  const nativeQuestion = nativeQuestionOn(ledger)
+
   const childAsks = async (
     child: string,
-    handle: FakeSessionHandle,
     prompt = 'which branch?',
     options: readonly string[] = ['main', 'dev'],
-    extra: { secret?: boolean } = {},
-  ): Promise<{ id: string; answered: Promise<UserInputResponse> }> => {
-    const raised = handle.simulateUserInput(prompt, options, false, extra)
-    // ⚑ **Two waits, and the first is a paired positive.** Without it a routing that never happened
-    // and a request that never reached the ledger would fail identically, and only one of those is
-    // a defect in the thing under test.
-    await waitFor(
-      () => ledger(child).some((event) => event.type === 'user_input_request'),
-      `the request ${raised.id} to reach ${child}'s ledger`,
+  ): Promise<{ id: string }> => {
+    const asked = await callOn(toolsOf(child), 'ask_question', {
+      who_answers: 'the-parent',
+      question: prompt,
+      options,
+    })
+    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+    return { id: asked.question as string }
+  }
+
+  /** A busy parent whose mailbox holds a person's words and then its child's question. */
+  const aParentHoldingAPersonsWordsAndAQuestion = async () => {
+    const { pm, worker } = await aPmAndItsWorker()
+    await host.send(pm, 'think about it', window)
+    await cardOn(pm)
+    await host.queueMessage(pm, 'a person’s words, held', window)
+    const asked = await childAsks(worker)
+    await waitFor(() => stillHeld(entries(pm)).length === 2, 'two slots held')
+    return { pm, asked }
+  }
+
+  const nextPersonAnswer = async (worker: string, question: string, choice: string) => {
+    return host.respondUserInput(
+      worker,
+      question,
+      { kind: 'answer', answers: { q0: [choice] } },
+      window,
     )
-    await waitFor(
-      () =>
-        ledger(child).some(
-          (event) => event.type === 'request_routed' && event.requestId === raised.id,
-        ),
-      `the routing of ${raised.id}`,
-    )
-    return raised
   }
 
   const routingOf = (child: string, requestId: string) => {
@@ -316,7 +323,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **D-016 · the turn is opened by the give's BRIEF** — the child's first turn, parked on its
       // own card. ⚑ The mailbox is the subject here and it is untouched: what this caller sends
       // next is held in it, one message behind the other.
-      const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker, pmTools } = await aPmAndItsWorker()
       await cardOn(worker)
 
       // ⚠️ The worker is busy on its own card, so what this caller sends is held.
@@ -353,7 +360,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       await host.close(child, window)
       void childHandle
 
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await childAsks(worker)
       expect(routingOf(worker, asked.id)).toMatchObject({ to: 'the-parent', parent: pm })
       // ⚠️ **The PM is idle here, so the question goes STRAIGHT OUT rather than waiting** — which is
       // `queueMessage`'s own answer to *"what if the target is not busy"*, unchanged and reused. ⛔
@@ -371,15 +378,15 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // unanswered, and make it a property somebody can read.*** ⛔ The answer is that it takes the
       // next slot: the mailbox is a queue, and `mailboxOf` derives that order from the ledger so it
       // is readable rather than assumed.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker()
       // Make the PARENT busy, so nothing flushes while the mailbox fills.
       await host.send(pm, 'think about it', window)
       await cardOn(pm)
       const queued = await host.queueMessage(pm, 'a person’s words, held', window)
       expect(queued.outcome).toBe('queued')
 
-      const first = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
-      const second = await childAsks(worker, workerHandle, 'which region?', ['eu', 'us'])
+      const first = await childAsks(worker, 'which branch?', ['main', 'dev'])
+      const second = await childAsks(worker, 'which region?', ['eu', 'us'])
       await waitFor(
         () => stillHeld(entries(pm)).filter((one) => one.kind === 'question').length === 2,
         'both questions to reach the parent’s mailbox',
@@ -434,12 +441,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⚑ **D-017 · R3 — a Close is a STOP, and a stop ends nothing**: what the mailbox held is
       // handed on to the next start, which the stop makes at once, and sent there in order. ⚠️ So
       // the ending every slot gets is `sent`, and the hazard is a slot that never gets one.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await host.send(pm, 'think about it', window)
-      await cardOn(pm)
-      await host.queueMessage(pm, 'a person’s words, held', window)
-      const asked = await childAsks(worker, workerHandle)
-      await waitFor(() => stillHeld(entries(pm)).length === 2, 'two slots held')
+      const { pm, asked } = await aParentHoldingAPersonsWordsAndAQuestion()
       const cardsBefore = ledger(pm).filter((event) => event.type === 'permission_request').length
 
       await host.close(pm, window)
@@ -495,12 +497,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // holding it — so the difference has to be WRITTEN by the launch that finds it, and
       // `SessionStore.settleStrandedMessages` already selected every unended message per session
       // rather than one. ⚠️ **This is the assertion that says so**: it was never exercised with two.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await host.send(pm, 'think about it', window)
-      await cardOn(pm)
-      await host.queueMessage(pm, 'a person’s words, held', window)
-      await childAsks(worker, workerHandle)
-      await waitFor(() => stillHeld(entries(pm)).length === 2, 'two slots held')
+      const { pm } = await aParentHoldingAPersonsWordsAndAQuestion()
 
       // ⛔ **A crash, which is a host that never runs its finalizer** — the store is reopened
       // underneath it, exactly as `354`'s own §3 does.
@@ -522,12 +519,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
     })
 
     it('⚑ the kinds are a closed vocabulary, and the ledger records the kind on each', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      await host.send(pm, 'think about it', window)
-      await cardOn(pm)
-      await host.queueMessage(pm, 'a person’s words, held', window)
-      await childAsks(worker, workerHandle)
-      await waitFor(() => stillHeld(entries(pm)).length === 2, 'two slots held')
+      const { pm } = await aParentHoldingAPersonsWordsAndAQuestion()
       // ⛔ **Written even for `work`** — so `mailboxOf` reads what a live host said rather than
       // inferring it from a gap that also means *a row written before `394`*.
       const queuedRows = ledger(pm).filter((event) => event.type === 'message_queued')
@@ -549,46 +541,36 @@ describe('394 · a question finds a person, and a permission never travels', () 
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · where a request goes', () => {
-    it('🔴 criterion 9 · a child’s question reaches its parent, and the parent can answer it', async () => {
+    it('a provider plain question stays with the person, and no agent answers it', async () => {
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
-
-      // ⛔ **Rendered in BOTH transcripts** — criterion 9's own wording. The child's ledger holds the
-      // card it raised; the parent's holds the words, as an ordinary turn, because a routed question
-      // reaches it through `queueMessage` like everything else.
-      expect(ledger(worker).some((event) => event.type === 'user_input_request')).toBe(true)
-      const words = ledger(pm).find(
-        (event) => event.type === 'user_turn' && event.text.includes(asked.id),
+      const asked = await nativeQuestion(worker, workerHandle)
+      const route = routingOf(worker, asked.id)
+      expect(route).toMatchObject({ to: 'a-person' })
+      expect(route).not.toHaveProperty('parent')
+      expect(route).not.toHaveProperty('because')
+      expect(
+        ledger(pm).some((event) => event.type === 'user_turn' && event.text.includes(asked.id)),
+      ).toBe(false)
+      expect(
+        await answer(pm, { question: asked.id, answers: [{ part: 'q0', answer: ['main'] }] }),
+      ).toMatchObject({ outcome: 'refused', rail: 'no-question-by-that-name' })
+      expect(store.routedRequestsOf(worker).find((one) => one.requestId === asked.id)?.state).toBe(
+        'open',
       )
-      expect(words, 'the parent’s transcript holds the question').toBeDefined()
-      // ⚑ **The options are listed verbatim**, because both providers validate an answer against
-      // the labels the model wrote — a parent that cannot see them exactly cannot answer at all.
-      expect(words?.type === 'user_turn' && words.text).toContain('main')
-      expect(words?.type === 'user_turn' && words.text).toContain('dev')
-      // ⚑ **And it names the child that asked** — by the piece it owns, as every sentence names
-      // another conversation (D-016 · commit 7 · R3), where it used to print the id.
-      expect(words?.type === 'user_turn' && words.text).toContain(
-        'Ada (the owner of W2.1 · the work this dispatch is about) is waiting on an answer',
+      host.claimSession(worker, window)
+      const done = await host.respondUserInput(
+        worker,
+        asked.id,
+        { kind: 'answer', answers: { q0: ['main'] } },
+        window,
       )
-
-      // 🔴 **And the parent answers it, and the child goes on.** `answered` is the promise the fake's
-      // own provider side is blocked on — so this is the child continuing, not a row being written.
-      const done = await answer(pm, {
-        question: asked.id,
-        answers: [{ part: 'q0', answer: ['main'] }],
-      })
-      expect(done, JSON.stringify(done)).toMatchObject({ outcome: 'ok', agent: worker })
+      expect(done.outcome).toBe('taken')
       await expect(asked.answered).resolves.toMatchObject({
         kind: 'answer',
         answers: { q0: ['main'] },
       })
-      // ⛔ **One ending, written by the same row a person's answer writes**, so the fold that closes
-      // a routed request needs no second ending to learn.
       const request = store.routedRequestsOf(worker).find((one) => one.requestId === asked.id)
-      expect(request).toMatchObject({
-        state: 'answered',
-        went: { is: 'the-parent', to: 'the-parent' },
-      })
+      expect(request).toMatchObject({ state: 'answered', parent: null, went: { to: 'a-person' } })
       expect(REQUEST_IS_OPEN[request?.state ?? 'open']).toBe(false)
     })
 
@@ -662,8 +644,8 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // be missing from exactly the conversations it is about.
       const { worker, workerHandle } = await aPmAndItsWorker()
       // ⚠️ A spawned child has no window of its own; this is that state, said out loud.
-      const asked = await childAsks(worker, workerHandle)
-      expect(routingOf(worker, asked.id)).toMatchObject({ to: 'the-parent' })
+      const asked = await nativeQuestion(worker, workerHandle)
+      expect(routingOf(worker, asked.id)).toMatchObject({ to: 'a-person' })
     })
   })
 
@@ -673,12 +655,12 @@ describe('394 · a question finds a person, and a permission never travels', () 
 
   describe('§3 · the rails at the answer door', () => {
     it('🔴 an id nothing routed to you is refused — and the same call with a real one lands', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const { pm, worker } = await aPmAndItsWorker()
+      const asked = await childAsks(worker)
 
       const refused = await answer(pm, {
         question: 'ui_nobody_elses',
-        answers: [{ part: 'q0', answer: ['main'] }],
+        answers: [{ part: 'answer', answer: ['main'] }],
       })
       // 🔴 **`permanent` since `424`** (HO-023 §2.1, `422` row 10). ⛔ The old word said a guessed
       // id would eventually land: request handles are minted by a provider for the request it
@@ -691,7 +673,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       })
       // ⚑ **ONE FACT OVER**: the same caller, the same shape of call, a real id — allowed.
       expect(
-        await answer(pm, { question: asked.id, answers: [{ part: 'q0', answer: ['main'] }] }),
+        await answer(pm, { question: asked.id, answers: [{ part: 'answer', answer: ['main'] }] }),
       ).toMatchObject({ outcome: 'ok' })
     })
 
@@ -701,18 +683,18 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // which is what stops a caller walking ids to learn which conversations are waiting on what.
       const mine = await aPmAndItsWorker()
       const theirs = await aPmAndItsWorker()
-      const asked = await childAsks(theirs.worker, theirs.workerHandle)
+      const asked = await childAsks(theirs.worker)
 
       const refused = await answer(mine.pm, {
         question: asked.id,
-        answers: [{ part: 'q0', answer: ['main'] }],
+        answers: [{ part: 'answer', answer: ['main'] }],
       })
       expect(refused).toMatchObject({ outcome: 'refused', rail: 'no-question-by-that-name' })
       // ⚠️ **And the sentence is the SAME one a nonexistent id gets** — asserted, because two
       // sentences would be the enumerator this rail exists to prevent.
       const nowhere = await answer(mine.pm, {
         question: 'ui_nothing',
-        answers: [{ part: 'q0', answer: ['x'] }],
+        answers: [{ part: 'answer', answer: ['x'] }],
       })
       expect(refused.reason).toBe(nowhere.reason)
       // ⛔ **The paired positive**: the family it BELONGS to can answer it, so what was measured is
@@ -720,7 +702,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       expect(
         await answer(theirs.pm, {
           question: asked.id,
-          answers: [{ part: 'q0', answer: ['main'] }],
+          answers: [{ part: 'answer', answer: ['main'] }],
         }),
       ).toMatchObject({ outcome: 'ok' })
     })
@@ -729,14 +711,14 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // ⛔ **The rail this whole dispatch is shaped around, and it is REACHABLE.** The scope contains
       // the permission on purpose: had the routing only recorded questions, this call would meet
       // *"there is nothing here"* — which is false, and is the filter `394` §2 forbids.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker()
       // ⚑ **D-016** — the card the brief's own turn parks on.
       const card = await cardOn(worker)
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await childAsks(worker)
 
       const refused = await answer(pm, {
         question: card,
-        answers: [{ part: 'q0', answer: ['allow'] }],
+        answers: [{ part: 'answer', answer: ['allow'] }],
       })
       expect(refused).toMatchObject({
         outcome: 'refused',
@@ -749,7 +731,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // child is answered. ⛔ Without this the refusal above would also pass against a door that
       // refused everything.
       expect(
-        await answer(pm, { question: asked.id, answers: [{ part: 'q0', answer: ['main'] }] }),
+        await answer(pm, { question: asked.id, answers: [{ part: 'answer', answer: ['main'] }] }),
       ).toMatchObject({ outcome: 'ok' })
       // ⚠️ **And the permission is STILL a person's to answer** — nothing was consumed by the
       // refusal, which is what makes it a refusal rather than a decision.
@@ -760,21 +742,21 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // `question-has-already-ended` — a sentence about a card this caller may not touch, which is
       // `340`'s finding. ⛔ Asked in the right order it is still the permission rail, forever.
       expect(
-        await answer(pm, { question: card, answers: [{ part: 'q0', answer: ['allow'] }] }),
+        await answer(pm, { question: card, answers: [{ part: 'answer', answer: ['allow'] }] }),
       ).toMatchObject({ rail: 'a-person-answers-this-one' })
     })
 
     it('⛔ a question already answered names the ENDING rather than saying the id was wrong', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const first = await childAsks(worker, workerHandle)
-      const second = await childAsks(worker, workerHandle, 'which region?', ['eu', 'us'])
+      const { pm, worker } = await aPmAndItsWorker()
+      const first = await childAsks(worker)
+      const second = await childAsks(worker, 'which region?', ['eu', 'us'])
       expect(
-        await answer(pm, { question: first.id, answers: [{ part: 'q0', answer: ['main'] }] }),
+        await answer(pm, { question: first.id, answers: [{ part: 'answer', answer: ['main'] }] }),
       ).toMatchObject({ outcome: 'ok' })
 
       const refused = await answer(pm, {
         question: first.id,
-        answers: [{ part: 'q0', answer: ['dev'] }],
+        answers: [{ part: 'answer', answer: ['dev'] }],
       })
       expect(refused).toMatchObject({
         outcome: 'refused',
@@ -784,50 +766,18 @@ describe('394 · a question finds a person, and a permission never travels', () 
       })
       // ⚑ **ONE FACT OVER**: the other question, raised in the same breath, is still open.
       expect(
-        await answer(pm, { question: second.id, answers: [{ part: 'q0', answer: ['eu'] }] }),
+        await answer(pm, { question: second.id, answers: [{ part: 'answer', answer: ['eu'] }] }),
       ).toMatchObject({ outcome: 'ok' })
-    })
-
-    it('⚠️ an answer the provider cannot take is refused, and the request is still waiting', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
-
-      const refused = await answer(pm, {
-        question: asked.id,
-        answers: [{ part: 'q0', answer: ['a branch nobody offered'] }],
-      })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-answer-cannot-be-sent',
-        permanence: 'while-this-holds',
-        retryable: true,
-        // 🔴 **425 · the act, as a word the ledger can carry** (HO-023 §2.2). ⚑ A missing part, a
-        // value the request cannot use and an option nobody offered are ONE rail, and one act clears
-        // all three — which is what the refusal below and the admitted call under it measure in the
-        // same breath. ⚠️ **The word does NOT name choices**: `answerToForward` reaches this rail for
-        // a question with no options at all, and a remedy naming choices would instruct an
-        // impossible act on the free-form arm.
-        remedy: 'answer-every-part-the-request-asks-for',
-      })
-      // ⛔ **The request is STILL OPEN**, which is the half of the sentence a caller acts on — and
-      // the paired positive is that the identical call with an offered label lands.
-      expect(
-        store.routedRequestsOf(worker).find((one) => one.requestId === asked.id),
-      ).toMatchObject({ state: 'open' })
-      expect(
-        await answer(pm, { question: asked.id, answers: [{ part: 'q0', answer: ['dev'] }] }),
-      ).toMatchObject({ outcome: 'ok' })
-      await expect(asked.answered).resolves.toMatchObject({ answers: { q0: ['dev'] } })
     })
 
     it('⛔ a malformed call is refused before the door is bothered, and a good one is not', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const { pm, worker } = await aPmAndItsWorker()
+      const asked = await childAsks(worker)
       for (const args of [
-        { question: '', answers: [{ part: 'q0', answer: ['main'] }] },
+        { question: '', answers: [{ part: 'answer', answer: ['main'] }] },
         { question: asked.id, answers: 'main' },
         { question: asked.id, answers: [{ answer: ['main'] }] },
-        { question: asked.id, answers: [{ part: 'q0', answer: 'main' }] },
+        { question: asked.id, answers: [{ part: 'answer', answer: 'main' }] },
       ]) {
         expect(await answer(pm, args), JSON.stringify(args)).toMatchObject({
           outcome: 'refused',
@@ -835,7 +785,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
         })
       }
       expect(
-        await answer(pm, { question: asked.id, answers: [{ part: 'q0', answer: ['main'] }] }),
+        await answer(pm, { question: asked.id, answers: [{ part: 'answer', answer: ['main'] }] }),
       ).toMatchObject({ outcome: 'ok' })
     })
 
@@ -846,9 +796,9 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // to a person — so there is no such request, which is the ordinary answer rather than an
       // exemption.
       const { worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
       const refused = await host.answerQuestion(
-        { questionId: asked.id, answers: [{ part: 'q0', answer: ['main'] }] },
+        { questionId: asked.id, answers: [{ part: 'answer', answer: ['main'] }] },
         window,
       )
       expect(refused).toMatchObject({ ok: false, refusal: { rail: 'no-question-by-that-name' } })
@@ -906,10 +856,10 @@ describe('394 · a question finds a person, and a permission never travels', () 
       const { worker, workerHandle } = await aPmAndItsWorker()
       // ⚑ **D-016** — the card the brief's own turn parks on.
       const card = await cardOn(worker)
-      const secret = await childAsks(worker, workerHandle, 'paste the deploy token', [], {
+      const secret = await nativeQuestion(worker, workerHandle, 'paste the deploy token', [], {
         secret: true,
       })
-      const ordinary = await childAsks(worker, workerHandle, 'which branch?', ['main', 'dev'])
+      const ordinary = await nativeQuestion(worker, workerHandle, 'which branch?', ['main', 'dev'])
 
       const arrived = store.routedRequestsOf(worker)
       // ⚠️ **Three arrivals, and every one of them is recorded** — the instrument sees the whole
@@ -932,18 +882,18 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // an instrument that reported everything.
       expect(shaped.some((one) => one.requestId === ordinary.id)).toBe(false)
       expect(arrived.find((one) => one.requestId === ordinary.id)).toMatchObject({
-        went: { is: 'the-parent', to: 'the-parent' },
+        went: { is: 'the-person-the-asker-named', to: 'a-person' },
       })
       await letTheTurnFinish(worker)
     })
 
-    it('⛔ `because` is present if and only if it went to a person', async () => {
+    it('the routing fold retains each request’s actual destination', async () => {
       // ⚠️ **One fact seen twice, and the fold COPIES rather than decides** — so the two can never
       // disagree, and a row that said *the parent* while naming a shape would be a contradiction
       // this assertion refuses to let ship.
       const { worker, workerHandle } = await aPmAndItsWorker()
       await cardOn(worker)
-      await childAsks(worker, workerHandle)
+      await nativeQuestion(worker, workerHandle)
       for (const one of store.routedRequestsOf(worker)) {
         expect(one.went.is === 'the-parent', one.requestId).toBe(one.went.to === 'the-parent')
       }
@@ -997,7 +947,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
       // ⚑ **D-016** — the card the brief's own turn parks on is routed too, to a person.
       const card = await cardOn(worker)
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
       await host.closeAll()
       const atTheQuit = store.routedRequestsOf(worker)
 
@@ -1014,13 +964,13 @@ describe('394 · a question finds a person, and a permission never travels', () 
       expect(atTheQuit.find((one) => one.requestId === asked.id)?.state).toBe('abandoned')
     })
 
-    it('🔴 a question a resumed child was waiting on cannot be answered — the criterion 14 finding', async () => {
+    it('a stopped native question stays ended, and a fresh question is answered by the person', async () => {
       // ⛔ **A FINDING, stated rather than fixed in a hurry** — `394` §7 asked for exactly that.
       // A pending provider request lives in the PROVIDER's process; a quit takes it with it, and a
       // resumed conversation is a NEW provider session that was never offered it. ⚑ So the honest
       // answer is a refusal that NAMES the ending, which is `393`'s ruling one subject over.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
       await host.closeAll()
 
       host = buildHost()
@@ -1033,17 +983,14 @@ describe('394 · a question finds a person, and a permission never travels', () 
       })
       expect(refused).toMatchObject({
         outcome: 'refused',
-        rail: 'question-has-already-ended',
+        rail: 'no-question-by-that-name',
         permanence: 'permanent',
-        detail: { state: 'abandoned' },
       })
       // ⚑ **The paired positive over the restarted app**: a question raised AFTER the resume is
       // routed and answered normally, so what the refusal above measured is the quit rather than a
       // door that stopped working.
-      const again = await childAsks(worker, latestHandle(), 'which region?', ['eu', 'us'])
-      expect(
-        await answer(pm, { question: again.id, answers: [{ part: 'q0', answer: ['eu'] }] }),
-      ).toMatchObject({ outcome: 'ok' })
+      const again = await nativeQuestion(worker, latestHandle(), 'which region?', ['eu', 'us'])
+      expect(await nextPersonAnswer(worker, again.id, 'eu')).toMatchObject({ outcome: 'taken' })
     })
 
     it('🔴 a request id can REPEAT across a resume, and the live one is the one answered', async () => {
@@ -1054,26 +1001,28 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // question would be refused by quoting an ending that belongs to a request nobody is waiting
       // on. ⚑ `findLast` is the fix, and this is the state that kills it.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const before = await childAsks(worker, workerHandle)
+      const before = await nativeQuestion(worker, workerHandle)
       await host.closeAll()
       host = buildHost()
       await host.resumeSession(pm, window)
       await host.resumeSession(worker, window)
-      const after = await childAsks(worker, latestHandle(), 'which region?', ['eu', 'us'])
+      const after = await nativeQuestion(worker, latestHandle(), 'which region?', ['eu', 'us'])
 
       // ⚑ **The premise, asserted rather than assumed**: the two really do share an id, and the
       // ledger really does hold two rows for it.
       expect(after.id).toBe(before.id)
-      const both = host.questionsVisibleTo(pm).filter((one) => one.requestId === after.id)
+      const both = store.routedRequestsOf(worker).filter((one) => one.requestId === after.id)
       expect(both.map((one) => one.state)).toEqual(['abandoned', 'open'])
+      // The person's card reads the live question's words, not the abandoned one's.
+      const live = store.questionsRaisedIn(worker).get(after.id)
+      expect(live?.prompt).toContain('which region?')
+      expect(live?.prompt).not.toContain('which branch?')
 
-      expect(
-        await answer(pm, { question: after.id, answers: [{ part: 'q0', answer: ['eu'] }] }),
-      ).toMatchObject({ outcome: 'ok' })
+      expect(await nextPersonAnswer(worker, after.id, 'eu')).toMatchObject({ outcome: 'taken' })
       await expect(after.answered).resolves.toMatchObject({ answers: { q0: ['eu'] } })
     })
 
-    it('🔴 REPAIRED by 396: after a CRASH the launch settles it, and the refusal names the ending', async () => {
+    it('a crash strands the native request without exposing it at the agent answer door', async () => {
       // ⛔ **This test used to assert the DEFECT and `396` turned it red, which is what it was for.**
       //
       // `394` measured the half the ledger cannot see: a crash writes no ending at all, so the fold
@@ -1090,7 +1039,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       // through the case this sweep must not walk over, a second host while the first still holds
       // the conversation. See `nothing-waits-on-somebody-looking.test.ts` §2.
       const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const asked = await childAsks(worker, workerHandle)
+      const asked = await nativeQuestion(worker, workerHandle)
 
       // ⚑ **The row really does read `open` before the crash** — the premise, asserted rather than
       // assumed, so what the launch below changes is visible rather than inferred.
@@ -1110,15 +1059,15 @@ describe('394 · a question finds a person, and a permission never travels', () 
       ).structured as Record<string, unknown>
 
       // 🔴 **The launch wrote the difference down.**
-      expect(next.questionsVisibleTo(pm).find((one) => one.requestId === asked.id)).toMatchObject({
+      expect(
+        store.routedRequestsOf(worker).find((one) => one.requestId === asked.id),
+      ).toMatchObject({
         state: 'stranded',
       })
       expect(refused).toMatchObject({
         outcome: 'refused',
-        rail: 'question-has-already-ended',
+        rail: 'no-question-by-that-name',
         permanence: 'permanent',
-        retryable: false,
-        detail: { state: 'stranded' },
       })
       // ⛔ **Nothing was sent**, exactly as before: the provider the question belongs to is in the
       // host this one knows nothing about. ⚑ That has not changed — what changed is that the app now

@@ -14,29 +14,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 
-/** The toolset one conversation is offered — `agentToolsFor` exports no name for it. */
 type AgentToolset = ReturnType<typeof agentToolsFor>
-
-/**
- * # 🔴 675 M20 · `abandoned` prints its reason, not the bare word
- *
- * ## ⛔ What table 675's row measures
- *
- * `QUESTION_STATE_SENTENCE` (`agent-tools.ts`) gives `list_questions` a parenthetical for every
- * ended state a reader could misread from the word alone — `stranded`, `interrupted`,
- * `work-withdrawn`, and `abandoned`. Losing the `abandoned` entry does not remove the row or the
- * word: `questionLine` still prints `<id> · from <asker> · abandoned`, because the bare state name
- * comes from `one.request.state`, not from the sentence table. Only the parenthetical explaining
- * *why nothing brings the question back* disappears — the defect `675` (661 F2) fixed and this row
- * guards.
- *
- * ⚑ **So the assertion has to be the sentence itself, scoped to this question's own line** — a
- * `toContain('abandoned')` on the whole answer would still pass with the entry gone, because the
- * word is printed independently of the table.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools — one double, the provider** — same shape
- * as `a-childs-state.test.ts` and `the-word-for-a-question-nobody-stopped.test.ts`.
- */
 
 const migrationsFolder = join(__dirname, '../src/main/db/migrations')
 
@@ -165,22 +143,51 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
   const lineFor = (text: string, id: string): string =>
     text.split('\n').find((one) => one.includes(id)) ?? ''
 
-  it('🔴 an abandoned question names why it cannot be answered, not just the word', async () => {
+  it('a historical abandoned question names why it cannot be answered, not just the word', async () => {
     const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-    const asked = await childAsks(worker, workerHandle)
+    const original = await childAsks(worker, workerHandle)
+    const asked = { id: `historical_${original.id}` }
+    const event = ledger(worker).find(
+      (event) => event.type === 'user_input_request' && event.id === original.id,
+    )
+    if (event?.type !== 'user_input_request') throw new Error('no native question to copy')
+    // Imported native question from before the routing change; a distinct ID keeps the live person request separate.
+    store.append(worker, store.nextOrdinal(worker), { ...event, id: asked.id }, tick())
+    store.append(
+      worker,
+      store.nextOrdinal(worker),
+      {
+        type: 'request_routed',
+        requestId: asked.id,
+        to: 'the-parent',
+        parent: pm,
+      },
+      tick(),
+    )
 
-    // ⚠️ Measured BEFORE as well: while the request is still open, nothing in the sentence table
+    // Measured BEFORE as well: while the request is still open, nothing in the sentence table
     // applies to it, so its line carries no parenthetical at all — the fixture's own control.
     const before = lineFor(await textOf(pmTools, 'list_questions'), asked.id)
     expect(before).toContain('open')
     expect(before).not.toContain('cannot be answered')
+    // A provider's own question is listed as the person's, not as one this caller may answer.
+    expect(before).toContain('a person answers this one at its card')
+    const listed = await callOn(pmTools, 'list_questions', {})
+    const row = (listed.questions as { question: string; answerable_by_you: boolean }[]).find(
+      (one) => one.question === asked.id,
+    )
+    expect(row?.answerable_by_you).toBe(false)
 
-    // ⛔ Stops the conversation that raised the question. ⚑ **D-017 · R3/R4 — nothing ends a
-    // conversation any more, and a stop abandons only what its own PROVIDER holds**: this question
-    // is the worker's provider's (`simulateUserInput`), so the stop settles it as `abandoned`
-    // (`675`, `661` F2), never `interrupted` — the provider's request stopped with the process, and
-    // *ask it again* would be the wrong advice. The app's own close is the stop every such path
-    // shares (a person's Close, a quit).
+    const refused = await callOn(pmTools, 'answer_question', {
+      question: asked.id,
+      answers: [{ part: 'q0', answer: ['main'] }],
+    })
+    expect(refused).toMatchObject({ outcome: 'refused', rail: 'a-person-answers-this-one' })
+    expect(store.routedRequestsOf(worker).find((one) => one.requestId === asked.id)?.state).toBe(
+      'open',
+    )
+
+    // Closing the conversation ends its native requests, including the imported historical one.
     await host.close(worker, THE_APP_ITSELF)
 
     // ⚑ A question that is over is listed when asked for.
@@ -196,6 +203,5 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
       '(the conversation that raised it stopped while it was waiting, and the request stopped with it, so it cannot be answered)',
     )
     expect(line).not.toContain('ask it again')
-    expect(pm).toBeTruthy()
   })
 })

@@ -56,10 +56,17 @@ describe('a stopped replacement service holds the reply or answer', () => {
       delivered: 'held',
       receipt: {
         recorded: { kind: 'reply', id: given.piece, taskLabel: given.label },
-        recipient: { id: service, address: service, title, state: { kind: 'queued' } },
+        recipient: {
+          id: service,
+          address: world.store.firstTaskOf(service)?.label,
+          title,
+          state: { kind: 'queued' },
+        },
       },
     })
-    expect(result.text).toContain(`it is held until conversation ${service} · ${title} is free`)
+    expect(result.text).toContain(
+      `it is held until conversation ${world.store.firstTaskOf(service)?.label} · ${title} is free`,
+    )
     const queued = world.store
       .messagesWaitingIn(service)
       .find((one) => one.text.includes('notes ready'))
@@ -117,10 +124,16 @@ describe('a stopped replacement service holds the reply or answer', () => {
       agent: old.owner,
       receipt: {
         recorded: { kind: 'reply', id: question },
-        recipient: { id: replacement, address: replacement, state: { kind: 'queued' } },
+        recipient: {
+          id: replacement,
+          address: world.store.firstTaskOf(replacement)?.label ?? replacement,
+          state: { kind: 'queued' },
+        },
       },
     })
-    expect(result.text).toContain(`conversation ${replacement} ·`)
+    expect(result.text).toContain(
+      `conversation ${world.store.firstTaskOf(replacement)?.label ?? replacement} ·`,
+    )
     expect(result.text).toContain('reads your answer when the turn it is running ends.')
     const waiting = world.store.messagesWaitingIn(replacement)
     const behind = waiting.findIndex((row) => row.text.includes('room 23'))

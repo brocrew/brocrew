@@ -43,32 +43,6 @@ import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { replyText } from '../src/main/runtime/reply-rails'
 import { homesUnder } from './helpers/scratch-host'
 
-/**
- * App-delivered words must not be attributed to the person.
- *
- * A receiver acting on words falsely attributed to the person is acting on false authority. A
- * measured corpus contained 12,646 such messages, so the regression can affect many
- * hand-offs.
- *
- * ## ⛔ What `410` counted, and what the brief got wrong about it
- *
- * ⚠️ **`410` F2, on every run: *"1 unattributed turn on Codex, 2 on Claude, on the project
- * manager."*** The brief reads that as the residue of `routeRequest`, the one producer `406`
- * knowingly left unmarked. ⛔ **It is not.** `routeRequest` is the Claude-only one — row 8 is
- * *not performed* on Codex, so no question is ever routed there — and the turn that is
- * unattributed on BOTH is `message_agent`: **the door every piece of work in this product goes
- * through.** §3 measures that from the code rather than from the count.
- *
- * ## 🔴 So the marking stopped being per-producer
- *
- * ⛔ **`406` marked three call sites by hand and a fourth shipped unmarked; a fifth was never
- * named at all.** ⚑ `413` computes the authorship once, at the door, from WHO IS ASKING — and the
- * default is the app's. A turn is the person's only when a WINDOW sent it, which is a positive
- * test: the next transport this host grows is app-authored by forgetting.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools.** The only double is the provider.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -243,12 +217,6 @@ describe('413 · words the person did not say', () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     throw new Error(`timed out waiting for ${what}`)
-  }
-
-  const latestHandle = (): FakeSessionHandle => {
-    const handle = handles.at(-1)
-    if (handle === undefined) throw new Error('no provider handle has been issued')
-    return handle
   }
 
   const foldOf = (events: TranscriptEvent[]) => {
@@ -466,6 +434,25 @@ describe('413 · words the person did not say', () => {
     })
   })
 
+  /** The worker asks its parent with ask_question, and the question is routed. */
+  const theWorkerAsksItsParent = async (worker: string, options: string[]) => {
+    const asked = await callOn(agentToolsFor(host, worker), 'ask_question', {
+      who_answers: 'the-parent',
+      question: 'which branch?',
+      options,
+    })
+    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+    const raised = { id: asked.question as string }
+    await waitFor(
+      () =>
+        ledger(worker).some(
+          (event) => event.type === 'request_routed' && event.requestId === raised.id,
+        ),
+      'the question to be routed',
+    )
+    return raised
+  }
+
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §4 · `routeRequest` — the fourth producer, which `406` named and left
   // ───────────────────────────────────────────────────────────────────────────────────────────
@@ -473,15 +460,8 @@ describe('413 · words the person did not say', () => {
   describe('§4 · a child’s question, carried to its parent', () => {
     it('🔴 the routed question is MARKED and names the child that asked', async () => {
       const { pm, worker } = await workWasGiven('go and ask me something')
-      // ⚑ **The child's own provider raises it**, which is the only way this event exists.
-      const raised = latestHandle().simulateUserInput('which branch?', ['main', 'dev'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the question to be routed',
-      )
+      // The worker chooses its parent explicitly through the question tool.
+      await theWorkerAsksItsParent(worker, ['main', 'dev'])
       await waitFor(
         () => turnsIn(pm).some((turn) => turn.text.includes('which branch?')),
         'the question to reach the parent as a turn',
@@ -533,14 +513,7 @@ describe('413 · words the person did not say', () => {
       const worker = task.agent as string
 
       // ⛔ **Step 8** — the worker asks, and the question is routed to the PM.
-      const raised = latestHandle().simulateUserInput('which branch?', ['main'], false)
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the question to be routed',
-      )
+      const raised = await theWorkerAsksItsParent(worker, ['main'])
       // ⚠️ **The PM is mid-turn on the project it was given**, so the question is HELD rather than
       // sent — which is the ordinary case and exactly why §7 exists. ⚑ Letting its turns end is
       // what flushes the mailbox.
@@ -1018,7 +991,13 @@ describe('413 · words the person did not say', () => {
       // is the one that delivers all the work. ⛔ A dispatch that reported *"the provider-bound
       // framing loses the attribution"* would be saying something false about three paths.
       const { pm, worker, label } = await workWasGiven('work to answer')
-      const raised = latestHandle().simulateUserInput('which branch?', ['main'], false)
+      const asked = await callOn(agentToolsFor(host, worker), 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which branch?',
+        options: ['main'],
+      })
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const raised = { id: asked.question as string }
       await unblockUntil(
         pm,
         () => providerHeard(pm).some((said) => said.includes(raised.id)),
@@ -1027,8 +1006,8 @@ describe('413 · words the person did not say', () => {
       const question = providerHeard(pm).find((said) => said.includes(raised.id))
       // ⛔ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
       // and the piece it owns, and quotes that piece's label as its address, where it was the id.
-      expect(question).toContain(`Ada (the owner of ${label} · The work) is waiting on an answer`)
-      expect(question).toContain(`with asked_by ${label}.`)
+      expect(question).toContain(`Ada (conversation ${label} · The work) asks you ${raised.id}`)
+      expect(question).toContain(`Use asked_by ${label} with this question id.`)
 
       const replied = await callOn(agentToolsFor(host, worker), 'reply_to_parent', {
         piece: label,

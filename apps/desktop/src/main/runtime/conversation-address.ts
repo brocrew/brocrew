@@ -23,12 +23,12 @@ interface AddressReads {
   firstTaskOf(conversation: string): { readonly label: string } | null
 }
 
-export function canonicalAddressOf(
-  reads: AddressReads,
-  conversation: string,
-  service = false,
-): string {
-  return service ? conversation : (reads.firstTaskOf(conversation)?.label ?? conversation)
+/**
+ * A conversation's address: the label of the first task recorded in it, in storage order, or its
+ * own id while it has none. A service's conversation follows the same rule.
+ */
+export function canonicalAddressOf(reads: AddressReads, conversation: string): string {
+  return reads.firstTaskOf(conversation)?.label ?? conversation
 }
 
 interface DisplayTitleReads {
@@ -73,7 +73,7 @@ export function describeConversation(
   readonly line: string
   readonly profileFallback?: true
 } {
-  const address = canonicalAddressOf(reads, conversation, service)
+  const address = canonicalAddressOf(reads, conversation)
   const resolved = conversationDisplayTitle(
     reads,
     conversation,

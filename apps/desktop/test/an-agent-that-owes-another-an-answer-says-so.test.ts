@@ -446,11 +446,10 @@ describe('the host says who a conversation owes an answer to, and moves the word
     warned.mockRestore()
   })
 
-  it('a question the child’s provider raised is owed while the child is parked on it, and not once it is not', async () => {
+  it('a provider plain question stays with the person without making its parent owe an answer', async () => {
     const { brobot, ada } = await aGiverWaitingOnAHelper()
     const adaHandle = doubleOf(ada)
     expect(adaHandle.status()).toBe('idle')
-
     const turnsBefore = turnsIn(brobot)
     const raised = adaHandle.simulateUserInput('which branch?', ['main', 'dev'], false)
     const release = adaHandle.waitForAPerson()
@@ -459,33 +458,31 @@ describe('the host says who a conversation owes an answer to, and moves the word
         ledger(ada).some(
           (event) => event.type === 'request_routed' && event.requestId === raised.id,
         ),
-      'the routing of the provider’s question',
+      'the native routing',
     )
+    expect(store.routedRequestsOf(ada).find((one) => one.requestId === raised.id)).toMatchObject({
+      state: 'open',
+      parent: null,
+      went: { to: 'a-person' },
+    })
     expect(adaHandle.status()).toBe('waiting_permission')
-    expect(
-      store
-        .routedRequestsOf(ada)
-        .filter((one) => one.requestId === raised.id)
-        .at(-1),
-    ).toMatchObject({ state: 'open', parent: brobot, went: { is: 'the-parent' } })
-
-    await waitFor(() => turnsIn(brobot) > turnsBefore, 'the turn receiving the card to finish')
-    await untilPushed(brobot, owesAda, 'the parent to owe the card without a reminder')
-    expect(stateOf(brobot)).toEqual(owesAda)
+    await settle()
+    expect(turnsIn(brobot)).toBe(turnsBefore)
+    expect(stateOf(brobot)?.is).not.toBe('owes-an-answer')
     expectNoQuestionWake(ledger(brobot))
     expectNoQuestionWake(ledger(ada))
-
-    // Only the child's status moves; that re-asks the parent.
-    const before = saidOf(brobot).length
+    host.claimSession(ada, window)
+    expect(
+      await host.respondUserInput(
+        ada,
+        raised.id,
+        { kind: 'answer', answers: { q0: ['main'] } },
+        window,
+      ),
+    ).toMatchObject({ outcome: 'taken' })
+    await expect(raised.answered).resolves.toMatchObject({ answers: { q0: ['main'] } })
     release()
     await waitFor(() => adaHandle.status() !== 'waiting_permission', 'the child to be unparked')
-    await waitFor(
-      () =>
-        saidOf(brobot)
-          .slice(before)
-          .some((one) => one.is !== 'owes-an-answer'),
-      'the parent to be pushed as no longer owing',
-    )
     await settle()
     expect(lastSaid(brobot)).toEqual({
       is: 'waiting-on-a-worker',

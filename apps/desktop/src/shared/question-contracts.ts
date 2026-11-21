@@ -337,6 +337,11 @@ export interface VisibleQuestion {
    * answer"*, which is what the row's own `state` says.
    */
   readonly words: string | null
+  /**
+   * A question the asker's provider raised itself, routed to this caller before such questions
+   * stayed with the person: the person answers it at its card, and the caller cannot.
+   */
+  readonly byItsProvider?: true
 }
 
 /**

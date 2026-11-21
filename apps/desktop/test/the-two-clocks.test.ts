@@ -34,64 +34,6 @@ import {
   escalationChain,
 } from '../src/shared/questions'
 
-/**
- * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record
- * of BOTH withdrawals.
- *
- * ## ⛔ The count in the name is HISTORY, and it is exact
- *
- * ⚠️ **`612` · the PM's relay caught this file claiming a count it no longer holds** — the defect
- * `a-title-that-names-a-count-the-assertion-never-checks`, which `396` paid for by saying *"a
- * seventh"* over six. ⛔ **There are ZERO clocks in this app now.**
- *
- * ⚑ **The name is kept because both clocks are what this file is the record OF.** `398` shipped
- * two: an idle timeout on a working child, and an escalation deadline on an unanswered question.
- * `HO-018` §2.2 withdrew the first at `400`; `HO-088` §3.1 withdrew the second at `612`. 🔴 **The
- * sections below are the evidence for each withdrawal**, which is a truer subject than either clock
- * ever was — and why this reads as a title rather than as a count of anything live.
- *
- * ## ⛔ It shipped two clocks and HO-018 §2.2 withdrew one of them
- *
- * **HO-007 S4:** *"Unanswered past a timeout, it escalates to the human… The chain is visible end to
- * end — worker waiting on PM, PM waiting on you."* ⚑ `394` routed the questions and `396` gave a
- * parent a reader for them; nothing ever ran out of patience on one until this dispatch.
- *
- * ⛔ **The other clock was criterion 5 — an idle timeout on a WORKING child — and the PO took it
- * back:** *"an idle timeout on a working child is the guess, and your measurement says we cannot
- * pick the number honestly."* ⚠️ **`400` ran the 26 assertions that asserted its state change RED
- * and then removed them**, which is the whole of why this file is half the length it was; what is
- * left is criterion 11's evidence, unchanged.
- *
- * ⚑ **The difference between the two, stated because it is the reason one of them survived.** A
- * question's age is a fact about a row nobody closed. A working child's silence is an ABSENCE of
- * rows, and the number that turns an absence into a verdict is the guess `396` §4 warned about —
- * `353` measured a known-successful compaction silent for 90,829 ms against a maximum of 7,058 ms in
- * the same run.
- *
- * ## ⛔ A deadline was not a timer — and now there is neither
- *
- * ⚑ **The argument this file was built on:** after `app.quit()` no timer, interval or worker in the
- * process runs again, so a window held in memory silently resets every deadline in the app —
- * therefore the deadline was `the row + the window`, stamped at the moment it FELL DUE rather than
- * the moment the app noticed.
- *
- * 🔴 **612 · that argument won and then lost its subject** (HO-088 §3.1). ⛔ **It made the deadline
- * survivable across a crash, which was exactly what made it a CLOCK DECIDING THAT A PARENT FAILED**
- * — durable, unattended, and about something the app never observed. ⚠️ **§2 is now the measurement
- * that there is no decider at all**, by name over four pieces with controls that fire: the argument
- * is kept because the shape it warns about is the shape a replacement would take.
- *
- * ## ⚠️ Where 398's brief was wrong — the long version is in that dispatch's response
- *
- *  - **its §3's table was TWO vocabularies printed as one.** `silent` was a `TaskState`; `stranded`
- *    and `interrupted` are `RequestState`s. *"Do not add a sixth"* had no single referent.
- *  - **it said thirteen criteria were covered.** HO-018 then found three of them specified a
- *    mechanism rather than a property, and amended all three.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools, real filesystem.** The only double is the
- * provider.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -338,6 +280,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
         // makes *the original words travelled* a property of the ledger rather than a promise.
         const passed = aHistoricalForward(pm, worker, raised.id)
         expect(host.questionsForAPerson().rows.map((one) => one.request.requestId)).toEqual([
+          raised.id,
           passed,
         ])
         expect(store.questionsRaisedIn(pm).get(passed)?.prompt).toBe('which region?')
@@ -350,19 +293,32 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
   // §5 · 612 · criterion 11 — a question reaches a person because somebody DECIDED
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
+  const askRegion = async (worker: string, on: RuntimeHost = host): Promise<{ id: string }> => {
+    const asked = await callOn(agentToolsFor(on, worker), 'ask_question', {
+      who_answers: 'the-parent',
+      question: 'which region?',
+      options: ['eu', 'us'],
+    })
+    expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+    return { id: asked.question as string }
+  }
+
+  const theParentAnswersEu = async (pm: string, question: string): Promise<void> => {
+    const answered = await callOn(agentToolsFor(host, pm), 'answer_question', {
+      question,
+      answers: [{ part: 'answer', answer: ['eu'] }],
+    })
+    expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+  }
+
   describe('§5 · a question reaches a person because somebody decided', () => {
     it('⛔ the paired negative: the PARENT answers it, and nobody else is ever told', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const pmTools = agentToolsFor(host, pm)
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { pm, worker } = await aPmAndItsWorker()
+      const raised = await askRegion(worker)
       const askedAt =
         store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.at ?? 0
 
-      const answered = await callOn(pmTools, 'answer_question', {
-        question: raised.id,
-        answers: [{ part: 'q0', answer: ['eu'] }],
-      })
-      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      await theParentAnswersEu(pm, raised.id)
 
       // ⚠️ **612 · this advanced five windows and asserted the sweep found nothing** (HO-088
       // §3.1, standing rule 26). ⛔ **There is no window to be inside**, so the claim it was FOR —
@@ -390,8 +346,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
      * removal like this creates is a timer somebody left armed somewhere.
      */
     it('🔴 no amount of elapsed time stamps anything, and nothing is armed to try', async () => {
-      const { worker, workerHandle } = await aPmAndItsWorker()
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { worker } = await aPmAndItsWorker()
+      const raised = await askRegion(worker)
       const askedAt =
         store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.at ?? 0
       expect(askedAt).toBeGreaterThan(0)
@@ -421,9 +377,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     })
 
     it('🔴 passing it up does not un-ask it: the parent can still answer, and does', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const pmTools = agentToolsFor(host, pm)
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { pm, worker } = await aPmAndItsWorker()
+      const raised = await askRegion(worker)
       // ⚑ **612 · the PM passes it up rather than a window passing** (HO-088 §3.1).
       const passed = aHistoricalForward(pm, worker, raised.id)
       expect(store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)?.state).toBe(
@@ -433,11 +388,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ⛔ **And it can STILL answer the one it passed on**, which is the property this test has
       // always been about. ⚠️ `HO-088` §3.1 words it: *"A parent answers the question, or passes
       // it up"* — and doing the second does not spend the first.
-      const answered = await callOn(pmTools, 'answer_question', {
-        question: raised.id,
-        answers: [{ part: 'q0', answer: ['eu'] }],
-      })
-      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      await theParentAnswersEu(pm, raised.id)
 
       const row = store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)
       expect(row?.state).toBe('answered')
@@ -447,9 +398,9 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     })
 
     it('🔴 two answers to one question: the FIRST wins and the second is refused BY NAME', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker()
       const pmTools = agentToolsFor(host, pm)
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const raised = await askRegion(worker)
       // ⚑ **612 · no clock puts it in front of anybody**; this test is about the two DOORS, and
       // both are reachable the moment the question is routed.
 
@@ -460,7 +411,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       const ack = await host.respondUserInput(
         worker,
         raised.id,
-        { kind: 'answer', answers: { q0: ['eu'] } },
+        { kind: 'answer', answers: { answer: ['eu'] } },
         window,
       )
       expect(ack.outcome).toBe('taken')
@@ -468,7 +419,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ⛔ **And the parent, arriving second, is told what it named rather than that it is wrong.**
       const second = await callOn(pmTools, 'answer_question', {
         question: raised.id,
-        answers: [{ part: 'q0', answer: ['us'] }],
+        answers: [{ part: 'answer', answer: ['us'] }],
       })
       expect(second.outcome).toBe('refused')
       expect(second.rail).toBe('question-has-already-ended')
@@ -576,8 +527,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     })
 
     it('🔴 the live chain, off a real ledger, names the conversations a person sees', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { pm, worker } = await aPmAndItsWorker()
+      const raised = await askRegion(worker)
       // ⚑ **612 · the PM passes it up** (HO-088 §3.2) — and the chain below is the PASSER's,
       // which is one hop shorter than the escalated chain this test used to read and is the shape
       // `HO-088` §6 describes: the hop that could not answer is the one that acted.
@@ -605,8 +556,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     })
 
     it('⛔ the wire carries it: the command answers a person and takes nothing', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { pm, worker } = await aPmAndItsWorker()
+      const raised = await askRegion(worker)
       const passed = aHistoricalForward(pm, worker, raised.id)
 
       const { executeRuntimeCommand } = await import('../src/main/runtime/ipc')
@@ -654,8 +605,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
      */
     it('🔴 an unanswered question never escalates, and a recorded forward is still in the queue', async () => {
       const on = buildHost(store)
-      const { pm, worker, workerHandle } = await aPmAndItsWorker('claude', on)
-      const raised = await raiseRegionQuestion(workerHandle, () => events(worker))
+      const { pm, worker } = await aPmAndItsWorker('claude', on)
+      const raised = await askRegion(worker, on)
       // ⛔ **Real time, bounded** (rule 13): 150 ms is nearly four times the 40 ms window every
       // fixture in this repo used, and 150 000 times the 1 ms this test used to arm.
       await new Promise((resolve) => setTimeout(resolve, 150))

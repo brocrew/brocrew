@@ -145,20 +145,6 @@ export const QUESTION_RAILS = [
    */
   'that-answer-cannot-be-sent',
   /**
-   * 🔴 **A request the PROVIDER raised, and the conversation that raised it has stopped**, so
-   * nobody is waiting for the answer.
-   *
-   * ⛔ **A pending provider request lives in the provider's process**: a stop takes it with it. A
-   * resumed conversation is a NEW provider session, so no later state of the world makes this exact
-   * call succeed — PERMANENT, and it is the strong claim it looks like. ⚑ *"Nothing unwired implies
-   * a working state"* (criterion 15) — a `taken` for an answer that reached nobody would be exactly
-   * that.
-   *
-   * ⚑ **D-017 · R1 — never a question this app asked**: its answer is written into its asker's
-   * ledger and starts it.
-   */
-  'the-conversation-that-asked-has-gone',
-  /**
    * 🔴 **679 · more than one conversation you started asked a question with that id** (`675` F-b).
    *
    * ⛔ **Why an id can name two questions at all.** A provider's request id is SESSION-LOCAL — Codex
@@ -343,7 +329,6 @@ const PERMANENCE: Readonly<Record<QuestionRail, RailPermanence>> = {
   'person-addressed-request': 'permanent',
   'question-has-already-ended': 'permanent',
   'that-answer-cannot-be-sent': 'while-this-holds',
-  'the-conversation-that-asked-has-gone': 'permanent',
   // 🔴 **679** — no routing leaves a ledger, so the id stays shared and the identical call never lands.
   'more-than-one-question-has-that-id': 'permanent',
   'that-conversation-did-not-ask-that': 'permanent',
@@ -412,7 +397,6 @@ const REMEDY: Readonly<Record<QuestionRail, RefusalRemedy | null>> = {
   'person-addressed-request': null,
   'question-has-already-ended': null,
   'that-answer-cannot-be-sent': 'answer-every-part-the-request-asks-for',
-  'the-conversation-that-asked-has-gone': null,
   // ⛔ **679 · null, by the same biconditional** — permanent, so the act (`asked_by`) is in the
   // sentence rather than a word that would claim the identical call could land.
   'more-than-one-question-has-that-id': null,
@@ -562,17 +546,13 @@ const QUESTION_SENTENCES: Readonly<Record<QuestionRail, string>> = {
   'no-question-by-that-name':
     'nobody is waiting on you for a request by that id, so nothing was answered. list_questions names the requests you can answer — from conversations you started, and agents that asked you; sending that id again will never succeed.',
   'a-person-answers-this-one':
-    'that one is a person’s to settle rather than a question you can answer, so nothing was sent and it is still waiting for a person. Leave it for that person; retrying your answer will never succeed. The detail says what kind of thing it is.',
+    'that one is a person’s to settle rather than a question you can answer, so nothing was sent and it is still waiting for a person. Leave it for that person; retrying your answer will never succeed.',
   'person-addressed-request':
     'only the person can answer this request. If you asked it and no longer need it, withdraw it.',
   'question-has-already-ended':
     'no further answer is owed: that question has ended, so nobody is waiting and nothing was sent. The detail says how it ended; retrying this id cannot work.',
   'that-answer-cannot-be-sent':
     'that answer cannot be sent as it stands, so nothing was sent. Answer every part it asks about, choosing one of its options unless it takes an answer of your own. The request is still waiting.',
-  // ⚑ **D-017** — a fact about THIS request (HO-015 §2: never which part of the system held it), and
-  // short enough that the whole row, rail and all, is inside the 200-character cut.
-  'the-conversation-that-asked-has-gone':
-    'no further answer is owed: the asking conversation stopped, so nobody waits and nothing was sent. Retrying this id cannot work.',
   // 🔴 **679 · the act FIRST** (`675`'s cut) — the call to make, then the fact that makes it
   // necessary. ⛔ It names neither door: the same sentence is true at `answer_question` and at
   // `pass_question_up`, because the act is *the same call again*.

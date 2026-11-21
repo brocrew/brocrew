@@ -256,12 +256,6 @@ describe('414 · the origin a model is told', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  const latestHandle = (): FakeSessionHandle => {
-    const handle = handles.at(-1)
-    if (handle === undefined) throw new Error('no provider handle has been issued')
-    return handle
-  }
-
   interface APair {
     readonly pm: string
     readonly pmProfile: string
@@ -1104,25 +1098,30 @@ describe('414 · the origin a model is told', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§7 · no second naming where the words are BroBot’s', () => {
-    it('⚠️ a routed question is BroBot’s sentence ABOUT a child, so it gets no frame', async () => {
+    it('⚠️ an asked question is BroBot’s sentence ABOUT the asker, so it gets no frame', async () => {
       // ⛔ **This is the difference `carriedFor` marks**, and it is why the provider-side fact is
       // its own field rather than a reading of `relayedFrom`. Framing this as *sent by the child*
       // would be false: the child did not write these words, BroBot did.
       const made = await workWasGiven('work with a question in it')
-      const raised = latestHandle().simulateUserInput('which branch?', ['main'], false)
+      const asked = await callOn(agentToolsFor(host, made.worker), 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which branch?',
+        options: ['main'],
+      })
+      expect(asked.outcome, JSON.stringify(asked)).toBe('ok')
+      const id = asked.question as string
       await unblockUntil(
         made.pm,
-        () => providerHeard(made.pm).some((said) => said.includes(raised.id)),
+        () => providerHeard(made.pm).some((said) => said.includes(id)),
         'the question to reach the parent’s provider',
       )
-      const question = providerHeard(made.pm).find((said) => said.includes(raised.id)) ?? ''
-      // ⚑ `questionText` leads with the asking conversation — ⚑ D-016 · commit 7 · R3: by its name
-      // and the piece it owns, and that piece's label is the address it quotes, where it was the id
-      // twice — so the origin is IN the words.
+      const question = providerHeard(made.pm).find((said) => said.includes(id)) ?? ''
+      // ⚑ The words lead with the asking conversation by its name and its address, so the origin is
+      // IN the words.
+      expect(question).toContain(`(conversation ${host.addressOf(made.worker)} ·`)
       expect(question).toContain(
-        `${host.nameByItsWorkUnder(made.worker, null)} is waiting on an answer`,
+        `Use asked_by ${host.addressOf(made.worker)} with this question id.`,
       )
-      expect(question).toContain(`with asked_by ${host.addressOf(made.worker)}.`)
       expect(question).not.toContain('Sent by `')
     })
   })

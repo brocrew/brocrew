@@ -342,8 +342,6 @@ export class WorkReads {
    */
   whoCalledWhom(sessionId: string): WhoCalledWhom {
     // ⛔ **The parent is the DURABLE fact and never the slot's** — {@link SessionStore.parentOf}.
-    // ⚑ {@link routeRequest} reads the same answer for the same conversation, which is why there is
-    // one reader of it and not two.
     const parentOf = this.sources.store.parentOf(sessionId)
     const parent = parentOf === null ? null : this.sources.spawnEdge(parentOf)
     const children = this.sources.store.spawnedBy(sessionId)

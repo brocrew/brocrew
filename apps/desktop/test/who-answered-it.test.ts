@@ -1,3 +1,4 @@
+import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-which-database'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -36,7 +37,6 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { waitFor } from './lib/f093-host'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
 
@@ -150,19 +150,7 @@ describe('who answered it', () => {
       })
       expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
       const worker = spawned.agent as string
-      const asked = liveHandle().simulateUserInput('Which database?', ['Postgres', 'SQLite'])
-      await waitFor(
-        () =>
-          store
-            .events(worker)
-            .some(({ event }) => event.type === 'request_routed' && event.requestId === asked.id),
-        'the worker question to route to its parent',
-      )
-      const answered = await host.answerQuestion(
-        { questionId: asked.id, answers: [{ part: 'q0', answer: ['Postgres'] }] },
-        { ownerId: `agent:${parent}` },
-      )
-      expect(answered.ok, JSON.stringify(answered)).toBe(true)
+      const asked = { id: await theParentAnswersWhichDatabase(host, worker, parent) }
       expect(decisionsIn(worker)).toEqual([
         {
           type: 'user_decision',

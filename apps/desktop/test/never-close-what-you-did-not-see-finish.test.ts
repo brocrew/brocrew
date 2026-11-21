@@ -34,7 +34,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -167,7 +166,6 @@ describe('400 · never close what you did not see finish', () => {
     Given & {
       pm: string
       worker: string
-      /** The worker's profile — what a second give to the same agent names. */
       profile: string
       pmTools: AgentToolset
       workerHandle: FakeSessionHandle
@@ -297,7 +295,6 @@ describe('400 · never close what you did not see finish', () => {
         'interrupted',
         'work-withdrawn',
         'work-closed',
-        // The work it was about was handed back.
         'work-replied',
         'recipient-ended',
       ])
@@ -704,12 +701,15 @@ describe('400 · never close what you did not see finish', () => {
     })
 
     it('⛔ the paired negative: a question ANSWERED before the crash leaves the flag false', async () => {
-      const { pm, worker, task, request } = await aChildHoldingWorkAndAQuestion()
-      const answered = await callOn(agentToolsFor(host, pm), 'answer_question', {
-        question: request,
-        answers: [{ part: 'q0', answer: ['eu'] }],
-      })
-      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      const { worker, task, request } = await aChildHoldingWorkAndAQuestion()
+      host.claimSession(worker, window)
+      const answered = await host.respondUserInput(
+        worker,
+        request,
+        { kind: 'answer', answers: { q0: ['eu'] } },
+        window,
+      )
+      expect(answered.outcome, JSON.stringify(answered)).toBe('taken')
 
       const next = relaunchAfterACrash()
       try {

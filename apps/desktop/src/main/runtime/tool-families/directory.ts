@@ -101,6 +101,8 @@ const cardText = (
   `${card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
   // **D-016 · the pieces it holds** (spec D17) — its root, then its open pieces with their states.
   (card.pieces.length === 0 ? '' : ` · holds ${card.pieces.map(renderPiece).join(', ')}`) +
+  // A service's queue: the tasks still waiting their turn.
+  queuedText(card.queued) +
   // **676 · F3 — said on the line, where both readers of a card read it** (`AgentCard.rowsUnread`):
   // above `0`, its last ending and its last ask to stop may be older than the truth. Nothing on
   // a clean card, so the ordinary line is unchanged.
@@ -109,6 +111,13 @@ const cardText = (
     : ` · ${String(card.rowsUnread)} ${card.rowsUnread === 1 ? 'row' : 'rows'} of its record could not be read`) +
   // **D-017 · R8** — and when its whole record could not be read, its two past fields say nothing.
   (card.ledgersSkipped === 0 ? '' : ' · its record could not be read')
+
+const queuedText = (queued: AgentCard['queued']): string =>
+  queued === undefined
+    ? ''
+    : queued === null
+      ? ' · its queue could not be read'
+      : ` · ${String(queued)} waiting`
 
 /**
  * **D-042 · R6 — what a conversation runs on, on its card's line**: ` · on “opus” at max effort`,

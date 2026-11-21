@@ -1,3 +1,4 @@
+import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-which-database'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -197,22 +198,7 @@ describe('477 · who did it', () => {
     })
     expect(given.outcome, JSON.stringify(given)).toBe('ok')
     const worker = given.agent as string
-    const workerHandle = handles.at(-1)
-    if (workerHandle === undefined) throw new Error('the worker received no provider handle')
-    const asked = workerHandle.simulateUserInput('Which database?', ['Postgres', 'SQLite'])
-    await waitFor(
-      () =>
-        store
-          .events(worker)
-          .some(({ event }) => event.type === 'request_routed' && event.requestId === asked.id),
-      'the worker question to route to its parent',
-    )
-    const answered = await host.answerQuestion(
-      { questionId: asked.id, answers: [{ part: 'q0', answer: ['Postgres'] }] },
-      { ownerId: `agent:${parent.sessionId}` },
-    )
-    expect(answered.ok, JSON.stringify(answered)).toBe(true)
-    await expect(asked.answered).resolves.toMatchObject({ kind: 'answer' })
+    await theParentAnswersWhichDatabase(host, worker, parent.sessionId)
     return { worker, parent: parent.sessionId }
   }
 

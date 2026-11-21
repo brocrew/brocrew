@@ -526,12 +526,21 @@ describe('F020 · a withdraw of a question already answered says so, and where i
         `the routing of ${raised.id} on ${ali}`,
       )
       expect(store.questionsRaisedIn(ali).get(raised.id)?.raisedBy).not.toBe('this-app')
-      const answered = await callOn(adaTools, 'answer_question', {
+      // A provider's own question is the person's: the agent above it cannot answer it.
+      const refusedToAda = await callOn(adaTools, 'answer_question', {
         question: raised.id,
         asked_by: ali,
         answers: [{ part: 'q0', answer: ['main'] }],
       })
-      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      expect(refusedToAda.outcome, JSON.stringify(refusedToAda)).toBe('refused')
+      host.claimSession(ali, window)
+      const answered = await host.respondUserInput(
+        ali,
+        raised.id,
+        { kind: 'answer', answers: { q0: ['main'] } },
+        window,
+      )
+      expect(answered.outcome, JSON.stringify(answered)).toBe('taken')
       await waitFor(
         () => questionOf(ali, raised.id)?.state === 'answered',
         'the model’s question to read answered',

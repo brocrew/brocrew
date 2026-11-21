@@ -236,6 +236,11 @@ export interface AgentCard {
    */
   readonly pieces: readonly PieceOnTheCard[]
   /**
+   * How many tasks wait in its queue, for a service's conversation: a count, or `null` when its
+   * queue could not be read. Absent for any other conversation.
+   */
+  readonly queued?: number | null
+  /**
    * 🔴 **How the last turn that ENDED stopped, who asked, and when** (395 §1, 484) — or `null`
    * because there is no closed turn to report on.
    *

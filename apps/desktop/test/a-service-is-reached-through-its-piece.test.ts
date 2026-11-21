@@ -258,9 +258,24 @@ describe('a service is reached through the piece it is on', () => {
     })
 
     it('reads the service status and lets a caller ask its exact conversation address', async () => {
-      const { host, caller, service } = await aServiceOnTheFirstPiece()
+      const { host, caller, other, service, two } = await aServiceOnTheFirstPiece()
       const status = await call(host, caller, 'get_agent_status', { agent: service })
-      expect(status.structured).toMatchObject({ outcome: 'ok', agent: { agent: service } })
+      // One task is being worked on; the other waits its turn.
+      expect(status.structured).toMatchObject({
+        outcome: 'ok',
+        agent: { agent: service, queued: 1 },
+      })
+      expect(status.text).toContain(' · 1 waiting')
+      const callers = await call(host, caller, 'get_agent_status', { agent: caller })
+      expect(callers.structured.agent).not.toHaveProperty('queued')
+      expect(callers.text).not.toMatch(/ · \d+ waiting/)
+      // With the waiting task taken back, none waits: a readable zero, said as zero.
+      expect(
+        (await call(host, other, 'withdraw_task', { piece: two.label })).structured,
+      ).toMatchObject({ outcome: 'ok' })
+      const emptied = await call(host, caller, 'get_agent_status', { agent: service })
+      expect(emptied.structured).toMatchObject({ agent: { agent: service, queued: 0 } })
+      expect(emptied.text).toContain(' · 0 waiting')
       const asked = await call(host, caller, 'ask_question', {
         who_answers: 'an-agent',
         agent: service,
@@ -589,11 +604,6 @@ describe('a service is reached through the piece it is on', () => {
       world.turnsWait = null
       turn.release()
     })
-
-    /**
-     * The caller's words, held behind the first piece's turn, go in one turn of their own when it
-     * ends, and that turn is held working: `about` names the piece each one names.
-     */
     const aTurnOfTheCallersWords = async (
       about: readonly ('its-piece' | 'its-own-work' | 'nothing')[],
     ): Promise<{
@@ -1323,18 +1333,11 @@ describe('a service is reached through the piece it is on', () => {
       expect(world.stopsAsked).toEqual(['browser-driver'])
       release()
     })
-
-    /** The service's provider, as the world started it last. */
     const theServicesProvider = (): AServiceWorld['handles'][number]['handle'] => {
       const provider = [...world.handles].reverse().find((kept) => kept.as === 'browser-driver')
       if (provider === undefined) throw new Error('the service has no provider')
       return provider.handle
     }
-
-    /**
-     * The caller's words about the first piece pass the queue door's own sign-in check, and wait at
-     * the handover's until `released`.
-     */
     const theCallersWordsWaitAtTheHandover = async (
       host: RuntimeHost,
       caller: string,
@@ -1798,8 +1801,13 @@ describe('a service is reached through the piece it is on', () => {
       })
       const handle = world.handles.filter((each) => each.as === 'browser-driver').at(-1)?.handle
       if (handle === undefined) throw new Error('no handle')
-      const card = handle.simulateUserInput('which room?', ['north', 'south'])
-      const waiting = handle.waitForAPerson()
+      const asked = await call(host, service, 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which room?',
+        options: ['north', 'south'],
+      })
+      expect(asked.structured).toMatchObject({ outcome: 'ok' })
+      const card = { id: String(asked.structured['question']) }
       await vi.waitFor(() => {
         expect(routed(service).get(card.id)).toMatchObject({ parent: caller })
       })
@@ -1807,11 +1815,10 @@ describe('a service is reached through the piece it is on', () => {
       expect(taken.structured).toMatchObject({ outcome: 'ok', askedItsTurnToStop: true })
       expect(world.stopsAsked).toEqual(['browser-driver'])
       expect(
-        rows(service, 'request_interrupted').some(
-          (row) => row.type === 'request_interrupted' && row.requestId === card.id,
-        ),
+        world.store
+          .routedRequestsOf(service)
+          .some((row) => row.requestId === card.id && row.state === 'work-withdrawn'),
       ).toBe(true)
-      waiting()
       releaseTheTurn()
       await handedOver(service, two.piece)
     })
@@ -2082,7 +2089,13 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, other, service, one, two } = await aServiceOnTheFirstPiece()
       const handle = world.handles.filter((one) => one.as === 'browser-driver').at(-1)?.handle
       if (handle === undefined) throw new Error('no handle')
-      const first = handle.simulateUserInput('which room?', ['north', 'south'])
+      const firstAsk = await call(host, service, 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which room?',
+        options: ['north', 'south'],
+      })
+      expect(firstAsk.structured).toMatchObject({ outcome: 'ok' })
+      const first = { id: String(firstAsk.structured['question']) }
       await vi.waitFor(() => {
         expect(routed(service).get(first.id)).toMatchObject({ to: 'the-parent', parent: caller })
       })
@@ -2107,14 +2120,20 @@ describe('a service is reached through the piece it is on', () => {
       expect(routed(service).get(first.id)).toMatchObject({ parent: caller })
       const late = await call(host, other, 'answer_question', {
         question: first.id,
-        answers: [{ part: 'q0', answer: ['north'] }],
+        answers: [{ part: 'answer', answer: ['north'] }],
       })
       expect(late.structured).toMatchObject({
         outcome: 'refused',
         rail: 'no-question-by-that-name',
       })
       // …and one raised now goes to the next piece's caller.
-      const next = handle.simulateUserInput('which day?', ['monday', 'tuesday'])
+      const nextAsk = await call(host, service, 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'which day?',
+        options: ['monday', 'tuesday'],
+      })
+      expect(nextAsk.structured).toMatchObject({ outcome: 'ok' })
+      const next = { id: String(nextAsk.structured['question']) }
       await vi.waitFor(() => {
         expect(routed(service).get(next.id)).toMatchObject({ to: 'the-parent', parent: other })
       })
@@ -2140,7 +2159,26 @@ describe('a service is reached through the piece it is on', () => {
       expect(routed(service).get(question.id)?.parent).toBeUndefined()
     })
 
-    /** A helper the service gave work while on its first piece, and a question that helper asked it. */
+    it('leave its provider’s own plain question with the person while it is on a piece', async () => {
+      const { host, caller, service } = await aServiceOnTheFirstPiece()
+      const provider = [...world.handles].reverse().find((kept) => kept.as === 'browser-driver')
+      if (provider === undefined) throw new Error('the service has no provider')
+      const question = provider.handle.simulateUserInput('which floor?', ['first', 'second'])
+      await vi.waitFor(() => {
+        expect(routed(service).get(question.id)).toMatchObject({ to: 'a-person' })
+      })
+      // Not passed to the caller of the piece it is on, and not the caller's to answer.
+      expect(routed(service).get(question.id)?.parent).toBeUndefined()
+      expect(deliveredParts(caller).some((part) => part.text.includes('which floor?'))).toBe(false)
+      const answered = await call(host, caller, 'answer_question', {
+        question: question.id,
+        answers: [{ part: 'answer', answer: ['first'] }],
+      })
+      expect(answered.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-question-by-that-name',
+      })
+    })
     const aQuestionAskedOfItUnderTheFirstPiece = async (
       host: RuntimeHost,
       service: string,

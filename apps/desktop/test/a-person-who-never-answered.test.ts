@@ -1,3 +1,4 @@
+import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-which-database'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -34,44 +35,6 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-
-/**
- * 🔴 **465 · a person who never answered** — `463`'s F1, and the type hole beside it.
- *
- * > ⛔ HO-024 §5.1: *"An outcome an agent declared is the agent's claim and a digest may report it
- * > as such; **it may never restate a claim as an observation**."*
- *
- * ## ⛔ What was false, and how it was measured
- *
- * An answer made through the production door by a parent agent must not make the digest say a
- * person answered. A durable row with no actor does not support a claim about a person’s
- * action, even under an `observed` chip.
- *
- * ## ⚑ The instrument is the production door, twice, and the two doors DIVERGE
- *
- * ⛔ **A test that asked the fold about a hand-built row would be asking the fold about itself.**
- * §1 drives both doors that write {@link UserDecisionEvent} with an answer — the PERSON's
- * (`RuntimeHost.respondUserInput`, from a sink that declares a person behind it) and the AGENT's
- * (`RuntimeHost.answerQuestion`, from a parent agent's caller id) — and asks what each one left on
- * disk. 🔴 **They leave the same three keys.** That is the whole argument for the sentence: a
- * register that cannot tell the two apart may not name either.
- *
- * ## ⚠️ What this file does NOT do
- *
- * ⛔ **It does not add an actor to the durable event.** That was a schema decision the PO held, and
- * `465` §1.2 forbade the column and the migration. The response priced it; nothing here wrote it.
- *
- * 🔴 **477 · the PO ruled and the field landed, so §1 now measures the OPPOSITE property** —
- * HO-029 §1: *"`465` priced it and the risk I was protecting against does not exist here: no
- * migration, no column… deferring a decision whose price is paid in elapsed time is the one case
- * where waiting is strictly worse."* ⚑ **The two doors now disagree in the ledger**, which is what
- * lets a sentence say which one answered. ⚠️ **Everything else in this file is untouched**: the
- * type-level requirement, `LINE_REGISTERS`, and the eleven-sentence map are `465`'s and still
- * pass — a line may name an actor exactly when the row it stands for carries one, and `477` is
- * that row carrying one rather than the rule being relaxed.
- *
- * ⚑ The provider is a double, every directory is temporary, and no live app or provider is run.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
@@ -245,22 +208,7 @@ describe('465 · a person who never answered', () => {
     })
     expect(spawned.outcome, JSON.stringify(spawned)).toBe('ok')
     const worker = spawned.agent as string
-    const workerHandle = handles.at(-1)
-    if (workerHandle === undefined) throw new Error('the worker received no provider handle')
-    const asked = workerHandle.simulateUserInput('Which database?', ['Postgres', 'SQLite'])
-    await waitFor(
-      () =>
-        store
-          .events(worker)
-          .some(({ event }) => event.type === 'request_routed' && event.requestId === asked.id),
-      'the worker question to route to its parent',
-    )
-    const answered = await host.answerQuestion(
-      { questionId: asked.id, answers: [{ part: 'q0', answer: ['Postgres'] }] },
-      { ownerId: `agent:${parent.sessionId}` },
-    )
-    expect(answered.ok, JSON.stringify(answered)).toBe(true)
-    await expect(asked.answered).resolves.toMatchObject({ kind: 'answer' })
+    const asked = { id: await theParentAnswersWhichDatabase(host, worker, parent.sessionId) }
     return { sessionId: worker, requestId: asked.id, parentSessionId: parent.sessionId }
   }
 

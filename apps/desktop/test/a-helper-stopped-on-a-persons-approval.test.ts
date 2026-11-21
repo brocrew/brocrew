@@ -23,14 +23,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-/**
- * A helper in Ask mode whose turn is stopped on a person's approval takes nothing until the person
- * answers it — so its giver is told so, by every tool it reads it through: its state's line
- * (`get_agent_status`, `list_agents`), the record of the piece it holds (`list_tasks`) and the
- * receipt of what it sends it (`message_agent`). ⚑ Real host, real SQLite ledger; the provider is
- * the double, whose turn in Ask mode stops on its own card.
- */
-
 const THE_BRIEF = 'run the tests'
 /**
  * What the double's card asks, as the giver is told it: its tool, and the first line of what it
@@ -296,41 +288,40 @@ describe('a helper stopped on a person’s approval', () => {
   })
 
   describe('controls', () => {
-    it('a turn that also waits on a question its giver answers is not said to wait on a person', async () => {
-      const { pmTools, worker, handle, label } = await aGiverAndItsStoppedHelper()
-      const raised = handle.simulateUserInput('Which suite?', ['unit', 'all'])
+    const aHelperOnANativeQuestion = async () => {
+      const helper = await aGiverAndItsStoppedHelper()
+      const raised = helper.handle.simulateUserInput('Which suite?', ['unit', 'all'])
       await waitFor(
         () =>
-          ledger(worker).some(
+          ledger(helper.worker).some(
             (event) => event.type === 'request_routed' && event.requestId === raised.id,
           ),
-        'the question to go to its giver',
+        'the native question to stay with the person',
       )
-      // ⚑ The premise: it went to its giver, whose answer goes straight in.
+      return { ...helper, raised }
+    }
+
+    it('a provider plain question keeps its turn waiting on the person', async () => {
+      const { pmTools, worker, raised, label } = await aHelperOnANativeQuestion()
+      // The native card is still the person's, so the giver is told what stops the turn.
       const routed = store.routedRequestsOf(worker).find((one) => one.requestId === raised.id)
-      expect(routed?.went.to).not.toBe('a-person')
+      expect(routed?.went.to).toBe('a-person')
       const status = await callOn(pmTools, 'get_agent_status', { agent: worker })
-      expect(status.structured['agent']).toMatchObject({ stoppedOnAPerson: null })
-      expect(status.text).not.toContain('its turn is stopped')
+      expect(
+        (status.structured['agent'] as { stoppedOnAPerson: unknown }).stoppedOnAPerson,
+      ).not.toBeNull()
+      expect(status.text).toContain('its turn is stopped')
       const sent = await callOn(pmTools, 'message_agent', {
         agent: worker,
         kind: 'follow-up',
         piece: label,
         text: 'One more thing.',
       })
-      expect(sent.text).not.toContain('Its turn is stopped')
+      expect(sent.text).toContain('Its turn is stopped')
     })
 
     it('…and at a usage limit, what is held for it waits for the limit and for that turn', async () => {
-      const { pmTools, worker, handle, label } = await aGiverAndItsStoppedHelper()
-      const raised = handle.simulateUserInput('Which suite?', ['unit', 'all'])
-      await waitFor(
-        () =>
-          ledger(worker).some(
-            (event) => event.type === 'request_routed' && event.requestId === raised.id,
-          ),
-        'the question to go to its giver',
-      )
+      const { pmTools, worker, label } = await aHelperOnANativeQuestion()
       // ⚑ A limit another Claude conversation here met, with a reset still ahead — a minute on, so
       // the limits are read again.
       clock += 60_000
@@ -359,8 +350,7 @@ describe('a helper stopped on a person’s approval', () => {
         text: 'One more thing.',
       })
       expect(sent.text).toContain('Claude’s usage limit is reached')
-      expect(sent.text).toContain('It also waits for the turn this conversation is running to end.')
-      expect(sent.text).not.toContain('Its turn is stopped')
+      expect(sent.text).toContain('Its turn is stopped')
     })
 
     it('once the person answers, nothing says it, and a message goes in', async () => {

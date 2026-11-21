@@ -26,36 +26,6 @@ import {
   RecordingSink,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **D-017 · R19 — a card routed to another CONVERSATION is that one's to answer, and the
- * refusal names whose.** `admitInterrupt` forks on `askedOf`: a card nobody is named for reads
- * `a-person-is-being-asked`; a card a native question routed to the caller's parent (or to an
- * agent it named) reads `it-is-waiting-on-an-answer` instead, and carries `detail.askedOf`.
- *
- * ## ⛔ Why this file exists
- *
- * No behavioural test reached the `it-is-waiting-on-an-answer` branch before this one — only the
- * census tables (`a-refusal-carries-its-remedy.test.ts`, `the-doors-our-own-verbs-do-not-need
- * .test.ts`) know the rail's *name*. A rail nothing reaches passes vacuously, so this pins the
- * shape on the real three-tier chain (`a-stop-reaches-down-the-whole-chain.test.ts`'s own
- * `aChainOfThree` pattern): BroBot → Ada → Ali, through the real `give_work` door (D-016; it was
- * `spawn_agent`'s), with Ali raising its provider's own native question exactly as
- * `the-word-for-a-question-nobody-stopped.test.ts`'s `childAsks` does.
- *
- * ## ⚑ The one thing the borrowed helpers do not give for free
- *
- * ⚠️ **`FakeSessionHandle.simulateUserInput` deliberately does NOT hold `status()` at
- * `waiting_permission`** — its own docblock: *"a test can call it with no turn running at all,
- * and a real adapter cannot… Taking it unconditionally would publish `waiting_permission` on an
- * idle session, which nothing it doubles can do."* Both REAL adapters hold it themselves, around
- * their own `user_input_request`: push the event, `this.machine.beginWait()`, await the broker's
- * answer, `this.machine.endWait()` (`claude-runtime.ts`'s `AskUserQuestion` handling). So a
- * fixture that wants the shape `admitInterrupt` actually branches on — a card genuinely open,
- * `status()` genuinely `waiting_permission` — asks for it explicitly, through the same public
- * `waitForAPerson()` method the adapters use, released the same way: once the broker's answer
- * settles. {@link childAsksItsParent} does exactly this and nothing more.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -199,11 +169,11 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
   /**
    * ⚑ **Raise a native question on `child` and hold it open the way a real adapter does** — see
    * this file's own docblock for why `simulateUserInput` alone is not enough. `waitForAPerson`'s
-   * release is chained onto the same promise `answer_question` settles, so the wait ends exactly
+   * release is chained onto the same promise the person’s native answer settles, so the wait ends exactly
    * when — and only when — that conversation's own answer lands, never by anything this helper
    * does on a timer.
    */
-  const childAsksItsParent = async (
+  const childAsksThePerson = async (
     child: string,
     handle: FakeSessionHandle,
     prompt = 'which branch?',
@@ -222,8 +192,8 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
     return raised
   }
 
-  it('D-017 · R19 — a grandchild parked on its own question is refused it-is-waiting-on-an-answer, naming its parent — not a-person-is-being-asked', async () => {
-    const { brobot, ada, ali, aliHandle, brobotTools } = await aChainOfThree()
+  it("a grandchild's provider question stays with the person and cannot be interrupted", async () => {
+    const { brobot, ali, aliHandle, brobotTools } = await aChainOfThree()
 
     // ⚑ **THE PAIR, taken FIRST on the identical target** (standing rule 3): while Ali is merely
     // working — no card of any kind open — the identical call from the identical caller succeeds.
@@ -238,29 +208,27 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
     expect(whileWorking.asked).toBe(true)
     await waitFor(() => aliHandle.status() === 'idle', 'Ali to settle back to idle')
 
-    const raised = await childAsksItsParent(ali, aliHandle)
+    const raised = await childAsksThePerson(ali, aliHandle)
     expect(aliHandle.status()).toBe('waiting_permission')
     // ⚑ **The premise, asserted rather than assumed**: Ali has a parent, so the routing really did
     // travel rather than land on a person — `routeRequest`'s `to: 'the-parent'` arm.
     const routed = ledger(ali).find(
       (event) => event.type === 'request_routed' && event.requestId === raised.id,
     )
-    expect(routed).toMatchObject({ to: 'the-parent', parent: ada })
+    expect(routed).toMatchObject({ to: 'a-person' })
+    expect(routed).not.toHaveProperty('parent')
 
     const refused = await callOn(brobotTools, 'interrupt_agent', {
       agent: ali,
       reason: 'the person asked for it to stop',
     })
     expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-    expect(refused.rail).toBe('it-is-waiting-on-an-answer')
+    expect(refused.rail).toBe('a-person-is-being-asked')
     expect(refused.permanence).toBe('until-a-person-changes-it')
     expect(refused.retryable).toBe(false)
-    expect((refused.detail as { askedOf?: string | null }).askedOf).toBe(ada)
-    // The question targets a conversation, so it does not belong on the person’s rail.
-    expect(refused.rail).not.toBe('a-person-is-being-asked')
+    // The native question remains with the person even when the caller is an ancestor.
     const reason = refused.reason as string
-    expect(reason).toContain('answer_question')
-    expect(reason).toContain('not to a person')
+    expect(reason).toContain('person')
 
     // ⛔ **Nothing was actually cut into by the refused call.** The one `work_interrupted` on
     // Ali's ledger is the earlier, SUCCESSFUL ask above; the refusal wrote no second one.
@@ -269,9 +237,9 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
     expect(brobot).toBeTruthy()
   })
 
-  it('…and the conversation the card names is refused the identical way — the rail is about the card, not the caller’s entitlement, and it clears once that conversation answers', async () => {
-    const { ada, ali, aliHandle, adaTools } = await aChainOfThree()
-    const raised = await childAsksItsParent(ali, aliHandle)
+  it('the immediate giver is also refused, and the person’s answer clears the turn', async () => {
+    const { ali, aliHandle, adaTools } = await aChainOfThree()
+    const raised = await childAsksThePerson(ali, aliHandle)
     expect(aliHandle.status()).toBe('waiting_permission')
 
     // ⚑ **Ada is Ali's direct commander AND the very conversation `askedOf` names, and is refused
@@ -282,28 +250,37 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
       reason: 'stop so I can answer it myself',
     })
     expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-    expect(refused.rail).toBe('it-is-waiting-on-an-answer')
-    expect((refused.detail as { askedOf?: string | null }).askedOf).toBe(ada)
+    expect(refused.rail).toBe('a-person-is-being-asked')
     const cuts = ledger(ali).filter((event) => event.type === 'work_interrupted')
     expect(cuts).toHaveLength(0)
 
     // ⚑ **THE PAIR — the identical call, once the wait really has ended**, through the real door:
-    // Ada answers the question rather than cutting into it.
+    // The giver cannot answer a native question; the person answers its card.
     const answered = await callOn(adaTools, 'answer_question', {
       question: raised.id,
       answers: [{ part: 'q0', answer: ['main'] }],
     })
-    expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+    expect(answered).toMatchObject({ outcome: 'refused' })
+    host.claimSession(ali, window)
+    await host.respondUserInput(
+      ali,
+      raised.id,
+      { kind: 'answer', answers: { q0: ['main'] } },
+      window,
+    )
 
     await waitFor(() => aliHandle.status() === 'idle', 'Ali to settle once the answer lands')
+    expect(store.routedRequestsOf(ali).find((one) => one.requestId === raised.id)?.state).toBe(
+      'answered',
+    )
+    await makeItWork(aliHandle)
     const again = await callOn(adaTools, 'interrupt_agent', {
       agent: ali,
       reason: 'a check after the answer',
     })
-    // ⛔ **No longer `it-is-waiting-on-an-answer`** — nothing is open to be waiting on, so the
-    // call reads `ok` with nothing to interrupt, proving the wait cleared with the ANSWER rather
-    // than with time or a retry.
+    // The person's answer cleared the card; ordinary work can now be asked to stop.
     expect(again.outcome, JSON.stringify(again)).toBe('ok')
-    expect(again.asked).toBe(false)
+    expect(again.asked).toBe(true)
+    expect(ledger(ali).filter((event) => event.type === 'work_interrupted')).toHaveLength(1)
   })
 })
