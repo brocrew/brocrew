@@ -1,6 +1,7 @@
 import type { ContextReading } from '@brobot2/runtime'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
-import { describeConversation } from './conversation-address'
+import { conversationLine, describeConversation } from './conversation-address'
+import { errorMessage } from './session-disclosures'
 import { howLongAgo } from './what-this-app-adds-to-a-turn'
 
 export const THE_ANSWER_ARRIVES_AS_A_MESSAGE = 'The answer arrives as a message.'
@@ -38,7 +39,42 @@ export function sendReceipt(
   reads: ConversationReads,
   service: boolean,
 ): { readonly receipt: SendReceipt; readonly said: string } {
-  const { address, title, line: conversation } = describeConversation(reads, facts.to, service)
+  return assembleReceipt(facts, describeConversation(reads, facts.to, service))
+}
+
+type RecordedMessageFacts = Exclude<SendFacts, { readonly profile: string }> & {
+  readonly recorded: Recorded & { readonly kind: 'message' }
+}
+
+/** Render a receipt for a Message whose recording and delivery facts are already known. */
+export function receiptForRecordedMessage(
+  facts: RecordedMessageFacts,
+  render: () => ReturnType<typeof sendReceipt>,
+): ReturnType<typeof sendReceipt> {
+  try {
+    return render()
+  } catch (error) {
+    console.warn(`message_agent: could not describe its recorded receipt: ${errorMessage(error)}`)
+    const title = 'title unavailable'
+    const description = { address: facts.to, title, line: conversationLine(facts.to, title) }
+    const result = assembleReceipt(facts, description)
+    if (
+      (facts.state.kind === 'started' || facts.state.kind === 'queued') &&
+      facts.senderHistoryUnconfirmed !== true
+    ) {
+      return {
+        ...result,
+        said: `Your message ${facts.recorded.id} is recorded for ${description.line}. ${result.said}`,
+      }
+    }
+    return result
+  }
+}
+
+function assembleReceipt(
+  facts: SendFacts,
+  { address, title, line: conversation }: ReturnType<typeof describeConversation>,
+): { readonly receipt: SendReceipt; readonly said: string } {
   const receipt: SendReceipt = {
     recorded: facts.recorded,
     recipient: { id: facts.to, address, title, state: facts.state },

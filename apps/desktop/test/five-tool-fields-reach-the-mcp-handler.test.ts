@@ -6,6 +6,7 @@ import type { AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { SendReceipt } from '../src/shared/tool-outcome'
+import * as recordedReceipt from '../src/main/runtime/send-receipt'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -172,9 +173,20 @@ describe('five more tools answer field failures through Claude MCP', () => {
 
   it.each(
     (['Claude', 'Codex'] as const).flatMap((adapter) =>
-      (['start', 'readback', 'sender-started', 'sender-queued', 'sender-published'] as const).map(
-        (failureAt) => ({ adapter, failureAt }),
-      ),
+      (
+        [
+          'start',
+          'readback',
+          'sender-started',
+          'sender-queued',
+          'sender-published',
+          'address',
+          'title',
+          'service',
+          'unknown-title',
+          'wait',
+        ] as const
+      ).map((failureAt) => ({ adapter, failureAt })),
     ),
   )('$adapter keeps recording facts after $failureAt failure', async ({ adapter, failureAt }) => {
     await host.close(worker, world.window)
@@ -183,11 +195,89 @@ describe('five more tools answer field failures through Claude MCP', () => {
     const wake =
       failureAt === 'start' ? vi.spyOn(host, 'resumeSession').mockRejectedValueOnce(failure) : null
     const lookup =
-      failureAt === 'readback'
+      failureAt === 'readback' || failureAt === 'unknown-title'
         ? vi.spyOn(host, 'stateOfARecordedMessage').mockImplementation(() => {
             throw failure
           })
         : null
+    const descriptiveFailure = ['address', 'title', 'service', 'unknown-title', 'wait'].includes(
+      failureAt,
+    )
+    const beforeRender: {
+      id: string
+      state: SendReceipt['recipient']['state']
+      recordings: number
+      deliveries: number
+    }[] = []
+    const captureFacts = (id: string, state: SendReceipt['recipient']['state']) => {
+      beforeRender.push({
+        id,
+        state,
+        recordings: world
+          .ledger(worker)
+          .filter((event) => event.type === 'message_queued' && event.messageId === id).length,
+        deliveries: world.sent.filter((one) => one.words.includes(text)).length,
+      })
+    }
+    let failedDescriptions = 0
+    let rendering = false
+    let enriching = false
+    const recorded = recordedReceipt.receiptForRecordedMessage
+    const enrichmentBoundary = vi
+      .spyOn(recordedReceipt, 'receiptForRecordedMessage')
+      .mockImplementation((facts, render) =>
+        recorded(facts, () => {
+          if (failureAt === 'wait') captureFacts(facts.recorded.id, facts.state)
+          enriching = true
+          try {
+            return render()
+          } finally {
+            enriching = false
+          }
+        }),
+      )
+    const waiting = host.whyWhatIsHeldWaits.bind(host)
+    const waitRead = vi.spyOn(host, 'whyWhatIsHeldWaits').mockImplementation((id, stop) => {
+      if (enriching && id === worker && failureAt === 'wait') {
+        failedDescriptions += 1
+        throw failure
+      }
+      return waiting(id, stop)
+    })
+    const render = host.receiptForSend.bind(host)
+    const renderingBoundary = vi.spyOn(host, 'receiptForSend').mockImplementation((facts) => {
+      if (descriptiveFailure && failureAt !== 'wait') captureFacts(facts.recorded.id, facts.state)
+      rendering = true
+      try {
+        return render(facts)
+      } finally {
+        rendering = false
+      }
+    })
+    const addressOf = world.store.firstTaskOf.bind(world.store)
+    const addressRead = vi.spyOn(world.store, 'firstTaskOf').mockImplementation((id) => {
+      if (rendering && id === worker && failureAt === 'address') {
+        failedDescriptions += 1
+        throw failure
+      }
+      return addressOf(id)
+    })
+    const titleOf = world.store.conversationTitle.bind(world.store)
+    const titleRead = vi.spyOn(world.store, 'conversationTitle').mockImplementation((id) => {
+      if (rendering && id === worker && (failureAt === 'title' || failureAt === 'unknown-title')) {
+        failedDescriptions += 1
+        throw failure
+      }
+      return titleOf(id)
+    })
+    const parentOf = world.store.parentOf.bind(world.store)
+    const serviceRead = vi.spyOn(world.store, 'parentOf').mockImplementation((id) => {
+      if (rendering && id === worker && failureAt === 'service') {
+        failedDescriptions += 1
+        throw failure
+      }
+      return parentOf(id)
+    })
     const append = world.store.append.bind(world.store)
     const senderWrites = vi.spyOn(world.store, 'append').mockImplementation((...args) => {
       const senderReceipt = args[0] === caller && args[2].type === 'message_sent'
@@ -205,7 +295,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
         throw failure
       publish(message)
     })
-    if (failureAt === 'sender-queued') {
+    if (failureAt === 'sender-queued' || failureAt === 'wait') {
       world.onResumed = (_profile, handle) => {
         handle.send = async () => {
           throw new Error('fictional delivery blocked before sending')
@@ -215,15 +305,32 @@ describe('five more tools answer field failures through Claude MCP', () => {
     const wire = await server('message_agent')
     const text = 'Keep these notes until this conversation can run.'
     const args = { agent: worker, text }
+    const assertBeforeRender = () => {
+      if (!descriptiveFailure) return
+      expect(beforeRender).toEqual([
+        {
+          id: expect.any(String),
+          state:
+            failureAt === 'wait'
+              ? { kind: 'queued', behind: 0 }
+              : { kind: failureAt === 'unknown-title' ? 'delivery-unknown' : 'started' },
+          recordings: 1,
+          deliveries: failureAt === 'wait' ? 0 : 1,
+        },
+      ])
+    }
     let said: string
     if (adapter === 'Claude') {
-      said = words(await wire.call(args))
+      const packet = await wire.call(args)
+      assertBeforeRender()
+      said = words(packet)
     } else {
       const response = await answerCodexToolCall(wire.set, {
         namespace: 'brobot',
         tool: 'message_agent',
         arguments: args,
       })
+      assertBeforeRender()
       expect(response.success).toBe(true)
       said = response.contentItems
         .map((item) => (item.type === 'inputText' ? item.text : ''))
@@ -238,9 +345,9 @@ describe('five more tools answer field failures through Claude MCP', () => {
           ? { kind: 'cannot-run', cause: { code: 'could-not-start' } }
           : {
               kind:
-                failureAt === 'readback'
+                failureAt === 'readback' || failureAt === 'unknown-title'
                   ? 'delivery-unknown'
-                  : failureAt !== 'sender-queued'
+                  : failureAt !== 'sender-queued' && failureAt !== 'wait'
                     ? 'started'
                     : 'queued',
             },
@@ -248,7 +355,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
     expect(said).toContain(`Your message ${receipt.recorded.id} is recorded for conversation`)
     expect(said).not.toContain(failure.message)
     expect(warned.mock.calls.flat().join(' ')).toContain(failure.message)
-    if (failureAt === 'readback') {
+    if (failureAt === 'readback' || failureAt === 'unknown-title') {
       expect(said).toContain('Delivery could not be determined.')
       expect(lookup).toHaveBeenCalledTimes(1)
       expect(
@@ -278,11 +385,35 @@ describe('five more tools answer field failures through Claude MCP', () => {
           ),
       ).toHaveLength(1)
     }
+    if (descriptiveFailure) {
+      expect(receipt.recorded.id).toBe(beforeRender[0]?.id)
+      expect(receipt.recipient).toMatchObject({ address: worker, title: 'title unavailable' })
+      expect(failedDescriptions).toBe(1)
+      expect(renderingBoundary).toHaveBeenCalledTimes(failureAt === 'wait' ? 0 : 1)
+      expect(enrichmentBoundary).toHaveBeenCalledTimes(1)
+    }
+    if (failureAt === 'wait') {
+      expect(receipt.recipient.state).toEqual({ kind: 'queued', behind: 0 })
+      expect(receipt.senderHistoryUnconfirmed).toBeUndefined()
+      expect(said).toContain('Held for ')
+    }
+    renderingBoundary.mockRestore()
+    enrichmentBoundary.mockRestore()
+    waitRead.mockRestore()
+    addressRead.mockRestore()
+    titleRead.mockRestore()
+    serviceRead.mockRestore()
     lookup?.mockRestore()
     senderWrites.mockRestore()
     publication.mockRestore()
     const alreadySent =
-      failureAt === 'readback' || failureAt === 'sender-started' || failureAt === 'sender-published'
+      failureAt === 'readback' ||
+      failureAt === 'sender-started' ||
+      failureAt === 'sender-published' ||
+      failureAt === 'address' ||
+      failureAt === 'title' ||
+      failureAt === 'service' ||
+      failureAt === 'unknown-title'
     expect(
       world
         .ledger(worker)
@@ -302,7 +433,7 @@ describe('five more tools answer field failures through Claude MCP', () => {
       expect.objectContaining({ messageId: receipt.recorded.id, text }),
     ])
     expect(world.sent.filter((one) => one.words.includes(text))).toHaveLength(0)
-    if (failureAt === 'sender-queued') return
+    if (failureAt === 'sender-queued' || failureAt === 'wait') return
     wake?.mockRestore()
     world.onResumed = null
     await host.resumeSession(worker, world.window)

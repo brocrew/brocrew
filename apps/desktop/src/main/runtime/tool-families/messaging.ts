@@ -24,6 +24,7 @@ import { hasSomethingToSend } from '../../../shared/runtime-ipc'
 import { randomUUID } from 'node:crypto'
 import { theStoppedWork } from '../reply-rails'
 import { workRequestRefused } from '../spawn-rails'
+import { receiptForRecordedMessage } from '../send-receipt'
 import { z } from 'zod'
 
 export function createCompactAgentTool(
@@ -304,14 +305,19 @@ export function createMessageAgentTool(
           if (state.kind === 'started' && says === 'follow-up' && about !== null) {
             host.takeBackWhatItsQuestionMadeFalse({ agent: to, piece: about.piece }, by)
           }
-          const { receipt, said } = host.receiptForSend({
-            recorded: { kind: 'message', id, taskLabel: about?.label ?? null },
+          const facts = {
+            recorded: { kind: 'message' as const, id, taskLabel: about?.label ?? null },
             ...(senderHistoryUnconfirmed ? { senderHistoryUnconfirmed } : {}),
             to,
             state,
             attachments,
-            ...(state.kind === 'queued' ? { waitsFor: host.whyWhatIsHeldWaits(to) } : {}),
-          })
+          }
+          const { receipt, said } = receiptForRecordedMessage(facts, () =>
+            host.receiptForSend({
+              ...facts,
+              ...(state.kind === 'queued' ? { waitsFor: host.whyWhatIsHeldWaits(to) } : {}),
+            }),
+          )
           return answer(
             {
               outcome: 'ok',
