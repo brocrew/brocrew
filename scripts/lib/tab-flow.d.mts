@@ -23,8 +23,8 @@ export declare const WIDE_READ_MARK: string
 export declare function hooksIn(expression: string): string[]
 
 /**
- * Every hook a smoke builds in the PAGE, read out of its own source rather than from a live run
- * (345). See the implementation for what this can and cannot see.
+ * Every hook a smoke builds in the PAGE, read out of its own source rather than from a live run.
+ * See the implementation for what this can and cannot see.
  */
 export declare function builtHookViolations(
   source: string,

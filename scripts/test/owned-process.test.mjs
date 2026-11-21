@@ -19,7 +19,7 @@ const identity = ({
   parentPid = 900,
   pgid = pid,
   command = `process-${pid} --owned`,
-  // ⚠️ `S` — sleeping, which is what a live process reads as. It is carried on the identity and
+  // `S` — sleeping, which is what a live process reads as. It is carried on the identity and
   // deliberately excluded from the saved authority; see the two tests directly below.
   runState = 'S',
 }) => ({ pid, start, executable, parentPid, pgid, command, runState })
@@ -69,9 +69,8 @@ describe('owned process identity', () => {
   })
 
   it('does not let a change of run state look like a change of process', () => {
-    // ⛔ 333. `runState` is read on every sample and compared against nothing: a process moves
-    // between `S`, `R` and `SN` while it runs, and a capture that refused on that would refuse
-    // every busy process — which is a teardown with no authority to kill anything.
+    // `runState` is read on every sample and compared against nothing: a process moves between `S`,
+    // `R` and `SN` while it runs, and a capture that refused on that would refuse every busy process.
     let sample = 0
     const captured = captureProcessIdentity(102, {
       readIdentity: () => identity({ pid: 102, runState: sample++ === 0 ? 'S' : 'R' }),
@@ -82,17 +81,13 @@ describe('owned process identity', () => {
 })
 
 /**
- * ⛔ **The real `ps` parse, against a real process, with `ps` itself as the oracle.**
+ * The real `ps` parse, against a real process, with `ps` itself as the oracle.
  *
- * ⚠️ Every other test in this file injects `readIdentity`, which is right — they are about the
- * ruling, not the reader. But that leaves the reader itself asserted by nothing, and it is a
- * positional parse of a multi-field `ps` line where one of the fields (`lstart`) is the only one
- * with spaces in it. 🔴 333 added `state` to that line; putting it after `lstart` instead of before
- * it, or reading the wrong capture group, silently makes `start` the state letter and `runState`
- * empty — at which point no zombie is ever recognised and every teardown runs to its bound.
- *
- * ⚑ **The oracle is a different question to the same instrument**: one `ps` per field, so the
- * product's positional parse is checked against a read that has no positions to get wrong.
+ * Every other test here injects `readIdentity`, leaving the reader unasserted. It is a positional
+ * parse of a multi-field `ps` line where `lstart` is the only field with spaces; putting `state`
+ * after it instead of before, or reading the wrong capture group, makes `start` the state letter
+ * and `runState` empty, so no zombie is ever recognised. The oracle is one `ps` per field, a read
+ * with no positions to get wrong.
  */
 // This oracle reads POSIX ps fields; Windows process enumeration has a different interface.
 describe.skipIf(process.platform === 'win32')('reading one process out of ps', () => {
@@ -110,29 +105,22 @@ describe.skipIf(process.platform === 'win32')('reading one process out of ps', (
     expect(read.parentPid).toBe(Number(askPs('ppid')))
     expect(read.pgid).toBe(Number(askPs('pgid')))
     expect(read.executable).toBe(askPs('comm'))
-    // ⛔ **Non-empty and not the start time**: an empty `runState` is exactly what a mis-ordered
-    // field list produces, and it reads as *"this is not a zombie"* about every process there is.
+    // Non-empty and not the start time: an empty `runState` is what a mis-ordered field list produces,
+    // and it reads as "not a zombie" about every process.
     //
-    // ⚠️ **387 · this is the one field on the line that MOVES, so the oracle is its SHAPE and not a
-    // second reading of it.** It used to be `toBe(askPs('state'))` — two samples of a value that
-    // changes with what the machine is doing between them. Measured on this machine, 120 pairs
-    // each: idle, both reads say `S` every time; under twelve busy workers, both say `R` every
-    // time. ⛔ Neither regime disagrees with itself, and the equality only fails when the LOAD
-    // changes across the pair — which is precisely what a thirty-file parallel run does, and is how
-    // this landed as an intermittent red in `pnpm run ci` that names a process state and means a
-    // scheduler.
+    // `state` is the one field on the line that MOVES, so the oracle is its SHAPE rather than a second
+    // reading: two samples of it disagree whenever load changes across the pair, which a parallel run
+    // does, and that showed up as an intermittent red naming a process state.
     //
-    // ⚑ **The claim being protected is positional, and the shape carries all of it**: a state
-    // letter with optional flags is not the date `lstart` produces, not the digits `pgid` produces,
-    // and not the lowercase `comm` — so a field list read one column across still fails here.
+    // The shape still carries the positional claim: a state letter with optional flags is not the date
+    // `lstart` produces, not the digits `pgid` produces, and not the lowercase `comm`.
     const A_PS_STATE = /^[A-Z][A-Za-z+<>]*$/
     expect(read.runState).toMatch(A_PS_STATE)
-    // ⚑ …and the control that keeps that regex honest: `ps` itself has to satisfy it, or the shape
-    // above describes nothing and the assertion is a comment.
+    // The control that keeps that regex honest: `ps` itself has to satisfy it.
     expect(askPs('state')).toMatch(A_PS_STATE)
     expect(read.runState).not.toBe('')
-    // ⛔ …and it is none of its NEIGHBOURS on the same line, which is the mis-order this test is
-    // named after said as a fact rather than as a shape.
+    // ...and it is none of its NEIGHBOURS on the same line, which is the mis-order this test is named
+    // after.
     expect([read.start, String(read.pgid), String(read.parentPid), read.executable]).not.toContain(
       read.runState,
     )
@@ -140,11 +128,10 @@ describe.skipIf(process.platform === 'win32')('reading one process out of ps', (
   })
 
   it('says gone, rather than throwing, when ps has no row for a pid', () => {
-    // ⚠️ **Five candidates, and `ps` itself decides which of them count.** A pid freshly vacated by
-    // a collected child is the only kind this can honestly ask about, and the OS may hand that
-    // number straight to something else — this suite spawns a `ps` per field, so that is not
-    // hypothetical. Asking `ps` first is what keeps this an assertion about the MAPPING (exit
-    // status 1 → `null`) rather than a bet on pid allocation.
+    // Five candidates, and `ps` itself decides which count. A pid freshly vacated by a collected child
+    // is the only kind this can honestly ask about, and the OS may hand that number straight to
+    // something else. Asking `ps` first keeps this an assertion about the MAPPING (exit status 1 ->
+    // `null`) rather than a bet on pid allocation.
     const absent = []
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const pid = Number(execFileSync('/bin/sh', ['-c', 'echo $$'], { encoding: 'utf8' }).trim())
@@ -184,7 +171,7 @@ describe('ownership-scoped teardown', () => {
         signals.push([pid, signal])
         if (pid === -launcher.pid) {
           fake.processes.delete(launcher.pid)
-          // This is the path the old process-group-only reaper lost.
+          // This is the path a process-group-only reaper would lose.
           fake.processes.set(listener.pid, { ...listener, parentPid: 1 })
         }
         if (pid === listener.pid) fake.processes.delete(listener.pid)
@@ -230,13 +217,11 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * 🔴 **333.** This pair used to be one test asserting `complete: true` for both pids at once. The
-   * launcher half is right and is above. The child half was the defect: same `lstart`, so it is the
-   * same process — still in the table, still holding its files — and calling that complete is what
-   * let the caller remove a directory it was still writing into.
+   * The launcher half (complete) is above. The child half is not complete: same `lstart` means the
+   * same process, still in the table and still holding its files, and calling that complete would
+   * let the caller remove a directory it is still writing into.
    *
-   * ⚠️ **The safety property is unchanged and asserted here**: an identity that no longer matches
-   * earns no `kill`. What changed is that it no longer earns a green either.
+   * The safety property is asserted here too: an identity that no longer matches earns no `kill`.
    */
   it('waits for a saved child that is still in the table under a name it no longer answers to', () => {
     const launcher = identity({ pid: 300, parentPid: 50, pgid: 300, command: 'pnpm launch' })
@@ -271,7 +256,7 @@ describe('ownership-scoped teardown', () => {
     const waiting = lifecycle.stop()
 
     expect(waiting).toMatchObject({ complete: false, remaining: [], exiting: [child.pid] })
-    // ⛔ It is waited for and never signalled: the whole identity is what earns a `kill`.
+    // It is waited for and never signalled: the whole identity is what earns a `kill`.
     expect(signals).toEqual([])
 
     // ...and the moment it leaves the table, the same lifecycle completes.
@@ -280,14 +265,12 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * 🔴 **The regression this pair exists to stop, which 333 shipped for ten minutes.**
+   * Regression guard for a launcher that has already exited and is only waiting to be collected.
    *
-   * The launcher is the CALLER's own direct child, so nobody but the caller can collect it — and
-   * `blockingPause` stops the caller's event loop, so nothing is collected while a teardown runs.
-   * Under the first version of the pid+start rule the launcher therefore read as still-there for
-   * the whole 40-attempt bound: **`window:check` went from a ~300 ms reap to 13.1–15.8 s and a red
-   * on a green product**, measured over thirteen runs. ⚠️ A zombie holds no descriptor and no page;
-   * it cannot be the thing the removal is racing.
+   * The launcher is the CALLER's own direct child, so nobody but the caller can collect it, and
+   * `blockingPause` stops the caller's event loop. If it counted as still-there, it would hold the
+   * whole 40-attempt bound (a ~300 ms reap became 13.1-15.8 s and a red on a green product). A
+   * zombie holds no descriptor and no page; it cannot be what the removal is racing.
    */
   it('does not wait for a pid that has already exited and is only waiting to be collected', () => {
     const launcher = identity({ pid: 310, parentPid: 50, pgid: 310, command: 'pnpm launch' })
@@ -296,9 +279,8 @@ describe('ownership-scoped teardown', () => {
       launcherPid: launcher.pid,
       readIdentity: fake.readIdentity,
       eventEmitter: new EventEmitter(),
-      // ⚑ **A freeze is not an ending** (360). `kill9` now sends `SIGSTOP` before it kills, and a
-      // fake that treated every signal alike would collect the launcher before the kill — which
-      // reads as this test passing for a reason it is not about.
+      // A freeze is not an ending: `kill9` sends `SIGSTOP` before it kills, and a fake that treated every
+      // signal alike would collect the launcher before the kill, passing this test for the wrong reason.
       killer: (pid, signal) => {
         if (signal === 'SIGSTOP') return
         fake.processes.set(launcher.pid, {
@@ -314,19 +296,18 @@ describe('ownership-scoped teardown', () => {
 
     const result = lifecycle.kill9()
     expect(result).toMatchObject({ complete: true, remaining: [], exiting: [] })
-    // ⛔ One attempt, not forty: the bound is not what ended this.
+    // One attempt, not forty: the bound is not what ended this.
     expect(result.signals).toBe(1)
   })
 
   /**
-   * ⛔ **A zombie the identity comparison cannot tell from a live process.**
+   * A zombie the identity comparison cannot tell from a live process.
    *
-   * ⚠️ macOS rewrites a zombie's `comm` to `<defunct>`, so on THIS platform the state check could
-   * sit anywhere below `sameRememberedProcess` and nothing would move — which is a fact about one
-   * `ps`, not a property of the state, and a mutation row proved it by surviving. Linux's `ps`
-   * reports `comm` unchanged for a zombie. This is that shape: every identity field intact, `Z` the
-   * only thing that says the process is finished. ⛔ Read after the identity comparison it is
-   * `alive`, and the teardown signals a row in a table until its bound runs out.
+   * macOS rewrites a zombie's `comm` to `<defunct>`, so there the state check could sit anywhere below
+   * `sameRememberedProcess` and nothing would move; Linux's `ps` reports `comm` unchanged. This is
+   * that shape: every identity field intact, `Z` the only thing that says the process is finished.
+   * Read after the identity comparison it is `alive`, and the teardown signals a table row until its
+   * bound runs out.
    */
   it('sees a collected pid even when every identity field still matches', () => {
     const launcher = identity({ pid: 350, parentPid: 50, pgid: 350, command: 'pnpm launch' })
@@ -347,7 +328,7 @@ describe('ownership-scoped teardown', () => {
 
     const result = lifecycle.kill9()
     expect(result).toMatchObject({ complete: true, remaining: [], exiting: [] })
-    // ⚑ 360: the freeze comes first, on the same group, and only then the kill.
+    // The freeze comes first, on the same group, and only then the kill.
     expect(signals).toEqual([
       [-launcher.pid, 'SIGSTOP'],
       [-launcher.pid, 'SIGKILL'],
@@ -371,8 +352,8 @@ describe('ownership-scoped teardown', () => {
     lifecycle.remember(collected.pid)
 
     fake.processes.delete(launcher.pid)
-    // ⚠️ Identical to `ps` in every field the identity holds. The ONLY difference is the state, and
-    // the whole ruling turns on it.
+    // Identical to `ps` in every field the identity holds. The only difference is the state, and the
+    // whole ruling turns on it.
     fake.processes.set(dying.pid, {
       ...dying,
       runState: '?E',
@@ -390,26 +371,21 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⛔ **A child that appears while the teardown is deciding what to kill** (333).
+   * A child that appears while the teardown is deciding what to kill.
    *
-   * ⚠️ `inspect()` is one `ps` per remembered pid times three fields — **81 ms on a seven-pid
-   * lifecycle on an idle machine**, two to three times that under a full `pnpm run ci`. Discovery
-   * used to happen once, ABOVE that call, so the app had the whole of it in which to spawn. And what
-   * it spawns there is a provider CLI, which `codex-transport` starts `detached`: it leads its own
-   * process group, so the group signal below never reaches it and only a `remember()` can.
-   *
-   * ⚑ Measured on a real `window:check`: **1 run in 70 had a descendant the lifecycle never owned**,
-   * and the one `ENOTEMPTY` this dispatch reproduced left six Codex SQLite files behind, **written
-   * 5 to 9 ms after the removal was asked**. The second discovery does not close that window — the
-   * app is alive until the signal — but it shrinks it from an `inspect()` to a `ps -A`.
+   * `inspect()` is one `ps` per remembered pid times three fields (81 ms on a seven-pid lifecycle,
+   * two to three times that under a full `pnpm run ci`), and the app can spawn during it. What it
+   * spawns is a provider CLI that `codex-transport` starts `detached`: it leads its own process
+   * group, so the group signal never reaches it and only a `remember()` can. A second discovery right
+   * before the signal shrinks that window from an `inspect()` to a `ps -A`.
    */
   it('discovers a descendant that appears between the first scan and the signal', () => {
     const launcher = identity({ pid: 340, parentPid: 50, pgid: 340, command: 'pnpm launch' })
     const late = identity({
       pid: 341,
       parentPid: 340,
-      // ⛔ Its OWN group, which is what `detached: true` buys a provider child — and what makes
-      // `kill(-340)` miss it entirely.
+      // Its OWN group, which is what `detached: true` buys a provider child, and what makes `kill(-340)`
+      // miss it entirely.
       pgid: 341,
       command: '/repo/codex app-server',
     })
@@ -445,18 +421,12 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * 🔴 **360 · the freeze is what closes the window `333` could only shrink.**
+   * The freeze closes the window the late second scan can only shrink.
    *
-   * ⛔ **The app spawns while the teardown decides.** `333` moved the last scan to one `ps -A`
-   * before the signal and wrote *"it does not close it"* — and at `cf87667` every `window:check`
-   * launch spawns a `codex app-server` into the directory the check is about to remove, `detached`,
-   * leading its own group. ⚑ **A stopped process runs no code**, so the order below is the whole
-   * fix: `SIGSTOP` the group, and only THEN ask what is under it.
-   *
-   * ⚠️ **The fake spawns only while the tree is running**, which is the property being asserted. If
-   * the freeze were removed, `scans` would still find the child on its second pass — the ordering,
-   * not the count, is what this test is about, so it asserts the SIGSTOP lands before the scan that
-   * finds the child and before any kill.
+   * The app spawns while the teardown decides, so the order is the fix: `SIGSTOP` the group, and
+   * only then ask what is under it. The fake spawns only while the tree is running. If the freeze
+   * were removed, `scans` would still find the child on its second pass, so this asserts the SIGSTOP
+   * lands before the scan that finds the child and before any kill.
    */
   it('⛔ freezes the group BEFORE the scan that decides what it owns, and kills only after', () => {
     const launcher = identity({ pid: 360, parentPid: 50, pgid: 360, command: 'pnpm launch' })
@@ -484,8 +454,8 @@ describe('ownership-scoped teardown', () => {
       },
       discoverDescendants: () => {
         events.push('scan')
-        // ⛔ **A frozen tree spawns nothing.** Before the freeze this scan finds an empty tree; the
-        // child exists only because the app was still running when the first pass ran.
+        // A frozen tree spawns nothing. Before the freeze this scan finds an empty tree; the child exists
+        // only because the app was still running when the first pass ran.
         if (!frozen) return []
         fake.processes.set(late.pid, { ...late })
         return [{ pid: late.pid }]
@@ -494,10 +464,10 @@ describe('ownership-scoped teardown', () => {
 
     const result = lifecycle.kill9()
 
-    // ⚑ The freeze is the FIRST thing, before any scan and before any kill.
+    // The freeze is the FIRST thing, before any scan and before any kill.
     expect(events[0]).toBe(`SIGSTOP ${String(-launcher.pid)}`)
     expect(events.indexOf('scan')).toBe(1)
-    // ⛔ …and the child the scan then found was frozen before it was killed, so it could not have
+    // ...and the child the scan then found was frozen before it was killed, so it could not have
     // written a byte between being seen and being ended.
     expect(events.indexOf(`SIGSTOP ${String(late.pid)}`)).toBeLessThan(
       events.indexOf(`SIGKILL ${String(late.pid)}`),
@@ -507,12 +477,11 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⛔ **360 · a child already remembered is frozen by pid, not left to the group signal.**
+   * A child already remembered is frozen by pid, not left to the group signal.
    *
-   * ⚠️ **This is the one the group cannot reach.** `codex-transport` spawns `detached: true`, so the
-   * child calls `setsid` and `kill(-launcher)` passes it by — it is only ever reached because a
-   * `remember()` saved its identity. ⛔ If the freeze covered the group alone, the very process this
-   * whole dispatch is about would keep running through the scan that was supposed to enumerate it.
+   * `codex-transport` spawns `detached: true`, so the child calls `setsid` and `kill(-launcher)`
+   * passes it by; it is only reached because a `remember()` saved its identity. If the freeze covered
+   * the group alone, that process would keep running through the scan meant to enumerate it.
    */
   it('⛔ freezes a remembered child in its OWN group, which the group signal never reaches', () => {
     const launcher = identity({ pid: 390, parentPid: 50, pgid: 390, command: 'pnpm launch' })
@@ -539,7 +508,7 @@ describe('ownership-scoped teardown', () => {
 
     lifecycle.kill9()
 
-    // ⚑ Its own pid, positive — the group signal above it names -390 and this process is in 391.
+    // Its own pid, positive: the group signal above it names -390 and this process is in 391.
     expect(events.indexOf(`SIGSTOP ${String(detached.pid)}`)).toBeGreaterThan(-1)
     expect(events.indexOf(`SIGSTOP ${String(detached.pid)}`)).toBeLessThan(
       events.indexOf(`SIGKILL ${String(detached.pid)}`),
@@ -548,13 +517,12 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⛔ **360 · the second pass, and it is the detached child's grandchild.**
+   * The second pass, for the detached child's grandchild.
    *
-   * ⚠️ The group freeze does not reach a `detached` child, so between that signal and the pass that
-   * freezes it by pid it is still running — and can spawn one of its own. ⚑ **One scan is therefore
-   * not enough and two are owed**, which is the whole of why {@link FREEZE_PASSES} is not 1. Without
-   * the loop the grandchild is never remembered, never frozen and never killed: it survives the
-   * teardown and writes into the directory the caller is about to remove.
+   * The group freeze does not reach a `detached` child, so between that signal and the pass that
+   * freezes it by pid it is still running and can spawn one of its own. One scan is not enough, which
+   * is why {@link FREEZE_PASSES} is not 1. Without the loop the grandchild is never remembered,
+   * frozen or killed, and it writes into the directory the caller is about to remove.
    */
   it('⛔ keeps scanning until a frozen tree stops producing processes', () => {
     const launcher = identity({ pid: 400, parentPid: 50, pgid: 400, command: 'pnpm launch' })
@@ -582,8 +550,8 @@ describe('ownership-scoped teardown', () => {
         fake.processes.delete(Math.abs(pid))
       },
       discoverDescendants: () => {
-        // ⛔ The child appears once the LAUNCHER is frozen, and its own child only once the child
-        // itself is — a tree that can still run is a tree that can still add to itself.
+        // The child appears once the LAUNCHER is frozen, and its own child only once the child itself is:
+        // a tree that can still run can still add to itself.
         if (stopped.has(launcher.pid)) fake.processes.set(child.pid, { ...child })
         if (stopped.has(child.pid)) fake.processes.set(grandchild.pid, { ...grandchild })
         return [...fake.processes.keys()]
@@ -599,8 +567,8 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⚑ **The control the test above needs**: the graceful ladder must never freeze. A stopped app
-   * cannot run its own shutdown, and `quit:check` is the gate that measures exactly that.
+   * The control the test above needs: the graceful ladder must never freeze. A stopped app cannot
+   * run its own shutdown, and `quit:check` is the gate that measures exactly that.
    */
   it('⚑ …and `stop()` never freezes anything, because a frozen app cannot quit', () => {
     const launcher = identity({ pid: 365, parentPid: 50, pgid: 365, command: 'pnpm launch' })
@@ -622,11 +590,11 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⛔ **360 · a freeze the kernel refuses is the third answer, and it stops the removal.**
+   * A freeze the kernel refuses is a third answer, and it stops the removal.
    *
-   * ⚠️ **`unsignallable` is not `gone`.** `ps` answered `alive` and the kill was refused, so the
-   * scan below cannot be trusted — a child spawned behind it would be invisible. ⛔ Reporting that
-   * as a complete teardown is exactly what let a directory come off underneath a live writer.
+   * `unsignallable` is not `gone`: `ps` answered `alive` and the kill was refused, so the scan
+   * below cannot be trusted and a child spawned behind it would be invisible. Reporting that as a
+   * complete teardown would let a directory come off underneath a live writer.
    */
   it('⛔ refuses to call a teardown complete when the tree could not be frozen', () => {
     const launcher = identity({ pid: 370, parentPid: 50, pgid: 370, command: 'pnpm launch' })
@@ -647,8 +615,8 @@ describe('ownership-scoped teardown', () => {
 
     const result = lifecycle.kill9()
 
-    // ⚑ Every pid list is EMPTY and it is still not complete: nothing is running, and the question
-    // of what was running could not be asked.
+    // Every pid list is EMPTY and it is still not complete: nothing is running, and the question of
+    // what was running could not be asked.
     expect(result).toMatchObject({ complete: false, remaining: [], exiting: [], unverifiable: [] })
     expect(result.refused).toHaveLength(1)
     expect(result.refused[0]).toContain('unsignallable (EPERM)')
@@ -656,10 +624,9 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⚑ **A launch that has already ENDED is not a refusal**, and this is the pair the test above
-   * needs: `gone` cannot spawn anything, so there is nothing to freeze and nothing to refuse. ⛔
-   * Without it, the rule above would be satisfied by a teardown that refuses on every path — which
-   * is a gate nobody can ever get green.
+   * A launch that has already ENDED is not a refusal: `gone` cannot spawn anything, so there is
+   * nothing to freeze. Without this pair, the rule above would be satisfied by a teardown that
+   * refuses on every path.
    */
   it('⚑ …and a launcher that is already gone is nothing to freeze, not something refused', () => {
     const launcher = identity({ pid: 375, parentPid: 50, pgid: 375, command: 'pnpm launch' })
@@ -679,11 +646,11 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * ⛔ **360 · a tree that will not settle is refused rather than chased.**
+   * A tree that will not settle is refused rather than chased.
    *
-   * ⚠️ Each pass freezes what the last one found, so a tree that keeps producing new pids is one
-   * where the freeze is not holding — and going round again is the retry loop `owned-teardown.mjs`
-   * exists to refuse. ⚑ The bound is named in the sentence, so a reader knows it was a bound.
+   * Each pass freezes what the last one found, so a tree that keeps producing new pids is one where
+   * the freeze is not holding, and going round again is the retry loop `owned-teardown.mjs` exists to
+   * refuse. The bound is named in the sentence so a reader knows it was a bound.
    */
   it('⛔ refuses when the scan keeps finding processes nobody has frozen', () => {
     const launcher = identity({ pid: 380, parentPid: 50, pgid: 380, command: 'pnpm launch' })
@@ -844,8 +811,8 @@ describe('ownership-scoped teardown', () => {
     ])
     expect(events.listenerCount('exit')).toBe(0)
     expect(lifecycle.kill9()).toBe(completed)
-    // ⚑ Two, and still no MORE than two: the memoized result signals nothing a second time — the
-    // freeze rides inside the same teardown rather than becoming a separate gesture (360).
+    // Two, and still no MORE than two: the memoized result signals nothing a second time, so the
+    // freeze rides inside the same teardown rather than becoming a separate gesture.
     expect(signals).toHaveLength(2)
   })
 
@@ -978,13 +945,12 @@ describe('ownership-scoped teardown', () => {
   })
 
   /**
-   * 🔴 **The refusal has to name the state it refused on** (345 §2, from 342's step 38).
+   * The refusal has to name the state it refused on.
    *
-   * ⛔ **`signal` answers a boolean, and `342` paid for it.** The only step in `smoke:ui` that
-   * signals one launch twice died on *"its saved process identity no longer matches"* — a sentence
-   * that is true of exactly one of the six ways this can decline, and false of the one the evidence
-   * pointed at (a launcher that had simply finished). ⚑ **Each arm below is a DIFFERENT sentence**,
-   * which is the whole claim: a shared one would make this pass over the defect it exists to remove.
+   * `signal` answers a boolean, and the one `smoke:ui` step that signals one launch twice died on
+   * "its saved process identity no longer matches", a sentence true of exactly one of the six ways
+   * this can decline and false of the one at hand (a launcher that had simply finished). Each arm
+   * below is a DIFFERENT sentence: a shared one would pass over the defect this exists to remove.
    */
   describe('…and says which state it refused on', () => {
     const twoStates = (mutate) => {
@@ -1006,10 +972,9 @@ describe('ownership-scoped teardown', () => {
     })
 
     /**
-     * ⚠️ **`exiting` and `replaced` are separated by `start`, not by the command.** The same pid
-     * with a different command line is still the process authority was saved for — mid-teardown —
-     * and only a different `lstart` means the number changed hands. Getting that wrong is what the
-     * first draft of this test did, and it is the distinction the whole block is about.
+     * `exiting` and `replaced` are separated by `start`, not by the command: the same pid with a
+     * different command line is still the process authority was saved for (mid-teardown), and only a
+     * different `lstart` means the number changed hands.
      */
     const REFUSALS = [
       ['gone', (fake, launcher) => fake.processes.delete(launcher.pid)],
@@ -1034,9 +999,9 @@ describe('ownership-scoped teardown', () => {
     ]
 
     /**
-     * ⛔ **`ps` said alive and the KERNEL said no** — its own state since 345's review, which
-     * measured it reporting as `unverifiable`, byte-identical to a `ps` that could not be read. The
-     * errno is carried into the sentence because it is the only refusal that has one.
+     * `ps` said alive and the KERNEL said no. This is its own state: it must not report as
+     * `unverifiable`, byte-identical to a `ps` that could not be read. The errno is carried into the
+     * sentence because it is the only refusal that has one.
      */
     it('⛔ a signal the kernel refuses is not reported as a ps that could not be asked', () => {
       const launcher = identity({ pid: 930, parentPid: 1, pgid: 930, command: 'launcher' })
@@ -1058,8 +1023,8 @@ describe('ownership-scoped teardown', () => {
       expect(refused.why).not.toBe(twoStates((f, l) => f.unreadable.add(l.pid)).why)
     })
 
-    // ⚠️ `startsWith`, not equality: the two refusals that carry an errno append it, and that detail
-    // is the whole content of an `unsignallable`. The kind is what this row is about.
+    // `startsWith`, not equality: the two refusals that carry an errno append it, and that detail is
+    // the whole content of an `unsignallable`. The kind is what this row is about.
     it.each(REFUSALS)('⛔ a launcher that reads %s is refused in those words', (kind, mutate) => {
       const result = twoStates(mutate)
       expect(result.signalled).toBe(false)
@@ -1067,10 +1032,9 @@ describe('ownership-scoped teardown', () => {
     })
 
     /**
-     * ⛔ **No two of them may read alike, and nothing else says so.** A supervisor that finished, a
-     * zombie row, a process mid-teardown, a pid that changed hands and a `ps` that could not be
-     * asked are five different answers to *"why did step 38 not get its second signal"*; the
-     * sentence `342` met collapsed all five into the fourth one's words.
+     * No two of them may read alike, and nothing else says so. A supervisor that finished, a zombie
+     * row, a process mid-teardown, a pid that changed hands and a `ps` that could not be asked are five
+     * different answers to "why did the second signal not happen".
      */
     it('⛔ the five refusals are five distinct sentences', () => {
       const said = REFUSALS.map(([, mutate]) => twoStates(mutate).why)
@@ -1113,11 +1077,11 @@ describe('ownership-scoped teardown', () => {
     })
 
     /**
-     * 🔴 **722 · step 38's second quit reaches the APP once its launcher has gone** (`717` F-3).
-     * ⛔ The launcher exits with `pnpm`, milliseconds into the first quit, while the app is still
-     * shutting down with its parent gone. `signalWhy` can only say `gone` there — what five batches
-     * printed — and `signalRememberedWhy` reaches the app by the identity saved while it was
-     * provably ours, refuses a pid that changed hands, and refuses one it never saved.
+     * The second quit reaches the APP once its launcher has gone. The launcher exits with `pnpm`,
+     * milliseconds into the first quit, while the app is still shutting down with its parent gone.
+     * `signalWhy` can only say `gone` there; `signalRememberedWhy` reaches the app by the identity
+     * saved while it was provably ours, refuses a pid that changed hands, and refuses one it never
+     * saved.
      */
     it('⚑ 722 · reaches the remembered app once its launcher is gone, and nothing it never saved', () => {
       const launcher = identity({ pid: 940, parentPid: 1, pgid: 940, command: 'launcher' })
@@ -1150,7 +1114,7 @@ describe('ownership-scoped teardown', () => {
       )
       expect(signals).toEqual([[app.pid, 'SIGINT']])
 
-      // ⚑ And step 38 aims its second signal there: one to the launch's group, then one to the app.
+      // The smoke aims its second signal there: one to the launch's group, then one to the app.
       const smoke = readFileSync(join(HERE, '../ui-live-smoke.mjs'), 'utf8')
       expect(smoke).toMatch(
         /own\.signal\('SIGINT'\)\s+await sleep\(50\)\s+own\.signalApp\('SIGINT'\)/,

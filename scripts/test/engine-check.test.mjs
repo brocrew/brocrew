@@ -8,12 +8,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..', '..')
 
 /**
- * 🔴 **387 · the gate that let a runtime change through as if it were a code change.**
- *
- * ⛔ `owned-teardown.test.mjs` was red on `main` for three dispatches with its subject and its suite
- * byte-identical to the commit that shipped them. Nothing in the tree had moved; the `node` on the
- * `PATH` had. ⚠️ `package.json` said `>=24.0.0` and `.nvmrc` said `24` the whole time — **a
- * declaration nothing read.**
+ * Guards against a runtime change slipping in as if it were a code change: `package.json` said
+ * `>=24.0.0` and `.nvmrc` said `24`, but nothing read those declarations, so a different `node`
+ * on the `PATH` turned gates red with the code unchanged.
  */
 describe('engine:check · the runtime the repo declares', () => {
   const manifest = (range) => JSON.stringify({ engines: { node: range } })
@@ -26,17 +23,16 @@ describe('engine:check · the runtime the repo declares', () => {
     })
     expect(problem).toContain('node 20.19.3')
     expect(problem).toContain('>=24.0.0')
-    // ⛔ **The reason, not just the rule.** A version gate that says only *"wrong version"* gets
-    // worked around; this one names the call whose behaviour differs and the gates that go through
-    // it, which is the whole of why the number is 24 rather than a preference.
+    // The reason, not just the rule: a version gate that says only "wrong version" gets worked
+    // around. This one names the call whose behaviour differs and the gates that go through it,
+    // which is why the number is 24.
     expect(problem).toContain('fs.rmSync is the JS rimraf on 20 and 22 and a C++ binding on 24')
     expect(problem).toContain('nvm use')
   })
 
   /**
-   * ⚑ **The paired positive, and it has to differ from the default.** A check that returned a
-   * complaint for every input would pass the test above; these are the two boundary readings that
-   * must not complain.
+   * The paired positive, which has to differ from the default: a check that complained about every
+   * input would pass the test above. These two boundary readings must not complain.
    */
   it('⚑ …and accepts the declared minimum exactly, and anything above it', () => {
     expect(engineProblem({ running: '24.0.0', manifest: manifest('>=24.0.0'), nvmrc: '24' })).toBe(
@@ -45,7 +41,7 @@ describe('engine:check · the runtime the repo declares', () => {
     expect(engineProblem({ running: '25.3.1', manifest: manifest('>=24.0.0'), nvmrc: '24' })).toBe(
       null,
     )
-    // ⛔ …and the patch below it is still below it, so the comparison is on three numbers rather
+    // The patch below the minimum is still below it, so the comparison is on three numbers rather
     // than on the major alone.
     expect(
       engineProblem({ running: '24.0.0', manifest: manifest('>=24.0.1'), nvmrc: '24' }),
@@ -53,24 +49,22 @@ describe('engine:check · the runtime the repo declares', () => {
   })
 
   /**
-   * ⛔ **A range it cannot read is a refusal, never a pass.** `325`'s `holdersOf` returned `[]` on
-   * any failure and the caller read that as *"nothing holds the port"*; a version check that
-   * answered *"fine"* to `^24 || ^25` would be the same defect one file over.
+   * A range it cannot read is a refusal, never a pass: a check that answered "fine" to
+   * `^24 || ^25` would be the same failure as a holder lookup returning `[]` on any error.
    */
   it('⛔ throws on a range shape it has not been taught rather than letting it through', () => {
     expect(() => declaredMinimum('^24.0.0')).toThrow(/understands ">=X.Y.Z" and nothing else/)
     expect(() => declaredMinimum('>=24')).toThrow(/understands ">=X.Y.Z"/)
     expect(declaredMinimum('>=24.0.0')).toEqual([24, 0, 0])
-    // ⚠️ …and a manifest with no declaration at all is not this file's decision to make.
+    // A manifest with no declaration at all is not this file's decision to make.
     expect(() => engineProblem({ running: '24.0.2', manifest: '{}', nvmrc: '24' })).toThrow(
       /declares no engines.node/,
     )
   })
 
   /**
-   * 🔴 **The remedy is only a remedy if `.nvmrc` names a version `engines` accepts.** Two files
-   * declare this runtime and they are free to drift apart; the message says *"use the `.nvmrc`"*,
-   * so the check has to have looked.
+   * The remedy is only a remedy if `.nvmrc` names a version `engines` accepts. Two files declare
+   * this runtime and can drift apart; the message says "use the `.nvmrc`", so the check must look.
    */
   it('⛔ says so when .nvmrc and engines.node disagree, whatever the running version is', () => {
     const problem = engineProblem({
@@ -80,17 +74,17 @@ describe('engine:check · the runtime the repo declares', () => {
     })
     expect(problem).toContain('The two ')
     expect(problem).toContain('disagree')
-    // ⛔ …and it is reported even though the RUNNING version is fine — a check that only looked
-    // when it was already failing would find this the day it stopped being able to help.
+    // Reported even though the running version is fine: a check that only looked when it was already
+    // failing would find this the day it stopped being able to help.
     expect(problem).toContain('.nvmrc says "20"')
     expect(nvmrcMajor('lts/*')).toBe(null)
     expect(nvmrcMajor('v24.0.2')).toBe(24)
   })
 
   /**
-   * ⛔ **It reads the declaration; it does not keep a copy of it** (standing rule 8, said about a
-   * number instead of a sentence). ⚠️ The control is the second half: the verdict has to MOVE when
-   * the manifest moves, or "no literal in the source" is satisfied by a file that ignores its input.
+   * It reads the declaration and keeps no copy of it. The control is the second half: the verdict
+   * must move when the manifest moves, or "no literal in the source" is satisfied by a file that
+   * ignores its input.
    */
   it('⚑ derives the minimum from package.json rather than restating it', () => {
     const source = readFileSync(join(ROOT, 'scripts', 'engine-check.mjs'), 'utf8')
@@ -98,12 +92,12 @@ describe('engine:check · the runtime the repo declares', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '')
       .replace(/`[\s\S]*?`/g, '``')
-    // ⛔ No `24` anywhere in the executable text: the day `engines` is raised, this file must not go
-    // on enforcing the old number.
+    // No `24` anywhere in the executable text: when `engines` is raised, this file must not go on
+    // enforcing the old number.
     expect(code).not.toMatch(/\b2[0-9]\b/)
     expect(code).toContain('JSON.parse(manifest).engines?.node')
-    // ⚑ …and the same running version reads as fine under one declaration and as a refusal under
-    // the next one, which is the only proof that the parse is load-bearing.
+    // The same running version reads as fine under one declaration and as a refusal under the next,
+    // which is the only proof that the parse is load-bearing.
     expect(engineProblem({ running: '24.0.2', manifest: manifest('>=24.0.0'), nvmrc: '24' })).toBe(
       null,
     )
@@ -121,18 +115,17 @@ describe('engine:check · the runtime the repo declares', () => {
   })
 
   /**
-   * ⚑ **On the real files, with the real running version** — the two above are about the rule and
-   * this is about the repo. ⛔ If it ever fails, the gate is being run on a runtime it does not
-   * support and the answer is in the message, not in this test.
+   * On the real files, with the real running version: the tests above are about the rule, this one
+   * about the repo. If it fails, the gate is running on an unsupported runtime and the answer is in
+   * the message.
    */
   it('⛔ the repo as it stands satisfies its own declaration', () => {
     expect(engineProblem()).toBe(null)
   })
 
   /**
-   * ⛔ **…and the gate actually runs it, first.** A check nothing invokes is a comment: `ci` is a
-   * single `&&` chain, so the position is the whole of *"before anything else measures the wrong
-   * function"*.
+   * The gate actually runs it, first. A check nothing invokes is a comment, and `ci` is a single
+   * `&&` chain, so position decides whether it runs before anything else measures.
    */
   it('⛔ ci runs engine:check before every other step', () => {
     const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts

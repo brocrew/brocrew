@@ -10,12 +10,11 @@ import { basename, dirname, join } from 'node:path'
  */
 
 /**
- * ⚑ **The one data folder of every build** — a developer's and a packaged one, on every system:
- * the package's npm name, which the app also pins at launch (`apps/desktop/src/main/data-folder.ts`,
- * W4.90). ⛔ This module once said a packaged build used a folder named after its `productName`
- * (`BroBot2`); measured on a packaged build, it never did — electron-builder writes no
- * `productName` into the app's `package.json`. ⚠️ **So a packaged BroBot and a development build
- * on one machine share this folder**: a reset of one is a reset of both.
+ * The one data folder of every build, a developer's and a packaged one, on every system: the
+ * package's npm name, which the app also pins at launch (`apps/desktop/src/main/data-folder.ts`).
+ * It is not named after `productName`: electron-builder writes no `productName` into the app's
+ * `package.json`. So a packaged BroBot and a development build on one machine share this folder,
+ * and a reset of one is a reset of both.
  */
 export const DATA_FOLDER_NAME = join('@brobot2', 'desktop')
 
@@ -37,10 +36,9 @@ export function defaultUserData(platform = process.platform, env = process.env) 
 }
 
 /**
- * The clipboard-copy directory, which is a SIBLING of `userData` rather than a child of it.
- *
- * ⚠️ **Named after `userData`'s own basename**, so it moves with `--dir` and there is no fixed
- * `pasted-images` folder anywhere. Mirrors `pastedImagesRoot` in
+ * The clipboard-copy directory, a sibling of `userData` rather than a child of it. Named after
+ * `userData`'s own basename, so it moves with `--dir` and there is no fixed `pasted-images`
+ * folder anywhere. Mirrors `pastedImagesRoot` in
  * `apps/desktop/src/main/runtime/pasted-image.ts:173-175`, which a test holds this to.
  */
 export function pastedImagesRoot(userData) {

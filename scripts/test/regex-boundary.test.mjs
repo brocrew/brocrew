@@ -8,22 +8,13 @@ import {
 } from '../lib/regex-boundary.mjs'
 
 /**
- * 118 · The regex template-boundary guard (117 §7.1).
+ * The regex template-boundary guard.
  *
- * ⚠️ **The mutation proof is the point of this file, not the sweep.** `117` swept
- * `ui-live-smoke.mjs` by hand and found no third instance, so the guard reports zero over the real
- * scripts today and will keep doing so until someone writes the next one. A check that reports
- * nothing is exactly the shape of a check that does nothing — which is the failure class this whole
- * item exists to remove — so both historical defects are put back, on the real file, and the guard
- * is required to catch each. If either mutation stops applying, the test fails on that rather than
- * quietly asserting over an unchanged string.
- *
- * ⛔ **Almost every case below was written by review, not by the author.** The first version of this
- * file passed while the guard had eight defects: an identifier accumulating across whitespace hid
- * one of the two literals on the very line the 093 mutation targets, four-backslash over-escaping
- * was called clean on both sides, `x`/`u`/`\1` were missing from the escape set, a tagged template
- * inverted the rule, a `}` in a character class dropped an expression, and an apostrophe in prose
- * desynchronised an entire file. Each has a case here, with the input that found it.
+ * The mutation proof is the point of this file, not the sweep: the guard reports zero over the
+ * real scripts, and a check that reports nothing looks like a check that does nothing. So both
+ * historical defects are put back on the real file and the guard must catch each. If a mutation
+ * stops applying, the test fails on that rather than asserting over an unchanged string.
+ * Most cases below each pin one scanner defect that review found.
  */
 
 const B = '\\'
@@ -32,10 +23,8 @@ const HOLE = '$'
 
 const read = new Map()
 /**
- * One script's source, READ ONCE.
- *
- * ⚠️ Four tests below take a pass over the same 1.07 MB file; re-reading it for each was the cheap
- * half of the cost. The lexing is the expensive half and is memoised beside it in {@link scanned}.
+ * One script's source, read once. Four tests take a pass over the same 1.07 MB file; the lexing,
+ * the expensive half, is memoised in {@link scanned}.
  */
 const script = (name) => {
   if (!read.has(name)) {
@@ -46,12 +35,11 @@ const script = (name) => {
 
 const scanned = new Map()
 /**
- * ⛔ **The violations for one UNMUTATED script, lexed once** (254, from the review).
+ * The violations for one unmutated script, lexed once.
  *
- * ⚑ **Memoised rather than merely given a longer timeout.** `regexBoundaryViolations` is a full
- * lexical pass — ~0.9 s on `ui-live-smoke.mjs` — and three of the tests below wanted the answer for
- * the identical source. ⚠️ The two `HISTORY` cases genuinely need their own pass, over text they
- * mutated first, and they call the raw function.
+ * Memoised rather than given a longer timeout: `regexBoundaryViolations` is a full lexical pass
+ * (~0.9 s on `ui-live-smoke.mjs`) and three tests want the answer for the identical source. The
+ * two `HISTORY` cases mutate the text first and call the raw function.
  */
 const violationsIn = (name) => {
   if (!scanned.has(name)) scanned.set(name, regexBoundaryViolations(script(name)))
@@ -66,27 +54,15 @@ const literalsIn = (name) => {
 }
 
 /**
- * ⛔ **These tests lex a MEGABYTE, and vitest's default is five seconds** (254, found by this
- * dispatch's own diff).
- *
- * ⚠️ **`ui-live-smoke.mjs` is 1.07 MB and one pass over it costs ~0.9 s.** ⛔ **It went red on the
- * run that added step `76`**, which is not a defect in the guard and not a defect in the step: it is
- * a whole-file lexer wearing a unit test's timeout, and it was going to happen to whoever wrote the
- * next step.
- *
- * ⚑ **The fix is the memo above, not this number** (review). Three of the four passes were over the
- * IDENTICAL unmutated source, so the work was duplicated rather than large; a timeout alone would
- * have removed the only implicit backstop on the lexer's cost while leaving the waste in place. ⚠️
- * This stays as a floor for the one pass that remains, because how much of a machine the rest of the
- * suite is using is not something this file can bound.
+ * These tests lex a megabyte and vitest's default timeout is five seconds. `ui-live-smoke.mjs` is
+ * 1.07 MB and one pass costs ~0.9 s. The memo above removes the duplicated work; this stays as a
+ * floor for the pass that remains, since how loaded the machine is cannot be bounded here.
  */
 const LEXES_A_WHOLE_SCRIPT = 30_000
 
 /**
  * Every script that ships JavaScript into another process, and the library beside them.
- *
- * ⚠️ `lib/regex-boundary.mjs` scans ITSELF. It is not exempt from a rule it enforces — and it was
- * the file whose own message templates exposed the apostrophe cascade.
+ * `lib/regex-boundary.mjs` scans itself: its own message templates are subject to the rule.
  */
 const GUARDED = [
   'ui-live-smoke.mjs',
@@ -107,10 +83,9 @@ describe('the guard over the real scripts', () => {
   )
 
   /**
-   * ⛔ **Per file, because a total hides a file the scanner gave up on.** Review's exact objection:
-   * the counts prove what the scanner FOUND, not what exists, so they cannot detect blindness on
-   * their own — but a file that suddenly finds none is blindness anyone can see. The two live smokes
-   * are the files both historical defects were in and both must show literals on both sides.
+   * Per file, because a total hides a file the scanner gave up on: counts prove what the scanner
+   * found, not what exists, but a file that suddenly finds none is visible blindness. The two live
+   * smokes are where both historical defects lived and must show literals on both sides.
    */
   it.each([
     ['ui-live-smoke.mjs', 100, 40],
@@ -128,20 +103,10 @@ describe('the guard over the real scripts', () => {
   )
 
   it('⚑ two literals on ONE line are both seen — synthetic, since 420 removed the real pair', () => {
-    // ⛔ **This is the assertion that stops the proof below being luck.** Until review, `word`
-    // accumulated across whitespace, so `document.body.innerText` on one line and `return /re/`
-    // on the next produced `innerTextreturn` and the FIRST of two regexes on a line was invisible.
-    // The 093 mutation still passed — because the defect happens to live in the second.
-    //
-    // 🔴 **The real line it was written against is gone** (`420`). It was `ui-live-smoke.mjs` step
-    // 46's, and `417` deleted the `cwd-input` field the whole step was about, so `420` reported
-    // the step NOT PERFORMED and its body with it. ⚠️ **There is no second candidate**: a sweep of
-    // the file finds ZERO lines carrying two page-side regex literals, so this cannot be
-    // re-pointed at real source the way the fixtures below are.
-    //
-    // ⚑ **So it is synthetic, and says so** — and the property it was ALSO buying (that the lexer
-    // really runs over the real scripts) is not lost: {@link LITERAL_FLOORS} above holds it, over
-    // every guarded file, and would go red on a lexer that stopped seeing anything.
+    // Synthetic on purpose: no real line carries two page-side regex literals today, so this cannot
+    // be pointed at real source. The lexer really running over the real scripts is held by
+    // {@link LITERAL_FLOORS} above. This asserts the first of two regexes on a line is seen when an
+    // earlier line ends with an identifier (`innerText`) and the next starts with `return /re/`.
     const both = regexLiteralsIn(
       'const said = /own data directory/.test(text) ? ' +
         'text.match(/[^\\\\n]*own data directory[^\\\\n]*/)[0] : null',
@@ -162,18 +127,13 @@ describe('the guard over the real scripts', () => {
  */
 const HISTORY = [
   {
-    // 🔴 **`420` re-pointed this fixture, and did NOT retire it.** Its original target was
-    // `ui-live-smoke.mjs` step 46's `text.match(/[^\\n]*own data directory[^\\n]*/)` — `093`'s
-    // actual defect, where a lone backslash was eaten by the template and the page received a raw
-    // newline, a `SyntaxError`, a step that could never have passed. `417` deleted the `cwd-input`
-    // field step 46 existed for, so `420` reported the step NOT PERFORMED and the line went with
-    // it. ⛔ **A removed anchor is not a removed rule** — the boundary is still crossed 76 times in
-    // that file, so the proof is re-aimed at one of them rather than deleted.
+    // Re-pointed at a synthetic fixture: the original `ui-live-smoke.mjs` line,
+    // `text.match(/[^\\n]*own data directory[^\\n]*/)`, was removed with its step. A removed anchor is
+    // not a removed rule, since the boundary is still crossed many times in that file.
     //
-    // ⚠️ **The arriving fault is a different one and the row says so.** `\\s` halved is not a
-    // `SyntaxError`; it is `/s+/g`, a regex that quietly matches the letter `s`. ⚑ That is the
-    // WORSE half of `093`'s class and the half a `SyntaxError` would never have reached: the
-    // original blew up where somebody had to look, this one would have gone on passing.
+    // The arriving fault here is different: `\\s` halved is `/s+/g`, a regex that quietly matches
+    // the letter `s`. That is the worse half of the class, since the original blew up with a
+    // `SyntaxError` where somebody had to look and this one would keep passing.
     what: '093 · a page-side escape halved — the boundary crossing, on a line that still exists',
     now: "replace(/\\\\s+/g, ' ')",
     then: "replace(/\\s+/g, ' ')",
@@ -212,9 +172,7 @@ describe('⛔ proof it can fail: both historical defects, reintroduced', () => {
 
 describe('the escape set and the keyword set are pinned, member by member', () => {
   /**
-   * ⛔ **Review shrank the escape set from 26 members to one and nothing failed.** Twenty-five of
-   * them were asserted by nothing at all, which is a table that exists rather than a table that
-   * works. Each member is now its own case, in both directions.
+   * Each escape-set member is its own case, in both directions, so no member goes unasserted.
    */
   const ESCAPES = [
     '.',
@@ -258,15 +216,13 @@ describe('the escape set and the keyword set are pinned, member by member', () =
   ]
 
   it.each(ESCAPES)('node-side `\\\\%s` is reported, and `\\%s` is not', (escape) => {
-    // ⚠️ `[` needs a class to close, or the fixture is not a regex at all and the scanner is right
-    // to find nothing — which is a fact about the test, not about the rule.
+    // `[` needs a class to close, or the fixture is not a regex at all and the scanner is right to
+    // find nothing.
     const tail = escape === '[' ? 'b]$' : '$'
     const wrong = `const re = /^a${B}${B}${escape}${tail}/`
     const right = `const re = /^a${B}${escape}${tail}/`
-    // ⛔ **The scanner has to have SEEN a literal in each fixture**, or "reported" and "not
-    // reported" are both statements about an empty list. This is the non-vacuity guard, and it is
-    // the right one: the guard reads text, so whether the engine would accept the expression is a
-    // question about the fixture rather than about the rule.
+    // The scanner has to have seen a literal in each fixture, or "reported" and "not reported" are
+    // both statements about an empty list.
     expect(regexLiteralsIn(wrong)).toHaveLength(1)
     expect(regexLiteralsIn(right)).toHaveLength(1)
     expect(regexBoundaryViolations(wrong)).toHaveLength(1)
@@ -276,8 +232,7 @@ describe('the escape set and the keyword set are pinned, member by member', () =
   it.each(['return', 'typeof', 'case', 'in', 'of', 'new', 'do', 'else', 'yield', 'await', 'throw'])(
     'a regex directly after `%s` is seen',
     (keyword) => {
-      // Emptying this set left both sweeps and both HISTORY mutations green in review — it was held
-      // up by one assertion. Each keyword is a real opening position and each is now its own case.
+      // Each keyword is a real opening position and is its own case.
       expect(regexLiteralsIn(`${keyword} /^a${B}${B}.b$/`)).toHaveLength(1)
     },
   )
@@ -292,9 +247,8 @@ describe('which side of the boundary a literal is on', () => {
   })
 
   it('⚠️ a `${…}` hole is ordinary code, however deep the template around it', () => {
-    // The hole is evaluated HERE and its value interpolated; nothing cooks a regex inside one, so
-    // it must be judged by the node-side rule. Getting this wrong would fail every correct
-    // interpolated read in the smoke.
+    // The hole is evaluated here and its value interpolated; nothing cooks a regex inside one, so it
+    // is judged by the node-side rule. Getting this wrong would fail every correct interpolated read.
     const source = `cdp.evaluate(${T}x ${HOLE}{ /${B}d+/.exec(name)[0] } y${T})`
     expect(regexLiteralsIn(source)).toHaveLength(1)
     expect(regexLiteralsIn(source)[0]).toMatchObject({ depth: 0, text: `/${B}d+/` })
@@ -302,8 +256,8 @@ describe('which side of the boundary a literal is on', () => {
   })
 
   it('⚑ a TAGGED template keeps the node-side rule, because String.raw cooks nothing', () => {
-    // ⛔ Judged page-side, both of these come out backwards: the correct one is failed and the
-    // broken one passes. `scripts/nav-order-probe.mjs` ships a whole program through String.raw.
+    // Judged page-side, both of these come out backwards: the correct one fails and the broken one
+    // passes. `scripts/nav-order-probe.mjs` ships a whole program through String.raw.
     expect(
       regexBoundaryViolations(`const P = String.raw${T}return /^${B}d+$/.test(x)${T}`),
     ).toEqual([])
@@ -337,9 +291,8 @@ describe('what the scanner must not mistake for a regex', () => {
   })
 
   it('⛔ an apostrophe in template PROSE does not swallow the template (review)', () => {
-    // The cascade: `093's` opened a "string" that ran to end of line, ate the closing backtick, and
-    // every literal in the rest of the file then reported the wrong side. Measured on this module's
-    // own message templates, from line 236 onwards.
+    // The cascade: an apostrophe opened a "string" that ran to end of line, ate the closing
+    // backtick, and every later literal in the file reported the wrong side.
     const source =
       `const msg = ${T}this is 093's step 46, where the step could ${T} +\n` +
       `  'tail'\nconst re = /${B}${B}./`
@@ -353,12 +306,9 @@ describe('what the scanner must not mistake for a regex', () => {
     const real = `cdp.evaluate(${T}return document.querySelector('[data-cy=x]/y') ? 1 : 2${T})`
     expect(regexLiteralsIn(real)).toEqual([])
 
-    // ⛔ **And the SAME-LINE half, which the two assertions above do not reach.** Bounding the
-    // template already stops the cascade, so reverting the quote rule alone left this file green —
-    // the mutation check caught that, which is what a mutation check is for. What the rule protects
-    // is the rest of the line: an apostrophe in prose would otherwise open a "string" that runs to
-    // the newline and takes the literal sitting after it, silently, inside a template that is
-    // still correctly bounded.
+    // The same-line half, which the assertions above do not reach: bounding the template already
+    // stops the cascade, but an apostrophe in prose would still open a "string" that runs to the
+    // newline and takes the literal after it, inside a correctly bounded template.
     const sameLine = `cdp.evaluate(${T}\n  const a = /${B}${B}d+/ // it's here\n  return a\n${T})`
     expect(regexLiteralsIn(sameLine)).toHaveLength(1)
     const swallowed = `cdp.evaluate(${T}\n  const s = 'it's fine' + /${B}${B}w/.source\n${T})`
@@ -366,8 +316,8 @@ describe('what the scanner must not mistake for a regex', () => {
   })
 
   it('⛔ a `//` comment containing a hole does not spill into code (review)', () => {
-    // Both halves were live: the first reported a violation against PROSE, whose suggested fix
-    // would have edited a comment; the second lost a real literal to the apostrophe in `097's`.
+    // Both halves: the first reported a violation against prose, whose suggested fix would edit a
+    // comment; the second lost a real literal to the apostrophe.
     const prose = `cdp.evaluate(${T}\n  // ${HOLE}{MARK} the old check was: /${B}d+/ and it never matched\n  return 1\n${T})`
     expect(regexBoundaryViolations(prose)).toEqual([])
     const apostrophe = `cdp.evaluate(${T}\n  // ${HOLE}{MARK} 097's walk, so: /${B}d+/ stays\n  return 1\n${T})`
@@ -394,8 +344,8 @@ describe('what the scanner must not mistake for a regex', () => {
 
 describe('the rule, in both directions', () => {
   it('page-side: a lone backslash is eaten, however innocent it looks', () => {
-    // ⚠️ **The silent half of 093's class.** `\d` inside a template reaches the far side as a bare
-    // `d` — no SyntaxError, no complaint, and a check that quietly matches something else.
+    // The silent half of the class: `\d` inside a template reaches the far side as a bare `d`, with
+    // no SyntaxError, and a check that quietly matches something else.
     const [one] = regexBoundaryViolations(`cdp.evaluate(${T}return /^${B}d+$/.test(x)${T})`)
     expect(one.side).toBe('page')
     expect(one.message).toContain('is left standing alone')
@@ -411,8 +361,8 @@ describe('the rule, in both directions', () => {
   })
 
   it('⛔ FOUR backslashes are caught on both sides (review)', () => {
-    // Parity alone called these clean. Page-side, four survive the crossing as two — 117's defect
-    // delivered intact; node-side, four are two literal backslashes.
+    // Parity alone called these clean. Page-side, four survive the crossing as two; node-side, four
+    // are two literal backslashes.
     const page = regexBoundaryViolations(
       `cdp.evaluate(${T}return /^a${B.repeat(4)}.b$/.test(n)${T})`,
     )
@@ -433,17 +383,16 @@ describe('the rule, in both directions', () => {
   })
 
   it('⛔ …and where it cannot tell, the marker says so — in the source, in the diff', () => {
-    // Review produced six correct node-side regexes this rule reports. `/\\./g` — strip escape
-    // sequences — is the canonical one, and `/\\n/` finds a two-character `\n` in a JSONL line,
-    // which is a real thing to do in a repo that reads provider transcripts. A guard that fails
-    // correct code gets switched off, so the author says the backslash is real and it is believed.
+    // `/\\./g` (strip escape sequences) and `/\\n/` (a two-character `\n` in a JSONL line) are
+    // correct node-side regexes this rule reports. A guard that fails correct code gets switched off,
+    // so the author says the backslash is real and it is believed.
     const strip = `const bare = s.replace(/${B}${B}./g, '')`
     expect(regexBoundaryViolations(strip)).toHaveLength(1)
     expect(regexBoundaryViolations(`// ${BACKSLASH_IS_REAL} — a real backslash\n${strip}`)).toEqual(
       [],
     )
     expect(regexBoundaryViolations(`${strip} // ${BACKSLASH_IS_REAL}`)).toEqual([])
-    // ⚠️ It is not a blanket off-switch: the line above and the line itself, and nothing further.
+    // Not a blanket off-switch: the line above and the line itself, and nothing further.
     expect(regexBoundaryViolations(`// ${BACKSLASH_IS_REAL}\nconst a = 1\n${strip}`)).toHaveLength(
       1,
     )

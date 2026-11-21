@@ -17,18 +17,17 @@ import { dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
  */
 
 /**
- * What a target is allowed to be, and the vocabulary is deliberately three words.
+ * What a target is allowed to be:
  *
  *  - `file` — a regular file, and nothing else passes;
- *  - `dir` — a real directory. ⛔ A symlink to one is refused, which is the whole of `170` §3;
- *  - `unlink` — ⚑ **remove the NAME, whatever is behind it, as long as it is not a directory.**
+ *  - `dir` — a real directory; a symlink to one is refused;
+ *  - `unlink` — remove the NAME, whatever is behind it, as long as it is not a directory.
  *
- * ⚠️ **`unlink` is not a loophole and it is why there is no `any`.** Unlinking a name never touches
- * what it points at, so it is the only honest verb for the four things in a `userData` directory
- * whose kind is not ours to predict: the gate's unix SOCKET, the three `Singleton*` symlinks
- * Chromium leaves while it is live, and a lock remnant that a `rename` may have left as either.
- * `350` asks for exactly this: *"A symlink is removable only where the manifest explicitly expects
- * an unlink-only leaf … never resolve/follow the target."*
+ * `unlink` is why there is no `any`. Unlinking a name never touches what it points at, so it is the
+ * only honest verb for the things in a `userData` directory whose kind is not ours to predict: the
+ * gate's unix socket, the three `Singleton*` symlinks Chromium leaves while live, and a lock
+ * remnant that a `rename` may have left as either. A symlink is removable only where the manifest
+ * expects an unlink-only leaf, and the target is never followed.
  */
 const KINDS = Object.freeze(['file', 'dir', 'unlink'])
 
@@ -38,20 +37,16 @@ export function isAncestor(parent, child) {
 }
 
 /**
- * The directories a reset must never be pointed at, whatever the caller typed.
- *
- * ⚠️ **`$HOME` and every ancestor of it**, so `--dir ~` and `--dir /Users` are refused rather than
- * merely unlikely. ⚠️ **The conventional and redirected provider homes**, which `350` §3 lists as
- * never-touch and which BroBot reads for adoption. ⚠️ **The repository**, so a mistyped `--dir .`
- * cannot delete the checkout. ⛔ The list is compared by what each folder IS, never by how it is
- * spelled ({@link whereItStands}): a symlink to `$HOME` is `$HOME`, and so is its other spelling.
+ * The directories a reset must never be pointed at, whatever the caller typed: `$HOME` and every
+ * ancestor of it (so `--dir ~` and `--dir /Users` are refused), the conventional and redirected
+ * provider homes BroBot reads for adoption, and the repository itself. Compared by what each
+ * folder IS, never by how it is spelled ({@link whereItStands}).
  */
 export function forbiddenRoots({ home = homedir(), env = process.env, repoRoot = null } = {}) {
   const roots = [
-    // ⚑ **`inside: false` here, and it is the load-bearing exception.** The userData this reset
-    // exists to empty is `~/Library/Application Support/@brobot2/desktop` — INSIDE `$HOME` by
-    // construction. A rule that refused everything under it would refuse every ordinary run,
-    // which is exactly how the third-direction check below was written before a review caught it.
+    // `inside: false` is the load-bearing exception. The userData this reset exists to empty is
+    // `~/Library/Application Support/@brobot2/desktop`, INSIDE `$HOME` by construction, so refusing
+    // everything under `$HOME` would refuse every ordinary run.
     { path: home, why: 'your home directory', inside: false },
     { path: join(home, '.codex'), why: "the machine's conventional Codex home", inside: true },
     { path: join(home, '.claude'), why: "the machine's conventional Claude home", inside: true },
@@ -81,11 +76,9 @@ export function forbiddenRoots({ home = homedir(), env = process.env, repoRoot =
 }
 
 /**
- * 🔴 **`realpathSync.native`, and the difference is a home directory** (351 review).
- *
- * ⛔ **JavaScript's `realpathSync` resolves symlinks and does NOT canonicalise CASE.** macOS's
- * default APFS volume is case-INSENSITIVE, so two spellings name one directory and this function
- * hands back whichever one it was given. Measured on a Mac (home folder shown as `alex`):
+ * `realpathSync.native`, because plain `realpathSync` resolves symlinks but does NOT canonicalise
+ * CASE. macOS's default APFS volume is case-insensitive, so two spellings name one directory and
+ * the JS version hands back whichever it was given. Measured (home folder shown as `alex`):
  *
  * ```
  *   realpathSync('/users/alex')         → '/users/alex'
@@ -93,17 +86,14 @@ export function forbiddenRoots({ home = homedir(), env = process.env, repoRoot =
  *   lstat(both).ino                     → equal
  * ```
  *
- * ⛔ **Every forbidden-root check below was a string comparison**, so with the JS version
- * `--dir /users/alex` resolved to a string that equalled no forbidden root, the anchor was
- * TRUSTED, and the next thing the reset did was empty a home directory. The `.native` binding asks
- * the kernel and returns the spelling on disk. ⚑ **W4.124 · those checks now compare what the
- * folders ARE** ({@link whereItStands}), because even the spelling on disk is not one spelling: a
- * firmlink's comes back exactly as given. ⚠️ The spelling on disk still matters where a spelling is
- * all there is to compare: a running BroBot is looked for by the target's spellings in its command
- * line (`brobot-liveness.mjs`), and every refusal names the folder by it.
+ * The `.native` binding asks the kernel and returns the spelling on disk. The forbidden-root checks
+ * compare what the folders ARE ({@link whereItStands}), since even the on-disk spelling is not
+ * unique: a firmlink's comes back as given. The spelling still matters where a spelling is all
+ * there is to compare: a running BroBot is looked for by the target's spellings in its command line
+ * (`brobot-liveness.mjs`), and every refusal names the folder by it.
  *
- * ⚠️ Three answers, not two: `null` is *it is not there*, `undefined` is *I could not ask*, and a
- * string is an answer. A caller that collapses the last two drops a guard on its own bad day.
+ * Three answers: `null` is "not there", `undefined` is "could not ask", and a string is an answer.
+ * A caller that collapses the last two drops a guard on its own bad day.
  */
 function realOrNull(path) {
   try {
@@ -114,10 +104,10 @@ function realOrNull(path) {
 }
 
 /**
- * 🔴 **W4.124 · what is at a path, by what it IS: its device and inode** — the same whichever
- * spelling, link or firmlink reaches it. ⚠️ `bigint`, because a Windows file id is 64 bits and a
- * Number would round two folders into one. ⚠️ {@link realOrNull}'s three answers: `null` is *nothing
- * is there*, `undefined` is *I could not ask*.
+ * What is at a path, by what it IS: its device and inode, the same whichever spelling, link or
+ * firmlink reaches it. `bigint`, because a Windows file id is 64 bits and a Number would round two
+ * folders into one. Three answers as in {@link realOrNull}: `null` is "nothing is there",
+ * `undefined` is "could not ask".
  */
 export function identityOf(path) {
   try {
@@ -129,21 +119,20 @@ export function identityOf(path) {
 }
 
 /**
- * ⚑ **W4.124 · macOS's second spelling of a folder.** The Data volume, which holds every folder a
- * person owns, is mounted at `/System/Volumes/Data`, and firmlinks show its folders at `/` as well:
- * `/Users/alex` IS `/System/Volumes/Data/Users/alex` — one folder, and `realpath(3)` hands back
- * either spelling exactly as it was given (measured).
+ * macOS's second spelling of a folder. The Data volume, which holds every folder a person owns, is
+ * mounted at `/System/Volumes/Data`, and firmlinks show its folders at `/` as well: `/Users/alex`
+ * IS `/System/Volumes/Data/Users/alex`, and `realpath(3)` returns either spelling as given.
  *
- * ⛔ **Their parents are not all one folder.** `/System/Volumes/Data` holds every folder on that
- * volume, yet walking up from `/Users/alex` never meets it: `/Users/..` is `/`, and `/` is not
- * `/System/Volumes/Data` (both measured). So a folder's parents are read in both spellings.
+ * Their parents are not all one folder: walking up from `/Users/alex` never meets
+ * `/System/Volumes/Data` (`/Users/..` is `/`, which is not it). So a folder's parents are read in
+ * both spellings.
  */
 const DATA_VOLUME = '/System/Volumes/Data'
 
 /**
  * Every spelling of one real path that names the same thing — itself, and macOS's other one when
  * that is the same thing too — or `undefined` when the other could not be asked about on a machine
- * that has one. ⚠️ Checked, never assumed: elsewhere there is no other spelling.
+ * that has one. Checked, never assumed: elsewhere there is no other spelling.
  */
 function spellingsOf(real) {
   const here = identityOf(real)
@@ -176,17 +165,17 @@ function foldersAbove(path) {
 }
 
 /**
- * 🔴 **W4.124 · where one path stands against a folder, asked of what they ARE**: `'is'` that
- * folder, `'inside'` it, `'holds'` it — `null`, none of those — or `undefined`: a folder it needed
- * could not be read, so it cannot say.
+ * Where one path stands against a folder, asked of what they ARE: `'is'` that folder, `'inside'`
+ * it, `'holds'` it, `null` for none of those, or `undefined` when a folder it needed could not be
+ * read.
  *
- * ⛔ **Never by how they are spelled.** A link, a case, or the firmlink spelling `/System/Volumes/Data/…`
- * names the same folder, and a string comparison passed each as some other folder: measured,
- * `trustedAnchor` trusted the Data-volume spelling of `~`, `~/.claude` and `~/.codex`, of a folder
- * inside one, of one holding one, and of a link to one.
+ * Never by spelling: a link, a case, or the firmlink spelling `/System/Volumes/Data/...` names the
+ * same folder, and a string comparison passed each as some other folder (`trustedAnchor` trusted
+ * the Data-volume spelling of `~`, `~/.claude` and `~/.codex`, and folders inside, holding, or
+ * linked to them).
  *
- * ⚑ Both paths are real ({@link realOrNull}). `path` need not exist yet — a folder above it can still
- * be `folder`, which is `'inside'` — and `folder` need not be a folder: whatever holds it, holds it.
+ * Both paths are real ({@link realOrNull}). `path` need not exist yet, since a folder above it can
+ * still be `folder` (`'inside'`), and `folder` need not be a folder: whatever holds it, holds it.
  */
 export function whereItStands(path, folder) {
   const it = identityOf(path)
@@ -194,8 +183,8 @@ export function whereItStands(path, folder) {
   if (it === undefined || that === undefined) return undefined
   if (that === null) return null
   if (it === that) return 'is'
-  // ⚠️ 'holds' before 'inside': where folders loop — a folder mounted again inside itself — one
-  // path can be both, and holding is the one that takes the folder with it.
+  // 'holds' before 'inside': where folders loop (a folder mounted again inside itself) one path can
+  // be both, and holding is the one that takes the folder with it.
   if (it !== null) {
     const aboveThat = foldersAbove(folder)
     if (aboveThat === undefined) return undefined
@@ -207,7 +196,7 @@ export function whereItStands(path, folder) {
 }
 
 /**
- * 🔴 **Establish the one directory everything else is proved against.**
+ * Establish the one directory everything else is proved against.
  *
  * @returns {{ kind: 'trusted', lexical: string, real: string, dev: number, ino: number }
  *   | { kind: 'absent', lexical: string } | { kind: 'refused', why: string }}
@@ -218,9 +207,8 @@ export function trustedAnchor(target, options = {}) {
     cwd = process.cwd(),
     env = process.env,
     repoRoot = null,
-    // ⚑ **A seam, so the ownership rule is a rule and not a comment.** `process.getuid()` is the
-    // only value in this module a test cannot vary, and a check nothing can turn red is a check
-    // nobody knows is still there. It defaults to the real one on every call the script makes.
+    // A seam, so the ownership rule is a rule and not a comment: `process.getuid()` is the only value
+    // in this module a test cannot vary. It defaults to the real one on every call the script makes.
     uid = typeof process.getuid === 'function' ? process.getuid() : null,
   } = options
   if (typeof target !== 'string' || target.trim() === '') {
@@ -239,19 +227,17 @@ export function trustedAnchor(target, options = {}) {
 
   for (const forbidden of forbiddenRoots({ home, env, repoRoot })) {
     const forbiddenReal = realOrNull(forbidden.path)
-    // ⛔ **`undefined` is a root we could not resolve, and dropping it drops the guard** (351
-    // review). `null` is different and is the ordinary case: a machine with no `~/.codex` has
-    // nothing there to protect.
+    // `undefined` is a root we could not resolve, and dropping it drops the guard. `null` is the
+    // ordinary case: a machine with no `~/.codex` has nothing there to protect.
     if (forbiddenReal === undefined) {
       return { kind: 'refused', why: `${forbidden.why} (${forbidden.path}) could not be resolved` }
     }
     if (forbiddenReal === null) continue
-    // 🔴 **W4.124 · asked of the folders, never of their spellings** ({@link whereItStands}).
-    // ⛔ These were string comparisons of real paths, and `realpath(3)` returns the firmlink
-    // spelling as given: `/System/Volumes/Data/Users/alex/.claude` was not `~/.claude`, and a
-    // reset anchored on it was TRUSTED (measured, with a scratch home).
+    // Asked of the folders, never of their spellings ({@link whereItStands}): `realpath(3)` returns
+    // the firmlink spelling as given, so `/System/Volumes/Data/Users/alex/.claude` would not equal
+    // `~/.claude` as a string and a reset anchored on it would be trusted.
     const where = whereItStands(real, forbiddenReal)
-    // ⛔ Could not compare: the guard is not dropped — the line above's own rule.
+    // Could not compare: the guard is not dropped, per the rule above.
     if (where === undefined) {
       return {
         kind: 'refused',
@@ -261,15 +247,14 @@ export function trustedAnchor(target, options = {}) {
     if (where === 'is') {
       return { kind: 'refused', why: `${real} is ${forbidden.why}` }
     }
-    // ⛔ The second direction: a target that CONTAINS a never-touch root would take it with the
-    // tree. `~/Library` is not `$HOME` and removing it removes the conventional homes underneath.
+    // The second direction: a target that CONTAINS a never-touch root would take it with the tree.
+    // `~/Library` is not `$HOME`, and removing it removes the conventional homes underneath.
     if (where === 'holds') {
       return { kind: 'refused', why: `${real} contains ${forbidden.why} (${forbiddenReal})` }
     }
-    // ⛔ **And the third, which the first draft did not have** (351 review). `--dir ~/.claude/projects`
-    // is not `~/.claude` and does not contain it — it is INSIDE it, which is the spelling a person
-    // reaching for a subdirectory actually types. ⚠️ Per-root: {@link forbiddenRoots} says why
-    // being inside `$HOME` is the ordinary case rather than a refusal.
+    // And the third: `--dir ~/.claude/projects` is not `~/.claude` and does not contain it, it is
+    // INSIDE it, which is what a person reaching for a subdirectory types. Per-root:
+    // {@link forbiddenRoots} says why being inside `$HOME` is the ordinary case, not a refusal.
     if (forbidden.inside && where === 'inside') {
       return { kind: 'refused', why: `${real} is inside ${forbidden.why} (${forbiddenReal})` }
     }
@@ -278,7 +263,7 @@ export function trustedAnchor(target, options = {}) {
   if (cwdReal === undefined) {
     return { kind: 'refused', why: `the working directory (${cwd}) could not be resolved` }
   }
-  // ⚑ **W4.124 · the working directory too, by what it is** — typed one way and run from the other.
+  // The working directory too, by what it is: typed one way and run from the other.
   const fromHere = cwdReal === null ? null : whereItStands(real, cwdReal)
   if (fromHere === undefined) {
     return {
@@ -309,8 +294,8 @@ export function trustedAnchor(target, options = {}) {
 /**
  * Walk from a trusted anchor to a leaf, `lstat`-ing every component on the way.
  *
- * ⛔ **No component may be a symlink and none may be a non-directory.** That is the check `170` §3
- * cost us, and it is why the return carries a real `parent` the caller may then trust.
+ * No component may be a symlink and none may be a non-directory, which is why the return carries a
+ * real `parent` the caller may then trust.
  *
  * @returns {{ kind: 'ok', parent: string, path: string } | { kind: 'absent', path: string }
  *   | { kind: 'refused', why: string }}
@@ -345,7 +330,7 @@ export function descend(anchor, relative) {
 }
 
 /**
- * 🔴 **The predicate**: may this exact path be removed?
+ * The predicate: may this exact path be removed?
  *
  * @returns {{ kind: 'ok', path: string, parent: string, stat: import('node:fs').Stats }
  *   | { kind: 'absent', path: string } | { kind: 'refused', why: string }}
@@ -355,20 +340,16 @@ export function mayRemove(
   relative,
   { expect = null, uid = typeof process.getuid === 'function' ? process.getuid() : null } = {},
 ) {
-  // ⛔ **No default kind.** `expect` used to default to `'any'`, a word that left the vocabulary
-  // when `unlink` replaced it — so a caller that forgot the option got a refusal reading
-  // `unknown expected kind: any`, which is true and says nothing. There is no safe default here:
-  // whatever one is chosen, the call site that forgot to think is the one that gets it.
+  // No default kind: a caller that forgot the option should get a refusal, not a guess. There is no
+  // safe default, and the call site that forgot to think is the one that would get it.
   if (!KINDS.includes(expect)) {
     return {
       kind: 'refused',
       why: `${relative}: every removal must name what it expects to find (${KINDS.join(', ')}), and this one said ${JSON.stringify(expect)}`,
     }
   }
-  // ⛔ **The anchor pin, re-read** (351 review). `trustedAnchor` collected `dev` and `ino` and
-  // nothing used them, so the header's claim that the window is "narrowed by taking the anchor's
-  // dev+ino pin immediately before the walk" described code that did not exist. It does now: the
-  // one directory every path below is proved against has to still be that directory.
+  // The anchor pin, re-read: the one directory every path below is proved against has to still be
+  // that directory.
   const anchorNow = anchorIdentity(anchor.real)
   if (anchorNow === null || anchorNow.dev !== anchor.dev || anchorNow.ino !== anchor.ino) {
     return {
@@ -413,8 +394,8 @@ export function mayRemove(
       why: `${walked.path} is owned by uid ${String(stat.uid)}, not by uid ${String(uid)}`,
     }
   }
-  // ⚠️ The parent is walked, so it is already real by construction — this asks the filesystem to
-  // agree, which is the one check that catches a component swapped inside the walk.
+  // The parent is walked, so it is already real by construction; this asks the filesystem to agree,
+  // which catches a component swapped inside the walk.
   const parentReal = realOrNull(walked.parent)
   if (parentReal !== walked.parent) {
     return {
@@ -442,9 +423,9 @@ function stillTheSame(path, pinned) {
   try {
     now = lstatSync(path)
   } catch (error) {
-    // ⛔ **`ENOENT` is the only failure that means it went away** (351 review). A bare catch made
-    // `EACCES`, `ELOOP` and `EIO` all read as "gone", which the caller then reports as a clean
-    // removal of something still on disk — the one outcome this whole design exists to prevent.
+    // `ENOENT` is the only failure that means it went away. A bare catch would let `EACCES`, `ELOOP`
+    // and `EIO` read as "gone", which the caller would report as a clean removal of something still on
+    // disk.
     if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return 'gone'
     return 'unreadable'
   }
@@ -452,28 +433,21 @@ function stillTheSame(path, pinned) {
 }
 
 /**
- * 🔴 **Remove one checked path**, recursing with `lstat` per entry and never through a symlink.
+ * Remove one checked path, recursing with `lstat` per entry and never through a symlink.
  *
- * ⚠️ **`rmSync({ recursive: true })` would do the traversal correctly** — Node's own implementation
- * `lstat`s and unlinks rather than following. What it will not do is COUNT, keep, or recheck: this
- * reset has to report what it removed (`351` §3.2), has to keep an exact `auth.json` inside a tree
- * it is otherwise emptying, and has to refuse a directory that turned into something else while it
- * was being walked.
+ * `rmSync({ recursive: true })` would traverse correctly, but it will not count, keep, or recheck:
+ * this reset has to report what it removed, keep an exact `auth.json` inside a tree it is otherwise
+ * emptying, and refuse a directory that turned into something else mid-walk.
  *
- * ⚑ **`apply: false` is the dry run, and it is the SAME walk.** A preview computed a different way
- * from the removal is a preview of a different program; this one takes every `lstat`, follows every
- * `keep`, and reaches every entry the real run would reach — it simply does not call `unlink` or
- * `rmdir`. A dry run that cannot READ a directory reports that, because the `readdir` and the
- * `lstat` really happen.
+ * `apply: false` is the dry run and it is the SAME walk: every `lstat`, every `keep`, every entry
+ * the real run would reach, except no `unlink` or `rmdir`. A dry run that cannot READ a directory
+ * reports that.
  *
- * ⚠️ **The bound on that, stated rather than claimed away** (352 review). The counts a dry run
- * prints are the counts a real run produces **when every removal succeeds**. The one thing this walk
- * cannot learn without doing it is whether an `unlink` or an `rmdir` would be REFUSED: with
- * `apply: false` the call that would throw `EACCES` is never made, so the entry counts as removed
- * and so does every ancestor directory above it. ⛔ **There is no honest way to close that** — a
- * permission model is not a prediction, and asking `access(W_OK)` would be a second predicate that
- * can be wrong in the other direction. The real run says what actually happened, under `left in
- * place` and in its exit code; the preview is a preview.
+ * The counts a dry run prints equal a real run's only when every removal succeeds: the call that
+ * would throw `EACCES` is never made, so that entry and every ancestor directory count as removed.
+ * There is no honest way to close that (`access(W_OK)` would be a second predicate that can be
+ * wrong the other way); the real run reports what happened under `left in place` and in its exit
+ * code.
  *
  * @param {string} path a path {@link mayRemove} has already returned `ok` for
  * @param {import('node:fs').Stats} pinned that call's `stat`
@@ -545,8 +519,8 @@ export function removeChecked(path, pinned, options = {}) {
         emptied = false
         continue
       }
-      // ⛔ A symlink is UNLINKED, never descended into. This is the line that keeps a link planted
-      // inside the tree from turning a bounded removal into an unbounded one.
+      // A symlink is UNLINKED, never descended into: this keeps a link planted inside the tree from
+      // turning a bounded removal into an unbounded one.
       if (stat.isSymbolicLink()) {
         if (unlink(child, 'links')) continue
         emptied = false
@@ -567,8 +541,8 @@ export function removeChecked(path, pinned, options = {}) {
         }
         continue
       }
-      // ⚠️ Counted only on success, so a file listed under "left in place" is not also inside the
-      // "removed · N MB" total (351 review).
+      // Counted only on success, so a file listed under "left in place" is not also inside the
+      // "removed · N MB" total.
       if (unlink(child, 'files')) {
         if (stat.isFile()) out.bytes += stat.size
       } else {

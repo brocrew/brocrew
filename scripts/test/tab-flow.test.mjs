@@ -19,7 +19,7 @@ import {
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /**
- * The walk itself (097). The table's agreement with the real app is a DIFFERENT test —
+ * The walk itself. The table's agreement with the real app is a different test,
  * `apps/desktop/test/dom/tab-flow.dom.test.ts`, which mounts the drawer and clicks through it.
  * This file is only about the rule: given a table and a selected tab, what fires and what does not.
  */
@@ -41,7 +41,7 @@ describe('hooksIn — what counts as naming a hook', () => {
     expect(found.sort()).toEqual(['session-cwd', 'session-ref'])
   })
 
-  // ⚠️ The positive half of the pair: `^=` is skipped, and a plain `=` on the SAME prefix string is
+  // The positive half of the pair: `^=` is skipped, and a plain `=` on the same prefix string is
   // still found. Without the second assertion this test would pass over a regex that found nothing.
   it('skips prefix scans and keeps exact reads', () => {
     expect(hooksIn(`document.querySelectorAll('[data-cy^=drawer-tab-]')`)).toEqual([])
@@ -55,9 +55,9 @@ describe('hooksIn — what counts as naming a hook', () => {
     expect(hooksIn(`return document.title`)).toEqual([])
   })
 
-  // ⚠️ 097 review, finding 8: a hook name built at runtime used to match the quoted alternative and
-  // yield `" + name + "` as a hook — which `tabOfHook` answers `null` for, so the read looked
-  // uninteresting rather than unreadable and sailed past the guard with no signal at all.
+  // A hook name built at runtime must not match the quoted alternative and yield `" + name + "` as a
+  // hook: `tabOfHook` answers `null` for that, so the read would look uninteresting rather than
+  // unreadable and pass the guard with no signal.
   it('refuses to call a runtime-built fragment a hook name', () => {
     expect(hooksIn(`document.querySelector('[data-cy=' + name + ']')`)).toEqual([])
     expect(hooksIn('document.querySelector(`[data-cy=changes-row-${p}]`)')).toEqual([])
@@ -89,15 +89,13 @@ describe('unreadableSelectorIn — a check that cannot run must not look like on
   })
 
   it('allows a built selector whose prefix no owned hook could ever start with', () => {
-    // ⚠️ The half that keeps this from failing correct steps. `resumable-status-…` and
-    // `library-read-…` are real reads in the live smokes, on surfaces that are not the drawer at
-    // all — refusing them would have made the walk a nuisance rather than a guard.
+    // The half that keeps this from failing correct steps. `resumable-status-…` and `library-read-…`
+    // are real reads in the live smokes, on surfaces that are not the drawer at all; refusing them
+    // would make the walk a nuisance rather than a guard.
     for (const ok of [
       `document.querySelector('[data-cy=resumable-status-' + id + ']')`,
       `document.querySelector('[data-cy="library-read-' + row.id + '"]')`,
-      // ⚑ **572 · `rail-project-` was the rail's fixture family and `EXT-008` §1 deleted it**, and
-      // the board's `projects-row-` went with projects at D-016. The example is the person's queue
-      // family now, so this list names hooks that exist.
+      // The example is the person's queue family, so this list names hooks that exist.
       `document.querySelector('[data-cy=persons-queue-row-' + n + ']')`,
     ]) {
       expect(unreadableSelectorIn(ok), ok).toBeNull()
@@ -180,7 +178,7 @@ describe('tabFlowViolation — the rule', () => {
     expect(tabFlowViolation('info', readCwd)).toBeNull()
   })
 
-  // THE test this whole item exists for: the shape of 093's twenty-one steps.
+  // The test this walk exists for: the shape of a long live script reading Info hooks while on Work.
   it('fails a read of an Info hook while sitting on Work', () => {
     const violation = tabFlowViolation('work', readCwd)
     expect(violation).toContain('session-cwd')
@@ -230,32 +228,20 @@ describe('tabFlowViolation — the rule', () => {
   })
 
   /**
-   * ⛔ **What the model was TOLD is an Info read, and until 178 the walk had never heard of it.**
+   * What the model was told is an Info read, but the block is no longer on the tab. It is on
+   * `AgentInstructionsSheet`, which `ConversationPane` raises on the overlay layer: reachable from
+   * whichever tab is selected, and mounted by none of them.
    *
-   * `SessionInstructions` had been on the Info tab since 158 and no step in either live script
-   * opened it — `session-instructions` appeared **zero** times in both — so nothing ever exercised
-   * the gap. A step reading it off Events would have found `null` and asserted against an absence it
-   * caused, which is the whole class 097 exists to remove, left open on the one block whose entire
-   * subject is disclosure.
+   * So the right answer for those hooks is `null` from every tab, and that is what is asserted.
+   * Leaving them filed under `info` would make the walk fail a correct step, and the fix somebody
+   * reached for would be to delete the guard.
    *
-   * ## 🔴 527 · re-aimed, and the assertion turned over
-   *
-   * ⚑ **`HO-050` §1.1 took the block off the tab.** It is on `AgentInstructionsSheet`, which
-   * `ConversationPane` raises on the overlay layer — reachable from whichever tab is selected, and
-   * mounted by none of them.
-   *
-   * ⛔ **So the right answer for those hooks is now `null` from EVERY tab, and that is what is
-   * asserted.** Leaving them filed under `info` would be the 097 defect with the sign flipped: the
-   * walk would fail a CORRECT step, and the fix somebody reached for would be to delete the guard.
-   * ⚠️ **Deleting this test instead would have left both directions unmeasured** — standing rule
-   * 26: strip AND re-aim.
-   *
-   * ⚑ **The half that stays is the DOOR.** The index entry is on the Info tab and nowhere else, so
-   * it is still refused from another tab and still permitted from its own — which is what keeps a
-   * step from pressing a button that is not on screen.
+   * The half that stays is the door: the index entry is on the Info tab and nowhere else, so it is
+   * refused from another tab and permitted from its own, which keeps a step from pressing a button
+   * that is not on screen.
    */
   it('guards the index ENTRY, and frees the block that left the drawer body', () => {
-    // ⛔ The door: on the tab, so the walk still owns it.
+    // The door: on the tab, so the walk still owns it.
     const onTheTab = ['told-index', 'told-index-title', 'session-subject-agent']
     for (const hook of onTheTab) {
       const read = `document.querySelector('[data-cy=${hook}]')`
@@ -266,9 +252,8 @@ describe('tabFlowViolation — the rule', () => {
       expect(tabFlowViolation('info', read), hook).toBeNull()
     }
 
-    // ⚑ …and everything behind it, which no tab mounts any more. Named hooks AND both families,
-    // because the table can be wrong in two ways and a dropped prefix is a different mistake from
-    // a dropped entry.
+    // …and everything behind it, which no tab mounts. Named hooks and both families, because a
+    // dropped prefix is a different mistake from a dropped entry.
     const onTheSheet = [
       'session-instructions',
       'refused-instruction',
@@ -290,11 +275,9 @@ describe('tabFlowViolation — the rule', () => {
       'told-withheld',
       'told-why',
       'told-order',
-      // ⚑ **583 · the five `injected-…` names here were dead** and this list did not notice,
-      // because `tabOfHook` answers `null` for a hook in NEITHER table — so a renamed hook made
-      // every assertion below vacuous rather than red (`a-positive-assertion-must-differ-from-
-      // the-default`). ⛔ The names are the live ones now AND the vacuity is closed by the
-      // census under this array.
+      // The names here are the live ones, and the census under this array closes the vacuity: `tabOfHook`
+      // answers `null` for a hook in neither table, so a renamed hook would make every assertion below
+      // vacuous rather than red.
       'told-block',
       'told-block-toggle',
       'told-block-label',
@@ -312,12 +295,10 @@ describe('tabFlowViolation — the rule', () => {
     ]
 
     /**
-     * 🔴 **583 · every name above is a hook the component really draws.**
-     *
-     * ⛔ **Without this the list is a wish.** `tabOfHook` returns `null` for a name nothing has
-     * ever heard of, so a hook renamed on the sheet keeps passing here for ever — which is what
-     * happened to five of them between `527` and `583`. ⚠️ A family hook is bound through a
-     * template literal, so its LITERAL PREFIX is what the source can be asked for.
+     * Every name above is a hook the component really draws. Without this the list is a wish:
+     * `tabOfHook` returns `null` for a name nothing has heard of, so a hook renamed on the sheet keeps
+     * passing for ever. A family hook is bound through a template literal, so its literal prefix is
+     * what the source can be asked for.
      */
     const panel = readFileSync(
       join(REPO, 'apps/desktop/src/renderer/src/components/SessionInstructions.vue'),
@@ -339,26 +320,22 @@ describe('tabFlowViolation — the rule', () => {
     for (const hook of onTheSheet) {
       const read = `document.querySelector('[data-cy=${hook}]')`
       expect(tabOfHook(hook), `${hook} is still filed under a tab`).toBeNull()
-      // ⛔ **From every tab, and from a SHUT drawer**, which is the state a step reading the sheet
-      // is really in — it opened a modal over whatever was there.
+      // From every tab, and from a shut drawer, which is the state a step reading the sheet is really
+      // in: it opened a modal over whatever was there.
       for (const where of [...DRAWER_TABS, null])
         expect(tabFlowViolation(where, read), `${hook} from ${where ?? 'a shut drawer'}`).toBeNull()
     }
 
-    // ⛔ **`told-index` is an EXACT entry and `told-why-…` is gone**, so no prefix answers for the
-    // sheet's hooks by accident — the thing that would make every assertion above vacuous.
+    // `told-index` is an exact entry and `told-why-…` is gone, so no prefix answers for the sheet's
+    // hooks by accident, which would make every assertion above vacuous.
     expect(tabOfHook('told-index')).toBe('info')
     expect(tabOfHook('told-why-anything')).toBeNull()
   })
 })
 
 /**
- * **The wiring, not just the rule** (097, from review).
- *
- * The walk was first written twice — once in each live-smoke script — and the two copies had already
- * drifted in their active-tab query on the day they were written. It is one function now, and this
- * is what holds it: `assertTabFlow` is the piece `Cdp.evaluate` actually calls, and until this test
- * existed the only thing exercising it was a live step in one of the two scripts.
+ * The wiring, not just the rule. `assertTabFlow` is the piece `Cdp.evaluate` actually calls, and
+ * the walk is one function so the two live-smoke scripts cannot drift in their active-tab query.
  */
 describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
   /** A fake raw evaluate that answers with `tab` and records what it was asked. */
@@ -403,9 +380,9 @@ describe('assertTabFlow — the piece Cdp.evaluate calls', () => {
   })
 
   it('the probe it sends really answers with a tab id, against a real strip', () => {
-    // ⚠️ The expression is a string evaluated in a page, so nothing typechecks it. Run it against a
-    // hand-built DOM shaped like the strip and check it returns the ACTIVE tab rather than the
-    // first one — a `find` on the wrong predicate would pass every test above and be wrong live.
+    // The expression is a string evaluated in a page, so nothing typechecks it. Run it against a
+    // hand-built DOM shaped like the strip and check it returns the active tab rather than the first
+    // one: a `find` on the wrong predicate would pass every test above and be wrong live.
     const buttons = ['open', 'info', 'work'].map((id, i) => ({
       dataset: { active: String(i === 2), cy: `drawer-tab-${id}` },
       getAttribute: () => `drawer-tab-${id}`,

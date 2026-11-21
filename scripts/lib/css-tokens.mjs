@@ -77,13 +77,12 @@ export function tokenDeclarationsIn(text, file = 'x.css') {
 /**
  * Every literal `var(--x)` in one file's CSS, with its line and whether it carries a fallback.
  *
- * ⚠️ **Scanned over the whole region rather than line by line**, because prettier can and does
- * break inside `var(` when the call is long — `var(\n  --x\n)` is legal CSS and a line-based
- * scanner reads it as zero uses. `\s` spans the newline, so the shape is seen either way, and the
- * line reported is the one the `var(` starts on.
+ * Scanned over the whole region rather than line by line, because prettier breaks inside `var(` when
+ * the call is long and `var(\n  --x\n)` is legal CSS. `\s` spans the newline, and the line reported
+ * is the one the `var(` starts on.
  *
- * A fallback is *any* second argument, which is what CSS means by one: `var(--a,)` is a fallback of
- * the empty token stream and is still a defined result. The comma is therefore the whole test.
+ * A fallback is any second argument: `var(--a,)` is a fallback of the empty token stream and is
+ * still a defined result, so the comma is the whole test.
  */
 export function tokenUsesIn(text, file = 'x.css') {
   const starts = lineStarts(text)
@@ -112,12 +111,11 @@ function declaredAcross(sources) {
 /**
  * The findings, over a whole tree given as `Map<path, source>`.
  *
- * ⚠️ **Declarations pool across every file and uses do not.** A token declared in `tokens.css` and
- * used in a component is correct — that is the design system working — so the question is only
- * whether the tree as a whole declares what the tree as a whole uses.
+ * Declarations pool across every file and uses do not: a token declared in `tokens.css` and used
+ * in a component is correct, so the question is whether the tree as a whole declares what it uses.
  *
- * Returns one entry per (token, file, line) that is **undeclared and has no fallback**, sorted so
- * the list is stable enough to pin in a test.
+ * Returns one entry per (token, file, line) that is undeclared and has no fallback, sorted so the
+ * list is stable enough to pin in a test.
  */
 export function undeclaredTokenUses(sources) {
   const declared = declaredAcross(sources)
@@ -135,11 +133,11 @@ export function undeclaredTokenUses(sources) {
 
 /**
  * The other list, reported and not enforced: tokens that are undeclared everywhere and only ever
- * reached through a fallback. Legal by the rule above — and the shape `105` actually found, so the
- * guard would be claiming something it does not do if this were not visible.
+ * reached through a fallback. Legal by the rule above, but visible so the guard does not claim more
+ * than it does.
  *
  * A token with even one bare use is excluded, because {@link undeclaredTokenUses} already fails the
- * build on it and listing it here as "legal" would contradict that.
+ * build on it.
  */
 export function fallbackOnlyTokens(sources) {
   const declared = declaredAcross(sources)
@@ -160,7 +158,7 @@ export function fallbackOnlyTokens(sources) {
 /* ------------------------------------------------------------------ raw values */
 
 /**
- * **Components read tokens, not values.** A theme can only restyle what reads a token, so a literal
+ * Components read tokens, not values: a theme can only restyle what reads a token, so a literal
  * style value in a component is a place a theme cannot reach. This scan names every such literal,
  * by family:
  *
@@ -170,11 +168,9 @@ export function fallbackOnlyTokens(sources) {
  *  - `shadow`: a `box-shadow` or `text-shadow` with a non-zero px length or a literal colour;
  *  - `type`: a px/em/rem `font-size`, a numeric `font-weight`, a `font-family` that is not a token.
  *
- * The token file is where values belong, so it is not scanned. Everything else in the renderer is.
- *
- * ⚑ **An intended literal says so where it is written**: a declaration whose line carries a
- * `/* raw: <why> *\/` comment is not a finding (a spinner's stroke, a ring that knocks a dot out of
- * the art under it). The reason travels with the value, and a search for `raw:` lists them all.
+ * The token file is not scanned; everything else in the renderer is. An intended literal says so
+ * where it is written: a declaration whose line carries a `/* raw: <why> *\/` comment is not a
+ * finding, and a search for `raw:` lists them all.
  *
  * Same boundary as the token guard above: only CSS regions, comments blanked; `:style` bindings
  * and `style=""` attributes are not read. SVG `stroke-width` is icon geometry and no family here.

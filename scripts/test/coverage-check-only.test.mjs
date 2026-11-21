@@ -8,18 +8,18 @@ import { COVERAGE_AREAS, COVERAGE_METRICS } from '../lib/coverage-floors.mjs'
 import { areaOf, shippedSources } from '../lib/coverage-check-only.mjs'
 
 /**
- * # The coverage gate's check-only mode, over a fictional repository
+ * The coverage gate's check-only mode, over a fictional repository.
  *
- * CI has no local receipts, so it hands the gate the merged native coverage and the test reports and
- * asks one question: where does each area stand against the committed floors. Every file here is
- * made in a temporary folder; nothing reads the real repository or any provider home.
+ * CI has no local receipts, so it hands the gate the merged native coverage and the test reports
+ * and asks where each area stands against the committed floors. Every file here is made in a
+ * temporary folder; nothing reads the real repository or any provider home.
  *
- *  - ⚑ the shipped sources are the ones under the app and the packages, without tests, fixtures,
- *    declarations or the generated Codex protocol — and each belongs to one floor row;
- *  - ⛔ a row below its floor fails (exit 1) and is named, beside the rows that pass;
- *  - ⛔ a shipped source the measurement never reached fails (exit 1) rather than counting as zero;
- *  - ⛔ a failed test is exit 2 and writes no raised floors;
- *  - ⚑ a clean pass writes the raised floors and nothing inside the repository.
+ *  - the shipped sources are the ones under the app and the packages, without tests, fixtures,
+ *    declarations or the generated Codex protocol, and each belongs to one floor row;
+ *  - a row below its floor fails (exit 1) and is named, beside the rows that pass;
+ *  - a shipped source the measurement never reached fails (exit 1) rather than counting as zero;
+ *  - a failed test is exit 2 and writes no raised floors;
+ *  - a clean pass writes the raised floors and nothing inside the repository.
  */
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' })
@@ -183,7 +183,7 @@ describe('a measurement against the committed floors', () => {
     expect(
       JSON.parse(readFileSync(join(out, 'result', 'raised-floors.json'), 'utf8')).measuredCommit,
     ).toBe(git(root, 'rev-parse', 'HEAD').trim())
-    // ⛔ Nothing was written into the repository: the committed floors are as committed.
+    // Nothing was written into the repository: the committed floors are as committed.
     expect(git(root, 'status', '--porcelain').trim()).toBe('')
   })
 

@@ -2,14 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { assertGapFree } from '../lib/ledger-ordinals.mjs'
 
 /**
- * ⛔ **196 H3, from 193: the "gap-free" claim that could not see a gap.**
- *
- * `ui-live-smoke.mjs` step 27 archives 2,500 frames, exports them and reported *"ordinals
- * gap-free"* — on a test that rejected only `n <= previous`. The exact shape it claimed to exclude
- * (a window that dropped one entry) is strictly increasing, so it passed; so did an empty ledger.
- *
- * ⚑ **The first two tests are the finding and its paired positive on the SAME sequence** — the gap
- * is one missing value in an otherwise perfect run of 2,500, which is what the step really produces.
+ * assertGapFree must see a gap, not just a non-increasing step. A window that dropped one entry is
+ * still strictly increasing, and an empty ledger has no gap either. The first two tests pair the
+ * failing and passing case on the same sequence: one missing value in a run of 2,500.
  */
 describe('assertGapFree (196 H3)', () => {
   const run = (from, count) => Array.from({ length: count }, (_, i) => from + i)
@@ -47,9 +42,8 @@ describe('assertGapFree (196 H3)', () => {
   })
 
   it('refuses a non-integer ordinal rather than doing arithmetic on it', () => {
-    // `undefined` is what `bundle.ledger.map((e) => e.ordinal)` yields if the field is ever renamed,
-    // and `last - first + 1` over it is `NaN` — which compares false against everything and would
-    // have thrown a confusing error instead of naming the entry.
+    // `undefined` is what `bundle.ledger.map((e) => e.ordinal)` yields if the field is renamed;
+    // `last - first + 1` over it is `NaN`, so the error would not name the entry.
     expect(() => assertGapFree([0, 1, undefined], 'x')).toThrow(/entry 2 has a non-integer ordinal/)
   })
 })

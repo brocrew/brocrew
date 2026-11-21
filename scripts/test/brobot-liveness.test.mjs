@@ -16,11 +16,11 @@ import {
 } from '../lib/brobot-liveness.mjs'
 
 /**
- * 🔴 **Three states, and the whole file is about the two that used to be one** (351).
+ * Three states, and the whole file is about the two that could be confused.
  *
- * ⚠️ Sockets live under `/tmp` rather than `tmpdir()`: macOS's `sun_path` holds 103 bytes and
- * `os.tmpdir()` alone is 48 of them, which is the trap `241` §3 and `242` spent a hundred dispatches
- * inside. A fixture that cannot bind would make every negative below pass for the wrong reason.
+ * Sockets live under `/tmp` rather than `tmpdir()`: macOS's `sun_path` holds 103 bytes and
+ * `os.tmpdir()` alone is 48 of them. A fixture that cannot bind would make every negative below
+ * pass for the wrong reason.
  */
 const roots = []
 const servers = []
@@ -95,7 +95,7 @@ describeOnPosix('the gate, asked the way a caller that DELETES has to ask', () =
   })
 
   it('⛔ something that is NOT a socket wearing the gate name is `unknown`, not absence', async (ctx) => {
-    // ⚠️ **darwin only** (T-001): a Mac says `ENOTSOCK` for a connect to a file; Linux says `ECONNREFUSED`.
+    // darwin only: a Mac says `ENOTSOCK` for a connect to a file; Linux says `ECONNREFUSED`.
     // CI runs on Linux and skips it; the Mac's own gate runs it.
     ctx.skip(process.platform !== 'darwin')
     const root = fixture()
@@ -110,9 +110,8 @@ describeOnPosix('the gate, asked the way a caller that DELETES has to ask', () =
     await listenSaying(join(root, GATE_SOCKET), null)
     const said = await askGate(join(root, GATE_SOCKET))
     expect(said.kind).toBe('unknown')
-    // ⚑ **Which unknown, and not just that it is one.** Asserting `.kind` alone passes on the
-    // TIMEOUT branch too, so the test could not tell "it said nothing and hung up" from "it never
-    // answered" — two different facts about the app, reached by two different lines.
+    // Which unknown, and not just that it is one. `.kind` alone passes on the timeout branch too, so
+    // the test could not tell "it said nothing and hung up" from "it never answered".
     expect(said.why).toContain('without a word')
     expect(said.why).not.toContain('will not say what')
   })
@@ -149,7 +148,7 @@ describe('the process table', () => {
     expect(self.ppid).toBeGreaterThan(0)
   })
 
-  /** ⛔ 321's defect, in the instrument that would carry it: `ps` failing is not an empty machine. */
+  /** `ps` failing is not an empty machine. */
   it('⛔ a `ps` that cannot be run is `unknown`, never an empty table', () => {
     const table = readCommandTable({
       exec: () => {
@@ -168,8 +167,8 @@ describe('the process table', () => {
     const rows = [
       { pid: 10, ppid: 1, command: '/x/Electron --user-data-dir=/tmp/ud .' },
       { pid: 11, ppid: 10, command: '/x/Electron --user-data-dir=/private/tmp/ud --type=gpu' },
-      // ⛔ **`/tmp/ud2`, not `/tmp/other`** — a neighbour whose name STARTS the same way is the
-      // only row that can tell `namesPath` from a plain `includes` at this call site.
+      // `/tmp/ud2`, not `/tmp/other`: a neighbour whose name starts the same way is the only row that
+      // can tell `namesPath` from a plain `includes` at this call site.
       { pid: 12, ppid: 1, command: '/x/Electron --user-data-dir=/tmp/ud2 .' },
       { pid: 99, ppid: 1, command: 'node grep /tmp/ud' },
     ]
@@ -219,10 +218,9 @@ describe('⛔ the verdict, and unknown is a refusal', () => {
   })
 
   /**
-   * 🔴 **The load-bearing pair.** Both runs see a machine with nothing of ours on it; they differ
-   * only in whether the instrument answered. ⛔ A reset that collapses them deletes on the strength
-   * of its own bad minute — which is `325`'s measured failure, four milliseconds after a `lsof` that
-   * exited non-zero.
+   * The load-bearing pair. Both runs see a machine with nothing of ours on it; they differ only in
+   * whether the instrument answered. A reset that collapses them deletes on the strength of its
+   * own bad minute (a `lsof` that exited non-zero).
    */
   it('⛔ a `ps` that could not be read is `unknown`, where the same machine is otherwise `not-running`', async () => {
     const machine = [{ pid: 1, ppid: 0, command: '/sbin/launchd' }]
@@ -285,7 +283,7 @@ describe('⛔ the verdict, and unknown is a refusal', () => {
 
 describeOnPosix("Chromium's SingletonLock — the instrument that works when argv is silent", () => {
   /**
-   * ⚑ **The target shape is measured, not assumed.** A real launch of this build wrote
+   * The target shape is measured, not assumed: a real launch of this build wrote
    * `SingletonLock -> alex-laptop.local-3541` and removed it on a clean quit.
    */
   it('a well-formed lock naming a local pid is `held`', () => {
@@ -323,10 +321,9 @@ describeOnPosix("Chromium's SingletonLock — the instrument that works when arg
 
 describe('⛔ the ancestor chain, which made the documented invocation always refuse', () => {
   /**
-   * 🔴 **Measured before the fix**: `pnpm clean-base --dir <empty fixture>` printed
-   * `⛔ refused · BroBot is running on this userData` with no app anywhere near it. `pnpm` and the
-   * `sh -c` it spawns both carry the path in their own command lines, and excluding only the
-   * caller's own pid left both of them in the scan.
+   * `pnpm clean-base --dir <empty fixture>` once refused with "BroBot is running on this userData"
+   * with no app anywhere near it: `pnpm` and the `sh -c` it spawns both carry the path in their own
+   * command lines, and excluding only the caller's own pid left both in the scan.
    */
   const chain = [
     { pid: 400, ppid: 1, command: '/bin/zsh -l' },

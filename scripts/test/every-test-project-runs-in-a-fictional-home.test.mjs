@@ -52,7 +52,7 @@ describe('every test project runs in a fictional home', () => {
         const project = config.slice(at, config.indexOf('},', at))
         expect(project, `${path}: ${name}`).toContain('...sealed,')
       }
-      // ⚑ No project is declared here that the list above does not name.
+      // No project is declared here that the list above does not name.
       expect([...config.matchAll(/name: '([^']+)'/g)].map((one) => one[1]).sort()).toEqual(
         [...names].sort(),
       )
@@ -68,7 +68,7 @@ describe('every test project runs in a fictional home', () => {
       expect(config, path).toContain('setupFiles: [THE_GUARD],')
     }
 
-    // ⚑ The root config's other projects: the desktop one above, and the one that runs in a browser,
+    // The root config's other projects: the desktop one above, and the one that runs in a browser,
     // which reads no file.
     const root = codeOf(read('vitest.config.ts'))
     expect([...root.matchAll(/^\s+'(\.\/[^']+)',$/gm)].map((one) => one[1])).toEqual([
@@ -110,8 +110,8 @@ describe('every test project runs in a fictional home', () => {
   })
 
   it('🔒 the setup file spells out every folder name the seal sets, a second time', () => {
-    // ⚑ Three lists, each written by hand: the seal's, the setup file's own, and this one. The
-    // setup file refuses when the first two differ; this is what holds them to the names below.
+    // Three hand-written lists: the seal's, the setup file's own, and this one. The setup file
+    // refuses when the first two differ; this holds them to the names below.
     const every = [
       'APPDATA',
       'CFFIXED_USER_HOME',
@@ -162,31 +162,31 @@ describe('every test project runs in a fictional home', () => {
       expect(ran.status, why).not.toBe(0)
       expect(ran.stderr, why).toContain(`This test process can see the real home (${why})`)
     }
-    // ⚑ As this process is: it loads.
+    // As this process is: it loads.
     expect(run(process.env).status).toBe(0)
 
-    // ⛔ With the home put back to the one the computer records.
+    // With the home put back to the one the computer records.
     const real = userInfo().homedir
     refused(
       { ...process.env, HOME: real, USERPROFILE: real },
       'the home directory is not the fictional one',
     )
-    // ⛔ With one folder variable pointing elsewhere.
+    // With one folder variable pointing elsewhere.
     refused(
       { ...process.env, CODEX_HOME: join(ROOT, 'elsewhere') },
       'CODEX_HOME is not in the fictional home',
     )
-    // ⛔ With the seal's own name missing.
+    // With the seal's own name missing.
     const unnamed = { ...process.env }
     delete unnamed[TESTS_HOME]
     refused(unnamed, `${TESTS_HOME} is not set`)
-    // ⛔ With the stand-in Keychain program no longer first on the path.
+    // With the stand-in Keychain program no longer first on the path.
     const [, ...rest] = (process.env.PATH ?? '').split(delimiter)
     refused(
       { ...process.env, PATH: rest.join(delimiter) },
       'the fictional home’s programs are not first on the path',
     )
-    // ⛔ With every variable in step, and the folder they name the person's own.
+    // With every variable in step, and the folder they name the person's own.
     refused(
       {
         ...process.env,
@@ -201,7 +201,7 @@ describe('every test project runs in a fictional home', () => {
   it('🔴 the guard refuses a home whose stand-in Keychain program is missing, replaced, linked or cannot run', async () => {
     const guard = pathToFileURL(join(ROOT, 'scripts', 'lib', 'a-test-sees-no-real-home.setup.mjs'))
     const { spawnSync } = await import('node:child_process')
-    // ⚑ A second fictional home, made here: each control changes one thing in it. The child loads
+    // A second fictional home, made here: each control changes one thing in it. The child loads
     // the guard and nothing else, so no control runs any program called `security`.
     const fake = realpathSync(mkdtempSync(join(tmpdir(), 'brobot2-tests-home-control-')))
     const standIn = join(fake, 'bin', 'security')
@@ -225,23 +225,23 @@ describe('every test project runs in a fictional home', () => {
     }
     try {
       mkdirSync(join(fake, 'bin'))
-      // ⛔ No program at all: the name would reach the computer's own.
+      // No program at all: the name would reach the computer's own.
       refused('missing')
-      // ⚑ The stand-in, as the seal writes it: the guard loads.
+      // The stand-in, as the seal writes it: the guard loads.
       writeFileSync(standIn, THE_STAND_IN_KEYCHAIN_PROGRAM, { mode: 0o755 })
       expect(run(env).status).toBe(0)
-      // ⛔ Other bytes under the same name.
+      // Other bytes under the same name.
       writeFileSync(standIn, '#!/bin/sh\nexit 0\n', { mode: 0o755 })
       refused('replaced')
       if (process.platform !== 'win32') {
-        // ⛔ The right bytes in a file that cannot be run: the path would be searched further.
+        // The right bytes in a file that cannot be run: the path would be searched further.
         writeFileSync(standIn, THE_STAND_IN_KEYCHAIN_PROGRAM)
         chmodSync(standIn, 0o644)
         refused('cannot run')
-        // ⛔ To be run by others and not by its owner, who is the one running the tests.
+        // To be run by others and not by its owner, who is the one running the tests.
         chmodSync(standIn, 0o645)
         refused('cannot be run by its owner')
-        // ⛔ A link under that name, even to a file holding the right bytes.
+        // A link under that name, even to a file holding the right bytes.
         rmSync(standIn)
         writeFileSync(join(fake, 'elsewhere'), THE_STAND_IN_KEYCHAIN_PROGRAM, { mode: 0o755 })
         symlinkSync(join(fake, 'elsewhere'), standIn)
@@ -252,14 +252,14 @@ describe('every test project runs in a fictional home', () => {
       chmodSync(standIn, 0o755)
       expect(run(env).status).toBe(0)
 
-      // ⛔ A folder variable that names a place outside the home, one for each provider's second name.
+      // A folder variable that names a place outside the home, one for each provider's second name.
       for (const name of ['CLAUDE_SECURESTORAGE_CONFIG_DIR', 'CODEX_SQLITE_HOME', 'NVM_DIR']) {
         const ran = run({ ...env, [name]: join(tmpdir(), 'brobot2-a-poison-path') })
         expect(ran.status, name).not.toBe(0)
         expect(ran.stderr, name).toContain(`(${name} is not in the fictional home)`)
       }
 
-      // ⛔ Another name for a home: a link, named as the seal names its folders, to this complete
+      // Another name for a home: a link, named as the seal names its folders, to this complete
       // fictional home, with every variable spelled through the link.
       const temp = realpathSync(tmpdir())
       const alias = join(temp, `${THE_TESTS_HOME_IS_NAMED}alias-${process.pid}`)
@@ -276,7 +276,7 @@ describe('every test project runs in a fictional home', () => {
       } finally {
         unlinkSync(alias)
       }
-      // ⛔ A complete home that the seal did not make: its folder is named otherwise.
+      // A complete home that the seal did not make: its folder is named otherwise.
       const other = realpathSync(mkdtempSync(join(temp, 'brobot2-some-other-folder-')))
       try {
         mkdirSync(join(other, 'bin'))
@@ -295,7 +295,7 @@ describe('every test project runs in a fictional home', () => {
         rmSync(other, { recursive: true, force: true })
       }
 
-      // 🔒 A variable that is a credential by itself is gone once the guard has loaded.
+      // A variable that is a credential by itself is gone once the guard has loaded.
       for (const name of NO_TEST_HOLDS) {
         const ran = run(
           { ...env, [name]: 'a-fictional-token' },
@@ -323,8 +323,8 @@ describe('every test project runs in a fictional home', () => {
         { env: { ...process.env, [MADE]: inherited }, encoding: 'utf8' },
       ).stdout
     const mine = process.env[TESTS_HOME] ?? ''
-    // ⛔ This run's own folder, named by another process's pid, or by none: a fresh one is made.
-    // ⚑ And made once: the second call in that process answers the same folder.
+    // This run's own folder, named by another process's pid or by none: a fresh one is made, and
+    // made once: the second call in that process answers the same folder.
     for (const inherited of [`${process.pid}:${mine}`, mine, `:${mine}`]) {
       const home = madeBy(inherited)
       expect(home, inherited).toContain(THE_TESTS_HOME_IS_NAMED)
@@ -367,7 +367,7 @@ describe('every test project runs in a fictional home', () => {
       expect((await promisify(childProcess.exec)(typed, noHome)).stdout).toBe(mine)
     }
 
-    // ⚑ Every other variable is left as the caller wrote it, and none is added.
+    // Every other variable is left as the caller wrote it, and none is added.
     const seen = JSON.parse(
       childProcess.spawnSync(
         node,
@@ -380,13 +380,13 @@ describe('every test project runs in a fictional home', () => {
     expect(seen).not.toContain('CODEX_HOME')
     expect(seen).not.toContain(TESTS_HOME)
 
-    // ⚑ A home the caller names is the caller's: not replaced.
+    // A home the caller names is the caller's: not replaced.
     const own = join(mine, 'a-home-of-its-own')
     const named = process.platform === 'win32' ? { USERPROFILE: own } : { HOME: own }
     expect(
       childProcess.spawnSync(node, ['-e', says], { env: named, encoding: 'utf8' }).stdout,
     ).toBe(own)
-    // ⚑ No environment given: this process's, which is sealed.
+    // No environment given: this process's, which is sealed.
     expect(childProcess.spawnSync(node, ['-e', says], { encoding: 'utf8' }).stdout).toBe(mine)
   })
 
@@ -396,7 +396,7 @@ describe('every test project runs in a fictional home', () => {
     const record = join(realpathSync(tmpdir()), `brobot2-no-program-${process.pid}.txt`)
     const load = `await import(${JSON.stringify(guard.href)})`
     // A process of its own, loading the setup file as a test process does, then trying each way and
-    // catching what it is answered. ⚑ Nothing it tries is started: that is what is checked.
+    // catching what it is answered. Nothing it tries is started: that is what is checked.
     const tries = `
       ${load}
       const childProcess = await import('node:child_process')
@@ -425,7 +425,7 @@ describe('every test project runs in a fictional home', () => {
       spawnSync(process.execPath, ['--input-type=module', '-e', script], { env, encoding: 'utf8' })
     const written = () => readFileSync(record, 'utf8').trim().split('\n')
     try {
-      // ⚑ The run makes its record before it begins, with a line of its own.
+      // The run makes its record before it begins, with a line of its own.
       writeFileSync(record, 'the seal’s own test\n')
       expect(run(tries).stdout).toBe(
         [
@@ -440,7 +440,7 @@ describe('every test project runs in a fictional home', () => {
           'execFile, promisified',
           'a thread',
           'a cluster',
-          // ⛔ Turned off by the test after the setup file loaded: still refused.
+          // Turned off by the test after the setup file loaded: still refused.
           'with the variable taken away',
         ].join(','),
       )
@@ -465,13 +465,13 @@ describe('every test project runs in a fictional home', () => {
       ])
       expect(all.at(-1)).toMatch(/^compiled /)
 
-      // ⚑ A process that starts nothing loads, and its record holds no start.
+      // A process that starts nothing loads, and its record holds no start.
       writeFileSync(record, 'a second run\n')
       expect(run(load).status).toBe(0)
       expect(written().filter((line) => line.startsWith('start '))).toEqual([])
       expect(written()[1]).toMatch(/^loaded \d+$/)
 
-      // ⛔ No record made first, a folder under its name, or a record that cannot be written to: a
+      // No record made first, a folder under its name, or a record that cannot be written to: a
       // run that cannot be checked, so the setup file does not load.
       rmSync(record)
       for (const [how, made] of [
@@ -486,7 +486,7 @@ describe('every test project runs in a fictional home', () => {
         rmSync(record, { recursive: true, force: true })
       }
 
-      // ⚑ Without the variable a start is made, and nothing is written anywhere.
+      // Without the variable a start is made, and nothing is written anywhere.
       const free = run(
         `${load}
          const { spawnSync } = await import('node:child_process')

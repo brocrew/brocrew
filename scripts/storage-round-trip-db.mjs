@@ -8,7 +8,7 @@ export const assert = (condition, message) => {
 }
 export const json = (file, value) => writeFileSync(file, JSON.stringify(value, null, 2) + '\n')
 
-// F13's own objects. Everything else in the file is the app's authoritative data.
+// Derived tables the newer app adds. Everything else in the file is the app's authoritative data.
 const DERIVED_TABLES = new Set(['question_copy', 'question_copy_progress'])
 const DERIVED_TRIGGERS = new Set([
   'question_copy_insert',

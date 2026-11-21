@@ -24,12 +24,9 @@ import {
 } from '../lib/safe-remove.mjs'
 
 /**
- * 🔴 **A test for a deleting predicate must not be able to delete the wrong thing when it fails**
- * (351 §4).
- *
- * ⚑ Every fixture is built under a directory this file created, and {@link fixture} asserts the tree
- * is where it thinks it is BEFORE anything under test runs. A test whose premise is wrong either
- * passes over nothing or removes something real, and those are one line of code apart.
+ * A test for a deleting predicate must not be able to delete the wrong thing when it fails. Every
+ * fixture is built under a directory this file created, and {@link fixture} asserts the tree is
+ * where it thinks it is before anything under test runs.
  */
 const roots = []
 afterEach(() => {
@@ -47,20 +44,16 @@ function fixture() {
 }
 
 /**
- * ⛔ **W4.124 · never this machine's own home, nor the redirects this shell carries** — a scratch home
- * and no environment, for every call that is not about them. Left out, `trustedAnchor` resolves the
- * real `~/.claude` and `~/.codex`, and any `CLAUDE_CONFIG_DIR` or `CODEX_HOME` the run inherited.
+ * Never this machine's own home, nor the redirects this shell carries: a scratch home and no
+ * environment, for every call that is not about them. Left out, `trustedAnchor` resolves the real
+ * `~/.claude` and `~/.codex`, and any inherited `CLAUDE_CONFIG_DIR` or `CODEX_HOME`.
  */
 const elsewhere = (options = {}) => ({ home: fixture(), env: {}, ...options })
 
 /**
- * The anchor, built by the PRODUCTION function rather than by a hand-rolled object.
- *
- * ⚠️ **The first draft of this helper returned `{ real: path }` from the raw fixture path and every
- * positive assertion in this file went red.** On macOS `mkdtemp` under `tmpdir()` lands in
- * `/var/folders/…`, which is a symlink to `/private/var/folders/…` — so the hand-built anchor was
- * not real, and `mayRemove`'s parent-is-really-real check refused correctly. ⚑ **Building the
- * fixture's anchor the way the script builds it is the only version that cannot drift from it.**
+ * The anchor, built by the production function rather than a hand-rolled object. On macOS
+ * `mkdtemp` under `tmpdir()` lands in `/var/folders/…`, a symlink to `/private/var/folders/…`, so a
+ * hand-built `{ real: path }` is not real and `mayRemove`'s parent-is-really-real check refuses it.
  */
 function anchorAt(path) {
   const anchor = trustedAnchor(path, elsewhere())
@@ -70,10 +63,8 @@ function anchorAt(path) {
 
 describe('170 §3 · a symlinked PARENT is where a lexical check walks out of the boundary', () => {
   /**
-   * ⛔ **The decoy is a COMPONENT of the path, not the leaf.** `170` §3's defect was *"a symlink in a
-   * parent walked straight through a lexical boundary"* — BroBot read the personal
-   * `~/.claude/CLAUDE.md` believing it was somewhere else. So the hazard is planted where the walk
-   * actually traverses; a decoy hanging off the side of the tree would test nothing.
+   * The decoy is a component of the path, not the leaf: the hazard is a symlink in a parent that a
+   * walk traverses through a lexical boundary, so it is planted where the walk actually goes.
    */
   function plantDecoy() {
     const root = fixture()
@@ -111,10 +102,9 @@ describe('170 §3 · a symlinked PARENT is where a lexical check walks out of th
   })
 
   /**
-   * ⚑ **The paired positive, and without it the refusal above proves nothing.** A predicate that
-   * refused everything would pass that test. This one puts the SAME relative path in the fixture as
-   * a real directory and requires it to be removed — so the two differ in exactly one fact: whether
-   * a component is a link.
+   * The paired positive; without it the refusal above proves nothing, since a predicate that refused
+   * everything would pass. The same relative path as a real directory must be removed, so the two
+   * differ in exactly one fact: whether a component is a link.
    */
   it('⚑ …and the same relative path, built for real, is removed', () => {
     const root = fixture()
@@ -242,8 +232,8 @@ describe('the predicate', () => {
   })
 
   /**
-   * ⚑ **The dry run is the same walk, and this is the assertion that says so.** A preview computed a
-   * different way from the removal is a preview of a different program.
+   * The dry run is the same walk as the removal; a preview computed another way would be a preview
+   * of a different program.
    */
   it('⚑ `apply: false` counts exactly what `apply: true` then removes', () => {
     const build = () => {
@@ -277,10 +267,8 @@ describe('the predicate', () => {
 
 describe('the two rules that only a seam makes testable', () => {
   /**
-   * ⚑ **Ownership, driven from the other side.** `process.getuid()` is the one value in the module a
-   * test cannot vary, so both entry points take it as an option — otherwise this rule would be a
-   * comment that no mutation could turn red, which is the same as not having it (`351`'s reading of
-   * the unkillable-line class).
+   * Ownership, driven from the other side. `process.getuid()` cannot be varied by a test, so both
+   * entry points take it as an option; otherwise no mutation could turn this rule red.
    */
   it.skipIf(process.platform === 'win32')(
     '⛔ refuses a path owned by somebody else, and accepts the same path owned by us',
@@ -324,12 +312,11 @@ describe('the two rules that only a seam makes testable', () => {
   })
 
   /**
-   * ⚑ **The dev+ino recheck, driven by actually replacing the inode.** `verifyTrustedDir` in the
-   * product does this against a concurrent writer; here the swap is deliberate, which is the only
-   * way to reach the branch without a race.
+   * The dev+ino recheck, driven by actually replacing the inode. `verifyTrustedDir` does this against
+   * a concurrent writer; here the swap is deliberate, the only way to reach the branch without a race.
    */
   it('⛔ a directory replaced between the check and the removal is left in place', (ctx) => {
-    // ⚠️ **darwin only** (T-001): its premise is that a folder made again gets a new inode, as APFS does; ext4 reuses it.
+    // Darwin only: its premise is that a recreated folder gets a new inode, as APFS does; ext4 reuses it.
     // CI runs on Linux and skips it; the Mac's own gate runs it.
     ctx.skip(process.platform !== 'darwin')
     const root = fixture()
@@ -368,11 +355,9 @@ describe('the two rules that only a seam makes testable', () => {
 
 describe('the anchor, which is the one directory everything else is proved against', () => {
   /**
-   * ⚑ **Unit calls, not a CLI run, and that is deliberate.** Every case below names a directory it
-   * would be a catastrophe to remove — the filesystem root, the checkout, the working directory. A
-   * test that spawned the script against them to watch it refuse would delete all three the day the
-   * predicate broke, which is the failure mode `351` §4 rules out: *"a test for a deleting script
-   * must not be able to delete the wrong thing when it fails."*
+   * Unit calls, not a CLI run, on purpose. Every case below names a directory it would be a
+   * catastrophe to remove (the filesystem root, the checkout, the working directory); a test that
+   * spawned the script against them would delete all three the day the predicate broke.
    */
   it('refuses a relative path rather than resolving it against whatever cwd happens to be', () => {
     expect(trustedAnchor('ud').kind).toBe('refused')
@@ -443,7 +428,7 @@ describe('the roots a reset must never be pointed at', () => {
       env: { CODEX_HOME: redirectedCodex },
       repoRoot: repo,
     })
-    // ⛔ The home directory is the one exception, and it is load-bearing: the userData this reset
+    // The home directory is the one exception, and it is load-bearing: the userData this reset
     // empties lives inside `$HOME`. A blanket rule would refuse every ordinary run.
     expect(named.find((r) => r.path === home).inside).toBe(false)
     for (const path of [codex, claude, redirectedCodex, repo]) {
@@ -486,17 +471,13 @@ describe('the roots a reset must never be pointed at', () => {
 
 describe('🔴 the two containment directions the first draft did not have', () => {
   /**
-   * 🔴 **The critical one, and it was one string comparison away from emptying a home directory.**
+   * `realpathSync` resolves symlinks but does not canonicalise case, and macOS's default APFS volume
+   * is case-insensitive. So `--dir /users/alex` resolved to `/users/alex`, which equals no forbidden
+   * root, is an ancestor of none and is inside none, and `trustedAnchor` returned `trusted` on `$HOME`.
    *
-   * ⛔ JavaScript's `realpathSync` resolves symlinks and does NOT canonicalise CASE, and macOS's
-   * default APFS volume is case-insensitive. So `--dir /users/alex` resolved to
-   * `/users/alex`, which equals no forbidden root, is an ancestor of none and is inside none
-   * — and `trustedAnchor` returned `trusted` on `$HOME`.
-   *
-   * ⚑ **Both branches assert something.** On a case-insensitive volume the mis-cased spelling must
-   * be refused; on a case-sensitive one it is a genuinely different directory and must not be
-   * refused for a reason that does not apply. A test that skipped on the second would be measuring
-   * the machine rather than the code.
+   * Both branches assert something: on a case-insensitive volume the mis-cased spelling must be
+   * refused; on a case-sensitive one it is a different directory and must not be refused. Skipping
+   * the second would measure the machine rather than the code.
    */
   it('⛔ a differently-CASED spelling of a forbidden root is still that root', () => {
     const root = fixture()
@@ -543,7 +524,7 @@ describe('🔴 the two containment directions the first draft did not have', () 
     expect(anchor.why).toContain('is inside the BroBot2 checkout')
   })
 
-  /** ⚑ Without this the rule above would be "refuse everything", which is not a rule. */
+  /** Without this the rule above would be "refuse everything", which is not a rule. */
   it('⚑ …and a userData INSIDE $HOME is still trusted, which is every ordinary run', () => {
     const root = fixture()
     const home = join(root, 'home')
@@ -603,14 +584,13 @@ describe('🔴 the two containment directions the first draft did not have', () 
 
 describe('🔴 W4.124 · a never-touch folder by its other spelling is the same folder', () => {
   /**
-   * ⛔ **macOS shows every folder on its Data volume twice**: at `/`, and under the volume's own
-   * mount point `/System/Volumes/Data`. `realpath(3)` hands either spelling back exactly as given,
-   * and the never-touch checks were string comparisons of real paths — so the Data-volume spelling
-   * of `~/.claude`, of a folder inside it, of one holding it, or a link to any of them, was TRUSTED.
+   * macOS shows every folder on its Data volume twice: at `/`, and under the volume's own mount point
+   * `/System/Volumes/Data`. `realpath(3)` returns either spelling as given, so string comparisons of
+   * real paths trusted the Data-volume spelling of `~/.claude`, a folder inside or holding it, or a
+   * link to any of them.
    *
-   * ⚑ **Every never-touch folder here is a throwaway one**: a scratch home under a fixture root, with
-   * no environment, reached in its Data-volume spelling. ⚠️ darwin only: elsewhere there is no
-   * second spelling to test.
+   * Every never-touch folder here is a throwaway scratch home under a fixture root, with no
+   * environment, reached in its Data-volume spelling. Darwin only: elsewhere there is no second spelling.
    */
   const DATA_VOLUME = '/System/Volumes/Data'
 
@@ -623,8 +603,8 @@ describe('🔴 W4.124 · a never-touch folder by its other spelling is the same 
     mkdirSync(join(home, '.codex'), { recursive: true })
     mkdirSync(cwd, { recursive: true })
     const other = (path) => `${DATA_VOLUME}${path}`
-    // ⛔ The premise, asserted: the other spelling names this very folder. Wrong, and every
-    // refusal below would be about some other folder.
+    // The premise, asserted: the other spelling names this very folder. If wrong, every refusal
+    // below would be about some other folder.
     expect(statSync(other(root)).ino, `${other(root)} is not ${root}`).toBe(statSync(root).ino)
     return { root, home, cwd, other, base: { home, env: {}, cwd } }
   }
@@ -685,7 +665,7 @@ describe('🔴 W4.124 · a never-touch folder by its other spelling is the same 
     ).toContain('is inside the BroBot2 checkout')
   })
 
-  /** ⚑ Without this the rules above would be "refuse the other spelling", which is not a rule. */
+  /** Without this the rules above would be "refuse the other spelling", which is not a rule. */
   it('⚑ …and an ordinary userData inside the home, or a folder beside it, is trusted in either spelling', (ctx) => {
     ctx.skip(process.platform !== 'darwin')
     const { root, home, other, base } = aScratchHome()
@@ -700,11 +680,10 @@ describe('🔴 W4.124 · a never-touch folder by its other spelling is the same 
   })
 
   /**
-   * ⛔ **The volume's own mount point holds every folder on it — and only the other spelling says
-   * so.** Walking up from the home's usual spelling never meets `/System/Volumes/Data`: the parent
-   * of a folder at `/` is `/`, and `/` is not that folder (measured). ⚑ A CHECK only: nothing is
-   * listed or removed. The ownership rule is given the mount point's own owner, so the refusal
-   * asserted is the one that holds when the reset runs as that owner.
+   * The volume's own mount point holds every folder on it, and only the other spelling says so.
+   * Walking up from the home's usual spelling never meets `/System/Volumes/Data`: the parent of a
+   * folder at `/` is `/` (measured). A check only: nothing is listed or removed. The ownership rule
+   * is given the mount point's own owner, so the refusal asserted holds when the reset runs as it.
    */
   it('⛔ the Data volume and the folders above it are refused as holding the home, even for their owner', (ctx) => {
     ctx.skip(process.platform !== 'darwin')
@@ -780,7 +759,7 @@ describe('the walker reports what it could not do, and counts only what it did',
   )
 
   it('⛔ an anchor replaced under the walk refuses every removal proved against it', (ctx) => {
-    // ⚠️ **darwin only** (T-001): its premise is that a folder made again gets a new inode, as APFS does; ext4 reuses it.
+    // Darwin only: its premise is that a recreated folder gets a new inode, as APFS does; ext4 reuses it.
     // CI runs on Linux and skips it; the Mac's own gate runs it.
     ctx.skip(process.platform !== 'darwin')
     const root = fixture()

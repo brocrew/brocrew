@@ -69,31 +69,16 @@ const WELL_KNOWN_CLAUDE = [
   '/usr/local/bin/claude',
 ]
 /**
- * ⛔ **One directory per run, and a lock — the same repair `188` made for the other two** (196 H4).
+ * One directory per run, and a lock. A fixed, wiped smoke root lets two runs corrupt each other,
+ * and this script also renames the packaged Codex binary aside in step 5, so a second concurrent run
+ * could wipe the first's live user-data and see a product with its binary missing.
  *
- * `182` M7 said a fixed, wiped smoke root destroys provenance and lets two runs corrupt one another;
- * `188` closed it for `smoke:ui` and `smoke:resume` and `193` found it still open here — with the
- * sharpest version of it, because this script also RENAMES the packaged Codex binary out of the way
- * in step 5. Two concurrent runs meant the second wiped the first's live user-data and scratch,
- * overwrote its `smoke.log`, and could observe a product with its binary temporarily missing. Either
- * run could then report a fabricated product failure, and the surviving evidence had no owner.
- */
-/**
- * ⛔ **`scratch` is no longer BOUND, and the scratch ROOT stays** (`420`, from `417`).
- *
- * Three steps wrote this run's scratch directory into the launcher's `cwd-input`. `417` deleted
- * that field, and the folder turned out to be carrying nothing: **no step in this file ever
- * asserted a path, listed the directory, or read a byte out of it** — the only mention of `SCRATCH`
- * outside those three writes was its own declaration. So the cwd was not load-bearing and the
- * writes are simply gone rather than replaced.
- *
- * ⚠️ **The per-run directory is still created, still locked and still pruned.** `beginSmokeRun`
- * requires the root, and `196` H4's isolation is a property of the TREE rather than of who reads
- * it: the next step here that needs a folder takes it from this run's own scratch rather than
- * inventing a second one.
+ * The per-run directory is created, locked and pruned even though no step reads its scratch folder:
+ * `beginSmokeRun` requires the root, and the isolation is a property of the tree. A step that needs
+ * a folder should take it from this run's own scratch.
  */
 const { runId: RUN_ID, evidence: EVIDENCE } = beginSmokeRun({
-  // ⛔ 242 §1 — short enough that `236` §3's gate socket fits `sun_path`. See `smoke-run.mjs`.
+  // Short enough that the gate socket path fits `sun_path`. See `smoke-run.mjs`.
   evidenceRoot: smokeTmpRoot('brobot2-packaged-smoke'),
   scratchRoot: join(homedir(), 'brobot2-scratch', 'packaged-smoke'),
 })
@@ -264,18 +249,16 @@ const CLAUDE_CODE_FOUND = `
  * Launch the PACKAGED app on its own port and user-data dir, and prove the thing answering on
  * that port is the app we just started.
  *
- * `freePort` is inherently TOCTOU — the port is released before Electron binds it — and every
- * BroBot build answers `window.api.runtime` and shows the same `data-cy` hooks, so attaching by
- * port number alone would let a dev app, another worktree's app, or a leftover instance stand in
- * for the artifact under test. That is exactly the incident (049) `assertPortOwnedByTree` was
- * written for; this is the script making the strongest claims in the repo, so it uses it too —
- * scoped to the BUNDLE, so only a process running inside this .app can satisfy it.
+ * `freePort` is inherently TOCTOU, and every BroBot build answers `window.api.runtime` and shows
+ * the same `data-cy` hooks, so attaching by port alone would let a dev app, another worktree's app
+ * or a leftover instance stand in for the artifact under test. `assertPortOwnedByTree` is scoped to
+ * the bundle, so only a process running inside this .app can satisfy it.
  */
 async function launchPackagedApp() {
   const port = await freePort()
   const child = spawn(
     APP_BINARY,
-    // ⚑ 695 §1 · the packaged app reads the same switch: this run's window is nobody's.
+    // The packaged app reads the same switch: this run's window is nobody's.
     [`--remote-debugging-port=${port}`, `--user-data-dir=${USER_DATA}`, HIDDEN_LAUNCH_ARG],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -320,13 +303,11 @@ async function launchPackagedApp() {
   // bundle under test. A dev app, another worktree, or a stale instance fails here rather than
   // silently becoming the thing this script reports on.
   assertPortOwnedByTree({ port, repoRoot: APP })
-  // ⛔ **The gate ran and ANSWERED** (242 §1). ⚠️ **This script is where it matters most**: the
-  // packaged app is the artefact a person double-clicks, and a double-click repeated fast enough is
-  // the 8/24 double-launch race `236` §3 exists for. Until 242 the bundle's gate had never bound
-  // here either — same 104-byte `sun_path`, same silence.
-  // ⚠️ **And it reaps what it launched if it fails.** `launchApp` hands the caller the only handle
-  // that can stop this app, so throwing before the return would leave a live Electron on the
-  // machine for the rest of the run — 066's leak, through the door 242 just added.
+  // The gate ran and answered. This script is where it matters most: the packaged app is what a
+  // person double-clicks, and a fast repeated double-click is the double-launch race the gate exists
+  // for.
+  // It also reaps what it launched if it fails: `launchApp` hands the caller the only handle that can
+  // stop this app, so throwing before the return would leave a live Electron on the machine.
   try {
     const { token } = await witnessGate(USER_DATA)
     console.log(`one-host gate engaged on ${USER_DATA} — token ${token}`)
@@ -396,14 +377,13 @@ class Cdp {
   }
 
   async evaluate(expression) {
-    // The tab-flow walk (097), on the third script that reads a drawer-body hook. ⚑ **D-017b** — its
-    // SNAPSHOT no longer reaches for the Info tab's process row, which the window stopped drawing
-    // (`05` rule 5), so nothing here needs a tab chosen first; the walk still guards the next read.
+    // The tab-flow walk, shared with the other scripts that read a drawer-body hook. The snapshot no
+    // longer reaches for the Info tab's process row, so nothing here needs a tab chosen first; the walk
+    // still guards the next read.
     //
-    // ⚠️ **Wired and NOT RUN**, per the batched-smoke policy: this script needs `pnpm package`
-    // first, which is a build of its own. The walk is shared with the two scripts that HAVE been
-    // run, and `ui-live-smoke.mjs` step 55 is what proves it fires; what is unproven here is only
-    // that this file's own reads are all on the right tabs.
+    // Not run against a packaged build yet: this script needs `pnpm package` first. The walk is proven
+    // by `ui-live-smoke.mjs`; what is unproven here is only that this file's own reads are on the
+    // right tabs.
     await assertTabFlow(expression, (probe) => this.#evaluateRaw(probe))
     return await this.#evaluateRaw(expression)
   }
@@ -463,16 +443,12 @@ const SNAPSHOT = `
   }`
 
 /**
- * Open the new-conversation surface. The composer is the ONE way a session starts — there is no
- * create button and no disclosure (013, and since `417` there is nothing on the door to miss).
+ * Open the new-conversation surface. The composer is the one way a session starts: there is no
+ * create button and no disclosure.
  *
- * 🔴 **The gate waited on a control `417` deleted** (`420`, HO-022 §2). It was
- * `[data-cy=new-conversation-surface] [data-cy=provider-select]`, and the settings block that hook
- * belonged to is gone — so this function could only ever spend its fifteen seconds and then throw
- * *"timed out waiting for the launcher"*, which reads as a broken packaged app and is a broken
- * instrument. ⚠️ **It waits on the COMPOSER now** — `prompt-input`, the one thing the surface still
- * has and the only thing either door needs — so a step that wants a control it cannot have fails
- * immediately, by name, at {@link refuseWhatTheFrontDoorCannotAsk}.
+ * It waits on the composer (`prompt-input`), the one thing the surface has and the only thing either
+ * door needs. A step that wants a control the surface cannot have fails immediately, by name, at
+ * {@link refuseWhatTheFrontDoorCannotAsk}, rather than timing out here.
  */
 async function openLauncher(cdp) {
   const shown = `return Boolean(document.querySelector('[data-cy=new-conversation-surface] [data-cy=prompt-input]'))`
@@ -482,12 +458,12 @@ async function openLauncher(cdp) {
 }
 
 /**
- * 🔴 **UI-012 · pick Codex on the front door — through the one model picker** (R-3: the provider
- * select went; picking a Codex model is choosing Codex, the first term `providerForALaunch` ranks).
+ * Pick Codex on the front door through the one model picker (picking a Codex model is choosing
+ * Codex, the first term `providerForALaunch` ranks).
  *
- * ⚠️ **By HAND, because step 5 has moved Codex's binary aside**: its list cannot be read, so the
- * picker's Codex section holds no row of the provider's own. ⚑ A model a person adds is never
- * checked (`09` §6) and is drafted once added, so the take names Codex without asking it anything.
+ * By hand, because step 5 has moved Codex's binary aside: its list cannot be read, so the picker's
+ * Codex section holds no row of the provider's own. A model a person adds is never checked and is
+ * drafted once added, so the take names Codex without asking it anything.
  */
 async function pickACodexModelByHand(cdp) {
   const addOpen = `[data-cy=model-picker-provider][data-provider=codex] [data-cy=model-picker-add-open]`
@@ -568,22 +544,19 @@ const placedThroughTheInterimDoor = []
 const startedThroughTheFrontDoor = []
 
 /**
- * Start a session THROUGH THE FRONT DOOR: type the first message on the new-conversation surface
- * and send. **That is the whole of it now** (`420`, from `417` / HO-022 §2).
+ * Start a session through the front door: type the first message on the new-conversation surface
+ * and send.
  *
- * ⛔ **It takes a prompt and nothing else.** {@link refuseWhatTheFrontDoorCannotAsk} stands in
- * front of it, so a step asking for a placement fails at the ASK, by name, with the two honest
- * alternatives in the message — rather than timing out against a hook that has not existed since
- * `417` and reporting it as a product regression.
+ * It takes a prompt and nothing else. {@link refuseWhatTheFrontDoorCannotAsk} stands in front of
+ * it, so a step asking for a placement fails at the ask, by name, with the two honest alternatives,
+ * rather than timing out against a hook that does not exist.
  *
- * ⚑ **For this script the change is an UPGRADE.** Every conversation it opens is BroBot's, in `ask`,
- * on `providerForALaunch`'s answer — Codex before BroBot's identity exists (step `3`), its seeded
- * Claude after (`433`), unless a step picks a Codex model first, as step `5` does since `738`
- * (through the model picker since UI-012) —
- * so steps `3` and `5` also prove the packaged app's one way in works. ⚠️ **And the isolation the old `cwd-input`
- * write bought is kept.** With no folder requested, `resolveSessionCwd`'s blank branch answers
- * `ensureWorkspace(<userData>)` — since D-016 the only fallback — and this run creates its own
- * `--user-data-dir`, so every conversation starts in a directory this run owns.
+ * Every conversation this script opens is BroBot's, in `ask`, on `providerForALaunch`'s answer:
+ * Codex before BroBot's identity exists (step `3`), its seeded Claude after, unless a step picks a
+ * Codex model first, as step `5` does through the model picker. So steps `3` and `5` also prove the
+ * packaged app's one way in works. With no folder requested, `resolveSessionCwd`'s blank branch
+ * answers `ensureWorkspace(<userData>)`, and this run has its own `--user-data-dir`, so every
+ * conversation starts in a directory this run owns.
  */
 async function startSession(cdp, { prompt, ...asked }) {
   refuseWhatTheFrontDoorCannotAsk(asked)
@@ -591,20 +564,19 @@ async function startSession(cdp, { prompt, ...asked }) {
   startedThroughTheFrontDoor.push(currentStep)
   const before = await cdp.evaluate(SNAPSHOT)
   await cdp.evaluate(SET_VALUE('prompt-input', prompt))
-  // ⚠️ **Wait for the button before pressing it** (`ui-live-smoke.mjs`, 093). `openLauncher`
-  // returns as soon as the surface holds a `prompt-input`; the send button beside it can mount a
-  // tick later, and after a heavy surface swap it reliably does.
+  // Wait for the button before pressing it. `openLauncher` returns as soon as the surface holds a
+  // `prompt-input`; the send button beside it can mount a tick later, and after a heavy surface swap
+  // it reliably does.
   await waitFor(
     'the launcher to offer its send button',
     async () =>
       await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=send-prompt]'))`),
     15_000,
   )
-  // ⚠️ **A send that cannot work is a SILENT no-op** (094/223, ported). `PromptComposer.send()`
-  // opens with a `canSend` guard and returns; a press against a composer that lost what was typed
-  // launches nothing, reports nothing, and leaves the step to spend its whole turn budget and then
-  // say the feature is missing. Asserted at the moment of the press rather than waited for
-  // afterwards, so this helper still returns while the app is on the launcher.
+  // A send that cannot work is a silent no-op. `PromptComposer.send()` opens with a `canSend` guard
+  // and returns; a press against a composer that lost what was typed launches nothing and leaves the
+  // step to spend its whole turn budget. Asserted at the moment of the press so this helper still
+  // returns while the app is on the launcher.
   const ready = await cdp.evaluate(`
     const box = document.querySelector('[data-cy=prompt-input]')
     const button = document.querySelector('[data-cy=send-prompt]')
@@ -637,31 +609,24 @@ async function startSession(cdp, { prompt, ...asked }) {
 }
 
 /**
- * 🔴 **The INTERIM door — a conversation placed where the front door cannot place one** (`420` §3).
+ * The interim door: a conversation placed where the front door cannot place one. This is not the
+ * design. Once a person can pick a provider, every caller moves to that surface and this function
+ * is deleted; the count printed in the headline is how much is waiting on it.
  *
- * ⛔ **This is not the design and must never be written up as one.** `420` §3 authorised *"the
- * narrowest interim you can defend"* for as long as `419`'s identity contract and `417` §11.2's
- * placement surface are unlanded, and required it be *"named as an interim in the code"*. This is
- * that name. The day a person can pick a provider, every caller here moves to that surface and
- * this function is deleted — and the count it prints in the headline is how much is waiting on it.
+ * It calls `window.api.runtime.createSession`, the same IPC command the front door calls, with the
+ * fields the surface cannot carry. It invents no verb and reaches no private state. What it does
+ * not measure is that a person can reach this shape at all, which is why step `4b` reports that
+ * half as an unreached claim.
  *
- * ⚑ **How narrow it actually is, said precisely.** It calls `window.api.runtime.createSession` —
- * **the same IPC command the front door itself calls**, one layer under the surface, with the
- * fields the surface can no longer carry. It invents no verb, reaches no private state, and starts
- * nothing the product could not start if it had a control for it. ⚠️ **What it does NOT measure is
- * that a person can reach this shape at all** — which is the whole of what `417` took away, and is
- * why step `4b` reports that half as an unreached claim instead of passing over it in silence.
+ * The baseline is taken on the launcher, as {@link startSession} takes it, so both doors hand a
+ * step the same kind of `before`: a snapshot with no conversation in it.
  *
- * ⚠️ **The baseline is taken on the LAUNCHER, exactly as {@link startSession} takes it**, so both
- * doors hand a step the same kind of `before`: a snapshot with no conversation in it.
+ * The rail row is waited for rather than assumed. The renderer's store did not create this session,
+ * so it learns of it only when an event for an unknown id arrives and it asks the host; the send
+ * therefore comes before the wait.
  *
- * ⛔ **And the rail row is waited for rather than assumed.** The renderer's store did not create
- * this session, so it learns of it only when an event for an unknown id arrives and it asks the
- * host about it — which is why the send comes BEFORE the wait: with no message there is no event,
- * and with no event there is no row.
- *
- * @param forced which front-door-impossible field(s) made this a placement. ⛔ Required: a
- *   placement nobody can justify in one clause is a placement that should have been a front door.
+ * @param forced which front-door-impossible field(s) made this a placement. Required: a placement
+ *   that cannot be justified in one clause should have been a front door.
  */
 async function placeSession(cdp, { prompt, forced, ...placement }) {
   if (typeof forced !== 'string' || forced.trim() === '') {
@@ -707,22 +672,16 @@ async function placeSession(cdp, { prompt, forced, ...placement }) {
 }
 
 /**
- * ⚑ **D-017b · the provider child a step proves the binary of, read off the OS** — the pid of a
- * process descended from the app this run launched whose program is `name`, or `null` while there
- * is none.
+ * The provider child a step proves the binary of, read off the OS: the pid of a process descended
+ * from the app this run launched whose program is `name`, or `null` while there is none.
  *
- * ⛔ **It was read off the drawer's Info tab** (`080`: `codex pid 95225`), and D-017b took that row
- * away with every other sentence about whether a process runs (`05` rule 5). ⚑ The OS is the
- * stronger witness anyway: the step's whole claim is *which executable is running*, and `ps` is
- * what answered that half already.
- *
- * ⚑ **Descended from `appPid`, never matched by name alone** — a developer's own `codex` or
- * `claude` elsewhere on the machine is not this app's child. The expected program is preferred
- * when several match (the bundled Codex, or the Claude Code the app said it found), so a stray
- * child does not mask the one under test; with none of it running, the first match is what the
- * step's own check then names as the wrong one. `argv[0]` is matched space-free for the other arm:
- * a path with a space in it is caught only by the expected prefix. `name` is a pattern, so npm's
- * `claude.exe` (its name on every system) is a Claude child too.
+ * Descended from `appPid`, never matched by name alone: a developer's own `codex` or `claude`
+ * elsewhere on the machine is not this app's child. The expected program is preferred when several
+ * match (the bundled Codex, or the Claude Code the app said it found), so a stray child does not
+ * mask the one under test; with none of it running, the first match is what the step's own check
+ * then names as the wrong one. `argv[0]` is matched space-free for the other arm: a path with a
+ * space in it is caught only by the expected prefix. `name` is a pattern, so npm's `claude.exe`
+ * (its name on every system) is a Claude child too.
  */
 function providerChildOf(appPid, name, bundled) {
   let table
@@ -753,15 +712,9 @@ function providerChildOf(appPid, name, bundled) {
 }
 
 async function main() {
-  // ⚑ **Nothing is wiped any more, and nothing needs to be** (196 H4). The old comment here argued
-  // that the user-data had to be cleared or a PREVIOUS run's database would make "the schema is
-  // there" true for the wrong reason — correct, and solved better by never sharing the directory:
-  // this run's evidence tree and its scratch directory are its own, so the user-data under them is
-  // fresh by construction and the previous run's paper trail survives beside it instead of being
-  // deleted to make room. Every path a concurrent run could have wiped is now one it cannot name.
-  // (⚠️ Said as *directories* rather than as `EVIDENCE` and `SCRATCH` since `420`: the second
-  // binding is gone with the three `cwd-input` writes that were its only readers. The directory
-  // is not.)
+  // Nothing is wiped: this run's evidence tree and scratch directory are its own, so the user-data
+  // under them is fresh by construction (a previous run's database cannot make "the schema is there"
+  // true for the wrong reason), and the previous run's paper trail survives beside it.
   console.log(`run ${RUN_ID} · evidence ${EVIDENCE}`)
   mkdirSync(USER_DATA, { recursive: true })
 
@@ -772,11 +725,11 @@ async function main() {
   /**
    * The Claude Code child observed in step 4c.
    *
-   * ⚠️ **Reaped for a different reason than `codexPid`.** This child is NOT detached — 233 spawns
-   * it in the app's own process group — so `app.stop()`'s group SIGTERM already reaches it. The
-   * belt is here because the program is 200 MB and more of resident CLI and a step that throws
-   * between the turn and the stop would otherwise leave one behind; the same re-identification rule
-   * applies, so a recycled pid is never something this script kills.
+   * Reaped for a different reason than `codexPid`: this child is not detached (it is spawned in the
+   * app's own process group), so `app.stop()`'s group SIGTERM already reaches it. The belt is here
+   * because the program is 200 MB and more of resident CLI and a step that throws between the turn and
+   * the stop would otherwise leave one behind; the same re-identification rule applies, so a recycled
+   * pid is never something this script kills.
    */
   let claudePid = null
   /**
@@ -793,11 +746,10 @@ async function main() {
         : null
 
   /**
-   * Put the artifact back, whatever happens. `finally` does not run on a signal, and step 5 —
-   * which renames a 308 MB binary aside and then waits out two multi-minute budgets — is the step
-   * an operator is most likely to Ctrl-C. Left renamed, the next run fails at step 0 saying the
-   * bundle is missing a file, which reads like a broken BUILD rather than debris; and `dist/` is
-   * gitignored, so nothing else would ever mention it.
+   * Put the artifact back, whatever happens. `finally` does not run on a signal, and step 5, which
+   * renames a 308 MB binary aside and then waits out two multi-minute budgets, is the step an operator
+   * is most likely to Ctrl-C. Left renamed, the next run fails at step 0 saying the bundle is missing
+   * a file, which reads like a broken build; and `dist/` is gitignored, so nothing else would mention it.
    */
   const restoreArtifact = () => {
     // Never throws. It runs first in `finally` and inside the signal handlers, so a failed rename
@@ -833,9 +785,9 @@ async function main() {
       for (const path of [APP_BINARY, join(RESOURCES, 'app.asar'), PACKAGED_CODEX]) {
         if (!existsSync(path)) throw new Error(`the bundle is missing ${path}`)
       }
-      // The Apache-2.0 notice for the bundled codex has to travel WITH the artifact.
-      // ⚑ …and Electron's own license and Chromium's notices, which electron-builder deletes from a
-      // macOS build unless `electron-builder.yml` copies them in.
+      // The Apache-2.0 notice for the bundled codex has to travel with the artifact, and so do Electron's
+      // own license and Chromium's notices, which electron-builder deletes from a macOS build unless
+      // `electron-builder.yml` copies them in.
       for (const notice of [
         'THIRD-PARTY-NOTICES.md',
         'LICENSE.electron.txt',
@@ -1001,21 +953,13 @@ async function main() {
     })
 
     await step('3 a real Codex session runs INSIDE the packaged app', async () => {
-      // 🔴 **Through the FRONT DOOR, and that is strictly BETTER evidence than this step had**
-      // (`420`, from `417`). It used to write `provider-select` to `codex` and `cwd-input` to this
-      // run's scratch directory, and `417` deleted both hooks (HO-022 §2). ⛔ Neither was carrying
-      // anything: `codex` is `RuntimeScreen.DEFAULT_PROVIDER`, which is the value the front door
-      // sends regardless, and the folder was read by NOTHING in this file — no step asserted a
-      // path, listed the directory, or opened a file in it.
-      //
-      // ⚑ **So the step keeps its whole subject and gains one.** It now also proves that the
-      // packaged app's ONLY way in works — a claim nothing here could make while there was a
-      // second way to start a session, and the claim `417` made load-bearing.
-      //
-      // ⚠️ **Where the turn runs is not a loss either.** With no folder requested,
-      // `resolveSessionCwd`'s blank branch answers `ensureWorkspace(<userData>)`; this app was
-      // launched on this run's own `--user-data-dir`, so the conversation starts in a directory
-      // this run owns — see the door's docblock.
+      // Through the front door, which is better evidence than writing `provider-select` and `cwd-input`
+      // (neither hook exists any more, and neither carried anything: `codex` is
+      // `RuntimeScreen.DEFAULT_PROVIDER`, which the front door sends regardless, and nothing read the
+      // folder). The step keeps its subject and also proves the packaged app's only way in works.
+      // With no folder requested, `resolveSessionCwd`'s blank branch answers `ensureWorkspace(<userData>)`
+      // and this app runs on this run's own `--user-data-dir`, so the conversation starts in a directory
+      // this run owns; see the door's docblock.
       await startSession(cdp, {
         prompt: 'Reply with exactly the single word: PACKAGED. Do not use any tools.',
       })
@@ -1033,11 +977,10 @@ async function main() {
     })
 
     await step('4 the running codex is the BUNDLED one — proven from the OS', async () => {
-      // The gold standard from 014's smoke, now against the packaged layout: the app's own codex
-      // child, and the OS says which executable that pid is running. A PATH lookup, a developer's
-      // global codex, or a node_modules copy would all fail this.
-      // ⚑ **D-017b** — the child is found among the app's descendants ({@link providerChildOf}):
-      // the Info tab no longer names a pid.
+      // The gold standard: the app's own codex child, and the OS says which executable that pid is
+      // running. A PATH lookup, a developer's global codex, or a node_modules copy would all fail this.
+      // The child is found among the app's descendants ({@link providerChildOf}); the Info tab no longer
+      // names a pid.
       codexPid = await waitFor(
         'the codex child of the packaged app',
         async () => providerChildOf(app.pid, 'codex', PACKAGED_CODEX),
@@ -1085,26 +1028,13 @@ async function main() {
       // No program, no turn, and that is the computer, not the app: with none installed the step
       // answers NOT PERFORMED with the app's own sentence.
       //
-      // ⛔ **The clause that used to end that sentence — *"through the same launcher a person
-      // uses"* — was WITHDRAWN, not reworded** (`420`, from `417`), on the grounds that there was
-      // no provider control anywhere in the renderer.
+      // The turn is placed, not launched through the provider control a person can now use, and the
+      // claim says so. What survives is the launch, entire: finding the program, handing it to the SDK
+      // and starting it are all in the main process, downstream of `createSession`, and
+      // {@link placeSession} calls that same IPC command. What is not exercised is the surface in front
+      // of it.
       //
-      // 🔴 **`435` put one back** (HO-025 §5: *"a person who has to open a settings surface to pick
-      // a provider — or cannot, because the column has one writer — is worse off than before"*), so
-      // **a person CAN start a Claude session in this app**, and `417 §3`'s other half still holds:
-      // nothing can move a conversation's provider afterwards. ⛔ **This step has not been
-      // re-pointed at the control** — `435 §6` left the instruments' gestures to whoever owns them —
-      // so the turn below is still PLACED, and the claim says so rather than repeating a capability
-      // gap that closed.
-      //
-      // What survives is the launch, entire, which is why this is a placement and not
-      // `notPerformed(…)`: finding the program, handing it to the SDK and starting it are all in
-      // the main process, downstream of `createSession`, and {@link placeSession} calls that same
-      // IPC command, so all of it is still exercised by a real turn inside the real bundle. What is
-      // not exercised is the surface in front of it.
-      //
-      // ⚑ **Cheapest model, one word, no tools** — the smoke policy. The turn is not what is being
-      // measured; that a turn HAPPENS is.
+      // Cheapest model, one word, no tools: the turn is not what is measured; that a turn happens is.
       const none = noClaudeCode()
       if (none !== null) return notPerformed(none)
       await placeSession(cdp, {
@@ -1125,9 +1055,9 @@ async function main() {
         },
         TURN_BUDGET_MS,
       )
-      // ⛔ **Two claims, because this step now reaches one of them and not the other** (206 H1,
-      // `420` §4). Returning the sentence alone would have summed the whole step as one clean PASS
-      // and left the capability `417` removed watched by nobody.
+      // Two claims, because this step reaches one of them and not the other. Returning the sentence alone
+      // would sum the whole step as one clean PASS and leave the capability the front door lacks watched
+      // by nobody.
       return claims(
         asserted(
           `reply "${replied.assistant.slice(0, 60)}" — Claude Code ${claudeFound.version} ` +
@@ -1149,14 +1079,11 @@ async function main() {
         // a pid plus `ps` is the only evidence that survives every plausible way of being wrong: a
         // developer's other install, a PATH lookup, or the SDK's own lookup of a copy it carries.
         //
-        // ⚠️ **The conversation this reads was PLACED, not launched** (`420`). Its whole existence
-        // is `4b`'s doing, and `4b` now comes through {@link placeSession} — so this step's fate
-        // follows `4b`'s: when `4b` had no program to run, this one has no subject either, and says
-        // so rather than reading a pid off whatever conversation happens to be open.
-        // ⛔ **It cannot go silently green over a session that does not exist**: `step()` rethrows,
-        // so a `4b` that failed or refused ends the run before this line is reached, and the pid
-        // wait below is scoped to a Claude child that only `4b` can have started.
-        // ⚑ **D-017b** — off the OS, as step 4's ({@link providerChildOf}).
+        // The conversation this reads was placed by `4b` ({@link placeSession}), so this step's fate
+        // follows `4b`'s: when `4b` had no program to run, this one has no subject either, and says so.
+        // It cannot go silently green over a session that does not exist: `step()` rethrows, so a `4b`
+        // that failed ends the run before this line is reached.
+        // The pid is read off the OS, as in step 4 ({@link providerChildOf}).
         const none = noClaudeCode()
         if (none !== null) return notPerformed(none)
         const expected = claudeFound.path
@@ -1192,20 +1119,19 @@ async function main() {
     await step(
       '4d BroBot on claude-opus-5-5[1m] at max effort answers inside the packaged app',
       async () => {
-        // 🔴 **680 · the test that dispatch exists for.** On 2026-09-23 BroBot on `claude-opus-5-5[1m]`
-        // was refused inside this app: *"Claude Code 2.1.218 does not support this model; version
-        // 2.1.280 or newer is required"*: the Claude Code the app ran was older than the model a
-        // person could name. So the subject here is the model, and the smoke policy's
-        // cheapest-model rule gives way to it: one word at `max` effort costs about five cents
-        // ($0.045 measured on the adapter). It is placed exactly as `4b` is, for `4b`'s reason.
+        // The test for the Claude Code version a model needs. BroBot on `claude-opus-5-5[1m]` was refused
+        // inside this app: *"Claude Code 2.1.218 does not support this model; version 2.1.280 or newer is
+        // required"*, because the Claude Code the app ran was older than the model a person could name. So
+        // the subject here is the model, and the cheapest-model rule gives way to it: one word at `max`
+        // effort costs about five cents ($0.045 measured on the adapter). It is placed as `4b` is.
         //
-        // An older Claude Code is the person's to update, so the step answers NOT PERFORMED, naming
-        // the version found and the one the model needs, rather than spending a turn on a refusal
-        // it can already read.
+        // An older Claude Code is the person's to update, so the step answers NOT PERFORMED, naming the
+        // version found and the one the model needs, rather than spending a turn on a refusal it can
+        // already read.
         //
-        // ⛔ **A refusal ends the step at once, in the provider's own terms**, rather than as a
-        // three-minute wait: since 680 a refusal is a NOTICE (R28a), never an assistant message, so
-        // the notice rows are read too, and a failed turn throws every warn and error one verbatim.
+        // A refusal ends the step at once, in the provider's own terms, rather than as a three-minute
+        // wait: a refusal is a notice, never an assistant message, so the notice rows are read too, and a
+        // failed turn throws every warn and error one verbatim.
         const none = noClaudeCode()
         if (none !== null) return notPerformed(none)
         if (versionOrder(claudeFound.version, OPUS_5_5_NEEDS) < 0) {
@@ -1228,11 +1154,10 @@ async function main() {
           async () => {
             const now = await cdp.evaluate(SNAPSHOT)
             if (now.error) throw new Error(`the packaged app refused to start Claude: ${now.error}`)
-            // ⚑ The TURN failing ends the step, with every warn and error notice quoted — not a guess
-            // at the provider's wording (680's review: `model_not_found` is said in the provider's own
-            // sentence since R28b), and not the first warning either: the first live run met *"claude
-            // is approaching its rate limit (seven_day)"*, which is a warning about the account while
-            // the model was already answering. A refused turn closes FAILED since 680.
+            // The turn failing ends the step, with every warn and error notice quoted, not a guess at the
+            // provider's wording and not just the first warning: a live run met *"claude is approaching its
+            // rate limit (seven_day)"*, a warning about the account while the model was already answering. A
+            // refused turn closes FAILED.
             const refused = await cdp.evaluate(
               `const said = [...document.querySelectorAll('[data-cy="notice-warn"], [data-cy="notice-error"]')].map((el) => el.textContent.trim()); return said.some((text) => text.startsWith('turn failed')) ? said.join(' | ') : null`,
             )
@@ -1270,15 +1195,10 @@ async function main() {
       // The packaged failure path, exercised in the packaged layout: move the binary aside and ask
       // the built app to start Codex. `CodexUnavailableError`'s message must reach the surface.
       //
-      // 🔴 **Through the FRONT DOOR since `420`.** It used to write `provider-select` to `codex`
-      // and `cwd-input` to this run's scratch directory; `417` deleted both fields.
-      // ⚑ **738 · and it picks Codex on the front door again** (`680` F12, red since `433`): the
-      // front door runs BroBot on its identity's provider once that row exists, and step `3`'s
-      // launch seeds it on Claude (`SEEDED_PROVIDERS`) — so this sent an ordinary Claude turn and
-      // waited 60 s for a Codex error no launch could raise. `435` put `provider-select` back, and
-      // what a person picks there is the first term `providerForALaunch` ranks.
-      // ⚑ **UI-012 (R-3) folded that select into the one model picker** — picking a Codex model IS
-      // choosing Codex — so the step picks one there: {@link pickACodexModelByHand}.
+      // Through the front door, picking a Codex model in the one model picker (picking one is choosing
+      // Codex): {@link pickACodexModelByHand}. Without that the front door runs BroBot on its identity's
+      // provider once that row exists, and step `3`'s launch seeds it on Claude (`SEEDED_PROVIDERS`), so
+      // the step would send an ordinary Claude turn and wait 60 s for a Codex error no launch could raise.
       renameSync(PACKAGED_CODEX, `${PACKAGED_CODEX}.moved`)
       renamed = true
 
@@ -1315,14 +1235,13 @@ async function main() {
   } finally {
     restoreArtifact()
     app?.stop()
-    // ⚠️ **Two children, and only ONE of them needs this** — said out loud because a loop over both
-    // reads as though the reason were shared. The CODEX child spawns itself detached
+    // Two children, and only one of them needs this. The Codex child spawns itself detached
     // (codex-transport does this deliberately), so it is not in the app's process group and
-    // outlives the SIGTERM above; that is the leak this exists for. The CLAUDE child is in the
-    // group (233 spawns it without `detached`), so `app.stop()` already reached it, and its entry
-    // here is a belt against a step that throws between the turn and the stop.
+    // outlives the SIGTERM above; that is the leak this exists for. The Claude child is in the
+    // group, so `app.stop()` already reached it, and its entry here is a belt against a step that
+    // throws between the turn and the stop.
     //
-    // Both are reaped only after re-confirming the pid is still the binary this run observed — a
+    // Both are reaped only after re-confirming the pid is still the binary this run observed: a
     // recycled pid must never be something this script kills.
     for (const [pid, binary] of [
       [codexPid, PACKAGED_CODEX],
@@ -1345,11 +1264,8 @@ async function main() {
 }
 
 /**
- * The run's report — **one function, because there are two exits** (`420`).
- *
- * ⚠️ The `catch` below printed a headline of its own, so every line this dispatch adds would
- * otherwise have to be written twice, and the copy that rotted first would be the one that only
- * ever runs on a FAILED run — the runs whose report matters most.
+ * The run's report, in one function because there are two exits: the `catch` would otherwise need
+ * its own copy, and the copy that rotted would be the one that runs only on a failed run.
  *
  * @returns the number of failed steps, so the caller owns the exit code.
  */

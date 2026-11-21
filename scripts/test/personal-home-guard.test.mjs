@@ -14,25 +14,17 @@ import {
 } from '../lib/personal-home-guard.mjs'
 
 /**
- * 176 · The control that replaced five before/after fingerprints of the user's personal home.
+ * The control that replaced the before/after fingerprints of the user's personal home.
  *
- * ⚑ **This file IS the demonstration `176` acceptance 3 asks for**, and it is here rather than in a
- * live smoke for one reason: 🔒 **the demonstration has to write into something shaped like
- * `~/.claude`, and writing into the real one is forbidden.** So it builds a decoy root with the same
- * shape (`168`'s method) and runs the pair that is the whole proof:
+ * It builds a decoy root shaped like `~/.claude` (writing into the real one is forbidden) and runs
+ * the pair that is the whole proof:
  *
- *  1. **It ignores the machine.** Every file `174` actually caught — a transcript in another
- *     repository, a `tasks/…/60.json` written by a live agent, `~/.claude.json` rewriting itself —
- *     is planted here, DURING the window, and the control stays silent.
- *  2. **It catches us.** One file naming this run's own session id, and the control names it.
+ *  1. It ignores the machine: a transcript in another repository, a task file written by a live
+ *     agent and `~/.claude.json` rewriting itself are planted DURING the window and it stays silent.
+ *  2. It catches us: one file naming this run's own session id, and the control names it.
  *
- * ⛔ **Neither half means anything without the other**, which is the mistake the retired control
- * made in the opposite direction: it was so sensitive to (1) that nobody ever checked it could see
- * (2) — and it could not, for any write outside its two-file keyhole.
- *
- * ⚠️ **This runs in `pnpm run ci`.** The five callers are live smokes and the mutation table cannot
- * reach them; this is the part of the control the table CAN reach, and it is deliberately the part
- * that holds the logic.
+ * Neither half means anything without the other. This runs in `pnpm run ci`; the live smokes that
+ * call the control cannot be reached by the mutation table, so this is the part that holds the logic.
  */
 
 const roots = []
@@ -76,14 +68,14 @@ describe('the personal-home guard ignores the machine', () => {
     const root = plantForeignHome(decoy())
     expect(pathsNaming(root, OURS).hits).toEqual([])
 
-    // 174's smoke:ui red — a live agent in another repository creating a task file mid-run.
+    // A live agent in another repository creating a task file mid-run.
     writeFileSync(join(root, 'tasks', '4f7b4663-cccc-dddd', '60.json'), '{"step":"a"}')
     // A transcript in the unrelated notes-app project changes while the guard runs.
     writeFileSync(
       join(root, 'projects', '-Users-someone-dev-notes-app', '011d3f20-aaaa-bbbb.jsonl'),
       '',
     )
-    // 174's probe:toolset red — ~/.claude.json rewriting ITSELF, with nothing of ours running.
+    // `~/.claude.json` rewriting itself, with nothing of ours running.
     writeFileSync(join(root, '.claude.json'), JSON.stringify({ projects: {}, rewritten: true }))
 
     expect(
@@ -126,7 +118,7 @@ describe('the personal-home guard catches us', () => {
     const leak = join(deep, `${OURS[0].value}-agent.json`)
     writeFileSync(leak, '[]')
 
-    // ⛔ The point of the whole change: `~/.claude.json` and `~/.codex/auth.json` are the only two
+    // The point of the whole change: `~/.claude.json` and `~/.codex/auth.json` are the only two
     // paths the retired control looked at, and this is not one of them.
     expect(pathsNaming(root, OURS).hits).toEqual([{ path: leak, label: 'our session id' }])
   })
@@ -150,7 +142,7 @@ describe('the content scan, for markers that live inside a file', () => {
 
     const scan = filesContaining([file], SECRET)
     expect(scan.hits).toEqual([{ path: file, label: 'the machine refresh token' }])
-    // 🔒 The whole reason markers are labelled: a failure message must not carry a credential.
+    // The reason markers are labelled: a failure message must not carry a credential.
     expect(describeHits(scan.hits)).not.toContain(SECRET[0].value)
     expect(scan.read).toEqual([file])
     expect(scan.skipped).toEqual([])
@@ -174,8 +166,8 @@ describe('the content scan, for markers that live inside a file', () => {
 describe('the guard refuses to be vacuous', () => {
   it('throws on an empty marker list rather than finding nothing', () => {
     const root = plantForeignHome(decoy())
-    // ⛔ This is 129's trap: a caller whose session id came back `undefined` would otherwise get a
-    // green run forever, and the file would read as coverage.
+    // A caller whose session id came back `undefined` would otherwise get a green run forever, and the
+    // file would read as coverage.
     expect(() => pathsNaming(root, [])).toThrow(/vacuous/)
     expect(() => filesContaining([], [])).toThrow(/vacuous/)
   })
@@ -220,10 +212,8 @@ describe('the walk itself', () => {
     expect(pathsNaming(root, OURS, { maxDepth: 6 }).hits).toHaveLength(1)
   })
 
-  // ⛔ **196 M2, and the finding is bigger than the flag.** `188` made the HIT CAP a value the
-  // caller receives and left the other two exits silent. A walk that hit its depth bound returned
-  // `{ hits: [], truncated: false }` — the shape of a clean home — and on this machine the bound of
-  // 6 was doing that to 156 directories under `~/.claude` and 1,627 under `~/.codex` on every run.
+  // Without this, a walk that hit its depth bound returned `{ hits: [], truncated: false }`, the
+  // shape of a clean home, while the bound skipped whole subtrees (plugin caches, checkouts) on every run.
   it('SAYS it stopped at the depth bound, instead of reporting the leak below it as absence', () => {
     const root = decoy()
     const deep = join(root, 'a', 'b', 'c', 'd')
@@ -236,7 +226,7 @@ describe('the walk itself', () => {
     expect(shallow.tooDeep.length).toBeGreaterThan(0)
     expect(whyIncomplete(shallow)).toMatch(/depth bound/)
 
-    // ⚑ The paired positive, on the SAME tree: a walk that reaches the bottom says so AND finds it.
+    // The paired positive on the same tree: a walk that reaches the bottom says so and finds it.
     const full = pathsNaming(root, OURS, { maxDepth: 6 })
     expect(full.complete).toBe(true)
     expect(whyIncomplete(full)).toBeNull()
@@ -244,11 +234,9 @@ describe('the walk itself', () => {
   })
 
   it('⛔ the DEFAULT depth reaches a real personal home, which 6 did not', () => {
-    // The bound was 6, justified from `~/.codex/sessions/YYYY/MM/DD/<file>` and true of nothing
-    // else in the tree: measured at 196, 156 directories under `~/.claude` and 1,627 under
-    // `~/.codex` sat below it — plugin caches, marketplace checkouts and their `node_modules`.
-    // ⚠️ Nothing asserted the DEFAULT, only explicit values, so the bound could be lowered back to
-    // 6 without a single test changing colour. This is that assertion.
+    // The default bound must cover the real tree, not just `~/.codex/sessions/YYYY/MM/DD/<file>`:
+    // plugin caches, marketplace checkouts and their `node_modules` sit below depth 6. Nothing else
+    // asserts the default, so it could be lowered again without a test changing colour.
     const root = decoy()
     const deep = join(
       root,
@@ -287,7 +275,7 @@ describe('the walk itself', () => {
       } finally {
         chmodSync(shut, 0o700)
       }
-      // ⚑ …and the paired positive is the same tree with the door open.
+      // The paired positive is the same tree with the door open.
       const opened = pathsNaming(root, OURS)
       expect(opened.complete).toBe(true)
       expect(opened.hits).toHaveLength(1)
@@ -304,8 +292,8 @@ describe('the walk itself', () => {
     expect(pathsNaming(root, OURS).hits.length).toBeGreaterThanOrEqual(12)
   })
 
-  // ⛔ 182 M8: the cap was the whole defect, because nothing said it had been hit. A truncated walk
-  // and a clean one returned the same shape, so "no leak" and "stopped looking" read identically.
+  // A truncated walk and a clean one must not return the same shape, or "no leak" and "stopped
+  // looking" read identically.
   it('SAYS it stopped looking, so a truncated walk cannot be read as a clean one', () => {
     const root = decoy()
     mkdirSync(join(root, 'projects'), { recursive: true })
@@ -323,19 +311,15 @@ describe('the walk itself', () => {
     expect(scan.hits).toEqual([])
     // …and an absent root is FINISHED, not truncated: there was nothing to stop looking at.
     expect(scan.truncated).toBe(false)
-    // ⚠️ 196 M2 draws the line by errno rather than by "the call threw": a home that is not there
-    // leaves nothing unexamined, and calling that incomplete would fail every machine without one.
+    // Drawn by errno rather than by "the call threw": a home that is not there leaves nothing
+    // unexamined, and calling that incomplete would fail every machine without one.
     expect(scan.complete).toBe(true)
     expect(scan.unreadable).toEqual([])
   })
 
   /**
-   * ## ⛔ 202 · one idiom that cannot be spelled in a way that ignores an unfinished walk
-   *
-   * Nine TypeScript callers asked "did anything leak?" in eight slightly different ways, against a
-   * `.d.mts` that said `pathsNaming` returned an array. Five threw on the line meant to prove
-   * nothing leaked; four passed over an object whose `.length` is `undefined`. `describeScan` is the
-   * one shape they all use now, and the completeness question is inside it rather than beside it.
+   * One idiom that cannot be spelled in a way that ignores an unfinished walk: `describeScan` is the
+   * single shape callers use, and the completeness question is inside it rather than beside it.
    */
   describe('202 · describeScan', () => {
     it("says 'none' only when the walk finished AND found nothing", () => {
@@ -394,17 +378,10 @@ describe('the walk itself', () => {
   })
 
   /**
-   * ⛔ **206 H3 · the other direction, where the ABSENCE of a hit is the finding.**
-   *
-   * `claude-live.smoke.ts` §3.8 makes two claims at once — *every session this run created is in the
-   * isolated home* and *none of them is in the personal one* — and only the second is
-   * {@link describeScan}'s question. The first was a boolean (`hasTranscript`) whose `catch` returned
-   * `false`, so a home that would not open, a tree deeper than the walk went, and a session that
-   * genuinely is not there produced the same answer on the primary Claude isolation instrument.
-   *
-   * ⚠️ **This is where that logic is testable at all.** The row itself is a live smoke that
-   * `pnpm run ci` cannot run and the mutation table cannot reach — the same reason
-   * `smoke-verdicts.mjs` lives in `lib/`.
+   * The other direction, where the absence of a hit is the finding. Claiming "every session this run
+   * created is in the isolated home" must tell apart a home that would not open, a tree deeper than
+   * the walk went, and a session that is genuinely not there. The live smoke that makes the claim
+   * cannot run in `pnpm run ci`, so the logic is tested here.
    */
   describe('206 H3 · describeMissing', () => {
     it("says 'none' only when EVERY marker was found", () => {
@@ -447,8 +424,8 @@ describe('the walk itself', () => {
     it.skipIf(process.platform === 'win32')(
       '⚑ …but a marker that WAS found needs no completeness — a hit is proof',
       () => {
-        // The asymmetry, asserted. Failing this row because the walk also stopped somewhere else
-        // would be a red nobody could act on, which is 176's own rule about measuring the machine.
+        // The asymmetry, asserted. Failing this row because the walk also stopped somewhere else would be
+        // a red nobody could act on.
         const root = decoy()
         for (const marker of OURS) writeFileSync(join(root, `${marker.value}.jsonl`), '')
         const shut = join(root, 'shut')
@@ -467,8 +444,8 @@ describe('the walk itself', () => {
     )
 
     it('throws on an empty marker list, exactly as every other entry point does', () => {
-      // A row that scanned for nothing would report "nothing missing" forever — 129's trap, on the
-      // side of the guard where an empty list looks most like a pass.
+      // A row that scanned for nothing would report "nothing missing" forever: the side of the guard
+      // where an empty list looks most like a pass.
       expect(() => describeMissing(pathsNaming(decoy(), OURS), [])).toThrow(/vacuous/)
     })
   })

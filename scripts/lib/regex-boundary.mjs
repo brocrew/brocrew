@@ -13,24 +13,18 @@
  */
 
 /**
- * **The marker that says a doubled backslash means a real backslash** — on the same line, or the
- * line above it.
- *
- * ⚑ **The shape is `097`'s `WIDE_READ_MARK`, deliberately**: a visible string in the source rather
- * than a flag passed somewhere else, so an exemption cannot be added without appearing in a diff.
- *
- * ⛔ **It exists because the node-side rule genuinely cannot tell these apart.** Review produced six
- * correct node-side regexes it reports — `/\\./g`, `/^[A-Z]:\\.+$/`, `/\\+/g`, `/\\$/`, `/\\n/`,
- * `/[\\.]/` — and *"a guard may miss; it may not fail a step that is right"* is the rule this whole
- * module is written under. Nothing in the guarded files needs the marker today.
+ * Marks a doubled backslash that really means a backslash, on the same line or the line above.
+ * It is a visible string in the source, so an exemption cannot be added without showing in a diff.
+ * It exists because the node-side rule cannot tell these apart: `/\\./g`, `/^[A-Z]:\\.+$/`,
+ * `/\\+/g`, `/\\$/`, `/\\n/` and `/[\\.]/` are correct but would be reported. A guard may miss;
+ * it may not fail a step that is right.
  */
 export const BACKSLASH_IS_REAL = 'regex-boundary-ok'
 
 /**
- * Characters after which a `/` begins a REGEX rather than a division.
- *
- * ⚠️ **`)` and `]` are deliberately absent** — see the module comment. It makes `if (ok) /re/` and
- * `arr[0] /re/` invisible, which is a miss rather than a false failure.
+ * Characters after which a `/` begins a regex rather than a division.
+ * `)` and `]` are deliberately absent (see the module comment): `if (ok) /re/` and `arr[0] /re/`
+ * are missed, which is a miss rather than a false failure.
  */
 const BEFORE_REGEX = new Set([
   '',
@@ -77,14 +71,8 @@ const KEYWORD_BEFORE_REGEX = new Set([
 
 /**
  * The escapes a `\\` on the node side is almost certainly meant to be.
- *
- * ⚠️ **`/` and `-` are excluded**: `[/\\]` and `[\\-]` are ordinary. Everything else that is a real
- * regex escape is in, including the ones review found missing — `x`, `u` and the backreference
- * digits `1`–`9`, each of which is exactly 117's shape and was silent.
- *
- * ⚠️ **A `\\` inside a character class is never reported at all** (see {@link inCharacterClass}),
- * which is what `[\\]` — the canonical way to write a backslash — needs, and what took `]` out of
- * an earlier version of this set for the wrong reason.
+ * `/` and `-` are excluded: `[/\\]` and `[\\-]` are ordinary. A `\\` inside a character class is
+ * never reported (see {@link inCharacterClass}), which is what `[\\]` needs.
  */
 const ESCAPE_AFTER_BACKSLASH = new Set([
   '.',
@@ -130,9 +118,8 @@ const ESCAPE_AFTER_BACKSLASH = new Set([
 /**
  * Every regex literal in `source`, with the side of the boundary it sits on.
  *
- * `depth` is `0` for node-side and `1` for a regex inside a template literal. ⚠️ **A `${…}` hole is
- * ordinary code and does NOT raise the depth** — the hole's contents are evaluated here, not sent,
- * so a regex inside one is node-side however deep the template around it is.
+ * `depth` is `0` for node-side and `1` for a regex inside a template literal. A `${…}` hole is
+ * ordinary code and does not raise the depth: its contents are evaluated here, not sent.
  */
 export function regexLiteralsIn(source) {
   const found = []
@@ -141,11 +128,8 @@ export function regexLiteralsIn(source) {
 }
 
 /**
- * **Every regex literal in `source` whose escaping belongs to the other side.**
- *
- * Each violation names the line, the literal, the side it is on, and what the code will actually
- * see — because "wrong escaping" without the resulting expression makes you go and work out which
- * of the two directions it was.
+ * Every regex literal in `source` whose escaping belongs to the other side.
+ * Each violation names the line, the literal, the side, and what the code will actually see.
  */
 export function regexBoundaryViolations(source) {
   const lines = source.split('\n')
@@ -153,7 +137,7 @@ export function regexBoundaryViolations(source) {
   for (const literal of regexLiteralsIn(source)) {
     const message = literal.depth > 0 ? pageSideFault(literal) : nodeSideFault(literal)
     if (message === null) continue
-    // The marker is read off the SOURCE, at the literal's own line or the one above it, so a long
+    // The marker is read off the source, at the literal's own line or the one above it, so a long
     // explanation can sit on its own line above a dense expression.
     const near = `${lines[literal.line - 2] ?? ''}\n${lines[literal.line - 1] ?? ''}`
     if (near.includes(BACKSLASH_IS_REAL)) continue
@@ -170,10 +154,8 @@ export function regexBoundaryViolations(source) {
 /**
  * A regex inside a template literal, checked against what the far side will receive.
  *
- * Two questions, not one. **Does every backslash survive the crossing** — an odd-length run means at
- * least one is eaten here, and what arrives is not what was written. And then, **is what arrives
- * itself right** — `\\\\.` is an even run that survives as `\\.`, which is 117's defect delivered
- * intact. Review found the second question missing; the first alone called four backslashes clean.
+ * Two questions: does every backslash survive the crossing (an odd-length run loses at least
+ * one), and is what arrives itself right (`\\\\.` survives as `\\.`, which is still wrong).
  */
 function pageSideFault(literal) {
   for (const run of backslashRunsIn(literal.body)) {
@@ -199,11 +181,10 @@ function pageSideFault(literal) {
 }
 
 /**
- * A regex in ordinary code, checked for the escaping of the OTHER side.
+ * A regex in ordinary code, checked for the escaping of the other side.
  *
- * `\\.` here is not a dot — it is a backslash followed by any character. 117's step 57 asked for a
- * filename shaped like `agent-<id>\<anything>jsonl` and failed the app for handing over
- * `agent-<id>.jsonl`, which is what it was written to accept.
+ * `\\.` here is not a dot: it is a backslash followed by any character, so a filename pattern
+ * written that way rejects the very name it was meant to accept.
  */
 function nodeSideFault(literal) {
   for (const run of backslashRunsIn(literal.body)) {
@@ -287,9 +268,8 @@ function cookTemplate(raw) {
       case '0':
         out += '\0'
         break
-      // Everything else — including `\\`, `\.` and `\d` — yields the character itself. That is the
-      // whole defect class in one line: `\d` inside a template reaches the far side as a bare `d`,
-      // silently, with no syntax error to notice.
+      // Everything else, including `\\`, `\.` and `\d`, yields the character itself. `\d` inside a
+      // template reaches the far side as a bare `d`, silently, with no syntax error.
       default:
         out += next
     }
@@ -321,21 +301,11 @@ const TEMPLATE = 'template'
 const HOLE = 'hole'
 
 /**
- * **One linear walk, three modes** — and the single walk is the point.
+ * One linear walk, three modes. A single walk keeps comment and string state alive across a
+ * `${…}` hole, which is stepped over from inside the same loop rather than restarting the scan.
  *
- * ⛔ **An earlier version restarted the scan after every `${…}` hole**, which meant a hole inside a
- * `//` comment left the rest of that comment line to be read as executable code. Review measured the
- * consequence on the shipped file: eight stray-quote runs to end-of-line inside templates, prose
- * reported as a violation, and — through an apostrophe in `097's` — a real literal swallowed. Comment
- * and string state now survives a hole, because the hole is stepped over from inside the same loop
- * rather than ending it.
- *
- * ⚠️ **`word` is the identifier ending at the previous character, never across whitespace.** It used
- * to accumulate through spaces, so in this repo's semicolon-free style `document.body.innerText` on
- * one line and `return /re/` on the next produced the word `innerTextreturn` and the regex was
- * invisible. That is not a hypothetical: it hid one of the two page-side literals on
- * `ui-live-smoke.mjs`'s step-46 line, and the 093 mutation proof passed only because the defect
- * happens to sit in the other one.
+ * `word` is the identifier ending at the previous character, never across whitespace; otherwise
+ * `innerText` on one line and `return /re/` on the next would join and hide the regex.
  */
 function walk(source, from, to, depth, mode, found) {
   let i = from
@@ -351,10 +321,8 @@ function walk(source, from, to, depth, mode, found) {
   /**
    * Step past `char`, remembering what a following `/` needs to know.
    *
-   * ⚠️ **Whitespace updates `previous` and nothing else**, and the distinction is the whole reason
-   * `previous` exists as a separate variable. `significant` must skip it — `const re = /x/` has a
-   * space before the slash, and a version of this that let the space become `significant` found
-   * almost no regexes at all. `word` must NOT skip it, or `innerText` and a following `return`
+   * Whitespace updates `previous` and nothing else. `significant` must skip it (`const re = /x/`
+   * has a space before the slash); `word` must not, or `innerText` and a following `return`
    * concatenate and the regex after them goes unseen.
    */
   const advance = (char, next) => {
@@ -370,15 +338,12 @@ function walk(source, from, to, depth, mode, found) {
     const char = source[i]
     const next = source[i + 1]
 
-    // Template TEXT is not code: a backslash escapes whatever follows, so `\`` is a character and
-    // never the start of a nested literal. Skipping the pair is what stopped an escaped backtick
-    // from inflating the depth and failing correctly-escaped page-side regexes.
+    // Template text is not code: a backslash escapes whatever follows, so an escaped backtick is a
+    // character and never starts a nested literal.
     if (mode === TEMPLATE && char === '\\') {
-      // ⚠️ **`significant` becomes an ordinary character, and that is not cosmetic.** An escaped
-      // backtick used to leave `significant` at its start-of-region `\n`, which OPENS a regex — so
-      // the `/…/` in a message like `` \`/${cooked}/\` `` was read as a literal, swallowed the hole
-      // after it, and left the enclosing template unclosed for the rest of the file. Every literal
-      // below it then reported the wrong side. A backslash is not an operator; saying so is enough.
+      // `significant` becomes an ordinary character. Left at its start-of-region `\n`, which opens a
+      // regex, the `/…/` in a message like `` \`/${cooked}/\` `` would be read as a literal, swallow
+      // the hole after it, and leave the enclosing template unclosed.
       significant = '\\'
       word = ''
       previous = ''
@@ -386,8 +351,8 @@ function walk(source, from, to, depth, mode, found) {
       continue
     }
     if (char === '$' && next === '{' && mode === TEMPLATE) {
-      // The hole is ordinary code at the depth OUTSIDE this template, and the walk continues after
-      // it with everything it knew — see the note above.
+      // The hole is ordinary code at the depth outside this template, and the walk continues after
+      // it with everything it knew.
       walk(source, i + 2, holeEnd(source, i + 2, to) - 1, depth - 1, HOLE, found)
       i = holeEnd(source, i + 2, to)
       significant = ')'
@@ -410,12 +375,10 @@ function walk(source, from, to, depth, mode, found) {
       continue
     }
     if (char === "'" || char === '"') {
-      // ⛔ **In template TEXT a quote only opens a string if it CLOSES on the same line.** Prose is
-      // ordinary inside a message template, and `093's` used to open a string that ran to the end
-      // of the line and swallowed the template's own closing backtick — after which every literal
-      // in the rest of the file reported the wrong side. Measured: it desynchronised this very file
-      // from line 236 onwards. A real page-side string (`'[data-cy=x]'`) closes on its line and is
-      // still skipped.
+      // In template text a quote only opens a string if it closes on the same line. Prose is ordinary
+      // inside a message template, and an apostrophe would otherwise open a string that swallows the
+      // template's closing backtick. A real page-side string (`'[data-cy=x]'`) closes on its line and
+      // is still skipped.
       const close = endOfQuoted(source, i, to, char)
       if (mode === TEMPLATE && source[close - 1] !== char) {
         i = advance(char, i + 1)
@@ -425,15 +388,12 @@ function walk(source, from, to, depth, mode, found) {
       continue
     }
     if (char === '`') {
-      // ⚑ **The extent is found BEFORE the body is scanned**, so a mis-scan inside a template can
-      // never leak past its own closing backtick. That containment is what turns the apostrophe
-      // above from a whole-file cascade into at worst one missed literal.
+      // The extent is found before the body is scanned, so a mis-scan inside a template cannot leak
+      // past its own closing backtick.
       //
-      // ⚠️ **A TAGGED template keeps the current depth**, which is not a dodge — it is the right
-      // answer. `String.raw` cooks nothing, so its text reaches the far side verbatim and the
-      // NODE-side rule is exactly the one that applies to it; `scripts/nav-order-probe.mjs` ships a
-      // whole program that way. Treating it as page-side would demand `\\d` where `\d` is already
-      // correct and wave through the genuinely broken form.
+      // A tagged template keeps the current depth: `String.raw` cooks nothing, so its text reaches the
+      // far side verbatim and the node-side rule applies (`scripts/nav-order-probe.mjs` ships a whole
+      // program that way).
       const bodyEnd = templateExtent(source, i, to)
       walk(source, i + 1, bodyEnd, tagged(significant) ? depth : depth + 1, TEMPLATE, found)
       i = advance(char, Math.min(bodyEnd + 1, to))
@@ -460,10 +420,8 @@ function walk(source, from, to, depth, mode, found) {
 }
 
 /**
- * Whether a backtick here is TAGGED — `String.raw\`…\``, `html\`…\`` — rather than a plain template.
- *
- * A tag ends in an identifier character or a `)`, both of which are exactly the positions where a
- * bare template literal cannot legally start.
+ * Whether a backtick here is tagged (`String.raw\`…\``, `html\`…\``) rather than a plain template.
+ * A tag ends in an identifier character or a `)`, where a bare template literal cannot start.
  */
 function tagged(significant) {
   return isIdentifier(significant) || significant === ')'
@@ -481,8 +439,7 @@ function opensRegex(significant, word) {
 }
 
 /**
- * Past a shebang, which is not a comment to a scanner unless it is told: `#!/usr/bin/env node`
- * otherwise opens a "regex" on line 1 and everything after it is misread.
+ * Past a shebang, which a scanner would otherwise read as a regex opening on line 1.
  */
 function skipShebang(source) {
   if (!source.startsWith('#!')) return 0
@@ -491,12 +448,11 @@ function skipShebang(source) {
 }
 
 /**
- * The index of a template literal's CLOSING backtick, found before anything inside it is read.
+ * The index of a template literal's closing backtick, found before anything inside it is read.
  *
- * ⛔ **Bounding the body first is what makes a mis-scan survivable.** Template text is prose as often
- * as it is code, so no walk over it can be trusted not to lose its place; what it must never do is
- * lose the file. This pass looks at three things only — an escape, a hole, and the backtick — none
- * of which prose can fake.
+ * Bounding the body first makes a mis-scan survivable: template text is often prose, so the walk
+ * over it may lose its place but never the file. This pass looks only at an escape, a hole and
+ * the backtick, none of which prose can fake.
  */
 function templateExtent(source, start, to) {
   let i = start + 1
@@ -518,10 +474,8 @@ function templateExtent(source, start, to) {
 
 /**
  * The index just past a `${…}` hole's own closing brace.
- *
- * Braces inside strings, templates and REGEX literals are stepped over — a `}` in a character class
- * (`/^a\\.[}]b$/`) used to close the hole early and drop the expression on the floor, which review
- * found by writing exactly that.
+ * Braces inside strings, templates and regex literals are stepped over, so a `}` in a character
+ * class (`/^a\\.[}]b$/`) does not close the hole early.
  */
 function holeEnd(source, from, to) {
   let i = from
@@ -582,13 +536,9 @@ function endOfLine(source, from, to) {
 /**
  * Read a regex literal starting at `start`, or `null` when what follows is not one.
  *
- * A newline before the closing `/` is the tell that this was a division after all — no regex
- * literal may contain an unescaped one — and returning null there is what keeps a stray `a / b`
- * from swallowing the rest of the file.
- *
- * ⚠️ **Inside template TEXT a `${` ends the attempt too.** A message built as `` `\`/${cooked}/\`` ``
- * has two slashes with a hole between them and is prose, not an expression; letting a "regex" cross
- * the hole consumed the interpolation and desynchronised everything after it.
+ * A newline before the closing `/` means this was a division after all, and returning null keeps
+ * a stray `a / b` from swallowing the rest of the file. Inside template text a `${` also ends
+ * the attempt: `` `\`/${cooked}/\`` `` is prose with a hole between two slashes, not a regex.
  */
 function readRegex(source, start, to, inTemplateText = false) {
   let i = start + 1

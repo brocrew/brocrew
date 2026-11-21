@@ -13,17 +13,14 @@ import {
 } from '../lib/smoke-price.mjs'
 
 /**
- * 211 · **What a live run cost, printed by the run that spent it** (criterion 8).
+ * The price of a live run is printed by the run that spent it. It was once computed by hand from
+ * the evidence directory afterwards, and a number that needs its own expedition eventually stops
+ * being reported.
  *
- * ⛔ **Every dispatch that has reported a smoke price computed it by hand afterwards** — `209` and
- * `210` both did, out of the same evidence directory the run leaves behind. A number that needs its
- * own expedition is a number that eventually stops being reported, so it moved into `lib/` and the
- * smoke prints it.
- *
- * ⚑ **`lib/`, for the reason `196` gave and `206` H1 restated**: a live step cannot be run by
- * `pnpm run ci`, so the arithmetic it depends on is lifted out to where a test can kill it. What
- * stays unreachable is the WIRING — that `ui-live-smoke.mjs` calls this at the end of a run — and
- * `smoke-claims.test.mjs`'s source-reading precedent is the only instrument that could reach it.
+ * The arithmetic lives in `lib/` because a live step cannot be run by `pnpm run ci`, so it is
+ * lifted to where a test can kill it. Only the wiring (that `ui-live-smoke.mjs` calls this at the
+ * end of a run) stays unreachable; `smoke-claims.test.mjs`'s source-reading precedent is the only
+ * instrument that could reach it.
  */
 
 const billed = (id, model, usage) => ({ message: { id, model, usage } })
@@ -163,8 +160,8 @@ describe('what it cost', () => {
     expect(said).toContain('$30.0000')
     expect(said).toContain('claude-sonnet-5')
     expect(said).toContain(`rates as of ${RATES_AS_OF}`)
-    // ⚑ Codex is named as ABSENT rather than silently missing — it runs on the signed-in plan and
-    // exposes no incremental charge, and 210 declined to invent one in exactly these terms.
+    // Codex is named as absent rather than silently missing: it runs on the signed-in plan and
+    // exposes no incremental charge, so no figure is invented.
     expect(said).toContain('Codex ran on the signed-in plan')
   })
 
@@ -197,8 +194,8 @@ describe('what it cost', () => {
   })
 
   it('🔴 665 · a run whose transcripts include Codex is UNPRICED for them, never $0.0000', () => {
-    // ⚑ The shape of a real Codex rollout, measured on `660`'s preserved run: `session_meta`,
-    // `turn_context`, `event_msg`, `response_item` — and not one record carrying `message.usage`.
+    // The shape of a real Codex rollout, measured on a preserved run: `session_meta`,
+    // `turn_context`, `event_msg`, `response_item`, and not one record carrying `message.usage`.
     const rollout = [
       { type: 'session_meta', payload: { id: 'planted' } },
       { type: 'turn_context', payload: {} },
@@ -214,7 +211,7 @@ describe('what it cost', () => {
     const codexFile = join(homes, 'default', 'default', 'codex', 'sessions', 'rollout-1.jsonl')
     const claudeFile = join(homes, 'default', 'project-manager', 'claude', 'projects', 'one.jsonl')
     try {
-      // ⛔ `660`'s case: Codex alone. The line OPENS with the word, and carries no dollar zero.
+      // Codex alone: the line opens with the word, and carries no dollar zero.
       writeFileSync(codexFile, `${rollout}\n`)
       const codexOnly = priceRun(root, { providerHomes: [homes] })
       expect(codexOnly).toMatchObject({ files: 1, codexFiles: 1, total: 0 })
@@ -222,7 +219,7 @@ describe('what it cost', () => {
       expect(said.startsWith('UNPRICED — 1 Codex transcript file(s)')).toBe(true)
       expect(said).not.toContain('$0.0000')
 
-      // ⚑ Mixed: the Claude figure stands, and the Codex half is named as unpriced beside it.
+      // Mixed: the Claude figure stands, and the Codex half is named as unpriced beside it.
       writeFileSync(
         claudeFile,
         `${JSON.stringify(billed('m', 'claude-haiku-4-5-20251001', { output_tokens: 1_000_000 }))}\n`,
@@ -233,7 +230,7 @@ describe('what it cost', () => {
         '⚠️ UNPRICED: Codex ran on the signed-in plan (1 transcript file(s)) and is not in this figure',
       )
 
-      // ⚑ And the control: with no Codex transcript the zero is a zero, worded as it always was.
+      // And the control: with no Codex transcript the zero is a zero, worded as it always was.
       rmSync(codexFile)
       rmSync(claudeFile)
       writeFileSync(claudeFile, `${JSON.stringify({ type: 'user', message: { role: 'user' } })}\n`)

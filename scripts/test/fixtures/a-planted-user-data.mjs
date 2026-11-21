@@ -16,19 +16,16 @@ import { CODEX_AUTH, HOMES_DIRNAME } from '../../lib/clean-base.mjs'
 import { DATA_FOLDER_NAME, pastedImagesRoot } from '../../lib/user-data.mjs'
 
 /**
- * ⚑ **717 · the planted userData both halves of `clean-base`'s tests stand on** (R45).
+ * The planted userData both halves of `clean-base`'s tests stand on: the tests that never spawn the
+ * script and the gate-only half that does. It lives here once rather than as two copies that can
+ * drift apart.
  *
- * ⛔ **R45 split `scripts/gate-only/clean-base.test.mjs`**: the tests that never spawn the script
- * went back to `scripts/test/clean-base-without-running-it.test.mjs`, so the mutation rows they kill
- * can be re-verified again, and the half that spawns it stayed gate-only. ⚑ Both plant the same
- * userData, so the fixture lives here ONCE rather than as two copies that can drift apart.
- *
- * ⚠️ **It plants and removes only under the system temp directory**, and it runs nothing: no process, no
- * `clean-base`. It imports two NAMES from the library, never an act — which is what
+ * It plants and removes only under the system temp directory and runs nothing: no process, no
+ * `clean-base`. It imports two names from the library, never an act, which is what
  * `clean-base-runs-only-in-the-gate.test.mjs` lets a file an ordinary run collects from do.
  *
- * ⛔ **And it is where R46's guard lives** ({@link mustNameScratch}), because the question it asks —
- * *is this path scratch?* — is answered by the one list of fixtures this module made.
+ * It also holds the guard {@link mustNameScratch}, because "is this path scratch?" is answered by
+ * the one list of fixtures this module made.
  */
 
 /** Above macOS's `kern.maxproc` ceiling, so no live process can ever carry it. */
@@ -92,8 +89,8 @@ export function mustNameScratch(args, { env = {}, cwd = process.cwd() } = {}) {
     }
   }
   for (const dir of dirs) {
-    // ⚠️ Against the PHYSICAL cwd — the child's `process.cwd()` has its links followed, so a `..`
-    // under a linked cwd climbs from where the link leads (`717`'s review, round 2).
+    // Against the physical cwd: the child's `process.cwd()` has its links followed, so a `..` under a
+    // linked cwd climbs from where the link leads.
     const path = resolve(whereItLeads(resolve(cwd)), dir)
     if (!sweptBy(path).every((one) => isScratch(one))) {
       throw new Error(`--dir ${dir} is not a fixture this file made — not started (R46)`)
@@ -112,9 +109,9 @@ export function mustNameScratch(args, { env = {}, cwd = process.cwd() } = {}) {
 }
 
 /**
- * ⚑ **Every directory `clean-base` falls back to under this environment, and the
- * sibling `clean-base` sweeps beside each** — `userDataFor`'s own derivation (`lib/user-data.mjs`),
- * spelled out because that one reads THIS process's `HOME` and the child's is the question.
+ * Every directory `clean-base` falls back to under this environment, and the sibling `clean-base`
+ * sweeps beside each. This spells out `userDataFor`'s derivation (`lib/user-data.mjs`) because that
+ * one reads this process's `HOME` and the child's is the question.
  * `clean-base-starts-only-on-scratch.test.mjs` holds the two derivations equal.
  */
 export function fallbacksUnder(env, platform = process.platform) {
@@ -128,8 +125,8 @@ export function fallbacksUnder(env, platform = process.platform) {
 }
 
 /**
- * ⚑ **What `clean-base` touches for a target**: the target, and the `-pasted-images` sibling of the
- * target as typed AND of where it leads — the script sweeps the sibling of the RESOLVED userData
+ * What `clean-base` touches for a target: the target, and the `-pasted-images` sibling of the
+ * target as typed and of where it leads. The script sweeps the sibling of the resolved userData
  * (`pastedImagesRoot(anchor.real)`), so a link to a fixture root would put that one outside it.
  */
 function sweptBy(path) {
@@ -189,9 +186,9 @@ export function plantUserData(
     const home = join(userData, HOMES_DIRNAME, 'default', profile)
     mkdirSync(join(home, 'codex', 'sessions', '2026', '09'), { recursive: true })
     mkdirSync(join(home, 'claude', 'projects'), { recursive: true })
-    // ⚠️ **Different bytes per profile** (352 §3). His four copies held one refresh token and the
-    // fifth had been rewritten by a rotation — so a test that plants one identical string in all of
-    // them cannot see a keep that took the wrong file.
+    // Different bytes per profile: real installs held one refresh token in several copies and one
+    // rewritten by a rotation, so a test that plants one identical string in all of them cannot see a
+    // keep that took the wrong file.
     writeFileSync(join(home, 'codex', CODEX_AUTH), `not-a-real-credential-${profile}\n`)
     chmodSync(join(home, 'codex', CODEX_AUTH), authMode)
     writeFileSync(join(home, 'codex', 'config.toml'), '[memories]\n')
@@ -199,9 +196,9 @@ export function plantUserData(
     writeFileSync(join(home, 'claude', 'projects', 's.jsonl'), '{}\n')
   }
   mkdirSync(join(userData, 'brobot-workspace'), { recursive: true })
-  // ⚑ **D-016 · the files kept for pieces of work** — planted so that "a clean base" is asserted over
-  // the one durable BroBot write that is neither the ledger nor a provider home (`380`'s documents
-  // tree held that place until D-016). ⚑ Kept where the app keeps one: `resources/<sha256>/<name>`.
+  // The files kept for pieces of work, planted so that "a clean base" is asserted over the one
+  // durable BroBot write that is neither the ledger nor a provider home. Kept where the app keeps
+  // one: `resources/<sha256>/<name>`.
   const reply = '# a reply\n'
   const kept = join(userData, 'resources', createHash('sha256').update(reply).digest('hex'))
   mkdirSync(kept, { recursive: true })
@@ -216,14 +213,12 @@ export function plantUserData(
   writeFileSync(join(userData, 'exports', 'a1.brobot-session.json'), '{"version":1}\n')
   writeFileSync(join(userData, 'Cache', 'data_0'), 'chromium\n')
   writeFileSync(join(userData, 'Local Storage', 'leveldb', 'LOG'), 'x\n')
-  // ⚠️ **The Chromium leaves a live app has at the top level, as SYMLINKS** — measured on a real
-  // launch of this build, where `SingletonLock` pointed at `alex-laptop.local-3541`. They are
-  // why the manifest's kind comes from the dirent: an entry the reset does not recognise can still
-  // be a link, and a link is unlinked by name.
+  // The Chromium leaves a live app has at the top level are symlinks (`SingletonLock` points at
+  // `<host>-<pid>` on a real launch). That is why the manifest's kind comes from the dirent: an entry
+  // the reset does not recognise can still be a link, and a link is unlinked by name.
   //
-  // ⛔ **The target has to be REALISTIC or the fixture tests something else.** The first draft
-  // pointed it at a path; `readSingletonLock` could not parse that, correctly answered `unknown`,
-  // and every test in this file refused. `DEAD_PID` is above macOS's maximum, so this is the
+  // The target has to be realistic or the fixture tests something else: `readSingletonLock` cannot
+  // parse a plain path and answers `unknown`. `DEAD_PID` is above macOS's maximum, so this is the
   // ordinary shape a crash leaves: a well-formed lock naming a process that is gone.
   symlinkSync(`${hostname()}-${String(DEAD_PID)}`, join(userData, 'SingletonLock'))
   symlinkSync('4412747004272557171', join(userData, 'SingletonCookie'))

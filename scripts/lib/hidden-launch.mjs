@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process'
  */
 export const HIDDEN_LAUNCH_ARG = '--brobot-hidden'
 
-/** ⚑ The title a hidden launch's own bar draws — `launch-presentation.ts`'s `HIDDEN_TITLE`. */
+/** The title a hidden launch's own bar draws: `launch-presentation.ts`'s `HIDDEN_TITLE`. */
 export const HIDDEN_TITLE = 'BroCrew — test'
 
 function run(file, args) {
@@ -30,20 +30,18 @@ export async function pidsLaunchedOn(userDataDir) {
   return table.split('\n').flatMap((line) => {
     const match = /^\s*(\d+)\s+(.*)$/.exec(line)
     if (match === null || !match[2].includes(flag)) return []
-    // ⚠️ Not a following character that would make it a LONGER path — `…/user-data-2`.
+    // Not a following character that would make it a longer path, such as `…/user-data-2`.
     const after = match[2].slice(match[2].indexOf(flag) + flag.length)[0]
     return after === undefined || after === ' ' ? [Number(match[1])] : []
   })
 }
 
 /**
- * ⛔ **What the window server says is ON SCREEN for these processes, right now** — `null` when this
- * is not a Mac or the read failed, never `[]`: *could not look* is not *looked and saw nothing*
- * (standing rule 34).
+ * What the window server says is on screen for these processes, right now. `null` when this is not
+ * a Mac or the read failed, never `[]`: could not look is not looked and saw nothing.
  *
- * ⚑ `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)` through JXA, which ships with
- * macOS — no module to install, about 0.1 s a read. It reads the window server's list; it touches no
- * app, no port and no user data.
+ * `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)` through JXA, which ships with
+ * macOS: no module to install, about 0.1 s a read. It touches no app, no port and no user data.
  */
 export async function onScreenWindowsOf(pids) {
   if (process.platform !== 'darwin' || pids.length === 0) return null
@@ -64,15 +62,15 @@ export async function onScreenWindowsOf(pids) {
 }
 
 /**
- * ⚑ **A run-long watch: every launch's windows, sampled until `stop()`** — so *"no window on the
- * screen"* is a measurement of the whole run rather than of one moment (695 §4.1).
+ * A run-long watch: every launch's windows, sampled until `stop()`, so "no window on the screen"
+ * is a measurement of the whole run rather than of one moment.
  *
- * `dirs()` is asked on every tick, so a launch made halfway through the run is watched from then
- * on. A tick that could not look counts as `blind`, never as clean.
+ * `dirs()` is asked on every tick, so a launch made halfway through is watched from then on. A
+ * tick that could not look counts as `blind`, never as clean.
  */
 export function watchOffScreen(dirs, everyMs = 2_000) {
   const sightings = []
-  /** ⚑ Looks PER launch directory — a directory never looked at is not a directory that was clean. */
+  /** Looks per launch directory: a directory never looked at is not a directory that was clean. */
   const perDir = new Map()
   let samples = 0
   let blind = 0
