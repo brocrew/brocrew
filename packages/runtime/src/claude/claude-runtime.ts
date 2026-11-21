@@ -3068,11 +3068,11 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const token = auth?.login !== undefined ? auth.login : this.authTokenProvider?.()
     if (token !== undefined) {
-      if (!token) {
-        throw new AuthUnavailableError('claude', this.whyNoLogin())
+      if (token) additions.CLAUDE_CODE_OAUTH_TOKEN = token
+      else {
+        additions.CLAUDE_SECURESTORAGE_CONFIG_DIR = ''
+        console.warn('Claude launch is using native authentication without a local token')
       }
-
-      additions.CLAUDE_CODE_OAUTH_TOKEN = token
     }
     return { additions, onAKey: false }
   }

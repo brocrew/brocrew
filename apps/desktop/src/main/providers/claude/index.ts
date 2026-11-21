@@ -136,7 +136,9 @@ export async function prepareClaudeHome(
   const key = seams.key
   const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
   if (!health.ok) {
-    throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
+    console.warn(
+      'Claude launch preflight could not establish a sign-in; native authentication will decide',
+    )
   }
   return home
 }
