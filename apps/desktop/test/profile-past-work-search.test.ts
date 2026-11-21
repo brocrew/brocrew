@@ -6,6 +6,7 @@ import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { searchPastWork } from '../src/main/db/past-work-search'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { createSessionStore } from '../src/main/db/session-store'
 import {
@@ -831,4 +832,42 @@ it('continues a recent-first transcript preview through the real worker', async 
   if (!next.ok) throw new Error(next.reason)
   expect(next.hits.map((hit) => hit.conversation)).toEqual(['fictional-1', 'fictional-0'])
   expect(next.complete).toBe(true)
+})
+
+it('retries a conversation whose preview stopped during indexing', () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  const target = 'fictional-newest'
+  w.create(caller)
+  w.create(target)
+  for (const text of ['previewquartz first', 'previewquartz second']) {
+    w.append(target, { type: 'assistant_message', text })
+  }
+  w.db
+    .prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?')
+    .run(1_900_000_000_000, target)
+  const previewSource = {
+    ...w.store.pastWorkSearchSource(caller, undefined, undefined, { after: null, preview: true })!,
+    transcript: {},
+  }
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(5_000)
+  clock.mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValueOnce(0)
+  let result
+  try {
+    result = searchPastWork(w.db, w.store, caller, 'previewquartz', previewSource)
+  } finally {
+    clock.mockRestore()
+  }
+  expect(result).toMatchObject({
+    ok: true, hits: [], complete: false, next_cursor: expect.stringMatching(/^recent:/u),
+  })
+  const full = searchPastWork(w.db, w.store, caller, 'previewquartz', {
+    ...previewSource,
+    recent: { after: null },
+  })
+  expect(full).toMatchObject({
+    ok: true,
+    hits: [{ conversation: target, turn: { ordinal: 1 } }],
+    complete: true,
+  })
 })
