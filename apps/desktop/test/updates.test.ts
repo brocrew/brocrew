@@ -38,6 +38,7 @@ import {
 } from '../src/main/updates'
 import { installerArgsFor, REOPEN_SWITCH, theWayBack } from '../src/main/reopen-after-update'
 import { builtEnvironment } from '../src/main/built-launch'
+import { argvOf } from '../../../scripts/lib/windows-update-test.mjs'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -620,48 +621,6 @@ describe('the release feed', () => {
 })
 
 describe('§6 · 🔴 W4.128 — after a Windows update, BroBot reopens the workspace it was running', () => {
-  /** A command line read back the way Windows does (`CommandLineToArgvW`), argument by argument. */
-  function argvOf(line: string): string[] {
-    const args: string[] = []
-    let current = ''
-    let inQuotes = false
-    let any = false
-    let at = 0
-    while (at < line.length) {
-      const char = line[at]!
-      if (char === '\\') {
-        let backslashes = 0
-        while (line[at] === '\\') {
-          backslashes += 1
-          at += 1
-        }
-        if (line[at] === '"') {
-          current += '\\'.repeat(Math.floor(backslashes / 2))
-          if (backslashes % 2 === 1) {
-            current += '"'
-            at += 1
-          }
-        } else current += '\\'.repeat(backslashes)
-        any = true
-        continue
-      }
-      if (char === '"') {
-        inQuotes = !inQuotes
-        any = true
-      } else if (/\s/.test(char) && !inQuotes) {
-        if (any) args.push(current)
-        current = ''
-        any = false
-      } else {
-        current += char
-        any = true
-      }
-      at += 1
-    }
-    if (any) args.push(current)
-    return args
-  }
-
   /** A command line as Node builds it on Windows (libuv): quoted when it holds a space or a quote. */
   function nodesCommandLine(args: readonly string[]): string {
     return args

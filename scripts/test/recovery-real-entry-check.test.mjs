@@ -374,7 +374,10 @@ describe('the launch', () => {
   it('is hidden, on its own folder and a kernel-assigned port, and reaped by what it owns', () => {
     expect(script).toContain('HIDDEN_LAUNCH_ARG,')
     expect(script).toContain('`--user-data-dir=${userDataDir}`')
-    expect(script).toContain("server.listen(0, '127.0.0.1'")
+    expect(script).toContain("import { freePort } from './lib/free-port.mjs'")
+    expect(readFileSync(join(ROOT, 'scripts', 'lib', 'free-port.mjs'), 'utf8')).toContain(
+      "server.listen(0, '127.0.0.1'",
+    )
     expect(script).toContain(
       'tearDownAndRemove({ lifecycle: app.lifecycle, directory: root, remove })',
     )

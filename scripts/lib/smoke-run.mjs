@@ -313,3 +313,15 @@ function prune(evidenceRoot, scratchRoot, keep) {
     rmSync(join(scratchRoot, name), { recursive: true, force: true })
   }
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export async function waitFor(what, predicate, timeoutMs = 60_000, pollMs = 250) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const value = await predicate()
+    if (value) return value
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+    await sleep(pollMs)
+  }
+}

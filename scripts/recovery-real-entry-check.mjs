@@ -47,11 +47,11 @@ import {
   writeSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
-import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, posix, resolve, win32 } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gunzipSync } from 'node:zlib'
+import { freePort } from './lib/free-port.mjs'
 import { HIDDEN_LAUNCH_ARG, pidsLaunchedOn } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
@@ -539,17 +539,6 @@ function electronProgram() {
     )
   }
   return program
-}
-
-function freePort() {
-  return new Promise((done, fail) => {
-    const server = createServer()
-    server.on('error', fail)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => done(port))
-    })
-  })
 }
 
 async function targets(port) {

@@ -31,7 +31,7 @@ import { constantFrom } from './lib/app-source.mjs'
 import { whatTheFrontDoorCannotCarry } from './lib/front-door.mjs'
 import { assertPortNotShared, assertPortOwnedByTree } from './lib/smoke-target.mjs'
 import { witnessGate } from './lib/host-gate-witness.mjs'
-import { beginSmokeRun, smokeTmpRoot, smokeUserDataDir } from './lib/smoke-run.mjs'
+import { beginSmokeRun, smokeTmpRoot, smokeUserDataDir, waitFor } from './lib/smoke-run.mjs'
 import {
   asserted,
   claims,
@@ -300,16 +300,6 @@ function portIsFree(port) {
  */
 function probe(url, timeoutMs = 4_000) {
   return fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
-}
-
-async function waitFor(what, predicate, timeoutMs = 60_000, pollMs = 250) {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const value = await predicate()
-    if (value) return value
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
-    await sleep(pollMs)
-  }
 }
 
 /**

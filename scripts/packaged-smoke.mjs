@@ -30,7 +30,7 @@ import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { whatIsNotPlaceable, whatTheFrontDoorCannotCarry } from './lib/front-door.mjs'
 import { witnessGate } from './lib/host-gate-witness.mjs'
-import { beginSmokeRun, smokeTmpRoot, smokeUserDataDir } from './lib/smoke-run.mjs'
+import { beginSmokeRun, smokeTmpRoot, smokeUserDataDir, waitFor } from './lib/smoke-run.mjs'
 // `notPerformed` is for a computer with no Claude Code installed: the Claude steps then have no
 // program to run, so `2c` reads the app's own sentence for it, and `4b`, `4c` and `4d` answer NOT
 // PERFORMED with it. `4d` answers the same when the Claude Code found is older than the model it
@@ -152,8 +152,6 @@ async function step(name, fn) {
   }
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = createServer()
@@ -163,16 +161,6 @@ function freePort() {
       server.close(() => resolve(port))
     })
   })
-}
-
-async function waitFor(what, predicate, timeoutMs = 60_000, pollMs = 250) {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
-    const value = await predicate()
-    if (value) return value
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
-    await sleep(pollMs)
-  }
 }
 
 // Release title bars hide schema text; the database still reports its migration count over IPC.

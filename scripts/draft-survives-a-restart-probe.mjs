@@ -17,10 +17,10 @@
  */
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { freePort } from './lib/free-port.mjs'
 import { HIDDEN_LAUNCH_ARG, pidsLaunchedOn } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
@@ -38,17 +38,6 @@ const COMPOSER = '[data-cy="prompt-input"]'
 const LS_KEY = 'brobot-744-probe'
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
-
-function freePort() {
-  return new Promise((done, fail) => {
-    const server = createServer()
-    server.on('error', fail)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => done(port))
-    })
-  })
-}
 
 async function targets(port) {
   try {
