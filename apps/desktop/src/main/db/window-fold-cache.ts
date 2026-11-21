@@ -51,9 +51,11 @@ function retainedBytes(value: unknown, limit: number): number {
 /**
  * One shared retained-byte budget; dropping an answer leaves its canonical fold available. A read
  * walks every conversation in the same order, so a budget below the working set drops each fold
- * before the next read needs it: a 10 GB workspace estimates about 90 MiB.
+ * before the next read needs it. A 10 GB workspace needs between 192 and 256 MiB with incidents
+ * read. Measured in the worker, the heap is about 1.1 times this estimate plus 70 MiB while a read
+ * folds, so a full budget stays well under the worker's 512 MiB old generation.
  */
-export function windowFoldCache(limit = 192 * 1024 * 1024): SnapshotFoldAnswers {
+export function windowFoldCache(limit = 320 * 1024 * 1024): SnapshotFoldAnswers {
   type Answer = KeptFold<unknown>
   type Slot = { owner: string; fold: Answers; bytes: number }
   const oldest = new Map<Slot, true>()

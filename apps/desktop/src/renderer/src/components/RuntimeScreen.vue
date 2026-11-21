@@ -2869,14 +2869,13 @@ function glanceOnReturn(): void {
  * poll: every kept file is told — ⚑ and a re-read is the whole union the channel's note asks for,
  * with no guess about which scope a new row belongs to.
  *
- * ⚠️ **The band's two guards**: the person moved while it was in flight, or a later read landed.
+ * ⚑ **One read in flight per window** ({@link oneReadAtATime}): a push while one is out is answered
+ * by one more read when it settles, so pushes never queue reads.
  */
-let filesRead = 0
-async function readTheFiles(): Promise<void> {
+let filesClosed = false
+async function readTheFilesOnce(): Promise<void> {
   const asked = surface.value === 'conversation' ? activeId.value : null
-  if (asked === null) return
-  filesRead += 1
-  const mine = filesRead
+  if (asked === null || filesClosed) return
   let tree: readonly KeptFile[] | null = null
   let added: readonly KeptFile[] | null = null
   try {
@@ -2892,12 +2891,13 @@ async function readTheFiles(): Promise<void> {
   } catch {
     // A failed read keeps the previous lists and allows the next refresh to retry.
   }
-  if (asked !== activeId.value || mine !== filesRead) return
+  if (filesClosed || surface.value !== 'conversation' || asked !== activeId.value) return
   castFacts.update({
     treeFiles: filesReadFor(asked, tree, cast.treeFiles.value),
     cardFiles: filesReadFor(asked, added, cast.cardFiles.value),
   })
 }
+const readTheFiles = oneReadAtATime(readTheFilesOnce)
 
 watch([activeId, surface], () => void readTheFiles())
 
@@ -3247,7 +3247,7 @@ onUnmounted(() => {
   forestEpoch++
   ownForestEpoch++
   memoryRead++
-  filesRead++
+  filesClosed = true
   glanceRead++
   workClosed = true
   // ⛔ **Handed back, because the refs outlive this component under HMR**: the press, the rail's

@@ -1134,6 +1134,22 @@ it('reads the two file lists once per conversation opening, including mount', as
   expect(runtime.filesKept.mock.calls).toHaveLength(2)
 })
 
+it('keeps one file read in flight and answers a burst of notices with one more', async () => {
+  await screenWithLink()
+  await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(1)
+  const held = deferred<Awaited<ReturnType<RuntimeBridge['filesKept']>>>()
+  runtime.filesKept.mockReturnValueOnce(held.promise)
+  changed({ what: 'work' })
+  await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(2)
+  for (let n = 0; n < 5; n++) changed({ what: 'work' })
+  await nextTick()
+  expect(runtime.filesKept.mock.calls).toHaveLength(2)
+  held.resolve({ ok: true, files: [], added: [] })
+  await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(3)
+  await drawnReady()
+  expect(runtime.filesKept.mock.calls).toHaveLength(3)
+})
+
 it('retries a failed paired file read on the next work notice', async () => {
   await screenWithLink()
   await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(1)
