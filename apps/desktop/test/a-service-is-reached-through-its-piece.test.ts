@@ -394,7 +394,7 @@ describe('a service is reached through the piece it is on', () => {
       ).toBe(false)
     })
 
-    it('accepts an outside Message and ending while keeping status edits scoped', async () => {
+    it('accepts an outside Message, named status edit and ending', async () => {
       const { host, stranger, service, one } = await aServiceOnTheFirstPiece()
       const sameProfile = await world.aPersonOpens(host, 'caller')
       for (const outsider of [stranger, sameProfile]) {
@@ -426,7 +426,7 @@ describe('a service is reached through the piece it is on', () => {
         expect(
           (await call(host, outsider, 'update_work', { piece: one.label, status: 'my progress' }))
             .structured,
-        ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
+        ).toMatchObject({ outcome: 'ok', status: 'my progress' })
       }
       expect(
         (await call(host, stranger, 'update_work', { piece: one.label, close: true })).structured,
@@ -714,7 +714,7 @@ describe('a service is reached through the piece it is on', () => {
       release()
     })
 
-    it('asks no stop for words whose caller’s piece ended while they were on their way', async () => {
+    it('accepts a requested stop after the caller’s piece ended', async () => {
       const { host, caller, service, one, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
         signInsChecked: true,
@@ -741,7 +741,7 @@ describe('a service is reached through the piece it is on', () => {
       signIn.release()
       expect((await sending).structured).toMatchObject({ outcome: 'ok' })
       await answering
-      expect(world.stopsAsked).toEqual([])
+      expect(world.stopsAsked).toEqual(['browser-driver'])
       releaseTheTurn()
     })
 
@@ -2022,42 +2022,40 @@ describe('a service is reached through the piece it is on', () => {
       notStopped(after)
     })
 
-    it('takes back neither a queued piece nor a caller’s own work through the service door', async () => {
+    it('takes back a queued child while keeping structural roots and unknown work', async () => {
       const { host, caller, service, two } = await aServiceOnTheFirstPiece()
       const root = world.store.rootOf(caller)
       if (root === null) throw new Error('the caller holds no work of its own')
-      for (const piece of [two.label, root.label, 'W999']) {
+      for (const piece of [root.label, 'W999']) {
         expect(await host.takeBackForAPerson(piece, world.window)).toEqual({
           ok: false,
           rail: 'not-a-piece-a-service-is-on',
         })
       }
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      expect(rows(service, 'work_taken_back')).toEqual([])
+      expect(await host.takeBackForAPerson(two.label, world.window)).toMatchObject({ ok: true })
+      expect(stateOf(service, two.piece)).toBe('withdrawn')
     })
 
-    it('takes back nothing a conversation gave a worker that is no service, nor at a service whose kind can’t be told', async () => {
+    it('takes back open work from a normal worker and after service metadata becomes unreadable', async () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece()
       world.anAgent('worker', 'normal')
       const given = accepted(await world.gives(host, caller, 'worker', { title: 'Plain' }))
       await handedOver(given.owner, given.piece)
-      // A worker that is no service is asked for as stopped work, and it has not stopped.
-      expect(await host.takeBackForAPerson(given.label, world.window)).toEqual({
-        ok: false,
-        rail: 'not-a-stopped-piece',
-      })
-      expect(rows(given.owner, 'work_taken_back')).toEqual([])
+      const control = () =>
+        host.whoCalledWhom(caller).workGivenOut.rows.find(({ piece }) => piece === given.piece)
+          ?.aPersonMayTakeItBack
+      expect(control()).toBe(true)
+      expect(await host.takeBackForAPerson(given.label, world.window)).toMatchObject({ ok: true })
+      expect(stateOf(given.owner, given.piece)).toBe('withdrawn')
+      expect(control()).toBeUndefined()
       // The services list can't be read at the next start, so its kind can't be told.
       await host.closeAll()
       world.loseTheKept()
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const after = world.aHost()
-      expect(await after.takeBackForAPerson(one.label, world.window)).toEqual({
-        ok: false,
-        rail: 'not-a-piece-a-service-is-on',
-      })
+      expect(await after.takeBackForAPerson(one.label, world.window)).toMatchObject({ ok: true })
       quiet.mockRestore()
-      expect(rows(service, 'work_taken_back')).toEqual([])
+      expect(stateOf(service, one.piece)).toBe('withdrawn')
     })
 
     it('keeps the words for a caller that can’t be started now, for its next start', async () => {

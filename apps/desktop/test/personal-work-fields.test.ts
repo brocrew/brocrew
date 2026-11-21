@@ -185,7 +185,7 @@ describe('personal work fields and their existing ownership boundaries', () => {
     ])
   })
 
-  it('preserves state and brief on a condition-only revision, and only the holder rebriefs personal work', async () => {
+  it('preserves state on a condition-only revision and tracks an outside revision and close', async () => {
     const caller = await person()
     const created = await call(caller, 'take_on_work', requested)
     const piece = String(created.structured?.piece)
@@ -210,24 +210,21 @@ describe('personal work fields and their existing ownership boundaries', () => {
     ).toBe(condition)
     const other = await world.aPersonOpens(host, 'worker')
     expect(
-      (await call(other, 'update_work', { piece, brief: 'A foreign revision.' })).structured,
-    ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
-    expect(
-      (await call(other, 'update_work', { piece, close: true, title: 'A foreign title.' }))
+      (await call(other, 'update_work', { piece, brief: 'A revision from another agent.' }))
         .structured,
-    ).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
+    ).toMatchObject({ outcome: 'ok', rebriefed: true })
+    const title = 'An updated title.'
     const reason = 'The person has the result from another source.'
-    const closed = (await call(other, 'update_work', { piece, close: true, status: reason }))
+    const closed = (await call(other, 'update_work', { piece, close: true, title, status: reason }))
       .structured
-    expect(closed).toMatchObject({ outcome: 'ok', state: 'closed' })
-    expect(closed).not.toHaveProperty('status')
+    expect(closed).toMatchObject({ outcome: 'ok', state: 'closed', status: reason })
     expect(world.store.piecesOwnedBy(caller).find((row) => row.piece === piece)).toMatchObject({
       state: 'closed',
       endedBy: other,
-      title: old.title,
-      brief: 'A revised short brief.',
+      title,
+      brief: 'A revision from another agent.',
       definitionOfDone: condition,
-      statusLine: revised.statusLine,
+      statusLine: { text: reason, by: other },
     })
     await vi.waitFor(() => {
       const notice = world

@@ -425,22 +425,21 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
     expect(store.rootLines(rootRow.piece).statusLine).not.toHaveProperty('waiting')
   })
 
-  it('⛔ a conversation that neither holds nor gave a piece cannot mark it as waiting, and nothing is written', async () => {
+  it('records a named wait with the outside caller as author', async () => {
     const fixture = await aHelperHoldingAPiece('auto')
     const stranger = await personOpens('stranger')
-    const refused = await toolCall(stranger, 'update_work', {
+    const time = anHourAhead()
+    const updated = await toolCall(stranger, 'update_work', {
       piece: fixture.held.label,
       status: 'until the review lands',
-      on: { time: anHourAhead() },
+      on: { time },
     })
-    expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
+    expect(updated).toMatchObject({ outcome: 'ok', status: 'until the review lands' })
     const [piece] = store.openPiecesOf(fixture.child)
-    expect([piece?.state, piece?.statusLine]).toEqual(['stalled', null])
-    // ⚑ **The control**: its giver's same call marks it.
-    expect((await parkIt(fixture)).outcome).toBe('ok')
-    expect(store.openPiecesOf(fixture.child).map((one) => one.state)).toEqual([
-      'waiting-on-purpose',
-    ])
+    expect(piece).toMatchObject({
+      state: 'waiting-on-purpose',
+      statusLine: { by: stranger, on: { kind: 'time', at: Date.parse(time) } },
+    })
   })
 
   it('🔴 a helper still working on its piece takes the next one — the same give, its turn not yet ended', async () => {

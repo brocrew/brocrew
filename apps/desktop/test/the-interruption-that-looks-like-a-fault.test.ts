@@ -837,7 +837,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
         /interruptAgent\([^)]*\)[^{]*\{\s*return stopTurn\(/,
       )
       const stop = source('stop-turn.ts')
-      expect(stop).toContain('admitInterrupt(id, status, waitingOn)')
+      expect(stop).toContain('admitInterrupt(id, status, waitsForAgent)')
       expect(stop).toContain("refuseInterrupt('that-conversation-has-not-started'")
     })
 
@@ -867,6 +867,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // — *only the person answering ends this, and asking again will not* — which is the same
       // finding arriving through the permanence. **The `null` was right either way, and both halves
       // are asserted here so neither can drift back on its own.**
+      expect(admitInterrupt('sess_x', 'waiting_permission', true)).toBeNull()
       const asked = admitInterrupt('sess_x', 'waiting_permission')
       expect(asked?.rail).toBe('a-person-is-being-asked')
       expect(asked?.permanence).toBe('until-a-person-changes-it')

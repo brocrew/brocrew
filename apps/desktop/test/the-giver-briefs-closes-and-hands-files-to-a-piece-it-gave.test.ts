@@ -303,8 +303,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   }
 
   const refusedWith = (answer: Record<string, unknown>, rail: string): Refused => {
-    expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
-    expect(answer.rail, JSON.stringify(answer)).toBe(rail)
+    expect(answer, JSON.stringify(answer)).toMatchObject({ outcome: 'refused', rail })
     return answer as unknown as Refused
   }
 
@@ -313,7 +312,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · a new brief', () => {
-    it("a new brief reaches an idle owner as its giver's words, is kept as the piece's brief, and a worker cannot write one", async () => {
+    it("a new brief reaches an idle owner as its giver's words, is kept as the piece's brief, and the holder can revise it", async () => {
       const { pm, worker, piece, label, title } = await anIdleWorker()
       expect(pieceOf(worker, piece).brief).toBe(THE_GIVES_BRIEF)
       const queuedBefore = rowsOf(worker, 'message_queued').length
@@ -357,16 +356,13 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(heard[0]).toContain(THE_NEW_BRIEF)
       expect(heard[0]).not.toContain(THE_GIVES_BRIEF)
 
-      // ⚑ The paired positive, from the same reader: the OWNER says the same words and is refused.
-      const before = tally(worker, pm)
-      const refused = refusedWith(
-        await callOn(worker, 'update_work', { piece: label, brief: 'x' }),
-        'the-giver-briefs-a-piece',
-      )
-      expect(refused.rail).toBe('the-giver-briefs-a-piece')
-      await letItSettle()
-      expect(tally(worker, pm)).toEqual(before)
-      expect(pieceOf(worker, piece).brief).toBe(THE_NEW_BRIEF)
+      const changed = await callOn(worker, 'update_work', {
+        piece: label,
+        brief: 'From the holder',
+      })
+      expect(changed).toMatchObject({ outcome: 'ok', rebriefed: true })
+      expect(pieceOf(worker, piece).brief).toBe('From the holder')
+      expect(rowsOf(worker, 'work_rebriefed').at(-1)).toMatchObject({ by: worker })
     })
 
     it('a new brief for an owner mid-turn is held with the piece named, and the provider hears it with its next input after the turn ends', async () => {
@@ -632,6 +628,33 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(decided).toEqual([])
     })
 
+    it('closes a named task with evidence and a readable long reason', async () => {
+      const { pm, worker, label, piece } = await anIdleWorker()
+      const evidence = 'alpha evidence\n'
+      const reason = 'The complete reason. '.repeat(120) + 'Last sentence.'
+      const closed = await callOn(pm, 'update_work', {
+        piece: label,
+        close: true,
+        status: reason,
+        resources: [wrote('ending.md', evidence)],
+      })
+      expect(closed).toMatchObject({ outcome: 'ok' })
+      expect(pieceOf(worker, piece).state).toBe('closed')
+      const saved = [...store.resourcesOf(piece)].sort((a, b) => a.name.localeCompare(b.name))
+      expect(saved.map(({ name, role }) => [name, role])).toEqual([
+        ['close-reason.txt', 'made'],
+        ['ending.md', 'made'],
+      ])
+      expect(resourceBytes(resourcesRoot(userData), saved[0]!)).toMatchObject({
+        ok: true,
+        bytes: Buffer.from(reason),
+      })
+      expect(resourceBytes(resourcesRoot(userData), saved[1]!)).toMatchObject({
+        ok: true,
+        bytes: Buffer.from(evidence),
+      })
+    })
+
     it('update_work refuses a contradictory or malformed brief, close or file list and writes nothing', async () => {
       const { pm, worker, label } = await anIdleWorker()
       const solo = await personOpens('solo')
@@ -652,10 +675,6 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         {
           args: { piece: label, close: true, definition_of_done: 'A new condition.' },
           says: "close and definition_of_done can't go together: a closed piece takes no new done condition.",
-        },
-        {
-          args: { piece: label, close: true, resources: [a] },
-          says: 'files are kept for a piece that goes on',
         },
         { args: { brief: 'x' }, says: 'piece is required to give a new brief or to close' },
         { args: { close: true }, says: 'piece is required to give a new brief or to close' },

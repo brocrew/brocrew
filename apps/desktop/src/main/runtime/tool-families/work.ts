@@ -302,13 +302,13 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          `Its new title: one line, at most ${String(PIECE_TITLE_CHARS)} characters. Only the conversation that gave a piece names it — or, for a piece a person gave (your root, or work you took on), the conversation holding it.`,
+          `Its new title: one line, at most ${String(PIECE_TITLE_CHARS)} characters. The giver or holder normally names a task.`,
         ),
       status: z
         .string()
         .optional()
         .describe(
-          `Where it stands now, or why you are closing it, in a line of at most ${String(REPLY_SUMMARY_LIMIT)} characters. Refused on a piece that has ended.`,
+          `A status line of at most ${String(REPLY_SUMMARY_LIMIT)} characters, or the reason for closing. A long close reason is kept in a file. Refused on an ended piece.`,
         ),
       on: z
         .looseObject({
@@ -328,7 +328,7 @@ export function createUpdateWorkTool(
             .string()
             .optional()
             .describe(
-              "A real deadline or backstop within 30 days, such as 2026-10-15T09:00:00Z; the app wakes the holder then. For another piece's result, use on.agent.",
+              "A real future deadline or backstop, such as 2026-10-15T09:00:00Z; the app wakes the holder then. For another piece's result, use on.agent.",
             ),
           event: z
             .string()
@@ -345,25 +345,25 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          'The new done condition. Anything over 2,000 characters arrives as a file the reader is pointed to. The giver may change it, or the holder of person-given work. Omit it to keep the current condition.',
+          'The new done condition. Anything over 2,000 characters arrives as a file the reader is pointed to. The giver normally maintains it. Omit it to keep the current condition.',
         ),
       brief: z
         .string()
         .optional()
         .describe(
-          'A new brief for a piece you gave or took on for the person. Anything over 2,000 characters arrives as a file the reader is pointed to. A root’s brief stays as recorded. For a piece you gave, the holder is told; while its first brief is still held, the new brief goes out in its place. Refused with close.',
+          'A new brief for a named task. The giver normally maintains it. Anything over 2,000 characters arrives as a file the reader is pointed to. A root’s brief stays as recorded. The holder is told about work a conversation gave. If the first brief is held, the new brief rides with it. Refused with close.',
         ),
       close: z
         .boolean()
         .optional()
         .describe(
-          'true ends an open child task without a reply; any conversation may close it. Leave work the person gave to the person, or ask them before closing it. Its holder is told who did it and why with its next input; nothing starts it just to tell it. When the task has a conversation giver and a different conversation closes it, that giver is told too. A closed task stays closed: to have more work done, give it again to its conversation. Refused with brief, definition_of_done or resources.',
+          'true ends an open child task without a reply; any conversation may close it. Leave work the person gave to the person, or ask them before closing it. Its holder is told who did it and why with its next input; nothing starts it just to tell it. When the task has a conversation giver and a different conversation closes it, that giver is told too. A closed task stays closed: to have more work done, give it again to its conversation. With no reason, the notice says “no reason given”. You can keep ending evidence with resources. Refused with brief or definition_of_done.',
         ),
       resources: z
         .array(z.string())
         .optional()
         .describe(
-          `Files to keep for the piece, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed: as what you made on any piece you hold, your own conversation’s work included, and nobody is told; as its inputs on a piece you gave, and the agent holding it is told their ids.`,
+          `Files to keep for the piece, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed: as inputs when you add files to work you gave, and as evidence when closing. Other files are kept with the task.`,
         ),
     } satisfies Readonly<Record<keyof UpdateWorkArguments, z.ZodType>>,
     call: (args) =>
@@ -381,17 +381,25 @@ export function createUpdateWorkTool(
           problems.push(`${UPDATE_PIECE_ARGUMENT} must be a piece's label or id, or left out`)
         }
         // **Trimmed, and a blank one is none** — a title or line a person reads beside a label.
-        const said = (value: unknown, most: number, argument: string): string | null => {
+        const said = (value: unknown, most: number | null, argument: string): string | null => {
           if (value === undefined) return null
           const trimmed = typeof value === 'string' ? value.trim() : ''
-          if (trimmed === '' || trimmed.length > most) {
-            problems.push(`${argument} must be a line of 1 to ${String(most)} characters`)
+          if (trimmed === '' || (most !== null && trimmed.length > most)) {
+            problems.push(
+              most === null
+                ? `${argument} must say something`
+                : `${argument} must be a line of 1 to ${String(most)} characters`,
+            )
             return null
           }
           return trimmed
         }
         const newTitle = said(title, PIECE_TITLE_CHARS, UPDATE_TITLE_ARGUMENT)
-        const newStatus = said(status, REPLY_SUMMARY_LIMIT, UPDATE_STATUS_ARGUMENT)
+        const newStatus = said(
+          status,
+          close === true ? null : REPLY_SUMMARY_LIMIT,
+          UPDATE_STATUS_ARGUMENT,
+        )
         // **A new brief is kept VERBATIM**, as `give_work`'s is: it is sent as a message of its
         // own, whole.
         if (brief !== undefined && (typeof brief !== 'string' || brief.trim() === '')) {
@@ -444,8 +452,6 @@ export function createUpdateWorkTool(
             `say ${UPDATE_TITLE_ARGUMENT}, ${UPDATE_STATUS_ARGUMENT}, ${UPDATE_BRIEF_ARGUMENT}, ${UPDATE_DONE_ARGUMENT}, ${UPDATE_CLOSE_ARGUMENT}, ${UPDATE_RESOURCES_ARGUMENT}, or several`,
           )
         }
-        // **R1 · closing and re-briefing contradict each other**, and so do closing and keeping
-        // files for a piece that goes on (D-016 spec D3).
         if (closes && (brief !== undefined || condition !== undefined)) {
           problems.push(
             brief !== undefined
@@ -453,13 +459,6 @@ export function createUpdateWorkTool(
               : "close and definition_of_done can't go together: a closed piece takes no new done condition.",
           )
         }
-        if (closes && keeps) {
-          problems.push(
-            `${UPDATE_CLOSE_ARGUMENT} and ${UPDATE_RESOURCES_ARGUMENT} contradict each other: files are kept for a piece that goes on`,
-          )
-        }
-        // **D-016 spec D4 · a new brief and a close name their piece**: the one inferred is one
-        // the caller HOLDS, and these two are acts on a piece it GAVE.
         if ((brief !== undefined || closes) && piece === undefined) {
           problems.push(
             `${UPDATE_PIECE_ARGUMENT} is required to give a new brief or to close: name the piece`,

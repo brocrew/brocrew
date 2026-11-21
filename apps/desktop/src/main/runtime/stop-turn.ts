@@ -34,7 +34,7 @@ export interface StopTurnDependencies<Running extends RunningTurn> {
   currentConversation(conversation: string): string
   findSlot(conversation: string): { session: Running | null; closing: boolean } | undefined
   isRecorded(conversation: string): boolean
-  whoseAnswerItAwaits(conversation: string): string | null
+  waitsForAgent(conversation: string): boolean
   pendingApproval(conversation: string): string | null
   conversationLine(conversation: string): string
   waitForEnding(session: Running): Promise<readonly string[] | undefined>
@@ -80,8 +80,8 @@ export async function stopTurn<Running extends RunningTurn>(
   }
 
   // A provider interruption would settle a parked card. Return before asking it to stop.
-  const waitingOn = status === 'waiting_permission' ? deps.whoseAnswerItAwaits(id) : null
-  const refusal = admitInterrupt(id, status, waitingOn)
+  const waitsForAgent = status === 'waiting_permission' && deps.waitsForAgent(id)
+  const refusal = admitInterrupt(id, status, waitsForAgent)
   if (refusal !== null) {
     if (refusal.rail !== 'a-person-is-being-asked') return { ok: false, refusal }
     const approval = deps.pendingApproval(id)

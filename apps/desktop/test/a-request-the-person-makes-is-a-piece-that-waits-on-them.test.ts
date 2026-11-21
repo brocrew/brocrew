@@ -924,7 +924,7 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     expect(workerAgain.rail).toBe(again.rail)
   })
 
-  it('T7 · its owner retitles and rebriefs personal work, while only a giver closes agent work', async () => {
+  it('T7 · retitles and rebriefs personal work and records named title edits', async () => {
     const { id: pm, tools: pmTools } = await aPerson('pm')
     const taken = await takeOn(pmTools, 'the request')
     await bringIdentityIntoBeing('worker')
@@ -966,16 +966,14 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
       piece: taken.label,
       title: 'mine now',
     })
-    expect(meddled.outcome, JSON.stringify(meddled)).toBe('refused')
-    expect(meddled.rail).toBe('no-piece-by-that-name')
-    expect(taskOf(pm, taken.piece)?.title).toBe('Renamed by its owner')
+    expect(meddled).toMatchObject({ outcome: 'ok', title: 'mine now' })
+    expect(taskOf(pm, taken.piece)?.title).toBe('mine now')
 
     const byTheWorker = await callOn(workerTools, 'update_work', {
       piece: errand.label,
       title: 'mine',
     })
-    expect(byTheWorker.outcome, JSON.stringify(byTheWorker)).toBe('refused')
-    expect(byTheWorker.rail).toBe('the-giver-names-a-piece')
+    expect(byTheWorker).toMatchObject({ outcome: 'ok', title: 'mine' })
     const byTheGiver = await callOn(pmTools, 'update_work', {
       piece: errand.label,
       title: 'Renamed by its giver',

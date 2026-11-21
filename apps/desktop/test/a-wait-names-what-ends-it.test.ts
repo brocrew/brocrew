@@ -301,30 +301,23 @@ describe('a wait names what will end it', () => {
     it('the piece itself', () =>
       refusedFor({ on: { agent: 'W1.1' } }, 'a piece cannot wait on itself'))
 
-    it('another piece its holder holds too', () =>
-      refusedFor(
-        {},
-        "on.agent names W1.2, which this piece's holder holds too: an agent cannot wait on itself. Name what W1.2 waits on instead, or set the status without on",
-        async (_ada, brobot) => {
-          const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
-          return { on: { agent: other.label } }
-        },
-      ))
-
-    it('its giver marking it waiting on another piece the same holder holds', async () => {
-      const { brobot, ada, piece } = await aHelperWithAPiece()
-      const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
-      const before = statusRows(ada).length
-      const answer = await call(agentToolsFor(host, brobot), 'update_work', {
-        piece: 'W1.1',
-        status: 'waiting on the copy',
-        on: { agent: other.label },
-      })
-      expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
-      expect(JSON.stringify(answer.detail)).toContain('an agent cannot wait on itself')
-      expect(statusRows(ada)).toHaveLength(before)
-      expect(pieceOf(ada, piece)?.statusLine?.on).toBeUndefined()
-    })
+    it.each(['holder', 'giver'])(
+      'accepts a distinct task the same holder holds, by its %s',
+      async (who) => {
+        const { brobot, ada, piece } = await aHelperWithAPiece()
+        const other = await aPieceGiven(brobot, 'Write the copy', 'W1.1')
+        await ok(agentToolsFor(host, who === 'holder' ? ada : brobot), 'update_work', {
+          piece: 'W1.1',
+          status: 'waiting on the copy',
+          on: { agent: other.label },
+        })
+        expect(pieceOf(ada, piece)?.statusLine?.on).toEqual({
+          kind: 'agent',
+          piece: other.piece,
+          label: other.label,
+        })
+      },
+    )
 
     it('a piece that has ended', () =>
       refusedFor({}, 'which has ended: say what the piece waits on now', async (_ada, brobot) => {
@@ -337,12 +330,6 @@ describe('a wait names what will end it', () => {
     it('a time already past', () =>
       refusedFor({ on: { time: new Date(clock - 60_000).toISOString() } }, 'on.time is not ahead'))
 
-    it('a time more than 30 days ahead', () =>
-      refusedFor(
-        { on: { time: new Date(clock + 31 * 24 * 3_600_000).toISOString() } },
-        'on.time is more than 30 days ahead',
-      ))
-
     it('a job or task that is not running in its conversation', () =>
       refusedFor(
         { on: { event: 'task_nobody_started' } },
@@ -350,7 +337,16 @@ describe('a wait names what will end it', () => {
       ))
   })
 
-  it('a piece neither the caller nor its holder may name gets the answer a label that names nothing gets', async () => {
+  it('records a backstop more than 30 days ahead', async () => {
+    const { ada, piece } = await aHelperWithAPiece()
+    const at = clock + 31 * 24 * 3_600_000
+    expect(await waitsOn(ada, { time: new Date(at).toISOString() })).toMatchObject({
+      outcome: 'ok',
+    })
+    expect(pieceOf(ada, piece)?.statusLine?.on).toEqual({ kind: 'time', at })
+  })
+
+  it('a named task elsewhere in the workspace can end the wait', async () => {
     const { ada } = await aHelperWithAPiece()
     // Another person's conversation, of another profile, gives work to an agent of a third: none of
     // it is Ada's or her giver's to name.
@@ -374,11 +370,10 @@ describe('a wait names what will end it', () => {
     expect(JSON.stringify(nothing)).toContain(
       'on.agent names no open piece and no question you asked',
     )
-    expect(await said(theirLabel)).toEqual(nothing)
-    // Ended, it still says nothing about it.
+    expect(await waitsOn(ada, { agent: theirLabel })).toMatchObject({ outcome: 'ok' })
     await ok(agentToolsFor(host, stranger), 'update_work', { piece: theirLabel, close: true })
     await settle()
-    expect(await said(theirLabel)).toEqual(nothing)
+    expect(JSON.stringify(await said(theirLabel))).toContain('which has ended')
   })
 
   describe('a mark from before a wait named its target is listed for the person', () => {

@@ -216,6 +216,34 @@ describe('give_work goes to the conversation the giver names', () => {
     }
   })
 
+  it('a committed give restores the addressed child alone', async () => {
+    await anAgentCalledPm()
+    const lead = await personOpens('lead', 'auto')
+    const sender = await personOpens('sender', 'auto')
+    const child = async (title: string) => {
+      const given = await host.giveWork(
+        { ...task(title), to: 'new', conversation_title: title },
+        speakingAs(lead),
+      )
+      if (!given.ok) throw new Error(given.refusal.reason)
+      return given
+    }
+    const addressed = await child('Addressed child')
+    const sibling = await child('Other child')
+    expect(await host.archiveConversation(lead)).toMatchObject({ done: true })
+    const originalMarks = [lead, sibling.owner].map((id) => host.whenItWasArchived(id))
+    expect(originalMarks).toEqual([expect.any(Number), expect.any(Number)])
+    expect(host.whenItWasArchived(addressed.owner)).toEqual(expect.any(Number))
+
+    const continued = await host.giveWork(
+      { ...task('New work'), to: addressed.label },
+      speakingAs(sender),
+    )
+    expect(continued).toMatchObject({ ok: true, owner: addressed.owner })
+    expect(host.whenItWasArchived(addressed.owner)).toBeNull()
+    expect([lead, sibling.owner].map((id) => host.whenItWasArchived(id))).toEqual(originalMarks)
+  })
+
   it('delivers messages and questions while archived and restores only after a committed give', async () => {
     await anAgentCalledPm()
     const lead = await personOpens('lead', 'auto')

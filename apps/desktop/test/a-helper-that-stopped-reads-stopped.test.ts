@@ -332,7 +332,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     ): Promise<{
       line: string[]
       list: string[]
-      handBack: unknown
       unread: { line: number[]; list: number[] }
     }> => {
       const waits = host.whatEachConversationIsWaitingOn()
@@ -342,7 +341,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       return {
         line: giver.stoppedWork.map((one) => one.piece),
         list: list.rows.map((row) => row.piece),
-        handBack: await host.takeBackForAPerson('W1.1', window),
         unread: {
           line: [waits.rowsUnread, waits.ledgersSkipped ?? 0],
           list: [list.rowsUnread, list.ledgersSkipped ?? 0],
@@ -351,7 +349,7 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     }
     const readWhole = { line: [0, 0], list: [0, 0] }
     const oneRowUnread = { line: [1, 0], list: [1, 0] }
-    const notStopped = { line: [], list: [], handBack: { ok: false, rail: 'not-a-stopped-piece' } }
+    const notStopped = { line: [], list: [] }
 
     it('is stopped when its record holds nothing for its next start, read whole', async () => {
       const { brobot, ada, piece } = await aClosedHelper()
@@ -361,7 +359,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       expect(await whatEachSays(brobot)).toEqual({
         line: [piece],
         list: [piece],
-        handBack: { ok: true, piece, label: 'W1.1', askedItsTurnToStop: false },
         unread: readWhole,
       })
     })
@@ -382,7 +379,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       expect(await whatEachSays(brobot)).toEqual({
         line: [piece],
         list: [piece],
-        handBack: { ok: true, piece, label: 'W1.1', askedItsTurnToStop: false },
         unread: readWhole,
       })
     })
@@ -479,7 +475,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       expect(await whatEachSays(brobot)).toEqual({
         line: [other],
         list: [other],
-        handBack: { ok: false, rail: 'not-a-stopped-piece' },
         unread: oneRowUnread,
       })
       expect(await host.takeBackForAPerson('W1.2', window)).toEqual({
@@ -555,18 +550,16 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     expect(waitsOf(brobot)?.stoppedWork).toEqual([])
   })
 
-  it('refuses a person’s hand-back of a piece that is no longer stopped, and of one never given', async () => {
-    const { brobot, ada } = await aHelperThatStopped()
+  it('a person may withdraw open work while it waits, but a root has no ending', async () => {
+    const { brobot, ada, piece } = await aHelperThatStopped()
     await callOn(agentToolsFor(host, ada), 'ask_question', {
       piece: 'W1.1',
       question: 'which pages first?',
       who_answers: 'the-parent',
     })
     await settle()
-    expect(await host.takeBackForAPerson('W1.1', window)).toEqual({
-      ok: false,
-      rail: 'not-a-stopped-piece',
-    })
+    expect(await host.takeBackForAPerson('W1.1', window)).toMatchObject({ ok: true, piece })
+    expect(pieceOf(ada, piece)?.state).toBe('withdrawn')
     // A conversation's own root is no piece anybody gave it: refused as no piece a person may take
     // back, with the rail a service's take-back uses.
     const root = store.rootOf(brobot)
@@ -575,7 +568,6 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       ok: false,
       rail: 'not-a-piece-a-service-is-on',
     })
-    expect(waitsOf(brobot)?.waitingOnTheWorkOf).toHaveLength(1)
   })
 
   /** Whether `conversation` was handed, or holds, this app's words starting with `text`. */
@@ -701,7 +693,7 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
     expect(ledger(ada).filter((event) => event.type === 'work_closed')).toHaveLength(1)
   })
 
-  it('refuses a close of a root, an unknown piece and work its holder is asking about', async () => {
+  it('a person may close open work its holder is asking about, with root and missing controls', async () => {
     const { brobot, ada, piece } = await aHelperThatStopped()
     expect(pieceOf(ada, piece)?.state).toBe('stalled')
     // A conversation's own root: no ledger row closes it.
@@ -723,10 +715,7 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       who_answers: 'the-parent',
     })
     await settle()
-    expect(await host.closeForAPerson('W1.1', window)).toEqual({
-      ok: false,
-      rail: 'not-a-stopped-piece',
-    })
-    expect(ledger(ada).some((event) => event.type === 'work_closed')).toBe(false)
+    expect(await host.closeForAPerson('W1.1', window)).toMatchObject({ ok: true, piece })
+    expect(pieceOf(ada, piece)?.state).toBe('closed')
   })
 })

@@ -275,7 +275,7 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
   })
 
   describe('§2 · F090 · update_work on an ended piece its caller holds', () => {
-    it('🔴 taken back while its give still waited: close, new brief and title are told how and when, by nobody, as the model reads it', async () => {
+    it('🔴 taken back while its give still waited: the close and brief report the ending and the holder may retitle', async () => {
       const { worker, pmTools, workerTools, label } = await aPmAndItsWorker('the first piece')
       const waited = await aGive(pmTools, 'worker', 'the piece that never reached it', worker)
       expect(waited.agent).toBe(worker)
@@ -290,11 +290,10 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
         'withdrawn',
         `${waited.label} was taken back at ${clockTime(at)}`,
       )
-      const withOtherTask = `${words} To note something, set the status of a task you hold: ${label} · the first piece.`
+      const withOtherTask = `${words} Only its title can still change. To note something, set the status of a task you hold: ${label} · the first piece.`
       for (const args of [
         { piece: waited.label, close: true },
         { piece: waited.label, brief: 'again' },
-        { piece: waited.label, title: 'mine now' },
       ]) {
         const refused = await callWithWords(workerTools, 'update_work', args)
         expectRefused(refused, 'that-piece-has-ended', withOtherTask, JSON.stringify(args))
@@ -303,10 +302,19 @@ describe('W4.154 · F089–F091 · a piece you hold, or yourself, said word for 
           label: waited.label,
           state: 'withdrawn',
           at,
-          yoursToRetitle: false,
+          yoursToRetitle: true,
         })
         expect(refused.structured.detail, JSON.stringify(args)).not.toHaveProperty('called')
       }
+      expect(
+        await callOn(workerTools, 'update_work', { piece: waited.label, title: 'mine now' }),
+      ).toMatchObject({ outcome: 'ok', title: 'mine now' })
+      expect(store.piecesOwnedBy(worker).find((one) => one.label === waited.label)).toMatchObject({
+        state: 'withdrawn',
+        endedAt: at,
+        endedBy: null,
+        title: 'mine now',
+      })
     })
   })
 

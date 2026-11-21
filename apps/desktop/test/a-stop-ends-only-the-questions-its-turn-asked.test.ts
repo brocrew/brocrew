@@ -222,28 +222,33 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     return { worker, pmTools, surface, earlier, later, itsCard: theCardItWaitsOn(worker) }
   }
 
-  /** What every stop of that second turn must leave: the earlier question open, the rest ended. */
-  const theEarlierOneIsStillOpen = (
+  /** A live stop settles the provider's card and keeps the app's own questions. */
+  const bothAppQuestionsStayOpen = (
     worker: string,
     earlier: string,
     later: string,
     itsCard: string,
   ): void => {
-    const earlierState = stateOf(worker, earlier)
-    expect(earlierState !== undefined && REQUEST_IS_OPEN[earlierState], earlierState).toBe(true)
-    expect(waitingOnAPerson()).toContain(earlier)
-    // ⚑ The turn's own question ends, and so does the card its provider held.
-    expect(stateOf(worker, later)).toBe('interrupted')
+    for (const request of [earlier, later]) {
+      const state = stateOf(worker, request)
+      expect(state !== undefined && REQUEST_IS_OPEN[state], state).toBe(true)
+      expect(waitingOnAPerson()).toContain(request)
+    }
     expect(stateOf(worker, itsCard)).toBe('interrupted')
-    expect(waitingOnAPerson()).not.toContain(later)
-    expect(endedByAStop(worker).sort()).toEqual([later, itsCard].sort())
+    expect(endedByAStop(worker)).toEqual([itsCard])
   }
 
-  it('🔴 a person’s Stop of a later turn leaves an earlier turn’s question open, ends the stopped turn’s own and its provider’s card, and the asker is told once', async () => {
+  const legacyInterrupted = (worker: string, requestId: string): void => {
+    const session = host['slots'].get(worker)?.session
+    if (session == null) throw new Error('legacy fixture needs a running session')
+    host['publishOurs'](session, { type: 'request_interrupted', requestId })
+  }
+
+  it('🔴 a person’s Stop leaves both app questions open and settles the provider’s card', async () => {
     const { worker, surface, earlier, later, itsCard } = await aSecondTurnThatRuns()
     await host.interrupt(worker, surface)
     await waitFor(() => turnsEnded(worker) === 2, 'the stopped turn to end')
-    theEarlierOneIsStillOpen(worker, earlier, later, itsCard)
+    bothAppQuestionsStayOpen(worker, earlier, later, itsCard)
     // ⛔ The stop itself hands over no words.
     expect(handedOver(worker)).toHaveLength(2)
 
@@ -251,12 +256,8 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     await host.send(worker, 'go on', surface)
     await waitFor(() => handedOver(worker).length === 3, 'its next words to be handed over')
     const next = handedOver(worker)[2] ?? ''
-    expect(next).toContain(
-      `Your question ${later} (“${LATER}”) was ended unanswered when your turn was stopped. Ask it again if you still need the answer.`,
-    )
-    expect(next).toContain(theQuestionsAStopEnded([{ id: later, prompt: LATER }]))
     expect(next).toContain('go on')
-    // ⛔ Nothing of the earlier question is said: it is still open.
+    expect(next).not.toContain(WAS_ENDED)
     expect(withoutWhatThisAppAdds(next)).not.toContain(earlier)
 
     // …and once only.
@@ -279,17 +280,17 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     expect(waitingOnAPerson()).not.toContain(earlier)
   })
 
-  it('🔴 a message sent over a running turn leaves the earlier question open, and its own words carry the line', async () => {
+  it('🔴 a person replacing a running turn leaves both app questions open', async () => {
     const { worker, surface, earlier, later, itsCard } = await aSecondTurnThatRuns()
     await host.sendInterrupting(worker, 'stop that, do this instead', surface)
     await waitFor(() => handedOver(worker).length === 3, 'the message to be handed over')
-    theEarlierOneIsStillOpen(worker, earlier, later, itsCard)
+    bothAppQuestionsStayOpen(worker, earlier, later, itsCard)
     const next = handedOver(worker)[2] ?? ''
     expect(next).toContain('stop that, do this instead')
-    expect(next).toContain(theQuestionsAStopEnded([{ id: later, prompt: LATER }]))
+    expect(next).not.toContain(WAS_ENDED)
   })
 
-  it('🔴 an agent’s interrupt leaves the earlier question open too, and ends what was asked since', async () => {
+  it('🔴 an agent’s interrupt leaves both app questions open', async () => {
     // ⚑ An agent may not stop a conversation that waits on a person's card, so here the helper
     // works with no card: its provider began working by itself after its first turn ended.
     const { worker, pmTools, workerTools, piece } = await aWorkerHoldingWork()
@@ -303,7 +304,13 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     await waitFor(() => turnsEnded(worker) === 1, 'its first turn to end')
     itsHandle.simulateThinking({ text: 'deciding what to do', redacted: false })
     await waitFor(() => itsHandle.status() === 'working', 'the helper to be working')
-    const later = await asks(workerTools, piece, LATER)
+    const asked = await callOn(workerTools, 'ask_question', {
+      piece,
+      question: LATER,
+      who_answers: 'the-parent',
+    })
+    expect(asked.outcome).toBe('ok')
+    const later = asked.question as string
 
     const stopped = await callOn(pmTools, 'interrupt_agent', {
       agent: worker,
@@ -313,15 +320,21 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     const earlierState = stateOf(worker, earlier)
     expect(earlierState !== undefined && REQUEST_IS_OPEN[earlierState], earlierState).toBe(true)
     expect(waitingOnAPerson()).toContain(earlier)
-    expect(stateOf(worker, later)).toBe('interrupted')
-    expect(endedByAStop(worker)).toEqual([later])
+    const laterState = stateOf(worker, later)
+    expect(laterState !== undefined && REQUEST_IS_OPEN[laterState]).toBe(true)
+    expect(endedByAStop(worker)).toEqual([])
+    expect(await callOn(workerTools, 'withdraw_question', { question: later })).toMatchObject({
+      outcome: 'ok',
+    })
   })
 
   it('⚑ the line outlives a restart: a conversation stopped before its next turn is told at its next start, once', async () => {
     const { worker, surface, earlier, later, itsCard } = await aSecondTurnThatRuns()
+    legacyInterrupted(worker, later)
     await host.interrupt(worker, surface)
     await waitFor(() => turnsEnded(worker) === 2, 'the stopped turn to end')
-    theEarlierOneIsStillOpen(worker, earlier, later, itsCard)
+    expect(endedByAStop(worker).sort()).toEqual([later, itsCard].sort())
+    expect(waitingOnAPerson()).toContain(earlier)
 
     // The app quits and starts again; a person writes to the conversation.
     await host.closeAll()
@@ -354,6 +367,7 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
 
   it('⛔ a question whose id is open again is not said to have ended: a restart says nothing of it', async () => {
     const { worker, surface, later } = await aSecondTurnThatRuns()
+    legacyInterrupted(worker, later)
     await host.interrupt(worker, surface)
     await waitFor(() => turnsEnded(worker) === 2, 'the stopped turn to end')
     expect(store.requestsItsLastEndedTurnInterrupted(worker)).toContain(later)
@@ -388,15 +402,14 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
       await waitFor(() => cardsRaised(worker) === 1, 'its first turn to wait on its card')
       const first = await asks(workerTools, piece, EARLIER)
       step = moves
+      legacyInterrupted(worker, first)
       await host.interrupt(worker, surface)
       await waitFor(() => turnsEnded(worker) === 1, 'the first stopped turn to end')
-      // Its next turn is told of the first question, asks a second, and is stopped too.
+      expect(store.requestsItsLastEndedTurnInterrupted(worker)).toContain(first)
       await host.send(worker, 'go on', surface)
       await waitFor(() => cardsRaised(worker) === 2, 'its second turn to wait on its card')
-      expect(handedOver(worker).at(-1)).toContain(
-        theQuestionsAStopEnded([{ id: first, prompt: EARLIER }]),
-      )
       const second = await asks(workerTools, piece, LATER)
+      legacyInterrupted(worker, second)
       await host.interrupt(worker, surface)
       await waitFor(() => turnsEnded(worker) === 2, 'the second stopped turn to end')
       // ⛔ A request ended with no turn open carries no turn: it is in nobody's line.
@@ -429,7 +442,7 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     },
   )
 
-  it('⚠️ a limit: a question asked between turns, by work left running, counts as the next turn’s — its stop ends it, and the asker is told', async () => {
+  it('a stop keeps an app question asked between turns open', async () => {
     const { worker, workerTools, piece } = await aWorkerHoldingWork()
     const surface = new RecordingSink('webContents:8')
     host.claimSession(worker, surface)
@@ -442,14 +455,7 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
     await waitFor(() => cardsRaised(worker) === 2, 'its second turn to wait on its card')
     await host.interrupt(worker, surface)
     await waitFor(() => turnsEnded(worker) === 2, 'the stopped turn to end')
-    expect(stateOf(worker, between)).toBe('interrupted')
-    // …and it is not silent: the next words say so.
-    const before = handedOver(worker).length
-    await host.send(worker, 'go on', surface)
-    await waitFor(() => handedOver(worker).length === before + 1, 'its next words')
-    expect(handedOver(worker).at(-1)).toContain(
-      theQuestionsAStopEnded([{ id: between, prompt: EARLIER }]),
-    )
+    expect(waitingOnAPerson()).toContain(between)
   })
 
   it('⚑ a stop of a turn that asked nothing ends only its provider’s card, and says nothing of questions', async () => {

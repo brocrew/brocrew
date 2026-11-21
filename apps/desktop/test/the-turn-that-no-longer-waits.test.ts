@@ -619,25 +619,20 @@ describe('608 · the turn that no longer waits', () => {
       ).toBe('work-withdrawn')
     })
 
-    it('⛔ an interruption writes the ending, and delivers no words doing it', async () => {
+    it('an interruption leaves the routed question open and delivers no words', async () => {
       const { worker, workerTools, piece } = await aWorkerHoldingWork()
       await callOn(workerTools, 'ask_question', {
         who_answers: 'the-parent',
         piece,
         question: 'which schema?',
       })
-      const before = ledger(worker).length
+      const { requestId } = openRequestOf(worker)
+      const inputBefore = wordsIn(worker)
       const surface = new RecordingSink('webContents:8')
       host.claimSession(worker, surface)
       await host.interrupt(worker, surface)
-      expect(openRequestOf(worker).state).toBe('interrupted')
-      // ⛔ **An ending is a ROW.** ⚑ A released call used to hand the worker *nobody answered*;
-      // the words a worker gets are answers, and nobody decided anything here.
-      expect(
-        ledger(worker)
-          .slice(before)
-          .filter((event) => event.type === 'user_turn' || event.type === 'message_queued'),
-      ).toEqual([])
+      expect(openRequestOf(worker)).toMatchObject({ requestId, state: 'open' })
+      expect(wordsIn(worker)).toEqual(inputBefore)
     })
   })
 })

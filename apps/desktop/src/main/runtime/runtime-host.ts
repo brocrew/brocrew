@@ -1661,9 +1661,6 @@ function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): un
   )
 }
 
-/** How far ahead a wait on a time may name. */
-const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
-
 /**
  * How long a failed read is remembered
  * before the worker is asked again at the same writer stamp: doubled after each further failure
@@ -2635,13 +2632,6 @@ interface HostedSession {
   stopEndedSaid: number
   explicitStopNotice: ExplicitStopNotice | null
   explicitStopSaid: ExplicitStopNotice | null
-  /**
-   * ⚑ **The questions this app raised for it since its last turn ended**, by id — the ones a stop
-   * of the turn that runs ends ({@link RuntimeHost.askTheWorkToStop}). ⚑ Emptied as a turn ends.
-   * ⚠️ **A limit:** one asked between turns, by work left running in the background, counts as the
-   * next turn's; a stop of that turn ends it, and its asker is told.
-   */
-  readonly askedSinceItsLastTurnEnded: Set<string>
   /**
    * ⚑ **Its own questions that stops ended, which it has not been told of yet** — said in front of
    * its next turn that takes words and taken off as {@link stopEndedUntold} is. ⚑ A life that
@@ -11273,14 +11263,14 @@ export class RuntimeHost implements LiveHost {
     if (this.startupRepairs.size > 0) await this.settlePieceBeforeUse(input.piece)
     const asking = sessionSpeakingAs(by)
     const waiting = this.untilTheCopiesCanBeEnded(
-      asking !== null || this.aPersonMayTakeItBack(input.piece)
+      asking !== null || this.aPersonMayTakeItBack(input.piece, by)
         ? this.theNamedChildPiece(input.piece)
         : null,
     )
     if (waiting !== null) await waiting
     const asAgent = sessionSpeakingAs(by)
     const notFound: TakeBackOutcome = { ok: false, refused: { rail: 'no-piece-by-that-name' } }
-    if (asAgent === null && !this.aPersonMayTakeItBack(input.piece)) return notFound
+    if (asAgent === null && !this.aPersonMayTakeItBack(input.piece, by)) return notFound
     const row = this.pieceNamed(input.piece)
     if (row === null) return notFound
     if (row.parent === null) {
@@ -11329,7 +11319,7 @@ export class RuntimeHost implements LiveHost {
     const queued = this.queuedAtAService(piece)
     const stands = queued
       ? this.whereTheQueuedPieceStands(piece)
-      : this.whereItsHolderStands(piece, by)
+      : this.whereItsHolderStands(piece, by, (one) => this.aPersonMayTakeItBack(one, by))
     if (!stands.ok) {
       return stands.because === 'out-of-its-reach'
         ? notFound
@@ -11482,36 +11472,21 @@ export class RuntimeHost implements LiveHost {
 
   private aPersonMayCloseIt(spelled: string): boolean {
     const row = this.pieceNamed(spelled)
-    if (row === null || row.parent === null) return false
-    if (row.givenBy !== null && this.itsHolderStoppedWith(row)) return true
-    return this.itIsAStoppedIncident(row)
+    return row !== null && row.parent !== null
   }
 
-  /** Whether `row` is read as stopped work, as the work incidents list reads it. */
-  private itIsAStoppedIncident(row: WorkRow): boolean {
-    const [read] = this.reconciliationReading(row.piece).rows
-    return read?.disposition === 'unresolved' && read.issue?.kind === 'stopped'
-  }
-
-  private aPersonMayTakeItBack(spelled: string): boolean {
+  private aPersonMayTakeItBack(spelled: string, by?: Caller): boolean {
+    if (by !== undefined && aPersonIsAsking(by)) return this.aPersonMayCloseIt(spelled)
     const row = this.pieceNamed(spelled)
     if (row === null || row.givenBy === null) return false
     if (this.itsHolderStoppedWith(row)) return true
-    return this.aPersonMayTakeBack(row.owner, row.piece, row.givenBy)
+    return this.thePieceAServiceIsOn(row.owner) === row.piece
   }
 
-  /**
-   * Whether a person may take back `piece`, which `owner` holds: the piece a service of known kind
-   * is on, given it by a conversation.
-   */
-  private aPersonMayTakeBack(
-    owner: string,
-    piece: string,
-    givenBy: string | null,
-    onAt: (owner: string) => string | null = (one) => this.thePieceAServiceIsOn(one),
-  ): boolean {
-    if (givenBy === null) return false
-    return onAt(owner) === piece
+  private itsHolderStoppedWith(row: Pick<PieceRow, 'owner' | 'piece'>): boolean {
+    const held = this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
+    if (held === undefined) return false
+    return this.theWorkThatStopped([held], this.oneWaitReadPerAnswer()).length > 0
   }
 
   /** The piece `owner`, a service of known kind, is on; `null` for none or any other conversation. */
@@ -11527,34 +11502,13 @@ export class RuntimeHost implements LiveHost {
     return this.thePieceAServiceIsOn(owner)
   }
 
-  /**
-   * Each edge, marked where a person may take its piece back ({@link aPersonMayTakeBack}), each
-   * holder read once.
-   */
   private markedForAPerson(edges: LedgerWalk<WorkEdge>): LedgerWalk<WorkEdge> {
-    const read = new Map<string, string | null>()
-    const onAt = (owner: string): string | null => {
-      if (!read.has(owner)) read.set(owner, this.thePieceAServiceIsOn(owner))
-      return read.get(owner) ?? null
-    }
     return {
       ...edges,
       rows: edges.rows.map((edge) =>
-        this.aPersonMayTakeBack(edge.to, edge.piece, edge.from, onAt)
-          ? { ...edge, aPersonMayTakeItBack: true as const }
-          : edge,
+        TASK_IS_OPEN[edge.state] ? { ...edge, aPersonMayTakeItBack: true as const } : edge,
       ),
     }
-  }
-
-  /**
-   * Whether the holder of `row`, a piece a conversation gave, has stopped with it, as the window's
-   * reading says ({@link theWorkThatStopped}).
-   */
-  private itsHolderStoppedWith(row: Pick<PieceRow, 'owner' | 'piece'>): boolean {
-    const held = this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
-    if (held === undefined) return false
-    return this.theWorkThatStopped([held], this.oneWaitReadPerAnswer()).length > 0
   }
 
   private async tellItsGiverThePieceEnded(
@@ -14353,7 +14307,6 @@ export class RuntimeHost implements LiveHost {
       prompt,
       questions,
     })
-    session.askedSinceItsLastTurnEnded.add(requestId)
     // The stored parent is the answerer for an agent-addressed question. Person-addressed
     // questions have no answerer in this field.
     this.publishOurs(session, {
@@ -22187,8 +22140,6 @@ export class RuntimeHost implements LiveHost {
     }
     session.stopEndedSaid = 0
     session.questionsAStopEndedSaid = 0
-    // ⚑ The turn that asked them is over: a stop of a later turn ends none of them.
-    session.askedSinceItsLastTurnEnded.clear()
     session.stopEndedUntold.push(...ended)
     for (const waiting of session.whenATurnEnds.splice(0)) waiting(ended)
   }
@@ -23742,11 +23693,8 @@ export class RuntimeHost implements LiveHost {
     for (const { session } of this.slots.values()) {
       const waiting = session?.mailbox.find((held) => held.id === messageId)
       if (session !== null && waiting !== undefined) {
-        // ⛔ Words held for a service whose sender no longer reaches it, or may not, ask no stop of
-        // the turn running there: that turn may be the next caller's.
-        const reach = this.theReachOfACallersWords(session.id, waiting)
-        if (reach === 'outlived') return { stop: 'not-below-you', askedOf: null }
-        if (reach === 'unknown') return { stop: 'could-not-be-asked', askedOf: null }
+        if (this.theReachOfACallersWords(session.id, waiting) === 'unknown')
+          return { stop: 'could-not-be-asked', askedOf: null }
         return this.stopTheTurnItWaitsBehind(session, waiting, by)
       }
     }
@@ -23840,8 +23788,7 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     waiting: QueuedMessage,
     by: Caller,
-    /** ⚑ A piece's ending: a card owed to the caller ending it is its own to give up. */
-    itsOwnQuestionGoes = false,
+    personEndingMayStop = false,
   ): TheStopItsWordsAsked {
     const nothingToStop = { stop: 'not-needed', askedOf: null } as const
     const couldNot = { stop: 'could-not-be-asked', askedOf: null } as const
@@ -23857,38 +23804,21 @@ export class RuntimeHost implements LiveHost {
     if (session.stopStillAsked !== null && status !== 'waiting_permission') {
       return { stop: 'already-asked', askedOf: null }
     }
-    let askedOf: string | null = null
     try {
-      if (status === 'waiting_permission') {
-        askedOf = this.whoOwesIt(
+      if (
+        !(personEndingMayStop && whoDidIt(by).who === 'a-person') &&
+        admitInterrupt(
           session.id,
-          this.cardReads(),
-          rowsUnreadOnce(),
-          undefined,
-          () => [],
-          () => [],
-        ).askedOf
+          status,
+          status === 'waiting_permission' && this.stopWaitsForAgent(session.id),
+        ) !== null
+      ) {
+        return { stop: 'a-person-is-being-asked', askedOf: null }
       }
     } catch (error) {
       console.warn(
         `runtime session ${session.id}: whose answer it waits on could not be read: ${errorMessage(error)}`,
       )
-      return couldNot
-    }
-    const asking = sessionSpeakingAs(by)
-    // ⚑ A person ending a piece gives up any card its turn waits on, as a person's Stop does.
-    const itsOwn =
-      itsOwnQuestionGoes &&
-      (whoDidIt(by).who === 'a-person' ||
-        (askedOf !== null && asking !== null && this.theIdsItStandsFor(asking).includes(askedOf)))
-    const refusal = itsOwn ? null : admitInterrupt(session.id, status, askedOf)
-    if (refusal !== null) {
-      if (refusal.rail === 'a-person-is-being-asked') {
-        return { stop: 'a-person-is-being-asked', askedOf: null }
-      }
-      if (refusal.rail === 'it-is-waiting-on-an-answer') {
-        return { stop: 'it-is-waiting-on-an-answer', askedOf }
-      }
       return couldNot
     }
     // ⚑ Who asked, so the line in front of the words names them — an answerer as its sender line would.
@@ -23897,7 +23827,7 @@ export class RuntimeHost implements LiveHost {
     const ending = this.whatTheStopOfItsTurnEnds(session, this.interruptWaitMs)
     let stopRequest: Promise<void>
     try {
-      stopRequest = this.askTheWorkToStop(session, by, true)
+      stopRequest = this.askTheWorkToStop(session, by)
     } catch (error) {
       delete waiting.interrupting
       console.warn(
@@ -24747,11 +24677,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * What a wait `asked` names, for the piece `row` that `caller` marks: an open piece other than
-   * this one that `caller` or the piece's holder may name ({@link mayNameThePiece}), or an open
-   * question either asked an agent; an open question or to-do either raised that waits on a person;
-   * a time ahead, within {@link A_WAIT_ENDS_WITHIN_MS}; or a scheduled job or background task in
-   * the conversation holding the piece. ⚑ A refusal says what to name instead. ⛔ A piece neither
-   * may name is answered as one that does not exist, so a label is no oracle.
+   * this one, an open question, a future time, or a scheduled job or background task in
+   * the conversation holding the piece.
    */
   private whatAWaitIsOn(
     asked: WaitOnAsked,
@@ -24772,12 +24699,7 @@ export class RuntimeHost implements LiveHost {
       return null
     }
     if (asked.agent !== undefined) {
-      const found = this.pieceNamed(asked.agent)
-      const named =
-        found !== null &&
-        (this.mayNameThePiece(found, caller) || this.mayNameThePiece(found, row.owner))
-          ? found
-          : null
+      const named = this.pieceNamed(asked.agent)
       if (named !== null) {
         if (named.piece === row.piece)
           return no('on.agent names this piece: a piece cannot wait on itself')
@@ -24788,12 +24710,6 @@ export class RuntimeHost implements LiveHost {
         if (folded !== null && (folded === undefined || !TASK_IS_OPEN[folded.state])) {
           return no(
             `on.agent names ${named.label}, which has ended: say what the piece waits on now`,
-          )
-        }
-        // A piece its own holder also holds is work that holder is doing, not a wait on anyone.
-        if (this.theOneInItsPlace(named.owner) === this.theOneInItsPlace(row.owner)) {
-          return no(
-            `on.agent names ${named.label}, which this piece's holder holds too: an agent cannot wait on itself. Name what ${named.label} waits on instead, or set the status without on`,
           )
         }
         return { ok: true, on: { kind: 'agent', piece: named.piece, label: named.label } }
@@ -24838,9 +24754,6 @@ export class RuntimeHost implements LiveHost {
         return no('on.time must be a date and time, such as 2026-10-15T09:00:00Z')
       }
       if (at <= now) return no('on.time is not ahead: name a time that is still to come')
-      if (at > now + A_WAIT_ENDS_WITHIN_MS) {
-        return no('on.time is more than 30 days ahead: name a time within 30 days')
-      }
       return { ok: true, on: { kind: 'time', at } }
     }
     const event = asked.event
@@ -24860,27 +24773,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Whether `sessionId` may name the piece `row`: `list_tasks`' rule for a piece's record
-   * ({@link pieceRecord}) — it holds or gave it, through the conversations it stands for, or a
-   * conversation of its own profile does.
-   */
-  private mayNameThePiece(row: WorkRow, sessionId: string): boolean {
-    const giver = row.givenBy
-    if (row.owner === sessionId) return true
-    if (giver !== null && this.theIdsItStandsFor(sessionId).includes(giver)) return true
-    const heldOrGivenBy = giver === null ? [row.owner] : [row.owner, giver]
-    return heldOrGivenBy.some((one) => this.ofOneIdentity(one, sessionId))
-  }
-
-  /**
    * 🔴 **D-016 · name a piece, say where it stands, give it a new brief, close it, or keep files for
    * it** — `update_work` (plan ruling 7; R1, R2).
    *
-   * The giver or holder can change the fields for their role. Any conversation can close a named
-   * open child piece. Its status can give the reason for closing, and only an existing field
-   * editor may record that status on the piece.
-   * 🔴 **F090 · a piece that has ended is refused as one first**, whatever was asked of it: whose
-   * act it would be is said only of an open piece, where what it offers instead is true.
+   * A caller can edit a named task. An open child can also be closed, with a reason and evidence.
+   * An ended piece accepts only a title edit.
    *
    * ⛔ **Every refusal is asked before anything is written**: a close asks take back's rails
    * ({@link whereItsHolderStands}), and the files are read and kept last of all — a kept file a
@@ -24977,57 +24874,28 @@ export class RuntimeHost implements LiveHost {
     const itsGiver = row.givenBy !== null && this.theIdsItStandsFor(caller).includes(row.givenBy)
     const itsOwner = row.owner === caller
     const root = row.parent === null
-    const changesItsFields = itsOwner || itsGiver
     const named = { piece: row.piece, label: row.label }
     const condition = input.definitionOfDone ?? null
     const revises = input.brief !== null || condition !== null
     const rebriefs = input.brief !== null
     const keeps = input.resources.length > 0
-    if (
-      !changesItsFields &&
-      (!input.close || root || input.title !== null || input.on !== null || revises || keeps)
-    ) {
-      return notFound
-    }
-    // A third-party close can give its reason without changing the piece's status line.
-    const newStatus = changesItsFields ? input.status : null
+    const newStatus = input.status
     if (root && (rebriefs || input.close)) return refused('that-is-your-own-work', named)
-    // ⚑ **D-016 · commit 6 · R5 — a piece a person gave (a root, or work its owner took on) is named
-    // by its owner**; any other by the one that gave it.
-    const aTitleOnlyItsGiverGives = input.title !== null && !itsGiver && row.givenBy !== null
-    // ⚑ **Read once**, and only when an act on a given piece turns on where it stands — 🔴 **F090 ·
-    // a title only its giver gives among them**: refused either way, and on a piece that has ended
-    // the refusal says how it ended.
     const aRootOrNothingButATitle =
       root || (newStatus === null && !revises && !input.close && !keeps)
-    const folded =
-      aRootOrNothingButATitle && !aTitleOnlyItsGiverGives
-        ? undefined
-        : this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
-    // 🔴 **F090 · a piece that has ended answers with how it ended, FIRST, whatever was asked** —
-    // before whose act it would be. ⛔ Asked after the giver's acts, the owner of an answered piece
-    // was told it may ask about it, set its status line, keep files for it or hand it back: each
-    // refused on a piece that has ended. ⚑ A title its namer gives is the one change an ended piece
-    // takes, and reads nothing here.
+    const folded = aRootOrNothingButATitle
+      ? undefined
+      : this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
     if (folded !== undefined && !TASK_IS_OPEN[folded.state]) {
       return {
         ok: false,
         rail: 'that-piece-has-ended',
-        detail: this.howThePieceEnded(
-          folded,
-          caller,
-          itsGiver || (itsOwner && row.givenBy === null),
-        ),
+        detail: {
+          ...this.howThePieceEnded(folded, caller, itsGiver || (itsOwner && row.givenBy === null)),
+          yoursToRetitle: true,
+        },
         readAt: this.now(),
       }
-    }
-    // ⚑ **…and on a piece that is open, whose act it is** — the giver's acts, said with what its
-    // owner may do instead, which an open piece takes.
-    if (aTitleOnlyItsGiverGives) {
-      return refused('the-giver-names-a-piece', named)
-    }
-    if (revises && !itsGiver && !(itsOwner && row.givenBy === null)) {
-      return refused('the-giver-briefs-a-piece', named)
     }
     // ⚑ **What a wait is on is checked before anything is written**, and after an ended piece and
     // whose act it is: a wait names something that will end it, and that something is still open.
@@ -25098,6 +24966,18 @@ export class RuntimeHost implements LiveHost {
     if (done !== null && !done.ok) return { ok: false, resourceRefusal: done.refusal }
     const overflow = brief?.overflow ?? null
     const doneOverflow = done?.overflow ?? null
+    const closeReason =
+      input.close && newStatus !== null
+        ? keepSendOverflow(this.deps.resourcesRoot?.(), 'close_reason', newStatus)
+        : null
+    if (closeReason !== null && !closeReason.ok) {
+      return { ok: false, resourceRefusal: closeReason.refusal }
+    }
+    const closeOverflow = closeReason?.overflow ?? null
+    const statusLine =
+      closeReason === null
+        ? newStatus
+        : closeReason.inline.slice(0, headOf(closeReason.inline, REPLY_SUMMARY_LIMIT))
     // A long done condition keeps its first part on the row and its whole text as the kept file.
     const newCondition = done === null ? null : done.inline
 
@@ -25109,11 +24989,11 @@ export class RuntimeHost implements LiveHost {
         by: caller,
       })
     }
-    if (newStatus !== null) {
+    if (statusLine !== null) {
       this.writeIntoItsLedger(row.owner, {
         type: 'work_status_set',
         piece: row.piece,
-        line: newStatus,
+        line: statusLine,
         by: caller,
         ...(waitsOn === null ? {} : { waiting: true, on: waitsOn }),
       })
@@ -25121,11 +25001,14 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **R2 · their rows, in one transaction, with no ledger row of their own** (D-016 · R3): an
     // input when its giver hands it over, and what was made when its owner keeps it. ⚑ **D-026 ·
     // every window is told**, on `runtime:states`, once they are down.
-    const role: ResourceRole = itsGiver ? 'input' : 'made'
+    const role: ResourceRole = itsGiver && !input.close ? 'input' : 'made'
     const at = this.now()
     const written =
-      kept.files.length === 0 && overflow === null && doneOverflow === null
-        ? { rows: [], overflowRow: null, doneOverflowRow: null }
+      kept.files.length === 0 &&
+      overflow === null &&
+      doneOverflow === null &&
+      closeOverflow === null
+        ? { rows: [], overflowRow: null, doneOverflowRow: null, closeOverflowRow: null }
         : this.deps.store.atomically(() => ({
             rows: kept.files.map((file) =>
               this.deps.store.addResource(
@@ -25150,6 +25033,10 @@ export class RuntimeHost implements LiveHost {
               doneOverflow === null
                 ? null
                 : this.recordOverflow(named.piece, doneOverflow, caller, at, 'input'),
+            closeOverflowRow:
+              closeOverflow === null
+                ? null
+                : this.recordOverflow(named.piece, closeOverflow, caller, at, 'made'),
           }))
     const rows = written.rows
     // The holder reads the brief's start with a pointer; the whole text is the kept file.
@@ -25212,20 +25099,24 @@ export class RuntimeHost implements LiveHost {
       }
       // 🔴 **D-047 · its giver keeps the brief it gave, whole, in its own ledger** — before the
       // words go, so the row is down before this call answers.
-      this.noteWhatItGave(caller, {
-        piece: folded.piece,
-        label: folded.label,
-        as: 'rebriefed',
-        to: folded.owner,
-        title: rebriefed.title,
-        brief: newBrief,
-      })
+      if (itsGiver)
+        this.noteWhatItGave(caller, {
+          piece: folded.piece,
+          label: folded.label,
+          as: 'rebriefed',
+          to: folded.owner,
+          title: rebriefed.title,
+          brief: newBrief,
+        })
       told = queued
         ? { delivery: 'with-its-give' }
         : await this.tellItsOwnerItsNewBrief(rebriefed, newBrief, by, withItsGive)
     } else if (closed !== null && folded !== undefined) {
       const endedPiece = { ...folded, title: input.title ?? folded.title }
-      const reason = input.status ?? undefined
+      const reason =
+        closeReason === null
+          ? undefined
+          : textWithOverflowResource(closeReason.inline, written.closeOverflowRow?.resource)
       told = queued
         ? { delivery: 'not-delivered', whyNotTold: QUEUED_NEVER_TOLD }
         : await this.tellItsOwnerItWasClosed(endedPiece, caller, whoDidIt(by), reason)
@@ -25245,13 +25136,14 @@ export class RuntimeHost implements LiveHost {
       label: row.label,
       owner: row.owner,
       title: input.title,
-      status: newStatus,
+      status: statusLine,
       rebriefed: input.brief !== null,
       definitionOfDone: newCondition,
       kept: rows.map((one) => ({ resource: one.resource, name: one.name, role })),
       ...overflowsKept([
         [overflow, written.overflowRow],
         [doneOverflow, written.doneOverflowRow],
+        [closeOverflow, written.closeOverflowRow],
       ]),
       closed,
       // ⚑ At a service, its close notice asks the turn working on it to stop, as a take-back's does.
@@ -29283,7 +29175,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚑ **Not every open request ends**: a question this app raised for the conversation in an
    * earlier turn stays open, and the asker is told of each of its own that does end — see
-   * {@link itsOwnQuestionsAStopLeavesOpen}.
+   * {@link askTheWorkToStop}.
    *
    * ⚠️ **A stop does not come through here**: a question a provider held that died with its
    * process is `abandoned` — see {@link RequestState.interrupted} for why the two must stay
@@ -29304,60 +29196,26 @@ export class RuntimeHost implements LiveHost {
    * and — since `709`, `704` H-8 — `runSendInterrupting` race it against a deadline and must keep the
    * handle on it.
    */
-  private askTheWorkToStop(
-    session: HostedSession,
-    by: Caller,
-    /** Questions this app asked for it stay open: the stop only makes way for words to it. */
-    keepsWhatThisAppAsked = false,
-    reason?: string,
-  ): Promise<void> {
-    const raised = keepsWhatThisAppAsked ? this.deps.store.questionsRaisedIn(session.id) : null
+  private askTheWorkToStop(session: HostedSession, by: Caller, reason?: string): Promise<void> {
+    const raised = this.deps.store.questionsRaisedIn(session.id)
     this.recordTheAsk(session, by, reason)
-    // ⛔ **The FOLD decides which are still open, never a predicate written here** — `396`'s rule
-    // for the launch sweep, second venue: *"nothing has ended it"* is a property of a ledger, and a
-    // second reading of it would be free to disagree with the door that refuses an answer.
-    // 🔴 **608 · `437`'s release loop stood here and is GONE** (HO-084 §4). ⛔ It existed because
-    // **otherwise the ledger asserted an ending the app had not performed**: the row read
-    // `interrupted` while `ask_question` went on holding the worker's tool call until its whole
-    // bound expired. ⚑ **A stop can no longer outrun a call that is not running** — the ask
-    // returns the moment its rows are written — so the loop below, which writes the endings, is
-    // the whole of what an interruption owes a routed question.
-    // ⚑ **A question this app raised holds no running call**, so a stop has nothing of its to
-    // release: it ends only one the turn it stops asked, and leaves the rest open. ⛔ A provider's
-    // own card is ended whichever turn raised it: both adapters refuse every open one as they are
-    // asked to stop.
-    const leftOpen = raised === null ? this.itsOwnQuestionsAStopLeavesOpen(session) : null
     for (const request of this.deps.store.routedRequestsOf(session.id)) {
-      if (!REQUEST_IS_OPEN[request.state]) continue
-      if (raised?.get(request.requestId)?.raisedBy === 'this-app') continue
-      if (leftOpen?.has(request.requestId) === true) continue
+      if (!REQUEST_IS_OPEN[request.state] || raised.get(request.requestId)?.raisedBy === 'this-app')
+        continue
       this.publishOurs(session, { type: 'request_interrupted', requestId: request.requestId })
     }
     return session.handle.interrupt()
   }
 
-  /**
-   * ⚑ **Which of a conversation's own open questions a stop of its turn leaves open**: the ones
-   * this app raised for it in an earlier turn. ⚑ The ones the turn that runs asked are ended by
-   * the stop, and are owed to it as a line in front of its next words
-   * ({@link HostedSession.questionsAStopEndedUntold}). ⚠️ A conversation with no open request
-   * reads nothing more.
-   */
-  private itsOwnQuestionsAStopLeavesOpen(session: HostedSession): ReadonlySet<string> {
-    const left = new Set<string>()
-    const open = this.deps.store
-      .routedRequestsOf(session.id)
-      .filter((request) => REQUEST_IS_OPEN[request.state])
-    if (open.length === 0) return left
-    const itsOwn = this.deps.store.questionsRaisedIn(session.id)
-    for (const request of open) {
-      const asked = itsOwn.get(request.requestId)
-      if (asked?.raisedBy !== 'this-app') continue
-      if (session.askedSinceItsLastTurnEnded.has(request.requestId)) {
-        session.questionsAStopEndedUntold.push({ id: request.requestId, prompt: asked.prompt })
-      } else left.add(request.requestId)
-    }
-    return left
+  private stopWaitsForAgent(conversation: string): boolean {
+    const { routings, raised } = this.oneLedgerReadPerAnswer(rowsUnreadOnce())(conversation)
+    const pending = routings.filter(
+      (one) => REQUEST_IS_OPEN[one.state] && raised.get(one.requestId)?.raisedBy !== 'this-app',
+    )
+    return (
+      pending.length > 0 &&
+      pending.every((one) => one.went.to !== 'a-person' && one.parent !== null)
+    )
   }
 
   /**
@@ -29470,22 +29328,14 @@ export class RuntimeHost implements LiveHost {
             : { session: slot.session, closing: onItsWayOut(slot) }
         },
         isRecorded: (conversation) => this.deps.store.recordedOne(conversation) !== null,
-        whoseAnswerItAwaits: (conversation) =>
-          this.whoOwesIt(
-            conversation,
-            this.cardReads(),
-            rowsUnreadOnce(),
-            undefined,
-            () => [],
-            () => [],
-          ).askedOf,
+        waitsForAgent: (conversation) => this.stopWaitsForAgent(conversation),
         pendingApproval: (conversation) =>
           this.whatItIsStoppedOn(conversation, undefined, true)?.asks ?? null,
         conversationLine: (conversation) =>
           describeConversation(this.deps.store, conversation, this.itIsAService(conversation)).line,
         waitForEnding: (session) => this.whatTheStopOfItsTurnEnds(session, this.interruptWaitMs),
         askToStop: (session, caller, why) =>
-          this.askTheWorkToStop(session, caller, false, aReasonGiven(why) ?? NO_REASON_GIVEN),
+          this.askTheWorkToStop(session, caller, aReasonGiven(why) ?? NO_REASON_GIVEN),
         reportUnanswered: (session, requested, caller) => {
           this.sayWhenTheStopGoesUnanswered(session, requested, caller)
           void requested.catch((error: unknown) => {
@@ -31953,7 +31803,10 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.store.recordedOne(sessionId) === null) {
       return { done: false, refusal: 'There is no conversation by that name to restore.' }
     }
-    const archived = this.theArchivedTreeOf(sessionId)
+    return this.restoreArchivedConversations(this.theArchivedTreeOf(sessionId))
+  }
+
+  private restoreArchivedConversations(archived: readonly string[]): ArchiveOutcome {
     if (archived.length === 0) {
       return { done: false, refusal: 'Neither this conversation nor any below it is archived.' }
     }
@@ -31976,7 +31829,11 @@ export class RuntimeHost implements LiveHost {
 
   /** A committed give brings its archived destination back even if the provider cannot start. */
   restoreArchiveForNewWork(conversation: string): ArchiveOutcome | null {
-    return this.archived.has(conversation) ? this.restoreConversation(conversation) : null
+    if (!this.archived.has(conversation)) return null
+    if (this.deps.store.recordedOne(conversation) === null) {
+      return { done: false, refusal: 'There is no conversation by that name to restore.' }
+    }
+    return this.restoreArchivedConversations([conversation])
   }
 
   private removeArchiveMarks(archived: readonly string[]): void {
@@ -38926,7 +38783,6 @@ export class RuntimeHost implements LiveHost {
         : null,
       explicitStopSaid: null,
       noticesForItsNextInput: [],
-      askedSinceItsLastTurnEnded: new Set<string>(),
       questionsAStopEndedUntold: options.continuesARecording
         ? this.theQuestionsTheStopOfItsLastTurnEnded(id)
         : [],

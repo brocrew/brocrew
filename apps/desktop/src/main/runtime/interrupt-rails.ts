@@ -287,18 +287,11 @@ export function refuseInterrupt(
 export function admitInterrupt(
   agent: string,
   status: SessionStatus | null,
-  /**
-   * ⚑ **D-017 · R19 — the conversation the card it is parked on went to**, or `null` when it went
-   * to a person (or nothing is routed): read by the host off the same routings the state is.
-   */
-  askedOf: string | null = null,
+  waitsForAgent = false,
 ): InterruptRefusal | null {
   if (status === null) return refuseInterrupt('that-conversation-has-not-started', { agent })
-  if (status === 'waiting_permission') {
-    return askedOf === null
-      ? refuseInterrupt('a-person-is-being-asked', { agent })
-      : refuseInterrupt('it-is-waiting-on-an-answer', { agent, askedOf })
-  }
+  if (status === 'waiting_permission' && !waitsForAgent)
+    return refuseInterrupt('a-person-is-being-asked', { agent })
   // ⚠️ **`idle` is admitted, and it is not a fourth rail.** ⚑ D-017 — the door answers an idle
   // conversation with no turn of its own open as *nothing to interrupt* before it asks this; what
   // reaches here idle is one a turn is on its way into, which the provider is asked about.

@@ -327,27 +327,22 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('a piece — who may name it and who may say where it stands', () => {
-    it('the giver names a piece and its owner cannot, and either may say where it stands', async () => {
+    it('the giver and holder may title a task and record its status', async () => {
       const { pm, worker, piece, label } = await aPmAndItsWorker()
       const handlesBefore = handles.length
       const messagesBefore = { pm: messagesIn(pm), worker: messagesIn(worker) }
 
-      // ⛔ The owner may not retitle a piece it was given — the giver names the work.
-      const refused = await callOn(worker, 'update_work', { piece: label, title: 'mine' })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('the-giver-names-a-piece')
-      expect(refused.detail).toMatchObject({ piece, label })
-      expect(linesIn(worker, 'work_retitled')).toHaveLength(0)
-      expect(linesWrittenAnywhere()).toBe(0)
-      expect((await pieceHeld(worker, piece)).title).toBe('the work')
+      const heldTitle = await callOn(worker, 'update_work', { piece: label, title: 'mine' })
+      expect(heldTitle).toMatchObject({ outcome: 'ok', piece, label, title: 'mine' })
+      expect((await pieceHeld(worker, piece)).title).toBe('mine')
 
-      // ⚑ The paired positive: the giver's title call succeeds against the same piece.
       const renamed = await callOn(pm, 'update_work', { piece: label, title: 'Renamed by giver' })
       expect(renamed).toMatchObject({ outcome: 'ok', piece, label, title: 'Renamed by giver' })
       expect((await pieceGave(pm, piece)).title).toBe('Renamed by giver')
       expect((await pieceHeld(worker, piece)).title).toBe('Renamed by giver')
       // ⚑ Written into the OWNER's ledger, and by the giver.
       expect(linesIn(worker, 'work_retitled')).toMatchObject([
+        { piece, title: 'mine', by: worker },
         { piece, title: 'Renamed by giver', by: pm },
       ])
       expect(linesIn(pm, 'work_retitled')).toHaveLength(0)
@@ -422,67 +417,43 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       expect(lineOf(await recordOf(pm, label))).toMatchObject({ text: 'all done here', by: worker })
     })
 
-    it('a stranger, or the worker on the manager’s root, is told there is no such piece - the same words as for a piece that does not exist - and nothing is written', async () => {
+    it('accepts named updates by other conversations and still refuses a missing task', async () => {
       const { pm, worker, piece, label } = await aPmAndItsWorker()
       const stranger = await personOpens('stranger')
       const managersRoot = theRootOf(pm).label
-      const nobodys = 'W999'
-      expect(store.workByLabel(nobodys)).toBeNull()
-
-      // ⚑ The words for a name that names nothing — what every other refusal below must equal.
-      const noSuchUpdate = await callOn(pm, 'update_work', { piece: nobodys, status: 'x' })
-      expect(noSuchUpdate.outcome, JSON.stringify(noSuchUpdate)).toBe('refused')
-      expect(noSuchUpdate.rail).toBe('no-piece-by-that-name')
-      const noSuchRecord = await recordOf(pm, nobodys)
-      expect(noSuchRecord.outcome, JSON.stringify(noSuchRecord)).toBe('refused')
-      expect(noSuchRecord.rail).toBe('no-piece-by-that-name')
-
-      const forbiddenUpdates: [string, string, string][] = [
-        ['a stranger on the piece', stranger, label],
-        ['a stranger on the root', stranger, managersRoot],
-        ['the worker on the manager’s root', worker, managersRoot],
-        ['a stranger on a name that names nothing', stranger, nobodys],
-        ['the worker on a name that names nothing', worker, nobodys],
-      ]
-      for (const [who, caller, spelled] of forbiddenUpdates) {
-        const updated = await callOn(caller, 'update_work', { piece: spelled, status: 'x' })
-        expect(updated, `update_work · ${who}`).toEqual({
-          ...noSuchUpdate,
-          detail: { piece: spelled },
-        })
-        const read = await recordOf(caller, spelled)
-        if (spelled === nobodys) {
-          expect(read, `list_tasks · ${who}`).toEqual({
-            ...noSuchRecord,
-            detail: { piece: spelled },
-          })
-        } else {
-          expect(read, `list_tasks · ${who}`).toMatchObject({ label: spelled })
-          expect(read, `list_tasks · ${who}`).not.toHaveProperty('rail')
-        }
-      }
-      // ⚑ A title is refused the same way — it is the entitlement that is asked first.
-      expect(await callOn(stranger, 'update_work', { piece: label, title: 'mine now' })).toEqual({
-        ...noSuchUpdate,
-        detail: { piece: label },
+      const absent = 'W999'
+      expect(await callOn(stranger, 'update_work', { piece: absent, status: 'x' })).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-piece-by-that-name',
       })
-
-      // ⛔ Nothing was written into ANY ledger.
+      expect(await recordOf(worker, absent)).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-piece-by-that-name',
+      })
       expect(linesWrittenAnywhere()).toBe(0)
-      expect((await pieceGave(pm, piece)).title).toBe('the work')
-      expect((await rootOnTheBoard(pm)).status_line).toBeNull()
 
-      // ⚑ The paired positives, for the same calls: the root's owner, the piece's owner and its
-      // giver are each answered — and the counter above reads what they wrote.
       expect(
-        await callOn(pm, 'update_work', { piece: managersRoot, status: 'the root' }),
-      ).toMatchObject({ outcome: 'ok' })
+        await callOn(stranger, 'update_work', { piece: label, status: 'from outside' }),
+      ).toMatchObject({
+        outcome: 'ok',
+        status: 'from outside',
+      })
+      expect(lineOf(await pieceHeld(worker, piece))).toMatchObject({
+        text: 'from outside',
+        by: stranger,
+      })
       expect(
-        await callOn(worker, 'update_work', { piece: label, status: 'the owner' }),
-      ).toMatchObject({ outcome: 'ok' })
-      expect(await callOn(pm, 'update_work', { piece: label, status: 'the giver' })).toMatchObject({
+        await callOn(worker, 'update_work', { piece: managersRoot, status: 'the root' }),
+      ).toMatchObject({
         outcome: 'ok',
       })
+      expect(
+        await callOn(stranger, 'update_work', { piece: label, title: 'Named outside' }),
+      ).toMatchObject({
+        outcome: 'ok',
+        title: 'Named outside',
+      })
+      expect((await pieceGave(pm, piece)).title).toBe('Named outside')
       expect(linesWrittenAnywhere()).toBe(3)
       expect(await recordOf(pm, managersRoot)).toMatchObject({ outcome: 'ok', root: true })
       // ⚠️ A PIECE's record spreads the piece's own payload over `outcome: 'ok'`, so its `outcome` is

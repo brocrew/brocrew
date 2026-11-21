@@ -915,17 +915,12 @@ describe('437 · a question a worker can ask its parent', () => {
       )
     })
 
-    it('⛔ interrupting the worker writes the ending, and there is no held call to release', async () => {
-      // 🔴 **`askTheWorkToStop` writes `request_interrupted` for every open routed request** — and
-      // without also settling the parked ask, `437` measured, the ledger asserted an ending while
-      // the app went on holding the tool call for the whole bound.
-      //
-      // ⛔ **608 · the release loop went with the hold** (HO-084 §4, standing rule 26). ⚑ **The
-      // ENDING is the half that mattered and it is unchanged**; what is gone is the second act
-      // that had to agree with it, and a stop can no longer outrun a call that is not running.
+    it('interrupting the worker keeps its routed question open', async () => {
       const { worker, workerTools, piece } = await aWorkerHoldingWork()
       const said = await startAsking(workerTools, { piece, question: 'which one?' })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
+      const question = store.routedRequestsOf(worker).find((one) => one.went.is === 'the-parent')
+      expect(question?.state).toBe('open')
       const before = ledger(worker).length
       // ⚠️ **A PERSON stops it**, through the surface that took it over — the gesture `395` built
       // this path for, and the one that needs no grant.
@@ -933,10 +928,15 @@ describe('437 · a question a worker can ask its parent', () => {
       host.claimSession(worker, surface)
       await host.interrupt(worker, surface)
       expect(
-        store.routedRequestsOf(worker).filter((one) => one.went.is === 'the-parent')[0]?.state,
-      ).toBe('interrupted')
-      // ⛔ **And the stop delivered no words** — an ending is a row; the words a worker gets are
-      // answers, and nobody decided anything here.
+        store.routedRequestsOf(worker).find((one) => one.requestId === question?.requestId)?.state,
+      ).toBe('open')
+      expect(
+        ledger(worker)
+          .slice(before)
+          .filter((event) => event.type === 'request_interrupted')
+          .map((event) => event.requestId),
+      ).not.toContain(question?.requestId)
+      // The Stop does not turn the deferred answer into input.
       expect(
         ledger(worker)
           .slice(before)

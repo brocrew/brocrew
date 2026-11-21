@@ -786,14 +786,11 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(sentBy(worker)).toHaveLength(0)
     })
 
-    it('⛔ the owner’s own new brief is refused and writes no row in either ledger — its giver’s, one fact over, writes one', async () => {
+    it('a holder may revise a brief without inventing a giver receipt', async () => {
       const pm = await aPm()
       const { worker, label } = await aGive(pm, TITLE, 'the first brief')
-      const refused = await callOn(worker, 'update_work', { piece: label, brief: 'x' })
-      expect(refused).toMatchObject({
-        outcome: 'refused',
-        rail: 'the-giver-briefs-a-piece',
-      })
+      const held = await callOn(worker, 'update_work', { piece: label, brief: 'from holder' })
+      expect(held).toMatchObject({ outcome: 'ok', rebriefed: true })
       expect(sentBy(worker)).toHaveLength(0)
       expect(sentBy(pm)).toHaveLength(1)
 
