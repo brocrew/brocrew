@@ -12,8 +12,10 @@ import { createSessionStore } from '../src/main/db/session-store'
 import {
   pastWorkSearchInWords,
   pastWorkSearchQuery,
+  pastWorkSearchResult,
   pastWorkStart,
   type PastWorkHit,
+  type PastWorkSource,
 } from '../src/shared/past-work-search'
 import { WORK_SEARCH_BOUNDS } from '../src/shared/work-search'
 import { PastWorkSearchReader } from '../src/main/db/past-work-search-reader'
@@ -667,14 +669,12 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
     { type: 'work_status_set', piece, line: 'statusquartz', by: target },
     1_800_000_000_001,
   )
+  w.append(caller, { type: 'assistant_message', text: 'I said titlequartz in this turn.' })
   const engine = new WorkSearchEngine(w.file)
   cleanups.push(() => engine.close())
-  const fallback = vi.fn(async () => ({
-    ok: true as const,
-    hits: [],
-    complete: true,
-    next_cursor: null,
-  }))
+  const fallback = vi.fn(async (source: PastWorkSource, as: string, words: string) =>
+    searchPastWork(w.db, w.store, as, words, source),
+  )
   const search = new WorkSearch(
     {
       store: w.store,
@@ -685,9 +685,14 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
     archivedInMemory(),
   )
   for (const phrase of [title, brief]) {
-    expect(await search.searchPastWork(caller, phrase)).toMatchObject({
+    const page = await search.searchPastWork(caller, phrase)
+    expect(pastWorkSearchResult.safeParse(page).success).toBe(true)
+    expect(page).toMatchObject({
       ok: true,
-      hits: [{ conversation: target, piece, matched_field: 'work title or brief' }],
+      hits: [
+        { conversation: target, piece, matched_field: 'work title or brief' },
+        ...(phrase === title ? [{ conversation: caller, matched_field: 'agent reply' }] : []),
+      ],
     })
   }
   expect(fallback).toHaveBeenCalledTimes(2)
@@ -707,7 +712,7 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
   expect(fallback).toHaveBeenCalledTimes(3)
   expect(await search.searchPastWork(caller, title, undefined, undefined, {})).toMatchObject({
     ok: true,
-    hits: [],
+    hits: [{ conversation: caller, matched_field: 'agent reply' }],
   })
   expect(fallback).toHaveBeenLastCalledWith(
     expect.objectContaining({ transcript: {} }),

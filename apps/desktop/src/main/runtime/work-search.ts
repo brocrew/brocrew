@@ -77,7 +77,9 @@ export class WorkSearch {
             { after: null, preview: true },
           )
         : { ok: true, hits: [], complete: true, next_cursor: null }
-      if (!recorded.ok) return recorded
+      if (this.launches.closed || (!recorded.ok && page === undefined))
+        return { ok: false, reason: 'unavailable' }
+      const transcriptCursor = recorded.ok ? recorded.next_cursor : null
       const workHits =
         page?.hits.map((hit) => {
           const task = hit.matched_tasks[0]
@@ -100,12 +102,13 @@ export class WorkSearch {
         }) ?? []
       return {
         ok: true,
-        complete: !workUnread && page?.complete === true && recorded.complete,
+        complete: !workUnread && page?.complete === true && recorded.ok && recorded.complete,
         next_cursor:
           page?.next_cursor == null ? null : `work:${workUnread ? 1 : 0}:${page.next_cursor}`,
-        ...(recorded.next_cursor === null ? {} : { transcript_next_cursor: recorded.next_cursor }),
+        ...(transcriptCursor === null ? {} : { transcript_next_cursor: transcriptCursor }),
+        ...(recorded.ok ? {} : { transcript_unread: true as const }),
         ...(workUnread ? { work_unread: true as const } : {}),
-        hits: [...workHits, ...recorded.hits],
+        hits: [...workHits, ...(recorded.ok ? recorded.hits : [])],
       }
     }
 

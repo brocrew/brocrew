@@ -95,6 +95,7 @@ export type PastWorkSearchResult =
       readonly next_cursor: string | null
       readonly transcript_next_cursor?: string
       readonly work_unread?: true
+      readonly transcript_unread?: true
     }
   | { readonly ok: false; readonly reason: 'invalid' | 'unavailable' }
 
@@ -191,6 +192,9 @@ export const pastWorkSearchResult = z.discriminatedUnion('ok', [
       ok: z.literal(true),
       complete: z.boolean(),
       next_cursor: z.string().min(1).max(2055).nullable(),
+      transcript_next_cursor: z.string().min(1).max(2048).optional(),
+      work_unread: z.literal(true).optional(),
+      transcript_unread: z.literal(true).optional(),
       hits: z
         .array(
           z
@@ -210,10 +214,17 @@ export const pastWorkSearchResult = z.discriminatedUnion('ok', [
             })
             .strict(),
         )
-        .max(5),
+        .max(10),
     })
     .strict()
-    .refine((result) => !result.complete || result.next_cursor === null),
+    .refine(
+      (result) =>
+        !result.complete ||
+        (result.next_cursor === null &&
+          result.transcript_next_cursor === undefined &&
+          result.work_unread === undefined &&
+          result.transcript_unread === undefined),
+    ),
 ])
 
 export const PAST_WORK_SEARCH_DESCRIPTION =
@@ -267,6 +278,7 @@ export function pastWorkSearchInWords(
     )
   }
   if (result.work_unread === true) rows.push('Some work records could not be read.')
+  if (result.transcript_unread === true) rows.push('The transcript preview could not be read.')
   if (result.next_cursor !== null) {
     rows.push(
       `More of this search remains. Continue with cursor: ${JSON.stringify(result.next_cursor)} and the same words and filters, even if this page has no matches.`,

@@ -588,6 +588,7 @@ export function createSearchPastWorkTool(
               ? {}
               : { transcript_next_cursor: found.transcript_next_cursor }),
             ...(found.work_unread === true ? { work_unread: true } : {}),
+            ...(found.transcript_unread === true ? { transcript_unread: true } : {}),
           },
           pastWorkSearchInWords(
             found,
