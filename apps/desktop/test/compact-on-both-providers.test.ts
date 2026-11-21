@@ -1,3 +1,4 @@
+import { scriptedClaudeQuery } from './lib/scripted-claude-query'
 import type { ClaudeQuery } from '@brobot2/runtime/claude'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
@@ -317,10 +318,10 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
 
         const busy = await tool.call({ agent: id, reason: given })
         expect(busy.structured).toMatchObject({
-          outcome: 'refused',
-          rail: 'compaction-target-busy',
+          outcome: 'ok',
+          queued: true,
         })
-        expect(busy.text).toMatch(/is busy\. Wait until it is idle, then try again\.$/)
+        expect(busy.text).toMatch(/^Compaction queued for /)
         expect(codex.asked('thread/compact/start')).toBe(1)
       } finally {
         confirm()
@@ -744,13 +745,10 @@ it('keeps a confirmed notice when Claude stops before pushing its carrying input
         session_id: 'fixture_compaction_session',
         cwd: options.cwd,
       } as Frame)
-      return {
+      return scriptedClaudeQuery(wire, {
         setPermissionMode,
         supportedCommands: async () => [{ name: 'compact', description: 'Compact context' }],
-        interrupt: async () => {},
-        close: () => wire.close(),
-        [Symbol.asyncIterator]: () => wire[Symbol.asyncIterator](),
-      }
+      })
     },
     async () => true,
     undefined,

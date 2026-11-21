@@ -175,6 +175,8 @@ export function describeEvent(event: TranscriptEvent): string {
       return `${event.piece} · titled ${event.title} · by ${event.actor === undefined ? (event.by ?? 'a person') : didIt(event.actor)} (ours)`
     case 'work_status_set':
       return `${event.piece} · status set · ${event.line.length} chars · by ${event.by} (ours)`
+    case 'pending_compaction':
+      return ''
     // A conversation's own title, printed whole like a piece's, with who set it.
     case 'titled':
       return `conversation titled ${event.title} · by ${

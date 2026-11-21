@@ -337,6 +337,7 @@ export function foldEvent(
     // A conversation's title, like a piece's, is the header's and the lists' to show.
     case 'work_retitled':
     case 'titled':
+    case 'pending_compaction':
       return
     case 'work_taken_back':
     case 'work_closed':

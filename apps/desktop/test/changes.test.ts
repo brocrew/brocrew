@@ -716,6 +716,7 @@ const APP_EVENTS: Record<
     by: 'sess_1',
   },
   work_status_set: { type: 'work_status_set', piece: 'work_1', line: 'half way', by: 'sess_1' },
+  pending_compaction: { type: 'pending_compaction', request: null },
   titled: { type: 'titled', title: 'DEV-100012', author: { kind: 'person' } },
   work_rebriefed: { type: 'work_rebriefed', piece: 'work_1', brief: 'go further', by: 'sess_1' },
   work_closed: { type: 'work_closed', piece: 'work_1', by: 'sess_1' },

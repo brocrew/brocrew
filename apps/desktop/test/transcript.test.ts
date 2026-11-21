@@ -768,6 +768,7 @@ describe('transcript fold', () => {
       { event: { type: 'work_restarted' }, adds: 0 },
       // ⛔ **673: `adds: 0`, as every reopen drew before the row existed** — the row is for the task
       // fold. ⚠️ Not a duplicate: the transcript draws no seam line at all (a finding, not a ruling).
+      { event: { type: 'pending_compaction', request: null }, adds: 0 },
       { event: { type: 'reopened' }, adds: 0 },
       // ⚑ **T-002 · D-004 (R101): `adds: 1`** — a reopen this app made BY ITSELF on a renewed
       // sign-in says so in one line, under the stop it answers.
@@ -1007,6 +1008,7 @@ describe('transcript fold', () => {
       // ⚑ **D-042** · 682's `model_choice_set_aside` went (see the sweep above).
       // ⚑ **437's question row, and it arrived as a compile error like every one before it.**
       question_asked: true,
+      pending_compaction: true,
       titled: true,
     }
     expect(
@@ -1018,7 +1020,8 @@ describe('transcript fold', () => {
       const state = createTranscript()
       expect(() => applyEvent(state, event)).not.toThrow()
       expect(state.items.length, event.type).toBe(adds)
-      expect(describeEvent(event), event.type).not.toBe('')
+      if (event.type === 'pending_compaction') expect(describeEvent(event)).toBe('')
+      else expect(describeEvent(event), event.type).not.toBe('')
     }
   })
 })

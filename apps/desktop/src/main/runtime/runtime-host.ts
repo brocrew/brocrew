@@ -474,6 +474,7 @@ import type {
   McpServerRequestForAPerson,
   McpServerRequestSettledEvent,
   TranscriptEvent,
+  PendingCompactionEvent,
 } from '../../shared/conversation-events'
 import {
   ABriefThatDidNotArrive,
@@ -1222,6 +1223,7 @@ import { admitInterrupt } from './interrupt-rails'
 import { explicitStopWords, stopTurn, type ExplicitStopNotice } from './stop-turn'
 import {
   compactConversation,
+  nativeCompaction,
   type CompactConversationInput,
   type CompactConversationOutcome,
   type CompactionRequest,
@@ -2271,6 +2273,7 @@ interface HostedSession {
    */
   firstTurnLead: string | null
   explicitCompaction?: CompactionRequest
+  compactionWhenIdle?: CompactionRequest
   /** Notices that ride its next ordinary input instead of driving their own turn. */
   readonly noticesForItsNextInput: QueuedMessage[]
   /**
@@ -2919,6 +2922,7 @@ function keptFileOf(kept: KeptFileRow, roster: readonly AgentIdentity[] | null):
  * of a reply or a tool call among them, means it did something, and then it is not carried on.
  */
 const A_TURN_THAT_DID_NOTHING_HOLDS: ReadonlySet<TranscriptEvent['type']> = new Set([
+  'pending_compaction',
   'titled',
   'work_given',
   'status',
@@ -2948,6 +2952,7 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
   'reopened',
   'launched',
   'work_recovery',
+  'pending_compaction',
 ])
 
 /** Unrecognized protocol origins never supply housekeeping evidence. */
@@ -22804,7 +22809,13 @@ export class RuntimeHost implements LiveHost {
         throw new TurnInProgress()
       }
       // Held words that wait for the next input go with these: they are held, and the flush carries both.
-      if (!session.mailbox.every(isRunnableHeldMessage)) throw new TurnInProgress()
+      this.compactBeforeTheNextInput(session)
+      if (
+        session.explicitCompaction !== undefined ||
+        session.compactionWhenIdle !== undefined ||
+        !session.mailbox.every(isRunnableHeldMessage)
+      )
+        throw new TurnInProgress()
       handover = this.handToProvider(
         session,
         text,
@@ -23055,6 +23066,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **D-016 · `update_work`'s rows**, into the owner's ledger when it is running.
       | WorkRetitledEvent
       | ConversationTitledEvent
+      | PendingCompactionEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent
       | WorkClosedEvent
@@ -23303,6 +23315,7 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **D-016 · `update_work`'s rows** — see {@link RuntimeHost.publishOurs}.
       | WorkRetitledEvent
       | ConversationTitledEvent
+      | PendingCompactionEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent
       | WorkClosedEvent
@@ -23586,6 +23599,7 @@ export class RuntimeHost implements LiveHost {
       // can refuse, so a refusal must release the queue it was holding — otherwise a message queued
       // before a refused interrupt waits for an idle that was swallowed. 🔴 **D-027 · and where the
       // words joined what waits, this is the flush that sends them all, as one turn.**
+      this.compactBeforeTheNextInput(session)
       this.flushQueued(session)
       // ⚑ **F075 — and the givers of work this press cut are asked again, now the hold is let go**:
       // while it stood, the person's words were about to drive that work and no notice was said
@@ -27250,10 +27264,13 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     mode: 'as-it-finds-it' | 'after-a-lost-race' | 'with-what-waits',
   ): boolean {
+    this.compactBeforeTheNextInput(session)
     return (
       mode === 'as-it-finds-it' &&
       session.handle.status() === 'idle' &&
       !session.holdingQueue &&
+      session.explicitCompaction === undefined &&
+      session.compactionWhenIdle === undefined &&
       session.mailbox.every(isRunnableHeldMessage)
     )
   }
@@ -27285,6 +27302,8 @@ export class RuntimeHost implements LiveHost {
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
+    if (somethingRunnableIsHeld(session)) this.compactBeforeTheNextInput(session)
+    if (session.explicitCompaction !== undefined || session.compactionWhenIdle !== undefined) return
     if (somethingRunnableIsHeld(session)) {
       this.queueANewerHomeCopy(session.provider, session.profileId)
     }
@@ -29710,6 +29729,28 @@ export class RuntimeHost implements LiveHost {
       currentConversation: (id) => this.theOneInItsPlace(id),
       running: (id) => (this.runsNow(id) ? (this.slots.get(id)?.session ?? null) : null),
       recorded: (id) => this.deps.store.recordedOne(id) !== null,
+      queue: (id, request) => {
+        const session = this.slots.get(id)?.session
+        if (session !== undefined && session !== null && session.finalizing === null) {
+          if (session.explicitCompaction !== undefined) return 'queued'
+          const queued = session.handle.status() === 'idle' ? 'queued' : 'after-turn'
+          if (session.compactionWhenIdle !== undefined) return queued
+          this.publishOurs(session, { type: 'pending_compaction', request })
+          session.compactionWhenIdle = request
+          return queued
+        }
+        if (this.slots.has(id)) return false
+        if (this.deps.store.recordedOne(id)?.neverStarted) return 'empty'
+        const history = this.deps.store.find(id)
+        if (history === null || history.homeRefusal || history.resumeRefusal) return 'unavailable'
+        if (this.pendingCompaction(id) !== null) return 'queued'
+        if (!this.writeWhileNothingRunsIt(id, { type: 'pending_compaction', request })) {
+          throw new Error('the compaction request could not be recorded')
+        }
+        return 'queued'
+      },
+      deferred: (session) =>
+        session.compactionWhenIdle !== undefined || session.explicitCompaction !== undefined,
       display: (id) => describeConversation(this.deps.store, id, this.itIsAService(id)).line,
       idle: (session) =>
         session.handle.status() === 'idle' &&
@@ -29727,6 +29768,80 @@ export class RuntimeHost implements LiveHost {
         console.warn(`runtime host could not request compaction in ${id}: ${errorMessage(error)}`)
       },
     })
+  }
+
+  private pendingCompaction(id: string): CompactionRequest | null {
+    const newest = this.deps.store.newestOfType
+    const from = newest?.(id, 'launched')?.ordinal ?? 0
+    const row =
+      newest === undefined
+        ? this.deps.store
+            .eventsFrom(id, from, Number.MAX_SAFE_INTEGER)
+            .filter((one) => one.event.type === 'pending_compaction')
+            .at(-1)
+        : newest(id, 'pending_compaction', undefined, from)
+    return row?.event.type === 'pending_compaction' ? row.event.request : null
+  }
+
+  private compactBeforeTheNextInput(session: HostedSession): void {
+    if (session.finalizing !== null) {
+      delete session.compactionWhenIdle
+      return
+    }
+    if (
+      session.holdingQueue !== 0 ||
+      session.compactionWhenIdle === undefined ||
+      session.handle.status() !== 'idle'
+    )
+      return
+    const request = session.compactionWhenIdle
+    delete session.compactionWhenIdle
+    this.takeQueuedCompaction(session, false, request)
+  }
+
+  private takeQueuedCompaction(
+    session: HostedSession,
+    afterRepair = false,
+    request = this.pendingCompaction(session.id),
+  ): void {
+    if (request === null) return
+    if (afterRepair) {
+      session.compactionWhenIdle = request
+      return
+    }
+    session.explicitCompaction = request
+    try {
+      this.publishOurs(session, { type: 'pending_compaction', request: null })
+    } catch (error) {
+      delete session.explicitCompaction
+      console.warn(
+        `runtime host could not consume queued compaction in ${session.id}: ${errorMessage(error)}`,
+      )
+      return
+    }
+    void this.runQueuedCompaction(session, request)
+  }
+
+  private async runQueuedCompaction(
+    session: HostedSession,
+    request: CompactionRequest,
+  ): Promise<void> {
+    try {
+      await this.assertSignInCurrent(session, 'send')
+      const run = await nativeCompaction(session, {
+        providerCommands: (target) => this.theCommandsItAnswersTo(target),
+      })
+      if (session.explicitCompaction !== request) return
+      if (this.slots.get(session.id)?.session !== session || session.finalizing !== null) return
+      if (run === null) throw new Error('the provider offers no native compaction')
+      await this.requestNativeCompaction(session, request, run)
+    } catch (error) {
+      if (session.explicitCompaction === request) delete session.explicitCompaction
+      console.warn(
+        `runtime host could not run queued compaction in ${session.id}: ${errorMessage(error)}`,
+      )
+      this.flushQueued(session)
+    }
   }
 
   private async requestNativeCompaction(
@@ -37901,6 +38016,7 @@ export class RuntimeHost implements LiveHost {
             ...this.theLeadAReopenOwes(sessionId, row.provider, launchGave, reopenedThreadLeads),
           }),
     })
+    this.takeQueuedCompaction(session, because === 'the-sign-in-was-renewed')
     // ⛔ **The row stops saying `ended`, because this conversation is running again** (179).
     //
     // Clear the terminal after the provider successfully starts, rather than beside `closeOpenTurn` before launch: a failed resume must keep its old state. `register` starts the pump after this synchronous line, so no new event is written against the old terminal. See `SessionStore.reopened`.
@@ -37942,6 +38058,19 @@ export class RuntimeHost implements LiveHost {
       type: 'launched',
       ...this.renewalNotice(session.provider, loginRenewed),
     })
+    if (session.compactionWhenIdle !== undefined) {
+      // Keep the same request above this launch's read floor while its cut turn carries on.
+      try {
+        this.publishOurs(session, {
+          type: 'pending_compaction',
+          request: session.compactionWhenIdle,
+        })
+      } catch (error) {
+        console.warn(
+          `runtime host could not retain deferred compaction in ${session.id}: ${errorMessage(error)}`,
+        )
+      }
+    }
     // ⚑ **D-017 · R3** — what waited for this start goes first.
     this.putBackWhatWaitedForThisStart(session)
     // 🔴 **D-042 · R1 — a row that named no pair records the one this start named**, so the next
@@ -40013,7 +40142,14 @@ export class RuntimeHost implements LiveHost {
     if (!this.aReopenIsBeingDecidedFor.has(sessionId)) return
     const deciding = (this.aReopenIsBeingDecidedFor.get(sessionId) ?? 1) - 1
     if (deciding > 0) this.aReopenIsBeingDecidedFor.set(sessionId, deciding)
-    else this.aReopenIsBeingDecidedFor.delete(sessionId)
+    else {
+      this.aReopenIsBeingDecidedFor.delete(sessionId)
+      const session = this.slots.get(sessionId)?.session
+      if (session?.compactionWhenIdle !== undefined) {
+        this.compactBeforeTheNextInput(session)
+        this.flushQueued(session)
+      }
+    }
     this.tellWhoeverGaveTheWork(sessionId)
   }
 
@@ -41595,6 +41731,7 @@ export class RuntimeHost implements LiveHost {
       const wake = session.questionWakeDue
       delete session.questionWakeDue
       if (event.state === 'idle') {
+        if (!this.aReopenIsBeingDecidedFor.has(session.id)) this.compactBeforeTheNextInput(session)
         if (wake !== undefined) this.wakeForOwedQuestions(session, wake)
         this.flushQueued(session)
       }

@@ -37,7 +37,7 @@ export function createCompactAgentTool(
     name: 'compact_agent',
     handlerOwnsMissingInput: true,
     description:
-      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may. The first answer acknowledges the request. When the provider confirms manual compaction, the notice of who requested it and why waits for the conversation's next ordinary input. Use it when get_agent_status shows a high context size and more work is coming.",
+      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; a reason is optional. If its provider is running and idle, compaction is requested now. A conversation with no history yet has nothing to compact. If no provider is running and it has history, one request is queued and runs before its next input; no turn starts just for it, and repeated requests count as one. If the attempt fails, the input proceeds without compaction. If a turn is running, one request is queued and runs when that turn ends; repeated requests count as one. When the provider confirms compaction, the conversation is told who requested it and why with its next input. Use it before giving more related work to a conversation about 70% full that doesn't need its exact history, saying why and what comes next.",
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
       agent: agentToolHandlerInput(z.string().describe('The conversation, by any of its labels.')),
@@ -69,9 +69,24 @@ export function createCompactAgentTool(
           ...(given ? { reason: given } : {}),
         })
         if (result.ok) {
+          if (result.empty)
+            return answer(
+              { outcome: 'ok', agent: result.conversation, requested: false },
+              `Nothing to compact yet: ${result.display} has no history.`,
+            )
           return answer(
-            { outcome: 'ok', agent: result.conversation, requested: true },
-            `Compaction requested for ${result.display}.`,
+            {
+              outcome: 'ok',
+              agent: result.conversation,
+              requested: true,
+              ...(result.queued ? { queued: true } : {}),
+              ...(result.afterTurn ? { afterTurn: true } : {}),
+            },
+            result.afterTurn
+              ? `Compaction queued for ${result.display}: it runs when its current turn ends.`
+              : result.queued
+                ? `Compaction queued for ${result.display}: it runs before that conversation's next input.`
+                : `Compaction requested for ${result.display}.`,
           )
         }
         if (result.refusal === 'no-such-agent') {
@@ -83,7 +98,7 @@ export function createCompactAgentTool(
             text = `Not compacted: ${result.display} is busy. Wait until it is idle, then try again.`
             break
           case 'compaction-target-not-running':
-            text = `Not compacted: ${result.display} has no running provider to compact. Open it and wait until it is idle, then try again.`
+            text = `Not compacted: this app could not read provider history it can resume for ${result.display}. Read the conversation's record with read_transcript.`
             break
           case 'compaction-unavailable':
             text = `Not compacted: ${providerDescriptor(result.provider).displayName} offers no compaction for this conversation: its current commands do not include compaction.`

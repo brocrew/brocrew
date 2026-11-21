@@ -1313,7 +1313,14 @@ export interface InstructionChangedEvent {
   readonly replacedPersonVersion: AgentRulesReceipt['replacedPersonVersion']
 }
 
+/** A deferred native compaction; the newest record stands, and null consumes the request. */
+export interface PendingCompactionEvent {
+  readonly type: 'pending_compaction'
+  readonly request: { readonly agent: string; readonly reason?: string } | null
+}
+
 export type TranscriptEvent =
+  | PendingCompactionEvent
   | WorkReconciliationEvent
   | ProviderFailureReconciliationEvent
   | WorkRecoveryEvent

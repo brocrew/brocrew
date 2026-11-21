@@ -12,7 +12,14 @@ export interface CompactConversationInput extends CompactionRequest {
 }
 
 export type CompactConversationOutcome =
-  | { readonly ok: true; readonly conversation: string; readonly display: string }
+  | {
+      readonly ok: true
+      readonly conversation: string
+      readonly display: string
+      readonly queued?: true
+      readonly afterTurn?: true
+      readonly empty?: true
+    }
   | { readonly ok: false; readonly refusal: 'no-such-agent'; readonly conversation: string }
   | {
       readonly ok: false
@@ -22,10 +29,17 @@ export type CompactConversationOutcome =
     }
   | {
       readonly ok: false
-      readonly refusal: 'compaction-unavailable' | 'compaction-request-failed'
+      readonly refusal: 'compaction-unavailable'
       readonly conversation: string
       readonly display: string
       readonly provider: Provider
+    }
+  | {
+      readonly ok: false
+      readonly refusal: 'compaction-request-failed'
+      readonly conversation: string
+      readonly display: string
+      readonly provider?: Provider
     }
 
 interface CompactionTarget {
@@ -37,6 +51,11 @@ export interface CompactConversationDependencies<Target extends CompactionTarget
   currentConversation(conversation: string): string
   running(conversation: string): Target | null
   recorded(conversation: string): boolean
+  queue(
+    conversation: string,
+    request: CompactionRequest,
+  ): 'queued' | 'after-turn' | 'empty' | 'unavailable' | false
+  deferred(target: Target): boolean
   display(conversation: string): string
   idle(target: Target): boolean
   checkSignIn(target: Target): Promise<void>
@@ -55,16 +74,39 @@ export async function compactConversation<Target extends CompactionTarget>(
     return { ok: false, refusal: 'no-such-agent', conversation }
   }
   const said = { conversation, display: deps.display(conversation) }
-  if (target === null) return { ok: false, refusal: 'compaction-target-not-running', ...said }
-  if (!deps.idle(target)) return { ok: false, refusal: 'compaction-target-busy', ...said }
+  const queue = (): CompactConversationOutcome => {
+    try {
+      const queued = deps.queue(conversation, {
+        agent: input.agent,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      })
+      if (queued === 'queued' || queued === 'after-turn')
+        return {
+          ok: true,
+          queued: true,
+          ...(queued === 'after-turn' ? { afterTurn: true as const } : {}),
+          ...said,
+        }
+      if (queued === 'empty') return { ok: true, empty: true, ...said }
+      if (queued === 'unavailable')
+        return { ok: false, refusal: 'compaction-target-not-running', ...said }
+    } catch (error) {
+      deps.reportFailure(conversation, error)
+      return { ok: false, refusal: 'compaction-request-failed', ...said }
+    }
+    return { ok: false, refusal: 'compaction-target-busy', ...said }
+  }
+  if (target === null) return queue()
+  if (deps.deferred(target)) return queue()
+  if (!deps.idle(target)) return queue()
 
   try {
     await deps.checkSignIn(target)
     const run = await nativeCompaction(target, deps)
     if (deps.running(conversation) !== target) {
-      return { ok: false, refusal: 'compaction-target-not-running', ...said }
+      return { ok: false, refusal: 'compaction-target-busy', ...said }
     }
-    if (!deps.idle(target)) return { ok: false, refusal: 'compaction-target-busy', ...said }
+    if (!deps.idle(target)) return queue()
     if (run === null) {
       return { ok: false, refusal: 'compaction-unavailable', provider: target.provider, ...said }
     }
@@ -80,7 +122,7 @@ export async function compactConversation<Target extends CompactionTarget>(
   }
 }
 
-async function nativeCompaction<Target extends CompactionTarget>(
+export async function nativeCompaction<Target extends CompactionTarget>(
   target: Target,
   deps: Pick<CompactConversationDependencies<Target>, 'providerCommands'>,
 ): Promise<(() => Promise<void>) | null> {

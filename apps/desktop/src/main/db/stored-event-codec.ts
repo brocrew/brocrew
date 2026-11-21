@@ -91,9 +91,33 @@ export function boundStoredEvent(event: TranscriptEvent): TranscriptEvent {
 function boundOneRow(event: TranscriptEvent): TranscriptEvent {
   return boundStoredPayloads(
     boundCardFacts(
-      boundWorkReport(boundRelayedIdentity(boundTheDrive(boundPieceNamed(boundTitled(event))))),
+      boundWorkReport(
+        boundRelayedIdentity(
+          boundTheDrive(boundPieceNamed(boundTitled(boundPendingCompaction(event)))),
+        ),
+      ),
     ),
   )
+}
+
+/** Unreadable stored requests use the existing skip-and-note path. */
+function boundPendingCompaction(event: TranscriptEvent): TranscriptEvent {
+  if (event.type !== 'pending_compaction' || event.request === null) return event
+  const request = event.request
+  if (
+    request === undefined ||
+    !isAStoredId(request.agent) ||
+    (request.reason !== undefined && typeof request.reason !== 'string')
+  ) {
+    throw new Error('a stored compaction request could not be read')
+  }
+  return {
+    type: 'pending_compaction',
+    request: {
+      agent: request.agent,
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+    },
+  }
 }
 
 /** A stored title is read whole or not at all: a row that is not one is skipped, and noted. */
