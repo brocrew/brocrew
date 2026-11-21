@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { createSessionStore } from './db/session-store'
 import { searchPastWork } from './db/past-work-search'
 import { WORK_SEARCH_BOUNDS } from '../shared/work-search'
-import { pastWorkRecentPoint, pastWorkTranscriptScope } from '../shared/past-work-search'
+import { pastWorkPartial, pastWorkRecentPoint, pastWorkTranscriptScope } from '../shared/past-work-search'
 
 const request = z
   .object({
@@ -23,6 +23,7 @@ const request = z
           .max(WORK_SEARCH_BOUNDS.candidates),
         next: z.string().min(1).max(200).nullable(),
         transcript: pastWorkTranscriptScope.optional(),
+        partial: pastWorkPartial.optional(),
         recent: z
           .object({
             after: pastWorkRecentPoint.nullable(),

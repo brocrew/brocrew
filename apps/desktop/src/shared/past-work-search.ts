@@ -99,10 +99,24 @@ export type PastWorkSearchResult =
     }
   | { readonly ok: false; readonly reason: 'invalid' | 'unavailable' }
 
+const pastWorkPosition = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('event'), ordinal: z.number().int().nonnegative(), part: z.number().int().nonnegative() }).strict(),
+  z.object({ kind: z.literal('file'), row: z.number().int().positive() }).strict(),
+])
+export type PastWorkPosition = z.infer<typeof pastWorkPosition>
+
+export const pastWorkPartial = z.object({
+  id: z.string().min(1).max(200),
+  position: pastWorkPosition,
+}).strict()
+type PastWorkPartial = z.infer<typeof pastWorkPartial>
+export type PastWorkAfter = string | PastWorkPartial | null
+
 export const pastWorkRecentPoint = z
   .object({
     id: z.string().min(1).max(200),
     at: z.number().finite(),
+    position: pastWorkPosition.optional(),
   })
   .strict()
 export type PastWorkRecentPoint = z.infer<typeof pastWorkRecentPoint>
@@ -145,13 +159,14 @@ export interface PastWorkSource {
   readonly versions: readonly (readonly [string, number, number?])[]
   readonly next: string | null
   readonly transcript?: PastWorkTranscriptScope
+  readonly partial?: PastWorkPartial
   readonly recent?: { readonly after: PastWorkRecentPoint | null; readonly preview?: true }
 }
 
 const pastWorkCursor = z.tuple([
   z.string(),
   z.string().nullable(),
-  z.string().min(1).max(200),
+  z.union([z.string().min(1).max(200), pastWorkPartial]),
   z.string().optional(),
 ])
 
@@ -165,7 +180,7 @@ export function pastWorkStart(
   profile: string | null,
   cursor?: string,
   transcript?: PastWorkTranscriptScope,
-): string | null | undefined {
+): PastWorkAfter | undefined {
   if (cursor === undefined) return null
   if (cursor.length > 2048) return undefined
   try {
@@ -183,7 +198,7 @@ export function pastWorkStart(
 export function pastWorkNext(
   words: string,
   profile: string | null,
-  after: string,
+  after: NonNullable<PastWorkAfter>,
   transcript?: PastWorkTranscriptScope,
 ): string {
   const key = transcriptKey(transcript)

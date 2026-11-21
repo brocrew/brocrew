@@ -120,6 +120,7 @@ import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type {
   PastWorkSearchResult,
+  PastWorkAfter,
   PastWorkSource,
   PastWorkTranscriptScope,
 } from '../../shared/past-work-search'
@@ -853,7 +854,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   pastWorkSearchSource(
     caller: string,
     profile?: string,
-    after?: string | null,
+    after?: PastWorkAfter,
     recent?: PastWorkSource['recent'],
   ): PastWorkSource | null
   replacements(): readonly { readonly replaced: string; readonly by: string }[]

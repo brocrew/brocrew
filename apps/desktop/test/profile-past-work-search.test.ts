@@ -6,10 +6,11 @@ import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { searchPastWork } from '../src/main/db/past-work-search'
+import { ProfilePastWorkSearch, searchPastWork } from '../src/main/db/past-work-search'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { createSessionStore } from '../src/main/db/session-store'
 import {
+  pastWorkRecentStart,
   pastWorkSearchInWords,
   pastWorkSearchQuery,
   pastWorkSearchResult,
@@ -80,6 +81,44 @@ it('requires all words to occur in one message in both search modes', () => {
     ok: true,
     hits: [],
   })
+})
+
+it('returns partial hits and resumes inside one conversation when document capacity is exhausted', () => {
+  const w = world()
+  const caller = 'capacity-caller'
+  const target = 'capacity-target'
+  w.create(caller)
+  w.create(target)
+  for (const suffix of ['first', 'second', 'third']) {
+    w.append(target, { type: 'assistant_message', text: 'capacityword ' + suffix })
+  }
+  const search = new ProfilePastWorkSearch(w.db, 1)
+  cleanups.push(() => search.close())
+  const words = 'capacityword'
+  const transcripts = { from: '2027-01-15', to: '2027-01-15' }
+  for (const scope of [undefined, transcripts]) {
+    let cursor: string | undefined
+    for (const ordinal of [0, 1, 2]) {
+      const result = search.read(w.store, caller, words, undefined, undefined, cursor, scope)
+      expect(result).toMatchObject({ ok: true, complete: ordinal === 2, hits: [{ conversation: target, turn: { ordinal } }] })
+      if (!result.ok) throw new Error('no partial result')
+      expect(result.next_cursor).not.toBe(cursor)
+      cursor = result.next_cursor ?? undefined
+    }
+    expect(cursor).toBeUndefined()
+  }
+
+  let after = null as ReturnType<typeof pastWorkRecentStart>
+  for (const ordinal of [0, 1, 2]) {
+    const source = search.sourceRevision(caller, undefined, null, { after: after ?? null })!
+    const result = search.read(w.store, caller, words, { ...source, transcript: transcripts })
+    expect(result).toMatchObject({ ok: true, complete: ordinal === 2, hits: [{ conversation: target, turn: { ordinal } }] })
+    if (!result.ok) throw new Error('no partial recent result')
+    after = result.next_cursor === null
+      ? null
+      : pastWorkRecentStart(result.next_cursor, words, null, transcripts)
+    if (ordinal < 2) expect(after).toMatchObject({ id: target, position: { ordinal: ordinal + 1 } })
+  }
 })
 
 it('finds matching recorded transcript positions inside the requested profile and dates', () => {

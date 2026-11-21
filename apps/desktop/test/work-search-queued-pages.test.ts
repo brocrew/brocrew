@@ -522,10 +522,13 @@ it('stops at 1000 conversation candidates and continues without repeating a page
     expect(next.page.searched).toBe(total - 1000)
     expect(next.page.hits).toEqual([])
     expect(next.page.next_cursor).toBeNull()
-    expect(engine.read('fictional_0', { ...query, grouped: true })).toMatchObject({
-      ok: true,
-      page: { searched: 1000, complete: false, next_cursor: null, grouped: { matched: null } },
+    const grouped = engine.read('fictional_0', { ...query, grouped: true })
+    if (!grouped.ok) throw new Error('no grouped first page')
+    expect(grouped.page).toMatchObject({
+      searched: 1000, complete: false, next_cursor: expect.any(String), grouped: { matched: null },
     })
+    expect(engine.read('fictional_0', { ...query, grouped: true, cursor: grouped.page.next_cursor! }))
+      .toMatchObject({ ok: true, page: { searched: total - 1000, complete: true, next_cursor: null } })
     expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
   } finally {
     engine.close()
