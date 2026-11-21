@@ -148,7 +148,7 @@
   "packages/runtime/smoke/codex-plan-resume-probe.smoke.ts": 1040,
   "packages/runtime/smoke/steer-probe.smoke.ts": 1033,
   "packages/runtime/smoke/tool-calls-as-the-cli-probe.smoke.ts": 1069,
-  "packages/runtime/src/claude/claude-runtime.ts": 3080,
+  "packages/runtime/src/claude/claude-session-handle.ts": 1856,
   "packages/runtime/src/claude/normalize.ts": 2038,
   "packages/runtime/src/codex/codex-runtime.ts": 6988,
   "packages/runtime/src/codex/normalize.ts": 2568,

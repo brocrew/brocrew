@@ -1,3 +1,4 @@
+import { CLAUDE_IMPLEMENTATION } from './fixtures/claude-implementation'
 import { CODEX_IMPLEMENTATION } from './fixtures/codex-implementation'
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -149,7 +150,7 @@ describe('499 §3.2 · the mid-turn deferral, and which half of it is ours', () 
   })
 
   it('🔴 CLAUDE · it is OURS, because nothing captures the mode at turn start', () => {
-    const claude = code('claude/claude-runtime.ts')
+    const claude = CLAUDE_IMPLEMENTATION.map(code).join('\n')
     // ⛔ **The mode is not in the query `Options` at all.** `permissionMode` carries the plan bit.
     expect(claude).toContain("return planMode ? 'plan' : 'default'")
     expect(claude).not.toContain('bypassPermissions')

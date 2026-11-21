@@ -24,6 +24,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { CLAUDE_IMPLEMENTATION } from './fixtures/claude-implementation'
 import {
   AuthUnavailableError,
   QUESTION_REQUEST_KEYS,
@@ -6944,10 +6945,9 @@ describe('launched-auto and the tools only a human can answer (063)', () => {
      * composition root's own test proves a policy stayed out of a file it cannot import, and this
      * proves a relationship between two literals no type can express.
      */
-    const src = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), '../src/claude/claude-runtime.ts'),
-      'utf8',
-    )
+    const src = CLAUDE_IMPLEMENTATION.map((leaf) =>
+      readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src', leaf), 'utf8'),
+    ).join('\n')
     const namesIn = (declaration: string): string[] => {
       const body = src.match(
         new RegExp(`const ${declaration} = new Set(?:<string>)?\\(\\[?([^\\)]*)`),

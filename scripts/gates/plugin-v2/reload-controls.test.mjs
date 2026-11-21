@@ -44,10 +44,9 @@ test('reload lifecycle requires one initial launch and one ordered launch for ev
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const input = JSON.parse(fs.readFileSync(new URL('./reload-inputs.json', import.meta.url)))
 test('reload observation follows the product deadline without accepting the old timeout', () => {
-  const runtime = fs.readFileSync(
-    path.join(repo, 'packages/runtime/src/claude/claude-runtime.ts'),
-    'utf8',
-  )
+  const runtime = ['claude-runtime.ts', 'claude-session-handle.ts', 'permission-offers.ts']
+    .map((leaf) => fs.readFileSync(path.join(repo, 'packages/runtime/src/claude', leaf), 'utf8'))
+    .join('\n')
   const matches = [...runtime.matchAll(/withDeadline\(reload,\s*([\d_]+),\s*'reloadPlugins'\)/g)]
   assert.equal(matches.length, 1)
   assert.equal(RELOAD_DEADLINE_MS, Number(matches[0][1].replaceAll('_', '')))

@@ -1,3 +1,4 @@
+import { CLAUDE_IMPLEMENTATION } from './fixtures/claude-implementation'
 import { CODEX_IMPLEMENTATION } from './fixtures/codex-implementation'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -111,7 +112,7 @@ describe('§2 · no producer in this package states the floor in its own words',
 
   const PRODUCING_FILES = [
     ...CODEX_IMPLEMENTATION,
-    'claude/claude-runtime.ts',
+    ...CLAUDE_IMPLEMENTATION,
     'fake-runtime.ts',
   ] as const
 
@@ -450,7 +451,7 @@ describe('§2 · no producer in this package states the floor in its own words',
     }
     // ⚠️ **Claude is the exception, and it is not one.** Its gate IS the published set — and both
     // refusals were always in it, so `publishedOffer` adds nothing there to widen.
-    const claude = withoutProse(src('claude/claude-runtime.ts'))
+    const claude = CLAUDE_IMPLEMENTATION.map((leaf) => withoutProse(src(leaf))).join('\n')
     expect(claude).toContain('this.offeredDecisions.set(id, new Set(scope.availableDecisions))')
     expect(claude).toContain('const isSafeNegative = isAlwaysHonoured(decision.outcome)')
   })

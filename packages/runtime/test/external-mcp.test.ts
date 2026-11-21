@@ -327,10 +327,13 @@ describe('516 §4 · what a launch is actually handed', () => {
     // ⚠️ **Prose stripped, because this adapter DISCUSSES the pin in three docblocks** — a raw count
     // would be satisfied by a comment about a flag somebody had deleted
     // (`a-source-census-must-strip-prose-before-it-asserts`).
-    const adapter = readFileSync(
-      fileURLToPath(new URL('../src/claude/claude-runtime.ts', import.meta.url)),
-      'utf8',
-    )
+    const adapter = [
+      new URL('../src/claude/claude-runtime.ts', import.meta.url),
+      new URL('../src/claude/claude-session-handle.ts', import.meta.url),
+      new URL('../src/claude/permission-offers.ts', import.meta.url),
+    ]
+      .map((file) => readFileSync(fileURLToPath(file), 'utf8'))
+      .join('\n')
       .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .replace(/^\s*\/\/.*$/gm, ' ')
     // ⛔ **TWO assignments and exactly two**: the real query and the model probe. `507` §3.1 —

@@ -498,6 +498,8 @@ function reloadIdentity(program: string) {
       'packages/runtime/smoke/claude-installed-probe.smoke.ts',
       'packages/runtime/smoke/loopback-claude.ts',
       'packages/runtime/src/claude/claude-runtime.ts',
+      'packages/runtime/src/claude/claude-session-handle.ts',
+      'packages/runtime/src/claude/permission-offers.ts',
       'packages/runtime/src/built-in-skills.ts',
       'packages/runtime/package.json',
       'pnpm-lock.yaml',

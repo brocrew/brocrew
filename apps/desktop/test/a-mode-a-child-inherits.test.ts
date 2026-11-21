@@ -25,6 +25,11 @@ import { YOLO_MEANS, YOLO_MEANS_FOR_AGENTS_IT_STARTS } from '../src/renderer/src
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
 const RUNTIME = join(REPO, 'packages/runtime/src')
+const CLAUDE_ADAPTER = [
+  'claude/claude-runtime.ts',
+  'claude/claude-session-handle.ts',
+  'claude/permission-offers.ts',
+]
 
 function whatAutoTakesOff(provider: Provider): Protection[] {
   const { ask, auto } = WHAT_STANDS_PAST_ITS_FOLDER[provider]
@@ -68,7 +73,9 @@ describe('§1 · what each provider mode keeps past its folder', () => {
 
 describe('§2 · the table says what the adapters DO, and each half is bound differently', () => {
   it('⛔ the CLAUDE row is a NEGATIVE, and this is the search shape behind it', () => {
-    const claude = readFileSync(join(RUNTIME, 'claude/claude-runtime.ts'), 'utf8')
+    const claude = CLAUDE_ADAPTER.map((file) => readFileSync(join(RUNTIME, file), 'utf8')).join(
+      '\n',
+    )
     const code = withoutProse(claude)
 
     expect(code).toContain("return planMode ? 'plan' : 'default'")
@@ -86,7 +93,7 @@ describe('§2 · the table says what the adapters DO, and each half is bound dif
     expect(code).not.toContain('bypassPermissions')
     expect(code).not.toContain('allowDangerouslySkipPermissions')
 
-    for (const file of ['claude/claude-runtime.ts', 'claude/claude-child.ts']) {
+    for (const file of [...CLAUDE_ADAPTER, 'claude/claude-child.ts']) {
       expect(withoutProse(readFileSync(join(RUNTIME, file), 'utf8')), file).not.toMatch(
         /sandbox\s*[:=]/i,
       )
