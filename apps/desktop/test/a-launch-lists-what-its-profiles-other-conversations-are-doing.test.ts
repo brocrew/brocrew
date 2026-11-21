@@ -1013,7 +1013,7 @@ function handsTheReaderThisConversationAndPublishesOnlyTheProfiles(source: strin
 }
 
 describe('§6 · the composition root hands the reader this conversation’s text and publishes only the profile’s', () => {
-  const source = readFileSync(join(SRC, 'main/index.ts'), 'utf8')
+  const source = readFileSync(join(SRC, 'main/runtime-host-composition.ts'), 'utf8')
 
   it('hands the reader this conversation’s text and publishes the profile’s alone', () => {
     // ⚑ Presence first: the calls are found, so the predicate below reads them.

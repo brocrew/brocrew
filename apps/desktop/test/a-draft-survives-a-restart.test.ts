@@ -996,11 +996,11 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     expect(index).toMatch(
       /exists: \(sessionId\) => recordedConversation\?\.\(sessionId\) \?\? true,/,
     )
-    expect(index).toMatch(
-      /recordedConversation = \(sessionId\) => db === null \|\| store\.recordedOne\(sessionId\) !== null\n/,
+    expect(read('../src/main/runtime-host-composition.ts')).toMatch(
+      /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)[\s\S]*\n\s+keepRecordedConversation\(\(sessionId\) => databaseClosed\(\) \|\| store\.recordedOne\(sessionId\) !== null\)\n/,
     )
     expect(index).toMatch(
-      /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)/,
+      /databaseClosed: \(\) => db === null,\n\s+keepRecordedConversation: \(recorded\) => \{\n\s+recordedConversation = recorded\n/,
     )
     // ⚑ …and the preload knocks on the two doors main opened, by the same names
     const preload = read('../src/preload/index.ts')

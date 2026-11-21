@@ -22,46 +22,59 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
     contents.set(m.name, bytes)
   }
   const mainPath = path.join(repo, 'apps/desktop/src/main/index.ts')
+  const compositionPath = path.join(repo, 'apps/desktop/src/main/runtime-host-composition.ts')
   const preloadPath = path.join(repo, 'apps/desktop/src/preload/index.ts')
   const vitePath = path.join(repo, 'apps/desktop/electron.vite.config.ts')
-  const originals = new Map(
-    [mainPath, preloadPath, vitePath].map((p) => [p, readFile(p).toString()]),
+  // A staged source from before card 74 has no composition file.
+  const sources = [mainPath, compositionPath, preloadPath, vitePath].filter(
+    (p) => p !== compositionPath || fs.existsSync(p),
   )
+  const originals = new Map(sources.map((p) => [p, readFile(p).toString()]))
   const destination = path.join(repo, 'scripts/gates/plugin-reload')
   demand(!fs.existsSync(destination))
   const projected = projectBuild(
     readFile(path.join(repo, 'apps/desktop/src/main/plugins/catalogue/build-config.ts')).toString(),
     originals.get(mainPath),
+    originals.get(compositionPath) ?? null,
     appData,
     browser,
   )
   let entry = projected.entry
+  let composition = projected.composition ?? entry
   const provider = path.join(
     path.dirname(appData),
     'repo/scripts/gates/plugin-packaged/provider-fixture.mjs',
   )
   // projectBuild assumes a repo sibling; this dedicated clone binds its actual path explicitly.
-  entry = once(
-    entry,
+  composition = once(
+    composition,
     JSON.stringify(provider),
     JSON.stringify(
       path.join(repo, 'scripts/gates/plugin-packaged/provider-fixture.mjs').replaceAll('\\', '/'),
     ),
   )
+  composition = once(
+    composition,
+    `/* packaged-plugin-gate-only */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
+    `(provider === 'claude' ? createReloadGateRuntime({ownedRoot:${JSON.stringify(root)}}) : (()=>{throw new Error('Reload gate is Claude only')})())`,
+  )
+  const reloadImports = `// ${RELOAD_MARKER}\nimport * as reloadGateFs from 'node:fs';\nimport {createReloadGateRuntime,bindReloadGateHost,reloadGateCommand} from ${JSON.stringify(path.join(destination, 'main-app-controller.mjs').replaceAll('\\', '/'))};\n`
+  composition = once(
+    composition,
+    "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
+    `${reloadImports}import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'`,
+  )
+  if (projected.composition === null) entry = composition
+  else
+    entry = once(
+      entry,
+      "import { RuntimeHost } from './runtime/runtime-host'",
+      `${reloadImports}import { RuntimeHost } from './runtime/runtime-host'`,
+    )
   entry = once(
     entry,
     `            /* packaged-plugin-gate-only */ fixtureSource: ${JSON.stringify(path.join(appData, 'repo-fixture'))},\n`,
     '',
-  )
-  entry = once(
-    entry,
-    `/* packaged-plugin-gate-only */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
-    `(provider === 'claude' ? createReloadGateRuntime({ownedRoot:${JSON.stringify(root)}}) : (()=>{throw new Error('Reload gate is Claude only')})())`,
-  )
-  entry = once(
-    entry,
-    "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
-    `// ${RELOAD_MARKER}\nimport * as reloadGateFs from 'node:fs';\nimport {createReloadGateRuntime,bindReloadGateHost,reloadGateCommand} from ${JSON.stringify(path.join(destination, 'main-app-controller.mjs').replaceAll('\\', '/'))};\nimport { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'`,
   )
   entry = once(
     entry,
@@ -114,6 +127,7 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
       created.push(name)
     }
     fs.writeFileSync(mainPath, entry)
+    if (projected.composition !== null) fs.writeFileSync(compositionPath, composition)
     fs.writeFileSync(preloadPath, preload)
     fs.writeFileSync(vitePath, vite)
   } catch (error) {

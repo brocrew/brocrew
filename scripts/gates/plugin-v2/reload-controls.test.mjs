@@ -70,6 +70,7 @@ test('real reload projection uses actual host/factory/preload and restores ordin
   try {
     for (const name of [
       'apps/desktop/src/main/index.ts',
+      'apps/desktop/src/main/runtime-host-composition.ts',
       'apps/desktop/src/preload/index.ts',
       'apps/desktop/electron.vite.config.ts',
       'apps/desktop/src/main/plugins/catalogue/build-config.ts',
@@ -103,7 +104,11 @@ test('real reload projection uses actual host/factory/preload and restores ordin
     const entry = fs.readFileSync(path.join(target, 'apps/desktop/src/main/index.ts'), 'utf8')
     assert.ok(entry.includes('bindReloadGateHost(runtimeHost)'))
     assert.ok(entry.includes('reloadGateCommand(authorizeReloadRequest('))
-    assert.ok(entry.includes('createReloadGateRuntime({ownedRoot:'))
+    const composition = fs.readFileSync(
+      path.join(target, 'apps/desktop/src/main/runtime-host-composition.ts'),
+      'utf8',
+    )
+    assert.ok(composition.includes('createReloadGateRuntime({ownedRoot:'))
     assert.ok(!entry.includes('fixtureSource:'))
     assert.ok(entry.includes('reload-native-db-closed.json'))
     const start = entry.indexOf('    const reloadHeldDb=db;')

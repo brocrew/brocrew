@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { safeFailure, safeAppStderr } from './diagnostics.mjs'
@@ -90,8 +91,24 @@ export function safeReport(value) {
     )
   )
 }
+/** The sources a projected build rewrites, with their paths, as they are before it. */
+export function buildSources(repository) {
+  const configPath = path.join(
+    repository,
+    'apps/desktop/src/main/plugins/catalogue/build-config.ts',
+  )
+  const entryPath = path.join(repository, 'apps/desktop/src/main/index.ts')
+  const compositionPath = path.join(repository, 'apps/desktop/src/main/runtime-host-composition.ts')
+  const read = (file) => fs.readFileSync(file, 'utf8')
+  const original = {
+    config: read(configPath),
+    entry: read(entryPath),
+    composition: read(compositionPath),
+  }
+  return { configPath, entryPath, compositionPath, original }
+}
 /** Only temporary build inputs change. The committed product remains fail-closed. */
-export function projectBuild(config, entry, appData, browser) {
+export function projectBuild(config, entry, composition, appData, browser) {
   if (![appData, browser].every(path.isAbsolute)) throw new Error('Invalid gate build inputs')
   if (entry.match(/\bpinTheDataFolder\(app(?=[,)])/g)?.length !== 1)
     throw new Error('Build anchor changed')
@@ -99,31 +116,35 @@ export function projectBuild(config, entry, appData, browser) {
     if (source.split(before).length !== 2) throw new Error('Build anchor changed')
     return source.replace(before, after)
   }
-  entry = replace(
-    entry,
+  // A source from before card 74 keeps createRuntimeHost, and so these anchors, in index.ts.
+  const together = composition === null
+  if (together) composition = entry
+  composition = replace(
+    composition,
     "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
     `/* ${GATE_BUILD_MARKER} */ import { PackagedGateRuntime, preparePackagedGateHome } from ${JSON.stringify(path.join(path.dirname(appData), 'repo/scripts/gates/plugin-packaged/provider-fixture.mjs'))}\nimport { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'`,
   )
-  entry = replace(
-    entry,
+  composition = replace(
+    composition,
     'return providerModules[provider].home.prepare(profileId)',
     `/* ${GATE_BUILD_MARKER} */ return preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId)`,
   )
-  entry = replace(
-    entry,
+  composition = replace(
+    composition,
     '    loginRenewal: providerAuth.loginRenewal,\n',
     `    /* ${GATE_BUILD_MARKER} */ loginRenewal: undefined,\n`,
   )
-  entry = replace(
-    entry,
+  composition = replace(
+    composition,
     'providerModules[provider].createRuntime()',
     `/* ${GATE_BUILD_MARKER} */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
   )
-  entry = replace(
-    entry,
+  composition = replace(
+    composition,
     'return providerModules[provider].prepareLaunch(profileId, connection)',
     `/* ${GATE_BUILD_MARKER} */ return Promise.resolve({ home: preparePackagedGateHome(${JSON.stringify(path.dirname(appData))}, userData, provider, profileId), runtime: new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))}) })`,
   )
+  if (together) [entry, composition] = [composition, null]
   entry = replace(
     entry,
     'const updateReopenAtLaunch =',
@@ -136,7 +157,7 @@ export function projectBuild(config, entry, appData, browser) {
             /* ${GATE_BUILD_MARKER} */ browserExecutable: ${JSON.stringify(browser)},
             supervisor: pluginSupervisor,`,
   )
-  return { config, entry }
+  return { config, entry, composition }
 }
 export const loopbackSandbox = `(version 1)
 (allow default)

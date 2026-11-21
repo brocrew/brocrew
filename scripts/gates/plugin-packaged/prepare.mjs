@@ -6,7 +6,7 @@ import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { failureFor, printFailure, phaseStep } from './diagnostics.mjs'
 import { directoryPackageArguments, hostedBuilder } from './packaging.mjs'
 import { requireDrained } from './processes.mjs'
-import { projectBuild, loopbackSandbox, report } from './contract.mjs'
+import { buildSources, projectBuild, loopbackSandbox, report } from './contract.mjs'
 import { requireCI, ownedRoot } from './fixture-guards.mjs'
 export async function prepare(root, { node22, pnpm }) {
   requireCI()
@@ -41,15 +41,7 @@ export function stageProtocolDependencies(root) {
 export async function prepareBuild(root, { node22, pnpm }) {
   ownedRoot(root)
   if (repository !== path.join(root, 'repo')) throw new Error('Isolated scratch checkout required')
-  const configPath = path.join(
-    repository,
-    'apps/desktop/src/main/plugins/catalogue/build-config.ts',
-  )
-  const entryPath = path.join(repository, 'apps/desktop/src/main/index.ts')
-  const original = {
-    config: fs.readFileSync(configPath, 'utf8'),
-    entry: fs.readFileSync(entryPath, 'utf8'),
-  }
+  const { configPath, entryPath, compositionPath, original } = buildSources(repository)
   const appData = privateFolder(path.join(root, 'a'))
   const buildEnv = buildEnvironment(root, pnpm)
   const { buildFixtureRelease } = await import('./release.mjs')
@@ -59,10 +51,17 @@ export async function prepareBuild(root, { node22, pnpm }) {
   const bin = privateFolder(path.join(root, 'bin'))
   fs.writeFileSync(path.join(bin, 'security'), '#!/usr/bin/false\n', { mode: 0o700 })
   const app = path.join(repository, 'apps/desktop/dist/mac-arm64/BroCrew.app')
-  const projection = projectBuild(original.config, original.entry, appData, browser)
+  const projection = projectBuild(
+    original.config,
+    original.entry,
+    original.composition,
+    appData,
+    browser,
+  )
   try {
     fs.writeFileSync(configPath, projection.config)
     fs.writeFileSync(entryPath, projection.entry)
+    fs.writeFileSync(compositionPath, projection.composition)
     // This is the sole private projection build. Normal package commands have no bypass flag.
     await phaseStep(root, 'node-prepare', () =>
       command(process.execPath, ['scripts/prepare-plugin-node.mjs'], root),
@@ -83,6 +82,7 @@ export async function prepareBuild(root, { node22, pnpm }) {
   } finally {
     fs.writeFileSync(configPath, original.config)
     fs.writeFileSync(entryPath, original.entry)
+    fs.writeFileSync(compositionPath, original.composition)
   }
   await phaseStep(root, 'app-signature', async () => {
     await command('/usr/bin/codesign', ['--verify', '--deep', '--strict', app], root)

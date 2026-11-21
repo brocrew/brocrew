@@ -11,7 +11,7 @@ import { builderOutputClass, outputClass } from '../plugin-packaged/diagnostics.
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
-import { projectBuild } from '../plugin-packaged/contract.mjs'
+import { buildSources, projectBuild } from '../plugin-packaged/contract.mjs'
 import { listFor, projectFixtureManifest } from '../plugin-packaged/release.mjs'
 import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
@@ -380,16 +380,14 @@ export function stageRelease(release, appData, variant = 'valid', id = 'chrome')
 
 /** The packaged app, built once from a projection of the source that is restored afterwards. */
 export async function buildApp(root, appData, browser) {
-  const configPath = path.join(
-    repository,
-    'apps/desktop/src/main/plugins/catalogue/build-config.ts',
+  const { configPath, entryPath, compositionPath, original } = buildSources(repository)
+  const projection = projectBuild(
+    original.config,
+    original.entry,
+    original.composition,
+    appData,
+    browser,
   )
-  const entryPath = path.join(repository, 'apps/desktop/src/main/index.ts')
-  const original = {
-    config: fs.readFileSync(configPath, 'utf8'),
-    entry: fs.readFileSync(entryPath, 'utf8'),
-  }
-  const projection = projectBuild(original.config, original.entry, appData, browser)
   // The projection names the provider fixture in an isolated checkout; this gate builds in the
   // runner's own checkout, and Vite resolves a drive path in an import only by forward slashes.
   const projected = path.join(
@@ -397,7 +395,7 @@ export async function buildApp(root, appData, browser) {
     'repo/scripts/gates/plugin-packaged/provider-fixture.mjs',
   )
   const fixture = path.join(repository, 'scripts/gates/plugin-packaged/provider-fixture.mjs')
-  const entry = projection.entry.replace(
+  const composition = projection.composition.replace(
     JSON.stringify(projected),
     JSON.stringify(fixture.replaceAll('\\', '/')),
   )
@@ -405,7 +403,8 @@ export async function buildApp(root, appData, browser) {
   const env = { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
   try {
     fs.writeFileSync(configPath, projection.config)
-    fs.writeFileSync(entryPath, entry)
+    fs.writeFileSync(entryPath, projection.entry)
+    fs.writeFileSync(compositionPath, composition)
     await step('node-prepare', () =>
       command(process.execPath, ['scripts/prepare-plugin-node.mjs'], { env, build: true }),
     )
@@ -436,6 +435,7 @@ export async function buildApp(root, appData, browser) {
   } finally {
     fs.writeFileSync(configPath, original.config)
     fs.writeFileSync(entryPath, original.entry)
+    fs.writeFileSync(compositionPath, original.composition)
   }
   return path.join(repository, 'apps/desktop/dist/win-unpacked')
 }

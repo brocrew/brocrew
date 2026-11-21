@@ -85,29 +85,33 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
   it('projects only explicit scratch list/archive and inert-browser inputs into the packaged Settings path', () => {
     const config = read('apps/desktop/src/main/plugins/catalogue/build-config.ts')
     const entry = read('apps/desktop/src/main/index.ts')
+    const composition = read('apps/desktop/src/main/runtime-host-composition.ts')
     const projected = projectBuild(
       config,
       entry,
+      composition,
       '/private/tmp/fictional/a',
       '/private/tmp/fictional/browser',
     )
     expect(projected.config).toBe(config)
-    expect(projected.entry).toContain(
+    expect(projected.composition).toContain(
       "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'",
     )
     const homeDerivation = 'deriveProviderHome(userData, { profileId, provider })'
-    expect(entry.split(homeDerivation)).toHaveLength(2)
-    expect(projected.entry.split(homeDerivation)).toHaveLength(2)
-    expect(projected.entry).toContain(
+    expect(composition.split(homeDerivation)).toHaveLength(2)
+    expect(projected.composition.split(homeDerivation)).toHaveLength(2)
+    expect(projected.composition).toContain(
       'homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug)',
     )
-    expect(projected.entry).toContain('...providerHomePaths,')
-    expect(projected.entry).toContain('const providerModules = createProviderModules(')
-    expect(projected.entry).toContain('new PackagedGateRuntime(provider, "/private/tmp/fictional")')
-    expect(projected.entry).not.toContain('providerModules[provider].createRuntime(')
-    expect(projected.entry).not.toContain('providerModules[provider].prepareLaunch(')
-    expect(projected.entry.match(/new PackagedGateRuntime\(/g)).toHaveLength(2)
-    expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
+    expect(projected.composition).toContain('...providerHomePaths,')
+    expect(projected.composition).toContain('const providerModules = createProviderModules(')
+    expect(projected.composition).toContain(
+      'new PackagedGateRuntime(provider, "/private/tmp/fictional")',
+    )
+    expect(projected.composition).not.toContain('providerModules[provider].createRuntime(')
+    expect(projected.composition).not.toContain('providerModules[provider].prepareLaunch(')
+    expect(projected.composition.match(/new PackagedGateRuntime\(/g)).toHaveLength(2)
+    expect(projected.composition).not.toContain('providerModules[provider].home.prepare(profileId)')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
     expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
@@ -118,45 +122,54 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(scratchSelection).toBeGreaterThan(-1)
     expect(scratchSelection).toBeLessThan(reopenRead)
     expect(reopenRead).toBeLessThan(projected.entry.indexOf('pinTheDataFolder(app'))
-    expect(projected.entry).toContain(
+    expect(projected.composition).toContain(
       'return preparePackagedGateHome("/private/tmp/fictional", userData, provider, profileId)',
     )
-    expect(projected.entry).toContain('loginRenewal: undefined')
-    expect(projected.entry).not.toContain('loginRenewal: providerAuth.loginRenewal')
+    expect(projected.composition).toContain('loginRenewal: undefined')
+    expect(projected.composition).not.toContain('loginRenewal: providerAuth.loginRenewal')
     expect(() =>
       projectBuild(
         config,
         entry + '\npinTheDataFolder(app)',
+        composition,
         '/private/tmp/fictional/a',
         '/private/tmp/fictional/browser',
       ),
     ).toThrow()
     expect(() =>
-      projectBuild(config, entry, 'relative', '/private/tmp/fictional/browser'),
+      projectBuild(config, entry, composition, 'relative', '/private/tmp/fictional/browser'),
     ).toThrow()
     const runtimeImport =
       "import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'"
     for (const changed of [
-      entry.replace(runtimeImport, "import { RuntimeHost } from './runtime/runtime-host'"),
-      entry + '\n' + runtimeImport,
+      composition.replace(runtimeImport, "import { RuntimeHost } from './runtime/runtime-host'"),
+      composition + '\n' + runtimeImport,
     ])
       expect(() =>
-        projectBuild(config, changed, '/private/tmp/fictional/a', '/private/tmp/fictional/browser'),
+        projectBuild(
+          config,
+          entry,
+          changed,
+          '/private/tmp/fictional/a',
+          '/private/tmp/fictional/browser',
+        ),
       ).toThrow('Build anchor changed')
-    for (const anchor of [
-      'const updateReopenAtLaunch =',
-      'pinTheDataFolder(app,',
-      '    loginRenewal: providerAuth.loginRenewal,\n',
-      'providerModules[provider].createRuntime()',
-      'return providerModules[provider].prepareLaunch(profileId, connection)',
-      'return providerModules[provider].home.prepare(profileId)',
+    for (const [inEntry, anchor] of [
+      [true, 'const updateReopenAtLaunch ='],
+      [true, 'pinTheDataFolder(app,'],
+      [false, '    loginRenewal: providerAuth.loginRenewal,\n'],
+      [false, 'providerModules[provider].createRuntime()'],
+      [false, 'return providerModules[provider].prepareLaunch(profileId, connection)'],
+      [false, 'return providerModules[provider].home.prepare(profileId)'],
     ]) {
-      expect(entry.split(anchor)).toHaveLength(2)
-      for (const changed of [entry.replace(anchor, ''), entry + '\n' + anchor])
+      const holder = inEntry ? entry : composition
+      expect(holder.split(anchor)).toHaveLength(2)
+      for (const changed of [holder.replace(anchor, ''), holder + '\n' + anchor])
         expect(() =>
           projectBuild(
             config,
-            changed,
+            inEntry ? changed : entry,
+            inEntry ? composition : changed,
             '/private/tmp/fictional/a',
             '/private/tmp/fictional/browser',
           ),
@@ -166,6 +179,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       projectBuild(
         config,
         entry.replace('pinTheDataFolder(app,', 'pinTheDataFolder(otherApp,'),
+        composition,
         '/private/tmp/fictional/a',
         '/private/tmp/fictional/browser',
       ),

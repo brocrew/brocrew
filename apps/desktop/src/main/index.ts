@@ -2,14 +2,10 @@ import { withWorkerMemory } from './worker-memory'
 import { closeDatabase } from './db/close-database'
 import electronLog from 'electron-log/main'
 import { pluginStartupTrace } from './plugins/startup-failure'
-import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/index'
 import { setupProcesses } from './provider-setup/process'
 import { registerProviderSetup } from './provider-setup/ipc'
-import { providerKnowledge } from './providers/index'
 import { workspaceLaunchMessage } from './workspace-routing'
-import { WorkspacePluginAttachments } from './plugins/attachments'
-import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
 import { registerPluginSettings } from './plugins/settings'
 import { productionPluginController } from './plugins/production'
 import { PluginSupervisorAttachment, pluginSupervisorRoot } from './plugins/supervisor/client'
@@ -30,9 +26,6 @@ import { registerVoiceIpc } from './voice/ipc'
 import { VoiceService } from './voice/service'
 import { runVoiceHelper } from './voice/engine'
 import { backupsDir, databaseFile, recoveryDir, SIDECARS } from './recovery/layout'
-import { profileSkillAccess, SharedSkillDiscovery } from './skills/shared-discovery'
-import { convertSharedSkills } from './skills/shared-conversion'
-import { SharedSkillLibrary } from './skills/shared-library'
 import { RECOVERY_RETENTION_CHANNELS } from '../shared/recovery-retention'
 import type { ListingAnswer } from '../shared/listing-published'
 import {
@@ -41,20 +34,12 @@ import {
   retainedCopyInfo,
   deleteRetainedCopy,
 } from './recovery/checkpoint'
-import { keepTranscriptsForever } from './transcript-retention'
-import { ATTENTION_SIGNALS_CHANNEL, isAttentionSignal } from '../shared/attention-signals'
-import { AttentionSignals } from './attention-signals'
-import { attentionOverlay } from './attention-overlay'
 import { installAppNavigation } from './app-navigation'
 import { WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
-import { stopOrphanedCommands, stopWorkerCommands } from './command-cleanup'
-import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-in-skills'
-import { factoryTextOf, readTextPack } from './skills/text-pack'
+import { stopOrphanedCommands } from './command-cleanup'
 import {
   appLogFile,
-  createDatabaseWriteLog,
   debugIsOn,
-  logInfo,
   logWarn,
   openLog,
   readDebugChoice,
@@ -73,7 +58,6 @@ import { totalmem } from 'node:os'
 import {
   app,
   BrowserWindow,
-  clipboard,
   dialog,
   ipcMain as pluginIpcMain,
   Menu,
@@ -84,30 +68,9 @@ import {
   shell,
 } from 'electron'
 import type { NativeImage, OpenDialogOptions, WebContents } from 'electron'
-import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
-import { withDeadline } from '@brobot2/runtime'
-import type { ChosenAttachment, ChosenCwd, DroppedPathVerdict } from '../shared/runtime-ipc'
-import {
-  APP_CLOSING_CHANNEL,
-  BUNDLE_SUFFIX,
-  NO_IMAGE_ON_CLIPBOARD,
-  PROVIDERS_CHANGED_CHANNEL,
-  RUNTIME_CHANGED_CHANNEL,
-  RUNTIME_STATES_CHANNEL,
-} from '../shared/runtime-ipc'
+import { appInfoSchema, type AppInfo } from '@brobot2/shared'
+import { APP_CLOSING_CHANNEL, RUNTIME_CHANGED_CHANNEL } from '../shared/runtime-ipc'
 import { buildBranches, buildIdentity, shownVersion } from './build-identity'
-import { LIMITS_DISPLAY_CHANGED_CHANNEL } from '../shared/limits-display'
-import { LimitsReaderLifetime } from './db/limits-reader-lifetime'
-import { limitsWriterSampler } from './db/fresh-limits-snapshot'
-import { windowWriterSampler } from './db/window-writer-stamp'
-import { startLimitsReader } from './db/start-limits-reader'
-import { startWindowReader } from './db/start-window-reader'
-import { startFilesLibrary } from './db/start-files-library'
-import { FilesLibraryWindows } from './db/files-library-windows'
-import { TeamProfileGraphWindows } from './db/team-profile-graph-windows'
-import { startTeamProfileGraph } from './db/start-team-profile-graph'
-import { startWorkSearch } from './db/start-work-search'
-import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
 import { armLastResortExit } from './last-resort-exit'
 import { runAsSoleInstance } from './single-instance'
@@ -136,29 +99,16 @@ import {
   MainThreadWork,
   startStallWatch,
   startWatchHealth,
-  timedMethods,
   WhatTheAppWasDoing,
 } from './stall-watch'
 import {
   PS_ARGS,
   PS_MAX_BUFFER_BYTES,
-  PS_READ_DEADLINE_MS,
   PS_TIMEOUT_MS,
   createSpawnedReader,
-  psArgsFor,
-  residentSizesIn,
   totalBytes,
 } from './process-tree'
 import { openDatabase, type AppDatabase } from './db/connection'
-import { listProviderConnections, resolveProviderConnection } from './connections/records'
-import { newProviderSessionId } from './db/ids'
-import { discoverSessionsIn } from './adopt/discover-sessions'
-import {
-  indexedHomeDescriptions,
-  discoverUserHomeSessions,
-  userProviderHomePath,
-} from './adopt/user-homes'
-import { aProtectedPlace, thePlacesOnThisComputer } from './protected-places'
 import { workspaceListFile } from './workspaces'
 import { samePath } from './same-folder'
 import {
@@ -168,9 +118,6 @@ import {
   type DockLabelHost,
 } from './dock-label'
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
-import { nativeTranscriptPath } from './archive/native-file'
-import { createMemoryAmendmentObserver, createSessionStore } from './db/session-store'
-import { committedChangesOf } from './db/committed-changes'
 import { applyMigrations } from './db/migrate'
 import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './db/newer-database'
 import type { RecoveryService, StartupVerdict } from '../shared/recovery'
@@ -198,46 +145,11 @@ import { createRecoveryCalls, type RecoveryCalls } from './recovery/window-calls
 import { openRecoveryWindow, registerRecoveryIpc, tellTheWindow } from './recovery-window'
 import { aCommandsKind, registerRuntimeIpc, webContentsSink } from './runtime/ipc'
 import { sinkOwnerId } from './runtime/window-caller'
-import { DEFAULT_SILENCE_WINDOW_MS } from './runtime/liveness'
-import { readProviderConfig } from './runtime/provider-config'
-import {
-  listProfileIds,
-  listProviderHomes,
-  deriveProviderHome,
-  homePathsForProvider,
-  providerHomesRoot,
-  savedMethodsFolder,
-} from './connections/homes'
-import {
-  createProviderModules,
-  desktopProviderInputs,
-  providerAuthFromModules,
-  providerVersionsFromModules,
-  providerProgramPathsFromModules,
-} from './providers'
-import { readSavedMethods, savedMethodsUseOf } from './saved-methods'
-import { createSavedMethodService } from './saved-method-service'
-import { createMethodChangeStore } from './db/method-changes'
-import {
-  createMemoryService,
-  stageKnowledgeFile,
-  sweepKnowledgeStages,
-} from './runtime/agent-memory'
-import { ApiKeys, askTheProvider } from './runtime/api-keys'
-import { listProcesses, memoryOf } from './runtime/process-listing'
-import { importProviderUsageFile, usageKeptIn } from './provider-usage-file'
-import { importScheduleAttemptsFile, scheduleAttemptsIn } from './schedule-attempts-file'
-import {
-  importProfileExecutionFile,
-  readProfileExecutionIn,
-  writeProfileExecution,
-} from './profile-execution-file'
-import { importTurnsTheAppCutFile, turnsTheAppCutIn } from './turns-the-app-cut-file'
-import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
-import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
-import { startSettingsLocator } from './providers'
-import { settingsLocations } from './settings-locations'
-import { snapshotFor } from './provider-snapshots'
+import { providerHomesRoot } from './connections/homes'
+import { importProviderUsageFile } from './provider-usage-file'
+import { importScheduleAttemptsFile } from './schedule-attempts-file'
+import { importProfileExecutionFile } from './profile-execution-file'
+import { importTurnsTheAppCutFile } from './turns-the-app-cut-file'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
 import { THEME_SCHEME_PRIVILEGES, installThemeProtocol } from './themes/asset-protocol'
 import {
@@ -253,21 +165,12 @@ import { ThemeStore } from './themes/store'
 import { themeProblem } from './themes/words'
 import { THEMES_CHANNELS } from '../shared/theme-library'
 import { installCspHeaders, rendererCsp } from '../shared/content-security-policy'
-import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'
+import { RuntimeHost } from './runtime/runtime-host'
 import { appMenuTemplate } from './app-menu'
 import { nativeTitleBarOptions, updateNativeTitleBar } from './native-title-bar'
-import { checkSessionCwd, resolveSessionCwd } from './runtime/scratch-cwd'
-import { captionHandedPaths, classifyDroppedPaths, classifyHandedPath } from './runtime/handed-path'
-import {
-  pastePicture,
-  pastedImagesRoot,
-  sweepPastedImages,
-  tooManyPixels,
-} from './runtime/pasted-image'
 import {
   createDraftWriter,
   importDraftsFile,
-  keepDraftedPastes,
   requestLastDraftSaves,
   savedDraftsBook,
   type DraftWriter,
@@ -277,11 +180,7 @@ import { LAST_DRAFT_SAVE_CHANNEL } from '../shared/saved-drafts'
 import { keepTheSystemZone, readTheSystemZoneNow } from './system-zone'
 import { LOCAL_ZONE_MOVED_CHANNEL, readLocalTimeFrom, type LocalZone } from '../shared/local-time'
 import { resourcesRoot } from './resources/resources'
-import { readSessionInstructions } from './runtime/instructions'
-import { profileBundleSpans, thisConversationSpans } from './runtime/factory-text'
-import { toolsToldInTextFor } from './runtime/agent-tools'
-import { publishProfileBundle } from './runtime/profile-bundle'
-import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from './runtime/workspace'
+import { brobotWorkspace } from './runtime/workspace'
 import {
   installNavigationGuard,
   installSessionRelease,
@@ -291,8 +190,8 @@ import { startUpdates } from './updates-in-the-app'
 import { startWorkspaces } from './workspaces-in-the-app'
 import { takeUpdateWorkspaces, updateSettingsOf, updateWorkspacesToReopen } from './update-settings'
 import { startProviderSnapshots } from './provider-snapshots'
-import { importSignInChangesFile, signInChangesIn } from './sign-in-changes'
-import { archivedConversationsIn, importArchivedFile } from './archived-file'
+import { importSignInChangesFile } from './sign-in-changes'
+import { importArchivedFile } from './archived-file'
 import {
   defaultDataFolder,
   nameTheAppToWindows,
@@ -303,6 +202,9 @@ import {
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
 import { prepareCheckpointReplacement, captureAfterCompaction } from './recovery/replace-checkpoint'
+import { composeRuntimeHost } from './runtime-host-composition'
+import { CHOOSE_WORKSPACE_OPTIONS, registerPickerIpc } from './desktop-pickers'
+import { registerAttentionSignalsIpc } from './attention-signals-ipc'
 
 const updateReopenAtLaunch =
   app.isPackaged && !app.commandLine.hasSwitch('brobot-hidden')
@@ -590,434 +492,24 @@ function readAppInfo(): AppInfo {
   })
 }
 
-function builtInSkillsResources(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'built-in-skills')
-    : join(app.getAppPath(), 'resources', 'built-in-skills')
-}
-
 const pluginController = productionPluginController()
 
-async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
-  const shippedSkills = keptShippedSkills(builtInSkillsResources())
-  const shippedVersion = (): string | null => {
-    try {
-      return shippedSkills().catalogue.version
-    } catch {
-      return null
-    }
-  }
-  const userData = app.getPath('userData')
-  const sharedSkills = new SharedSkillLibrary(userData)
-  const skillsReady = firstWindowLoad.then(() => convertSharedSkills(userData, database))
-  void skillsReady.catch(() => console.warn('Skills could not be read.'))
-  try {
-    ensureWorkspace(userData)
-  } catch (error) {
-    console.warn(
-      `the BroCrew workspace could not be prepared: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-  keepDraftedPastes(database, userData, Date.now())
-  void sweepPastedImages(pastedImagesRoot(userData), Date.now()).catch(() => 0)
-
-  const originalStore = createSessionStore(database, Date.now, mainThreadWork)
-  const committed = committedChangesOf(database)
-  const writeLog = createDatabaseWriteLog()
-  const stopWriteLog = committed.listen((change) => {
-    if (!change.resync && change.write) writeLog.record(change.write, change.tables)
-  })
-  app.once('will-quit', () => {
-    stopWriteLog()
-    writeLog.stop()
-  })
-  const store = timedMethods(originalStore, 'store', mainThreadWork, (name, call) =>
-    committed.withWriter(name, call),
-  )
-  const sharedDiscovery = new SharedSkillDiscovery(
-    userData,
-    skillsReady,
-    shippedSkills,
-    undefined,
-    (profileId) => profileSkillAccess(store, profileId),
-  )
-  let wallsAheadFailed = false
-  const readTheWallsAhead = (): void => {
-    if (!database.open) return
-    let whole = true
-    try {
-      whole = store.readAheadProviderWalls(Date.now(), 15)
-    } catch (error) {
-      if (!wallsAheadFailed)
-        console.warn(
-          `the provider limits could not be read ahead: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      wallsAheadFailed = true
-    }
-    setTimeout(readTheWallsAhead, whole ? 5_000 : 0).unref()
-  }
-  setTimeout(readTheWallsAhead, 0).unref()
-  const ruleFolders = (): string[] => {
-    const records = store.recorded()
-    return SUPPORTED_PROVIDERS.flatMap((provider) =>
-      providerKnowledge[provider].keptRules.projectFolders(records),
-    )
-  }
-  const locations = settingsLocations(locateOffTheMainThread)
-  const whereRulesAreKept = (): WhereRulesAreKept => {
-    const records = store.recorded()
-    return {
-      projectFiles: providerRecord((provider) =>
-        locations.known(providerKnowledge[provider].keptRules.projectFolders(records)),
-      ),
-      homes: listProviderHomes(userData).map((home) => ({
-        provider: home.provider,
-        path: home.path,
-      })),
-      personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
-    }
-  }
-  const apiKeys = await ApiKeys.open(userData, Date.now, store)
-  const stopProviderServices = new AbortController()
-  app.once('will-quit', () => stopProviderServices.abort())
-  recordedConversation = (sessionId) => db === null || store.recordedOne(sessionId) !== null
-  void keepTranscriptsForever(userData).catch((error: unknown) =>
-    console.warn('Transcripts could not be marked as kept for good.', error),
-  )
-  let knowledgeChanged: (slug: string) => void = () => {}
-  const methodKnowledge = await createSavedMethodService({
-    homesRoot: providerHomesRoot(userData),
-    folderOf: (slug) => savedMethodsFolder(userData, slug),
-    identities: () => store.agentIdentities(),
-    changes: createMethodChangeStore(database, Date.now),
-    now: Date.now,
-    stage: stageKnowledgeFile,
-    sweep: sweepKnowledgeStages,
-    changed: (slug) => knowledgeChanged(slug),
-  })
-  const providerHomePaths: Pick<RuntimeHostDeps, 'providerHomePath'> = {
-    providerHomePath: (provider, profileId) =>
-      deriveProviderHome(userData, { profileId, provider }),
-  }
-  const memoryKnowledge = await createMemoryService({
-    store,
-    inputsOf: (slug) => ({
-      profileId: slug,
-      homesRoot: providerHomesRoot(userData),
-      homeOf: (provider) => providerHomePaths.providerHomePath(provider, slug),
-    }),
-    now: Date.now,
-    reconcile: createMemoryAmendmentObserver(database, Date.now).reconcile,
-    changed: (slug) => knowledgeChanged(slug),
-  })
-  const providerModules = createProviderModules(
-    (provider) => homePathsForProvider(userData, provider),
-    desktopProviderInputs({
-      isPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      platform: process.platform,
-      arch: process.arch,
-      managedRoot: providerHomesRoot(userData),
-      signal: stopProviderServices.signal,
-      commandLine: app.commandLine,
-      keys: {
-        read: (provider) => apiKeys.read(provider),
-        current: (provider) => apiKeys.current(provider),
-        status: (provider) => apiKeys.status(provider),
-      },
-    }),
-    (provider) => ({
-      list: () => listProviderConnections(database, provider, apiKeys.status(provider).set),
-      resolve: (connectionId) =>
-        resolveProviderConnection(database, {
-          provider,
-          connectionId,
-          keySaved: apiKeys.status(provider).set,
-        }),
-    }),
-  )
-  const providerAuth = providerAuthFromModules(providerModules)
-  const runtimeHost = new RuntimeHost({
-    plugins: pluginController,
-    pluginAttachments: {
-      agent: (occupied) =>
-        new WorkspacePluginAttachments(
-          pluginSupervisor,
-          pluginWorkspaceIdentity(app.getPath('userData')),
-        ).agent(occupied),
-    },
-    skillImports: (from, to) => sharedSkills.recentImports(from, to),
-    sharedSkillsRoot: () => sharedDiscovery.root(),
-    prepareSharedSkills: () => sharedDiscovery.prepareLaunch(),
-    beforeSkillDiscovery: () => sharedDiscovery.library.beforeOffer(),
-    closeSharedSkills: () => sharedDiscovery.close(),
-    skillsForAPerson: sharedDiscovery.window,
-    savedMethods: methodKnowledge,
-    memoryKnowledge,
-    afterFirstWindowLoad: firstWindowLoad,
-    deferStartupUntilListPaint: true,
-    workSearchReader: startWorkSearch(database.name),
-    pastWorkSearchReader: startPastWorkSearch(),
-    windowReader: startWindowReader(database.name),
-    filesLibraries: new FilesLibraryWindows(() => startFilesLibrary(database.name)),
-    filesLibraryRevision: () => {
-      if (store.canReadFreshSnapshot?.() !== true) return null
-      const stamp = database
-        .prepare(
-          'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
-        )
-        .get()
-      return JSON.stringify(stamp)
-    },
-    teamProfileGraphs: new TeamProfileGraphWindows((admission, failure) =>
-      startTeamProfileGraph(database.name, admission, failure),
-    ),
-    teamProfileGraphRevision: () => {
-      if (store.canReadFreshSnapshot?.() !== true) return null
-      return JSON.stringify(
-        database
-          .prepare(
-            'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
-          )
-          .get(),
-      )
-    },
-    themes: themes ?? undefined,
+function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
+  return composeRuntimeHost(database, {
+    firstWindowLoad,
     mainThreadWork,
-    store,
-    limitsWriterStamp: limitsWriterSampler(database, () => store.canReadFreshSnapshot?.() === true),
-    windowWriterStamp: windowWriterSampler(database, () => store.canReadFreshSnapshot?.() === true),
-    limitsReader: new LimitsReaderLifetime(database.name, startLimitsReader, (message) =>
-      broadcastRuntime(
-        () => BrowserWindow.getAllWindows(),
-        LIMITS_DISPLAY_CHANGED_CHANNEL,
-        message,
-        (error) =>
-          console.error('BroCrew could not tell a window its limits reading changed:', error),
-        mainThreadWork,
-        'window provider broadcast',
-      ),
-    ),
-    signInChanges: signInChangesIn(database),
-    archived: archivedConversationsIn(database),
-    protectedPlaceOf: (folder) => {
-      const places = thePlacesOnThisComputer({
-        userData,
-        providerHomesRoot: providerHomesRoot(userData),
-        workspaceList: workspaceListFile({
-          appData: app.getPath('appData'),
-          userData,
-          hidden: presentation.hidden,
-          packaged: app.isPackaged,
-        }),
-        workspaceOf: brobotWorkspace,
-      })
-      return aProtectedPlace(folder, places)
+    pluginController,
+    pluginSupervisor,
+    presentation,
+    windowChangeNotices,
+    migrationsAppliedOrNull,
+    themes: () => themes,
+    soleAtThisLaunch: () => soleAtThisLaunch,
+    databaseClosed: () => db === null,
+    keepRecordedConversation: (recorded) => {
+      recordedConversation = recorded
     },
-    createRuntime: (provider) => providerModules[provider].createRuntime(),
-    prepareProviderLaunch: (provider, profileId, connection) => {
-      return providerModules[provider].prepareLaunch(profileId, connection)
-    },
-    connectionFor: (provider, connectionId) => {
-      const connections = providerModules[provider].connections
-      if (!connections) throw new Error('Provider connection services were not bound')
-      return connections.resolve(connectionId)
-    },
-    listConnections: () =>
-      Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
-    prepareProviderHome: async (provider, profileId) => {
-      return providerModules[provider].home.prepare(profileId)
-    },
-    prepareBuiltInSkills: ({ pack, ...input }) =>
-      prepareBuiltInSkills({
-        ...input,
-        managedRoot: providerHomesRoot(userData),
-        shipped: shippedSkills,
-        ...(pack?.kind === 'read' ? { skills: pack.pack.skills } : {}),
-      }),
-    readTextPack: () => readTextPack(process.env, app.isPackaged, shippedVersion),
-    recordStartAttempt: (line) => logInfo('launch', line.stage, { ...line }),
-    ...providerHomePaths,
-    listProfiles: (provider) => listProfileIds(userData, provider),
-    providerAuth,
-    apiKeys,
-    loginRenewal: providerAuth.loginRenewal,
-    programFound: providerProgramPathsFromModules(providerModules),
-    askTheProvider: (provider, key) => askTheProvider(provider, key),
-    providerVersions: providerVersionsFromModules(providerModules),
-    keptRules: async () => {
-      const folders = ruleFolders()
-      await locations.refresh(folders)
-      const unfound = locations.unfound(folders).length
-      if (unfound > 0) {
-        throw new Error(
-          `where ${String(unfound)} folders keep their rules could not be found just now`,
-        )
-      }
-      return readKeptRules(whereRulesAreKept())
-    },
-    removeKeptRule: (input) => removeKeptRule(whereRulesAreKept(), input),
-    listProcesses,
-    usageKept: usageKeptIn(database),
-    profileExecution: {
-      read: () => readProfileExecutionIn(database, userData),
-      write: (kept) => writeProfileExecution(database, kept),
-      owned: soleAtThisLaunch,
-    },
-    scheduleAttempts: scheduleAttemptsIn(database),
-    turnsTheAppCut: turnsTheAppCutIn(database),
-    accountsKept: {
-      read: () => readKeptAccounts(providerAccountsFile(userData)),
-      write: (accounts) => writeKeptAccounts(providerAccountsFile(userData), accounts),
-    },
-    providersMoved: (message) =>
-      broadcastRuntime(
-        () => BrowserWindow.getAllWindows(),
-        PROVIDERS_CHANGED_CHANNEL,
-        message,
-        (error) => console.error('BroCrew could not tell a window a provider fact moved:', error),
-        mainThreadWork,
-        'window provider broadcast',
-      ),
-    openExternal: (url) => shell.openExternal(url),
-    revealPath: (path) => shell.showItemInFolder(path),
-    openPath: (path) => shell.openPath(path),
-    providerHomesRoot: () => providerHomesRoot(userData),
-    resourcesRoot: () => resourcesRoot(userData),
-    stopWorkerCommands: (cwd, occupied) => stopWorkerCommands(userData, cwd, occupied),
-    whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
-    providerSnapshot: (provider, model) => snapshotFor(provider, model),
-    resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-    readInstructions: (provider, cwd, providerHome, context, launchPack) => {
-      const pack = launchPack ?? readTextPack(process.env, app.isPackaged, shippedVersion)
-      const savedMethods =
-        context.profileSlug === null
-          ? undefined
-          : readSavedMethods(savedMethodsFolder(userData, context.profileSlug), Date.now())
-      const launchContext = savedMethods === undefined ? context : { ...context, savedMethods }
-      const composed = profileBundleSpans(
-        pack.kind === 'read' ? { ...context, factoryText: factoryTextOf(pack.pack) } : context,
-        provider,
-      )
-      const bundle = publishProfileBundle(provider, providerHome, composed.text)
-      const read = readSessionInstructions({
-        provider,
-        identity: { profileSlug: context.profileSlug, displayName: context.displayName },
-        cwd,
-        providerHome,
-        bundle,
-        bundleComposed: composed,
-        thisConversation: thisConversationSpans(
-          launchContext,
-          toolsToldInTextFor(provider),
-          provider,
-        ),
-        workspaceFile: providerKnowledge[provider].instructions.workspaceFile?.(
-          brobotWorkspace(userData),
-        ),
-        workspaceOwnFiles: workspaceOwnFilesIn(userData),
-      })
-      return {
-        instructions: read.instructions,
-        systemHint: read.systemHint ?? undefined,
-        ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
-        memoryLoaded: read.memoryLoaded,
-        profileFile: read.profileFile,
-        ...(savedMethods === undefined ? {} : { savedMethods: savedMethodsUseOf(savedMethods) }),
-        ...(pack.kind === 'none'
-          ? {}
-          : {
-              textPack:
-                pack.kind === 'read'
-                  ? { folder: pack.pack.folder, refused: null }
-                  : { folder: pack.folder, refused: pack.refusal },
-            }),
-        context,
-      }
-    },
-    exportDirectory: () => join(userData, 'exports'),
-    newSessionId: newProviderSessionId,
-    nativeTranscriptPath,
-    userHomeSessions: () => discoverUserHomeSessions(),
-    indexedDescriptions: () => indexedHomeDescriptions(),
-    discoverSessions: () =>
-      listProviderHomes(userData)
-        .map((home) => discoverSessionsIn(home.provider, home.path, home.profileId))
-        .reduce(
-          (all, part) => ({
-            found: [...all.found, ...part.found],
-            skipped: [...all.skipped, ...part.skipped],
-          }),
-          { found: [], skipped: [] },
-        ),
-    readProviderConfig,
-    liveness: { windowMs: readSilenceWindowMs() },
-    announce: (change) => windowChangeNotices.announce(change),
-    statesMoved: (message) =>
-      broadcastRuntime(
-        () => BrowserWindow.getAllWindows(),
-        RUNTIME_STATES_CHANNEL,
-        message,
-        (error) => console.error('BroCrew could not tell a window what moved:', error),
-        mainThreadWork,
-        'window state broadcast',
-      ),
-    readProcessMemory: (pids: readonly number[]) =>
-      process.platform === 'win32'
-        ? listProcesses().then((rows) => memoryOf(pids, rows))
-        : withDeadline(
-            new Promise<ReadonlyMap<number, number>>((resolve, reject) => {
-              execFile(
-                'ps',
-                psArgsFor(pids),
-                { encoding: 'utf8', timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' },
-                (error, listing) => {
-                  const sizes = residentSizesIn(error, listing)
-                  if (sizes === null) reject(error)
-                  else resolve(sizes)
-                },
-              )
-            }),
-            PS_READ_DEADLINE_MS,
-            'the process memory read',
-          ),
   })
-  knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
-  runtimeHost.fillQuestionCopies()
-  void runtimeHost.readForWindow(() => undefined, 'listing').catch(() => {})
-  return runtimeHost
-}
-
-function readSilenceWindowMs(): number {
-  const raw = Number(process.env['BROBOT_SILENCE_WINDOW_MS'])
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SILENCE_WINDOW_MS
-}
-
-const CHOOSE_CWD_OPTIONS: OpenDialogOptions = {
-  title: 'Choose a folder for this conversation',
-  buttonLabel: 'Use this folder',
-  properties: ['openDirectory', 'createDirectory'],
-}
-
-const CHOOSE_BUNDLE_OPTIONS: OpenDialogOptions = {
-  title: 'Choose a BroCrew session bundle',
-  buttonLabel: 'Restore this conversation',
-  filters: [
-    { name: 'BroCrew session bundle', extensions: [BUNDLE_SUFFIX.split('.').pop() ?? 'json'] },
-  ],
-  properties: ['openFile'],
-}
-
-const CHOOSE_ATTACHMENT_OPTIONS: OpenDialogOptions = {
-  title: 'Choose a file or folder to hand to the agent',
-  buttonLabel: 'Attach',
-  properties: ['openFile', 'openDirectory'],
-}
-
-const CHOOSE_WORKSPACE_OPTIONS: OpenDialogOptions = {
-  title: 'Choose a workspace folder',
-  buttonLabel: 'Choose',
-  properties: ['openDirectory', 'createDirectory'],
 }
 
 const presentation = launchPresentation((name) => app.commandLine.hasSwitch(name))
@@ -1204,43 +696,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     }),
   )
   ipcMain.handle('app:info', () => readAppInfo())
-  const attentionWindows = new WeakMap<BrowserWindow, AttentionSignals>()
-  ipcMain.handle(ATTENTION_SIGNALS_CHANNEL, (event, signal: unknown) => {
-    if (!isAttentionSignal(signal)) throw new Error('Invalid attention signal.')
-    const window = BrowserWindow.fromWebContents(event.sender)
-    if (window === null || window.isDestroyed()) return
-    let signals = attentionWindows.get(window)
-    if (signals === undefined) {
-      signals = new AttentionSignals({
-        platform: process.platform,
-        isFocused: () => window.isFocused(),
-        badge: (count) => {
-          if (process.platform === 'darwin') app.dock?.setBadge(count === 0 ? '' : String(count))
-          else if (process.platform === 'linux') app.setBadgeCount(count)
-        },
-        bounce: (kind) => app.dock?.bounce(kind),
-        cancelBounce: (id) => app.dock?.cancelBounce(id),
-        flash: (active) => {
-          if (!window.isDestroyed()) window.flashFrame(active)
-        },
-        overlay: (count) => {
-          if (window.isDestroyed()) return
-          const png = attentionOverlay(count)
-          window.setOverlayIcon(
-            png === null ? null : nativeImage.createFromBuffer(png),
-            count === 0 ? '' : `${count} item${count === 1 ? '' : 's'} waiting on you`,
-          )
-        },
-      })
-      const owned = signals
-      window.on('focus', () => owned.focused())
-      window.once('closed', () => owned.clear())
-      window.webContents.on('render-process-gone', () => owned.reloaded())
-      window.webContents.on('did-navigate', () => owned.reloaded())
-      attentionWindows.set(window, signals)
-    }
-    signals.update(signal)
-  })
+  registerAttentionSignalsIpc()
   const database = db
   if (database === null) throw new Error('Database not initialised')
   const writer = createDraftWriter(database)
@@ -1271,59 +727,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     return writer.write(saved, frame && !frame.isDestroyed() ? frame.frameToken : undefined)
   })
   ipcMain.handle('app:local-zone', () => localZone())
-  ipcMain.handle('app:choose-cwd', async (event): Promise<ChosenCwd> => {
-    const owner = BrowserWindow.fromWebContents(event.sender)
-    const result = await pick(owner, CHOOSE_CWD_OPTIONS)
-    const picked = result.canceled ? undefined : result.filePaths[0]
-    if (picked === undefined) return null
-    const verdict = checkSessionCwd(picked)
-    return verdict.ok ? { path: verdict.path } : { path: picked, refusal: verdict.reason }
-  })
-  ipcMain.handle('app:choose-bundle', async (event): Promise<string | null> => {
-    const owner = BrowserWindow.fromWebContents(event.sender)
-    const options = {
-      ...CHOOSE_BUNDLE_OPTIONS,
-      defaultPath: join(app.getPath('userData'), 'exports'),
-    }
-    const result = await pick(owner, options)
-    return result.canceled ? null : (result.filePaths[0] ?? null)
-  })
-  ipcMain.handle(
-    'app:choose-attachment',
-    async (event, input: { cwd?: string } = {}): Promise<ChosenAttachment> => {
-      const owner = BrowserWindow.fromWebContents(event.sender)
-      const result = await pick(owner, CHOOSE_ATTACHMENT_OPTIONS)
-      const picked = result.canceled ? undefined : result.filePaths[0]
-      if (picked === undefined) return null
-      const verdict = await classifyHandedPath(picked, input.cwd ?? '')
-      return 'refusal' in verdict ? { refusal: verdict.refusal } : { handed: verdict.handed }
-    },
-  )
-
-  ipcMain.handle(
-    'app:classify-attachments',
-    async (_event, input: { handed?: HandedPath[]; cwd?: string } = {}): Promise<HandedPath[]> =>
-      await captionHandedPaths(Array.isArray(input.handed) ? input.handed : [], input.cwd ?? ''),
-  )
-
-  ipcMain.handle(
-    'app:hand-dropped-paths',
-    async (_event, input: { paths?: unknown; cwd?: string } = {}): Promise<DroppedPathVerdict[]> =>
-      await classifyDroppedPaths(Array.isArray(input.paths) ? input.paths : [], input.cwd ?? ''),
-  )
-
-  ipcMain.handle(
-    'app:paste-image',
-    async (_event, input: { cwd?: string } = {}): Promise<DroppedPathVerdict> => {
-      const image = clipboard.readImage()
-      if (image.isEmpty()) return { refusal: NO_IMAGE_ON_CLIPBOARD }
-      const size = image.getSize()
-      const refusal = tooManyPixels(size.width, size.height)
-      if (refusal !== null) return { refusal }
-      const root = pastedImagesRoot(app.getPath('userData'))
-      return await pastePicture(root, image.toPNG(), input.cwd ?? '', Date.now())
-    },
-  )
+  registerPickerIpc(pick)
   thePageReceipt = aPageReceipt({
     closing: () => runtimeHost.closing,
     log: intoTheStallLog,
@@ -2411,29 +1815,3 @@ void runAsSoleInstance({
   start,
   log: sayAtOnce,
 })
-
-async function locateOffTheMainThread(
-  folders: readonly string[],
-): Promise<ReadonlyMap<string, string>> {
-  const worker = await startSettingsLocator()
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const settle = (then: () => void): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      void worker.terminate()
-      then()
-    }
-    const timer = setTimeout(
-      () => settle(() => reject(new Error('the search for kept rules did not answer in time'))),
-      10_000 + 1_500 * folders.length,
-    )
-    worker.once('message', (pairs: [string, string][]) => settle(() => resolve(new Map(pairs))))
-    worker.once('error', (error: Error) => settle(() => reject(error)))
-    worker.once('exit', (code: number) =>
-      settle(() => reject(new Error(`the search for kept rules stopped (exit ${String(code)})`))),
-    )
-    worker.postMessage(folders)
-  })
-}

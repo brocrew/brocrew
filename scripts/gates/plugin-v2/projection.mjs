@@ -39,6 +39,7 @@ export const gateFetch:typeof fetch=async(input,init)=>{
 }
 export function project(repo, options) {
   const main = path.join(repo, 'apps/desktop/src/main/index.ts')
+  const composition = path.join(repo, 'apps/desktop/src/main/runtime-host-composition.ts')
   const config = fs.readFileSync(
     path.join(repo, 'apps/desktop/src/main/plugins/catalogue/build-config.ts'),
     'utf8',
@@ -47,41 +48,54 @@ export function project(repo, options) {
   const shim = path.join(repo, 'apps/desktop/src/main/plugins/catalogue/v2-gate-fetch.ts')
   const original = {
     main: fs.readFileSync(main, 'utf8'),
+    // A staged source from before card 74 has no composition file.
+    composition: fs.existsSync(composition) ? fs.readFileSync(composition, 'utf8') : null,
     download: fs.readFileSync(download, 'utf8'),
   }
   demand(!fs.existsSync(shim))
   // Normalize the historical runtime call only for the shared disposable projection.
-  const mainInput = original.main.replace(
-    'providerModules[provider].createRuntime()',
-    'providerModules[provider].createRuntime(connectionId)',
+  const normalized = (source) =>
+    source.replace(
+      'providerModules[provider].createRuntime()',
+      'providerModules[provider].createRuntime(connectionId)',
+    )
+  const together = original.composition === null
+  const p = projectBuild(
+    config,
+    together ? normalized(original.main) : original.main,
+    together ? null : normalized(original.composition),
+    options.appData,
+    options.browser,
   )
-  const p = projectBuild(config, mainInput, options.appData, options.browser)
   const fixture = `            /* packaged-plugin-gate-only */ fixtureSource: ${JSON.stringify(path.join(options.appData, 'repo-fixture'))},\n`
   // Drive-qualified ESM imports must use forward slashes in the Windows Vite build.
   const provider = path.join(
     path.dirname(options.appData),
     'repo/scripts/gates/plugin-packaged/provider-fixture.mjs',
   )
-  const entry = once(p.entry, fixture, '').replace(
-    JSON.stringify(provider),
-    JSON.stringify(provider.replaceAll('\\', '/')),
-  )
+  const forwardSlashes = (source) =>
+    source.replace(JSON.stringify(provider), JSON.stringify(provider.replaceAll('\\', '/')))
+  const entry = together ? forwardSlashes(once(p.entry, fixture, '')) : once(p.entry, fixture, '')
+  const composed = together ? null : forwardSlashes(p.composition)
   demand(!entry.includes('fixtureSource:') && !entry.includes('repo-fixture'))
   const transport =
     `// ${MARKER}\nimport {gateFetch} from './v2-gate-fetch';\n` +
     once(original.download, '(options.fetch ?? fetch)(', '(options.fetch ?? gateFetch)(')
   fs.writeFileSync(shim, fetchSource(options), { flag: 'wx', mode: 0o600 })
   fs.writeFileSync(main, entry)
+  if (!together) fs.writeFileSync(composition, composed)
   fs.writeFileSync(download, transport)
   const diagnostics = options.diagnostics ? projectDiagnostics(repo, options.root) : null
   return {
     restore() {
       diagnostics?.restore()
       fs.writeFileSync(main, original.main)
+      if (!together) fs.writeFileSync(composition, original.composition)
       fs.writeFileSync(download, original.download)
       fs.unlinkSync(shim)
       demand(
         fs.readFileSync(main, 'utf8') === original.main &&
+          (together || fs.readFileSync(composition, 'utf8') === original.composition) &&
           fs.readFileSync(download, 'utf8') === original.download,
       )
     },

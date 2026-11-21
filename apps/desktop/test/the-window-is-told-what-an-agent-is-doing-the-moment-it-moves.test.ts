@@ -749,12 +749,15 @@ function tsFilesUnder(directory: string): string[] {
 describe('D-019 · runtime:states leaves main on a channel of its own', () => {
   const read = (file: string): string => readFileSync(join(SRC, file), 'utf8')
   const ipc = code('shared/runtime-ipc.ts', read('shared/runtime-ipc.ts'))
-  const mainIndex = code('main/index.ts', read('main/index.ts'))
+  const mainIndex = code(
+    'main/runtime-host-composition.ts',
+    read('main/runtime-host-composition.ts'),
+  )
   const preload = code('preload/index.ts', read('preload/index.ts'))
   const mainSlice = sliceOf(
     'statesMoved: (message) =>',
     '\n    readProcessMemory:',
-    'main/index.ts',
+    'main/runtime-host-composition.ts',
     mainIndex,
   )
   const broadcastSlice = code(
@@ -777,7 +780,7 @@ describe('D-019 · runtime:states leaves main on a channel of its own', () => {
         read(file).includes('RUNTIME_STATES_CHANNEL') &&
         code(file, read(file)).includes('RUNTIME_STATES_CHANNEL'),
     )
-    expect(naming).toEqual([join('main', 'index.ts')])
+    expect(naming).toEqual([join('main', 'runtime-host-composition.ts')])
 
     // The slices exist and the real ones are whole.
     expect(mainSlice).toContain('BrowserWindow.getAllWindows()')

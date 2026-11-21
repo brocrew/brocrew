@@ -294,8 +294,8 @@ describe('the scenarios', () => {
       `PROVIDER_HOMES_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[1]}'`,
     )
     // The workspace is the first thing main makes when it creates its runtime host.
-    const index = read('src/main/index.ts')
-    const host = index.slice(index.indexOf('function createRuntimeHost('))
+    const index = read('src/main/runtime-host-composition.ts')
+    const host = index.slice(index.indexOf('function composeRuntimeHost('))
     expect(host.indexOf('ensureWorkspace(userData)')).toBeGreaterThan(0)
     expect(host.indexOf('ensureWorkspace(userData)')).toBeLessThan(host.indexOf('\n}\n'))
   })
