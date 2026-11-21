@@ -18,19 +18,26 @@ import {
   type PastWorkHit,
   type PastWorkSearchResult,
   type PastWorkSource,
+  type PastWorkTranscriptScope,
 } from '../../shared/past-work-search'
 
 const CELL_LIMIT = 1024 * 1024
 const DOCUMENT_LIMIT = 1_000_000
 const PROFILE_LIMIT = 1
 const PAST_WORK_MESSAGE_LIMIT = 4096
+const MIXED_RANK_HEAD = 1024
 type Source = { id: string; version: number }
 type Document = {
+  rowid: number
   conversation: string
   piece: string | null
   field: PastWorkField
-  snippet: string
+  turn_id: string | null
+  recorded_at: number | null
+  generation: number | null
+  ordinal: number | null
 }
+type Recording = { turnId: string | null; at: number; generation: number; ordinal: number }
 type SearchReads = WorkLedgerRead & Parameters<typeof describeConversationForRead>[0]
 type Index = { db: Database.Database; versions: Map<string, number> }
 const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
@@ -43,6 +50,7 @@ export function searchPastWork(
   revision?: PastWorkSource,
   profile?: string,
   cursor?: string,
+  transcript?: PastWorkTranscriptScope,
 ): PastWorkSearchResult {
   if (db.inTransaction) return { ok: false, reason: 'unavailable' }
   try {
@@ -51,7 +59,7 @@ export function searchPastWork(
       search = new ProfilePastWorkSearch(db)
       searches.set(db, search)
     }
-    return search.read(store, caller, words, revision, profile, cursor)
+    return search.read(store, caller, words, revision, profile, cursor, transcript)
   } catch {
     closePastWorkSearch(db)
     return { ok: false, reason: 'unavailable' }
@@ -155,8 +163,15 @@ class ProfilePastWorkSearch {
     revision?: PastWorkSource,
     chosenProfile?: string,
     cursor?: string,
+    chosenTranscript?: PastWorkTranscriptScope,
   ): PastWorkSearchResult {
-    const query = pastWorkSearchQuery.safeParse({ words, profile: chosenProfile, cursor })
+    const transcript = revision?.transcript ?? chosenTranscript
+    const query = pastWorkSearchQuery.safeParse({
+      words,
+      profile: chosenProfile,
+      cursor,
+      ...(transcript === undefined ? {} : { in: 'transcripts', ...transcript }),
+    })
     if (!query.success) return { ok: false, reason: 'invalid' }
     const wanted = query.data.profile
     const profile =
@@ -165,7 +180,7 @@ class ProfilePastWorkSearch {
           ? null
           : agentIdentityRowId(wanted)
         : revision.profile
-    const after = pastWorkStart(query.data.words, profile, cursor)
+    const after = pastWorkStart(query.data.words, profile, cursor, transcript)
     if (after === undefined) return { ok: false, reason: 'invalid' }
     const match = query.data.words
       .split(/\s+/u)
@@ -190,7 +205,8 @@ class ProfilePastWorkSearch {
         observeDatabaseMemory(memory, 'past-work-index')
         try {
           memory.pragma('max_page_count = 65536')
-          memory.exec(`CREATE VIRTUAL TABLE documents USING fts5(conversation UNINDEXED, piece UNINDEXED, field UNINDEXED, text);
+          memory.exec(`CREATE VIRTUAL TABLE documents USING fts5(conversation UNINDEXED, piece UNINDEXED, field UNINDEXED, text,
+            turn_id UNINDEXED, recorded_at UNINDEXED, generation UNINDEXED, ordinal UNINDEXED);
             CREATE TABLE document_sources(document INTEGER PRIMARY KEY, conversation TEXT NOT NULL);
             CREATE INDEX document_sources_conversation ON document_sources(conversation);`)
         } catch (error) {
@@ -217,7 +233,8 @@ class ProfilePastWorkSearch {
                 )
                 .all({ versions: JSON.stringify(revision.versions), profile }) as Source[],
             }
-      const { sessions, next: nextPage } = page
+      const { sessions } = page
+      let nextPage = page.next
       const current = new Set(sessions.map((session) => session.id))
       const next = new Map(index.versions)
       index.db.transaction(() => {
@@ -243,24 +260,53 @@ class ProfilePastWorkSearch {
           this.indexConversation(index!, store, session)
           next.set(session.id, session.version)
         }
-        if (
-          (index!.db.prepare('SELECT count(*) AS n FROM documents').get() as { n: number }).n >
-          DOCUMENT_LIMIT
-        )
-          throw new Error('past-work index is too large')
+        const count = index!.db.prepare('SELECT count(*) AS n FROM document_sources').get() as {
+          n: number
+        }
+        if (count.n > DOCUMENT_LIMIT) throw new Error('past-work index is too large')
       })()
-      const hits: PastWorkHit[] = []
+      const hits: (Omit<PastWorkHit, 'snippet'> & { rowid: number })[] = []
       const seen = new Set<string>()
-      const results = index.db
-        .prepare(
-          `SELECT conversation, piece, field,
-        snippet(documents, 3, '[', ']', ' … ', 24) AS snippet
-        FROM documents WHERE documents MATCH ? ORDER BY rank`,
-        )
-        .iterate(match)
-      for (const value of results) {
-        const doc = value as Document
-        const key = doc.piece ?? doc.conversation
+      const matching = `SELECT rowid, conversation, piece, field, turn_id, recorded_at,
+        generation, ordinal FROM documents WHERE documents MATCH @match`
+      const indexDb = index.db
+      function* matchingDocuments(): Generator<Document> {
+        if (transcript !== undefined) {
+          yield* indexDb
+            .prepare(
+              `${matching} AND recorded_at BETWEEN @from AND @to
+                ORDER BY conversation, rank, ordinal DESC`,
+            )
+            .iterate({
+              match,
+              from:
+                transcript.from === undefined
+                  ? Number.MIN_SAFE_INTEGER
+                  : Date.parse(transcript.from),
+              to:
+                transcript.to === undefined
+                  ? Number.MAX_SAFE_INTEGER
+                  : Date.parse(transcript.to) + 86_399_999,
+            }) as Iterable<Document>
+          return
+        }
+        // An ordinary LIMIT on FTS rank still sorts every match. The scalar form
+        // lets SQLite retain only the best rows, with FTS row order for tied ranks.
+        const head = indexDb
+          .prepare(`${matching} ORDER BY rank + 0, rowid LIMIT @limit`)
+          .all({ match, limit: MIXED_RANK_HEAD }) as Document[]
+        yield* head
+        if (head.length === MIXED_RANK_HEAD) {
+          // Many messages can belong to one conversation. Continue past the head
+          // when it did not yield five distinct live results.
+          yield* indexDb
+            .prepare(`${matching} ORDER BY rank`)
+            .iterate({ match }) as Iterable<Document>
+        }
+      }
+      for (const doc of matchingDocuments()) {
+        const pieceId = transcript === undefined ? doc.piece : null
+        const key = pieceId ?? doc.conversation
         if (seen.has(key)) continue
         seen.add(key)
         const live = db
@@ -270,15 +316,19 @@ class ProfilePastWorkSearch {
           .get({ id: doc.conversation, profile }) as
           { status: string; updated_at: number } | undefined
         if (live === undefined) continue
-        const work = doc.piece === null ? null : store.workById(doc.piece)
-        if (doc.piece !== null && (work === null || work.owner !== doc.conversation)) continue
+        if (transcript !== undefined && hits.length === 5) {
+          nextPage = hits[4]!.conversation
+          break
+        }
+        const work = pieceId === null ? null : store.workById(pieceId)
+        if (pieceId !== null && (work === null || work.owner !== doc.conversation)) continue
         const unread = rowsUnreadOnce()
         const piece =
           work?.parent === null || work === null
             ? undefined
             : store
                 .piecesWithTheirWaits(doc.conversation, unread)
-                .find((one) => one.piece === doc.piece)
+                .find((one) => one.piece === pieceId)
         if (
           unread.count ||
           unread.ledgersSkipped ||
@@ -287,13 +337,21 @@ class ProfilePastWorkSearch {
           throw new Error('unread work')
         const root = work?.parent === null ? store.turnBlockRootLines(work.piece) : null
         if (work?.parent === null && root === null) throw new Error('unread root')
-        const title = (root?.title ?? piece?.title ?? null)?.slice(0, 200) ?? null
-        const label = work?.label ?? doc.conversation
+        const described = describeConversationForRead(store, doc.conversation)
+        const title =
+          (
+            root?.title ??
+            piece?.title ??
+            (transcript === undefined ? null : described.title)
+          )?.slice(0, 200) ?? null
+        const label =
+          work?.label ?? (transcript === undefined ? doc.conversation : described.address)
         hits.push({
+          rowid: doc.rowid,
           conversation: doc.conversation,
-          piece: doc.piece,
+          piece: pieceId,
           label,
-          line: describeConversationForRead(store, doc.conversation).line,
+          line: described.line,
           title,
           link:
             work === null
@@ -303,17 +361,35 @@ class ProfilePastWorkSearch {
           last_active: new Date(live.updated_at).toISOString(),
           archived: false,
           matched_field: doc.field,
-          snippet: doc.snippet.slice(0, 320),
+          ...(doc.recorded_at === null || doc.ordinal === null || doc.generation === null
+            ? {}
+            : {
+                turn: {
+                  id: doc.turn_id,
+                  at: new Date(doc.recorded_at).toISOString(),
+                  generation: doc.generation,
+                  ordinal: doc.ordinal,
+                },
+              }),
         })
-        if (hits.length === 5) break
+        if (transcript === undefined && hits.length === 5) break
       }
+      const snippetFor = indexDb.prepare(
+        `SELECT snippet(documents, 3, '[', ']', ' … ', 24) AS snippet
+         FROM documents WHERE documents MATCH ? AND rowid = ?`,
+      )
+      const withExcerpts = hits.map(({ rowid, ...hit }) => {
+        const excerpt = snippetFor.get(match, rowid) as { snippet: string }
+        return { ...hit, snippet: excerpt.snippet.slice(0, 320) }
+      })
       db.exec('COMMIT')
       index.versions = next
       return {
         ok: true,
-        hits,
+        hits: withExcerpts,
         complete: nextPage === null,
-        next_cursor: nextPage === null ? null : pastWorkNext(query.data.words, profile, nextPage),
+        next_cursor:
+          nextPage === null ? null : pastWorkNext(query.data.words, profile, nextPage, transcript),
       }
     } catch (error) {
       if (db.inTransaction) db.exec('ROLLBACK')
@@ -324,17 +400,32 @@ class ProfilePastWorkSearch {
 
   private indexConversation(index: Index, store: WorkLedgerRead, session: Source): void {
     const insert = index.db.prepare(
-      'INSERT INTO documents(conversation, piece, field, text) VALUES (?, ?, ?, ?)',
+      `INSERT INTO documents(conversation, piece, field, text, turn_id, recorded_at, generation, ordinal)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const source = index.db.prepare(
       'INSERT INTO document_sources(document, conversation) VALUES (?, ?)',
     )
     let documents = 0
-    const add = (piece: string | null, field: PastWorkField, text: unknown) => {
+    const add = (
+      piece: string | null,
+      field: PastWorkField,
+      text: unknown,
+      recording?: Recording,
+    ) => {
       if (text === null || text === undefined || text === '') return
       if (typeof text !== 'string' || text.length > CELL_LIMIT || ++documents > DOCUMENT_LIMIT)
         throw new Error('unread past-work field')
-      const written = insert.run(session.id, piece, field, text)
+      const written = insert.run(
+        session.id,
+        piece,
+        field,
+        text,
+        recording?.turnId ?? null,
+        recording?.at ?? null,
+        recording?.generation ?? null,
+        recording?.ordinal ?? null,
+      )
       source.run(written.lastInsertRowid, session.id)
     }
     const conversationPiece =
@@ -343,48 +434,43 @@ class ProfilePastWorkSearch {
           .prepare('SELECT id FROM work WHERE owner_session_id = ? ORDER BY rowid LIMIT 1')
           .get(session.id) as { id: string } | undefined
       )?.id ?? null
-    const buffers = new Map<PastWorkField, { parts: string[]; length: number }>()
-    const collect = (field: PastWorkField, value: unknown) => {
-      if (typeof value !== 'string') {
-        add(conversationPiece, field, value)
-        return
-      }
-      const text = value.slice(0, PAST_WORK_MESSAGE_LIMIT)
-      let buffer = buffers.get(field)
-      if (buffer === undefined) {
-        buffer = { parts: [], length: 0 }
-        buffers.set(field, buffer)
-      }
-      if (buffer.length + text.length + 1 > 65536) {
-        add(conversationPiece, field, buffer.parts.join('\n'))
-        buffer.parts = []
-        buffer.length = 0
-      }
-      buffer.parts.push(text)
-      buffer.length += text.length + 1
-    }
+    const generation = store.theActiveGeneration(session.id)
     const events = this.source
       .prepare(
-        `SELECT type, substr(payload, 1, ?) AS payload FROM events
+        `SELECT type, substr(payload, 1, ?) AS payload, turn_id, created_at, ordinal FROM events
       WHERE session_id = ? AND generation = ? AND type IN ('user_turn', 'assistant_message') ORDER BY ordinal`,
       )
-      .iterate(CELL_LIMIT + 1, session.id, store.theActiveGeneration(session.id))
+      .iterate(CELL_LIMIT + 1, session.id, generation)
     for (const value of events) {
-      const event = value as { type: string; payload: string }
+      const event = value as {
+        type: string
+        payload: string
+        turn_id: string | null
+        created_at: number
+        ordinal: number
+      }
       if (event.payload.length > CELL_LIMIT) throw new Error('past-work text is too large')
       const text: unknown = JSON.parse(event.payload)
       if (typeof text !== 'object' || text === null) throw new Error('unread conversation text')
       const message = text as Record<string, unknown>
+      const capture = (field: PastWorkField, value: unknown) => {
+        const clipped = typeof value === 'string' ? value.slice(0, PAST_WORK_MESSAGE_LIMIT) : value
+        add(conversationPiece, field, clipped, {
+          turnId: event.turn_id,
+          at: event.created_at,
+          generation,
+          ordinal: event.ordinal,
+        })
+      }
       if (event.type === 'assistant_message') {
-        if (message.parentToolCallId == null) collect('agent reply', message.text)
+        if (message.parentToolCallId == null) capture('agent reply', message.text)
       } else {
         for (const part of theMessagesOf(message as unknown as UserTurnEvent)) {
           if (aPersonsOwnWords(part) || part.attribution === 'provider_transcript')
-            collect('person message', part.text)
+            capture('person message', part.text)
         }
       }
     }
-    for (const [field, buffer] of buffers) add(conversationPiece, field, buffer.parts.join('\n'))
     const resources = this.source
       .prepare(
         `SELECT r.work_id, r.name, w.owner_session_id FROM work_resource r

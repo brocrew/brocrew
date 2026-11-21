@@ -278,7 +278,7 @@ import {
   PLUGINS_HEADING,
 } from '../plugins/instructions'
 import type { SkillsRequest, SkillsReply } from '../../shared/skills-window'
-import type { PastWorkSearchResult } from '../../shared/past-work-search'
+import type { PastWorkSearchResult, PastWorkTranscriptScope } from '../../shared/past-work-search'
 import type { RecentActivityReading } from '../../shared/recent-activity'
 import { pathTail } from '../../shared/path-tail'
 import {
@@ -19683,8 +19683,9 @@ export class RuntimeHost implements LiveHost {
     words: string,
     profile?: string,
     cursor?: string,
+    transcript?: PastWorkTranscriptScope,
   ): Promise<PastWorkSearchResult> {
-    return this.workSearch.searchPastWork(asAgent, words, profile, cursor)
+    return this.workSearch.searchPastWork(asAgent, words, profile, cursor, transcript)
   }
 
   /**

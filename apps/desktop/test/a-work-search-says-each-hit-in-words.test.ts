@@ -83,6 +83,14 @@ describe('one work search result serves the conversation tool and task palette',
     expect(workSearchPalettePage(page).hits).toEqual([])
   })
 
+  it('points to transcript search after zero or one work match', () => {
+    const hint = 'To search what was said in conversations, use search_past_work.'
+    expect(workSearchInWords(aPage([]))).toContain(hint)
+    expect(workSearchInWords(aPage([aRow()]))).toContain(hint)
+    const two = aPage([aRow(), aRow({ conversation: 'fictional-second' })])
+    expect(workSearchInWords(two)).not.toContain(hint)
+  })
+
   it('carries search continuation and unread facts through the palette unchanged', () => {
     const page = aPage([], { searched: 7, rows_unread: 1, complete: false, next_cursor: 'c1' })
     expect(workSearchInWords(page)).toContain(WORK_SEARCH_WORDS.empty)

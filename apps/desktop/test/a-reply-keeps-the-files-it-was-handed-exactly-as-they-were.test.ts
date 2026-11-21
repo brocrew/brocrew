@@ -661,15 +661,17 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const hit =
           'conversation W9.1 · Fictional job · worker-1 · last active 1970-01-01T00:00:00.000Z\nStatus: Status sentence\nTask W9.1 · Matched'
         const facts = `Searched: 17; rows_unread: ${partial ? 2 : 0}; ledgers_skipped: ${partial ? 1 : 0}; complete: ${!partial}.`
+        const transcriptHint = 'To search what was said in conversations, use search_past_work.'
         const paragraphs = partial
           ? [
               hit,
+              transcriptHint,
               facts,
               'Some work could not be read.',
               'Older work has not been searched yet. next_cursor: opaque-next',
               'Results may change when work is edited.',
             ]
-          : [hit, facts, 'Results may change when work is edited.']
+          : [hit, transcriptHint, facts, 'Results may change when work is edited.']
         const reply = navigationReply(answer.text)
         expect(reply.prose).toBe(paragraphs.join('\n\n'))
         const identity = store.agentIdentities().find((one) => one.slug === 'worker-1')

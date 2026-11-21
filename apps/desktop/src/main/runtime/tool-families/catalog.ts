@@ -1,4 +1,5 @@
 import { TASK_OUTCOMES } from '../../../shared/task-contracts'
+import { PAST_WORK_TRANSCRIPT_INPUT } from '../../../shared/past-work-search'
 import { MCP_SERVER_REQUEST_WHO } from '../../../shared/mcp-server-requests'
 import type { QuestionRecipient } from '../../../shared/question-contracts'
 import { type Provider, providerDescriptor, providerRecord, providerSchema } from '@brobot2/shared'
@@ -270,6 +271,7 @@ export const TOOL_INPUT_ENUMS = {
   'list_tasks:state': LISTING_INPUT,
   'list_questions:state': LISTING_INPUT,
   'request_mcp_server:who_gets_it': MCP_REQUEST_WHO_INPUT,
+  'search_past_work:in': toolInputVocabulary(['transcripts'], PAST_WORK_TRANSCRIPT_INPUT),
 } as const
 
 /**

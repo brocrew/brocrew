@@ -1,4 +1,8 @@
-import { pastWorkStart, type PastWorkSearchResult } from '../../shared/past-work-search'
+import {
+  pastWorkStart,
+  type PastWorkSearchResult,
+  type PastWorkTranscriptScope,
+} from '../../shared/past-work-search'
 import type { WorkSearchQuery, WorkSearchResult } from '../../shared/work-search'
 import type { ArchivedConversations } from '../archived-file'
 import { agentIdentityRowId } from '../db/identity'
@@ -37,14 +41,19 @@ export class WorkSearch {
     words: string,
     profile?: string,
     cursor?: string,
+    transcript?: PastWorkTranscriptScope,
   ): Promise<PastWorkSearchResult> {
     const wanted = profile === undefined ? null : agentIdentityRowId(profile)
-    const after = pastWorkStart(words, wanted, cursor)
+    const after = pastWorkStart(words, wanted, cursor, transcript)
     if (after === undefined) return { ok: false, reason: 'invalid' }
     const source = this.deps.store.pastWorkSearchSource(asAgent, profile, after)
     if (source === null || this.deps.pastWorkSearchReader === undefined || this.launches.closed)
       return { ok: false, reason: 'unavailable' }
-    const found = await this.deps.pastWorkSearchReader.read(source, asAgent, words)
+    const found = await this.deps.pastWorkSearchReader.read(
+      transcript === undefined ? source : { ...source, transcript },
+      asAgent,
+      words,
+    )
     if (this.launches.closed) return { ok: false, reason: 'unavailable' }
     if (!found.ok) return found
     if (this.deps.store.conversationBinding(asAgent) === null)

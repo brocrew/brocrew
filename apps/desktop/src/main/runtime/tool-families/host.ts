@@ -68,7 +68,10 @@ import type {
 import type { MailboxKind } from '../../../shared/conversation-events'
 import type { ModelRefusal } from '../../connections/model-rails'
 import type { NewAgent, QueueOutcome } from '../../../shared/runtime-ipc'
-import type { PastWorkSearchResult } from '../../../shared/past-work-search'
+import type {
+  PastWorkSearchResult,
+  PastWorkTranscriptScope,
+} from '../../../shared/past-work-search'
 import type { ProfileReading } from '../agent-records'
 import type { Provider } from '@brobot2/shared'
 import type { RefusalFacts } from '../../../shared/refusals'
@@ -191,6 +194,7 @@ export interface AgentToolHost {
     words: string,
     profile?: string,
     cursor?: string,
+    transcript?: PastWorkTranscriptScope,
   ): Promise<PastWorkSearchResult>
   whatToCallTheConversation(conversation: string): string
   nameByItsWork(conversation: string): string

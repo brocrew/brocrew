@@ -14,6 +14,7 @@ export const WORK_SEARCH_WORDS = {
   unread: 'Some work could not be read.',
   older: 'Older work has not been searched yet.',
   changing: 'Results may change when work is edited.',
+  transcripts: 'To search what was said in conversations, use search_past_work.',
   description:
     "Find conversations by label, title, profile, keywords and date. It searches conversation titles, task titles, briefs, definitions of done and status lines, ended work included. Each row is one conversation: conversation <address> · <title>, its profile, when it was last active, its latest status line, and the tasks that matched. It only reads. To see one conversation's tasks, use list_tasks with conversation; to read its turns, read_transcript. Read before you ask: asking wakes a conversation and reloads its context.",
 } as const
@@ -69,6 +70,7 @@ export function workSearchInWords(page: WorkSearchPage): string {
     return words.join('\n')
   })
   if (lines.length === 0) lines.push(WORK_SEARCH_WORDS.empty)
+  if (page.hits.length <= 1) lines.push(WORK_SEARCH_WORDS.transcripts)
   lines.push(
     `Searched: ${page.searched}; rows_unread: ${page.rows_unread}; ledgers_skipped: ${page.ledgers_skipped}; complete: ${page.complete}.`,
   )

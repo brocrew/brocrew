@@ -118,7 +118,11 @@ import { withOptionalIndexes } from './optional-indexes'
 import { committedChangesOf, committedRowOf, type Committed } from './committed-changes'
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
-import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
+import type {
+  PastWorkSearchResult,
+  PastWorkSource,
+  PastWorkTranscriptScope,
+} from '../../shared/past-work-search'
 import {
   holderReconciliationReceipt,
   reconciliationReceipt,
@@ -843,6 +847,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     words: string,
     profile?: string,
     cursor?: string,
+    transcript?: PastWorkTranscriptScope,
   ): PastWorkSearchResult
   closePastWorkSearch(): void
   pastWorkSearchSource(
@@ -6833,8 +6838,8 @@ export function createSessionStore(
 
     replyQuestionWithoutARequest,
 
-    searchPastWork(caller, words, profile, cursor) {
-      return searchPastWork(connection, this, caller, words, undefined, profile, cursor)
+    searchPastWork(caller, words, profile, cursor, transcript) {
+      return searchPastWork(connection, this, caller, words, undefined, profile, cursor, transcript)
     },
 
     pastWorkSearchSource(caller, profile, after) {

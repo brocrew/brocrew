@@ -45,9 +45,9 @@ function world() {
     ordinals.set(id, 0)
     return store.rootOf(id)!
   }
-  const append = (id: string, event: TranscriptEvent) => {
+  const append = (id: string, event: TranscriptEvent, at?: number) => {
     const ordinal = ordinals.get(id) ?? 0
-    store.append(id, ordinal, event, 1_800_000_000_000 + ordinal)
+    store.append(id, ordinal, event, at ?? 1_800_000_000_000 + ordinal)
     ordinals.set(id, ordinal + 1)
   }
   const find = (caller: string, words: string, profile?: string): readonly PastWorkHit[] => {
@@ -58,6 +58,109 @@ function world() {
   }
   return { db, directory, file, store, create, append, find }
 }
+
+it('requires all words to occur in one message in both search modes', () => {
+  const w = world()
+  const caller = 'transcript-caller'
+  const target = 'transcript-target'
+  w.create(caller)
+  w.create(target)
+  w.append(target, { type: 'user_turn', text: 'amberquartz only' })
+  w.append(target, { type: 'user_turn', text: 'cobaltfern only' })
+  const words = 'amberquartz cobaltfern'
+
+  expect(w.store.searchPastWork(caller, words)).toMatchObject({ ok: true, hits: [] })
+  expect(w.store.searchPastWork(caller, words, undefined, undefined, {})).toMatchObject({
+    ok: true,
+    hits: [],
+  })
+})
+
+it('finds matching recorded transcript positions inside the requested profile and dates', () => {
+  const w = world()
+  const caller = 'transcript-caller'
+  const target = 'transcript-target'
+  const at = Date.parse('2027-01-15T23:59:59.999Z')
+  w.create(caller)
+  w.create(target, 'fictional-words')
+  w.create('transcript-other', 'fictional-other')
+  w.append(target, { type: 'user_turn', text: 'amberquartz only' }, at - 1000)
+  w.append(target, { type: 'assistant_message', text: 'cobaltfern only' }, at - 999)
+  w.append(
+    target,
+    { type: 'user_turn', text: 'amberquartz cobaltfern find this recorded phrase' },
+    at,
+  )
+  w.append(target, { type: 'user_turn', text: 'amberquartz cobaltfern tomorrow' }, at + 1)
+  w.append('transcript-other', { type: 'user_turn', text: 'amberquartz cobaltfern elsewhere' }, at)
+
+  const found = w.store.searchPastWork(
+    caller,
+    'cobaltfern amberquartz',
+    'fictional-words',
+    undefined,
+    {
+      from: '2027-01-15',
+      to: '2027-01-15',
+    },
+  )
+  expect(found).toMatchObject({
+    ok: true,
+    complete: true,
+    hits: [
+      {
+        conversation: target,
+        matched_field: 'person message',
+        snippet: expect.stringContaining('find this recorded phrase'),
+        turn: { at: '2027-01-15T23:59:59.999Z', generation: 0, ordinal: 2 },
+      },
+    ],
+  })
+  if (!found.ok) throw new Error('transcript search failed')
+  expect(found.hits).toHaveLength(1)
+  expect(
+    w.store.searchPastWork(caller, 'amberquartz cobaltfern', undefined, undefined, {}),
+  ).toMatchObject({
+    ok: true,
+    hits: [{ conversation: 'transcript-other' }, { conversation: target }],
+  })
+  expect(
+    w.store.searchPastWork(caller, 'amberquartz cobaltfern', undefined, undefined, {
+      from: '2027-01-16',
+      to: '2027-01-15',
+    }),
+  ).toEqual({ ok: false, reason: 'invalid' })
+})
+
+it('resumes transcript-only results after a full hit page and binds the cursor to its date range', () => {
+  const w = world()
+  const caller = 'transcript-caller'
+  const dateRange = { from: '2027-01-15' }
+  const at = Date.parse('2027-01-15T12:00:00.000Z')
+  w.create(caller)
+  const targets = Array.from({ length: 7 }, (_, index) => `transcript-hit-${index}`)
+  for (const target of targets) {
+    w.create(target)
+    w.append(target, { type: 'user_turn', text: 'violetwing sample text' }, at)
+  }
+  const first = w.store.searchPastWork(caller, 'violetwing', undefined, undefined, dateRange)
+  expect(first).toMatchObject({ ok: true, complete: false })
+  if (!first.ok || first.next_cursor === null) throw new Error('expected a transcript cursor')
+  expect(first.hits.map((hit) => hit.conversation)).toEqual(targets.slice(0, 5))
+  expect(w.store.searchPastWork(caller, 'violetwing', undefined, first.next_cursor)).toEqual({
+    ok: false,
+    reason: 'invalid',
+  })
+  expect(
+    w.store.searchPastWork(caller, 'violetwing', undefined, first.next_cursor, {
+      from: '2027-01-14',
+    }),
+  ).toEqual({ ok: false, reason: 'invalid' })
+  const next = w.store.searchPastWork(caller, 'violetwing', undefined, first.next_cursor, dateRange)
+  expect(next).toMatchObject({ ok: true, complete: true, next_cursor: null })
+  if (!next.ok) throw new Error('transcript continuation failed')
+  expect(next.hits.map((hit) => hit.conversation)).toEqual(targets.slice(5))
+})
 
 it('finds words only in person messages and agent replies, with bounded metadata and links', () => {
   const w = world()
@@ -93,6 +196,26 @@ it('finds words only in person messages and agent replies, with bounded metadata
   })
   expect(person[0]!.snippet.length).toBeLessThanOrEqual(320)
 })
+
+it.each([2, 1030])(
+  'keeps tied mixed results in row order with %i matches in the first conversation',
+  (copies) => {
+    const w = world()
+    const caller = 'rank-caller'
+    const conversations = ['rank-a', 'rank-b', 'rank-c', 'rank-d', 'rank-e', 'rank-f']
+    const text = 'rankedquartz'
+    w.create(caller)
+    for (const conversation of conversations) {
+      w.create(conversation)
+      const messages = conversation === conversations[0] ? copies : 1
+      for (let ordinal = 0; ordinal < messages; ordinal++)
+        w.append(conversation, { type: 'assistant_message', text })
+    }
+    const hits = w.find(caller, text)
+    expect(hits.map((hit) => hit.conversation)).toEqual(conversations.slice(0, 5))
+    expect(hits[0]?.turn?.ordinal).toBe(0)
+  },
+)
 
 it('filters profiles before ranking and removes a conversation when its recorded profile changes', () => {
   const w = world()
@@ -396,6 +519,11 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   w.create('fictional-caller')
   w.create('fictional-target', 'fictional-other-profile')
   w.append('fictional-target', { type: 'assistant_message', text: 'archivequartz' })
+  w.append(
+    'fictional-target',
+    { type: 'user_turn', text: 'A later unrelated message' },
+    Date.parse('2027-02-05T11:22:00.000Z'),
+  )
   const archived = archivedInMemory()
   archived.add(['fictional-target'], 1_800_000_000_000)
   const host = new RuntimeHost({
@@ -411,7 +539,13 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     nativeTranscriptPath: () => null,
     pastWorkSearchReader: {
       read: async (source, caller, words) =>
-        w.store.searchPastWork(caller, words, source.profile?.replace(/^aid:/u, '')),
+        w.store.searchPastWork(
+          caller,
+          words,
+          source.profile?.replace(/^aid:/u, ''),
+          undefined,
+          source.transcript,
+        ),
       close: async () => {},
     },
     readProviderConfig: (_provider, home) => ({
@@ -434,6 +568,20 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   })
   expect(answer.text).toContain('archived')
   expect(answer.text).toContain('brocrew://piece/')
+  expect(answer.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
+  expect(answer.text).not.toContain('last active')
+  const transcript = await tool.call({ words: 'archivequartz', in: 'transcripts' })
+  expect(transcript.structured).toMatchObject({
+    outcome: 'ok',
+    hits: [
+      {
+        archived: true,
+        conversation: 'fictional-target',
+        turn: { generation: 0, ordinal: 0, at: '2027-01-15T08:00:00.000Z' },
+      },
+    ],
+  })
+  expect(transcript.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
   const narrowed = await tool.call({ words: 'archivequartz', profile: 'fictional-reader' })
   expect(narrowed.structured).toMatchObject({ outcome: 'ok', hits: [] })
   archived.remove(['fictional-target'])
@@ -460,6 +608,8 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     { words: 'x'.repeat(201) },
     { words: 'x '.repeat(21) },
     { words: 'archivequartz', scope: 'all' },
+    { words: 'archivequartz', from: '2027-01-15' },
+    { words: 'archivequartz', in: 'transcripts', from: '2027-02-30' },
   ]) {
     expect(pastWorkSearchQuery.safeParse(input).success).toBe(false)
     expect((await tool.call(input)).structured).toMatchObject({
