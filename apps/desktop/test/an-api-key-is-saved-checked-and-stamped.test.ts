@@ -23,6 +23,7 @@ import {
   whyNotAKey,
 } from '../src/main/runtime/api-keys'
 import { prepareProviderHome } from '../src/main/connections/homes'
+import { createClaudeModule } from '../src/main/providers/claude'
 import { bringTheCodexKeyTo } from '../src/main/providers/codex'
 import type { CodexKeySeam } from '../src/main/providers/codex/types'
 
@@ -588,24 +589,34 @@ describe('prepareProviderHome with a key', () => {
   })
 
   it('a Claude launch with a key set needs no login; one whose key can’t be used refuses, never falling back', async () => {
-    await expect(
-      prepareProviderHome(
-        userData,
-        { profileId: 'default', provider: 'claude' },
-        seams({ apiKey: () => KEY }),
-      ),
-    ).resolves.toEqual(expect.any(String))
-
-    const error = await prepareProviderHome(
-      userData,
-      { profileId: 'default', provider: 'claude' },
-      seams({
-        apiKey: () => {
-          throw new ApiKeyUnreadableError('claude')
+    const login = vi.fn(async () => null)
+    const prepare = (key: () => string | null) =>
+      createClaudeModule(
+        {
+          managedRoot: userData,
+          defaultProfile: 'default',
+          homeOf: () => join(userData, 'claude'),
+          profiles: () => ['default'],
+          assertMayOpen: () => {},
         },
-      }),
-    ).catch((e: unknown) => e)
+        {
+          runtime: { program: () => '/fictional/claude', key },
+          home: {
+            key,
+            login,
+            provisionHome: (_root, home) => {
+              mkdirSync(home, { recursive: true })
+            },
+          },
+          auth: { key },
+        },
+      ).prepareLaunch('default')
+    await expect(prepare(() => KEY)).resolves.toMatchObject({ home: join(userData, 'claude') })
+    const error = await prepare(() => {
+      throw new ApiKeyUnreadableError('claude')
+    }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(AuthUnavailableError)
     expect((error as Error).message).toContain('Saved key can’t be read')
+    expect(login).not.toHaveBeenCalled()
   })
 })
