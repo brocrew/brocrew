@@ -801,15 +801,15 @@ it('continues a recent-first transcript preview through the real worker', async 
     {
       store: w.store,
       workSearchReader: {
-        read: async () => ({
+        read: async (_caller, query) => ({
           ok: true,
           page: {
             hits: [],
             searched: 8,
             rows_unread: 0,
             ledgers_skipped: 0,
-            complete: true,
-            next_cursor: null,
+            complete: query.cursor !== undefined,
+            next_cursor: query.cursor === undefined ? 'work-next' : null,
           },
         }),
       },
@@ -828,6 +828,18 @@ it('continues a recent-first transcript preview through the real worker', async 
     'fictional-3',
     'fictional-2',
   ])
+  const words = 'previewquartz'
+  const instructions = pastWorkSearchInWords(preview, false, false, { words })
+  expect(instructions).toContain('Continue with cursor: "work:0:work-next"')
+  expect(instructions).toContain(
+    `Transcript search is incomplete. Continue with search_past_work(${JSON.stringify({
+      words,
+      in: 'transcripts',
+      cursor: preview.transcript_next_cursor,
+    })}).`,
+  )
+  const work = await search.searchPastWork(caller, words, undefined, preview.next_cursor!)
+  expect(work).toEqual({ ok: true, complete: true, next_cursor: null, hits: [] })
   const cursor = preview.transcript_next_cursor
   expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, {})).toEqual({
     ok: false,
@@ -864,7 +876,10 @@ it('retries a conversation whose preview stopped during indexing', () => {
     clock.mockRestore()
   }
   expect(result).toMatchObject({
-    ok: true, hits: [], complete: false, next_cursor: expect.stringMatching(/^recent:/u),
+    ok: true,
+    hits: [],
+    complete: false,
+    next_cursor: expect.stringMatching(/^recent:/u),
   })
   const full = searchPastWork(w.db, w.store, caller, 'previewquartz', {
     ...previewSource,
