@@ -8,6 +8,18 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { PastWorkSearchReader } from '../src/main/db/past-work-search-reader'
 import { bundleAWorker } from './helpers/bundle-a-worker'
+import { pastWorkTimingProbe } from './helpers/past-work-timing-probe'
+
+type WorkerTiming = {
+  receivedAt: bigint
+  sendingAt: bigint
+  workerCpuMs: number
+  rank?: { wallMs: number; cpuMs: number; rows: number; fallback: boolean }
+}
+
+function msBetween(from: bigint, to: bigint): number {
+  return Number(to - from) / 1e6
+}
 
 it.skipIf(!process.env.CI)(
   'measures a cold build, peak memory and queries on a heavy fictional profile',
@@ -55,14 +67,27 @@ it.skipIf(!process.env.CI)(
         'src/main/past-work-search.worker.ts',
         directory,
         'past-work.cjs',
+        [pastWorkTimingProbe()],
       )
-      reader = new PastWorkSearchReader(
-        (source) =>
-          new Worker(bundle, {
-            workerData: { file: source },
-            resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
-          }),
-      )
+      const sent = new Map<number, bigint>()
+      const returned = new Map<number, WorkerTiming & { resultAt: bigint }>()
+      reader = new PastWorkSearchReader((source) => {
+        const worker = new Worker(bundle, {
+          workerData: { file: source },
+          resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
+        })
+        const send = worker.postMessage.bind(worker)
+        worker.postMessage = (...args) => {
+          const [value] = args
+          if (value.id !== undefined) sent.set(value.id, process.hrtime.bigint())
+          send(...args)
+        }
+        worker.on('message', ({ id, card432 }: { id: number; card432?: WorkerTiming }) => {
+          const resultAt = process.hrtime.bigint()
+          if (card432 !== undefined) returned.set(id, { ...card432, resultAt })
+        })
+        return worker
+      })
       const caller = 'fictional-conversation-0'
       const source = store.pastWorkSearchSource(caller)!
       const beforeRssMiB = process.memoryUsage().rss / 1024 / 1024
@@ -90,10 +115,34 @@ it.skipIf(!process.env.CI)(
       })
       expect(ticks).toBeGreaterThan(0)
       const queryTimes: number[] = []
+      const phases = []
       for (let run = 0; run < 10; run++) {
         const at = performance.now()
-        const found = await reader.read(store.pastWorkSearchSource(caller)!, caller, 'corpusquartz')
+        const startedAt = process.hrtime.bigint()
+        const revision = store.pastWorkSearchSource(caller)!
+        const selectedAt = process.hrtime.bigint()
+        const found = await reader.read(revision, caller, 'corpusquartz')
         queryTimes.push(performance.now() - at)
+        const completedAt = process.hrtime.bigint()
+        const id = run + 2 // The cold query used request 1.
+        const sentAt = sent.get(id)
+        const timing = returned.get(id)
+        phases.push(
+          sentAt === undefined || timing === undefined
+            ? { run, totalMs: queryTimes[run], missing: true }
+            : {
+                run,
+                totalMs: queryTimes[run],
+                sourceMs: msBetween(startedAt, selectedAt),
+                readerQueueMs: msBetween(selectedAt, sentAt),
+                dispatchMs: msBetween(sentAt, timing.receivedAt),
+                workerWallMs: msBetween(timing.receivedAt, timing.sendingAt),
+                workerCpuMs: timing.workerCpuMs,
+                rank: timing.rank,
+                resultReturnMs: msBetween(timing.sendingAt, timing.resultAt),
+                readerFinishMs: msBetween(timing.resultAt, completedAt),
+              },
+        )
         expect(found.ok && found.hits.length).toBe(5)
         if (found.ok) expect(new Set(found.hits.map((hit) => hit.conversation)).size).toBe(5)
       }
@@ -112,6 +161,7 @@ it.skipIf(!process.env.CI)(
             mainThreadTicksDuringColdBuild: ticks,
           }),
       )
+      console.info('CARD432_WARM_PHASES ' + JSON.stringify(phases))
       expect(queryMaxMs).toBeLessThan(200)
     } finally {
       await reader?.close()
