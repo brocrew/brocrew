@@ -152,7 +152,6 @@
   "packages/runtime/src/claude/normalize.ts": 2038,
   "packages/runtime/src/codex/codex-runtime.ts": 6988,
   "packages/runtime/src/codex/normalize.ts": 2568,
-  "packages/runtime/src/events.ts": 2448,
   "packages/runtime/src/fake-runtime.ts": 1685,
   "packages/runtime/src/internal/provider-home.ts": 1017,
   "packages/runtime/src/internal/session-machine.ts": 1056,
