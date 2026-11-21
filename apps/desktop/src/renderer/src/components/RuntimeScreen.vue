@@ -139,6 +139,9 @@ import { pickInAConversation, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
 import { useClientApi, useClientProviders } from '../client-provider/injection'
+import { desktopProviderApi } from '../client-provider/window'
+import type { ClientDesktopApi } from '../../../shared/client-api'
+import type { ClientScreenApi } from '../../../shared/client-screen-api'
 import { oneReadAtATime } from '../lib/one-read-at-a-time'
 import { handedBackSays } from '../lib/handing-it-back'
 import {
@@ -287,7 +290,26 @@ import ProviderSetupAtLaunch from './ProviderSetupAtLaunch.vue'
  * dashboard — a fake surface inside a real app is worse than an empty one, because everything
  * around it is true.
  */
-const resolveMessageLink = createMessageLinkResolver(useClientApi().sessions)
+const client = useClientApi()
+/**
+ * The screen's runtime reads and intents, as the selected client gives them. A client supplied for
+ * the providers alone has none of these, and the window's own adapter answers them, as before.
+ */
+function runtime(): ClientScreenApi {
+  const api = client.screen ?? desktopProviderApi.screen
+  if (api === undefined) throw new Error('The runtime is not available.')
+  return api
+}
+/** The desktop-only operations (app info, navigation, drafts), when the client has them. */
+function desktopIfAny(): ClientDesktopApi | undefined {
+  return client.desktop ?? desktopProviderApi.desktop
+}
+function desktop(): ClientDesktopApi {
+  const api = desktopIfAny()
+  if (api === undefined) throw new Error('The desktop is not available.')
+  return api
+}
+const resolveMessageLink = createMessageLinkResolver(client.sessions)
 const store = useSessionStore()
 /**
  * The overlay layer. It sits ON TOP of whatever surface is showing rather than being another value
@@ -389,7 +411,7 @@ function openSettings(tab: SettingsTab = 'providers'): void {
  * in the app's own sentence. The cast is read again, so the press goes once the piece has left.
  */
 async function takeBackForAPerson(piece: string): Promise<string> {
-  const said = await takeBackThrough(() => window.api.runtime.takeBackWork({ piece }))
+  const said = await takeBackThrough(() => runtime().takeBackWork({ piece }))
   void readTheCast()
   return said
 }
@@ -661,7 +683,7 @@ async function openMessageDestination(answer: ResolvedMessageLink): Promise<bool
     return true
   }
   if (answer.state === 'archived') {
-    const page = await window.api.runtime.latestHistory({ sessionId: destination.sessionId })
+    const page = await runtime().latestHistory({ sessionId: destination.sessionId })
     if (!stillAtLinkPlace(from)) return false
     const history = createWindow()
     openAt(history, page, destination.sessionId)
@@ -676,13 +698,11 @@ async function openMessageDestination(answer: ResolvedMessageLink): Promise<bool
 }
 
 function searchConversations(conversation: string, query: WorkSearchQuery) {
-  return window.api.runtime.searchWork({ conversation, query })
+  return runtime().searchWork({ conversation, query })
 }
 
 function readRailIdentities(input: ConversationIdentityBatchInput) {
-  return appClosing.value
-    ? Promise.resolve([])
-    : window.api.runtime.readConversationIdentities(input)
+  return appClosing.value ? Promise.resolve([]) : runtime().readConversationIdentities(input)
 }
 
 async function openFoundConversation(id: string): Promise<void> {
@@ -842,7 +862,7 @@ const forwardTo = computed(() => {
 
 /** Read an archived conversation's newest page, for its read-only history. */
 async function archiveReading(sessionId: string, title: string): Promise<LinkedHistoryReading> {
-  const page = await window.api.runtime.latestHistory({ sessionId })
+  const page = await runtime().latestHistory({ sessionId })
   const history = createWindow()
   openAt(history, page, sessionId)
   return { sessionId, title, history }
@@ -1086,7 +1106,7 @@ let stopHearingNavigate: (() => void) | null = null
 async function olderLinkedHistory(): Promise<void> {
   const reading = linkedHistory.value
   if (reading === null) return
-  const page = await window.api.runtime.earlierHistory({
+  const page = await runtime().earlierHistory({
     sessionId: reading.sessionId,
     before: reading.history.from,
   })
@@ -1206,14 +1226,14 @@ const notice = ref<string | null>(null)
 const info = ref<AppInfo | null>(null)
 const infoError = ref<string | null>(null)
 const filesLibrary = createFilesLibrary({
-  read: (request) => window.api.runtime.filesLibrary(request),
+  read: (request) => runtime().filesLibrary(request),
   workspace: () => info.value?.workspace.path ?? null,
   selected: () =>
     activeId.value === null ? null : { id: activeId.value, name: conversationName(activeId.value) },
 })
 provideFilesLibrary(filesLibrary)
 const teamProfileGraph = createTeamProfileGraph({
-  read: (request) => window.api.runtime.teamProfileGraph(request),
+  read: (request) => runtime().teamProfileGraph(request),
   workspace: () => info.value?.workspace.path ?? null,
 })
 provideTeamProfileGraph(teamProfileGraph)
@@ -1239,7 +1259,7 @@ const programs = ref<Partial<Record<Provider, ProviderProgram>> | null>(null)
 let programsRead = 0
 async function readProgramsOnce(): Promise<void> {
   const reading = ++programsRead
-  const ask = window.api.runtime.providerVersions
+  const ask = runtime().providerVersions
   if (typeof ask !== 'function') return
   try {
     const versions = await ask()
@@ -1333,7 +1353,7 @@ const profiles = ref<string[] | null>(null)
 
 async function refreshProfiles(): Promise<void> {
   try {
-    profiles.value = await window.api.runtime.profiles()
+    profiles.value = await runtime().profiles()
   } catch {
     // Left as it was. A failed re-read must not take a menu away that is already on screen and
     // correct; the startup read below is the one whose failure is reported.
@@ -1548,7 +1568,7 @@ const draftKeeping = keepTheDraftBook({
   book: drafts,
   sweep: draftSweep,
   handoff: inject(SAVED_DRAFTS, null),
-  bridge: window.api,
+  bridge: desktopIfAny(),
   closing: () => appClosing.value,
 })
 onBeforeUnmount(draftKeeping.stop)
@@ -1767,7 +1787,7 @@ const archiveOfActive = computed(() => {
   const sessionId = active.value?.sessionId
   if (sessionId === undefined) return undefined
   return async (): Promise<string | null> => {
-    const outcome = await archiveConversation(window.api.runtime, sessionId)
+    const outcome = await archiveConversation(runtime(), sessionId)
     if (!outcome.done) return outcome.refusal
     archivedHere(outcome.conversations)
     return null
@@ -2123,7 +2143,7 @@ syncAttentionSignals(
     ],
   })),
   // A hot reload may retain the previous preload until the next app launch.
-  (signal) => window.api.attentionSignals?.(signal) ?? Promise.resolve(),
+  (signal) => desktopIfAny()?.attentionSignals?.(signal) ?? Promise.resolve(),
 )
 
 /**
@@ -2875,7 +2895,7 @@ async function readTheFilesOnce(): Promise<void> {
   let tree: readonly KeptFile[] | null = null
   let added: readonly KeptFile[] | null = null
   try {
-    const answer = await window.api.runtime.filesKept({
+    const answer = await runtime().filesKept({
       scope: 'tree',
       conversation: asked,
       withAdded: true,
@@ -2994,15 +3014,15 @@ const workRevision = ref(0)
 const agentIdentityRevision = ref(0)
 const personIdentityRevision = ref(0)
 const readTitleHistory: TitleHistorySource['read'] = (input) =>
-  appClosing.value ? Promise.resolve(null) : window.api.runtime.readConversationTitleHistory(input)
+  appClosing.value ? Promise.resolve(null) : runtime().readConversationTitleHistory(input)
 const readTaskPage: TaskPageSource['read'] = (input) =>
   appClosing.value
     ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
-    : window.api.runtime.readConversationTasks(input)
+    : runtime().readConversationTasks(input)
 const readAllTasks: NonNullable<TaskPageSource['readAll']> = (input) =>
   appClosing.value
     ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
-    : window.api.runtime.readAllConversationTasks(input)
+    : runtime().readAllConversationTasks(input)
 let identityRead = 0
 let identitySelection = 0
 
@@ -3012,7 +3032,7 @@ async function readSelectedIdentity(): Promise<void> {
   if (selected === null || appClosing.value) return
   const sessionId = selected.sessionId
   try {
-    const identity = await window.api.runtime.readConversationIdentity({ sessionId })
+    const identity = await runtime().readConversationIdentity({ sessionId })
     if (reading !== identityRead || selected !== selectedForIdentity.value) return
     if (identity === null || identity.conversation === sessionId)
       conversationIdentity.value = identity
@@ -3033,7 +3053,7 @@ watch(
 
 async function renameConversation(input: ConversationRenameInput) {
   const selection = identitySelection
-  const renamed = await window.api.runtime.renameConversation(input)
+  const renamed = await runtime().renameConversation(input)
   if (renamed.ok && selectedForIdentity.value?.sessionId === renamed.conversation) {
     if (selection === identitySelection) conversationIdentity.value = renamed
     // Re-read after the reply so a concurrent work notice cannot leave an older title visible.
@@ -3076,17 +3096,18 @@ let stopProviderFacts: (() => void) | null = null
 let stopHearingStates: (() => void) | null = null
 let stopHearingIdentityEvents: (() => void) | null = null
 onMounted(() => {
-  if (typeof window.api.runtime.onProvidersChanged === 'function')
-    stopProviderFacts = window.api.runtime.onProvidersChanged((message) => {
+  const hearProviders = runtime().onProvidersChanged
+  if (typeof hearProviders === 'function')
+    stopProviderFacts = hearProviders((message) => {
       if (message.what === 'login' || message.what === 'key')
         authChangedFor(DEFAULT_PROFILE_ID, message.provider)
     })
-  stopHearingIdentityEvents = window.api.runtime.onEvent((message) => {
+  stopHearingIdentityEvents = runtime().onEvent((message) => {
     if (message.event.type !== 'user_turn' || firstHumanMessageOf(message.event) === null) return
     if (selectedForIdentity.value?.sessionId === message.sessionId) void readSelectedIdentity()
     personIdentityRevision.value += 1
   })
-  stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
+  stopHearingStates = listenProviderStates(runtime(), store, (message) => {
     rail.value?.hearStates(message)
     teamProfileGraph.markStale()
     void readWhoIsWorking()
@@ -3099,7 +3120,7 @@ onMounted(() => {
   // ⚑ **UI-002 · the files' first read** — they have no tick, so a screen that remounts on a
   // conversation already open reads them itself ({@link readTheFiles}); on the launcher it asks nothing.
   void readTheFiles()
-  stopListening = whenTheWorldMoves((listener) => window.api.runtime.onChanged(listener), {
+  stopListening = whenTheWorldMoves((listener) => runtime().onChanged(listener), {
     conversations: () => {
       teamProfileGraph.markStale()
       filesLibrary.markStale()
@@ -3183,7 +3204,7 @@ onMounted(() => {
       void readTheWorkspace()
     },
   })
-  stopHearingLimits = window.api.runtime.onLimitsDisplayChanged((message) => {
+  stopHearingLimits = runtime().onLimitsDisplayChanged((message) => {
     limitsLane.changed(message)
     if (message.why === 'scope') void refreshLimitsDisplay()
   })
@@ -3411,7 +3432,7 @@ watchEffect(() => {
       openFile: (resource) => void todoDocument.value?.open(resource),
       closeWork: async (piece) => {
         try {
-          const result = await window.api.runtime.closeWork({ piece })
+          const result = await runtime().closeWork({ piece })
           void lookForWhatIsYours()
           return closeWorkSays(result)
         } catch (cause) {
@@ -3678,7 +3699,8 @@ onMounted(async () => {
   // A swipe on a Mac's trackpad and a Windows Back key, as main hears them; a mouse's side button
   // can arrive this way too, and counts once.
   stopHearingNavigate =
-    window.api.onNavigate?.((direction) => pressed(direction === 'back' ? -1 : 1, 'main')) ?? null
+    desktopIfAny()?.onNavigate?.((direction) => pressed(direction === 'back' ? -1 : 1, 'main')) ??
+    null
   // ⚠️ Not awaited and not in the settled group below: nothing on screen waits for it, a read that
   // failed must not delay the app info and the capabilities that the launcher does wait for, and
   // the Team page says *Reading identities…* until it lands. ⛔ **`570` · the rail does not wait
@@ -3699,9 +3721,9 @@ onMounted(async () => {
    * cannot plan: the exact confusion 039 exists to end.
    */
   const [appInfo, declared, known] = await Promise.allSettled([
-    window.api.getAppInfo(),
-    window.api.runtime.capabilities(),
-    window.api.runtime.profiles(),
+    desktop().getAppInfo(),
+    runtime().capabilities(),
+    runtime().profiles(),
   ])
   if (appInfo.status === 'fulfilled') info.value = appInfo.value
   if (declared.status === 'fulfilled') capabilities.value = declared.value

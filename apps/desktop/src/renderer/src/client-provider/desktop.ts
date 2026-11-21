@@ -10,6 +10,7 @@ import type { PluginsClient } from '../../../shared/plugin-settings'
 import type { LoggingClient } from '../../../shared/logging'
 import type { DockLabelClient } from '../../../shared/dock-label'
 import type { ProviderSetupBridge } from '../../../shared/provider-setup'
+import type { ClientScreenApi } from '../../../shared/client-screen-api'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 
 type ProviderTransport = Pick<
@@ -51,6 +52,7 @@ export function createDesktopProviderApi(
   workspaces: () => WorkspacesClient | undefined = () => undefined,
   themes: () => ThemesBridge | undefined = () => undefined,
   desktop: () => ClientDesktopApi | undefined = () => undefined,
+  screen: () => ClientScreenApi | undefined = () => undefined,
 ): ClientApi {
   return Object.freeze({
     providerCatalogue: () => runtime().providerCatalogue(),
@@ -102,6 +104,9 @@ export function createDesktopProviderApi(
     },
     get desktop() {
       return desktop()
+    },
+    get screen() {
+      return screen()
     },
     get recoveryCopies() {
       return recoveryCopies()
