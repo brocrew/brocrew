@@ -148,6 +148,17 @@ it('returns a single conversation row for matching ended and open tasks', () => 
       ok: true,
       page: { hits: [{ conversation: owner }] },
     })
+    expect(engine.read(giver, {
+      grouped: true,
+      scope: 'this-conversation',
+      state: 'answered',
+      words: 'Indexed',
+    })).toMatchObject({
+      ok: true,
+      page: {
+        grouped: { groups: [{ previews: [{ conversation: owner, matched_task_labels: [labels[0]] }] }] },
+      },
+    })
     expect(
       engine.read(giver, { grouped: true, profile: 'profile_0', words: 'Archive details' }),
     ).toMatchObject({
@@ -681,10 +692,30 @@ it('groups distinct conversation matches before selecting the six visible profil
       page: {
         complete: false,
         searched: 1,
-        next_cursor: null,
+        next_cursor: expect.any(String),
         grouped: { matched: null, groups: [{ matched: null }] },
       },
     })
+
+    clock = 0
+    const prefix = engine.read(caller, query, (progress) => {
+      if (progress.ok && progress.page.searched >= 10) clock = WORK_SEARCH_BOUNDS.workerMs
+    })
+    if (!prefix.ok || prefix.page.next_cursor === null)
+      throw new Error('expected grouped scan continuation')
+    expect(prefix.page.grouped?.groups.map(({ profile }) => profile)).toEqual([
+      'profile_7', 'profile_6', 'profile_5', 'profile_4', 'profile_3', 'profile_2',
+    ])
+    clock = 0
+    expect(engine.read(caller, { ...query, cursor: prefix.page.next_cursor })).toMatchObject({
+      ok: true,
+      page: {
+        next_cursor: null,
+        grouped: { matched: null, groups: [{ profile: 'profile_1' }, { profile: null }] },
+      },
+    })
+    expect(engine.read(caller, { ...query, state: 'working', cursor: prefix.page.next_cursor }))
+      .toEqual({ ok: false, reason: 'cursor-invalid' })
 
     clock = 0
     db.prepare(
@@ -693,7 +724,7 @@ it('groups distinct conversation matches before selecting the six visible profil
     const torn = engine.read(caller, query)
     expect(torn).toMatchObject({
       ok: true,
-      page: { complete: false, rows_unread: 1, next_cursor: null, grouped: { matched: null } },
+      page: { complete: false, rows_unread: 1, grouped: { matched: null } },
     })
   } finally {
     engine.close()
