@@ -368,14 +368,14 @@ describe('a queued compaction keeps its place across repair reopens and interrup
     expect(retry.texts()).toEqual([CONTINUE])
     const next = host.send(sessionId, 'the next request', sink)
     await waitFor(() => retry.sent.length === 2, 'the deferred compaction')
-    expect(retry.texts()[1]).toBe('/compact')
+    expect(retry.texts()[1]).toBe(`/compact ${REASON}`)
     confirmCompaction(retry)
     await next
     await waitFor(() => retry.sent.length === 3, 'the next request')
     expect(retry.texts()[2]).toContain('the next request')
     expect(retry.texts()[2]).toContain(REASON)
     expect(retry.texts().join('\n')).not.toContain('A second reason')
-    expect(retry.texts().filter((text) => text === '/compact')).toHaveLength(1)
+    expect(retry.texts().filter((text) => text === `/compact ${REASON}`)).toHaveLength(1)
     expect(notices(sessionId)).toHaveLength(1)
     expectTheRequestCleared(sessionId)
   })
@@ -390,13 +390,13 @@ describe('a queued compaction keeps its place across repair reopens and interrup
     retry.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
     await decided(host, sessionId)
     await waitFor(() => retry.sent.length === 2, 'the compaction after the carried turn')
-    expect(retry.texts()[1]).toBe('/compact')
+    expect(retry.texts()[1]).toBe(`/compact ${REASON}`)
     const next = host.send(sessionId, 'the next request', sink)
     confirmCompaction(retry)
     await next
     await waitFor(() => retry.sent.length === 3, 'the next input')
     expect(retry.texts()[2]).toContain(REASON)
-    expect(retry.texts().filter((text) => text === '/compact')).toHaveLength(1)
+    expect(retry.texts().filter((text) => text === `/compact ${REASON}`)).toHaveLength(1)
   })
 
   // A failed ledger write leaves the life unrecorded, so no carry-on is made (the rule before 139).
@@ -411,7 +411,7 @@ describe('a queued compaction keeps its place across repair reopens and interrup
       () => retry.sent.length === 1,
       () => `the compaction ${trace(sessionId)}`,
     )
-    expect(retry.texts(), trace(sessionId)).toEqual(['/compact'])
+    expect(retry.texts(), trace(sessionId)).toEqual([`/compact ${REASON}`])
     expect(reappendRefused).toBe(1)
     const next = host.send(sessionId, 'the next request', sink)
     confirmCompaction(retry)
@@ -456,7 +456,7 @@ describe('a queued compaction keeps its place across repair reopens and interrup
       () => retry.sent.length === 1,
       () => `the compaction ${sent} ${trace(sessionId)}`,
     )
-    expect(retry.texts(), trace(sessionId)).toEqual(['/compact'])
+    expect(retry.texts(), trace(sessionId)).toEqual([`/compact ${REASON}`])
     confirmCompaction(retry)
     await waitFor(() => retry.sent.length === 2, 'the held words')
     expect(retry.texts()[1]).toContain('newer human request')
@@ -465,7 +465,7 @@ describe('a queued compaction keeps its place across repair reopens and interrup
     expect(notices(sessionId)).toHaveLength(1)
   })
 
-  it('a provider turn during the preamble skips the compaction, and the input goes without a notice', async () => {
+  it('a provider turn during the preamble does not cancel the compaction', async () => {
     const host = buildHost()
     const sessionId = await firstTurn(host)
     await host.close(sessionId, sink)
@@ -486,12 +486,13 @@ describe('a queued compaction keeps its place across repair reopens and interrup
     } as RuntimeEvent)
     handle!.emit({ type: 'status', state: 'idle' } as RuntimeEvent)
     catalogueGate.open()
+    // The request was asked for, so it runs, and the input goes after it.
+    await waitFor(() => resumed.sent.length === 1, 'the compaction')
+    expect(resumed.texts()[0]).toBe(`/compact ${REASON}`)
+    confirmCompaction(resumed)
     await next
-    await waitFor(() => resumed.sent.length === 1, 'the next request')
-    expect(resumed.texts()[0]).toContain('the next request')
-    expect(resumed.texts()[0]).not.toContain(REASON)
-    expect(resumed.texts()).not.toContain('/compact')
-    expect(notices(sessionId)).toHaveLength(0)
+    await waitFor(() => resumed.sent.length === 2, 'the next request')
+    expect(resumed.texts()[1]).toContain('the next request')
     expectTheRequestCleared(sessionId)
   })
 })

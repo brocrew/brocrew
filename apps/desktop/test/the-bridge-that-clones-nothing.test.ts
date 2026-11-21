@@ -183,6 +183,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   stopBackgroundWork: { how: 'plain-by-construction' },
   close: { how: 'plain-by-construction' },
   refreshConfig: { how: 'plain-by-construction' },
+  compact: { how: 'plain-by-construction' },
   setApprovalMode: { how: 'plain-by-construction' },
   endPlanMode: { how: 'plain-by-construction' },
   resume: { how: 'plain-by-construction' },

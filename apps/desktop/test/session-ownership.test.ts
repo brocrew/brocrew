@@ -79,6 +79,7 @@ class ScriptedHandle implements SessionHandle {
   /** Set to make `close()` outlast the host's bound, for the "provider will not stop" path. */
   closeDelayMs = 0
   private state: SessionStatus = 'idle'
+  compact = async () => ({ compacted: true as const })
 
   constructor(
     readonly ref: SessionRef,

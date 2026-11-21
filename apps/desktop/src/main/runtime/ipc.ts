@@ -470,6 +470,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('close'), sessionId }),
   z.object({ kind: z.literal('refreshConfig'), sessionId }),
+  z.object({ kind: z.literal('compact'), sessionId }),
   // Exact-match opt-in at the CONTRACT boundary too (078/034): the enum admits nothing else, so a
   // malformed value crossing IPC is a rejected command rather than a coerced guess in either
   // direction — and there is no `.optional()` here, because "change it to nothing" is not a request.
@@ -1700,6 +1701,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   stopBackgroundWork: 'refused',
   close: 'refused',
   refreshConfig: 'refused',
+  compact: 'refused',
   setApprovalMode: 'refused',
   setSessionSetting: 'refused',
   endPlanMode: 'refused',
@@ -2162,6 +2164,8 @@ export async function executeRuntimeCommand(
       // second press would be answering "which control produced this" less well, not better.
       host.noteUserCommand(command.sessionId, 'closed', sink)
       return (await host.close(command.sessionId, sink)) satisfies Answer<'close'>
+    case 'compact':
+      return (await host.compactForAPerson(command.sessionId)) satisfies Answer<'compact'>
     case 'refreshConfig':
       return host.refreshConfig(command.sessionId, sink) satisfies Answer<'refreshConfig'>
     case 'setApprovalMode': {

@@ -7,7 +7,7 @@ import {
 } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
-import { providerDescriptor, PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { ToolName } from './catalog'
 import {
   aMessageAboutAQueuedPiece,
@@ -82,11 +82,12 @@ export function createCompactAgentTool(
               ...(result.queued ? { queued: true } : {}),
               ...(result.afterTurn ? { afterTurn: true } : {}),
             },
-            result.afterTurn
+            (result.afterTurn
               ? `Compaction queued for ${result.display}: it runs when its current turn ends.`
               : result.queued
-                ? `Compaction queued for ${result.display}: it runs before that conversation's next input.`
-                : `Compaction requested for ${result.display}.`,
+                ? `Compaction queued for ${result.display}: it runs as soon as that conversation is free.`
+                : `Compaction requested for ${result.display}.`) +
+              (result.note === undefined ? '' : ` ${result.note}`),
           )
         }
         if (result.refusal === 'no-such-agent') {
@@ -97,11 +98,11 @@ export function createCompactAgentTool(
           case 'compaction-target-busy':
             text = `Not compacted: ${result.display} is busy. Wait until it is idle, then try again.`
             break
+          case 'compaction-not-possible':
+            text = `Not compacted: ${result.reason}`
+            break
           case 'compaction-target-not-running':
             text = `Not compacted: this app could not read provider history it can resume for ${result.display}. Read the conversation's record with read_transcript.`
-            break
-          case 'compaction-unavailable':
-            text = `Not compacted: ${providerDescriptor(result.provider).displayName} offers no compaction for this conversation: its current commands do not include compaction.`
             break
           case 'compaction-request-failed':
             text = `Not compacted: ${result.display} could not start compaction. See its status and try again when it is idle.`

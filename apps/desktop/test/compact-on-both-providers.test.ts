@@ -39,7 +39,6 @@ import {
 import { theOwnerOf } from '../src/shared/piece-called'
 import {
   aCommandTakesNoAttachments,
-  aCompactionTakesNoInstructions,
   aPersonsCompaction,
 } from '../src/main/runtime/a-command-goes-as-typed'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -550,19 +549,24 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     expect(heard).not.toBe('/compact')
   })
 
-  it('⛔ `/compact <instructions>` is refused at the door, in words — nothing is sent and nothing is dropped', async () => {
+  it('⚑ `/compact <instructions>` compacts and says the words were not used — nothing dropped silently', async () => {
     const { id, codex } = await aPersonOpensCodex()
     const before = codex.requests.length
-    await expect(app.host.send(id, '/compact keep the test plan', app.window)).rejects.toThrow(
-      aCompactionTakesNoInstructions('codex'),
-    )
-    expect(aCompactionTakesNoInstructions('codex')).toBe(
-      'Codex compacts without instructions, so they would be dropped — send /compact on its own ' +
-        'to compact now. Nothing has been sent.',
-    )
-    // ⛔ Not a request of EITHER kind: not the compaction without them, not the words to the model.
-    expect(codex.requests.slice(before).map((one) => one.method)).toEqual([])
-    expect(userTurns(app.ledger(id))).toEqual([])
+    await app.host.send(id, '/compact keep the test plan', app.window)
+    await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 1, 'the compaction to end')
+    // The request carries no instructions, and no words reached the model.
+    expect(
+      codex.requests.slice(before).filter((one) => one.method === 'thread/compact/start'),
+    ).toEqual([{ method: 'thread/compact/start', params: { threadId: 'th_1' } }])
+    expect(codex.turnTexts()).toEqual([])
+    expect(
+      app.window.messages.some(
+        (message) =>
+          message.event.type === 'error' &&
+          message.event.message ===
+            'Codex compacts without instructions; your words were not used.',
+      ),
+    ).toBe(true)
   })
 })
 
@@ -657,64 +661,36 @@ describe('713 §2 · R59 at every door, on a double that compacts on request', (
     expect(handle.compactions).toBe(0)
   })
 
-  it('⛔ with instructions it is refused at every door too — before the stop, and before the hold', async () => {
-    const { id, handle } = await busyCodex()
-    const sentence = aCompactionTakesNoInstructions('codex')
-    await expect(app.host.queueMessage(id, '/compact keep it short', app.window)).rejects.toThrow(
-      sentence,
-    )
-    await expect(
-      app.host.sendInterrupting(id, '/compact keep it short', app.window),
-    ).rejects.toThrow(sentence)
-    expect(turnsEnded(app.ledger(id), 'interrupted')).toBe(0)
-    expect(handle.compactions).toBe(0)
-  })
-
-  it('⚑ the control: on Claude — no such door — `/compact` and its instructions go as typed (`R42`, `R58`)', async () => {
+  it('⚑ on Claude `/compact` and its instructions reach the CLI as typed, through compact()', async () => {
     const { sessionId: id } = await app.host.createSession(
       { provider: 'claude', approvalMode: 'auto', cwd: app.root },
       app.window,
     )
-    const claude = handles.at(-1)
-    expect(claude?.compact, 'Claude compacts on its own /compact').toBeUndefined()
     await app.host.send(id, '/compact keep the test plan', app.window)
     await waitFor(() => heardAsWords(id).length === 1, 'the CLI to hear it')
     expect(heardAsWords(id)).toEqual(['/compact keep the test plan'])
   })
 
-  it.each([true, false])(
-    'uses a Claude built-in only when its catalogue lists it: %s',
-    async (listed) => {
-      const { sessionId: id } = await app.host.createSession(
-        { provider: 'claude', approvalMode: 'auto', cwd: app.root },
-        app.window,
-      )
-      const claude = handles.at(-1)
-      if (claude === undefined) throw new Error('no Claude handle')
-      const { sessionId: caller } = await app.host.createSession(
-        { provider: 'codex', approvalMode: 'auto', cwd: app.root },
-        app.window,
-      )
-      claude.commandsAnswer = {
-        prefix: '/',
-        commands: [{ name: listed ? 'compact' : 'clear' }],
-      }
-      const sent = vi.spyOn(claude, 'send').mockResolvedValueOnce(undefined)
-      const result = await callOn(agentToolsFor(app.host, caller), 'compact_agent', {
-        agent: id,
-        reason: 'Keep the tested plan',
-      })
-
-      if (listed) {
-        expect(result).toMatchObject({ outcome: 'ok', agent: id, requested: true })
-        expect(sent).toHaveBeenCalledExactlyOnceWith('/compact')
-        expect(compactionsIn(app.ledger(id))).toEqual([])
-      } else {
-        expect(result).toMatchObject({ outcome: 'refused', rail: 'compaction-unavailable' })
-        expect(sent).not.toHaveBeenCalled()
-      }
-    },
-  )
+  it('sends a Claude conversation its own /compact with the reason as its instructions', async () => {
+    const { sessionId: id } = await app.host.createSession(
+      { provider: 'claude', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const claude = handles.at(-1)
+    if (claude === undefined) throw new Error('no Claude handle')
+    const { sessionId: caller } = await app.host.createSession(
+      { provider: 'codex', approvalMode: 'auto', cwd: app.root },
+      app.window,
+    )
+    const sent = vi.spyOn(claude, 'send').mockResolvedValueOnce(undefined)
+    const result = await callOn(agentToolsFor(app.host, caller), 'compact_agent', {
+      agent: id,
+      reason: 'Keep the tested plan',
+    })
+    expect(result).toMatchObject({ outcome: 'ok', agent: id, requested: true })
+    expect(sent).toHaveBeenCalledExactlyOnceWith('/compact Keep the tested plan')
+    expect(compactionsIn(app.ledger(id))).toEqual([])
+  })
 })
 
 it('keeps a confirmed notice when Claude stops before pushing its carrying input', async () => {
@@ -786,7 +762,7 @@ it('keeps a confirmed notice when Claude stops before pushing its carrying input
     ).toMatchObject({ outcome: 'ok', requested: true })
     const compaction = await withDeadline(readInput(), 2_000, 'scripted Claude compaction input')
     if (compaction === null) throw new Error('Claude did not receive the compaction command')
-    expect(compaction.text).toBe('/compact')
+    expect(compaction.text).toBe('/compact Retain the evidence for the review')
     emit({
       type: 'system',
       subtype: 'compact_boundary',

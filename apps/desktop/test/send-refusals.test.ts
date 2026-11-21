@@ -17,7 +17,6 @@ describe('the knowable verdicts are true of the code today', () => {
     // Nothing published carries the fact as data: the window holds it only as the capability's
     // note a person reads.
     expect(row('a-compaction-takes-no-attachments').knowable).toBe('never')
-    expect(row('a-compaction-takes-no-instructions').knowable).toBe('never')
     const codex = capabilitiesFor('codex').requestCompaction
     expect(codex.state === 'available' ? codex.note : '').toContain('no instructions')
     // The capability is a state and words, nothing a gate could test. A field saying *"compacts

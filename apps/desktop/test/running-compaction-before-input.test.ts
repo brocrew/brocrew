@@ -105,7 +105,7 @@ it.each([
                   for await (const message of prompt) {
                     const text = message.message.content
                     if (typeof text !== 'string') throw new Error('expected plain input')
-                    if (text === '/compact') {
+                    if (text === '/compact Keep this plan') {
                       compactions++
                       await compactMayEnd.promise
                       wire.push({

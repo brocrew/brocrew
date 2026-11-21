@@ -138,7 +138,7 @@ import {
 import { ToolAnswers, type ToolAnswer } from '../tool-answer'
 import { ClaudeMessageReceipts } from './message-receipts'
 import { boundCommands, type ProviderCommandAnswer } from '../provider-commands'
-import { CLAUDE_COMMAND_PREFIX } from './command-prefix'
+import { CLAUDE_COMMAND_PREFIX, claudeCompact } from './command-prefix'
 import { wordsForACard } from '../words-on-a-card'
 import { BackgroundTasks } from './background-tasks'
 import { SessionCrons } from './session-crons'
@@ -1727,6 +1727,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     return this._signInSuperseded
   }
 
+  readonly compact = (instructions?: string) => claudeCompact(this, instructions)
   async send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {
     const turnId = this.machine.beginTurn()
 

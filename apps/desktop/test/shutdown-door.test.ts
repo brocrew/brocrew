@@ -105,6 +105,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   teamProfileGraph: { kind: 'teamProfileGraph', request: { operation: 'snapshot' } },
   close: { kind: 'close', sessionId: SESSION },
   refreshConfig: { kind: 'refreshConfig', sessionId: SESSION },
+  compact: { kind: 'compact', sessionId: SESSION },
   setApprovalMode: { kind: 'setApprovalMode', sessionId: SESSION, mode: 'ask' },
   setSessionSetting: {
     kind: 'setSessionSetting',
