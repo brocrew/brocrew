@@ -56,7 +56,8 @@ import {
  *  - **No lifecycle.** Like the Claude importer: the file records what was said, not a session
  *    machine's transitions. `session`/`turn`/`status` are the live adapter's to emit.
  *  - **No deltas.** The file holds finished messages; the partial stream was never written to it.
- *  - **No status inference.** A rollout that stops is a file that stops. See `session-reader.ts`.
+ *  - **No status inference.** A rollout that stops is a file that stops. Completion comes from the
+ *    endings Codex actually sends (`thread/status/changed`), never from a file going quiet.
  */
 
 type Record_ = Record<string, unknown>

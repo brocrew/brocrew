@@ -38,7 +38,7 @@ export default defineConfig({
      *
      * 061 reported two streaming-export cases in `whole-session-reads.test.ts` timing out against
      * vitest's 5 s default under CPU contention. Measured while fixing it, the same run also took
-     * down `session-reader`'s real-transcript read (6.5 s) and `unknown-payload-bound`'s
+     * down a real-transcript read test (6.5 s, since removed) and `unknown-payload-bound`'s
      * source-tree walk (8.2 s), and the heaviest export case reached **32 s** — all three pass in
      * about two seconds each when run on their own. So it is not two tests: it is every test in
      * this project that touches the real filesystem or imports a synthetic corpus, racing a clock
