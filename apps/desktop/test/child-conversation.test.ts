@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { FakeRuntime, type ChildInputOutcome, type ChildThreadState } from '@brobot2/runtime'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  type FakeSessionHandle,
+  type ChildInputOutcome,
+  type ChildThreadState,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE, type ResumableSession } from '../src/main/db/session-store'
@@ -49,6 +56,7 @@ interface Spy {
   said: string[]
   /** When set, the handle's own re-read refuses — the race the host cannot close. */
   onInput?: () => ChildInputOutcome
+  onRead?: () => ChildThreadState
 }
 
 function hostFor(
@@ -58,23 +66,30 @@ function hostFor(
 ): { host: RuntimeHost; owner: Sink; stranger: Sink; open: () => Promise<void> } {
   const owner = new Sink('webContents:1')
   const stranger = new Sink('webContents:2')
+  const sessions = new FakeProviderSessions()
+  let started: FakeSessionHandle | undefined
   const host = new RuntimeHost({
-    store: { ...NULL_SESSION_STORE, ...store },
+    store: {
+      ...NULL_SESSION_STORE,
+      ...store,
+      find: (id) => {
+        const row = store.find?.(id) ?? null
+        return row !== null && started?.ref ? { ...row, ref: started.ref } : row
+      },
+    },
     discoverSessions: NO_DISCOVERY,
     nativeTranscriptPath: () => null,
     exportDirectory: () => '/tmp/brobot2-296-exports',
     createRuntime: (which: Provider) => {
-      const runtime = new FakeRuntime(which)
+      const runtime = new FakeRuntime(which, { sessions })
       if (spy === null) return runtime
       // ⚠️ **The Fake has neither member** — `conformance.test.ts` lists both as its declared gaps,
       // because the Fake spawns no children. So the two are bolted on here for the one test that
       // needs them, exactly as `agent-rows.test.ts` bolts on `agentInfo` and
       // `sign-in-supersede.test.ts` bolts on `checkSignIn`.
-      const start = runtime.start.bind(runtime)
-      runtime.start = async (opts) => {
-        const handle = await start(opts)
-        return Object.assign(handle, {
-          childState: () => Promise.resolve(spy.state),
+      const withChild = (handle: FakeSessionHandle) =>
+        Object.assign(handle, {
+          childState: () => Promise.resolve(spy.onRead?.() ?? spy.state),
           childInput: (_id: string, text: string): Promise<ChildInputOutcome> => {
             const refusal = spy.onInput?.()
             if (refusal !== undefined) return Promise.resolve(refusal)
@@ -82,7 +97,10 @@ function hostFor(
             return Promise.resolve({ ok: true, turnId: 'tn_child_1' })
           },
         })
-      }
+      const start = runtime.start.bind(runtime)
+      const resume = runtime.resume.bind(runtime)
+      runtime.start = async (opts) => (started = withChild(await start(opts)))
+      runtime.resume = async (ref, opts) => withChild(await resume(ref, opts))
       return runtime
     },
     prepareProviderHome: (which) => `/tmp/brobot2-296-home/${which}`,
@@ -112,11 +130,7 @@ const idle: ChildThreadState = {
 const working: ChildThreadState = { ...idle, status: 'working' }
 
 describe('296 · what the host refuses, and in which order', () => {
-  it('🔴 OWNERSHIP is decided before the ledger — a stranger is refused, not answered', async () => {
-    // ⛔ **The defect this assertion was written from.** The first draft asked the ledger first, so a
-    // window that did not own the conversation got `{ok:false, reason:'unknown-agent'}` — which
-    // meant the 203 refusal never fired AND the answer itself disclosed whether that agent belongs
-    // to this conversation. Two rules broken by one line of ordering.
+  it('a stranger reads the unknown-target result while sending still checks ownership first', async () => {
     const spy: Spy = { state: idle, said: [] }
     const { host, stranger, open } = hostFor(
       'codex',
@@ -124,23 +138,42 @@ describe('296 · what the host refuses, and in which order', () => {
       spy,
     )
     await open()
-    // `reportedSubAgent` is FALSE here on purpose: if the ledger were asked first this would answer
-    // `unknown-agent` instead of throwing, which is exactly the bug.
-    await expect(host.readChildState(SESSION, CHILD, stranger)).rejects.toThrow()
+    await expect(host.readChildState(SESSION, CHILD, stranger)).resolves.toEqual({
+      ok: false,
+      reason: 'unknown-agent',
+    })
     await expect(host.sendToChild(SESSION, CHILD, 'hello', stranger)).rejects.toThrow()
     expect(spy.said, 'a stranger reached the provider').toEqual([])
     await host.closeAll()
   })
 
-  it('⚑ …and the OWNER is not refused by that check — the paired positive', async () => {
+  it('an unrelated agent and the existing IPC viewer read the same state as the owner', async () => {
     const spy: Spy = { state: idle, said: [] }
-    const { host, owner, open } = hostFor(
+    const { host, owner, stranger, open } = hostFor(
       'codex',
       { find: () => rowFor('codex'), reportedSubAgent: () => true },
       spy,
     )
     await open()
     expect(await host.readChildState(SESSION, CHILD, owner)).toEqual({ ok: true, state: idle })
+    const expected = { ok: true, state: idle }
+    expect(await host.readChildState(SESSION, CHILD, { ownerId: 'agent:sess_other' })).toEqual(
+      expected,
+    )
+    await expect(
+      executeRuntimeCommand(host, stranger, {
+        kind: 'readChildState',
+        sessionId: SESSION,
+        agentId: CHILD,
+      }),
+    ).resolves.toEqual(expected)
+    await host.close(SESSION, owner)
+    await expect(host.readChildState(SESSION, CHILD, stranger)).resolves.toEqual({
+      ok: false,
+      reason: 'not-live',
+    })
+    await host.resumeSession(SESSION, owner)
+    await expect(host.readChildState(SESSION, CHILD, stranger)).resolves.toEqual(expected)
     await host.closeAll()
   })
 
@@ -286,6 +319,15 @@ describe('296 · the working-child ruling, at the host', () => {
     )
     await open()
     expect(await host.sendToChild(SESSION, CHILD, 'hello?', owner)).toEqual({
+      ok: false,
+      reason: 'unreachable',
+    })
+    spy.onRead = () => {
+      throw new Error('the child state request failed')
+    }
+    await expect(
+      host.readChildState(SESSION, CHILD, { ownerId: 'agent:sess_other' }),
+    ).resolves.toEqual({
       ok: false,
       reason: 'unreachable',
     })

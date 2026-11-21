@@ -322,7 +322,7 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       )
     })
 
-    it('ownership still controls settings and child reads', async () => {
+    it('keeps settings under owner control and lets the caller look up a child', async () => {
       const sessionId = await spawn({ commandedBy: PLANNER, approvalMode: 'auto' })
 
       expect(await refusalOf(() => host.setApprovalMode(sessionId, 'auto', PLANNER))).toBe(
@@ -335,12 +335,12 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       ).toBe(HELD_BY_NOBODY)
       expect(await refusalOf(() => host.refreshConfig(sessionId, PLANNER))).toBe(HELD_BY_NOBODY)
       await expect(host.stopBackgroundWork(sessionId, 'x', PLANNER)).resolves.toBe(false)
-      expect(await refusalOf(() => host.readChildState(sessionId, 'agent', PLANNER))).toBe(
-        HELD_BY_NOBODY,
-      )
+      expect(await host.readChildState(sessionId, 'agent', PLANNER)).toEqual({
+        ok: false,
+        reason: 'unknown-agent',
+      })
 
-      // ⚑ …and the owner of a session really can do all of that, so the four refusals above are
-      // about the caller and not about four verbs that refuse everybody.
+      // The person who owns the session can change all three settings.
       const owned = await spawn({ sink: one, approvalMode: 'auto' })
       await host.setApprovalMode(owned, 'auto', one)
       await host.setSessionSetting(owned, { kind: 'planMode', on: true }, one)

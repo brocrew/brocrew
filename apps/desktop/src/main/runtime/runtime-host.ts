@@ -34077,21 +34077,13 @@ export class RuntimeHost implements LiveHost {
     sessionId: string,
     agentId: string,
     by: Caller,
+    operation: 'read' | 'send',
   ):
     | { handle: Required<Pick<SessionHandle, 'childState' | 'childInput'>> }
     | { reason: 'unknown-agent' | 'unsupported' | 'not-live' } {
     const slot = this.slots.get(sessionId)
-    // ⛔ **OWNERSHIP FIRST, above even the ledger, and it THROWS rather than becoming a word** (203).
-    //
-    // ⚠️ **This was below the ledger check until `window-authority.test.ts` said otherwise**, and the
-    // test was right twice over. A stranger window asking about a child it does not own was being
-    // answered `unknown-agent` — so the refusal never fired, and the answer itself DISCLOSED whether
-    // that agent belongs to this conversation. 203's rule is about acting; 100's is about what a
-    // refusal is allowed to reveal, and the wrong order broke both.
-    //
-    // ⚑ **Only when there IS an owner.** A recording has no slot and therefore nobody to be a
-    // stranger to; it falls through to `not-live` below, which is the true answer for it.
-    if (slot) this.assertMayControl(slot, by)
+    // Sending retains its owner check and refusal order. Reading uses the recorded child.
+    if (operation === 'send' && slot) this.assertMayControl(slot, by)
     const session = this.deps.store.find(sessionId)
     if (session === null) return { reason: 'unknown-agent' }
     if (this.childCandidates(sessionId, { part: 'transcript', agentId }) === null) {
@@ -34129,7 +34121,7 @@ export class RuntimeHost implements LiveHost {
    * child is ready to hear them, which is precisely the thing we do not know.
    */
   async readChildState(sessionId: string, agentId: string, by: Caller): Promise<ChildStateResult> {
-    const channel = this.childChannel(sessionId, agentId, by)
+    const channel = this.childChannel(sessionId, agentId, by, 'read')
     if ('reason' in channel) return { ok: false, reason: channel.reason }
     try {
       return { ok: true, state: await channel.handle.childState(agentId) }
@@ -34160,7 +34152,7 @@ export class RuntimeHost implements LiveHost {
     text: string,
     by: Caller,
   ): Promise<ChildSendResult> {
-    const channel = this.childChannel(sessionId, agentId, by)
+    const channel = this.childChannel(sessionId, agentId, by, 'send')
     if ('reason' in channel) return { ok: false, reason: channel.reason }
     let state: ChildThreadState
     try {
