@@ -177,8 +177,18 @@ describe('the launch’s Keychain read does not block, and a shortage still thro
   it('⚑ a read the Keychain refused, or one killed at the bound, is no login: null', async () => {
     answerWith(Object.assign(new Error('Command failed: security'), { code: 44 }))
     await expect(defaultKeychainReaderForALaunch()).resolves.toBeNull()
-    answerWith(Object.assign(new Error('killed'), { killed: true, signal: 'SIGKILL' }))
-    await expect(defaultKeychainReaderForALaunch()).resolves.toBeNull()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      answerWith(Object.assign(new Error('killed'), { killed: true, signal: 'SIGKILL' }))
+      await expect(defaultKeychainReaderForALaunch()).resolves.toBeNull()
+      expect(warning).toHaveBeenCalledWith('Claude launch Keychain read failed', {
+        code: null,
+        signal: 'SIGKILL',
+        killed: true,
+      })
+    } finally {
+      warning.mockRestore()
+    }
   })
 
   it('🔴 a machine that ran short rejects with it, whether Node says so later or at once', async () => {
