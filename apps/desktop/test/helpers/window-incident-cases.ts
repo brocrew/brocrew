@@ -9,6 +9,11 @@ import { rowsUnreadOnce } from '../../src/main/db/rows-unread'
 import { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { aLibraryHost } from './files-library-fixture'
 
+export function withoutBrief<T extends { brief: unknown }>({ brief: _brief, ...row }: T) {
+  void _brief
+  return row
+}
+
 export function windowIncidentCases(
   fixture: () => {
     store: SessionStore
@@ -171,8 +176,11 @@ export function windowIncidentCases(
         const stop = rowsUnreadOnce()
         const pieces = rowsUnreadOnce()
         const routes = rowsUnreadOnce()
-        expect(one.pieces).toEqual(fresh.openPiecesOf(one.sessionId, pieces))
-        expect(one.work).toEqual(fresh.reconciliationWork(new Set([one.sessionId]), pieces))
+        // Incident reads carry pieces and work rows without their brief text.
+        expect(one.pieces).toEqual(fresh.openPiecesOf(one.sessionId, pieces).map(withoutBrief))
+        expect(one.work).toEqual(
+          fresh.reconciliationWork(new Set([one.sessionId]), pieces).map(withoutBrief),
+        )
         expect(one.routes).toEqual(fresh.routedRequestsOf(one.sessionId, routes))
         expect(one.messages).toEqual(fresh.messagesWaitingIn(one.sessionId, messages))
         expect(one.stop).toEqual(fresh.lastAskToStop(one.sessionId, stop))

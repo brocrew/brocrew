@@ -149,8 +149,9 @@ export interface IncidentHistory {
 export interface IncidentReading {
   readonly sessionId: string
   readonly history: IncidentHistory
-  readonly pieces: ReturnType<SessionStore['openPiecesOf']>
-  readonly work: ReturnType<SessionStore['reconciliationWork']>
+  /** Open pieces and work rows without their brief text, which no incident composition reads. */
+  readonly pieces: readonly Omit<ReturnType<SessionStore['openPiecesOf']>[number], 'brief'>[]
+  readonly work: readonly Omit<ReturnType<SessionStore['reconciliationWork']>[number], 'brief'>[]
   readonly routes: ReturnType<SessionStore['routedRequestsOf']>
   readonly messages: ReturnType<SessionStore['messagesWaitingIn']>
   readonly stop: ReturnType<SessionStore['lastAskToStop']>

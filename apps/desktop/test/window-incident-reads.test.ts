@@ -48,6 +48,8 @@ function fixture() {
 describe('window incident dependency reuse', () => {
   it('uses only the scoped worker facts and replays each dependency’s unread rows', async () => {
     const f = fixture()
+    const row = { piece: 'work_one', label: 'W1.1', title: 'Fictional piece' }
+    type Owner = WindowIncidents['owners'][number]
     const snapshot: WindowIncidents = {
       kind: 'incidents',
       routing: {
@@ -71,8 +73,8 @@ describe('window incident dependency reuse', () => {
             states: [],
             statesSkipped: [],
           },
-          pieces: [],
-          work: [],
+          pieces: [row as unknown as Owner['pieces'][number]],
+          work: [row as unknown as Owner['work'][number]],
           routes: [],
           piecesSkipped: [],
           routesSkipped: [],
@@ -101,8 +103,10 @@ describe('window incident dependency reuse', () => {
       expect(f.store.messagesWaitingIn('one')).toEqual(snapshot.owners[0]?.messages)
       expect(f.store.lastAskToStop('one', unread)).toBeNull()
       expect(f.store.reconciliationOwners()).toEqual(['one'])
-      expect(f.store.reconciliationWork()).toEqual([])
-      expect(f.store.openPiecesOf('one')).toEqual([])
+      for (const [read] of [f.store.reconciliationWork(), f.store.openPiecesOf('one')]) {
+        expect({ ...read }).toEqual(row)
+        expect(() => read!.brief).toThrow(WindowReadUnavailable)
+      }
       expect(f.store.routedRequestsOf('one')).toEqual([])
       expect(f.routes).not.toHaveBeenCalled()
       expect(unread.count).toBe(2)

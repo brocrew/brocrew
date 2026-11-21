@@ -18,6 +18,8 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
+const largeBrief = 'A large fictional brief. '.repeat(2000)
+
 function assertQueue(answer: PersonsQueueAnswer, questions: string[], workLabel: string): void {
   expect('refused' in answer).toBe(false)
   if ('refused' in answer) throw new Error(answer.refused)
@@ -107,6 +109,8 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     rows: number
     elapsedMs: number
     bytes: number
+    routingBytes: number
+    carriesBrief: boolean
     capability: 'cold' | 'match' | 'miss'
     startedAt: number
     finishedAt: number
@@ -138,12 +142,17 @@ it('measures window reads with 1960 conversations and nine live agents', async (
           measurement: message.measurement,
         }),
       )
-    if (message.type === 'read')
+    if (message.type === 'read') {
+      const serialized = serialize(message.result)
       readings.push({
         kind: message.result.kind,
         ...message.measurement,
-        bytes: serialize(message.result).byteLength,
+        bytes: serialized.byteLength,
+        routingBytes:
+          message.result.kind === 'incidents' ? serialize(message.result.routing).byteLength : 0,
+        carriesBrief: serialized.includes('A large fictional brief.'),
       })
+    }
   })
   const reader = new WindowWorkerReader(worker)
   let release!: () => void
@@ -205,7 +214,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
             parent: root.piece,
             givenBy: ids[0]!,
             title: 'Fictional child',
-            brief: 'A large fictional brief. '.repeat(2000),
+            brief: largeBrief,
           },
           world.clock,
         )
@@ -235,7 +244,7 @@ it('measures window reads with 1960 conversations and nine live agents', async (
           owner,
           ids[0],
           'Fictional child',
-          'Fictional brief',
+          n < 9 ? largeBrief : 'Fictional brief',
           world.clock,
         )
         if (n >= 9) {
@@ -523,9 +532,25 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     expect(coldReadHeartbeats.length).toBeGreaterThan(0)
     for (const one of coldReadHeartbeats) expect(one.beats, one.kind).toBeGreaterThan(0)
     expect(pushed.length).toBeGreaterThan(0)
-    expect(
-      Math.max(...readings.filter((one) => one.kind !== 'incidents').map((one) => one.bytes)),
-    ).toBeLessThan(4 * 1024 * 1024)
+    // No read carries a brief; the rest grows with conversations: measured 353 B each for listing
+    // and routes, 817 B each for incidents beside its routing snapshot.
+    for (const kind of ['incidents', 'routes'])
+      expect(
+        readings.some((one) => one.kind === kind),
+        kind,
+      ).toBe(true)
+    const bytesPerConversation: Record<string, number> = {
+      listing: 400,
+      routes: 400,
+      incidents: 900,
+    }
+    for (const one of readings) {
+      expect(one.carriesBrief, one.kind).toBe(false)
+      expect((one.bytes - one.routingBytes) / population.total, one.kind).toBeLessThan(
+        bytesPerConversation[one.kind]!,
+      )
+      expect(one.routingBytes / population.total, one.kind).toBeLessThan(400)
+    }
   } finally {
     release()
     measuring = false

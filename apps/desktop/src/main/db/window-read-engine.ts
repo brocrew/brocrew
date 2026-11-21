@@ -25,6 +25,12 @@ import {
 /** How many of its capabilities an engine still honours. */
 const TOKENS_KEPT = 256
 
+/** Incident reads carry no brief text: no incident composition reads it. */
+function withoutBrief<T extends { brief: unknown }>({ brief: _brief, ...row }: T) {
+  void _brief
+  return row
+}
+
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
 export class WindowReadEngine {
   private readonly db: Database.Database
@@ -283,8 +289,8 @@ export class WindowReadEngine {
               states: states.map((one) => [one.piece, one.state]),
               statesSkipped: [...statesSkipped],
             },
-            pieces,
-            work,
+            pieces: pieces.map(withoutBrief),
+            work: work.map(withoutBrief),
             routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
             messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
             stop,

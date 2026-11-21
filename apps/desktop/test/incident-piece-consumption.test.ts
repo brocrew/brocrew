@@ -10,6 +10,7 @@ import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { windowFoldCache } from '../src/main/db/window-fold-cache'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
+import { withoutBrief } from './helpers/window-incident-cases'
 
 const cleanup: (() => void)[] = []
 afterEach(() => {
@@ -80,7 +81,8 @@ it.each([false, true])(
     const result = engine.read({ kind: 'incidents' })
     if (result.kind !== 'incidents') throw new Error('wrong incident reading')
     const owner = result.owners.find((one) => one.sessionId === 'alpha')!
-    expect(owner.pieces).toEqual(expectedOpen)
+    // Incident reads carry open pieces without their brief text.
+    expect(owner.pieces).toEqual(expectedOpen.map(withoutBrief))
     expect(owner.history.states).toEqual(expected.map((one) => [one.piece, one.state]))
     expect(unread.count).toBe(torn ? 1 : 0)
     expect(owner.piecesSkipped).toEqual(torn ? [skipped] : [])

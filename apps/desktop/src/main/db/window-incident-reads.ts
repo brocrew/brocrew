@@ -151,6 +151,16 @@ export class WindowIncidentReads {
       if (fact == null) throw new WindowReadUnavailable()
       return structuredClone(fact.value)
     }
+    // The snapshot leaves brief text out; reading it falls back like any omitted fact.
+    const withoutBrief = <T extends object>(rows: readonly T[]) =>
+      structuredClone(rows).map(
+        (row) =>
+          Object.defineProperty(row, 'brief', {
+            get: () => {
+              throw new WindowReadUnavailable()
+            },
+          }) as T & { readonly brief: never },
+      )
     const history = (owner: string) => {
       const owners = current()
       if (owners === undefined) return undefined
@@ -220,13 +230,13 @@ export class WindowIncidentReads {
             return [...(holders ?? owners.keys())].flatMap((id) => {
               const row = fact(id, unread, 'pieces')
               if (row === undefined) throw new WindowReadUnavailable()
-              return structuredClone(row.work)
+              return withoutBrief(row.work)
             })
           }
         if (key === 'openPiecesOf')
           return (id: string, unread?: RowsUnread) => {
             const row = fact(id, unread, 'pieces')
-            return row === undefined ? store.openPiecesOf(id, unread) : structuredClone(row.pieces)
+            return row === undefined ? store.openPiecesOf(id, unread) : withoutBrief(row.pieces)
           }
         if (key === 'routedRequestsOf')
           return (id: string, unread?: RowsUnread) => {
