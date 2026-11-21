@@ -1,42 +1,22 @@
 <script setup lang="ts">
-import { railSectionOf, railSectionHeading, RAIL_SECTION_REMEMBERED } from '../lib/rail-sections'
 import { useClientApi } from '../client-provider/injection'
-import { useRecoveredConversationList } from '../composables/useConversationListRecovery'
-import { useModalDepth } from './OverlayHost.vue'
 import { useProviderNames } from '../composables/useProviderNames'
 import { providerNamesIn } from '../lib/front-door-words'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
 import crewMark from '../assets/brocrew-mark.svg'
-import { computed, onBeforeUnmount, onMounted, nextTick, ref, useId, watch, watchEffect } from 'vue'
-import { agentStateWords } from '../../../shared/agent-state'
+import { computed, ref, watch } from 'vue'
+import { NEEDS_YOU } from '../lib/agent-state'
 import {
-  facetsOfState,
-  NEEDS_YOU,
-  recordFacets,
-  standingOf,
-  standingWord,
-  stateHere,
-  stateForRecord,
-  type AgentFacets,
-  type Standing,
-} from '../lib/agent-state'
-import {
-  conversationList,
-  withConversationStates,
   conversationTitle,
-  groupWorkers,
-  workerLabel,
   workerState,
   workerSubtitles,
   workerDescription,
   workerName,
-  onPurposeSaid,
   type ListedConversation,
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
-import { basenameOf } from '../lib/paths'
 import { RECENT_CONVERSATION_PAGE_SIZE } from '../../../shared/listing-published'
 import { agoWords, fullTime } from '../lib/clock'
 import {
@@ -45,41 +25,27 @@ import {
   type ConversationIdentityBatchInput,
 } from '../../../shared/conversation-title'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
-import type { PaletteAgent, PaletteNavigation, PaletteOpenRow } from '../lib/command-palette'
+import type { PaletteAgent, PaletteNavigation } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import { liveSignalView } from '../lib/live-signal'
-// 🔴 **636 · the one wait each row is in, out of the reading that covers every conversation** —
-// see {@link SideRail.waiting}, and {@link theWaitIn} for the three absences it narrows.
-import {
-  theWaitIn,
-  whoItOwesIn,
-  theWorkIn,
-  whatTheWaitsCouldNotRead,
-  whoseAnswerIn,
-  whoseWorkIn,
-  stoppedWorkIn,
-} from '../lib/conversation-waits'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 import type { ProviderLimitsView } from '../lib/persons-queue'
-import { providerLimitDisplay } from '../lib/provider-limit-status'
 import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
-import { railFacts, useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
+import type { RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
-import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
-import { whereItWorks } from '../lib/session-record'
-import { agentName } from '../../../shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID } from '../../../shared/profile-name'
 import type { SessionRecord } from '../lib/session-record'
-import { usePersistentToggle } from '../composables/usePersistentToggle'
 import AgentState from './AgentState.vue'
 import CommandPalette from './CommandPalette.vue'
 import UpdatesMenu from './UpdatesMenu.vue'
 import WorkspacesSection from './WorkspacesSection.vue'
 import VersionButton from './VersionButton.vue'
 import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
+import { useRailFooter } from '../composables/useRailFooter'
+import { useRailRows, type RailRow } from '../composables/useRailRows'
+import { useRailSections, type RailSectionKey } from '../composables/useRailSections'
 
 /**
  * The rail holds destinations, the conversation list, one live signal and the stop switch.
@@ -291,307 +257,39 @@ const waitingCount = computed(() => props.needsYou)
  * re-reads stopped. ⚠️ `WorkingTogether`'s supply to `workingTogetherView`, one surface over.
  */
 const railMinute = useMinuteClock()
-/**
- * 🔴 **B2 · the footer's menu** — this BroBot's version and its updates ({@link UpdatesMenu}).
- * ⚑ Closed by Esc, a second press, or a press anywhere else; focus goes back to the footer.
- */
-const updatesOpen = ref(false)
-const modalDepth = useModalDepth()
-const footerBox = ref<HTMLElement | null>(null)
-const footerButton = ref<HTMLButtonElement | null>(null)
-const workspacesOpen = ref(false)
-const workspaceDialog = ref<HTMLElement | null>(null)
-const versionButton = ref<InstanceType<typeof VersionButton> | null>(null)
-const footerName = computed(() => `${workspaceName.value ?? 'Local workspace'}, choose a workspace`)
-
-/** ⚑ Esc closes it from anywhere while it is open, wherever focus went after a press. */
-function escapeCloses(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || modalDepth.value > 0) return
-  if (updatesOpen.value) closeUpdates()
-  else if (workspacesOpen.value) {
-    workspacesOpen.value = false
-    footerButton.value?.focus()
-  }
-}
-
-function toggleWorkspaces(): void {
-  workspacesOpen.value = !workspacesOpen.value
-  updatesOpen.value = false
-  if (workspacesOpen.value) {
-    void nextTick(() => {
-      const target =
-        workspaceDialog.value?.querySelector<HTMLElement>('button:not(:disabled)') ??
-        workspaceDialog.value
-      target?.focus()
-    })
-  }
-}
-
-function toggleUpdates(): void {
-  updatesOpen.value = !updatesOpen.value
-  workspacesOpen.value = false
-}
-
-function closeUpdates(): void {
-  updatesOpen.value = false
-  versionButton.value?.focus()
-}
-
-function pressElsewhere(event: PointerEvent): void {
-  if (modalDepth.value > 0) return
-  if (footerBox.value !== null && !footerBox.value.contains(event.target as Node)) {
-    updatesOpen.value = false
-    workspacesOpen.value = false
-  }
-}
-
-watch([updatesOpen, workspacesOpen], ([update, workspace]) => {
-  if (update || workspace) {
-    document.addEventListener('pointerdown', pressElsewhere)
-    document.addEventListener('keydown', escapeCloses)
-  } else {
-    document.removeEventListener('pointerdown', pressElsewhere)
-    document.removeEventListener('keydown', escapeCloses)
-  }
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', pressElsewhere)
-  document.removeEventListener('keydown', escapeCloses)
-})
-
-/** ⚑ A3 · a rename made from the menu, said at once; `AppInfo.workspace` is read at launch. */
-const renamedTo = ref<string | null>(null)
-const workspaceName = computed(() => renamedTo.value ?? props.workspaceFolder?.name ?? null)
-
-/** ⚑ A0 · the workspace name's first letter, by code point, for the footer's avatar. */
-const workspaceInitial = computed(
-  () => [...(workspaceName.value?.trim() ?? '')][0]?.toUpperCase() ?? '',
-)
+const {
+  updatesOpen,
+  footerBox,
+  footerButton,
+  workspacesOpen,
+  workspaceDialog,
+  versionButton,
+  footerName,
+  toggleWorkspaces,
+  toggleUpdates,
+  closeUpdates,
+  renamedTo,
+  workspaceName,
+  workspaceInitial,
+} = useRailFooter(props)
 
 const liveSignal = computed(() =>
   liveSignalView(props.workspace, props.limits, railMinute.value, providerNamesIn(nameOfProvider)),
 )
 
-/* ---------------------------------------------------------------------------
-   ⚑ D-017b · the ONE list — the host's two reads, folded by `conversation-list.ts`,
-   with the conversations this window holds drawn from their own records beside it.
-   --------------------------------------------------------------------------- */
-
-const lists = railFacts()
-onBeforeUnmount(() => lists.clear())
-
 const {
   hostResumable,
-  hostUnresumable,
   coverageComplete,
-  recent: initialRecent,
+  initialRecent,
   looked,
   listError,
-  said,
-  providerBlocks,
   hearStates,
   refreshListed,
-} = useRecoveredConversationList(
-  () => props.workspaceFolder?.path ?? null,
-  () => client.sessions,
-  () => props.providerBlocks,
-)
-
-const readList = computed(() =>
-  conversationList({
-    resumable: hostResumable.value,
-    unresumable: hostUnresumable.value,
-    identities: props.agents?.identities ?? null,
-    providerSaid: providerBlocks.value.snapshot(),
-  }),
-)
-const listed = computed(() =>
-  withConversationStates(
-    readList.value,
-    new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),
-  ),
-)
-const cast = useWhoCalledWhom()
-// Index the forest once per reading, rather than walking it for every row on every render.
-const workByHolder = computed(() => workByConversation(cast.forest.value))
-watchEffect(() => {
-  lists.update({ listedConversations: looked.value ? listed.value : null })
-  if (!looked.value) {
-    lists.update({ runningConversations: null })
-    return
-  }
-  const live = new Map(
-    [...hostResumable.value, ...hostUnresumable.value]
-      .filter((row) => row.running !== 'not-running')
-      .map((row) => [row.sessionId, row.provider]),
-  )
-  lists.update({
-    runningConversations: listed.value.flatMap(({ sessionId, state }) => {
-      const provider = live.get(sessionId)
-      return provider === undefined ? [] : [{ sessionId, provider, state }]
-    }),
-  })
-})
-
-onMounted(refreshListed)
-
-function who(record: SessionRecord): string {
-  const meta = record.meta
-  if (!meta) return record.sessionId
-  return identityName(meta)
-}
-
-function identityName(meta: { readonly profileId: string }): string {
-  return agentName(meta.profileId, props.agents?.identities ?? null)
-}
-
-function placeOf(record: SessionRecord): string | null {
-  return whereItWorks(record)
-}
-
-/** ⚑ **D-017b · one row of the one list** — the same markup and the same press, whatever it is doing. */
-interface RailRow extends PaletteOpenRow {
-  readonly brobot: boolean
-  readonly initialIdentity?: ConversationIdentity
-  readonly activityAt?: number
-  readonly worker?: ListedConversation['worker']
-  readonly facets: AgentFacets
-  readonly detail?: string
-  readonly standing: Standing
-  /** ⚑ Another window has it open — said on the row, because a message from here is refused. */
-  readonly elsewhere: boolean
-}
-
-/** Local records supply live state. Other rows and activity order come from the host listing. */
-const rows = computed<RailRow[]>(() => {
-  const byHost = new Map(listed.value.map((row) => [row.sessionId, row]))
-  const shown = props.onScreen
-  const drawn = new Map<string, { row: RailRow; at: number }>()
-  // ⚑ **Fed here** — the fold is the present.
-  for (const record of props.open) {
-    const host = byHost.get(record.sessionId)
-    const worker = host?.worker
-    // 🔴 **636 · the sixth facet, and it is the one this record cannot hold** — see
-    // {@link SideRail.waiting}. 🔴 **D-006 · and where the work it holds stands**, off the same
-    // reading. ⚑ **D-017 · R19 — the wait carries who owes it the next move, as the host read it.**
-    const facets = recordFacets(
-      record,
-      theWaitIn(props.waiting, record.sessionId),
-      theWorkIn(props.waiting, record.sessionId),
-      // ⚑ **F036 · who waits on its answer** — the host's own state of it, pushed to its listed row.
-      whoItOwesIn(host?.state),
-    )
-    const currentState = stateForRecord(record, () =>
-      stateHere(
-        record,
-        facets,
-        whoseAnswerIn(props.waiting, record.sessionId),
-        whoseWorkIn(props.waiting, record.sessionId),
-        {},
-        stoppedWorkIn(props.waiting, record.sessionId),
-      ),
-    )
-    const limit = providerLimitDisplay(
-      providerBlocks.value.get(record.sessionId) ?? record.meta,
-      currentState,
-      railMinute.value,
-    )
-    const standing = standingOf(facets)
-    // An idle conversation holding a piece waiting on purpose says that wait, and its status line.
-    const purpose = onPurposeSaid(standing === 'idle', host?.waitingOnPurpose)
-    drawn.set(record.sessionId, {
-      at: host?.updatedAt ?? Number.POSITIVE_INFINITY,
-      row: {
-        ...(worker ? { worker } : {}),
-        sessionId: record.sessionId,
-        brobot: host?.personStarted === true && railSectionOf(host.identity) === 'brobot',
-        activityAt: host?.updatedAt,
-        provider: record.meta?.provider ?? null,
-        facets,
-        standing,
-        ...(limit ? { detail: limit.detail } : purpose ? { detail: purpose.detail } : {}),
-        word: limit?.short ?? purpose?.word ?? standingWord(facets, currentState),
-        label: workerLabel(who(record), worker, host?.named),
-        // 🔴 **D-016 · commit 7 · R2 — the work that names it is the host's**, off the row already
-        // looked up for its order: a record this window is fed holds no tree.
-        named: host?.named ?? null,
-        // ⛔ **449 · the second of the two facts a row needs**, and the palette takes it too.
-        place: placeOf(record),
-        // ⛔ **The one fact that tells two rows apart** (211 §3), read off the record.
-        opening: record.opening,
-        elsewhere: false,
-      },
-    })
-  }
-  // ⚑ **Every other one — the host's word**, the one on screen included when it is drawn from its
-  // ledger.
-  for (const host of listed.value) {
-    if (drawn.has(host.sessionId)) continue
-    const facets = facetsOfState(host.state)
-    const limit = providerLimitDisplay(
-      providerBlocks.value.get(host.sessionId),
-      host.state,
-      railMinute.value,
-    )
-    const shownHere = shown?.sessionId === host.sessionId ? shown : null
-    const purpose = onPurposeSaid(host.state.is === 'idle', host.waitingOnPurpose)
-    drawn.set(host.sessionId, {
-      at: host.updatedAt,
-      row: {
-        ...(host.worker ? { worker: host.worker } : {}),
-        sessionId: host.sessionId,
-        brobot: host.personStarted === true && railSectionOf(host.identity) === 'brobot',
-        activityAt: host.updatedAt,
-        provider: host.provider,
-        facets,
-        standing: standingOf(facets),
-        word: limit?.short ?? purpose?.word ?? agentStateWords(host.state),
-        ...(limit ? { detail: limit.detail } : purpose ? { detail: purpose.detail } : {}),
-        label: workerLabel(host.label, host.worker, host.named),
-        named: host.named,
-        place: host.place,
-        opening: shownHere?.opening ?? null,
-        elsewhere: host.inAnotherWindow,
-      },
-    })
-  }
-  for (const row of initialRecent.value) {
-    if (drawn.has(row.sessionId)) continue
-    drawn.set(row.sessionId, {
-      at: row.updatedAt,
-      row: {
-        sessionId: row.sessionId,
-        brobot:
-          row.personStarted === true &&
-          railSectionOf(row.profileId ?? DEFAULT_PROFILE_ID) === 'brobot',
-        ...(row.identity === null ? {} : { initialIdentity: row.identity }),
-        activityAt: row.updatedAt,
-        provider: row.provider,
-        facets: { doing: 'unknown' },
-        standing: 'unknown',
-        word: '',
-        label: agentName(row.profileId, props.agents?.identities ?? null),
-        named: null,
-        place: basenameOf(row.cwd) || null,
-        opening: null,
-        elsewhere: row.running === 'in-a-window',
-      },
-    })
-  }
-  return [...drawn.values()].sort((one, other) => other.at - one.at).map(({ row }) => row)
-})
-
-/**
- * 🔴 **685 · the waits reading's unread rows, said once under the rows it qualifies** (`676`
- * F-R18a) — see {@link whatTheWaitsCouldNotRead}. ⚑ `props.open` is the population the rows
- * are drawn from, and each of them reads its wait from {@link SideRail.waiting}.
- */
-const waitsShort = computed(() =>
-  whatTheWaitsCouldNotRead(
-    props.waiting ?? null,
-    props.open.map((record) => record.sessionId),
-  ),
-)
+  listed,
+  workByHolder,
+  rows,
+  waitsShort,
+} = useRailRows(props, client, railMinute)
 
 /* ---------------------------------------------------------------------------
    The command palette (249) — hosted HERE, and the reason is the constraint.
@@ -608,86 +306,12 @@ const paletteSearchCaller = computed(
     null,
 )
 
-const sectionNames = { brobot: 'BroBot', 'needs-you': 'Needs you', recent: 'Recent' } as const
-type RailSectionKey = keyof typeof sectionNames
-
-const sectionOpen = {
-  brobot: usePersistentToggle(RAIL_SECTION_REMEMBERED.brobot, true),
-  'needs-you': usePersistentToggle('brobot2.railNeedsYouOpen', true),
-  recent: usePersistentToggle('brobot2.railRecentOpen', true),
-}
-const recentLimit = ref(RECENT_CONVERSATION_PAGE_SIZE)
-watch(
-  () => props.workspaceFolder?.path,
-  () => (recentLimit.value = RECENT_CONVERSATION_PAGE_SIZE),
-)
-const sectionIdBase = useId()
-const rowsIdOf = (key: RailSectionKey): string => `${sectionIdBase}-rows-${key}`
-
-const brobotRows = computed(() => rows.value.filter((row) => row.brobot))
-const otherRows = computed(() => rows.value.filter((row) => !row.brobot))
-const waitingRows = computed(() => otherRows.value.filter((row) => row.standing === 'waiting'))
-const recentRows = computed(() => otherRows.value.filter((row) => row.standing !== 'waiting'))
-
-function railSection(key: RailSectionKey, eligible: readonly RailRow[], shown: readonly RailRow[]) {
-  const groups = groupWorkers(shown, (row) => row.sessionId)
-  const workerHeads = new Map(
-    groups.flatMap(({ worker, rows }) =>
-      worker
-        ? [
-            [
-              rows[0]!.sessionId,
-              {
-                identity: worker.identity,
-                giver: worker.giver,
-                label: workerName(worker, props.agents?.identities ?? null),
-              },
-            ] as const,
-          ]
-        : [],
-    ),
-  )
-  const open = sectionOpen[key].value
-  const selected = eligible.some((row) => row.sessionId === onScreenId.value)
-  const recentTotal = key === 'recent' && coverageComplete.value ? eligible.length : null
-  return {
-    key,
-    heading:
-      key === 'brobot'
-        ? railSectionHeading('brobot', props.agents?.identities ?? null)
-        : sectionNames[key],
-    rows: groups.flatMap((group) => group.rows),
-    workerHeads,
-    open,
-    holdsTheOneOnScreen:
-      selected && (!open || !shown.some((row) => row.sessionId === onScreenId.value)),
-    count:
-      key !== 'recent'
-        ? key === 'brobot' && initialRecent.value.length > 0
-          ? null
-          : String(eligible.length)
-        : recentTotal === null
-          ? open
-            ? `${shown.length} shown`
-            : null
-          : open
-            ? `${shown.length} of ${recentTotal}`
-            : String(recentTotal),
-  }
-}
-
-const sections = computed(() => {
-  const waiting = waitingRows.value
-  const recent = recentRows.value
-  return [
-    ...(brobotRows.value.length ? [railSection('brobot', brobotRows.value, brobotRows.value)] : []),
-    ...(waiting.length ? [railSection('needs-you', waiting, waiting)] : []),
-    ...(recent.length ? [railSection('recent', recent, recent.slice(0, recentLimit.value))] : []),
-  ]
-})
-
-const moreRecent = computed(() =>
-  Math.min(RECENT_CONVERSATION_PAGE_SIZE, recentRows.value.length - recentLimit.value),
+const { sectionOpen, recentLimit, rowsIdOf, waitingRows, sections, moreRecent } = useRailSections(
+  props,
+  rows,
+  onScreenId,
+  coverageComplete,
+  initialRecent,
 )
 
 const identityIds = computed((previous?: string[]) => {
