@@ -49,41 +49,54 @@ function argumentsFor(overrides = {}) {
   }
 }
 
-it('keeps the release builder arguments unchanged with the default inputs', () => {
-  expect(argumentsFor()).toEqual([
-    ['--filter', '@brobot2/desktop', 'run', 'build'],
-    [
-      '--filter',
-      '@brobot2/desktop',
-      'exec',
-      'electron-builder',
-      '--mac',
-      'dmg',
-      'zip',
-      'dir',
-      '--arm64',
-      '--config',
-      'electron-builder.yml',
-      '-c.forceCodeSigning=true',
-      '-c.mac.hardenedRuntime=true',
-      '-c.mac.timestamp=http://timestamp.apple.com/ts01',
-      '-c.mac.notarize=true',
-      '-c.dmg.sign=true',
-      '-c.artifactBuildCompleted=./build/notarize-dmg.mjs',
-      '-c.extraMetadata.version=0.2.22',
-      '-c.publish.provider=github',
-      '-c.publish.owner=brocrew',
-      '-c.publish.repo=brocrew',
-      '--publish',
-      'never',
-    ],
-  ])
-  const release = read('.github/workflows/release.yml')
-  const call = release.jobs.macos.steps.find((step) => step.uses === './.github/actions/signed-mac')
-  expect(call.with).not.toHaveProperty('feed_url')
-  expect(call.with).not.toHaveProperty('marker')
-  expect(call.with).not.toHaveProperty('output')
-})
+const hostedWindows =
+  process.platform === 'win32' &&
+  process.env.GITHUB_ACTIONS === 'true' &&
+  process.env.RUNNER_ENVIRONMENT === 'github-hosted'
+// Card415: Majid-directed hosted Windows test headroom; physical cause remains unknown.
+const builderTimeoutMs = hostedWindows ? 20000 : 5000
+
+it(
+  'keeps the release builder arguments unchanged with the default inputs',
+  () => {
+    expect(argumentsFor()).toEqual([
+      ['--filter', '@brobot2/desktop', 'run', 'build'],
+      [
+        '--filter',
+        '@brobot2/desktop',
+        'exec',
+        'electron-builder',
+        '--mac',
+        'dmg',
+        'zip',
+        'dir',
+        '--arm64',
+        '--config',
+        'electron-builder.yml',
+        '-c.forceCodeSigning=true',
+        '-c.mac.hardenedRuntime=true',
+        '-c.mac.timestamp=http://timestamp.apple.com/ts01',
+        '-c.mac.notarize=true',
+        '-c.dmg.sign=true',
+        '-c.artifactBuildCompleted=./build/notarize-dmg.mjs',
+        '-c.extraMetadata.version=0.2.22',
+        '-c.publish.provider=github',
+        '-c.publish.owner=brocrew',
+        '-c.publish.repo=brocrew',
+        '--publish',
+        'never',
+      ],
+    ])
+    const release = read('.github/workflows/release.yml')
+    const call = release.jobs.macos.steps.find(
+      (step) => step.uses === './.github/actions/signed-mac',
+    )
+    expect(call.with).not.toHaveProperty('feed_url')
+    expect(call.with).not.toHaveProperty('marker')
+    expect(call.with).not.toHaveProperty('output')
+  },
+  builderTimeoutMs,
+)
 
 it('uses the same signing command with generic or private rehearsal feeds', () => {
   const generic = argumentsFor({

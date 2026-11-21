@@ -25,10 +25,15 @@ const record = {
   helper,
   observations: [],
 }
+const hostedWindows =
+  process.platform === 'win32' &&
+  process.env.GITHUB_ACTIONS === 'true' &&
+  process.env.RUNNER_ENVIRONMENT === 'github-hosted'
+// Card415: Majid-directed compile fixture headroom on hosted Windows only.
 function execute(label, program, args) {
   const result = spawnSync(program, args, {
     encoding: 'utf8',
-    timeout: 10000,
+    timeout: hostedWindows && label === 'compile-Windows-facts-observer' ? 40000 : 10000,
     windowsHide: true,
     env: { ...process.env, ...theVariablesFor(home) },
   })
