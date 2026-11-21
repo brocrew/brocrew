@@ -73,7 +73,7 @@ describe('whyNotAKey', () => {
 
 describe('ApiKeys', () => {
   it('saved-key launch revisions stay distinct across replacement and removal in one clock tick', async () => {
-    const keys = new ApiKeys(userData, () => 1234)
+    const keys = await ApiKeys.open(userData, () => 1234)
     await keys.set('codex', 'fictional-key-fern')
     const first = keys.status('codex').setAt!
     await keys.set('codex', 'fictional-key-willow')
@@ -85,7 +85,7 @@ describe('ApiKeys', () => {
   })
 
   it('keeps a key in a file only the person can read, trims it, and tells the window no key', async () => {
-    const keys = new ApiKeys(userData, () => 1234)
+    const keys = await ApiKeys.open(userData, () => 1234)
     expect(keys.status('claude')).toEqual({
       provider: 'claude',
       set: false,
@@ -115,7 +115,7 @@ describe('ApiKeys', () => {
 
   it('a second key replaces the first, at the clock’s moment', async () => {
     let now = 10
-    const keys = new ApiKeys(userData, () => now)
+    const keys = await ApiKeys.open(userData, () => now)
     await keys.set('codex', 'sk-first')
     now = 20
     await keys.set('codex', 'sk-second')
@@ -123,13 +123,13 @@ describe('ApiKeys', () => {
   })
 
   it('a key that is refused is not kept', async () => {
-    const keys = new ApiKeys(userData)
+    const keys = await ApiKeys.open(userData)
     expect(await keys.set('claude', 'has space')).toContain('no spaces')
     expect(existsSync(fileOf())).toBe(false)
   })
 
   it('remove says whether there was a key, and a removed key is no key', async () => {
-    const keys = new ApiKeys(userData)
+    const keys = await ApiKeys.open(userData)
     expect(await keys.remove('claude')).toBe(false)
     await keys.set('claude', KEY)
     expect(await keys.remove('claude')).toBe(true)
@@ -138,7 +138,7 @@ describe('ApiKeys', () => {
   })
 
   it('two providers saved in the same tick both keep their key', async () => {
-    const keys = new ApiKeys(userData)
+    const keys = await ApiKeys.open(userData)
     await Promise.all([keys.set('claude', KEY), keys.set('codex', 'sk-codex-fern')])
     expect(await keys.read('claude')).toBe(KEY)
     expect(await keys.read('codex')).toBe('sk-codex-fern')
@@ -146,7 +146,7 @@ describe('ApiKeys', () => {
 
   it('a keys file that can’t be read stops both starts, is left as it is, and a save sets it aside', async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
-    const keys = new ApiKeys(userData, () => 77)
+    const keys = await ApiKeys.open(userData, () => 77)
     for (const provider of ['claude', 'codex'] as const) {
       expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
       await expect(keys.read(provider)).rejects.toThrow(ApiKeyUnreadableError)
@@ -170,7 +170,7 @@ it.skipIf(process.platform === 'win32')(
   'a save over an unreadable file that can’t be written leaves that file in place, still refusing',
   async () => {
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
-    const keys = new ApiKeys(userData, () => 77)
+    const keys = await ApiKeys.open(userData, () => 77)
     chmodSync(userData, 0o500)
     expect(await keys.set('codex', 'sk-codex-fern')).toContain('couldn’t write the key')
     chmodSync(userData, 0o700)
@@ -186,7 +186,7 @@ it('a key an earlier version sealed is never opened: its start refuses in plain 
     hasSealedApiKey: (provider: string) => sealed.has(provider),
     forgetSealedApiKey: (provider: string) => void sealed.delete(provider),
   }
-  const keys = new ApiKeys(userData, () => 5, store)
+  const keys = await ApiKeys.open(userData, () => 5, store)
   for (const provider of ['claude', 'codex'] as const) {
     expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
     await expect(keys.read(provider)).rejects.toThrow(ApiKeyUnreadableError)
@@ -201,7 +201,7 @@ it('a key an earlier version sealed is never opened: its start refuses in plain 
 
 it('a key saved again outranks a sealed row the save did not get to clear', async () => {
   const store = { hasSealedApiKey: () => true, forgetSealedApiKey: () => {} }
-  const keys = new ApiKeys(userData, () => 5, store)
+  const keys = await ApiKeys.open(userData, () => 5, store)
   expect(await keys.set('codex', KEY)).toBeNull()
   expect(keys.status('codex')).toMatchObject({ set: true, inUse: true })
   expect(await keys.read('codex')).toBe(KEY)

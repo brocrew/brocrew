@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, SessionMachine } from '@brobot2/runtime'
 import type {
   FakeSessionHandle,
@@ -327,7 +327,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     store = createSessionStore(db)
     // The first key is saved at 1, before every life the host starts (its clock is the real one).
     keySavedAt = 1
-    keys = new ApiKeys(userData, () => keySavedAt)
+    keys = await ApiKeys.open(userData, () => keySavedAt)
     checkSays = { ok: true }
     checksStarted = 0
     handles = []
@@ -401,9 +401,9 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
   }
 
   it('🔴 a turn refused for billing on the key: the key says so, and the window is told', async () => {
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
     const { sent } = await aTurnEndingAs(refusedForBilling)
-    expect(host.apiKeyStatus('claude').refusedForBilling).toEqual({
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toEqual({
       at: expect.any(Number),
       aLoginRunsWithoutIt: aLoginRunsWithoutAKey('claude'),
     })
@@ -413,26 +413,26 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     expect(sent).toHaveLength(1)
     expect(withoutWhatThisAppAdds(sent[0] ?? '')).toMatch(/hello$/)
     // And the other provider's key is untouched.
-    expect(host.apiKeyStatus('codex')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('codex')).not.toHaveProperty('refusedForBilling')
   })
 
   it('🔴 a turn on the key that works again lets go of it', async () => {
     await aTurnEndingAs(refusedForBilling)
     moved = []
     await aTurnEndingAs((machine) => machine.completeTurn('completed'))
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
     expect(moved).toContainEqual({ what: 'key', provider: 'claude' })
   })
 
   it('⚑ a key replaced is not the key refused', async () => {
     await aTurnEndingAs(refusedForBilling)
     await host.setApiKey('claude', 'sk-ant-another-fake')
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it('⚑ control: a turn that failed for another reason leaves the key as it was', async () => {
     await aTurnEndingAs((machine) => machine.completeTurn('failed', 'API Error: 500'))
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
     expect(moved.filter((one) => one.what === 'key')).toEqual([])
   })
 
@@ -440,10 +440,10 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     const { sessionId } = await aTurnEndingAs(refusedForBilling)
     keySavedAt = Date.now()
     await host.setApiKey('claude', 'sk-ant-another-fake')
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
     // The same conversation, still on the first key, is refused again.
     await aTurnOn(sessionId, refusedForBilling)
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it('🔴 a turn that works on a conversation started before the key leaves the refusal standing', async () => {
@@ -451,44 +451,44 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
     keySavedAt = Date.now()
     await host.setApiKey('claude', 'sk-ant-another-fake')
     await aTurnEndingAs(refusedForBilling)
-    expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
     await aTurnOn(older, (machine) => machine.completeTurn('completed'))
-    expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
   })
 
   it('⚑ a refusal on a login, not the key, marks nothing', async () => {
     await aTurnEndingAs((machine) =>
       machine.completeTurn('failed', BILLING, undefined, undefined, { billingRefused: true }),
     )
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it('⚑ removing the key lets go of its refusal', async () => {
     await aTurnEndingAs(refusedForBilling)
     await host.removeApiKey('claude')
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it('⚑ a Codex key out of quota is marked on the Codex card, not Claude’s', async () => {
     expect(await keys.set('codex', 'sk-fake-openai-not-a-key')).toBeNull()
     const sessionId = await aConversation('codex')
     await aTurnOn(sessionId, refusedForBilling)
-    expect(host.apiKeyStatus('codex').refusedForBilling).toBeDefined()
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect((await host.apiKeyStatus('codex')).refusedForBilling).toBeDefined()
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it('🔴 a check that finds the account can’t pay marks the key; one that ran a request clears it', async () => {
     checkSays = { ok: false, cannotPay: true, reason: 'cannot pay' }
     expect(await host.checkApiKey('claude')).toMatchObject({ ok: false, cannotPay: true })
-    expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
     expect(moved).toContainEqual({ what: 'key', provider: 'claude' })
     // A check that only listed the models says nothing about the account.
     checkSays = { ok: true }
     await host.checkApiKey('claude')
-    expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
     checkSays = { ok: true, answeredARequest: true }
     await host.checkApiKey('claude')
-    expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+    expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
   })
 
   it.each(['save', 'remove-and-save'] as const)(
@@ -504,7 +504,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
       await host.setApiKey('claude', 'sk-fictional-replacement')
       finish({ ok: false, cannotPay: true, reason: 'fictional billing refusal' })
       await checking
-      expect(host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
+      expect(await host.apiKeyStatus('claude')).not.toHaveProperty('refusedForBilling')
     },
   )
 
@@ -521,12 +521,36 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
       await host.setApiKey('claude', 'sk-fictional-replacement')
       checkSays = { ok: false, cannotPay: true, reason: 'fictional billing refusal' }
       await host.checkApiKey('claude')
-      expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+      expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
       finish({ ok: true, answeredARequest: true })
       await checking
-      expect(host.apiKeyStatus('claude').refusedForBilling).toBeDefined()
+      expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
     },
   )
+
+  it('a key change during the final status read keeps a newer billing refusal', async () => {
+    let finish!: (answer: ApiKeyCheck) => void
+    checkSays = new Promise((resolve) => {
+      finish = resolve
+    })
+    const checking = host.checkApiKey('claude')
+    await waitFor(() => checksStarted === 1, 'the first key check')
+    const earlier = keys.status('claude')
+    let release!: (status: typeof earlier) => void
+    const pending = new Promise<typeof earlier>((resolve) => {
+      release = resolve
+    })
+    const refresh = vi.spyOn(keys, 'refreshStatus').mockImplementationOnce(() => pending)
+    finish({ ok: true, answeredARequest: true })
+    await waitFor(() => refresh.mock.calls.length === 1, 'the final status read')
+    await host.setApiKey('claude', 'fictional-replacement-key')
+    checkSays = { ok: false, cannotPay: true, reason: 'fictional billing refusal' }
+    await host.checkApiKey('claude')
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
+    release(earlier)
+    await checking
+    expect((await host.apiKeyStatus('claude')).refusedForBilling).toBeDefined()
+  })
 
   it('⚑ the words for the way out follow the platform: on Windows, whether Claude Code’s login is there', () => {
     const aLogin = JSON.stringify({ claudeAiOauth: { accessToken: 'fake-token', expiresAt: 1 } })

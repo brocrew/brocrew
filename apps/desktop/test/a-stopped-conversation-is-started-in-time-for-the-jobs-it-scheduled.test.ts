@@ -1249,7 +1249,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     // ⛔ No timer at all: nothing will read the key again on its own.
     expect(wakeUpsOf(host).get(a)?.timer).toBeNull()
     // The Providers card's own fact is untouched.
-    expect(host.apiKeyStatus('claude')).toMatchObject({ readState: 'unreadable' })
+    expect(await host.apiKeyStatus('claude')).toMatchObject({ readState: 'unreadable' })
 
     // A relaunch, the key still unreadable: read once, then it waits again; the back-off is not
     // started over.

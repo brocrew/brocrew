@@ -677,7 +677,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
     }
   }
-  const apiKeys = new ApiKeys(userData, Date.now, store)
+  const apiKeys = await ApiKeys.open(userData, Date.now, store)
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())
   recordedConversation = (sessionId) => db === null || store.recordedOne(sessionId) !== null

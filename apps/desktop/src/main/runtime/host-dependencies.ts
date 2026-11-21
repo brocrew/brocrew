@@ -173,6 +173,8 @@ export interface RuntimeHostDeps {
    * provider on its machine login, and refuses to keep a key, saying so.
    */
   apiKeys?: Pick<ApiKeys, 'status'> & {
+    refreshStatus?: ApiKeys['refreshStatus']
+    current?: ApiKeys['current']
     remove(provider: Provider): boolean | Promise<boolean>
     revision?(provider: Provider): number
     set(provider: Provider, key: string): string | null | Promise<string | null>

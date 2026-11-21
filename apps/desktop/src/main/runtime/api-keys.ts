@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-import { copyFile } from 'node:fs/promises'
+import { copyFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { providerAuthPolicies } from '../providers/index'
 import { providerDescriptor, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
@@ -39,8 +38,11 @@ export class ApiKeys {
   private readonly changes = new Map<Provider, number>()
   private readonly lastSetAt = new Map<Provider, number>()
   private writes: Promise<unknown> = Promise.resolve()
+  private readonly statuses = new Map<Provider, ApiKeyStatus>()
+  private readonly legacy = new Set<Provider>()
+  private reading = 0
 
-  constructor(
+  private constructor(
     userData: string,
     private readonly clock: () => number = Date.now,
     /** A key an earlier version sealed: it is never opened, and can't be used until saved again. */
@@ -50,18 +52,46 @@ export class ApiKeys {
     },
   ) {
     this.path = join(userData, API_KEYS_FILE)
+    for (const provider of SUPPORTED_PROVIDERS) {
+      if (sealed.hasSealedApiKey(provider)) this.legacy.add(provider)
+    }
   }
 
+  static async open(
+    userData: string,
+    clock: () => number = Date.now,
+    sealed?: Pick<SessionStore, 'hasSealedApiKey' | 'forgetSealedApiKey'>,
+  ): Promise<ApiKeys> {
+    const keys = new ApiKeys(userData, clock, sealed)
+    await keys.observe()
+    return keys
+  }
+
+  /** Event delivery reads metadata only; credential reads and Settings refresh it off-thread. */
   status(provider: Provider): ApiKeyStatus {
+    const status = this.statuses.get(provider)!
+    return !status.set && this.legacy.has(provider) ? this.unreadable(provider) : { ...status }
+  }
+
+  async refreshStatus(provider: Provider): Promise<ApiKeyStatus> {
+    const file = await this.observe()
+    const status = this.statusOf(provider, file)
+    return !status.set && this.legacy.has(provider) ? this.unreadable(provider) : status
+  }
+
+  private statusOf(provider: Provider, file: KeysFile | null): ApiKeyStatus {
     const spends = providerDescriptor(provider).apiKey.spendsToken
       ? { aCheckSpendsAToken: true as const }
       : {}
-    const file = this.file()
     const entry = file?.keys[provider]
     if (entry !== undefined)
       return { provider, set: true, setAt: entry.setAt, inUse: true, ...spends }
-    if (!this.cantBeUsed(provider, file))
+    if (!cantBeUsed(provider, file))
       return { provider, set: false, setAt: null, inUse: false, ...spends }
+    return this.unreadable(provider)
+  }
+
+  private unreadable(provider: Provider): ApiKeyStatus {
     return {
       provider,
       set: true,
@@ -69,7 +99,9 @@ export class ApiKeys {
       inUse: false,
       readState: 'unreadable',
       unreadableReason: SAVED_KEY_UNREADABLE,
-      ...spends,
+      ...(providerDescriptor(provider).apiKey.spendsToken
+        ? { aCheckSpendsAToken: true as const }
+        : {}),
     }
   }
 
@@ -81,9 +113,9 @@ export class ApiKeys {
     return this.changes.get(provider) ?? 0
   }
 
-  /** Never waits: a key that is saved but can't be read refuses at once. */
+  /** Read the current credential without blocking the app's event loop. */
   async current(provider: Provider): Promise<Entry | null> {
-    const file = this.file()
+    const file = await this.observe()
     const entry = file?.keys[provider]
     if (entry !== undefined) return entry
     if (this.cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
@@ -110,12 +142,13 @@ export class ApiKeys {
       return 'BroCrew couldn’t write the key to its data folder, so it was not saved. Try again.'
     }
     this.sealed.forgetSealedApiKey(provider)
+    this.legacy.delete(provider)
     return null
   }
 
   async remove(provider: Provider): Promise<boolean> {
     this.changed(provider)
-    let had = this.sealed.hasSealedApiKey(provider)
+    let had = this.legacy.has(provider)
     await this.change((file) => {
       const setAt = file.keys[provider]?.setAt
       if (setAt === undefined && !file.cantRead?.includes(provider)) return false
@@ -126,11 +159,12 @@ export class ApiKeys {
       return true
     })
     this.sealed.forgetSealedApiKey(provider)
+    this.legacy.delete(provider)
     return had
   }
 
   private cantBeUsed(provider: Provider, file: KeysFile | null): boolean {
-    return cantBeUsed(provider, file) || this.sealed.hasSealedApiKey(provider)
+    return cantBeUsed(provider, file) || this.legacy.has(provider)
   }
 
   private changed(provider: Provider): void {
@@ -138,10 +172,10 @@ export class ApiKeys {
   }
 
   /** `null` when the file exists and can't be read; a missing file holds no keys. */
-  private file(): KeysFile | null {
+  private async file(): Promise<KeysFile | null> {
     let text: string
     try {
-      text = readFileSync(this.path, 'utf8')
+      text = await readFile(this.path, 'utf8')
     } catch (error) {
       return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { keys: {} } : null
     }
@@ -152,22 +186,43 @@ export class ApiKeys {
     }
   }
 
+  private remember(file: KeysFile | null): void {
+    for (const provider of SUPPORTED_PROVIDERS)
+      this.statuses.set(provider, this.statusOf(provider, file))
+  }
+
+  private async observe(): Promise<KeysFile | null> {
+    const reading = ++this.reading
+    const writes = this.writes
+    await writes
+    const file = await this.file()
+    // A later read or a durable mutation owns the projection, never a superseded observation.
+    if (reading === this.reading && writes === this.writes) this.remember(file)
+    return file
+  }
+
   /**
    * Every change to the file goes through one queue, so two providers' writes never drop each
    * other's key. An unreadable file is copied aside, never overwritten unseen.
    */
   private change(edit: (file: KeysFile) => boolean): Promise<void> {
     const work = this.writes.then(async () => {
-      const read = this.file()
+      const read = await this.file()
       const file: KeysFile =
         read === null
           ? { keys: {}, cantRead: [...SUPPORTED_PROVIDERS] }
           : { ...read, keys: { ...read.keys } }
-      if (!edit(file)) return
+      if (!edit(file)) {
+        this.reading++
+        this.remember(read)
+        return
+      }
       // Copied, not moved: if the write fails the unreadable file still stands and still refuses.
       if (read === null) await copyFile(this.path, `${this.path}.unreadable-${this.clock()}`)
       if (file.cantRead?.length === 0) delete file.cantRead
       await writeAtomically(this.path, `${JSON.stringify({ version: 1, ...file }, null, 2)}\n`)
+      this.reading++
+      this.remember(file)
     })
     this.writes = work.catch(() => undefined)
     return work

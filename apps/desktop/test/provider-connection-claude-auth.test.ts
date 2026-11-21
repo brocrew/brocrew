@@ -108,7 +108,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
   for (const method of ['sign-in', 'api-key'] as const) {
     it(`Claude ${operation}: keeps the selected ${method} method when the saved key changes during its read`, async () => {
       createSessionStore(db)
-      const keys = new ApiKeys(dir)
+      const keys = await ApiKeys.open(dir)
       if (method === 'api-key') await keys.set('claude', 'fictional-fern-key')
       const connection = resolveProviderConnection(db, {
         provider: 'claude',
@@ -154,7 +154,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
 
   it(`Claude ${operation}: a selected API key that disappears does not fall back to a login`, async () => {
     createSessionStore(db)
-    const keys = new ApiKeys(dir)
+    const keys = await ApiKeys.open(dir)
     await keys.set('claude', 'fictional-fern-key')
     const connection = resolveProviderConnection(db, {
       provider: 'claude',

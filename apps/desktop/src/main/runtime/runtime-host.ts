@@ -29679,13 +29679,15 @@ export class RuntimeHost implements LiveHost {
   private readonly manualAuthChecks = new Map<string, Promise<AuthState>>()
 
   /** 🔒 **Where a provider's API key stands** — never the key, which the window is not told. */
-  apiKeyStatus(provider: Provider): ApiKeyStatus {
-    const status = this.deps.apiKeys?.status(provider) ?? {
-      provider,
-      set: false,
-      setAt: null,
-      inUse: false,
-    }
+  async apiKeyStatus(provider: Provider): Promise<ApiKeyStatus> {
+    const keys = this.deps.apiKeys
+    const status = await (keys?.refreshStatus?.(provider) ??
+      keys?.status(provider) ?? {
+        provider,
+        set: false,
+        setAt: null,
+        inUse: false,
+      })
     const refused = this.keyRefusedForBilling.get(provider)
     if (refused === undefined || !status.set || status.setAt !== refused.setAt) return status
     return {
@@ -29737,12 +29739,12 @@ export class RuntimeHost implements LiveHost {
     const keys = this.deps.apiKeys
     if (!keys) {
       return {
-        ...this.apiKeyStatus(provider),
+        ...(await this.apiKeyStatus(provider)),
         refused: 'This build of BroCrew cannot keep an API key.',
       }
     }
     const refused = await keys.set(provider, key)
-    if (refused !== null) return { ...this.apiKeyStatus(provider), refused }
+    if (refused !== null) return { ...(await this.apiKeyStatus(provider)), refused }
     this.keyChanges.set(provider, (this.keyChanges.get(provider) ?? 0) + 1)
     this.keyRefusedForBilling.delete(provider)
     const notice = await this.bringTheKeyToItsHomes(provider)
@@ -29782,10 +29784,17 @@ export class RuntimeHost implements LiveHost {
     const card = providerDescriptor(provider).displayName
     const change = this.keyChanges.get(provider)
     const revision = keys.revision?.(provider)
-    const setAt = keys.status(provider).setAt
+    let setAt: number | null
     let key: string | null
     try {
-      key = await keys.read(provider)
+      if (keys.current !== undefined) {
+        const current = await keys.current(provider)
+        key = current?.key ?? null
+        setAt = current?.setAt ?? null
+      } else {
+        key = await keys.read(provider)
+        setAt = (await (keys.refreshStatus?.(provider) ?? keys.status(provider))).setAt
+      }
     } catch (error) {
       return { ok: false, reason: errorMessage(error) }
     }
@@ -29798,10 +29807,11 @@ export class RuntimeHost implements LiveHost {
     const moved = await this.bringTheKeyToItsHomes(provider)
     if (moved !== null) return { ok: false, reason: moved }
     const said = await ask(provider, key)
+    const status = await (keys.refreshStatus?.(provider) ?? keys.status(provider))
     if (
       this.keyChanges.get(provider) !== change ||
       keys.revision?.(provider) !== revision ||
-      keys.status(provider).setAt !== setAt
+      status.setAt !== setAt
     )
       return said
     if (!said.ok && said.cannotPay === true && setAt !== null) {

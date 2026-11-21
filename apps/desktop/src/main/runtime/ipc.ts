@@ -2751,7 +2751,7 @@ export async function executeRuntimeCommand(
     case 'apiKeyStatus':
       // ⚑ Ungated, `capabilities`' reason: where a key stands is not the key, and a surface
       // deciding what to offer asks it before anything is started.
-      return host.apiKeyStatus(command.provider) satisfies Answer<'apiKeyStatus'>
+      return (await host.apiKeyStatus(command.provider)) satisfies Answer<'apiKeyStatus'>
     case 'setApiKey':
       return host.setApiKey(command.provider, command.key) satisfies Answer<'setApiKey'>
     case 'removeApiKey':

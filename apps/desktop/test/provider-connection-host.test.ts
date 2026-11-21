@@ -110,7 +110,7 @@ function deferred() {
 
 it('Codex home preparation uses the once-selected method instead of a newly saved key', async () => {
   const f = fixture()
-  const keys = new ApiKeys(dir)
+  const keys = await ApiKeys.open(dir)
   f.state.revisionOf = (provider) => keys.revision(provider)
   let applied: string | undefined
   const copied = vi.fn()
