@@ -1818,14 +1818,14 @@ onUnmounted(() => {
       />
     </OverlayHost>
 
-    <!-- What one tool answered (462), on the same paper and through the same host as the two above
-         it — *"there is one answer to what does opening a thing do"*. -->
+    <!-- What one tool answered (462), on the same paper and through the same host as the two above. -->
     <OverlayHost v-if="answerFor" label="Tool answer" @close="readingAnswer = null">
       <ToolAnswerViewer
         :name="answerFor.name"
         :answer="answerFor.answer"
         :can-ask="canReadToolAnswers"
         :short-form="answerFor.shortForm"
+        :call="answerFor.call"
         @close="readingAnswer = null"
       />
     </OverlayHost>

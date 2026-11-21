@@ -11,6 +11,8 @@ import {
   rawAnswer,
   SHORT_FORM_KEPT,
 } from '../lib/tool-answer'
+import type { ToolItem, TranscriptItem } from '../lib/transcript'
+import ToolEntry from './ToolEntry.vue'
 
 /**
  * Show the complete tool answer the agent received.
@@ -69,6 +71,11 @@ const props = defineProps<{
    * form is a second, shorter copy of it.
    */
   shortForm?: string | null
+  /**
+   * The call itself, drawn by `ToolEntry` with this answer in its `answer` slot. `null` for a call
+   * with no tool row (one drawn as a card), where the panel shows the answer under the name alone.
+   */
+  call?: (ToolItem & Pick<TranscriptItem, 'at'>) | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -85,12 +92,22 @@ const view = ref<'readable' | 'raw'>('readable')
  */
 const pretty = computed(() => parts.value.map((part) => asPrettyJson(part.text)))
 const raw = computed(() => (props.answer === null ? '' : rawAnswer(props.answer)))
+
+/** The call's own card with the answer in its `answer` slot, or the answer alone. */
+const frame = computed(() =>
+  props.call
+    ? {
+        is: ToolEntry,
+        slot: 'answer',
+        props: { item: props.call, opened: true, canOpenChild: false, canOpenOutput: false },
+      }
+    : { is: 'div', slot: 'default', props: {} },
+)
 </script>
 
 <template>
   <div class="tool-answer" data-cy="tool-answer-viewer">
     <header class="viewer-head">
-      <strong class="name" data-cy="tool-answer-name">{{ name }}</strong>
       <span class="what">what it answered</span>
       <button
         class="icon-button"
@@ -107,101 +124,113 @@ const raw = computed(() => (props.answer === null ? '' : rawAnswer(props.answer)
          nothing persists them, so a conversation reopened from the ledger has every row and none of
          what its tools said. ⚠️ A panel that showed an empty frame here would let a person believe
          they were seeing everything, which is the one outcome the brief rules out. -->
-    <p v-if="absence" class="refusal" data-cy="tool-answer-absence">{{ absence }}</p>
-    <!-- 🔴 **685 · …and what this app DOES still have for it** — see `SHORT_FORM_KEPT`. ⛔ Only under
-         *not holding it* — `answer === null` where the conversation could be asked, the reopened
-         case — and never under *the receipt carried no words*, whose row holds a placeholder word
-         and not the receipt's (`685`'s review). A conversation that is not running never opens
-         this panel (its row draws `ANSWER_NOT_HELD` instead). ⚠️ Outside the paper. -->
-    <section
-      v-if="props.answer === null && props.canAsk && props.shortForm"
-      class="short-form"
-      data-cy="tool-answer-short-form"
-    >
-      <p class="short-form-head">{{ SHORT_FORM_KEPT }}</p>
-      <p class="short-form-body">{{ props.shortForm }}</p>
-    </section>
+    <div class="stage">
+      <component :is="frame.is" v-bind="frame.props">
+        <template #[frame.slot]>
+          <!-- A call with no tool row has no card to name it, so the answer says whose it is. -->
+          <strong v-if="!props.call" class="name" data-cy="tool-answer-name">{{ name }}</strong>
+          <p v-if="absence" class="refusal" data-cy="tool-answer-absence">{{ absence }}</p>
+          <!-- 🔴 **685 · …and what this app DOES still have for it** — see `SHORT_FORM_KEPT`. ⛔ Only under
+               *not holding it* — `answer === null` where the conversation could be asked, the reopened
+               case — and never under *the receipt carried no words*, whose row holds a placeholder word
+               and not the receipt's (`685`'s review). A conversation that is not running never opens
+               this panel (its row draws `ANSWER_NOT_HELD` instead). ⚠️ Outside the paper. -->
+          <section
+            v-if="props.answer === null && props.canAsk && props.shortForm"
+            class="short-form"
+            data-cy="tool-answer-short-form"
+          >
+            <p class="short-form-head">{{ SHORT_FORM_KEPT }}</p>
+            <p class="short-form-body">{{ props.shortForm }}</p>
+          </section>
 
-    <template v-if="!absence">
-      <div class="seg-bar">
-        <span class="seg-group">
-          <button
-            class="seg"
-            :class="{ on: view === 'readable' }"
-            type="button"
-            data-cy="tool-answer-view-readable"
-            @click="view = 'readable'"
-          >
-            Readable
-          </button>
-          <button
-            class="seg"
-            :class="{ on: view === 'raw' }"
-            type="button"
-            data-cy="tool-answer-view-raw"
-            @click="view = 'raw'"
-          >
-            Raw
-          </button>
-        </span>
-      </div>
-      <!-- `data-on-white` for `DocumentBody`'s reason, in its own words: a white island whatever the
-           theme, and deliberately NOT a second `data-chat-theme` carrier (091). -->
-      <div class="stage" :data-view="view">
-        <div class="paper" data-on-white data-cy="tool-answer-paper">
-          <template v-if="view === 'readable'">
-            <section
-              v-for="(part, index) in parts"
-              :key="index"
-              class="part"
-              :data-cy="`tool-answer-part-${index}`"
-            >
-              <p class="part-head">
-                <span :data-cy="`tool-answer-heading-${index}`">{{
-                  partHeading(index, parts.length)
-                }}</span>
-                <span class="size" :data-cy="`tool-answer-size-${index}`">{{
-                  partSizeNote(part)
-                }}</span>
-              </p>
-              <!-- ⚠️ Two faces, one rule: characters that parse as JSON get the monospace block and
-                   the indentation, everything else gets the reading face and its own line breaks. -->
-              <pre
-                v-if="pretty[index] !== null"
-                class="part-body json"
-                :data-cy="`tool-answer-body-${index}`"
-                >{{ pretty[index] }}</pre>
-              <pre v-else class="part-body words" :data-cy="`tool-answer-body-${index}`">{{
-                part.text
-              }}</pre>
-              <!-- ⛔ **A COUNT, never an ellipsis** (092) — and it says the END is missing, which is
-                   the opposite end from a command's tail and is stated rather than left to guess. -->
-              <p v-if="part.dropped > 0" class="cut" :data-cy="`tool-answer-dropped-${index}`">
-                {{ partDroppedNote(part.dropped) }}
-              </p>
-            </section>
-            <p
-              v-if="answer && answer.partsDropped > 0"
-              class="cut"
-              data-cy="tool-answer-parts-dropped"
-            >
-              {{ partsDroppedNote(answer.partsDropped) }}
-            </p>
+          <template v-if="!absence">
+            <div class="seg-bar">
+              <span class="seg-group">
+                <button
+                  class="seg"
+                  :class="{ on: view === 'readable' }"
+                  type="button"
+                  data-cy="tool-answer-view-readable"
+                  @click="view = 'readable'"
+                >
+                  Readable
+                </button>
+                <button
+                  class="seg"
+                  :class="{ on: view === 'raw' }"
+                  type="button"
+                  data-cy="tool-answer-view-raw"
+                  @click="view = 'raw'"
+                >
+                  Raw
+                </button>
+              </span>
+            </div>
+            <!-- `data-on-white` for `DocumentBody`'s reason, in its own words: a white island whatever the
+                 theme, and deliberately NOT a second `data-chat-theme` carrier (091). -->
+            <div class="view" :data-view="view">
+              <div class="paper" data-on-white data-cy="tool-answer-paper">
+                <template v-if="view === 'readable'">
+                  <section
+                    v-for="(part, index) in parts"
+                    :key="index"
+                    class="part"
+                    :data-cy="`tool-answer-part-${index}`"
+                  >
+                    <p class="part-head">
+                      <span :data-cy="`tool-answer-heading-${index}`">{{
+                        partHeading(index, parts.length)
+                      }}</span>
+                      <span class="size" :data-cy="`tool-answer-size-${index}`">{{
+                        partSizeNote(part)
+                      }}</span>
+                    </p>
+                    <!-- ⚠️ Two faces, one rule: characters that parse as JSON get the monospace block and
+                         the indentation, everything else gets the reading face and its own line breaks. -->
+                    <pre
+                      v-if="pretty[index] !== null"
+                      class="part-body json"
+                      :data-cy="`tool-answer-body-${index}`"
+                      >{{ pretty[index] }}</pre>
+                    <pre v-else class="part-body words" :data-cy="`tool-answer-body-${index}`">{{
+                      part.text
+                    }}</pre>
+                    <!-- ⛔ **A COUNT, never an ellipsis** (092) — and it says the END is missing, which is
+                         the opposite end from a command's tail and is stated rather than left to guess. -->
+                    <p
+                      v-if="part.dropped > 0"
+                      class="cut"
+                      :data-cy="`tool-answer-dropped-${index}`"
+                    >
+                      {{ partDroppedNote(part.dropped) }}
+                    </p>
+                  </section>
+                  <p
+                    v-if="answer && answer.partsDropped > 0"
+                    class="cut"
+                    data-cy="tool-answer-parts-dropped"
+                  >
+                    {{ partsDroppedNote(answer.partsDropped) }}
+                  </p>
+                </template>
+                <!-- ⚠️ **"as the receipt carried them", and not "what the model received"** — `457`
+                     measured the two to be the same string on ONE provider, and `675` measured the other
+                     handing its model two blocks where this draws one joined string (685, `675` F-e); a
+                     claim true on one provider printed on a surface that draws both is 039's undisclosed
+                     asymmetry. -->
+                <template v-else>
+                  <p class="part-head">
+                    <span data-cy="tool-answer-raw-heading">As the receipt carried it</span>
+                  </p>
+                  <pre class="part-body json" data-cy="tool-answer-raw">{{ raw }}</pre>
+                </template>
+              </div>
+            </div>
           </template>
-          <!-- ⚠️ **"as the receipt carried them", and not "what the model received"** — `457`
-               measured the two to be the same string on ONE provider, and `675` measured the other
-               handing its model two blocks where this draws one joined string (685, `675` F-e); a
-               claim true on one provider printed on a surface that draws both is 039's undisclosed
-               asymmetry. -->
-          <template v-else>
-            <p class="part-head">
-              <span data-cy="tool-answer-raw-heading">As the receipt carried it</span>
-            </p>
-            <pre class="part-body json" data-cy="tool-answer-raw">{{ raw }}</pre>
-          </template>
-        </div>
-      </div>
-    </template>
+        </template>
+      </component>
+    </div>
   </div>
 </template>
 
@@ -235,6 +264,8 @@ const raw = computed(() => (props.answer === null ? '' : rawAnswer(props.answer)
 }
 
 .name {
+  display: block;
+  margin-bottom: var(--space-4);
   overflow: hidden;
   color: var(--text-soft);
   font-size: var(--type-caption);
@@ -254,8 +285,6 @@ const raw = computed(() => (props.answer === null ? '' : rawAnswer(props.answer)
 .seg-bar {
   display: flex;
   justify-content: flex-end;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
 }
 
 .seg-group {
@@ -290,14 +319,21 @@ const raw = computed(() => (props.answer === null ? '' : rawAnswer(props.answer)
   color: var(--accent-ink);
 }
 
-/* ⛔ **The stage is the ONE scroller** (462, measured while building it). An answer is a document a
-   person scrolls; two nested scrollers make the wheel land on whichever one the pointer happens to
-   be over, which is the thing `255` already costs this app one level up. The paper grows and this
-   clips it. */
+/* ⛔ **One scroller** (462): an answer is a document a person scrolls, and nested scrollers make the
+   wheel land on whichever one the pointer is over. The card and its paper grow; this clips them. */
 .stage {
   min-height: 0;
   padding: var(--space-5);
   overflow: auto;
+}
+
+.stage > .tool-entry {
+  max-width: none;
+  margin: 0;
+}
+
+.view {
+  padding: var(--space-4) 0 0;
 }
 
 .paper {

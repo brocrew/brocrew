@@ -7,7 +7,8 @@ import type {
   WorkflowOutputResult,
 } from '../../../shared/runtime-ipc'
 import type { SessionRecord } from '../lib/session-record'
-import { receiptOf } from '../lib/transcript'
+import { drawsAsACard } from '../lib/draws-as-a-card'
+import { receiptOf, type ToolItem, type TranscriptItem } from '../lib/transcript'
 
 /** What `ConversationPane` reads to open its overlays. */
 export interface OverlayProps {
@@ -147,6 +148,8 @@ export function useConversationOverlays(
     answer: ToolAnswer | null
     /** ⚑ **685 · the row's own short form** — see `ToolAnswerViewer`'s `shortForm`. */
     shortForm: string | null
+    /** The call itself, drawn by its own card in the panel; `null` when it has no tool row. */
+    call: (ToolItem & Pick<TranscriptItem, 'at'>) | null
   } | null>(null)
   const answerFor = computed(() =>
     readingAnswer.value?.sessionId === props.record.sessionId ? readingAnswer.value : null,
@@ -220,7 +223,12 @@ export function useConversationOverlays(
     // ⚑ **685 · the short form the row kept, taken BEFORE the await** with the session id, for its
     // reason — a top-level row's or a sub-agent card's (`receiptOf` walks both).
     const shortForm = receiptOf(transcript.value, toolCallId)
-    readingAnswer.value = { sessionId, name, answer: await read(toolCallId), shortForm }
+    const call =
+      transcript.value.items.find(
+        (item): item is ToolItem & TranscriptItem =>
+          item.kind === 'tool' && item.callId === toolCallId && !drawsAsACard(item),
+      ) ?? null
+    readingAnswer.value = { sessionId, name, answer: await read(toolCallId), shortForm, call }
   }
 
   function openImage(item: { path?: string; prompt?: string }): void {

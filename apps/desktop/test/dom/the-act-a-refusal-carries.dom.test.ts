@@ -74,9 +74,7 @@ async function openTheAnswer(m: Mounted): Promise<void> {
   if (toggle === null) throw new Error('the row drew no toggle')
   toggle.click()
   await nextTick()
-  const door =
-    m.host.querySelector<HTMLElement>('[data-cy^="tool-answer-open-"]') ??
-    m.host.querySelector<HTMLElement>('[data-cy^="tool-run-answer-open-"]')
+  const door = m.host.querySelector<HTMLElement>('[data-cy^="tool-answer-open-"]')
   if (door === null) throw new Error('the row offered no door to the whole answer')
   door.click()
   await new Promise((resolve) => setTimeout(resolve, 30))

@@ -214,23 +214,9 @@ const byPrefix = (m: Mounted, prefix: string): HTMLElement[] => [
   ...m.host.querySelectorAll<HTMLElement>(`[data-cy^="${prefix}"]`),
 ]
 /**
- * ⚑ **`587` moved the door, and this file reaches it by PREFIX in both places.**
- *
- * ⛔ **A settled ORDINARY tool call is no longer a card** — a run of them is one quiet line, and the
- * door to the whole answer sits inside that run's open panel (`tool-run-answer-open-…`) instead of
- * inside the card's fold (`tool-answer-open-…`).
- *
- * ⚠️ **Both prefixes are read, and the first draft of this note gave the wrong reason.** It said
- * *"`ToolEntry` still draws every LIVE call"* — true, and irrelevant: the card's door is
- * `v-if="item.result"`, so a live call has no door at all. ⛔ **The card's door is drawn for a
- * settled call that `joinsARun` excludes** — one with sub-agents (`029`) or a workflow (`108`) —
- * **and for detached work that has reported back while still running.** ⚑ Those are reachable
- * states, so a helper that stopped looking for the card's door would stop covering them.
+ * The door is `ToolEntry`'s wherever the call is drawn: on its own, or opened inside a run's panel.
  */
-const byEither = (m: Mounted, tail: string): HTMLElement[] => [
-  ...byPrefix(m, `tool-answer-${tail}-`),
-  ...byPrefix(m, `tool-run-answer-${tail}-`),
-]
+const byEither = (m: Mounted, tail: string): HTMLElement[] => byPrefix(m, `tool-answer-${tail}-`)
 const doors = (m: Mounted): HTMLElement[] => byEither(m, 'open')
 const gaps = (m: Mounted): HTMLElement[] => byEither(m, 'gone')
 
@@ -241,7 +227,7 @@ const gaps = (m: Mounted): HTMLElement[] => byEither(m, 'gone')
  * what it expects to find before it opens anything.
  */
 const drawnAs = (m: Mounted, expected: 'card' | 'run'): void => {
-  expect(m.all('tool-entry').length > 0 ? 'card' : 'run', 'the pane drew the other shape').toBe(
+  expect(m.all('tool-run').length > 0 ? 'run' : 'card', 'the pane drew the other shape').toBe(
     expected,
   )
 }
@@ -264,7 +250,7 @@ describe('§5 · the fold owns the door, and the liveness owns the fold’s cont
 
   it('⛔ a FOLDED row does not offer the door — opening the row is the gesture that asks', async () => {
     const m = mount(ToolEntry, { item: ROW, canReadAnswer: true }, { width: 760, height: 400 })
-    // ⚠️ **In the DOM and NOT drawn**, which is the distinction `.tool-body`'s own fold makes: the
+    // ⚠️ **In the DOM and NOT drawn**, which is the distinction the row's own fold makes: the
     // element exists, so a render test cannot tell the two states apart and this one can.
     expect(m.q('tool-answer-open-i1')).toBeTruthy()
     expect(visible(m.q('tool-answer-open-i1')), 'a folded row offered the door').toBe(false)

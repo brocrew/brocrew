@@ -410,8 +410,7 @@ describe('stopping one command from the conversation (300 · gap 5)', () => {
     expect(view.all('tool-run')).toHaveLength(1)
     view.q('tool-run-toggle').click()
     await nextTick()
-    expect(view.q('tool-run-outcome').getAttribute('data-outcome'), 'the paired positive').toBe(
-      'done',
-    )
+    const call = view.q('tool-run').querySelector('[data-cy="tool-entry"]')
+    expect(call?.getAttribute('data-status'), 'the paired positive').toBe('done')
   })
 })
