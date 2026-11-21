@@ -90,7 +90,6 @@ export function withCodexCoreMcp(
       ...previous,
       [launch.name]: {
         url: launch.url,
-        http_headers: { ...launch.headers },
         tool_timeout_sec: CORE_TOOL_WAIT_SECONDS,
         tools: Object.fromEntries(names.map((name) => [name, { approval_mode: 'approve' }])),
       },

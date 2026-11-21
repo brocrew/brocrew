@@ -101,7 +101,7 @@ describe('the current shared MCP catalogue offered to Codex', () => {
     expect(withCodexCoreMcp({}, undefined, [])).toEqual({})
     const names = toolset().set.tools.map((one) => one.name)
     expect(
-      withCodexCoreMcp({}, { name: 'brobot', url: 'http://127.0.0.1:1/mcp', headers: {} }, names),
+      withCodexCoreMcp({}, { name: 'brobot', url: 'http://127.0.0.1:1/mcp' }, names),
     ).toMatchObject({
       mcp_servers: {
         brobot: {

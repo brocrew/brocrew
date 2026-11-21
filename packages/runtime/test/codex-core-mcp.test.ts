@@ -62,7 +62,6 @@ async function opened(
         string,
         {
           url: string
-          http_headers: Record<string, string>
           tools: unknown
           tool_timeout_sec: number
         }
@@ -72,17 +71,13 @@ async function opened(
   const endpoint = launch.config.mcp_servers.brobot!
   const client = new Client({ name: 'fictional-native-mcp', version: '1' })
   clients.push(client)
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(endpoint.url), {
-      requestInit: { headers: endpoint.http_headers },
-    }),
-  )
+  await client.connect(new StreamableHTTPClientTransport(new URL(endpoint.url)))
   return { location, wire, handle, events, launch, endpoint, client }
 }
 
-const metadata = (callId: string, turn = 'fictional-turn-1') => ({
+const metadata = (callId: string, turn = 'fictional-turn-1', thread = 'fictional-thread') => ({
   callId,
-  'x-codex-turn-metadata': { thread_id: 'fictional-thread', turn_id: turn },
+  'x-codex-turn-metadata': { thread_id: thread, turn_id: turn },
 })
 
 it('fresh and resumed threads discover the current core catalogue, without fresh dynamic tools', async () => {
@@ -94,6 +89,7 @@ it('fresh and resumed threads discover the current core catalogue, without fresh
     }),
   )
   expect(first.launch.dynamicTools).toBeUndefined()
+  expect(first.endpoint).not.toHaveProperty('http_headers')
   expect(first.endpoint.tools).toEqual({ compact_agent: { approval_mode: 'approve' } })
   expect(first.endpoint.tool_timeout_sec).toBe(CORE_TOOL_WAIT_SECONDS)
   expect(CORE_TOOL_WAIT_SECONDS).toBe(24 * 60 * 60 + 60)
@@ -199,7 +195,14 @@ it('preserves a rail refusal and rejects unbound, late and repeated calls', asyn
     { type: 'text', text: 'Refused by the existing rail.' },
   ])
   await fixture.client.callTool({ ...args, _meta: metadata('refused') })
-  await fixture.client.callTool({ ...args, _meta: metadata('foreign-turn', 'different-turn') })
+  for (const foreign of [
+    metadata('foreign-turn', 'different-turn'),
+    metadata('foreign-thread', 'fictional-turn-1', 'different-thread'),
+  ]) {
+    expect((await fixture.client.callTool({ ...args, _meta: foreign })).content).toEqual([
+      { type: 'text', text: 'this session cannot take tool calls right now' },
+    ])
+  }
   fixture.wire.finish()
   await vi.waitFor(() => expect(fixture.handle.status()).toBe('idle'))
   await fixture.client.callTool({ ...args, _meta: metadata('late') })

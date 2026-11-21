@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { createAgentMcpServer, type AgentMcpDispatch } from '../agent-mcp-server'
@@ -7,22 +7,16 @@ import type { AgentToolset } from '../agent-tools'
 export interface AgentMcpLaunch {
   readonly name: string
   readonly url: string
-  readonly headers: Readonly<Record<string, string>>
 }
 
 // One child owns the endpoint and the tool closures, just as one Claude query owns its SDK server.
 export async function openAgentMcpHttp(toolset: AgentToolset, dispatch: AgentMcpDispatch) {
-  const capability = randomBytes(32).toString('hex')
   const clients = new Set<ReturnType<typeof createAgentMcpServer>['instance']>()
   const transports = new Map<string, StreamableHTTPServerTransport>()
   let closed = false
   const http = createServer((request, response) => {
     void (async () => {
-      if (
-        closed ||
-        request.url !== '/mcp' ||
-        request.headers.authorization !== `Bearer ${capability}`
-      ) {
+      if (closed || request.url !== '/mcp') {
         response.writeHead(404).end()
         return
       }
@@ -105,7 +99,6 @@ export async function openAgentMcpHttp(toolset: AgentToolset, dispatch: AgentMcp
     const launch: AgentMcpLaunch = {
       name: toolset.server,
       url: `http://127.0.0.1:${at.port}/mcp`,
-      headers: { Authorization: `Bearer ${capability}` },
     }
     return { launch, close }
   } catch (error) {

@@ -560,16 +560,19 @@ describe('what an agent was given', () => {
     )
   })
 
-  it.each([499, 500, 501])('shows stored instructions from a %i-unit declaration', async (length) => {
-    const host = buildHost()
-    const lead = await open(host, 'codex', 'lead')
-    const sent = 'a'.repeat(498) + 'bcd'.slice(0, length - 498)
-    codexToolList(lead, 'thread/start', sent)
-    const row = ledger(lead).findLast((event) => event.type === 'tool_inventory')
-    const stored = sent.slice(0, MAX_TOOL_TEXT)
-    expect(row?.type === 'tool_inventory' && row.declared?.instructions).toBe(stored)
-    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(stored)
-  })
+  it.each([499, 500, 501])(
+    'shows stored instructions from a %i-unit declaration',
+    async (length) => {
+      const host = buildHost()
+      const lead = await open(host, 'codex', 'lead')
+      const sent = 'a'.repeat(498) + 'bcd'.slice(0, length - 498)
+      codexToolList(lead, 'thread/start', sent)
+      const row = ledger(lead).findLast((event) => event.type === 'tool_inventory')
+      const stored = length > MAX_TOOL_TEXT ? sent.slice(0, MAX_TOOL_TEXT - 1) + '…' : sent
+      expect(row?.type === 'tool_inventory' && row.declared?.instructions).toBe(stored)
+      expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(stored)
+    },
+  )
 
   it('a closed conversation reads its last launch off the ledger; one launched before the record is composed now, and says so', async () => {
     const host = buildHost()
