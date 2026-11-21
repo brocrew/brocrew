@@ -11708,67 +11708,65 @@ describe('348 · dynamic tools, on the wire', () => {
     await handle.close()
   })
 
-  /**
-   * ⚑ **A verb may be carded for SOME calls only** (`beyondItsRailsWhen`): `message_agent` raises no
-   * card until it is asked to stop the receiver's turn, and then raises the one `interrupt_agent`
-   * does. ⛔ This adapter reads the call's own arguments, so the same verb in the same session
-   * answers two ways — and a non-boolean `interrupt` is no stop.
-   */
-  describe('a verb carded for some calls only', () => {
-    const MAYBE: AgentToolset = {
-      server: 'brobot',
-      tools: [
-        {
-          name: 'message_agent',
-          description: 'Say something to an agent.',
-          beyondItsRails: 'nothing-its-rails-do-not-cover',
-          beyondItsRailsWhen: (args) =>
-            args['interrupt'] === true
-              ? 'it-destroys-work-in-flight'
-              : 'nothing-its-rails-do-not-cover',
-          input: { text: z.string(), interrupt: z.boolean().optional() },
-          call: async () => ({ text: 'held', structured: { outcome: 'ok' } }),
-        },
-      ],
-    }
-
-    it('🔴 without interrupt it runs with no card, and with interrupt it cards and waits', async () => {
-      const { transport, handle, events } = await inTurn(MAYBE, 'ask')
-      transport.serverRequest(7, 'item/tool/call', {
-        callId: 'c1',
-        namespace: 'brobot',
-        tool: 'message_agent',
-        arguments: { text: 'a note' },
-      })
-      await vi.waitFor(() => expect(transport.responses).toHaveLength(1))
-      expect(events.filter((e) => e.type === 'permission_request')).toEqual([])
-
-      transport.serverRequest(8, 'item/tool/call', {
-        callId: 'c2',
-        namespace: 'brobot',
-        tool: 'message_agent',
-        arguments: { text: 'stop and read this', interrupt: true },
-      })
-      const card = await vi.waitFor(() => firstOfType(events, 'permission_request'))
-      expect(card.action).toBe('message_agent')
-      expect(transport.responses).toHaveLength(1)
-      await handle.respondPermission(card.id, { outcome: 'allow' })
-      await vi.waitFor(() => expect(transport.responses).toHaveLength(2))
-      await handle.close()
+  it.each([
+    [
+      'give_work',
+      {
+        profile: 'worker',
+        to: 'new',
+        conversation_title: 'New work',
+        title: 'Task',
+        brief: 'Work',
+        definition_of_done: 'Done',
+      },
+    ],
+    [
+      'give_work',
+      { profile: 'worker', to: 'W1.2', title: 'Task', brief: 'Work', definition_of_done: 'Done' },
+    ],
+    ['interrupt_agent', { agent: 'W1.2', reason: 'Pause this work' }],
+    ['message_agent', { agent: 'W1.2', text: 'Stop and read this', interrupt: true }],
+    ['message_agent', { agent: 'W1.2', text: 'A note' }],
+    ['message_agent', { agent: 'W1.2', text: 'A note', interrupt: 'true' }],
+  ] as const)('in ask, %s with %j reaches its handler without an app card', async (name, args) => {
+    const call = vi.fn(async () => ({ text: 'handled' }))
+    const { transport, handle, events } = await inTurn(
+      {
+        server: 'brobot',
+        tools: [
+          {
+            name,
+            description: 'Coordinate work in this app.',
+            input: {},
+            beyondItsRails:
+              name === 'give_work'
+                ? 'it-starts-something-outside-this-app'
+                : name === 'interrupt_agent'
+                  ? 'it-destroys-work-in-flight'
+                  : 'nothing-its-rails-do-not-cover',
+            ...(name === 'message_agent' && {
+              beyondItsRailsWhen: (input: Record<string, unknown>) =>
+                input['interrupt'] === true
+                  ? 'it-destroys-work-in-flight'
+                  : 'nothing-its-rails-do-not-cover',
+            }),
+            call,
+          },
+        ],
+      },
+      'ask',
+    )
+    transport.serverRequest(7, 'item/tool/call', {
+      callId: 'coordination',
+      namespace: 'brobot',
+      tool: name,
+      arguments: args,
     })
-
-    it('⛔ an interrupt that is not exactly true is no stop: it runs with no card', async () => {
-      const { transport, handle, events } = await inTurn(MAYBE, 'ask')
-      transport.serverRequest(7, 'item/tool/call', {
-        callId: 'c1',
-        namespace: 'brobot',
-        tool: 'message_agent',
-        arguments: { text: 'a note', interrupt: 'true' },
-      })
-      await vi.waitFor(() => expect(transport.responses).toHaveLength(1))
-      expect(events.filter((e) => e.type === 'permission_request')).toEqual([])
-      await handle.close()
-    })
+    await vi.waitFor(() => expect(call).toHaveBeenCalledExactlyOnceWith(args))
+    expect(events.filter((event) => event.type === 'permission_request')).toEqual([])
+    await vi.waitFor(() => expect(transport.responses).toHaveLength(1))
+    expect(transport.responses[0]!.result).toMatchObject({ success: true })
+    await handle.close()
   })
 
   it('⛔ a person’s Deny runs nothing, and says so as a broken call rather than as a rail', async () => {

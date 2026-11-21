@@ -180,13 +180,11 @@ describe('723 · R83 — a Stop the provider does not answer is said', () => {
       arguments: { agent: id, reason: 'Stop this turn' },
     })
 
-    await waitFor(() => sentOfType('permission_request').length === 1, 'the Stop approval')
-    await host.respondPermission(id, 'number:70', { outcome: 'allow' }, window)
-
     await waitFor(() => ofType(id, 'turn').length === 1, 'the self-stopped turn to end')
     expect(server.sent('turn/interrupt')).toEqual([{ threadId: 'th_1', turnId: 'tn_1' }])
     expect(ofType(id, 'turn')).toEqual([expect.objectContaining({ state: 'interrupted' })])
     await waitFor(() => server.responses.some(({ id }) => id === 70), 'the self-Stop receipt')
+    expect(sentOfType('permission_request')).toEqual([])
     expect(server.responses.filter(({ id }) => id === 70)).toEqual([
       {
         id: 70,

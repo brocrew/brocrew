@@ -10,7 +10,7 @@ import { coreApprovalDeadline, CORE_APPROVAL_TIMEOUT } from '../core-tool-deadli
 import { agentToolCard } from './request-cards'
 import { codexToolCall, declinedToolCall, safeRefusal, type RequestState } from './server-requests'
 import type { CodexTurn } from './turn-state'
-import { requestKey, readString } from './wire-values'
+import { requestKey, readField, readString } from './wire-values'
 
 export interface AgentCallContext {
   readonly tools: AgentToolset | undefined
@@ -70,9 +70,16 @@ export async function handleAgentToolCall(
     return
   }
   const offered = context.tools?.tools.find((one) => one.name === call.tool)
+  // These coordination calls use their app handlers as the gate in Codex.
+  const appCoordination =
+    (call.namespace === null || call.namespace === context.tools?.server) &&
+    (call.tool === 'give_work' ||
+      call.tool === 'interrupt_agent' ||
+      (call.tool === 'message_agent' && readField(call.arguments, 'interrupt') === true))
   if (
     offered !== undefined &&
-    beyondItsRailsOf(offered, call.arguments) === 'nothing-its-rails-do-not-cover'
+    (appCoordination ||
+      beyondItsRailsOf(offered, call.arguments) === 'nothing-its-rails-do-not-cover')
   ) {
     reply(await execute(context.tools, call, completed))
     return
