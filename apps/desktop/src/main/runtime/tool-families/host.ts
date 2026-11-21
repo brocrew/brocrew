@@ -77,7 +77,7 @@ import type { Provider } from '@brobot2/shared'
 import type { RefusalFacts } from '../../../shared/refusals'
 import type { ReplyOutcome } from '../reply-rails'
 import type { ResourceRefusal } from '../../resources/resources'
-import type { ResourceRow } from '../../db/session-store'
+import type { ProviderFailureEvidence, ResourceRow } from '../../db/session-store'
 import type { ToolName } from './catalog'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { ThemeStore } from '../../themes/store'
@@ -89,6 +89,7 @@ export interface AgentStatusRead {
     readonly failure: NonNullable<PieceRow['providerTurnFailure']>
   }[]
   readonly questionFailure: NonNullable<PieceRow['providerTurnFailure']> | null
+  readonly failureEvidence?: ProviderFailureEvidence
 }
 
 export interface AgentToolHost {

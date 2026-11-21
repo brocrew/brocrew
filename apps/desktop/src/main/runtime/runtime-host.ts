@@ -149,7 +149,11 @@ import {
   type SendOverflow,
 } from './send-overflow'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
-import type { NewSessionRecord, ProviderFailureEpisode } from '../db/session-store'
+import type {
+  NewSessionRecord,
+  ProviderFailureEpisode,
+  ProviderFailureEvidence,
+} from '../db/session-store'
 import type {
   ItsLedger,
   StateLedger,
@@ -10886,9 +10890,8 @@ export class RuntimeHost implements LiveHost {
         failures.push({ piece: piece.piece, failure })
     })
     if (card === null) return null
-    const questionFailure =
-      failures.length === 0 ? this.providerFailureForItsAsker(card.agent, me) : null
-    return { card, failures, questionFailure }
+    if (failures.length !== 0) return { card, failures, questionFailure: null }
+    return { card, failures, ...this.providerFailureForItsAsker(card.agent, me) }
   }
 
   private readAgentCard(
@@ -17133,17 +17136,19 @@ export class RuntimeHost implements LiveHost {
   providerFailureForItsAsker(
     holder: string,
     asker: string,
-  ): NonNullable<PieceRow['providerTurnFailure']> | null {
+  ): Pick<AgentStatusRead, 'questionFailure' | 'failureEvidence'> {
     try {
-      const episode = this.deps.store.providerFailureEpisode(holder)
-      if (typeof episode === 'string') return null
+      const evidence: ProviderFailureEvidence = { checkedTurnEndings: 0 }
+      const episode = this.deps.store.providerFailureEpisode(holder, undefined, evidence)
+      if (episode === 'unknown') return { questionFailure: null, failureEvidence: evidence }
+      if (episode === 'none') return { questionFailure: null }
       const audience = this.providerFailureRecipients(holder, episode)
       const recipient = audience.recipients.get(this.theOneInItsPlace(asker))
       if (!audience.complete || recipient === undefined || recipient.questions.size === 0)
-        return null
-      return { turnOrdinal: episode.terminalOrdinal, ...episode.cause }
+        return { questionFailure: null }
+      return { questionFailure: { turnOrdinal: episode.terminalOrdinal, ...episode.cause } }
     } catch {
-      return null
+      return { questionFailure: null }
     }
   }
 

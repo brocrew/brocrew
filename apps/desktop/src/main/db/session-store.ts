@@ -1184,7 +1184,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   whenAPersonLastWrote(sessionId: string): number | null
   requestsItsLastEndedTurnInterrupted(sessionId: string): readonly string[]
   lastEndedTurn(sessionId: string, unread?: RowsUnread): LastEndedTurn | null
-  providerFailureEpisode(sessionId: string, unread?: RowsUnread): ProviderFailureEpisode
+  providerFailureEpisode(
+    sessionId: string,
+    unread?: RowsUnread,
+    evidence?: ProviderFailureEvidence,
+  ): ProviderFailureEpisode
   lastExchange(sessionId: string): Exchange
   lastExchangeForTaskRecord(sessionId: string): TaskRecordExchange
   whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
@@ -1545,6 +1549,11 @@ export type ProviderFailureEpisode =
     }
 
 const CLOSED_TURNS_FOR_PROVIDER_FAILURE = 8
+
+export interface ProviderFailureEvidence {
+  checkedTurnEndings: number
+  exceededPartLimit?: number
+}
 
 interface ClosedTurnRow {
   id: string
@@ -4290,6 +4299,7 @@ export function createSessionStore(
   function providerFailureEpisodeOf(
     sessionId: string,
     unread?: RowsUnread,
+    evidence?: ProviderFailureEvidence,
   ): ProviderFailureEpisode {
     const noteSkip = unread?.in(sessionId) ?? (() => {})
     return readOrSkip<ProviderFailureEpisode>(sessionId, noteSkip, 'unknown', () => {
@@ -4313,7 +4323,10 @@ export function createSessionStore(
           id,
           MAX_TURN_PARTS + 1,
         ) as (EventRow & { type: TranscriptEvent['type'] })[]
-        if (rows.length > MAX_TURN_PARTS) return 'unknown'
+        if (rows.length > MAX_TURN_PARTS) {
+          if (evidence !== undefined) evidence.exceededPartLimit = MAX_TURN_PARTS
+          return 'unknown'
+        }
         const entries = toPersistedEvents(rows, noteSkip)
         if (
           entries.length !== rows.length ||
@@ -4334,6 +4347,7 @@ export function createSessionStore(
         )
           throw new Error('the recorded terminal could not be read')
 
+        if (evidence !== undefined) evidence.checkedTurnEndings++
         const failure = failureAtTurnEnd(terminal.event, terminal.ordinal)
         if (failure === undefined) continue
         if (failure === null) {

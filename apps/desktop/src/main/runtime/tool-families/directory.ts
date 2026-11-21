@@ -641,7 +641,7 @@ export function createGetAgentStatusTool(
         const agent = host.theConversationAddressed(args.agent, by, me, 'reading')
         const status = host.agentStatus(agent, by, me)
         if (status === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
-        const { card, failures, questionFailure } = status
+        const { card, failures, questionFailure, failureEvidence } = status
         const conversation = host.nameByItsWork(card.agent)
         const diagnosisConversation = conversation.replace(/^conversation /, 'Conversation ')
         let newest: (typeof failures)[number] | undefined
@@ -654,6 +654,20 @@ export function createGetAgentStatusTool(
           failureToSay === null
             ? undefined
             : `${providerFailureDiagnosis(diagnosisConversation, failureToSay.message, false)} Recorded failed turn ${String(failureToSay.turnOrdinal)}.`
+        const unknownDiagnosis =
+          failureEvidence === undefined
+            ? []
+            : [
+                'Cause unknown.',
+                failureEvidence.checkedTurnEndings === 0
+                  ? 'No recent turn ending could be checked.'
+                  : `Checked ${String(failureEvidence.checkedTurnEndings)} recent turn ${failureEvidence.checkedTurnEndings === 1 ? 'ending' : 'endings'}.`,
+                ...(failureEvidence.exceededPartLimit === undefined
+                  ? []
+                  : [
+                      `A turn exceeded the ${String(failureEvidence.exceededPartLimit)}-part limit.`,
+                    ]),
+              ]
         // **When its last turn ran, and what opened it** — so a giver reading *nothing has
         // started since* can tell whether its own held words were what that turn took.
         const last = host.whatOpenedItsLastTurn(card.agent)
@@ -691,6 +705,7 @@ export function createGetAgentStatusTool(
               pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
             ) + (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
             ...(questionFailure !== null && diagnosis !== undefined ? [diagnosis] : []),
+            ...(unknownDiagnosis.length === 0 ? [] : [unknownDiagnosis.join(' ')]),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
         )
