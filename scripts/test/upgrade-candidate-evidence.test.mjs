@@ -328,13 +328,19 @@ describe('the existing workflow’s same-artifact route', () => {
       default: false,
     })
     expect(workflow.on.workflow_call.inputs.mac_only).toBeUndefined()
-    const selected = (job, inputs) =>
-      Boolean(
-        new Function('github', 'inputs', `return (${workflow.jobs[job].if})`)(
+    const selected = (job, inputs) => {
+      const expression = workflow.jobs[job].if
+        .replace(/^\$\{\{\s*|\s*\}\}$/g, '')
+        .replaceAll('needs.window-memory', "needs['window-memory']")
+      return Boolean(
+        new Function('github', 'inputs', 'needs', 'cancelled', `return (${expression})`)(
           { repository: 'brocrew/brocrew' },
           inputs,
+          { assets: { result: 'success' }, 'window-memory': { result: 'success' } },
+          () => false,
         ),
       )
+    }
     const install = workflow.jobs.windows.steps.find((step) =>
       step.name?.startsWith('Install the beta, make data with it'),
     ).run

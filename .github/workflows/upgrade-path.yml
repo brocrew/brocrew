@@ -14,7 +14,11 @@ on:
         type: boolean
         default: false
       recovery_proof:
-        description: Run the three recovery cases with published 0.2.19
+        description: Restore and Return after upgrading from a release with pending migrations
+        type: boolean
+        default: false
+      recovery_windows_only:
+        description: Run the recovery proof on Windows only
         type: boolean
         default: false
       recovery_measurement_bytes:
@@ -51,7 +55,7 @@ on:
   workflow_call:
     inputs:
       recovery_proof:
-        description: Run the three recovery cases with published 0.2.19
+        description: Restore and Return after upgrading from a release with pending migrations
         type: boolean
         default: false
       windows_beta:
@@ -198,6 +202,9 @@ jobs:
   window-memory:
     name: Candidate large-workspace worker regression
     needs: assets
+    if: >-
+      ${{ !(inputs.recovery_proof && inputs.recovery_windows_only && !inputs.mac_only &&
+      (inputs.recovery_measurement_bytes || '0') == '0') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -212,7 +219,11 @@ jobs:
   windows:
     needs: [assets, window-memory]
     name: Windows, from the tester's beta to the candidate
-    if: github.repository == 'brocrew/brocrew' && !inputs.mac_only && (inputs.recovery_measurement_bytes || '0') == '0'
+    if: >-
+      ${{ !cancelled() && needs.assets.result == 'success' &&
+      (needs.window-memory.result == 'success' ||
+      (needs.window-memory.result == 'skipped' && inputs.recovery_proof && inputs.recovery_windows_only)) &&
+      github.repository == 'brocrew/brocrew' && !inputs.mac_only && (inputs.recovery_measurement_bytes || '0') == '0' }}
     # `windows-2022`, as `windows.yml`: pnpm's node-gyp does not know the 2025 image's Visual Studio.
     runs-on: windows-2022
     timeout-minutes: 75
@@ -294,6 +305,7 @@ jobs:
           ls -la apps/desktop/dist
 
       - name: Install Claude Code, sent to the lane's scripted model
+        if: needs.window-memory.result == 'success'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -306,6 +318,7 @@ jobs:
           & "$env:USERPROFILE\.local\bin\claude.exe" --version
 
       - name: A certificate authority of this run's own, for the lane's stand-in API
+        if: needs.window-memory.result == 'success'
         shell: bash
         env:
           MSYS_NO_PATHCONV: '1'
@@ -327,6 +340,7 @@ jobs:
         shell: bash
         env:
           UPGRADE_PATH_TLS_DIR: upgrade-path-tls
+          UPGRADE_PATH_CLAUDE_PORT: ${{ needs.window-memory.result == 'success' && env.UPGRADE_PATH_CLAUDE_PORT || '' }}
           BROCREW_SKIP_UPDATE_CHECK: '1'
         run: >-
           node scripts/upgrade-path.mjs --os windows

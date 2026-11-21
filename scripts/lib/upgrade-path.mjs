@@ -1106,27 +1106,21 @@ export function pluginOwnerQuiescence(value) {
 
 async function collectRecoveryProofCases({ result, cases, phase, closed, check, state }) {
   const steps = [
-    ['compatible', 'proof compatible candidate', () => true],
-    ['compatible019', 'proof actual019 compatible', () => Boolean(result.compatible.copy)],
-    [
-      'syntheticFuture',
-      'proof synthetic future actual019 Restore Return',
-      () => result.compatible.actual019ThenCandidate === true,
-    ],
-    ['synchronous', 'proof synchronous real earlier prefix', () => true],
+    ['upgrade', 'proof candidate upgrade'],
+    ['syntheticFuture', 'proof candidate Restore and Return'],
   ]
   result.cases = []
-  for (const [name, stage, ready] of steps) {
+  for (const [name, stage] of steps) {
     let skip = null
     try {
       if (!closed()) skip = 'An owned proof process has not been verified stopped.'
-      else if (!ready())
-        skip = 'The preceding compatible data/copy prerequisites were not verified.'
+      else if (name === 'syntheticFuture' && !result.upgrade.copy)
+        skip = 'The before-migration copy was not verified.'
       else if (
-        ['compatible019', 'syntheticFuture'].includes(name) &&
+        name === 'syntheticFuture' &&
         stateKept(state.state, state.readState(), state.stateFiles).lost.length
       )
-        skip = 'Coupled state no longer satisfies the compatible fixture prerequisites.'
+        skip = 'Coupled state from the predecessor was lost.'
     } catch (error) {
       skip = `Prerequisites could not be verified: ${error.message}`
     }
@@ -1141,18 +1135,13 @@ async function collectRecoveryProofCases({ result, cases, phase, closed, check, 
       await cases[name]()
       outcome.completed = true
     })
-    if (name === 'compatible')
+    if (name === 'upgrade')
       check(
-        Boolean(result.compatible.order),
+        Boolean(result.upgrade.order),
         'Ordinary DOM and valid copy completion were not verified.',
       )
-    if (name === 'compatible019')
-      check(result.compatible.actual019ThenCandidate === true, 'Compatible binary reads failed.')
     if (name === 'syntheticFuture')
-      check(
-        result.syntheticFuture.actual019RestoreReturn === true,
-        'Actual019 Restore/Return failed.',
-      )
+      check(result.syntheticFuture.restoreReturn === true, 'Candidate Restore and Return failed.')
     outcome.closed = closed()
     check(outcome.closed, `${stage}: owned proof processes are stopped`)
   }

@@ -21,7 +21,7 @@ async function collect({
   futureFails = false,
   stateLost = false,
 } = {}) {
-  const result = { compatible: {}, syntheticFuture: {}, synchronous: {} }
+  const result = { upgrade: {}, syntheticFuture: {} }
   const failures = [],
     visited = []
   let stopped = true
@@ -48,25 +48,18 @@ async function collect({
   await proof.collect(
     result,
     {
-      compatible: async () => {
+      upgrade: async () => {
         await proof.launch()
         visited.push('candidate')
         if (!validCopy) throw new Error('invalid copy/history/source/state')
-        result.compatible.copy = { id: 'verified-v1' }
+        result.upgrade.copy = { id: 'verified-v1' }
         if (!order) throw new Error('ordering assertion failed')
-        result.compatible.order = { ready: true }
-      },
-      compatible019: async () => {
-        visited.push('019-data')
-        result.compatible.actual019ThenCandidate = true
+        result.upgrade.order = { ready: true }
       },
       syntheticFuture: async () => {
-        visited.push('019-Restore-Return')
+        visited.push('candidate Restore and Return')
         if (futureFails) throw new Error('Return lost bytes')
-        result.syntheticFuture.actual019RestoreReturn = true
-      },
-      synchronous: async () => {
-        visited.push('prefix')
+        result.syntheticFuture.restoreReturn = true
       },
     },
     {
@@ -78,7 +71,7 @@ async function collect({
   return { result, failures, visited, exit: failures.length ? 1 : 0 }
 }
 
-describe('independent packaged recovery proof cases', () => {
+describe('packaged upgrade recovery proof', () => {
   it('refuses a second launch within the same phase until the first owned PID stopped', async () => {
     let launches = 0
     const proof = recoveryProofSequence({
@@ -96,24 +89,23 @@ describe('independent packaged recovery proof cases', () => {
     expect(proof.closed()).toBe(false)
   })
 
-  it('retains a failed ordering result while collecting verified dependent and independent cases', async () => {
+  it('retains a failed ordering result while trying Restore and Return with a verified copy', async () => {
     const seen = await collect()
-    expect(seen.visited).toEqual(['candidate', '019-data', '019-Restore-Return', 'prefix'])
+    expect(seen.visited).toEqual(['candidate', 'candidate Restore and Return'])
     expect(seen.failures).toContain('Ordinary DOM and valid copy completion were not verified.')
     expect(seen.exit).toBe(1)
   })
-  it('skips dependent cases on invalid copy prerequisites but still attempts the separate prefix', async () => {
+  it('skips Restore and Return when the candidate copy failed verification', async () => {
     const seen = await collect({ validCopy: false })
-    expect(seen.visited).toEqual(['candidate', 'prefix'])
+    expect(seen.visited).toEqual(['candidate'])
     expect(seen.result.cases.filter((one) => one.skipped).map((one) => one.name)).toEqual([
-      'compatible019',
       'syntheticFuture',
     ])
     expect(seen.exit).toBe(1)
   })
-  it('skips dependent cases when coupled fixture state was lost', async () => {
+  it('skips Restore and Return when coupled fixture state was lost', async () => {
     const seen = await collect({ stateLost: true })
-    expect(seen.visited).toEqual(['candidate', 'prefix'])
+    expect(seen.visited).toEqual(['candidate'])
     expect(seen.result.cases[1].skipped).toContain('Coupled state')
     expect(seen.exit).toBe(1)
   })
@@ -123,14 +115,13 @@ describe('independent packaged recovery proof cases', () => {
     expect(seen.result.cases.slice(1).every((one) => one.skipped.includes('process'))).toBe(true)
     expect(seen.exit).toBe(1)
   })
-  it('retains both early and later failures and still collects independent prefix evidence', async () => {
+  it('retains both an ordering failure and a failing Return', async () => {
     const seen = await collect({ futureFails: true })
-    expect(seen.visited.at(-1)).toBe('prefix')
     expect(seen.failures.some((one) => one.includes('ordering assertion'))).toBe(true)
     expect(seen.failures.some((one) => one.includes('Return lost bytes'))).toBe(true)
     expect(seen.exit).toBe(1)
   })
-  it('allows success only when all original case assertions and shutdown checks passed', async () => {
+  it('allows success when the upgrade, Restore and Return, and shutdown checks passed', async () => {
     expect((await collect({ order: true })).exit).toBe(0)
   })
 })

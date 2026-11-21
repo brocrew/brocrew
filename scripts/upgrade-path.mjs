@@ -1911,7 +1911,6 @@ async function runUpgradePath() {
   installedProgram = beta.program
   summary.names.beta = beta.productName
   summary.betaInstall = beta.facts
-  const proofOld = args['recovery-proof'] ? retainRecoveryProgram(beta, { os, run }) : null
   const betaVersion = os === 'windows' ? beta.facts.entries[0].DisplayVersion : beta.facts.version
   must(
     typeof betaVersion === 'string' &&
@@ -1931,7 +1930,7 @@ async function runUpgradePath() {
     )
     await runRecoveryMeasurement({
       bytes: measurementBytes,
-      old: proofOld,
+      old: retainRecoveryProgram(beta, { os, run }),
       source: args['source-sha'],
       version: args['candidate-version'],
       migrations,
@@ -2433,20 +2432,15 @@ async function runUpgradePath() {
 
   if (args['recovery-proof']) {
     must(
-      args['beta-tag'] === 'v0.2.19' && betaVersion === '0.2.19',
-      'The recovery proof uses actual published0.2.19.',
-    )
-    must(
-      before.lineage.length === candidateLineage.length,
-      'Compatible proof is distinct from a real newer migration.',
+      migrationCopy,
+      'The published predecessor must have migrations left for the candidate to apply.',
+      { predecessor: before.lineage.length, candidate: candidateLineage.length },
     )
     await recoveryProofCases(
       {
-        old: proofOld,
         candidate,
         before,
         candidateLineage,
-        migrations,
         conversations,
         betaAnswers,
         besideBefore,
@@ -2459,16 +2453,10 @@ async function runUpgradePath() {
       {
         launch,
         current: () => running,
-        useProgram: (program) => {
-          installedExe = program.exe
-          installedProgram = program.program
-        },
         alive,
         phase,
         check,
         startHiddenProgram,
-        bridge,
-        onScreen,
         must,
         answerText,
         quit,
