@@ -352,7 +352,9 @@ describe('what an agent is told about its work', () => {
       }
       expect(named.sort()).toEqual([
         'ask_question',
+        'compact_agent',
         'message_agent',
+        'read_transcript',
         'request_action',
         'search_work',
         'update_work',
