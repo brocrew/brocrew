@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createClaudeModule } from '../src/main/providers/claude'
 import { createCodexModule } from '../src/main/providers/codex'
 import { describe, expect, it, vi } from 'vitest'
 import { providerRecord } from '@brobot2/shared'
@@ -214,5 +215,38 @@ for (const available of [true, false]) {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+}
+
+for (const reason of ['read timed out', 'read denied', 'no current local token']) {
+  it(`lets native Claude decide its sign-in after ${reason}`, async () => {
+    const health = vi.fn(async () => ({ ok: false, reason }))
+    const module = createClaudeModule(
+      {
+        managedRoot: '/fictional/homes',
+        defaultProfile: 'fern',
+        homeOf: () => '/fictional/homes/fern/claude',
+        profiles: () => ['fern'],
+        assertMayOpen: () => {},
+      },
+      {
+        runtime: { program: () => '/fictional/claude', key: () => null },
+        home: { provisionHome: vi.fn(), key: () => null, health, login: async () => null },
+        auth: {},
+      },
+    )
+    const prepared = await module.prepareLaunch('fern', {
+      id: 'claude:sign-in',
+      provider: 'claude',
+      name: 'Sign in',
+      authMethod: 'sign-in',
+      credentialSource: 'machine-sign-in',
+      baseUrl: null,
+      enabled: true,
+      contractVersion: 1,
+    })
+    expect(prepared.home).toBe('/fictional/homes/fern/claude')
+    expect(prepared.runtime.provider).toBe('claude')
+    expect(health).toHaveBeenCalledOnce()
   })
 }

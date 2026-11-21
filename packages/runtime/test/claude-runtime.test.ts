@@ -3306,23 +3306,32 @@ describe('ClaudeRuntime — auth inheritance (022)', () => {
     expect(cap.get().env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
   })
 
-  it('fails closed (AuthUnavailableError) when the wired login is unavailable — never a global fallback', async () => {
+  it('lets native Claude authenticate when the local launch login is unavailable', async () => {
     const cap = captureWithAuth(() => null)
-    await expect(cap.start()).rejects.toBeInstanceOf(AuthUnavailableError)
+    await cap.start()
+    expect(cap.get().env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(cap.get().env?.['CLAUDE_SECURESTORAGE_CONFIG_DIR']).toBe('')
+    expect(cap.get().env?.['CLAUDE_CONFIG_DIR']).toBe('/managed/profile')
   })
 
-  it('also fails closed on resume when the login is unavailable', async () => {
+  it('also lets native Claude authenticate on resume without changing the session home', async () => {
+    let captured: Options | undefined
     const runtime = new ClaudeRuntime(
-      () => new FakeQuery(),
+      (params) => {
+        captured = params.options
+        return new FakeQuery()
+      },
       async () => true,
       () => null,
     )
-    await expect(
-      runtime.resume(
-        { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
-        { providerHome: '/managed/profile' },
-      ),
-    ).rejects.toBeInstanceOf(AuthUnavailableError)
+    const handle = await runtime.resume(
+      { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
+      { providerHome: '/managed/profile' },
+    )
+    expect(captured?.env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(captured?.env?.['CLAUDE_SECURESTORAGE_CONFIG_DIR']).toBe('')
+    expect(captured?.env?.['CLAUDE_CONFIG_DIR']).toBe('/managed/profile')
+    await handle.close()
   })
 })
 
