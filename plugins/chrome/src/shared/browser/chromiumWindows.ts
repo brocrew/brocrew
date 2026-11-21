@@ -113,12 +113,23 @@ export class ChromiumWindows {
     page.on('framenavigated', changed)
     page.once('close', () => this.forgetProvisional(page))
   }
-  private admit(page: Page): void {
+  /** Tabs this class did not open itself, such as ones Chrome restored, learn their window here. */
+  private admit(page: Page, windowId?: number): void {
     if (this.closed || page.isClosed() || this.pages.has(page)) return
     this.forgetProvisional(page)
-    this.pages.set(page, { order: ++this.sequence })
+    this.pages.set(page, { order: ++this.sequence, windowId })
     page.once('close', () => this.pages.delete(page))
     this.onAdmit?.(page)
+    if (windowId === undefined) void this.windowId(page).catch(() => undefined)
+  }
+  /** Records a tab's window as the most recently used one. */
+  private touch(page: Page, windowId: number): boolean {
+    const record = this.pages.get(page)
+    if (!record) return false
+    record.windowId = windowId
+    record.order = ++this.sequence
+    this.recent.set(windowId, record.order)
+    return true
   }
   private releaseOperations(): void {
     for (const operation of this.operations)
@@ -225,11 +236,8 @@ export class ChromiumWindows {
     return id
   }
   async used(page: Page): Promise<void> {
-    const id = await this.windowId(page)
-    const record = this.pages.get(page)
-    if (!record) throw new WindowTargetError('the new tab has not been admitted')
-    record.order = ++this.sequence
-    this.recent.set(id, record.order)
+    if (!this.touch(page, await this.windowId(page)))
+      throw new WindowTargetError('the new tab has not been admitted')
   }
   async latest(deadline = this.now() + this.timeoutMs): Promise<Page | undefined> {
     const entries = await Promise.all(
@@ -392,12 +400,10 @@ export class ChromiumWindows {
         if (!a.dispatched || a.resolved) this.resolveAttempt(a)
       }
       this.releaseOperations()
+      if (admitted) this.admit(admitted, admittedId)
       // Failed page identities remain private independently of their current URLs.
       this.flush()
-      if (admitted) {
-        if (!this.pages.has(admitted)) this.admit(admitted)
-        this.pages.get(admitted)!.windowId = admittedId
-      }
+      if (admitted) this.touch(admitted, admittedId!)
       if (session) await this.detach(session)
     }
   }

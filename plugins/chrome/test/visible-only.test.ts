@@ -59,22 +59,17 @@ describe('visible Chrome profiles', () => {
     expect(h.browser.pages.get('fern')).toEqual(pages)
     expect(front).toHaveBeenCalledOnce()
   })
-  it.each(['tool admission', 'final window identity'])(
-    'returns the created tab successfully when %s fails',
-    async (phase) => {
+  it.each(['rejects', 'stalls'])(
+    'reports a created tab as plain success with its window while a later window lookup %s',
+    async (state) => {
       const h = setup()
-      const windowId = h.browser.windowId.bind(h.browser)
-      const fault =
-        phase === 'tool admission'
-          ? vi
-              .spyOn(h.browser, 'usePage')
-              .mockRejectedValue(new WindowTargetError('window operation timed out'))
-          : vi.spyOn(h.browser, 'windowId').mockImplementation(async (profile, page) => {
-              if (page.url() === 'https://fixture.test/created')
-                throw new WindowTargetError('window operation timed out')
-              return windowId(profile, page)
-            })
-      let result: { tabId: string; note: string }
+      const stuck = () =>
+        state === 'rejects'
+          ? Promise.reject(new WindowTargetError('window operation timed out'))
+          : new Promise<never>(() => {})
+      const use = vi.spyOn(h.browser, 'usePage').mockImplementation(stuck)
+      const lookup = vi.spyOn(h.browser, 'windowId').mockImplementation(stuck)
+      let result: { tabId: string; windowId: number | null; note?: string }
       try {
         result = (
           await h.call('open_tab', {
@@ -82,33 +77,25 @@ describe('visible Chrome profiles', () => {
             url: 'https://fixture.test/created',
           })
         ).json as typeof result
+        expect(use).not.toHaveBeenCalled()
+        expect(lookup).not.toHaveBeenCalled()
       } finally {
-        fault.mockRestore()
+        use.mockRestore()
+        lookup.mockRestore()
       }
-      const tabs = (await h.call('list_tabs')).json as Array<{ tabId: string }>
+      const tabs = (await h.call('list_tabs')).json as Array<{
+        tabId: string
+        windowId: number
+        notes?: string[]
+      }>
       expect(tabs).toHaveLength(1)
       expect(result.tabId).toBe(tabs[0].tabId)
-      expect(result.note).toContain('created, focus pending')
-      expect(result.note).toContain('window operation timed out')
-      await h.call('navigate', { tabId: tabs[0].tabId, url: 'https://fixture.test/reused' })
-      expect(h.browser.pages.get('fern')).toHaveLength(1)
+      expect(result.windowId).toBe(tabs[0].windowId)
+      expect(result.windowId).toEqual(expect.any(Number))
+      expect(result).not.toHaveProperty('note')
+      expect(tabs[0]).not.toHaveProperty('notes')
     },
   )
-  it('returns the created tab while window bookkeeping stays pending', async () => {
-    const h = setup()
-    const fault = vi.spyOn(h.browser, 'usePage').mockImplementation(() => new Promise(() => {}))
-    try {
-      const result = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {
-        tabId: string
-        note: string
-      }
-      expect(result.tabId).toBeTruthy()
-      expect(result.note).toContain('created, focus pending')
-      expect(h.browser.pages.get('fern')).toHaveLength(1)
-    } finally {
-      fault.mockRestore()
-    }
-  })
   it.each(['pending', 'failed'])('returns an existing tab while focus is %s', async (state) => {
     const h = setup()
     const opened = (await h.call('open_tab', { profile: 'fern', url: 'about:blank' })).json as {

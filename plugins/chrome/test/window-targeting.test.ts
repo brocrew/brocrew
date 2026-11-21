@@ -69,12 +69,11 @@ describe('window-targeted tools and local navigation', () => {
     h.browser.usePage = async () => {
       throw new Error('fictional admission failure')
     }
-    expect(
-      (
-        (await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId }))
-          .json as { note: string }
-      ).note,
-    ).toContain('fictional admission failure')
+    const again = (
+      await h.call('open_tab', { profile: 'p', url: 'about:blank', windowOf: a.tabId })
+    ).json as { note?: string; windowId: number }
+    expect(again.windowId).toBe(a.windowId)
+    expect(again.note).toBeUndefined()
   })
   it('rejects conflict, foreign/unknown/closed selectors without opening profiles', async () => {
     const h = setup()

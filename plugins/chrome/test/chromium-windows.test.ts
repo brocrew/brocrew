@@ -209,14 +209,37 @@ it('a targeted window that closes during creation fails: the owned tab alone is 
   expect(unrelated.closed).toBe(false)
   expect(original.isClosed()).toBe(true)
 })
+it('tabs Chrome restored before the profile opened, and tabs opened outside the tools, know their real window', async () => {
+  const ctx = new Ctx()
+  const restored = ctx.add(5, 'https://restored.test/')
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
+  const later = ctx.add(7, 'https://opened-by-the-person.test/')
+  await new Promise((r) => setTimeout(r, 5))
+  expect(windows.knownWindowId(ctx.pages()[0])).toBe(1)
+  expect(windows.knownWindowId(restored as unknown as Page)).toBe(5)
+  expect(windows.knownWindowId(later as unknown as Page)).toBe(7)
+})
+it('a tab it opens knows its window and becomes the most recent one with no second lookup', async () => {
+  const { ctx, windows } = setup()
+  await new Promise((r) => setTimeout(r, 5))
+  const lookups = () => ctx.sent.filter((s) => s.method === 'Browser.getWindowForTarget').length
+  const page = await windows.open({ newWindow: true })
+  const after = lookups()
+  await new Promise((r) => setTimeout(r, 5))
+  expect(lookups()).toBe(after)
+  expect(windows.knownWindowId(page)).toBe(2)
+  expect(await windows.latest()).toBe(page)
+})
 it('bounds CDP session acquisition and detaches a session which arrives after the deadline', async () => {
   const ctx = new Ctx()
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 20 })
+  await new Promise((r) => setTimeout(r, 5))
+  const before = ctx.detached
   ctx.hang = 'session'
   await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
   ctx.release!()
   await new Promise((r) => setTimeout(r, 5))
-  expect(ctx.detached).toBe(1)
+  expect(ctx.detached - before).toBe(1)
   expect(ctx.all.every((p) => !p.closed)).toBe(true)
 })
 it('refuses a malformed protocol identity instead of returning a non-numeric windowId', async () => {

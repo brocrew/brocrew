@@ -211,7 +211,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'open_tab',
         description:
-          'Open a background tab at a URL or absolute local path. Returns tabId, known windowId (null while unknown), url and title. Created tabs remain successful while window bookkeeping is pending; notes retain lookup failures. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
+          'Open a background tab at a URL or absolute local path. Returns tabId, windowId (null while unknown), url and title. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
         props: {
           profile: profileName,
           url,
@@ -270,33 +270,13 @@ export function buildToolDefs(): ToolDef[] {
             } catch (e) {
               loadError = openDialogNote(tab) ?? describeError(e)
             }
-            let updated = false
-            let windowError: string | undefined
-            const notes = tab.notes
-            void deps.browser.usePage(name, page).then(
-              () => {
-                updated = true
-              },
-              (error: unknown) => {
-                windowError = describeError(error)
-                notes.push(`created, focus pending: ${windowError}`)
-              },
-            )
             const title = (tab.title = await titleAfterLoad(page))
-            const note = [
-              !updated
-                ? `created, focus pending${windowError ? `: ${windowError}` : ''}`
-                : undefined,
-              openingNote,
-            ]
-              .filter(Boolean)
-              .join('; ')
             return {
               tabId: tab.id,
               windowId: deps.browser.knownWindowId?.(name, page) ?? null,
               url: page.url(),
               title,
-              ...(note ? { note } : {}),
+              ...(openingNote ? { note: openingNote } : {}),
               ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
               ...(loadError ? { loadError } : {}),
             }
@@ -311,7 +291,7 @@ export function buildToolDefs(): ToolDef[] {
       spec: {
         name: 'list_tabs',
         description:
-          'List open tabs (tabId, numeric windowId, profile, url, title) of all profiles, or one profile. Read-only; does not change recent-window preference.',
+          'List open tabs (tabId, windowId or null while unknown, profile, url, title) of all profiles, or one profile. Read-only; does not change recent-window preference.',
         props: { profile: profileName },
       },
       async run(a, deps) {
