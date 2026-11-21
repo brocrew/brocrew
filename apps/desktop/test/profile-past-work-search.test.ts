@@ -295,7 +295,7 @@ it('continues an empty bounded page into a workspace with more than ten thousand
     next_cursor: null,
     hits: [expect.objectContaining({ conversation: target })],
   })
-  expect(pastWorkSearchInWords(page, true)).toContain('End of the requested search scope.')
+  expect(pastWorkSearchInWords(page, true)).toContain('End of this search.')
   const firstSource = w.store.pastWorkSearchSource(caller)!
   expect(firstSource).toMatchObject({ next: expect.any(String) })
   const after = pastWorkStart(query, null, lastCursor)
@@ -715,66 +715,62 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
   )
 })
 
-it.each([0, 1])(
-  'previews transcripts even when work is incomplete (%i)',
-  async (skipped) => {
-    const w = world()
-    const caller = 'fictional-caller'
-    w.create(caller)
-    const page: WorkSearchPage = {
-      hits: [],
-      searched: 10,
-      rows_unread: 0,
-      ledgers_skipped: 0,
-      complete: true,
-      next_cursor: null,
-    }
-    const metadata = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        page: { ...page, ledgers_skipped: skipped, complete: false, next_cursor: 'next' },
-      })
-      .mockResolvedValueOnce({ ok: true, page })
-    const fallback = vi.fn(async () => ({
-      ok: true as const,
-      hits: [],
-      complete: true,
-      next_cursor: null,
-    }))
-    const search = new WorkSearch(
-      {
-        store: w.store,
-        workSearchReader: { read: metadata },
-        pastWorkSearchReader: { read: fallback },
-      },
-      { closed: false },
-      archivedInMemory(),
-    )
-    const first = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader')
-    expect(first).toMatchObject({ ok: true, hits: [], complete: false })
-    expect(fallback).toHaveBeenCalledTimes(1)
-    if (!first.ok || first.next_cursor === null) throw new Error('expected a work cursor')
-    const final = await search.searchPastWork(
-      caller,
-      'missingquartz',
-      'fictional-reader',
-      first.next_cursor,
-    )
-    expect(metadata).toHaveBeenLastCalledWith(
-      caller,
-      expect.objectContaining({
-        cursor: 'next',
-        profile: 'fictional-reader',
-        titlesAndBriefs: true,
-      }),
-    )
-    expect(final).toMatchObject({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
-    if (skipped > 0) expect(final).toHaveProperty('work_unread', true)
-    expect(fallback).toHaveBeenCalledTimes(1)
-  },
-)
-
+it.each([0, 1])('previews transcripts even when work is incomplete (%i)', async (skipped) => {
+  const w = world()
+  const caller = 'fictional-caller'
+  w.create(caller)
+  const page: WorkSearchPage = {
+    hits: [],
+    searched: 10,
+    rows_unread: 0,
+    ledgers_skipped: 0,
+    complete: true,
+    next_cursor: null,
+  }
+  const metadata = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      page: { ...page, ledgers_skipped: skipped, complete: false, next_cursor: 'next' },
+    })
+    .mockResolvedValueOnce({ ok: true, page })
+  const fallback = vi.fn(async () => ({
+    ok: true as const,
+    hits: [],
+    complete: true,
+    next_cursor: null,
+  }))
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: { read: metadata },
+      pastWorkSearchReader: { read: fallback },
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  const first = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader')
+  expect(first).toMatchObject({ ok: true, hits: [], complete: false })
+  expect(fallback).toHaveBeenCalledTimes(1)
+  if (!first.ok || first.next_cursor === null) throw new Error('expected a work cursor')
+  const final = await search.searchPastWork(
+    caller,
+    'missingquartz',
+    'fictional-reader',
+    first.next_cursor,
+  )
+  expect(metadata).toHaveBeenLastCalledWith(
+    caller,
+    expect.objectContaining({
+      cursor: 'next',
+      profile: 'fictional-reader',
+      titlesAndBriefs: true,
+    }),
+  )
+  expect(final).toMatchObject({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
+  if (skipped > 0) expect(final).toHaveProperty('work_unread', true)
+  expect(fallback).toHaveBeenCalledTimes(1)
+})
 
 it('continues a recent-first transcript preview through the real worker', async () => {
   const w = world()
@@ -784,9 +780,15 @@ it('continues a recent-first transcript preview through the real worker', async 
     const id = `fictional-${i}`
     w.create(id)
     w.append(id, { type: 'assistant_message', text: 'previewquartz' }, 1_800_000_000_000 + i)
-    w.db.prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?').run(1_800_000_000_000 + i, id)
+    w.db
+      .prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?')
+      .run(1_800_000_000_000 + i, id)
   }
-  const entry = await bundleAWorker('src/main/past-work-search.worker.ts', w.directory, 'preview.cjs')
+  const entry = await bundleAWorker(
+    'src/main/past-work-search.worker.ts',
+    w.directory,
+    'preview.cjs',
+  )
   const reader = new PastWorkSearchReader((file) => new Worker(entry, { workerData: { file } }))
   cleanups.push(() => reader.close())
   const search = new WorkSearch(
@@ -794,7 +796,15 @@ it('continues a recent-first transcript preview through the real worker', async 
       store: w.store,
       workSearchReader: {
         read: async () => ({
-          ok: true, page: { hits: [], searched: 8, rows_unread: 0, ledgers_skipped: 0, complete: true, next_cursor: null },
+          ok: true,
+          page: {
+            hits: [],
+            searched: 8,
+            rows_unread: 0,
+            ledgers_skipped: 0,
+            complete: true,
+            next_cursor: null,
+          },
         }),
       },
       pastWorkSearchReader: reader,
@@ -803,13 +813,19 @@ it('continues a recent-first transcript preview through the real worker', async 
     archivedInMemory(),
   )
   const preview = await search.searchPastWork(caller, 'previewquartz')
-  if (!preview.ok || preview.transcript_next_cursor === undefined) throw new Error('missing continuation')
-  expect(preview.hits.map((hit) => hit.conversation)).toEqual(
-    ['fictional-6', 'fictional-5', 'fictional-4', 'fictional-3', 'fictional-2'],
-  )
+  if (!preview.ok || preview.transcript_next_cursor === undefined)
+    throw new Error('missing continuation')
+  expect(preview.hits.map((hit) => hit.conversation)).toEqual([
+    'fictional-6',
+    'fictional-5',
+    'fictional-4',
+    'fictional-3',
+    'fictional-2',
+  ])
   const cursor = preview.transcript_next_cursor
   expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, {})).toEqual({
-    ok: false, reason: 'invalid',
+    ok: false,
+    reason: 'invalid',
   })
   const next = await search.searchPastWork(caller, 'previewquartz', undefined, cursor, {})
   if (!next.ok) throw new Error(next.reason)

@@ -133,9 +133,10 @@ class ProfilePastWorkSearch {
     after: string | null,
     recent?: PastWorkSource['recent'],
   ) {
-    const seek = recent === undefined
-      ? 's.id > @after'
-      : '(@at IS NULL OR (s.updated_at, s.id) < (@at, @after))'
+    const seek =
+      recent === undefined
+        ? 's.id > @after'
+        : '(@at IS NULL OR (s.updated_at, s.id) < (@at, @after))'
     const order = recent === undefined ? 's.id' : 's.updated_at DESC, s.id DESC'
 
     const rows = this.source
@@ -313,16 +314,19 @@ class ProfilePastWorkSearch {
       })()
       const hits: (Omit<PastWorkHit, 'snippet'> & { rowid: number })[] = []
       const seen = new Set<string>()
-      const fields = 'documents.rowid, conversation, piece, field, turn_id, recorded_at, generation, ordinal'
+      const fields =
+        'documents.rowid, conversation, piece, field, turn_id, recorded_at, generation, ordinal'
       const matching = `SELECT ${fields} FROM documents WHERE documents MATCH @match`
       const indexDb = index.db
       function* matchingDocuments(): Generator<Document> {
         if (recent !== undefined) {
           yield* indexDb
-            .prepare(`WITH recent AS MATERIALIZED (SELECT key, value FROM json_each(@scanned))
+            .prepare(
+              `WITH recent AS MATERIALIZED (SELECT key, value FROM json_each(@scanned))
               SELECT ${fields} FROM documents JOIN recent ON recent.value = conversation
               WHERE documents MATCH @match AND recorded_at IS NOT NULL
-              ORDER BY recent.key, rank, ordinal DESC`)
+              ORDER BY recent.key, rank, ordinal DESC`,
+            )
             .iterate({ match, scanned: JSON.stringify([...scanned.keys()]) }) as Iterable<Document>
           return
         }
@@ -447,9 +451,14 @@ class ProfilePastWorkSearch {
         ok: true,
         hits: withExcerpts,
         complete: recent === undefined ? nextPage === null : !moreRecent,
-        next_cursor: recent === undefined
-          ? nextPage === null ? null : pastWorkNext(query.data.words, profile, nextPage, transcript)
-          : moreRecent ? pastWorkRecentNext(query.data.words, profile, recentAfter) : null,
+        next_cursor:
+          recent === undefined
+            ? nextPage === null
+              ? null
+              : pastWorkNext(query.data.words, profile, nextPage, transcript)
+            : moreRecent
+              ? pastWorkRecentNext(query.data.words, profile, recentAfter)
+              : null,
       }
     } catch (error) {
       if (db.inTransaction) db.exec('ROLLBACK')

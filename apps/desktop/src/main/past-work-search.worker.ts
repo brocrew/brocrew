@@ -23,10 +23,13 @@ const request = z
           .max(WORK_SEARCH_BOUNDS.candidates),
         next: z.string().min(1).max(200).nullable(),
         transcript: pastWorkTranscriptScope.optional(),
-        recent: z.object({
-          after: pastWorkRecentPoint.nullable(),
-          preview: z.literal(true).optional(),
-        }).strict().optional(),
+        recent: z
+          .object({
+            after: pastWorkRecentPoint.nullable(),
+            preview: z.literal(true).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
   })

@@ -98,10 +98,12 @@ export type PastWorkSearchResult =
     }
   | { readonly ok: false; readonly reason: 'invalid' | 'unavailable' }
 
-export const pastWorkRecentPoint = z.object({
-  id: z.string().min(1).max(200),
-  at: z.number().finite(),
-}).strict()
+export const pastWorkRecentPoint = z
+  .object({
+    id: z.string().min(1).max(200),
+    at: z.number().finite(),
+  })
+  .strict()
 export type PastWorkRecentPoint = z.infer<typeof pastWorkRecentPoint>
 
 const recentCursor = z.tuple([z.string(), z.string().nullable(), pastWorkRecentPoint.nullable()])
@@ -250,7 +252,10 @@ export function pastWorkSearchInWords(
     if (hit.piece !== null) lines.push(hit.link)
     return lines.join('\n')
   })
-  if (rows.length === 0 && (result.complete || result.next_cursor !== null || result.transcript_next_cursor !== undefined)) {
+  if (
+    rows.length === 0 &&
+    (result.complete || result.next_cursor !== null || result.transcript_next_cursor !== undefined)
+  ) {
     rows.push(
       result.next_cursor !== null || result.transcript_next_cursor !== undefined
         ? 'No matches on this page.'
@@ -270,11 +275,13 @@ export function pastWorkSearchInWords(
     rows.push('End of this search.')
   }
   if (result.transcript_next_cursor !== undefined && query !== undefined) {
-    rows.push(`Continue transcript search with search_past_work(${JSON.stringify({
-      ...query,
-      in: 'transcripts',
-      cursor: result.transcript_next_cursor,
-    })}).`)
+    rows.push(
+      `Continue transcript search with search_past_work(${JSON.stringify({
+        ...query,
+        in: 'transcripts',
+        cursor: result.transcript_next_cursor,
+      })}).`,
+    )
   }
   return rows.join('\n\n')
 }

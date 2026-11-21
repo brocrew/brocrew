@@ -68,32 +68,41 @@ export class WorkSearch {
         page.ledgers_skipped > 0 ||
         (page.next_cursor === null && !page.complete)
       const recorded: PastWorkSearchResult = preview
-        ? await this.readPastWork(asAgent, words, profile, undefined, {}, { after: null, preview: true })
+        ? await this.readPastWork(
+            asAgent,
+            words,
+            profile,
+            undefined,
+            {},
+            { after: null, preview: true },
+          )
         : { ok: true, hits: [], complete: true, next_cursor: null }
       if (!recorded.ok) return recorded
-      const workHits = page?.hits.map((hit) => {
-        const task = hit.matched_tasks[0]
-        return {
-          conversation: hit.conversation,
-          piece: task?.piece ?? null,
-          label: task?.label ?? hit.address,
-          line: hit.line,
-          link:
-            task === undefined
-              ? conversationLink(hit.conversation, hit.address)
-              : pieceLink(task.piece, task.label, task.title ?? ''),
-          title: hit.title,
-          state: task?.state ?? '',
-          last_active: new Date(hit.last_active_at).toISOString(),
-          archived: this.archived.has(hit.conversation),
-          matched_field: 'work title or brief' as const,
-          snippet: task?.title ?? hit.title,
-        }
-      }) ?? []
+      const workHits =
+        page?.hits.map((hit) => {
+          const task = hit.matched_tasks[0]
+          return {
+            conversation: hit.conversation,
+            piece: task?.piece ?? null,
+            label: task?.label ?? hit.address,
+            line: hit.line,
+            link:
+              task === undefined
+                ? conversationLink(hit.conversation, hit.address)
+                : pieceLink(task.piece, task.label, task.title ?? ''),
+            title: hit.title,
+            state: task?.state ?? '',
+            last_active: new Date(hit.last_active_at).toISOString(),
+            archived: this.archived.has(hit.conversation),
+            matched_field: 'work title or brief' as const,
+            snippet: task?.title ?? hit.title,
+          }
+        }) ?? []
       return {
         ok: true,
         complete: !workUnread && page?.complete === true && recorded.complete,
-        next_cursor: page?.next_cursor == null ? null : `work:${workUnread ? 1 : 0}:${page.next_cursor}`,
+        next_cursor:
+          page?.next_cursor == null ? null : `work:${workUnread ? 1 : 0}:${page.next_cursor}`,
         ...(recorded.next_cursor === null ? {} : { transcript_next_cursor: recorded.next_cursor }),
         ...(workUnread ? { work_unread: true as const } : {}),
         hits: [...workHits, ...recorded.hits],
