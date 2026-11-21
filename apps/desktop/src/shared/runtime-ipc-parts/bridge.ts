@@ -34,7 +34,7 @@ import type { DigestReading } from '../digest'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../external-mcp'
 import type { LimitsDisplayAnswer, LimitsDisplayChanged } from '../limits-display'
 import type { LinkResolution } from '../link-resolution'
-import type { ListingAnswer } from '../listing-published'
+import type { ListingAnswer, RecentConversation } from '../listing-published'
 import type {
   AgentModelChoice,
   ModelChoiceSaved,
@@ -370,6 +370,7 @@ export interface RuntimeBridge {
   personsQueue(): Promise<PersonsQueueAnswer>
   /** Both halves of the listing as one stamped publication. */
   listConversations(): Promise<ListingAnswer>
+  listRecentConversations(): Promise<readonly RecentConversation[]>
   firstListPainted(): Promise<void>
   stoppedWorkForAPerson(): Promise<LedgerWalk<StoppedWorkForAPerson>>
   /** The open pieces no other list shows a person, with what is wrong with each. */

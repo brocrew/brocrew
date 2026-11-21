@@ -5,6 +5,14 @@
  */
 import type { Published, PublicationEpoch } from './data-version'
 import type { ResumableSessionInfo, UnresumableSessionInfo } from './conversation-listing-contracts'
+import type { ConversationIdentity } from './conversation-title'
+
+export const RECENT_CONVERSATION_PAGE_SIZE = 15
+
+export type RecentConversation = Pick<
+  ResumableSessionInfo,
+  'sessionId' | 'personStarted' | 'profileId' | 'provider' | 'cwd' | 'updatedAt' | 'running'
+> & { readonly identity: ConversationIdentity | null }
 
 export interface PublishedListing {
   readonly resumable: readonly ResumableSessionInfo[]

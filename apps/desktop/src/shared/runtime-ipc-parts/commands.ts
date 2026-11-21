@@ -230,6 +230,7 @@ export type RuntimeCommand =
   | { kind: 'personsQueue' }
   /** Both halves of the listing as one stamped publication ({@link ListingAnswer}). No arguments. */
   | { kind: 'listConversations' }
+  | { kind: 'listRecentConversations' }
   /** The first accepted conversation list has passed a renderer paint. */
   | { kind: 'firstListPainted' }
   /**

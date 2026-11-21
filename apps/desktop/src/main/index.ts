@@ -984,6 +984,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   })
   knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
   runtimeHost.fillQuestionCopies()
+  void runtimeHost.readForWindow(() => undefined, 'listing').catch(() => {})
   return runtimeHost
 }
 

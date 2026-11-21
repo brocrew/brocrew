@@ -36,6 +36,8 @@ import {
   type ListedConversation,
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
+import { basenameOf } from '../lib/paths'
+import { RECENT_CONVERSATION_PAGE_SIZE } from '../../../shared/listing-published'
 import { agoWords, fullTime } from '../lib/clock'
 import {
   CONVERSATION_IDENTITY_BATCH_SIZE,
@@ -69,6 +71,7 @@ import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
 import { whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../../../shared/profile-name'
 import type { SessionRecord } from '../lib/session-record'
 import { usePersistentToggle } from '../composables/usePersistentToggle'
 import AgentState from './AgentState.vue'
@@ -381,6 +384,7 @@ const {
   hostResumable,
   hostUnresumable,
   coverageComplete,
+  recent: initialRecent,
   looked,
   listError,
   said,
@@ -431,33 +435,6 @@ watchEffect(() => {
 
 onMounted(refreshListed)
 
-/**
- * Name the agent in this conversation.
- *
- * > *"in the left conversation list panel, can we actually show the role? now it shows
- * > `brobot-workspace` and that is not a relevant information."*
- *
- * ⛔ **It returned `basenameOf(cwd)` until 449**, and with `424` running BroBot's own conversation
- * in `<userData>/brobot-workspace` that is the one thing every conversation started there shares.
- * ⚑ **The identity was on the record the whole time** — `meta.profileId`, resolved by the host and
- * never echoed from a request — and {@link agentName} is what `TeamWorkspace`'s roster names it
- * by too, one surface over since `EXT-008` §4.4 moved that list off this rail.
- *
- * ⚑ **It is NOT `identity.displayName ?? identity.slug` written a second time**, which is what the
- * AGENTS section carried before `449`: `a-row-that-says-who-is-in-it.test.ts` §3 greps this file,
- * prose stripped, for exactly that expression — and this sentence is its planted control, so a
- * stripper that stopped stripping fails there rather than passing by accident. ⚠️ **The control
- * was TWO plants and is one**, because the second was in the evicted section's own comment; the
- * second plant is in `team-roster.ts`'s docblock now, where the fourth list of identities lives.
- *
- * ⚠️ **The id is still the answer when there is no `meta`**, which is a record this window has made
- * and the host has not answered for yet. ⛔ Naming it BroBot on the strength of a null would be
- * inventing an identity, which is exactly what `profileLabel`'s own note forbids one null from
- * doing — and this is the other one.
- *
- * ⚑ **667 · asked in the one spelling** the pane and the cards beside it use — which `agentName`
- * folds itself since `671` (`678` dropped the renderer's second fold).
- */
 function who(record: SessionRecord): string {
   const meta = record.meta
   if (!meta) return record.sessionId
@@ -468,29 +445,14 @@ function identityName(meta: { readonly profileId: string }): string {
   return agentName(meta.profileId, props.agents?.identities ?? null)
 }
 
-/**
- * ⛔ **WHERE it is working** (449) — the folder, which is what {@link who} replaced on the row.
- *
- * ⚠️ **`placeOf` and not `place`**: this component already has a `place` PROP — which non-conversation
- * destination is showing — and a helper of that name is a `vue/no-dupe-keys` error rather than a
- * style question, because both reach one template scope.
- *
- * ⚑ **It is kept, and keeping it is the whole negative of this change.** `211 §3` exists because
- * *"both rail rows read exactly `workspace-a / codex · idle`"*; dropping the folder for the
- * identity would have rebuilt that defect with the axes swapped — two conversations of one agent
- * in two folders reading as one conversation. ⚠️ `null` when this app holds no path, so the row
- * says one fewer thing rather than an empty separator.
- */
 function placeOf(record: SessionRecord): string | null {
-  // ⚑ **470 · the rule moved to `lib/session-record.ts` and the FALLBACK stayed here**, which is
-  // `449`'s own point: this row says one fewer thing rather than drawing an empty separator, and
-  // the two other readers fall back to the session id instead.
   return whereItWorks(record)
 }
 
 /** ⚑ **D-017b · one row of the one list** — the same markup and the same press, whatever it is doing. */
 interface RailRow extends PaletteOpenRow {
   readonly brobot: boolean
+  readonly initialIdentity?: ConversationIdentity
   readonly activityAt?: number
   readonly worker?: ListedConversation['worker']
   readonly facets: AgentFacets
@@ -593,6 +555,29 @@ const rows = computed<RailRow[]>(() => {
       },
     })
   }
+  for (const row of initialRecent.value) {
+    if (drawn.has(row.sessionId)) continue
+    drawn.set(row.sessionId, {
+      at: row.updatedAt,
+      row: {
+        sessionId: row.sessionId,
+        brobot:
+          row.personStarted === true &&
+          railSectionOf(row.profileId ?? DEFAULT_PROFILE_ID) === 'brobot',
+        ...(row.identity === null ? {} : { initialIdentity: row.identity }),
+        activityAt: row.updatedAt,
+        provider: row.provider,
+        facets: { doing: 'unknown' },
+        standing: 'unknown',
+        word: '',
+        label: agentName(row.profileId, props.agents?.identities ?? null),
+        named: null,
+        place: basenameOf(row.cwd) || null,
+        opening: null,
+        elsewhere: row.running === 'in-a-window',
+      },
+    })
+  }
   return [...drawn.values()].sort((one, other) => other.at - one.at).map(({ row }) => row)
 })
 
@@ -623,7 +608,6 @@ const paletteSearchCaller = computed(
     null,
 )
 
-const RAIL_PAGE_SIZE = 15
 const sectionNames = { brobot: 'BroBot', 'needs-you': 'Needs you', recent: 'Recent' } as const
 type RailSectionKey = keyof typeof sectionNames
 
@@ -632,10 +616,10 @@ const sectionOpen = {
   'needs-you': usePersistentToggle('brobot2.railNeedsYouOpen', true),
   recent: usePersistentToggle('brobot2.railRecentOpen', true),
 }
-const recentLimit = ref(RAIL_PAGE_SIZE)
+const recentLimit = ref(RECENT_CONVERSATION_PAGE_SIZE)
 watch(
   () => props.workspaceFolder?.path,
-  () => (recentLimit.value = RAIL_PAGE_SIZE),
+  () => (recentLimit.value = RECENT_CONVERSATION_PAGE_SIZE),
 )
 const sectionIdBase = useId()
 const rowsIdOf = (key: RailSectionKey): string => `${sectionIdBase}-rows-${key}`
@@ -679,7 +663,9 @@ function railSection(key: RailSectionKey, eligible: readonly RailRow[], shown: r
       selected && (!open || !shown.some((row) => row.sessionId === onScreenId.value)),
     count:
       key !== 'recent'
-        ? String(eligible.length)
+        ? key === 'brobot' && initialRecent.value.length > 0
+          ? null
+          : String(eligible.length)
         : recentTotal === null
           ? open
             ? `${shown.length} shown`
@@ -701,13 +687,15 @@ const sections = computed(() => {
 })
 
 const moreRecent = computed(() =>
-  Math.min(RAIL_PAGE_SIZE, recentRows.value.length - recentLimit.value),
+  Math.min(RECENT_CONVERSATION_PAGE_SIZE, recentRows.value.length - recentLimit.value),
 )
 
 const identityIds = computed((previous?: string[]) => {
   const ids = sections.value
     .filter((section) => section.open)
-    .flatMap((section) => section.rows.map((row) => row.sessionId))
+    .flatMap((section) =>
+      section.rows.filter((row) => row.initialIdentity === undefined).map((row) => row.sessionId),
+    )
     .sort()
   return previous?.length === ids.length && previous.every((id, i) => id === ids[i])
     ? previous
@@ -752,8 +740,12 @@ watch(
   { immediate: true },
 )
 
+function identityOf(row: RailRow): ConversationIdentity | null | undefined {
+  return identities.value.get(row.sessionId) ?? row.initialIdentity
+}
+
 function rowTitle(row: RailRow): string {
-  const identity = identities.value.get(row.sessionId)
+  const identity = identityOf(row)
   if (row.brobot) {
     const title = identity?.profileFallback ? null : (identity?.title ?? row.named?.title)
     return [identity?.address ?? row.sessionId, title?.trim()].filter(Boolean).join(' · ')
@@ -1131,7 +1123,7 @@ const platform = platformHere()
       <!-- Work needing you stays above the paged Recent list. -->
       <div class="rail-section rail-conversations" data-wired="true" data-cy="rail-conversations">
         <p
-          v-if="!looked && !listError"
+          v-if="!looked && !listError && !initialRecent.length"
           class="rail-empty"
           role="status"
           data-cy="conversations-loading"
@@ -1218,19 +1210,17 @@ const platform = platformHere()
                       ? workerDescription(row.worker, props.agents?.identities ?? null)
                       : null,
                     row.detail,
-                    identities.get(row.sessionId)?.address,
-                    !row.worker && row.named && identities.get(row.sessionId)
+                    identityOf(row)?.address,
+                    !row.worker && row.named && identityOf(row)
                       ? conversationTitle(row.label, row.named)
                       : null,
-                    identities.get(row.sessionId)?.author?.kind === 'person'
-                      ? 'Named by you'
-                      : null,
+                    identityOf(row)?.author?.kind === 'person' ? 'Named by you' : null,
                   ]
                     .filter(Boolean)
                     .join(' ') || undefined
                 "
                 :aria-describedby="
-                  !row.brobot && row.opening && !identities.get(row.sessionId)
+                  !row.brobot && row.opening && !identityOf(row)
                     ? `rail-opening-${row.sessionId} rail-state-${row.sessionId}`
                     : `rail-state-${row.sessionId}`
                 "
@@ -1239,7 +1229,7 @@ const platform = platformHere()
                     ? [
                         row.worker && row.named ? row.label : null,
                         rowTitle(row),
-                        !row.brobot ? identities.get(row.sessionId)?.address : null,
+                        !row.brobot ? identityOf(row)?.address : null,
                         row.worker
                           ? workerDescription(row.worker, props.agents?.identities ?? null)
                           : null,
@@ -1263,12 +1253,12 @@ const platform = platformHere()
                 <span
                   class="rail-copy"
                   :class="{
-                    'rail-worker-top': row.worker && !identities.get(row.sessionId),
+                    'rail-worker-top': row.worker && !identityOf(row),
                     'rail-brobot-copy': row.brobot,
                   }"
                 >
                   <strong
-                    :class="{ 'rail-canonical-title': identities.get(row.sessionId) }"
+                    :class="{ 'rail-canonical-title': identityOf(row) }"
                     :data-cy="
                       row.brobot
                         ? `rail-brobot-title-${row.sessionId}`
@@ -1277,16 +1267,14 @@ const platform = platformHere()
                           : undefined
                     "
                     :title="
-                      row.worker && !identities.get(row.sessionId)
+                      row.worker && !identityOf(row)
                         ? [row.label, row.named?.title].filter(Boolean).join(' · ')
                         : rowTitle(row)
                     "
-                    >{{
-                      row.worker && !identities.get(row.sessionId) ? row.label : rowTitle(row)
-                    }}</strong
+                    >{{ row.worker && !identityOf(row) ? row.label : rowTitle(row) }}</strong
                   >
                   <span
-                    v-if="row.worker && !identities.get(row.sessionId)"
+                    v-if="row.worker && !identityOf(row)"
                     class="rail-worker-state"
                     :title="row.detail ?? workerState(row.word, row.named)"
                     :data-cy="`rail-state-word-${row.sessionId}`"
@@ -1308,7 +1296,7 @@ const platform = platformHere()
                     :id="`rail-state-${row.sessionId}`"
                     :class="{
                       'rail-standing-with-age': row.activityAt !== undefined,
-                      'rail-standing-canonical': !!identities.get(row.sessionId),
+                      'rail-standing-canonical': !!identityOf(row),
                     }"
                     :data-standing="row.standing"
                     :aria-description="row.detail"
@@ -1316,7 +1304,7 @@ const platform = platformHere()
                     :data-place="row.place ?? undefined"
                     :title="statusLine(row, true)"
                     ><span class="rail-standing-prefix"
-                      ><template v-if="identities.get(row.sessionId) || (row.named && !row.worker)"
+                      ><template v-if="identityOf(row) || (row.named && !row.worker)"
                         ><span
                           class="rail-standing-profile"
                           :data-cy="`rail-profile-${row.sessionId}`"
@@ -1324,16 +1312,14 @@ const platform = platformHere()
                           >{{ profileName(row) }}</span
                         ></template
                       ><span
-                        v-if="!identities.get(row.sessionId) && row.provider"
+                        v-if="!identityOf(row) && row.provider"
                         class="rail-standing-profile"
                         :title="row.provider"
                       >
                         <template v-if="row.named && !row.worker"> · </template>
                         {{ row.provider }} </span
-                      ><template v-if="!row.worker || identities.get(row.sessionId)">
-                        <template v-if="row.provider || row.named || identities.get(row.sessionId)">
-                          ·
-                        </template>
+                      ><template v-if="row.word && (!row.worker || identityOf(row))">
+                        <template v-if="row.provider || row.named || identityOf(row)"> · </template>
                         <span
                           class="rail-standing-word"
                           :data-cy="`rail-state-word-${row.sessionId}`"
@@ -1356,18 +1342,14 @@ const platform = platformHere()
                     ></small
                   >
                   <small
-                    v-if="!row.brobot && identities.get(row.sessionId)"
-                    :title="
-                      [identities.get(row.sessionId)?.address, row.provider]
-                        .filter(Boolean)
-                        .join(' · ')
-                    "
+                    v-if="!row.brobot && identityOf(row)"
+                    :title="[identityOf(row)?.address, row.provider].filter(Boolean).join(' · ')"
                     >Conversation
                     <span :data-cy="`rail-address-${row.sessionId}`">{{
-                      identities.get(row.sessionId)?.address
+                      identityOf(row)?.address
                     }}</span>
                     <template v-if="row.provider"> · {{ row.provider }}</template>
-                    <template v-if="identities.get(row.sessionId)?.author?.kind === 'person'">
+                    <template v-if="identityOf(row)?.author?.kind === 'person'">
                       · Named by you</template
                     >
                   </small>
@@ -1385,7 +1367,7 @@ const platform = platformHere()
                     >
                   </template>
                   <small
-                    v-if="!row.brobot && row.opening && !identities.get(row.sessionId)"
+                    v-if="!row.brobot && row.opening && !identityOf(row)"
                     :id="`rail-opening-${row.sessionId}`"
                     class="opening"
                     :title="row.opening"
@@ -1403,7 +1385,7 @@ const platform = platformHere()
             data-cy="rail-show-more"
             :aria-label="`Show ${moreRecent} more recent conversations`"
             :title="props.collapsed ? `Show ${moreRecent} more` : undefined"
-            @click="recentLimit += RAIL_PAGE_SIZE"
+            @click="recentLimit += RECENT_CONVERSATION_PAGE_SIZE"
           >
             <svg class="icon" aria-hidden="true"><use href="#i-chevron" /></svg>
             <span class="rail-copy">Show {{ moreRecent }} more</span>

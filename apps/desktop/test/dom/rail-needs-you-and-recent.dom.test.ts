@@ -3,7 +3,7 @@ import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { ConversationIdentity } from '../../src/shared/conversation-title'
-import type { ListingAnswer } from '../../src/shared/listing-published'
+import type { ListingAnswer, RecentConversation } from '../../src/shared/listing-published'
 import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, parseColor, record, unmountAll, type Mounted } from './harness'
 import { memoryStorage } from './memory-storage'
@@ -64,19 +64,24 @@ async function rail(
   listed: ResumableSessionInfo[],
   props: Record<string, unknown> = {},
   width = 266,
+  first?: { readonly rows: readonly RecentConversation[]; readonly until: Promise<void> },
 ) {
   const selected: string[] = []
   const api = {
     runtime: {
-      listConversations: async (): Promise<ListingAnswer> => ({
-        resumable: listed,
-        unresumable: [],
-        published: {
-          epoch: { run: 'fictional-run', n: 0 },
-          seq: 1,
-          covers: { population: 'listing', complete: true },
-        },
-      }),
+      listRecentConversations: first === undefined ? undefined : async () => first.rows,
+      listConversations: async (): Promise<ListingAnswer> => {
+        if (first !== undefined) await first.until
+        return {
+          resumable: listed,
+          unresumable: [],
+          published: {
+            epoch: { run: 'fictional-run', n: 0 },
+            seq: 1,
+            covers: { population: 'listing', complete: true },
+          },
+        }
+      },
     },
   }
   vi.stubGlobal('api', api)
@@ -100,6 +105,41 @@ const ids = (m: Mounted, key: 'needs-you' | 'recent') =>
     (element) => element.dataset.sessionId,
   )
 const count = (m: Mounted, hook: string) => m.q(hook).textContent?.trim()
+
+it('opens a recent conversation before its state arrives and then shows the full list', async () => {
+  const now = row('recent-approval', 'reviewer', 0, { is: 'needs-you' })
+  const before = row('temporary', 'reviewer', 1)
+  let finishFull!: () => void
+  const full = new Promise<void>((resolve) => {
+    finishFull = resolve
+  })
+  const readIdentities = vi.fn(async () => [])
+  const m = await rail([now], { readIdentities }, 266, {
+    rows: [now, before].map((row) => ({
+      ...row,
+      identity: {
+        conversation: row.sessionId,
+        address: 'W1.2',
+        title: 'Review the plans',
+        author: null,
+      },
+    })),
+    until: full,
+  })
+  expect(ids(m, 'recent')).toEqual(['recent-approval', 'temporary'])
+  expect(m.all('rail-needs-you')).toHaveLength(0)
+  expect(m.all('rail-state-word-recent-approval')).toHaveLength(0)
+  expect(readIdentities).not.toHaveBeenCalled()
+  const button = m.q('open-session-recent-approval')
+  expect(button.getAttribute('aria-label')).toBe('Review the plans')
+  button.click()
+  expect(m.selected).toEqual(['recent-approval'])
+
+  finishFull()
+  await expect.poll(() => m.all('rail-needs-you').length).toBe(1)
+  expect(ids(m, 'needs-you')).toEqual(['recent-approval'])
+  expect(m.all('open-session-temporary')).toHaveLength(0)
+})
 
 it('puts Needs you first, then one Recent list across the existing profiles', async () => {
   const m = await rail(all, {

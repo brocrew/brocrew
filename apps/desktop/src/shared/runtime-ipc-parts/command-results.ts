@@ -21,7 +21,7 @@ import type { DigestReading } from '../digest'
 import type { ExternalMcpServerRow } from '../external-mcp'
 import type { LimitsDisplayAnswer } from '../limits-display'
 import type { LinkResolution } from '../link-resolution'
-import type { ListingAnswer } from '../listing-published'
+import type { ListingAnswer, RecentConversation } from '../listing-published'
 import type {
   AgentModelChoice,
   ModelChoiceSaved,
@@ -277,6 +277,7 @@ export interface RuntimeCommandResults {
   currentEpoch: PublicationEpoch
   personsQueue: PersonsQueueAnswer
   listConversations: ListingAnswer
+  listRecentConversations: readonly RecentConversation[]
   firstListPainted: void
   stoppedWorkForAPerson: LedgerWalk<StoppedWorkForAPerson>
   workIncidentsForAPerson: LedgerWalk<WorkIncident>

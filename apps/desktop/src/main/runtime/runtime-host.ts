@@ -1153,10 +1153,12 @@ import type { StoppedWorkForAPerson } from '../../shared/stopped-work'
 import type { WorkIncident } from '../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../shared/waiting-on-who-wrote'
 import type { Coverage, PublicationEpoch } from '../../shared/data-version'
-import type {
-  ListingAnswer,
-  ListingRefused,
-  PublishedListing,
+import {
+  RECENT_CONVERSATION_PAGE_SIZE,
+  type ListingAnswer,
+  type ListingRefused,
+  type PublishedListing,
+  type RecentConversation,
 } from '../../shared/listing-published'
 import {
   PERSONS_PARTS,
@@ -17446,7 +17448,29 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** The queue refused as a whole, at the stamp current now. Reads nothing. */
+  /** The rail can name recent conversations before their work and state are folded. */
+  listRecentConversations(): readonly RecentConversation[] {
+    const { store } = this.deps
+    const catalogued = [
+      ...store.resumable(),
+      ...store.unresumable().filter((row) => !row.foundInUserHome && !row.restoredFromBundle),
+    ]
+    return catalogued
+      .filter((row) => !this.archived.has(row.sessionId))
+      .sort((one, other) => other.updatedAt - one.updatedAt)
+      .slice(0, RECENT_CONVERSATION_PAGE_SIZE)
+      .map(({ sessionId, personStarted, profileId, provider, cwd, updatedAt }) => ({
+        sessionId,
+        ...(personStarted === undefined ? {} : { personStarted }),
+        profileId,
+        provider,
+        cwd,
+        updatedAt,
+        running: this.runningStateOf(sessionId),
+        identity: this.readConversationIdentity(sessionId),
+      }))
+  }
+
   /**
    * Both halves of one composition, with the worker read's conservative publication floor.
    * Main-side metadata and live facts may be later; they do not advance that floor. A listing

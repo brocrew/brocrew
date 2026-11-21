@@ -143,6 +143,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   currentEpoch: { kind: 'currentEpoch' },
   personsQueue: { kind: 'personsQueue' },
   listConversations: { kind: 'listConversations' },
+  listRecentConversations: { kind: 'listRecentConversations' },
   firstListPainted: { kind: 'firstListPainted' },
   workIncidentsForAPerson: { kind: 'workIncidentsForAPerson' },
   // F097 · no arguments either, for its neighbours' reason: a person is not inside one family.

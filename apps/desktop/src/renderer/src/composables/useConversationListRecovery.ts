@@ -7,7 +7,7 @@ import type {
   UnresumableSessionInfo,
 } from '../../../shared/runtime-ipc'
 import { epochDecision } from '../../../shared/data-version'
-import type { PublishedListing } from '../../../shared/listing-published'
+import type { PublishedListing, RecentConversation } from '../../../shared/listing-published'
 import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
 import { readableError } from '../lib/session-record'
 import { appClosing } from '../lib/app-closing'
@@ -172,7 +172,11 @@ export function useRecoveredConversationList(
     if (!sharedProviderBlocks()) localProviderBlocks.acceptMany(message.moved)
   }
 
+  const recent = shallowRef<readonly RecentConversation[]>([])
+  let recentAsked = false
   const listRecovery = useConversationListRecovery(workspace, () => {
+    recent.value = []
+    recentAsked = false
     listing.value = { resumable: [], unresumable: [], complete: false }
     lastShown = undefined
     said.value = new Map()
@@ -192,6 +196,15 @@ export function useRecoveredConversationList(
     const providerReadAt = providerBlocks.value.beginRead()
     try {
       const sessionsApi = sessions()
+      if (!recentAsked && sessionsApi?.listRecentConversations !== undefined) {
+        recentAsked = true
+        void sessionsApi.listRecentConversations().then(
+          (rows) => {
+            if (listRecovery.current(cycle) && !looked.value) recent.value = rows
+          },
+          () => {},
+        )
+      }
       let answer: PublishedListing | undefined
       let resumable: readonly ResumableSessionInfo[]
       let unresumable: readonly UnresumableSessionInfo[]
@@ -263,6 +276,7 @@ export function useRecoveredConversationList(
         }),
       )
       looked.value = true
+      recent.value = []
       listRecovery.succeeded()
       listError.value = null
       if (!firstPaintReported && sessionsApi?.firstListPainted !== undefined) {
@@ -290,6 +304,7 @@ export function useRecoveredConversationList(
     hostResumable,
     hostUnresumable,
     coverageComplete,
+    recent,
     looked,
     listError,
     said,

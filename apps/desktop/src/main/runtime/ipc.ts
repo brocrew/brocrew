@@ -586,6 +586,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('currentEpoch') }),
   z.object({ kind: z.literal('personsQueue') }),
   z.object({ kind: z.literal('listConversations') }),
+  z.object({ kind: z.literal('listRecentConversations') }),
   z.object({ kind: z.literal('firstListPainted') }),
   // Open work no other list shows: no fields, as its neighbour.
   z.object({ kind: z.literal('workIncidentsForAPerson') }),
@@ -1762,6 +1763,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   personsQueue: 'refused',
   // ⛔ `refused`, for the listing pair's reason; answered at its stamp, as the queue is.
   listConversations: 'refused',
+  listRecentConversations: 'refused',
   firstListPainted: 'answered',
   // Answered: it reads nothing but what this run is called.
   currentEpoch: 'answered',
@@ -2363,6 +2365,8 @@ export async function executeRuntimeCommand(
       // A read, and it takes no sink and no owner, as the two halves it gathers. It sends what
       // they send, under one stamp.
       return host.listConversations() satisfies Answer<'listConversations'>
+    case 'listRecentConversations':
+      return host.listRecentConversations() satisfies Answer<'listRecentConversations'>
     case 'workIncidentsForAPerson':
       // A read, and it takes no sink and no owner, as its neighbours. It sends each piece's label,
       // title, holder and giver names and what is wrong with it; no brief and no transcript.

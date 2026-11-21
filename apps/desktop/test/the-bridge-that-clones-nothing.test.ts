@@ -228,6 +228,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   currentEpoch: { how: 'nothing' },
   personsQueue: { how: 'nothing' },
   listConversations: { how: 'nothing' },
+  listRecentConversations: { how: 'nothing' },
   firstListPainted: { how: 'nothing' },
   // Open work no other list shows: `{ kind: 'workIncidentsForAPerson' }` carries no payload either.
   workIncidentsForAPerson: { how: 'nothing' },

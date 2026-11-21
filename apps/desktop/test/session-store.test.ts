@@ -206,6 +206,7 @@ function fakeBridge() {
 
   const impl: RuntimeBridge = {
     firstListPainted: async () => {},
+    listRecentConversations: async () => [],
     providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     providerLaunchChoices: async (input) => launchFacts(await impl.modelList(input)),
     resolveProviderLaunch: async (input) => resolveProviderLaunch(input, null),

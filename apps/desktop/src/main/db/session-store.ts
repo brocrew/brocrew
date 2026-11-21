@@ -2235,7 +2235,11 @@ export function createSessionStore(
   )
   const selectPieceEvents = db.prepare(
     `SELECT ordinal,
-            CASE WHEN json_valid(payload) THEN json_remove(payload, '$.sent', '$.given')
+            CASE WHEN json_valid(payload) THEN
+                   CASE WHEN type IN ('user_turn', 'message_queued', 'message_unqueued')
+                             AND json_extract(payload, '$.type') = type
+                        THEN json_remove(payload, '$.sent', '$.given', '$.text')
+                        ELSE json_remove(payload, '$.sent', '$.given') END
                  ELSE payload END AS payload,
             created_at FROM events
         INDEXED BY events_fold_idx
