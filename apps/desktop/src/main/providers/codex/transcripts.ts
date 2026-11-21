@@ -37,7 +37,10 @@ function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
 export const CODEX_ROLLOUT_JSONL = 'codex-rollout-jsonl'
 export const transcripts: TranscriptPolicy = {
   eventForDisplay,
-  splitToolName: (name) => splitQualified(CODEX_TOOL_NAMING, name),
+  splitToolName: (name) =>
+    name.startsWith(CODEX_TOOL_NAMING.prefix)
+      ? splitQualified(CODEX_TOOL_NAMING, name)
+      : splitQualified({ prefix: '', separator: '__' }, name),
   imageResolver,
   keepEarlierReportedEffort: () => false,
   whatDeletionLeaves: () => [

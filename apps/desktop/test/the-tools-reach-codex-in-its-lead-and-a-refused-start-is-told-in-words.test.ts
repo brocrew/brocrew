@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
+  boundInventory,
   FakeProviderSessions,
   FakeRuntime,
   ResumeError,
@@ -26,13 +27,13 @@ import {
 } from '@brobot2/runtime'
 import {
   CodexRuntime,
+  CODEX_TOOL_NAMING,
   createSpawnTransportFactory,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
 } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
-import { CODEX_NAMESPACE_DESCRIPTION_LIMIT } from '../../../packages/runtime/src/codex/agent-tools'
 import {
   CodexExited,
   CodexRequestRefused,
@@ -425,7 +426,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
 }
 
 /** The one sentence the Codex namespace is declared with — typed out here, never imported. */
-const THE_NAMESPACE_SENTENCE = 'Tools that reach the app you are running inside.'
 
 /** The first sentence of the instructions' own clause that no namespace sentence may carry. */
 const A_CLAUSE_OF_THE_INSTRUCTIONS = 'A conversation’s address is the label of its first task'
@@ -458,49 +458,34 @@ describe('§1 · the namespace Codex is handed', () => {
     for (const step of cleanup.splice(0).reverse()) await step()
   })
 
-  it('the namespace Codex is handed on thread/start is one fixed sentence under the app-server’s cap, never the instructions', async () => {
+  it('Codex is handed the owned MCP endpoint and the complete current instructions', async () => {
     const { sessionId } = await app.host.createSession(
       { provider: 'codex', approvalMode: 'auto', cwd: app.root },
       app.window,
     )
     const started = transports.at(-1)?.requests.find((one) => one.method === 'thread/start')
     expect(started, 'the adapter never asked the app-server to start a thread').toBeDefined()
-    const dynamic = started?.params['dynamicTools'] as
-      { type: string; name: string; description: string; tools: unknown[] }[] | undefined
-    // ⚑ The premise: exactly one namespace, named for the server, holding tools — so what is read
-    // below is the declaration and not an absence of one.
-    expect(dynamic).toHaveLength(1)
-    const [namespace] = dynamic ?? []
-    expect(namespace).toMatchObject({ type: 'namespace', name: 'brobot' })
-    expect(namespace?.tools.length).toBeGreaterThan(0)
-
-    // ⚑ The sentence is typed out here, and the cap is the app-server's own number.
-    expect(namespace?.description).toBe(THE_NAMESPACE_SENTENCE)
-    expect(CODEX_NAMESPACE_DESCRIPTION_LIMIT).toBe(1024)
-    expect(namespace?.description.length).toBeLessThanOrEqual(CODEX_NAMESPACE_DESCRIPTION_LIMIT)
-    // ⛔ …and it is not the instructions, which Codex would have refused. The clause asked for is one
-    // the instructions really carry, so its absence from the description says something.
-    expect(AGENT_TOOL_INSTRUCTIONS).toContain(A_CLAUSE_OF_THE_INSTRUCTIONS)
-    expect(namespace?.description).not.toBe(AGENT_TOOL_INSTRUCTIONS)
-    expect(namespace?.description).not.toContain(A_CLAUSE_OF_THE_INSTRUCTIONS)
-
-    // ⚑ The conversation's own inventory row says the same sentence: what was declared is what is shown.
+    expect(started?.params).not.toHaveProperty('dynamicTools')
+    const config = started?.params['config'] as {
+      mcp_servers: { brobot: { url: string; tools: object } }
+    }
+    expect(config.mcp_servers.brobot.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/)
+    expect(Object.keys(config.mcp_servers.brobot.tools).length).toBeGreaterThan(0)
     await waitFor(
       () => app.ledger(sessionId).some((event) => event.type === 'tool_inventory'),
       'the tool inventory row',
     )
     const inventory = app.ledger(sessionId).find((event) => event.type === 'tool_inventory')
-    expect(inventory?.type === 'tool_inventory' && inventory.declared?.instructions).toBe(
-      THE_NAMESPACE_SENTENCE,
-    )
-
-    // ⚑ The paired positive, from the same launch: the toolset the conversation holds still carries the
-    // full instructions Claude is handed with its catalogue — so "one sentence" is the Codex arm's
-    // choice and not a toolset with nothing to say. (Informational only: they are 1,100 characters
-    // today, over the cap, which is why they ride the lead.)
     const held = agentToolsFor(app.host, sessionId)
+    expect(inventory?.type === 'tool_inventory' && inventory.declared?.instructions).toBe(
+      boundInventory({
+        naming: CODEX_TOOL_NAMING,
+        declared: { ...held, tools: [] },
+        published: null,
+      }).declared?.instructions,
+    )
     expect(held.instructions).toBe(AGENT_TOOL_INSTRUCTIONS)
-    expect(held.instructions?.length).toBeGreaterThan(THE_NAMESPACE_SENTENCE.length)
+    expect(held.instructions).toContain(A_CLAUSE_OF_THE_INSTRUCTIONS)
   })
 })
 

@@ -19,7 +19,7 @@ import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
  *
  * **Every deferral kind there is** (`GivenDeferral.kind`, all four): `unknown` (Claude reported no
  * tool list), `names-until-loaded` (Claude published `ToolSearch`), `in-every-request` (Claude without
- * it; Codex always), `found-by-search` (an external server's tools on Codex) — with what each does to
+ * it), `found-by-search` (core and external tools on Codex) — with what each does to
  * the total.
  *
  * **The window's door**: through `executeRuntimeCommand`, a person's read; a channel no person is
@@ -266,13 +266,14 @@ describe('the one read: origins, deferrals, and its door', () => {
     )
   })
 
-  it('Codex: BroBot’s tools in every request; an external server’s are found by search', async () => {
+  it('Codex: core and external tools are found by search', async () => {
     registerDocs()
     const host = world.buildHost()
     const lead = await world.open(host, 'codex', 'lead')
     const read = await host.whatThisAgentWasGiven(lead)
-    expect(read.tools.deferral.kind).toBe('in-every-request')
-    expect(read.tools.deferral.says).toMatch(/^Codex hands the model/)
+    expect(read.tools.deferral.kind).toBe('found-by-search')
+    expect(read.tools.deferral.says).toMatch(/^Codex finds these with its tool search/)
+    expect(read.size.toolsInEveryRequest).toEqual(sizeOf(''))
     expect(read.externalServers).toHaveLength(1)
     expect(read.externalServers[0]).toMatchObject({
       name: 'docs',

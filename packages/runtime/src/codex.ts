@@ -27,8 +27,6 @@ export {
   type CodexLaunchContext,
 } from './codex/codex-runtime'
 
-export { CODEX_TOOLS_DESCRIPTION } from './codex/agent-tools'
-
 export type { CodexTransport, CodexIncoming } from './codex/codex-transport'
 
 export { CODEX_EXEC_POLICY_RULES } from './codex/codex-runtime'

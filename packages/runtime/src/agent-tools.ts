@@ -1,42 +1,11 @@
 import { z, type ZodRawShape } from 'zod'
 
 /**
- * ⛔ **Tools an agent may call to reach the app it is running inside — declared once, neutrally,
- * and translated by each adapter into whatever its provider reads** (347).
- *
- * ⚑ **This file holds no policy.** Not one rail, not one capability check, not one refusal. `341`
- * landed twelve rails at the session-creation chokepoint and the whole point of that ordering is
- * that the tool layer arrives into a door that already refuses — *"if you find yourself writing a
- * capability check in the tool layer, that is the defect this ordering exists to prevent"* (169 §1:
- * one rule in two places drifts). What lives here is a SHAPE: a name, a description, an argument
- * schema and a call. What the call is allowed to do is decided somewhere else.
- *
- * ## 🔴 Why the declaration is neutral when only one provider reads it today
- *
- * ⚠️ **The two providers acquire tools by different mechanics, and that asymmetry is the design
- * constraint** (307). **Claude** is handed its servers as an option on every `query()` — including
- * the query a RESUME constructs, because the old one died with the process. **Codex** is handed
- * them ONCE, on `thread/start`, and the app-server remembers them: `348` measured a second
- * app-server process resuming a thread and rebuilding the same inventory from its own
- * `thread_dynamic_tools` table. One is re-supply, the other is survival.
- *
- * ⚠️ **`307` said the durable thing was `[mcp_servers]` in the home's `config.toml`, and `348`
- * corrected the noun rather than the shape.** Codex does read that file, and this app writes
- * nothing into it — `ThreadStartParams.dynamicTools` is a door on the connection we already hold,
- * so the tools cost no subprocess, no port, and not one byte of a file Codex co-owns. The
- * asymmetry survives the correction: Claude re-supplies, Codex survives.
- *
- * ⛔ **Forgetting the re-supply is how a spawned agent silently loses its tools**, and a neutral
- * declaration is what makes forgetting it hard: this rides on {@link ProviderRuntimeContext}, the
- * one type both `StartOptions` and `ResumeOptions` extend, whose every member documents the same
- * promise — *"a RESUMED session must come back with the value it was created with"*. A resume that
- * dropped the toolset would have to delete a field it never sets, rather than merely forget to add
- * one.
- *
- * ⚑ **And the neutral declaration is what made the second adapter cheap.** `347` shipped this file
- * with one reader and wrote that *"the adapter that gains one later translates the same declaration
- * rather than being handed a second one"*. `348` is that adapter, and it did: five tools, two
- * providers, one declaration, and not one line of policy in either translation.
+ * One provider-neutral toolset: names, descriptions, argument schemas and current handlers.
+ * Claude serves it through its in-process SDK MCP transport. Codex serves the same factory
+ * over a child-owned loopback HTTP transport, declared again on both start and resume.
+ * Older native Codex threads retain dynamic declarations; their calls use the current handlers.
+ * Approval decisions belong to the app's shared call floor, not this declaration.
  */
 
 /**
@@ -166,13 +135,8 @@ export interface AgentToolset {
   /**
    * How to use the tools, when there is anything to say.
    *
-   * ⚑ **Claude is handed them with the catalogue**, as the in-process MCP server's `instructions`.
-   * 🔴 **D-039 · Codex is not**: its catalogue is one namespace whose description the app-server caps
-   * (`CODEX_NAMESPACE_DESCRIPTION_LIMIT`), and these outgrew it — so its adapter declares one
-   * sentence (`CODEX_TOOLS_DESCRIPTION`) and never reads this field. ⛔ **A caller that launches Codex
-   * says them in the conversation itself**: the app puts them in front of the first message of every
-   * life (`thisConversationSpans`'s tools section), and again after a compaction or a turn its
-   * provider never began. A caller that does not leaves its Codex model without them.
+   * Both providers receive these through the shared MCP server. The app's conversation lead
+   * also carries them when it supplies tool guidance.
    */
   readonly instructions?: string
   readonly tools: readonly AgentToolDefinition[]

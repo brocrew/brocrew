@@ -1,3 +1,4 @@
+import { CODEX_IMPLEMENTATION } from './fixtures/codex-implementation'
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { APPROVAL_PROFILES } from '../src/codex/codex-runtime'
@@ -105,24 +106,6 @@ describe('499 · D-038 · what each Codex mode keeps past its folder, read off t
  */
 describe('499 §3.2 · the mid-turn deferral, and which half of it is ours', () => {
   const RUNTIME_SRC = new URL('../src/', import.meta.url)
-  const CODEX_IMPLEMENTATION = [
-    'next-turn.ts',
-    'codex/codex-runtime.ts',
-    'codex/runtime-parts/initial-observations.ts',
-    'codex/runtime-parts/model-catalogue.ts',
-    'codex/runtime-parts/notification-scope.ts',
-    'codex/runtime-parts/permission-responses.ts',
-    'codex/runtime-parts/request-cards.ts',
-    'codex/runtime-parts/request-params.ts',
-    'codex/runtime-parts/request-preparation.ts',
-    'codex/runtime-parts/server-requests.ts',
-    'codex/runtime-parts/session-start.ts',
-    'codex/runtime-parts/session-views.ts',
-    'codex/runtime-parts/tool-approval-details.ts',
-    'codex/codex-transport.ts',
-    'codex/runtime-parts/turn-state.ts',
-    'codex/runtime-parts/wire-values.ts',
-  ] as const
   const read = (path: string): string => readFileSync(new URL(path, RUNTIME_SRC), 'utf8')
   const code = (path: string): string =>
     read(path)

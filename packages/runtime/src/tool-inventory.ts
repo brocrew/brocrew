@@ -5,68 +5,16 @@ export { qualify as qualifyWith, splitQualified } from '@brobot2/shared/tool-nam
 export type { ToolNaming } from '@brobot2/shared/tool-naming'
 
 /**
- * **The tools one conversation has** (358) — the provider-neutral vocabulary for them.
+ * Declared is what the app offered; published is what the provider reported. Neither can
+ * substitute for the other. Both adapters serve the same neutral MCP catalogue, with no
+ * persistent config file: Claude uses an SDK transport and Codex a child-owned HTTP endpoint.
  *
- * BroBot tools are in-process: `createSdkMcpServer` on Claude and `ThreadStartParams.dynamicTools` on Codex. They require no `config.toml`, stdio transport or separate server process. Inspect the published inventory; even a TOML table would not prove tool availability because the parser ignores unknown keys.
+ * Claude publishes names in system/init. The Codex adapter currently reports published: null;
+ * its launch declaration is not evidence that discovery completed. Native local-model probes
+ * separately measure MCP discovery and dispatch, including refreshed tools on resume.
  *
- * ## 🔴 Two halves, and merging them would be the lie this event exists to prevent
- *
- * ⛔ **`declared` is what BroBot handed this session. `published` is what the child says it has.**
- * They are different facts, they come from different places, and only one of them is evidence.
- *
- * | | where it comes from | what it proves |
- * |---|---|---|
- * | {@link DeclaredToolset} | the `AgentToolset` this session was constructed with | what was OFFERED |
- * | {@link PublishedInventory} | the child's own `system/init` frame | what the child ACCEPTED |
- *
- * ⚠️ **`declared` is not a hardcoded list, and it is also not proof.** It is this session's own
- * toolset object — `353` measured the ordinary Codex launch path putting exactly the five qualified
- * names into the child's inventory, and its negative control put in none — but the whole reason
- * `353` had to be run at all is that a declaration can be made and not arrive. So a surface may
- * render `declared` as *offered* and may render only `published` as *confirmed*, and Slice 2's
- * acceptance #7 (*nothing unwired may imply a working state*) is why that distinction is in the
- * type rather than in a component's discretion.
- *
- * ## ⚠️ The providers do not both publish, and this vocabulary says so out loud
- *
- * | provider | publishes an inventory | measured where |
- * |---|---|---|
- * | **Claude** | ⚑ **yes** — `SDKSystemMessage.tools` + `.mcp_servers`, on the first `system/init` | `probe:tool-inventory` |
- * | **Codex** | ⛔ **no** — `dynamicTools` is write-only; no response, notification or thread field carries one back | this file's §"Codex publishes nothing" |
- *
- * ⛔ **So `published: null` is a first-class state and not a missing value.** It means *this
- * provider does not publish an inventory*, which is permanently different from *we have not been
- * told yet* — and the second of those is the ABSENCE of the event, exactly as
- * `provider-commands.ts` makes `undefined ≠ []` unforgeable by leaving `commands` required. Three
- * states, three renderings, and no adapter can produce the wrong one by accident.
- *
- * ## ⛔ Codex publishes nothing, and that is measured rather than assumed
- *
- * `348` sends the namespace on `thread/start` and `ThreadResumeParams` has no field for it — the
- * app-server remembers the DECLARATION in its own `thread_dynamic_tools` table. Every type that
- * could carry an inventory back was read: `ThreadStartResponse`, `ThreadStartedNotification`,
- * `ThreadResumeResponse`, `Thread` (whose `extra` is `Record<string, never>`), `ThreadReadResponse`
- * and `ThreadSettings` have no tools field at all. The one echo anywhere on that protocol is
- * `mcpServerStatus/list`, which is about servers configured in `config.toml` and therefore about
- * the exact mechanism this app does not use. ⚑ **`353` saw a Codex inventory once, and only by
- * standing up a fake Responses endpoint and reading the child's own outbound request body** — an
- * instrument that cannot exist for a conversation talking to OpenAI.
- *
- * ## ⚠️ The published inventory names tools; it never describes them
- *
- * Measured (`probe:tool-inventory`, two independent runs): `SDKSystemMessage.tools` is a flat array
- * of strings. The sibling door `Query.mcpServerStatus()` carries a `tools[]` per server whose
- * `description` is declared optional — and for an in-process SDK server the CLI **sends none**, so
- * every one came back `undefined`. ⛔ **That is why {@link DeclaredTool} carries the sentence.** A
- * description shown beside a published name is BroBot's own words about its own tool, joined by
- * name; for a third-party MCP server there is no sentence available from anywhere, and a surface
- * must show the row with no second line rather than invent one.
- *
- * ⛔ **And `mcpServerStatus()` is not a second door worth opening.** Asked before the stream is
- * consumed it answers `[]` — *answered, and named no server* — which is byte-identical to the
- * honest answer for a conversation that genuinely has none. A surface built on it at launch would
- * say *"no tools"* about a conversation holding five. It becomes truthful at exactly the moment
- * `system/init` does, and by then `system/init` has already said everything it would have added.
+ * Published names carry no descriptions. Displayed descriptions come from the matching
+ * declared tool; a third-party name without one must not acquire invented words.
  */
 
 /**

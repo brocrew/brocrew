@@ -1,21 +1,11 @@
+import { agentMcpCatalogue as catalogueOf } from './helpers/agent-mcp-catalogue'
 import { describe, expect, it } from 'vitest'
+import { withCodexCoreMcp } from '../src/codex/core-mcp'
 import { z } from 'zod'
-import {
-  CODEX_TOOLS_DESCRIPTION,
-  answerCodexToolCall,
-  codexDynamicToolsFor,
-} from '../src/codex/agent-tools'
+import { answerCodexToolCall } from '../src/codex/agent-tools'
 import { agentToolStringEnum, type AgentToolAnswer, type AgentToolset } from '../src/agent-tools'
 
-/**
- * 🔴 **348 · the Codex translation: five neutral tools becoming one `dynamicTools` namespace, and
- * one `item/tool/call` becoming an answer.**
- *
- * ⛔ **Not one of these tests is about policy**, because there is no policy in the file they test.
- * What is asserted is the shape the provider reads, the shape it is answered with, and the two
- * places `303` B and `307` said a translation goes wrong: a stripped argument, and a refusal that
- * arrives wearing an error's clothes.
- */
+// Current MCP schemas and retained legacy replies use the same neutral tool definitions.
 
 /** Calls are recorded so an assertion can say the tool did NOT run, and mean it. */
 function toolset(answer: AgentToolAnswer | (() => Promise<AgentToolAnswer>) = { text: 'ok' }): {
@@ -61,76 +51,43 @@ function toolset(answer: AgentToolAnswer | (() => Promise<AgentToolAnswer>) = { 
   }
 }
 
-const namespaceOf = (set: AgentToolset | undefined) => {
-  const specs = codexDynamicToolsFor(set)
-  expect(specs, 'a toolset with tools produces specs').toBeDefined()
-  expect(specs).toHaveLength(1)
-  const first = specs![0]! as {
-    type: string
-    name: string
-    description: string
-    tools: { name: string; description: string; inputSchema: Record<string, unknown> }[]
-  }
-  expect(first.type).toBe('namespace')
-  return first
-}
-
-describe('348 · what Codex is handed on thread/start', () => {
-  it('⛔ one namespace, named after the server, holding every tool', () => {
-    const spec = namespaceOf(toolset().set)
+describe('the current shared MCP catalogue offered to Codex', () => {
+  it('names its server and every current tool', async () => {
+    const spec = await catalogueOf(toolset().set)
     expect(spec.name).toBe('brobot')
     expect(spec.tools.map((one) => one.name)).toEqual(['spawn_agent', 'end_agent'])
-    // ⚑ The provider spells a namespaced tool `<namespace>__<tool>` to the model
-    // (probe:codex-dynamic-tools, arm A), so the namespace name is part of what the model reads.
     expect(spec.tools[0]!.description).toBe('Create another agent.')
   })
 
-  it("⚑ the namespace description is ONE fixed sentence, never the toolset's instructions (D-039)", () => {
-    // 🔴 **D-039 moved the fact this test pinned.** Until D-039 the instructions WERE the namespace
-    // description — Claude hands them to the MCP server, Codex has one description per namespace —
-    // because dropping them would lose the sentence that tells a model a refusal is an answer, which
-    // is the thing `307` measured being obeyed. ⛔ They outgrew what the app-server takes there, and
-    // every conversation that carried them was refused at `thread/start` (F055). ⚑ So the namespace
-    // says `CODEX_TOOLS_DESCRIPTION`, and the instructions reach a Codex model in its conversation
-    // instead — the tools section `toolsToldInTextFor('codex')` hands `thisConversationSpans` in the
-    // desktop app. ⚠️ The "not dropped" half lives there now, and is that seam's to pin: this package
-    // never sees that text.
-    const withInstructions = toolset().set
-    // ⛔ **The premise**: this toolset HAS instructions, and they are not the fixed sentence — else a
-    // translation that still read them would pass the next line.
-    expect(withInstructions.instructions).toBe('These tools reach the app you are running inside.')
-    expect(withInstructions.instructions).not.toBe(CODEX_TOOLS_DESCRIPTION)
-    expect(namespaceOf(withInstructions).description).toBe(CODEX_TOOLS_DESCRIPTION)
-    // …and a toolset with no instructions says the same sentence, rather than `undefined` or another.
-    const bare: AgentToolset = { server: 'brobot', tools: toolset().set.tools }
-    expect(namespaceOf(bare).description).toBe(CODEX_TOOLS_DESCRIPTION)
-    expect(namespaceOf(bare).description.length).toBeGreaterThan(0)
+  it('hands the shared server the full instructions without the old dynamic namespace cap', async () => {
+    const instructions = 'How to use this catalogue. '.repeat(80)
+    expect(instructions.length).toBeGreaterThan(1024)
+    const described = await catalogueOf({ ...toolset().set, instructions })
+    expect(described.description).toBe(instructions)
+    expect(
+      (await catalogueOf({ server: 'brobot', tools: toolset().set.tools })).description,
+    ).toBeUndefined()
   })
 
-  it('🔴 the argument schema is LOOSE, so an undocumented key is the door’s business (303 B)', () => {
-    const schema = namespaceOf(toolset().set).tools[0]!.inputSchema
-    // The declared keys are all there…
-    expect(Object.keys(schema['properties'] as object).sort()).toEqual([
+  it('keeps the argument schema loose so the handler still owns unknown keys', async () => {
+    const schema = (await catalogueOf(toolset().set)).tools[0]!.inputSchema
+    expect(Object.keys(schema.properties as object).sort()).toEqual([
       'kind',
       'model',
       'profile_slug',
       'purpose',
     ])
-    expect(schema['required']).toEqual(['profile_slug', 'purpose'])
-    // ⛔ …and `additionalProperties` is NOT the `false` a strict object emits. A schema that
-    // forbade the key would push the refusal out of `341`'s rail 1 and into the provider, where it
-    // carries no rail, no permanence and no name.
-    expect(schema['additionalProperties']).not.toBe(false)
+    expect(schema.required).toEqual(['profile_slug', 'purpose'])
+    expect(schema.additionalProperties).not.toBe(false)
   })
 
-  it('🔴 advertises a closed vocabulary while an unknown member still reaches the handler', async () => {
+  it('advertises a closed vocabulary while an unknown member still reaches the legacy handler', async () => {
     const built = toolset()
-    const schema = namespaceOf(built.set).tools[0]!.inputSchema
-    const kind = (schema['properties'] as { kind: Record<string, unknown> }).kind
-    expect(kind['enum']).toEqual(['work', 'question'])
-    expect(kind['description']).toContain("'question' asks a question.")
+    const schema = (await catalogueOf(built.set)).tools[0]!.inputSchema
+    const kind = (schema.properties as { kind: Record<string, unknown> }).kind
+    expect(kind.enum).toEqual(['work', 'question'])
+    expect(kind.description).toContain("'question' asks a question.")
     expect(kind).not.toHaveProperty('default')
-
     const answer = await answerCodexToolCall(built.set, {
       namespace: 'brobot',
       tool: 'spawn_agent',
@@ -140,11 +97,21 @@ describe('348 · what Codex is handed on thread/start', () => {
     expect(built.calls).toContainEqual({ profile_slug: 'w', purpose: 'why', kind: 'status' })
   })
 
-  it('⚠️ no toolset and an EMPTY toolset both declare nothing', () => {
-    expect(codexDynamicToolsFor(undefined)).toBeUndefined()
-    expect(codexDynamicToolsFor({ server: 'brobot', tools: [] })).toBeUndefined()
-    // …and the positive, so this is a measurement rather than a function that always says no.
-    expect(codexDynamicToolsFor(toolset().set)).toBeDefined()
+  it('no owned launch means no declaration; a real launch lists exactly the served names', () => {
+    expect(withCodexCoreMcp({}, undefined, [])).toEqual({})
+    const names = toolset().set.tools.map((one) => one.name)
+    expect(
+      withCodexCoreMcp({}, { name: 'brobot', url: 'http://127.0.0.1:1/mcp', headers: {} }, names),
+    ).toMatchObject({
+      mcp_servers: {
+        brobot: {
+          tools: {
+            spawn_agent: { approval_mode: 'approve' },
+            end_agent: { approval_mode: 'approve' },
+          },
+        },
+      },
+    })
   })
 })
 

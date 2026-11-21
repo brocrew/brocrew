@@ -1,13 +1,11 @@
+import { agentMcpCatalogue } from '../../../packages/runtime/test/helpers/agent-mcp-catalogue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { agentToolHandlerInput, type AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
-import {
-  answerCodexToolCall,
-  codexDynamicToolsFor,
-} from '../../../packages/runtime/src/codex/agent-tools'
+import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -454,8 +452,7 @@ describe('reply field failures travel through the real MCP server', () => {
     const wire = await server()
     const listed = await wire.list()
     const schema = listed.result!.tools![0]!.inputSchema
-    const codex = codexDynamicToolsFor(wire.set)![0]!
-    const other = (codex as { tools: { inputSchema: unknown }[] }).tools[0]!.inputSchema
+    const other = (await agentMcpCatalogue(wire.set)).tools[0]!.inputSchema
     for (const candidate of [schema, other]) {
       const advertised = candidate as {
         required: string[]

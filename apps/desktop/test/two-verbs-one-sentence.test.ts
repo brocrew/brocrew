@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
-import { codexDynamicToolsFor } from '../../../packages/runtime/src/codex/agent-tools'
+import { agentMcpCatalogue } from '../../../packages/runtime/test/helpers/agent-mcp-catalogue'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -109,7 +109,7 @@ describe('two verbs, one sentence', () => {
   describe('§1 · the tool descriptions each provider is sent', () => {
     it('Claude and Codex are sent the same tool descriptions', async () => {
       const toolset = await brobotsTools()
-      const fromCodex = codexDescriptions(toolset)
+      const fromCodex = await codexDescriptions(toolset)
       const fromClaude = await claudeDescriptions(toolset)
 
       expect(Object.keys(fromCodex).length, 'the Codex reader found no tools').toBeGreaterThan(10)
@@ -177,11 +177,9 @@ describe('two verbs, one sentence', () => {
   })
 })
 
-function codexDescriptions(toolset: AgentToolset): Record<string, string> {
-  const specs = codexDynamicToolsFor(toolset) as
-    { tools: { name: string; description: string }[] }[] | undefined
-  if (specs === undefined || specs.length !== 1) throw new Error('no Codex namespace was built')
-  return Object.fromEntries(specs[0]!.tools.map((one) => [one.name, one.description]))
+async function codexDescriptions(toolset: AgentToolset): Promise<Record<string, string>> {
+  const catalogue = await agentMcpCatalogue(toolset)
+  return Object.fromEntries(catalogue.tools.map((one) => [one.name, one.description ?? '']))
 }
 
 async function claudeDescriptions(toolset: AgentToolset): Promise<Record<string, string>> {

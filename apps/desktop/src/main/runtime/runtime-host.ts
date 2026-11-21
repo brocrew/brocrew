@@ -381,7 +381,6 @@ import {
   startRefusalOf,
   startFailureOf,
   withDeadline,
-  MAX_TOOL_TEXT,
   MAX_USAGE_WINDOWS,
   type AgentToolset,
   type LaunchSetting,
@@ -1110,6 +1109,7 @@ import {
   type AnEarlierMessage,
 } from './what-this-agent-was-given'
 import { AGENT_MEMORY_NOTES_SHOWN } from './instructions'
+import { declaredToolInstructions } from './declared-tool-instructions'
 import type {
   WhatALaunchGave,
   WhatTheModelGot,
@@ -35928,21 +35928,10 @@ export class RuntimeHost implements LiveHost {
         ? (toolInventory.event.published?.tools ?? null)
         : null
     const publishedAt = published === null ? null : (toolInventory?.at ?? null)
-    // ⚑ The sentence Codex's thread was started with: a resume's list states this build's sentence,
-    // never the thread's, so it is passed over for the start before it.
-    let started =
-      providerDescriptor(provider).contextPlacement === 'first-message' ? toolInventory : null
-    while (started?.event.type === 'tool_inventory' && started.event.source === 'thread/resume') {
-      started = this.deps.store.newestOfType?.(sessionId, 'tool_inventory', started.ordinal) ?? null
-    }
-    // ⚠️ The row clips at MAX_TOOL_TEXT with no flag, and a thread could start with up to 1024
-    // characters: a sentence at the cap may be cut, so it is not taken as the thread's.
-    const startedWith =
-      started?.event.type === 'tool_inventory'
-        ? (started.event.declared?.instructions ?? null)
-        : null
-    const declaredWith =
-      startedWith !== null && startedWith.length < MAX_TOOL_TEXT ? startedWith : null
+    const declaredWith = declaredToolInstructions(
+      providerDescriptor(provider).contextPlacement === 'first-message' ? toolInventory : null,
+      (before) => this.deps.store.newestOfType?.(sessionId, 'tool_inventory', before) ?? null,
+    )
     const context = this.contextOfConversation(sessionId, live)
     return whatItWasGiven({
       sessionId,

@@ -11465,34 +11465,29 @@ describe('348 · dynamic tools, on the wire', () => {
     }
   })
 
-  it('⛔ thread/start carries the namespace, and a session with no toolset carries no field', async () => {
+  it('thread/start declares current MCP tools, and no toolset declares no server', async () => {
     const withTools = await inTurn(tools().set)
-    const spec = (started(withTools.transport)?.['dynamicTools'] as { name?: string }[])?.[0]
-    expect(spec?.name).toBe('brobot')
+    const config = started(withTools.transport)?.['config'] as {
+      mcp_servers: Record<string, unknown>
+    }
+    expect(config.mcp_servers).toHaveProperty('brobot')
+    expect(started(withTools.transport)).not.toHaveProperty('dynamicTools')
     await withTools.handle.close()
 
     // ⚠️ The paired negative — an absent toolset must not become an empty declaration, which would
     // put a catalogue in the child's prompt that lists nothing.
     const without = await inTurn(undefined)
     expect(started(without.transport)).not.toHaveProperty('dynamicTools')
+    expect(started(without.transport)?.['config']).not.toHaveProperty('mcp_servers.brobot')
     await without.handle.close()
   })
 
-  /**
-   * 🔴 **358 · the arm whose whole point is that the provider says NOTHING.**
-   *
-   * ⛔ **`published: null` is not a placeholder for a read nobody wrote.** Every type on this
-   * protocol that could carry an inventory back was read for `358` — `ThreadStartResponse`,
-   * `ThreadStartedNotification`, `ThreadResumeResponse`, `Thread` (whose `extra` is
-   * `Record<string, never>`), `ThreadReadResponse`, `ThreadSettings` — and not one has a tools
-   * field. `353` saw a Codex inventory exactly once, and only by standing up a fake Responses
-   * endpoint and reading the child's own outbound request body.
-   */
+  // This event records the current declaration, separately from native discovery.
   it('⛔ publishes what was DECLARED and says the provider reports nothing', async () => {
     const { transport, handle, events } = await inTurn(tools().set)
     await vi.waitFor(() => expect(events.some((e) => e.type === 'tool_inventory')).toBe(true))
     const event = events.find((e) => e.type === 'tool_inventory')
-    expect(event?.published, 'this provider publishes no inventory, ever').toBeNull()
+    expect(event?.published, 'the declaration is not a discovery receipt').toBeNull()
     expect(event?.declared?.server).toBe('brobot')
     expect(event?.declared?.tools.map((tool) => tool.name)).toEqual([
       'spawn_agent',
@@ -11501,14 +11496,12 @@ describe('348 · dynamic tools, on the wire', () => {
     expect(event?.declared?.tools[0]?.parameters).toEqual([
       { name: 'profile_slug', type: 'string', required: true },
     ])
-    // ⛔ **Codex's own spelling, as DATA** — no `mcp__` prefix, which is what `353` measured on the
-    // child's wire. A surface that assumed Claude's would match nothing and would look exactly like
-    // a conversation whose tools never arrived.
-    expect(event?.naming).toEqual({ prefix: '', separator: '__' })
+    expect(event?.naming).toEqual({ prefix: 'mcp__', separator: '__' })
     expect(event?.source).toBe('thread/start')
-    // ⚑ …and the declaration really did go out on the wire in the same run, so `declared` here is
-    // the thing the child was given rather than a copy of an object nobody sent.
-    expect((started(transport)?.['dynamicTools'] as { name?: string }[])?.[0]?.name).toBe('brobot')
+    expect((started(transport)?.['config'] as { mcp_servers: object }).mcp_servers).toHaveProperty(
+      'brobot',
+    )
+    expect(started(transport)).not.toHaveProperty('dynamicTools')
     await handle.close()
   })
 
@@ -11547,7 +11540,7 @@ describe('348 · dynamic tools, on the wire', () => {
     await handle.close()
   })
 
-  it('🔴 thread/resume carries no tools, because the app-server remembers them', async () => {
+  it('thread/resume supplies current MCP tools without replacing legacy dynamic state', async () => {
     const transport = new FakeTransport()
     transport.onRequest('thread/resume', () => okThread('th_1'))
     const handle = await new CodexRuntime(adopt(transport)).resume(
@@ -11560,6 +11553,9 @@ describe('348 · dynamic tools, on the wire', () => {
     // paired with the positive above, so it cannot pass over a params object that carries nothing.
     expect(resumed).not.toHaveProperty('dynamicTools')
     expect(resumed).toHaveProperty('cwd', '/tmp/x')
+    expect((resumed as { config: { mcp_servers: object } }).config.mcp_servers).toHaveProperty(
+      'brobot',
+    )
     await handle.close()
   })
 

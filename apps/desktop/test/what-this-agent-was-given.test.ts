@@ -16,7 +16,6 @@ import {
   type StartOptions,
 } from '@brobot2/runtime'
 import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
-import { CODEX_TOOLS_DESCRIPTION } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -490,13 +489,18 @@ describe('what an agent was given', () => {
     expect(read.files[0]?.kind).toBe('profile-instructions')
     expect(read.files[0]?.text).toContain('## How you work')
     expect(read.tools.instructions.ridesIn).toBe('in-the-first-message')
-    expect(read.tools.deferral.kind).toBe('in-every-request')
+    expect(read.tools.deferral.kind).toBe('found-by-search')
   })
 
   /** A Codex tool list as its adapter states it: through the one bounding rule, with no tools. */
-  const codexToolList = (lead: string, source: string, instructions: string): void => {
+  const codexToolList = (
+    lead: string,
+    source: string,
+    instructions: string,
+    legacy = false,
+  ): void => {
     const bounded = boundInventory({
-      naming: CODEX_TOOL_NAMING,
+      naming: legacy ? { prefix: '', separator: '__' } : CODEX_TOOL_NAMING,
       declared: { server: 'brobot', instructions, tools: [] },
       published: null,
     })
@@ -514,50 +518,53 @@ describe('what an agent was given', () => {
     )
   }
 
-  it('Codex’s tools come with the sentence they are declared under: the one its thread started with where the ledger says, this build’s where it does not; Claude has none', async () => {
+  it('Codex shows its newest MCP declaration, and does not invent one where none was recorded', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
-    // No start on the ledger: this build's sentence, and the read says so.
     const now = await host.whatThisAgentWasGiven(lead)
-    expect(now.tools.namespace).toEqual({
-      text: CODEX_TOOLS_DESCRIPTION,
-      textIs: 'composed-now',
-      size: expect.objectContaining({ characters: CODEX_TOOLS_DESCRIPTION.length }),
-    })
-    // It goes in every request on Codex, so it counts there, and with the tools in full.
-    expect(now.size.toolsInEveryRequest.characters).toBe(
-      now.tools.size.characters + CODEX_TOOLS_DESCRIPTION.length,
-    )
-    expect(now.size.tools).toEqual(now.size.toolsInEveryRequest)
+    expect(now.tools.namespace).toBeUndefined()
+    expect(now.size.toolsInEveryRequest).toEqual(sizesAdded([]))
+    expect(now.size.tools).toEqual(now.tools.size)
 
-    // The thread started with other words; a later resume states this build's, which the thread
-    // never took: the start's words are the ones shown.
-    codexToolList(lead, 'thread/start', 'Older words the tools were declared with.')
-    codexToolList(lead, 'thread/resume', CODEX_TOOLS_DESCRIPTION)
-    const launched = await host.whatThisAgentWasGiven(lead)
-    expect(launched.tools.namespace?.text).toBe('Older words the tools were declared with.')
-    expect(launched.tools.namespace?.textIs).toBe('as-launched')
+    codexToolList(lead, 'thread/start', 'The original MCP instructions.')
+    codexToolList(lead, 'thread/resume', 'The current MCP instructions.')
+    const resumed = await host.whatThisAgentWasGiven(lead)
+    expect(resumed.tools.namespace?.text).toBe('The current MCP instructions.')
+    expect(resumed.tools.namespace?.textIs).toBe('as-launched')
+    expect(resumed.size.toolsInEveryRequest).toEqual(sizesAdded([]))
 
-    // Claude declares no namespace.
     const claude = await open(host, 'claude', 'other')
     expect((await host.whatThisAgentWasGiven(claude)).tools.namespace).toBeUndefined()
   })
 
-  it('a Codex conversation whose ledger holds only resumes shows this build’s sentence, and says so', async () => {
+  it('a Codex ledger with only a resume shows the MCP instructions recorded on that resume', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
-    codexToolList(lead, 'thread/resume', CODEX_TOOLS_DESCRIPTION)
+    codexToolList(lead, 'thread/resume', 'The resumed MCP instructions.')
     const read = await host.whatThisAgentWasGiven(lead)
-    expect(read.tools.namespace?.textIs).toBe('composed-now')
+    expect(read.tools.namespace?.text).toBe('The resumed MCP instructions.')
+    expect(read.tools.namespace?.textIs).toBe('as-launched')
   })
 
-  it('a start sentence the tool list may have cut is never shown as the thread’s: this build’s is, and says so', async () => {
+  it('a legacy dynamic declaration keeps its start’s words until an MCP resume replaces it', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
-    // Longer than the list keeps, and within the 1024 a thread could start with.
+    codexToolList(lead, 'thread/start', 'Older dynamic instructions.', true)
+    codexToolList(lead, 'thread/resume', 'Tools that reach the app you are running inside.', true)
+    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(
+      'Older dynamic instructions.',
+    )
+    codexToolList(lead, 'thread/resume', 'The current MCP instructions.')
+    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace?.text).toBe(
+      'The current MCP instructions.',
+    )
+  })
+
+  it('a declaration the tool list may have cut is never shown as whole', async () => {
+    const host = buildHost()
+    const lead = await open(host, 'codex', 'lead')
     const long = 'The tools this app gives you, and what each is for. '.repeat(15)
     expect(long.length).toBeGreaterThan(MAX_TOOL_TEXT)
-    expect(long.length).toBeLessThanOrEqual(1024)
     codexToolList(lead, 'thread/start', long)
     const row = ledger(lead)
       .filter((event) => event.type === 'tool_inventory')
@@ -565,13 +572,7 @@ describe('what an agent was given', () => {
     expect(row?.type === 'tool_inventory' ? row.declared?.instructions?.length : null).toBe(
       MAX_TOOL_TEXT,
     )
-
-    const read = await host.whatThisAgentWasGiven(lead)
-    expect(read.tools.namespace).toEqual({
-      text: CODEX_TOOLS_DESCRIPTION,
-      textIs: 'composed-now',
-      size: expect.objectContaining({ characters: CODEX_TOOLS_DESCRIPTION.length }),
-    })
+    expect((await host.whatThisAgentWasGiven(lead)).tools.namespace).toBeUndefined()
   })
 
   it('a closed conversation reads its last launch off the ledger; one launched before the record is composed now, and says so', async () => {
@@ -1016,11 +1017,11 @@ describe('what an agent was given', () => {
     expect(claude.size.provider, 'the premise: the snapshot is counted too').not.toBeNull()
     expect(sizesAdded(theParts(claude.size))).toEqual(claude.size.total)
 
-    // Codex: BroBot's tools in full in every request; other servers' tools found by search.
+    // Codex finds core and external tools through search; neither definition is in every request.
     const worker = await open(host, 'codex', 'worker')
     const codex = await host.whatThisAgentWasGiven(worker)
-    expect(codex.tools.deferral.kind).toBe('in-every-request')
-    expect(codex.size.toolsInEveryRequest).toEqual(codex.size.tools)
+    expect(codex.tools.deferral.kind).toBe('found-by-search')
+    expect(codex.size.toolsInEveryRequest).toEqual(sizesAdded([]))
     expect(codex.size.otherServersToolsInEveryRequest).toEqual(sizesAdded([]))
     expect(sizesAdded(theParts(codex.size))).toEqual(codex.size.total)
   })

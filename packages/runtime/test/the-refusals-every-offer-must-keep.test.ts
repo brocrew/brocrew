@@ -1,3 +1,4 @@
+import { CODEX_IMPLEMENTATION } from './fixtures/codex-implementation'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -107,24 +108,6 @@ describe('§2 · no producer in this package states the floor in its own words',
    * what makes the floor one derivation instead of four habits, and what makes a NEW producer that
    * forgets it visible without a live run.
    */
-  const CODEX_IMPLEMENTATION = [
-    'next-turn.ts',
-    'codex/codex-runtime.ts',
-    'codex/runtime-parts/initial-observations.ts',
-    'codex/runtime-parts/model-catalogue.ts',
-    'codex/runtime-parts/notification-scope.ts',
-    'codex/runtime-parts/permission-responses.ts',
-    'codex/runtime-parts/request-cards.ts',
-    'codex/runtime-parts/request-params.ts',
-    'codex/runtime-parts/request-preparation.ts',
-    'codex/runtime-parts/server-requests.ts',
-    'codex/runtime-parts/session-start.ts',
-    'codex/runtime-parts/session-views.ts',
-    'codex/runtime-parts/tool-approval-details.ts',
-    'codex/codex-transport.ts',
-    'codex/runtime-parts/turn-state.ts',
-    'codex/runtime-parts/wire-values.ts',
-  ] as const
 
   const PRODUCING_FILES = [
     ...CODEX_IMPLEMENTATION,
@@ -457,7 +440,7 @@ describe('§2 · no producer in this package states the floor in its own words',
     // gate does not; the two are separate values in both adapters, and a gate computed FROM the
     // published offer would be the widening this dispatch must not perform.
     const requests = withoutProse(src('codex/runtime-parts/server-requests.ts'))
-    const session = withoutProse(src('codex/codex-runtime.ts'))
+    const session = withoutProse(src('codex/runtime-parts/agent-tool-call.ts'))
     expect(requests).toContain('const allowed = !requested.faithful')
     expect(session).toContain("claimed.allowed = new Set<PermissionOutcome>(['allow', 'deny'])")
     for (const leaf of CODEX_IMPLEMENTATION) {

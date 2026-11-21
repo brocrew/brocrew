@@ -702,12 +702,7 @@ export interface WhatTheReadIsHanded {
     /** Rows the provider named that the list does not carry. */
     readonly dropped: number
   } | null
-  /**
-   * The sentence the provider's thread was started with, off its tool list's
-   * `declared.instructions`, or `null` where no start says it whole. Never a resume's: that
-   * states this build's sentence, and the thread keeps the one it started with. Never one at the
-   * list's text cap, which may have been cut.
-   */
+  /** The newest MCP declaration, or a legacy dynamic thread's start, unless its text was cut. */
   readonly declaredWith: string | null
   /** The external servers this agent is handed now, by name. */
   readonly externalServers: readonly string[]
@@ -989,7 +984,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   // The paragraph its launch kept, else this build's.
   const instructionsKept = recorded ? record.tools.instructions : undefined
   const instructionsText = instructionsKept ?? handed.toolset.instructions ?? ''
-  // Codex declares the tools under a namespace with a sentence of its own; Claude has none.
+  // The instructions kept with the provider’s declaration, when the ledger has them whole.
   const namespaceText = givenPolicy.namespaceText(handed.declaredWith, list.length)
   const tools = {
     server: handed.toolset.server,
@@ -1081,7 +1076,11 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     ...(tools.namespace === undefined ? [] : [tools.namespace.size]),
   ])
   const toolsInEveryRequest =
-    deferral.kind === 'names-until-loaded' ? sizeOf(nativeToolNames.namesOnlyText) : toolsInFull
+    deferral.kind === 'found-by-search'
+      ? sizesAdded([])
+      : deferral.kind === 'names-until-loaded'
+        ? sizeOf(nativeToolNames.namesOnlyText)
+        : toolsInFull
   const otherServers = givenPolicy.otherServers(
     handed.published,
     tools.server,

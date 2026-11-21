@@ -92,7 +92,7 @@ function namesRow(given: WhatThisAgentWasGiven): ReaderRow {
 describe('provider declarations through the read model and request order', () => {
   it.each([
     ['claude', ['mcp__bakery__knead', 'mcp__bakery__bake__bread']],
-    ['codex', ['bakery__knead', 'bakery__bake__bread']],
+    ['codex', ['mcp__bakery__knead', 'mcp__bakery__bake__bread']],
   ] as const)('uses actual %s declaration names without a published list', (provider, expected) => {
     const given = whatItWasGiven(read(provider, null))
     expect(given.tools.declarationNames).toEqual(expected)
@@ -104,10 +104,12 @@ describe('provider declarations through the read model and request order', () =>
     expect(row.pieces).toContainEqual({ kind: 'label', author: 'BroCrew', trust: TRUST.thisBuild })
     expect(row.pieces.at(0)).toEqual({ kind: 'text', text: 'Before ' })
     expect(row.pieces.at(-1)).toEqual({ kind: 'text', text: ' After' })
-    expect(given.size.toolsInEveryRequest).toEqual(given.size.tools)
+    expect(given.size.toolsInEveryRequest).toEqual(
+      provider === 'codex' ? sizeOf('') : given.size.tools,
+    )
   })
 
-  it('keeps recorded Codex MCP names verbatim ahead of current dynamic declarations', () => {
+  it('keeps recorded legacy and MCP names verbatim beside current declarations', () => {
     const published = [
       'mcp__bakery__bake__bread',
       'bakery__knead',

@@ -17,12 +17,10 @@ import { CHILD_STATE_UNKNOWN, childStatusOf, type ChildThreadState } from '../..
 
 import { CODEX_PROTOCOL_VERSION, codexVersionFromUserAgent } from '../protocol-version'
 
-import { CODEX_TOOLS_DESCRIPTION } from '../agent-tools'
 import { boundInventory, parametersOf } from '../../tool-inventory'
 import { CODEX_TOOL_NAMING } from '../tool-naming'
 
-// Codex does not report a provider-confirmed dynamic-tool inventory; keep published unknown.
-// Resumed threads retain their original declaration even when the current build's description differs.
+// The declaration is current on start and resume; MCP discovery is a separate provider observation.
 export function toolInventoryFor(
   source: string,
   agentTools: AgentToolset | undefined,
@@ -34,7 +32,9 @@ export function toolInventoryFor(
         ? null
         : {
             server: agentTools.server,
-            ...(agentTools.tools.length === 0 ? {} : { instructions: CODEX_TOOLS_DESCRIPTION }),
+            ...(agentTools.instructions === undefined
+              ? {}
+              : { instructions: agentTools.instructions }),
             tools: agentTools.tools.map((one) => ({
               name: one.name,
               description: one.description,

@@ -1,3 +1,5 @@
+import { withCodexCoreMcp } from '../core-mcp'
+import type { AgentMcpLaunch } from '../agent-mcp-http'
 import type { PlanPhase } from '../../next-turn'
 export type { PlanPhase } from '../../next-turn'
 import type { LaunchSetting } from '../../launch-settings'
@@ -23,7 +25,6 @@ import type { InitializeParams } from '../protocol/InitializeParams'
 import type { ReasoningSummary } from '../protocol/ReasoningSummary'
 import type { SandboxPolicy } from '../protocol/v2/SandboxPolicy'
 import type { ThreadResumeParams } from '../protocol/v2/ThreadResumeParams'
-import type { DynamicToolSpec } from '../protocol/v2/DynamicToolSpec'
 import type { ThreadStartParams } from '../protocol/v2/ThreadStartParams'
 import type { JsonValue } from '../protocol/serde_json/JsonValue'
 import type { TurnInterruptParams } from '../protocol/v2/TurnInterruptParams'
@@ -127,6 +128,8 @@ function threadConfigOverlay(
   kept: readonly KeptToolApproval[],
   workRoots: readonly string[],
   managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
+  coreMcp?: AgentMcpLaunch,
+  coreToolNames: readonly string[] = [],
 ): { [key in string]?: JsonValue } {
   const overlay: { [key in string]?: JsonValue } = {
     ...CODEX_PLAN_TOOL_CONFIG,
@@ -134,25 +137,32 @@ function threadConfigOverlay(
     ...(codexExternalMcpConfig(externalMcp, kept) ?? {}),
   }
   if (workRoots.length > 0) overlay['sandbox_workspace_write.writable_roots'] = [...workRoots]
-  return withManagedPluginMcp(overlay, managedPluginMcp)
+  return withCodexCoreMcp(withManagedPluginMcp(overlay, managedPluginMcp), coreMcp, coreToolNames)
 }
 
-// Dynamic tools are declared only on start. Developer instructions are additive; baseInstructions replaces tool guidance.
+// Current core tools arrive through MCP on both launches. Developer instructions remain additive.
 export function threadStartParams(
   cwd: string,
   model: string | undefined,
   systemHint: string | undefined,
   approvalMode: ApprovalMode | undefined,
-  dynamicTools: DynamicToolSpec[] | undefined,
   externalMcp: ExternalMcpReach | undefined,
   kept: readonly KeptToolApproval[] = [],
   workRoots: readonly string[],
   managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
+  coreMcp?: AgentMcpLaunch,
+  coreToolNames: readonly string[] = [],
 ): ThreadStartParams {
   const params: ThreadStartParams = { cwd, ...approvalProfileFor({ approvalMode }) }
   if (model) params.model = model
-  params.config = threadConfigOverlay(externalMcp, kept, workRoots, managedPluginMcp)
-  if (dynamicTools) params.dynamicTools = dynamicTools
+  params.config = threadConfigOverlay(
+    externalMcp,
+    kept,
+    workRoots,
+    managedPluginMcp,
+    coreMcp,
+    coreToolNames,
+  )
   if (systemHint) params.developerInstructions = systemHint
   return params
 }
@@ -192,6 +202,8 @@ export function threadResumeParams(
   kept: readonly KeptToolApproval[] = [],
   workRoots: readonly string[],
   managedPluginMcp: readonly ManagedPluginMcpServer[] = [],
+  coreMcp?: AgentMcpLaunch,
+  coreToolNames: readonly string[] = [],
 ): ThreadResumeParams {
   const params: ThreadResumeParams = {
     threadId,
@@ -201,7 +213,14 @@ export function threadResumeParams(
     ...(model ? { model } : {}),
     ...(systemHint ? { developerInstructions: systemHint } : {}),
   }
-  params.config = threadConfigOverlay(externalMcp, kept, workRoots, managedPluginMcp)
+  params.config = threadConfigOverlay(
+    externalMcp,
+    kept,
+    workRoots,
+    managedPluginMcp,
+    coreMcp,
+    coreToolNames,
+  )
   return params
 }
 

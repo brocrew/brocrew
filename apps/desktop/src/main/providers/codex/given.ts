@@ -1,5 +1,5 @@
 import { CODEX_LAUNCH_SETTING_KEYS } from '@brobot2/runtime/codex'
-import { CODEX_TOOLS_DESCRIPTION, CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
+import { CODEX_TOOL_NAMING } from '@brobot2/runtime/codex'
 import { qualifyWith } from '@brobot2/runtime'
 import { sizesAdded } from '../../../shared/what-this-agent-was-given'
 import { conventionFileIn, repositoryConventionChain } from '../repository-instructions'
@@ -24,7 +24,7 @@ export const given: GivenPolicy = {
     return {
       declarations,
       namesOnlyText: declarations.join('\n'),
-      // Older inventories used MCP names; preserve those recorded words beside dynamic declarations.
+      // Keep recorded legacy dynamic names as well as current MCP names.
       published:
         published?.filter(
           (name) => name.startsWith(`${server}__`) || name.startsWith(`mcp__${server}__`),
@@ -46,8 +46,8 @@ export const given: GivenPolicy = {
   repositoryOrigin:
     'This folder’s own file, written by whoever works in it — a person or an agent; this app can’t tell which. Codex reads it itself.',
   deferral: () => ({
-    kind: 'in-every-request',
-    says: 'Codex hands the model every one of these, in full, in every request.',
+    kind: 'found-by-search',
+    says: 'Codex finds these with its tool search: until then the model sees neither their names nor their descriptions.',
   }),
   externalDeferral: () => ({
     kind: 'found-by-search',
@@ -60,8 +60,7 @@ export const given: GivenPolicy = {
         ? null
         : 'Codex finds other servers’ tools with its tool search, so none of them is in every request.',
   }),
-  namespaceText: (declaredWith, count) =>
-    count === 0 ? null : (declaredWith ?? CODEX_TOOLS_DESCRIPTION),
+  namespaceText: (declaredWith, count) => (count === 0 ? null : declaredWith),
   planningKey: 'collaboration-mode',
   launchSetting,
 }

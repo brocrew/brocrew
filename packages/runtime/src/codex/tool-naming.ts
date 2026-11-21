@@ -1,3 +1,3 @@
 import type { ToolNaming } from '@brobot2/shared/tool-naming'
 
-export const CODEX_TOOL_NAMING: ToolNaming = { prefix: '', separator: '__' }
+export const CODEX_TOOL_NAMING: ToolNaming = { prefix: 'mcp__', separator: '__' }

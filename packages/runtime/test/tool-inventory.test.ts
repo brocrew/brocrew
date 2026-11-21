@@ -306,13 +306,12 @@ describe('how a provider spells a server’s tool (358)', () => {
     expect(qualifyWith(naming, 'crew', 'a/b')).toBe('wire:crew/a/b')
   })
 
-  it('the two conventions are what was measured, and they differ', () => {
+  it('current adapters qualify core MCP names with the same convention', () => {
     // Claude: `probe:tool-inventory` read `mcp__brobot__spawn_agent` out of `system/init.tools`.
     expect(qualifyWith(CLAUDE_TOOL_NAMING, 'brobot', 'spawn_agent')).toBe(
       'mcp__brobot__spawn_agent',
     )
-    // Codex: `353` read the five names, unprefixed, off the child's own outbound request body.
-    expect(qualifyWith(CODEX_TOOL_NAMING, 'brobot', 'spawn_agent')).toBe('brobot__spawn_agent')
+    expect(qualifyWith(CODEX_TOOL_NAMING, 'brobot', 'spawn_agent')).toBe('mcp__brobot__spawn_agent')
   })
 
   it('⛔ the PREFIX is checked, so a name that merely contains the separator is not a server', () => {

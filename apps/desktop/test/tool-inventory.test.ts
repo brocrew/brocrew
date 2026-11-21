@@ -36,7 +36,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  */
 
 const CLAUDE_NAMING = { prefix: 'mcp__', separator: '__' }
-const CODEX_NAMING = { prefix: '', separator: '__' }
+const LEGACY_CODEX = { prefix: '', separator: '__' }
 
 it('reads fictional naming from the runtime payload without merging colliding or malformed names', () => {
   const payload = boundInventory({
@@ -170,7 +170,7 @@ describe('what tools this conversation has (358)', () => {
 
     it('⛔ the provider publishes none — declared is shown, and confirmed by nothing', () => {
       const reading = readInventory(
-        registry({ naming: CODEX_NAMING, declared: DECLARED, published: null }),
+        registry({ naming: LEGACY_CODEX, declared: DECLARED, published: null }),
       )
       expect(reading.kind).toBe('unpublished')
       expect(reading.own?.tools.map((tool) => tool.standing)).toEqual([
@@ -324,7 +324,7 @@ describe('what tools this conversation has (358)', () => {
   describe('the spelling, which is data and never a provider', () => {
     it('⛔ a built-in is not a qualified name, on either convention', () => {
       expect(splitQualified(CLAUDE_NAMING, 'Bash')).toBeNull()
-      expect(splitQualified(CODEX_NAMING, 'shell')).toBeNull()
+      expect(splitQualified(LEGACY_CODEX, 'shell')).toBeNull()
       // ⚠️ …and the pair, so "returns null" is not simply what this function always does.
       expect(splitQualified(CLAUDE_NAMING, 'mcp__x__y')).not.toBeNull()
     })
@@ -365,17 +365,16 @@ describe('what tools this conversation has (358)', () => {
     })
 
     it('round-trips: what `qualify` writes, `splitQualified` reads back', () => {
-      for (const naming of [CLAUDE_NAMING, CODEX_NAMING]) {
+      for (const naming of [CLAUDE_NAMING, LEGACY_CODEX, CODEX_TOOL_NAMING]) {
         const written = qualify(naming, 'brobot', 'get_agent_status')
         expect(splitQualified(naming, written)).toEqual({
           server: 'brobot',
           tool: 'get_agent_status',
         })
       }
-      // ⛔ And the two conventions really do differ, or the loop above proves nothing.
-      expect(qualify(CLAUDE_NAMING, 'brobot', 'x')).not.toBe(qualify(CODEX_NAMING, 'brobot', 'x'))
+      expect(qualify(CLAUDE_NAMING, 'brobot', 'x')).not.toBe(qualify(LEGACY_CODEX, 'brobot', 'x'))
       expect(qualify(CLAUDE_NAMING, 'brobot', 'x')).toBe('mcp__brobot__x')
-      expect(qualify(CODEX_NAMING, 'brobot', 'x')).toBe('brobot__x')
+      expect(qualify(LEGACY_CODEX, 'brobot', 'x')).toBe('brobot__x')
     })
 
     it('a row carries the name the MODEL must say, not the bare one', () => {
@@ -383,7 +382,7 @@ describe('what tools this conversation has (358)', () => {
         registry({ naming: CLAUDE_NAMING, declared: DECLARED, published: PUBLISHED }),
       )
       const codex = readInventory(
-        registry({ naming: CODEX_NAMING, declared: DECLARED, published: null }),
+        registry({ naming: LEGACY_CODEX, declared: DECLARED, published: null }),
       )
       expect(claude.own?.tools.map((tool) => tool.qualified)).toEqual([
         'mcp__brobot__list_agents',
@@ -434,27 +433,28 @@ describe('what tools this conversation has (358)', () => {
       { naming: CLAUDE_NAMING, name: 'mcp__srv__a__b' },
       { naming: CLAUDE_NAMING, name: 'mcp__' },
       { naming: CLAUDE_NAMING, name: 'mcp____x' },
-      { naming: CODEX_NAMING, name: 'brobot__spawn_agent' },
-      { naming: CODEX_NAMING, name: 'shell' },
-      { naming: CODEX_NAMING, name: '__x' },
+      { naming: LEGACY_CODEX, name: 'brobot__spawn_agent' },
+      { naming: LEGACY_CODEX, name: 'shell' },
+      { naming: LEGACY_CODEX, name: '__x' },
+      { naming: CODEX_TOOL_NAMING, name: 'mcp__brobot__spawn_agent' },
+      { naming: CODEX_TOOL_NAMING, name: 'brobot__spawn_agent' },
     ]
     for (const { naming, name } of CASES) {
       expect(splitQualified(naming, name), `split disagrees on ${name}`).toEqual(
         runtimeSplitQualified(naming, name),
       )
     }
-    for (const naming of [CLAUDE_NAMING, CODEX_NAMING]) {
+    for (const naming of [CLAUDE_NAMING, LEGACY_CODEX, CODEX_TOOL_NAMING]) {
       expect(qualify(naming, 'brobot', 'spawn_agent')).toBe(
         runtimeQualifyWith(naming, 'brobot', 'spawn_agent'),
       )
     }
-    // ⚠️ **Non-vacuity**: the table really does contain inputs the two could differ on — one that
-    // splits, one that does not, and one that only the prefix check separates.
+    // The samples cover a qualified tool, a built-in, and a name rejected by the prefix.
     expect(splitQualified(CLAUDE_NAMING, 'mcp__brobot__spawn_agent')).not.toBeNull()
     expect(splitQualified(CLAUDE_NAMING, 'some__builtin')).toBeNull()
     // …and the two CONSTANTS agree too, which is what the fixture values above stand in for.
     expect(CLAUDE_NAMING).toEqual(CLAUDE_TOOL_NAMING)
-    expect(CODEX_NAMING).toEqual(CODEX_TOOL_NAMING)
+    expect(CODEX_TOOL_NAMING).toEqual(CLAUDE_NAMING)
   })
 
   it('⛔ the “why” sentence says what the code decides, not what the brief asked for', () => {
@@ -489,7 +489,7 @@ describe('what tools this conversation has (358)', () => {
 
     it('⛔ `published: null` is COPIED, never normalized into an empty inventory', () => {
       const state = createTranscript()
-      applyEvent(state, { ...event, naming: CODEX_NAMING, published: null })
+      applyEvent(state, { ...event, naming: LEGACY_CODEX, published: null })
       expect(state.tools.set?.published).toBeNull()
       // ⚑ The pair, through the same fold: a real publication lands as itself.
       const other = createTranscript()
@@ -608,7 +608,7 @@ describe('what tools this conversation has (358)', () => {
 
 describe('392 · the catalogue', () => {
   const claude = registry({ naming: CLAUDE_NAMING, declared: DECLARED, published: PUBLISHED })
-  const codex = registry({ naming: CODEX_NAMING, declared: DECLARED, published: null })
+  const codex = registry({ naming: LEGACY_CODEX, declared: DECLARED, published: null })
 
   it('⛔ every row BroBot did not declare has NO standing — an absent answer, not a fourth word', () => {
     const rows = catalogue(
@@ -1123,7 +1123,7 @@ describe('444 relay 1 · the inventory says as-of-when', () => {
       expect(readInventory(told).kind).toBe('published')
       expect(readInventory(told).at).toBe(WHEN)
       const unpublished = registry(
-        { naming: CODEX_NAMING, declared: DECLARED, published: null },
+        { naming: LEGACY_CODEX, declared: DECLARED, published: null },
         0,
         WHEN,
       )

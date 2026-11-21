@@ -5,7 +5,7 @@ import type { AgentToolset } from '../../agent-tools'
 import type { ExternalMcpReach } from '../../external-mcp'
 import type { ManagedPluginMcpServer } from '../../managed-plugin-mcp'
 import type { McpCallsInFlight } from '../external-mcp'
-import { codexDynamicToolsFor } from '../agent-tools'
+import type { AgentMcpLaunch } from '../agent-mcp-http'
 import { keptToolApprovals } from '../kept-tool-approvals'
 import {
   approvalProfileProblems,
@@ -14,7 +14,7 @@ import {
   threadResumeParams,
 } from './request-params'
 
-// Preserve the differing wire options: only a fresh thread declares dynamic tools.
+// Both fresh and resumed threads discover the current owned MCP toolset.
 export function openingParams(
   opening: 'started' | 'resumed',
   targetRef: SessionRef | null,
@@ -27,6 +27,7 @@ export function openingParams(
   kept: ReturnType<typeof keptToolApprovals>,
   workRoots: readonly string[],
   managedPluginMcp: readonly ManagedPluginMcpServer[] | undefined,
+  coreMcp?: AgentMcpLaunch,
 ) {
   return opening === 'started'
     ? threadStartParams(
@@ -34,11 +35,12 @@ export function openingParams(
         model,
         systemHint,
         approvalMode,
-        codexDynamicToolsFor(agentTools),
         externalMcp,
         kept,
         workRoots,
         managedPluginMcp,
+        coreMcp,
+        agentTools?.tools.map((one) => one.name),
       )
     : threadResumeParams(
         targetRef!.sessionId,
@@ -50,6 +52,8 @@ export function openingParams(
         kept,
         workRoots,
         managedPluginMcp,
+        coreMcp,
+        agentTools?.tools.map((one) => one.name),
       )
 }
 

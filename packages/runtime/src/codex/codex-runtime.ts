@@ -1,3 +1,5 @@
+import { openCodexCoreMcp } from './core-mcp'
+import { handleAgentToolCall, type AgentCallContext } from './runtime-parts/agent-tool-call'
 import {
   namesForeignThread,
   countForeignDrop,
@@ -39,14 +41,12 @@ import {
 } from './runtime-parts/request-preparation'
 import {
   elicitationPayloadFor,
-  declinedToolCall,
   elicitationScopeProblem,
   requestScopeProblem,
   type ForwardedUserInput,
   serverRequestKind,
   safeRefusal,
   aToolApprovalsPositives,
-  codexToolCall,
   userInputPayloadFor,
   userInputDecline,
   codexDecision,
@@ -115,15 +115,14 @@ import { codexNoLongerHasTheThread } from './lost-thread'
 import { beginCodexHomeBoot } from './home-boot'
 import { ensureCodexMemoryConfig, type CodexMemoryConfigResult } from './memory-config'
 import { removeStaleCodexPermissionConfig } from './stale-permission-config'
-import { agentToolCard, elicitationCard } from './runtime-parts/request-cards'
+import { elicitationCard } from './runtime-parts/request-cards'
 import { nativeAccountTag } from './account-identity'
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
 import { registerCodexBuiltInSkills } from './built-in-skills'
 import type { SessionStatus } from '@brobot2/shared'
-import { beyondItsRailsOf, type AgentToolset } from '../agent-tools'
-import { answerCodexToolCall } from './agent-tools'
+import type { AgentToolset } from '../agent-tools'
 import type { ExternalMcpReach } from '../external-mcp'
 import {
   codexElicitation,
@@ -136,7 +135,7 @@ import { keptToolApprovals } from './kept-tool-approvals'
 import { ApprovalModeSwitch, type ApprovalModeState } from '../approval-mode'
 import { CommandTails, type CommandTail } from '../command-output'
 import { ToolAnswers, type ToolAnswer } from '../tool-answer'
-import { MessageActCalls } from '../message-act'
+import { MessageActCalls, messageActFromReceipt } from '../message-act'
 import { NextTurnSetting, sessionSettings, requestPlanMode } from '../next-turn'
 import {
   wrapUnknown,
@@ -237,6 +236,7 @@ export class CodexSessionHandle implements SessionHandle {
   private readonly permissions = new RequestBroker<PermissionDecision>(
     () => this.isShuttingDown,
     () => ({ outcome: 'deny', message: 'session closed' }),
+    (id) => this.emit({ type: 'request_resolved', id }),
   )
   private readonly userInputs = new RequestBroker<UserInputResponse>(
     () => this.isShuttingDown,
@@ -258,6 +258,7 @@ export class CodexSessionHandle implements SessionHandle {
   private readonly toolAnswers = new ToolAnswers()
   private currentStatus: SessionStatus = 'idle'
   private currentTurn: CodexTurn | null = null
+  private coreMcp: Awaited<ReturnType<typeof openCodexCoreMcp>>
   private managedPluginsChecked: string | undefined
   private managedPluginObservationVersion = 0
   private managedPluginFailureReported = false
@@ -494,6 +495,11 @@ export class CodexSessionHandle implements SessionHandle {
     const kept = keptToolApprovals(this.providerHome)
     grantKeptTools(kept, this.externalMcp, this.mcpCalls)
     const workRoots = this.sendingWorkFolders(this.approvals.effective, this.folders.effective)
+    this.coreMcp = await openCodexCoreMcp(
+      this.agentCallContext(),
+      () => this._ref?.sessionId ?? null,
+      (id) => this.spendRequest(id),
+    )
     this.startPhase('thread-sent')
     const response = await this.openTheThread(
       opening === 'started' ? 'thread/start' : 'thread/resume',
@@ -509,6 +515,7 @@ export class CodexSessionHandle implements SessionHandle {
         kept,
         workRoots,
         this.managedPluginMcp,
+        this.coreMcp?.launch,
       ),
     )
     const answerBytes = this.transport.responseBytes?.(
@@ -1080,81 +1087,44 @@ export class CodexSessionHandle implements SessionHandle {
     if (method !== 'item/completed' || event.type !== 'tool_result' || !isRecord(params))
       return event
     const item = params['item']
-    if (
-      !isRecord(item) ||
-      item['type'] !== 'dynamicToolCall' ||
-      item['tool'] !== 'message_agent' ||
-      (item['namespace'] !== this.agentTools?.server && item['namespace'] !== null)
-    )
-      return event
+    if (!isRecord(item) || item['tool'] !== 'message_agent') return event
+    const dynamic =
+      item['type'] === 'dynamicToolCall' &&
+      (item['namespace'] === this.agentTools?.server || item['namespace'] === null)
+    const mcp = item['type'] === 'mcpToolCall' && item['server'] === this.agentTools?.server
+    if (!dynamic && !mcp) return event
     const act = this.callsForTheCurrentTurn()?.consume(
       event.id,
       readString(params, 'turnId'),
-      (call) => (event.ok ? call.act : undefined),
+      (call) =>
+        event.ok &&
+        (dynamic || messageActFromReceipt(item['result'], codexToolAnswerParts(item)) === call.act)
+          ? call.act
+          : undefined,
     )
     return act === undefined ? event : { ...event, messageAct: act }
   }
 
-  // Reserve before publishing. Answer a cancelled tool before interrupting its turn; leave other cards open.
-  private async handleAgentToolCall(id: string | number, params: unknown): Promise<void> {
-    if (this.isShuttingDown) {
-      this.respondToProvider(id, safeRefusal({ kind: 'agentTool' }))
-      return
+  private agentCallContext(): AgentCallContext {
+    return {
+      tools: this.agentTools,
+      cwd: this.cwd,
+      states: this.requestStates,
+      permissions: this.permissions,
+      machine: this.machine,
+      isShuttingDown: () => this.isShuttingDown,
+      turn: () => this.currentTurn,
+      calls: () => this.callsForTheCurrentTurn(),
+      mode: () => this.approvals.effective,
+      emit: (event) => this.emit(event),
+      respond: (id, value) => this.respondToProvider(id, value),
+      track: (task) => this.track(task),
+      stopTurn: (id) => this.askTheTurnToStop(id),
     }
-    const call = codexToolCall(params)
-    if (call === null) {
-      this.respondToProvider(id, safeRefusal({ kind: 'agentTool' }))
-      return
-    }
-    const turn = this.currentTurn
-    const calls = this.callsForTheCurrentTurn()
-    const callId = call.callId ?? ''
-    const owned =
-      call.tool === 'message_agent' &&
-      this.agentTools?.tools.some((one) => one.name === call.tool) === true &&
-      (call.namespace === null || call.namespace === this.agentTools.server)
-    const messageClaim = calls?.claim(callId, turn?.providerTurnId ?? '', owned)
-    const state = this.requestStates.get(requestKey(id))
-    if (state?.phase === 'claimed' && messageClaim !== undefined) state.messageCallId = callId
-    const completed = (answer: import('../agent-tools').AgentToolAnswer): void => {
-      if (this.terminated || this.isShuttingDown || this.currentTurn !== turn) return
-      calls?.remember(callId, messageClaim, answer.structured)
-    }
-    if (isAutoApprove({ approvalMode: this.approvals.effective })) {
-      this.respondToProvider(id, await answerCodexToolCall(this.agentTools, call, completed))
-      return
-    }
-    const offered = this.agentTools?.tools.find((one) => one.name === call.tool)
-    if (
-      offered !== undefined &&
-      beyondItsRailsOf(offered, call.arguments) === 'nothing-its-rails-do-not-cover'
-    ) {
-      this.respondToProvider(id, await answerCodexToolCall(this.agentTools, call, completed))
-      return
-    }
-    const reservation = this.permissions.reserve(requestKey(id))
-    if (!reservation.accepted) {
-      this.respondToProvider(id, safeRefusal({ kind: 'agentTool' }))
-      return
-    }
-    const claimed = this.requestStates.get(requestKey(id))
-    if (claimed?.phase === 'claimed')
-      claimed.allowed = new Set<PermissionOutcome>(['allow', 'deny'])
-    this.emit(agentToolCard(id, call, this.cwd))
-    this.machine.beginWait()
-    const decision = await reservation.response
-    if (this.isShuttingDown) {
-      this.machine.abandonWait()
-      this.respondToProvider(id, safeRefusal({ kind: 'agentTool' }))
-      return
-    }
-    this.machine.endWait()
-    if (decision.outcome !== 'allow') {
-      this.respondToProvider(id, declinedToolCall(call.tool))
-      if (decision.outcome === 'cancel') await this.askTheTurnToStop(readString(params, 'turnId'))
-      return
-    }
-    this.respondToProvider(id, await answerCodexToolCall(this.agentTools, call, completed))
+  }
+
+  private handleAgentToolCall(id: string | number, params: unknown): Promise<void> {
+    return handleAgentToolCall(this.agentCallContext(), id, params)
   }
 
   // Spend first, settle the broker next, then dismiss a card only if it was still pending locally.
@@ -1347,6 +1317,7 @@ export class CodexSessionHandle implements SessionHandle {
     this.machine.fatalError(reason, endedByThisAdapter)
     this.terminated = true
     this.eventQueue.close()
+    void this.closeCoreTools()
     void Promise.resolve(this.transport.close()).catch(() => {})
   }
 
@@ -1778,12 +1749,19 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   // Reject new work, settle prompts, drain response writers, flush, interrupt, then close the transport.
+  async closeCoreTools(): Promise<void> {
+    const owned = this.coreMcp
+    this.coreMcp = undefined
+    await owned?.close()
+  }
+
   private async doClose(): Promise<void> {
     this.cancelManagedPluginWait()
     this.commandTails.clear()
     this.backgroundTerminals.close()
     if (!this.machine.beginClose()) {
       this.settleRequests()
+      await this.closeCoreTools()
       await withTimeout(this.drainInFlight(), CLOSE_FLUSH_TIMEOUT_MS)
       this.terminated = true
       this.eventQueue.close()
@@ -1791,6 +1769,7 @@ export class CodexSessionHandle implements SessionHandle {
       return
     }
     this.settleRequests()
+    await this.closeCoreTools()
     await withTimeout(this.drainInFlight(), CLOSE_FLUSH_TIMEOUT_MS)
     if (this.machine.hasProviderWork) {
       this.machine.requestInterrupt()
@@ -1896,6 +1875,7 @@ export class CodexRuntime implements AgentRuntime {
       await handle.begin('started', opts.model, opts.systemHint, bootSettled)
       if (cancel.cancelled) throw new Error('codex start was cancelled')
     } catch (error) {
+      await handle.closeCoreTools()
       await transport.close() // bounded process teardown, no leak, before rejecting
       throw aFailedStart(error)
     } finally {
@@ -2007,6 +1987,7 @@ export class CodexRuntime implements AgentRuntime {
       // Only resume replays a ledger containing background processes from the previous app-server.
       handle.refreshBackgroundWork()
     } catch (error) {
+      await handle.closeCoreTools()
       await transport.close() // bounded process teardown, no leak, before rejecting
       if (error instanceof AuthUnavailableError) throw error
       const noSuchSession = codexNoLongerHasTheThread(error, ref.sessionId, options.providerHome)
