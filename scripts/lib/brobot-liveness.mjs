@@ -22,23 +22,17 @@ import { join } from 'node:path'
 export const GATE_SOCKET = 'one-host.sock'
 
 /**
- * How long a live host has to say its token. ⚠️ **The app's own bound**
- * (`one-host-gate.ts:85`), not a longer one: this runs before every reset, and the two clients that
- * chose 5 s and 10 s were waiting for an app they had just launched.
+ * How long a live host has to say its token: the app's own bound (`one-host-gate.ts:85`), not a
+ * longer one, since this runs before every reset.
  */
 export const ANSWER_MS = 1500
 
 /**
- * ⛔ **The only two errnos that mean nothing is listening.**
+ * The only two errnos that mean nothing is listening: `ENOENT` (no name) and `ECONNREFUSED` (a name
+ * the kernel refuses, which is what a finished process leaves behind).
  *
- * `ENOENT` — there is no name. `ECONNREFUSED` — there is a name and the kernel refuses the connect,
- * which on POSIX is precisely the artefact a finished process leaves behind and is the whole reason
- * a listening socket was chosen over a lock file.
- *
- * ⚠️ **Everything else is `unknown` and that is not a formality.** `EACCES` is a gate this user may
- * not connect to; `ENOTSOCK` is something that is not a socket wearing the gate's name; `ELOOP` is a
- * symlink chain; `EMFILE` is this process out of descriptors. None of them is evidence that BroBot
- * is not running, and a reset that read them as one would delete on the strength of its own bad day.
+ * Everything else is `unknown`: `EACCES`, `ENOTSOCK`, `ELOOP` and `EMFILE` are not evidence that
+ * BroBot is stopped, and a reset must not delete on the strength of its own bad day.
  */
 export const NOT_LISTENING_CODES = Object.freeze(['ENOENT', 'ECONNREFUSED'])
 
@@ -109,12 +103,9 @@ export function askGate(socketPath, options = {}) {
 /**
  * The whole process table, with each row's full command line.
  *
- * ⚠️ **Not `readProcessTable` from `owned-teardown.mjs`**, which reads `pid=,ppid=` only — two
- * fields, on purpose, because it feeds a BFS and a command string with embedded whitespace is what
- * makes such a parse drop rows silently. This one needs the command, so it parses the two numbers
- * off the front and takes the rest verbatim.
- *
- * ⛔ **A `ps` that fails is `unknown`, never an empty table**, which is this module's whole subject.
+ * Not `readProcessTable` from `owned-teardown.mjs`, which reads `pid=,ppid=` only because it feeds a
+ * BFS and embedded whitespace would drop rows; this parses the two numbers off the front and takes
+ * the rest verbatim. A `ps` that fails is `unknown`, never an empty table.
  *
  * @returns {{ kind: 'read', rows: { pid: number, ppid: number, command: string }[] } | { kind: 'unknown', why: string }}
  */
@@ -124,10 +115,9 @@ export function readCommandTable({ exec = execFileSync } = {}) {
     text = exec('ps', ['-A', '-ww', '-o', 'pid=,ppid=,command='], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      // ⚠️ **Both bounds, and both turn into `unknown`** (351 review). Without them a wedged `ps`
-      // hangs a reset that is meant to take under a second, and a process table larger than Node's
-      // default buffer throws `ENOBUFS` — which is *"I could not ask"*, and the `catch` below is
-      // what makes sure it is reported as that rather than as an empty machine.
+      // Both bounds turn into `unknown`: a wedged `ps` would hang a reset meant to take under a second,
+      // and a table larger than Node's default buffer throws `ENOBUFS`, which the `catch` below reports
+      // as "could not ask" rather than as an empty machine.
       timeout: PS_TIMEOUT_MS,
       maxBuffer: PS_MAX_BUFFER,
     })
@@ -140,20 +130,18 @@ export function readCommandTable({ exec = execFileSync } = {}) {
     if (match === null) continue
     rows.push({ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] })
   }
-  // ⛔ A `ps` that answered with nothing parseable is not an empty machine. This process is in its
-  // own output, so zero rows means the parse — or the instrument — is wrong, not that nothing runs.
+  // A `ps` that answered with nothing parseable is not an empty machine: this process is in its own
+  // output, so zero rows means the parse or the instrument is wrong.
   if (rows.length === 0) return { kind: 'unknown', why: 'ps answered, and no row could be parsed' }
   return { kind: 'read', rows }
 }
 
 /**
- * Every row whose command line NAMES one of `spellings`.
+ * Every row whose command line names one of `spellings`.
  *
- * ⚠️ **Both spellings of the target, and that is measured rather than defensive.** Chromium resolves
- * `--user-data-dir` before `app.getPath('userData')` answers — `/tmp/x` comes back as
- * `/private/tmp/x` (`scripts/lib/smoke-run.mjs:87-92`) — so the app DERIVES its paths from the real
- * one while its own argv still carries whatever the launcher typed. A scan for one of them misses
- * the app when the other was used.
+ * Both spellings are needed: Chromium resolves `--user-data-dir` before `app.getPath('userData')`
+ * answers (`/tmp/x` comes back as `/private/tmp/x`, see `scripts/lib/smoke-run.mjs:87-92`), so the
+ * app derives its paths from the real one while its argv carries what the launcher typed.
  */
 export function processesNaming(spellings, rows, { self = process.pid } = {}) {
   const wanted = [
@@ -166,16 +154,9 @@ export function processesNaming(spellings, rows, { self = process.pid } = {}) {
 }
 
 /**
- * ⛔ **This process AND every ancestor of it** (351 review).
- *
- * 🔴 **Excluding only our own pid made the documented invocation always refuse.** `pnpm clean-base
- * --dir <path>` runs through `pnpm` and a `sh -c`, and BOTH of their command lines contain the path
- * — so the scan found two processes "naming this userData", reported `running`, and removed nothing,
- * every single time. Measured before the fix: `⛔ refused · BroBot is running on this userData` on an
- * empty fixture directory with no app anywhere near it.
- *
- * ⚠️ **The chain is walked, not guessed at a fixed depth**: `node` under `sh` under `pnpm` under a
- * shell under the terminal is five, and a different runner is a different number.
+ * This process and every ancestor of it. Excluding only our own pid made `pnpm clean-base --dir
+ * <path>` always refuse, because `pnpm` and its `sh -c` both carry the path in their command lines.
+ * The chain is walked rather than assumed to have a fixed depth.
  */
 export function ownAncestry(rows, self) {
   const parent = new Map(rows.map((row) => [row.pid, row.ppid]))
@@ -192,11 +173,9 @@ export function ownAncestry(rows, self) {
 }
 
 /**
- * Does `command` name `path` — as a path, rather than as a prefix of a longer one?
- *
- * ⛔ **`includes` alone made `/tmp/ud` match a process on `/tmp/ud2`** (351 review), so a reset on
- * one directory refused because a different app was running on a directory whose name started the
- * same way. The character after the match has to end the path or continue it downward.
+ * Does `command` name `path`, as a path rather than as a prefix of a longer one? `includes` alone
+ * would match `/tmp/ud` against a process on `/tmp/ud2`; the character after the match has to end
+ * the path or continue it downward.
  */
 export function namesPath(command, path) {
   let from = 0
@@ -215,17 +194,13 @@ export function namesPath(command, path) {
 const SINGLETON_TARGET = /^(.*)-(\d+)$/
 
 /**
- * 🔴 **The instrument that works when argv is silent** — Chromium's own lock, inside the target.
+ * Chromium's own lock inside the target: the instrument that works when argv is silent.
  *
- * ⚠️ **Three answers, like everything else here.** `absent` is the ordinary state after a clean quit
- * (measured: all three `Singleton*` names are `ENOENT` once the app is down). `held` names a pid,
- * and whether that pid is alive is the caller's question. Anything else — a target that will not
- * parse, a name that is not a symlink, a `readlink` that fails for a reason other than absence — is
- * `unknown`, because something is at a name Chromium owns and this cannot say what.
- *
- * ⛔ **A lock naming another HOST is `unknown`, not `held`.** Chromium supports a userData on a
- * network share; a pid from another machine means nothing here and must not be evaluated as if it
- * were local.
+ * Three answers. `absent` is the ordinary state after a clean quit (all three `Singleton*` names are
+ * `ENOENT`). `held` names a pid; whether it is alive is the caller's question. Anything else (a
+ * target that will not parse, a name that is not a symlink, a `readlink` failing for a reason other
+ * than absence) is `unknown`. A lock naming another host is `unknown` too: Chromium supports a
+ * userData on a network share, and a remote pid means nothing here.
  */
 export function readSingletonLock(userData, { readLink = readlinkSync, host = hostname() } = {}) {
   let target
@@ -252,21 +227,15 @@ export function readSingletonLock(userData, { readLink = readlinkSync, host = ho
 }
 
 /**
- * 🔴 **The verdict a reset acts on** — `running`, `not-running`, or `unknown`.
+ * The verdict a reset acts on: `running`, `not-running`, or `unknown`.
  *
- * ⚠️ **A named target, not a positional array** (351 review). The first draft took
- * `spellings[0]` for the socket path and the rest for the argv scan, so the ORDER of two
- * indistinguishable strings decided which directory was probed, and nothing said so.
+ * Takes a named target rather than a positional array, so it is explicit which spelling probes the
+ * socket. Three instruments, any one of which refuses: the one-host gate, the process table, and
+ * Chromium's `SingletonLock` (the process table is blind on the default userData).
  *
- * ⛔ **Three instruments and any one of them refuses**: the one-host gate, the process table, and
- * Chromium's `SingletonLock`. The third exists because the second is structurally blind on the
- * default userData — see the module header.
- *
- * ⚠️ **`not-running` is still the narrow claim it sounds like.** ⛔ It is not a claim that nothing
- * this app started is still alive: a provider child holds its home through `CODEX_HOME` /
- * `CLAUDE_CONFIG_DIR` in its ENVIRONMENT, which no process table shows, so a detached child orphaned
- * by a crash names this userData nowhere. That is `350` §4.3's unclosed product fact; this reports
- * it as a limit rather than covering it.
+ * `not-running` is a narrow claim: a provider child holds its home through `CODEX_HOME` /
+ * `CLAUDE_CONFIG_DIR` in its environment, which no process table shows, so a detached child
+ * orphaned by a crash names this userData nowhere.
  *
  * @param {{ lexical: string, real: string }} target the two spellings of one directory
  * @returns {Promise<{ verdict: 'running'|'not-running'|'unknown', reasons: string[], processes: {pid:number,command:string}[] }>}
@@ -294,9 +263,8 @@ export async function whatIsRunning(
     }
   }
   if (gate.kind !== 'nothing-listening') {
-    // ⛔ Anything that is not one of the two known kinds — including a kind added later and not
-    // handled here — is `unknown`. A `switch` with a silent default is how a third state becomes
-    // two again.
+    // Anything that is not one of the two known kinds, including a kind added later, is `unknown`: a
+    // `switch` with a silent default is how a third state becomes two again.
     return {
       verdict: 'unknown',
       reasons: [`the one-host gate: ${gate.why ?? `unrecognised answer ${gate.kind}`}`],
@@ -342,8 +310,8 @@ export async function whatIsRunning(
         processes: [{ pid: holder.pid, command: holder.command }],
       }
     }
-    // ⚠️ A lock naming a pid that is gone is what a crash leaves behind. Said out loud rather than
-    // swallowed: it is the one thing on this path that hints the last run did not end cleanly.
+    // A lock naming a pid that is gone is what a crash leaves behind. Said out loud rather than
+    // swallowed: it hints that the last run did not end cleanly.
     reasons.push(
       `Chromium's SingletonLock names pid ${String(lock.pid)}, which is not in the table — a crash left it behind`,
     )

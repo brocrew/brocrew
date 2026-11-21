@@ -16,9 +16,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 /**
  * The `>=X.Y.Z` this repo declares, as three numbers.
  *
- * ⛔ **Exactly one range shape, and anything else is a refusal rather than a guess.** A check that
- * cannot read its own declaration must not answer *"fine"* — that is a gate that passes because it
- * failed, which is `325`'s `holdersOf` defect in a different file.
+ * Exactly one range shape; anything else is a refusal rather than a guess. A check that cannot
+ * read its own declaration must not answer "fine": that is a gate that passes because it failed.
  */
 export function declaredMinimum(range) {
   const match = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(range.trim())
@@ -85,7 +84,7 @@ export function engineProblem({
   )
 }
 
-// ⚠️ Only when this file IS the command. Importing it from the test must not exit the runner.
+// Only when this file is the command. Importing it from the test must not exit the runner.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const problem = engineProblem()
   if (problem !== null) {

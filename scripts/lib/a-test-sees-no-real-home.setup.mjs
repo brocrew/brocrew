@@ -133,9 +133,8 @@ const givenAHome = (args) => {
 // is given above, so a planted defect in sign-in code is contained only where no program starts.
 // With this variable naming a record the run made before it began, every start is written there,
 // a line each, and refused, whether or not the caller catches the refusal. What is written is the
-// way it was tried and nothing of what was to be started. ⚑ Decided once, here: a test cannot
-// turn it off. ⛔ A record that is missing or cannot be written is a run that cannot be checked,
-// and its tests are not run.
+// way it was tried and nothing of what was to be started. A test cannot turn this off. A record
+// that is missing or cannot be written is a run that cannot be checked, and its tests are not run.
 const NONE_MAY_START = 'BROBOT_TESTS_START_NO_PROGRAM'
 const record = process.env[NONE_MAY_START]
 const noneMayStart = record !== undefined && record !== ''

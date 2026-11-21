@@ -126,65 +126,47 @@ const ELECTRON = join(DESKTOP, 'node_modules/.bin/electron')
 const ENTRY = join(DESKTOP, 'out/main/index.js')
 
 /**
- * 🔴 **How long a person may wait for an idle BroBot to be gone.**
+ * How long a person may wait for an idle BroBot to be gone.
  *
- * Measured rather than chosen. Four instrumented idle quits put the four ordered steps at **1–2 ms**,
- * Electron's `quit` at **+103–105 ms**, and the process gone at **+508–521 ms**; this check's own
- * first three runs closed in **320–406 ms**. So the budget is about **twelve times** the observed
- * worst case, and it is still an eighth of the sixty seconds `270` refused to adopt the app over.
+ * Measured: four instrumented idle quits put the four ordered steps at 1-2 ms, Electron's `quit` at
+ * +103-105 ms and the process gone at +508-521 ms; this check's own first runs closed in 320-406 ms.
+ * The budget is about twelve times the worst observed case and an eighth of the sixty seconds that
+ * motivated the check.
  *
- * ⚠️ **It bounds the IDLE quit deliberately.** A quit with a wedged provider in it is allowed longer
- * by `runtime-host.ts`'s own bounds (2 × `closeDrainTimeoutMs`, 10 s), and this check never starts a
- * session — see the settle below for the one provider child it deliberately waits out.
+ * It bounds the idle quit deliberately. A quit with a wedged provider in it is allowed longer by
+ * `runtime-host.ts`'s own bounds (2 x `closeDrainTimeoutMs`, 10 s), and this check never starts a
+ * session.
  */
 const QUIT_BUDGET_MS = 5_000
 
 /**
- * ⛔ **How long the app may look gone while still being alive** (271 §2, re-derived by 294).
+ * How long the app may look gone while still being alive.
  *
- * `270`'s finding in one number: the window went black and the process lived for another minute.
- *
- * 🔴 **2,500 was a number about a bound that never fired, and 294 makes it a number about one that
- * does.** The window goes at ~350 ms; the process is now gone at `ELECTRON_EXIT_GRACE_MS` plus the
- * cost of the process that enforces it — measured at **2,141–2,231 ms** across six loaded quits, so
- * a lag of ~1,850 ms is the NORMAL result of the fix working. At 2,500 that left 650 ms of margin
- * and the PM measured a run at **2,502 ms**: the old limit was already firing on the mechanism
- * rather than on the disease.
- *
- * ⚠️ **So this is derived, not widened**: 2,000 (the app's own promise) + ~250 (a detached Node
- * start) + 50 (one poll) + headroom for a loaded machine, where every one of those is slower. ⛔ **It
- * is still the assertion that catches the closer NOT working** — an app whose bound is not enforced
- * lags by tens of seconds, not by three — which is the only version of `270`'s finding that can
- * still reach a person.
+ * The window goes at ~350 ms; the process is gone at `ELECTRON_EXIT_GRACE_MS` plus the cost of the
+ * process that enforces it, measured at 2,141-2,231 ms across six loaded quits, so a lag of ~1,850 ms
+ * is the normal result. The limit is derived: 2,000 (the app's own promise) + ~250 (a detached Node
+ * start) + 50 (one poll) + headroom for a loaded machine. It still catches the closer not working:
+ * an app whose bound is not enforced lags by tens of seconds, not by three.
  */
 const WINDOW_LAG_MS = 4_000
 
 /**
- * 🔴 **The app's output goes to a FILE, not to a pipe, and that is the second fix in 294.**
+ * The app's output goes to a file, not to a pipe.
  *
- * ⛔ **This check was blinding itself.** {@link RENDERER_ASK} asks at ~27,000 calls a second by
- * design, and Electron logs *"Error occurred in handler for 'runtime:command'"* plus four stack
- * lines for every refusal — so a quit that takes a second produces **6,000–23,000 lines**, measured,
- * on a stderr PIPE whose reader is a Node process competing for a loaded CPU. Two things follow, and
- * both were failing this check:
+ * {@link RENDERER_ASK} asks at ~27,000 calls a second by design, and Electron logs *"Error occurred
+ * in handler for 'runtime:command'"* plus four stack lines for every refusal, so a one-second quit
+ * produces 6,000-23,000 lines. On a stderr pipe read by a Node process on a loaded CPU:
  *
- *  1. **The pipe fills.** The app's own `writeSync` to a full non-blocking pipe raises `EAGAIN` and
- *     falls back to the asynchronous path — which never flushes, because by then the quit has
- *     stopped the loop. ⚑ The line lost this way is the LAST one written, which is the shutdown
- *     report: the very instrument `271` built so that `270`'s minute could name itself.
- *  2. **The reader lags the writer.** `kill -0` says the task is gone while its last chunks are
- *     still in flight, so the assertions ran against a buffer rather than against the app.
+ *  1. The pipe fills. The app's `writeSync` to a full non-blocking pipe raises `EAGAIN` and falls
+ *     back to the asynchronous path, which never flushes because the quit has stopped the loop. The
+ *     line lost is the last one written, the shutdown report.
+ *  2. The reader lags the writer: `kill -0` says the task is gone while its last chunks are still
+ *     in flight, so the assertions ran against a buffer rather than against the app.
  *
- * ⚠️ **A file has neither problem**: Node makes stdout/stderr SYNCHRONOUS when they are files, so
- * nothing is ever queued to be lost, and the kernel is the buffer so no reader can fall behind. ⛔ It
- * also means this check no longer has to guess when the output is complete — when the process is
- * gone, the file is what the app wrote.
- *
- * ⚠️ **It does change one thing about the subject and that is worth saying**: an app whose stderr is
- * a file writes it differently from one whose stderr is a pipe. The pipe case is the real one and
- * the app is fixed for it separately (`index.ts`'s `log`, which is why `will-quit` and `quit`
- * survive a saturated pipe now); what this file changes is only whether the INSTRUMENT can read what
- * was written.
+ * Node makes stdout/stderr synchronous when they are files and the kernel is the buffer, so nothing
+ * is lost and when the process is gone the file is what the app wrote. This changes how the app
+ * writes its stderr relative to a pipe; the pipe case is the real one and the app is fixed for it
+ * separately (`index.ts`'s `log`); the file only lets the instrument read what was written.
  */
 const OUTPUT_ENCODING = 'utf8'
 
@@ -195,36 +177,29 @@ const POLL_MS = 50
 const PROVE_THE_PROBE_MS = 250
 
 /**
- * 🔴 **How long after the PROCESS is gone anything may still hold the debug port** (326 §1).
+ * How long after the process is gone anything may still hold the debug port.
  *
- * ⛔ **This used to be measured from `askedAt`, and that is what made this gate report the machine.**
- * *"The port was released within five seconds of us asking the app to quit"* charges the app for
- * every millisecond this check spent inside its own `lsof` — and one of those was measured at
- * **21,295 ms**, on a run where the app had already exited before the call was even issued. The app
- * is not responsible for the time our instrument spent asking.
+ * Measured from the process exit, not from `askedAt`: that charged the app for every millisecond this
+ * check spent inside its own `lsof` (one call took 21,295 ms on a run where the app had already
+ * exited).
  *
- * ⚑ **The observed value is zero**: a dead process holds no listening socket, so the same exit that
- * ends the process frees the port, and every non-zero reading here is this loop's own sampling
- * granularity — one {@link POLL_MS} plus one {@link targets} call, measured at up to 400 ms under
- * load. So this bounds the SAMPLING and is two of those. ⛔ What it still catches is the thing that
- * is not the app: a leaked helper, reparented to init, holding the port a relaunch needs.
+ * The observed value is zero: a dead process holds no listening socket. Every non-zero reading is
+ * this loop's sampling granularity (one {@link POLL_MS} plus one {@link targets} call, up to 400 ms
+ * under load), so this bounds the sampling and is two of those. What it still catches is a leaked
+ * helper, reparented to init, holding the port a relaunch needs.
  */
 const PORT_RELEASE_MS = 1_000
 
 /**
- * How long the launched pid has to settle into one identity — see the capture below.
- *
- * ⚠️ Short on purpose: a launch that cannot be identified in this long did not start, and the
- * alternative to a bound here is a check that removes a directory it never owned (325).
+ * How long the launched pid has to settle into one identity (see the capture below). Short on
+ * purpose: a launch that cannot be identified in this long did not start, and the alternative to a
+ * bound is a check that removes a directory it never owned.
  */
 const OWNERSHIP_MS = 10_000
 
 /**
- * Does anything answer on the one-host gate socket?
- *
- * ⚠️ **The same question `one-host-gate.ts` asks**, and deliberately not a different one: a path
- * that exists is not an owner, which is that module's whole design. `true` only when something
- * connected AND said who it was.
+ * Does anything answer on the one-host gate socket? The same question `one-host-gate.ts` asks: a
+ * path that exists is not an owner. `true` only when something connected and said who it was.
  */
 function gateAnswers(path) {
   return new Promise((resolve) => {
@@ -260,13 +235,12 @@ async function targets(port) {
 /**
  * Run one expression inside the app's own page and hand back what it evaluated to.
  *
- * ⚠️ **Through the DevTools socket the check already opens a port for**, so this adds no test hook
- * to the product: the expression runs in the ordinary renderer world, against the ordinary frozen
- * `window.api` bridge, with `contextIsolation` and `sandbox` both on. There is no path from here to
- * anything the renderer itself could not do.
+ * It goes through the DevTools socket the check already opens, so it adds no test hook to the
+ * product: the expression runs in the ordinary renderer world against the frozen `window.api`
+ * bridge, with `contextIsolation` and `sandbox` on.
  *
- * Returns `{ value }` or `{ error }` — never throws, because every caller below wants to fail with
- * the app's output attached rather than with a stack from this file.
+ * Returns `{ value }` or `{ error }` and never throws, so every caller can fail with the app's
+ * output attached.
  */
 async function evaluateInPage(port, expression) {
   const list = await targets(port)
@@ -314,28 +288,22 @@ async function evaluateInPage(port, expression) {
 }
 
 /**
- * ⛔ **Ask the host for its session lists, forever, from the renderer** — `272`'s gesture, deterministic.
+ * Ask the host for its session lists, forever, from the renderer.
  *
- * ⚠️ **Started BEFORE the quit and never stopped**, which is the whole design: the defect is not that
- * a command was sent, it is that one sent while the app was still up was still being ANSWERED after
- * `close its database`. A probe that stopped when it was told the app was closing would step over the
- * exact window. In the app the same two calls arrive because the quit CLOSES the conversations, each
- * emits its terminal event, and the rail refreshes its closed list on the way past — a race that
- * needs live conversations and two provider binaries to set up, which is why this asks directly.
+ * Started before the quit and never stopped: the defect is a command sent while the app was up
+ * still being answered after `close its database`, so a probe that stopped when told the app was
+ * closing would step over the window. In the app the same two calls arrive because the quit closes
+ * the conversations, each emits its terminal event, and the rail refreshes its closed list on the
+ * way past; that race needs live conversations and two provider binaries, so this asks directly.
  *
- * ⛔ **No timer, and that is the correction that made this reproduce at all.** The first version used
- * a 25 ms `setInterval` and the check went green on the broken tree: Chromium throttles timers in a
- * window that is not in front, so behind another app it fires about once a second — and the window
- * between `close its database` (measured at **+1 ms**) and Electron's `will-quit` (**+105 ms**) is a
- * tenth of one tick. Each ask here re-asks from its own settlement instead, which is a promise
- * continuation and is throttled by nothing: **measured at 27,148 answers per second** across the two
- * chains, so the ~100 ms after the database closes is crossed thousands of times rather than not at
- * all. ⚑ On the tree before 273 that produced exactly the pair `272` described — one `resumable`,
- * one `unresumable` — because the window dies within one round trip of the connection closing.
+ * No timer: Chromium throttles timers in a window that is not in front (about once a second), and
+ * the window between `close its database` (+1 ms) and Electron's `will-quit` (+105 ms) is a tenth of
+ * one tick. Each ask re-asks from its own settlement, a promise continuation that nothing throttles:
+ * measured at 27,148 answers per second across the two chains.
  *
- * ⚑ **It counts what came back**, so the check can prove the instrument works before it depends on
- * it: an `answered` of zero means the calls never reached the host at all, and every assertion after
- * the quit would then be passing over a probe that did nothing (241's lesson, paid for once already).
+ * It counts what came back, so the check can prove the instrument works before it depends on it: an
+ * `answered` of zero means the calls never reached the host, and every assertion after the quit
+ * would pass over a probe that did nothing.
  */
 const RENDERER_ASK = `
   (() => {
@@ -370,21 +338,14 @@ const alive = (pid) => {
 }
 
 /**
- * 🔴 **What was the app DOING when it refused to close** (294 §2).
+ * What was the app doing when it refused to close.
  *
- * ⛔ **The one measurement `271` said it could not take.** Its own words: *"the minute did not
- * reproduce on this machine"*, so the question *"where did it go"* was answered by elimination and
- * never by observation. This check catches a hang; until now it SIGKILLed it half a second later and
- * the evidence went with it.
+ * On the failure path only, after every timing decision has been made, so nothing here can turn a
+ * pass into a failure or move a number; it costs ~3 s of a run that has already failed.
  *
- * ⚠️ **On the failure path only, and after every timing decision has already been made.** Nothing
- * here can turn a pass into a failure or move a number: by the time it runs, the budget is already
- * blown and the run is already red. What it costs is ~3 s of a run that has failed anyway.
- *
- * ⚑ **A stack, not a guess.** `sample` reads the task's threads from outside, so it works on a
- * process that is running no JavaScript at all — which is the case `app-lifetime.ts` names as its own
- * blind spot (*"a main process wedged inside a native call runs no timers"*) and the case a
- * JS-side instrument can never report.
+ * `sample` reads the task's threads from outside, so it works on a process running no JavaScript at
+ * all, the case `app-lifetime.ts` names as its own blind spot (*"a main process wedged inside a
+ * native call runs no timers"*) and one a JS-side instrument can never report.
  */
 function whatIsItDoing(pid, userDataDir) {
   const say = (label, run) => {
@@ -425,7 +386,7 @@ function whatIsItDoing(pid, userDataDir) {
     })
     return mainThreadOf(readFileSync(samplePath, 'utf8'))
   })
-  // ⚠️ Copied OUT of the `--user-data-dir`, which `reap` deletes moments later.
+  // Copied out of the `--user-data-dir`, which `reap` deletes moments later.
   const kept = join(tmpdir(), `brobot2-quit-hang-${String(pid)}.sample.txt`)
   try {
     copyFileSync(samplePath, kept)
@@ -436,11 +397,9 @@ function whatIsItDoing(pid, userDataDir) {
 }
 
 /**
- * The main thread's deepest frames out of a `sample` report.
- *
- * ⚠️ **The main thread and not the busiest one**: Electron parks worker threads in `mach_msg2_trap`
- * forever by design, so the thread with the most samples says nothing. The question is what the
- * thread that runs `app.quit()` is sitting in.
+ * The main thread's deepest frames out of a `sample` report. The main thread and not the busiest
+ * one: Electron parks worker threads in `mach_msg2_trap` forever by design, so the thread with the
+ * most samples says nothing. The question is what the thread that runs `app.quit()` is sitting in.
  */
 function mainThreadOf(report) {
   const lines = report.split('\n')
@@ -474,7 +433,7 @@ async function main() {
   }
 
   const port = await freePort()
-  // ⚠️ Beside the `--user-data-dir` rather than inside it, because `reap` deletes that directory and
+  // Beside the `--user-data-dir` rather than inside it, because `reap` deletes that directory and
   // the failure message is written after it.
   const outputPath = `${userDataDir}.out`
   const outputFd = openSync(outputPath, 'w')
@@ -488,7 +447,7 @@ async function main() {
   }
   const child = spawn(
     ELECTRON,
-    // ⚑ 695 §1 · a gate's window is nobody's: never shown, titled `BroBot2 — test`.
+    // A gate's window is nobody's: never shown, titled `BroBot2 — test`.
     [
       `--remote-debugging-port=${String(port)}`,
       `--user-data-dir=${userDataDir}`,
@@ -497,7 +456,7 @@ async function main() {
     ],
     {
       cwd: DESKTOP,
-      // ⚠️ Its own process GROUP and `ELECTRON_RUN_AS_NODE` cleared, for the two reasons
+      // Its own process GROUP and `ELECTRON_RUN_AS_NODE` cleared, for the two reasons
       // `window-opens-check.mjs` records: the `.bin/electron` shim is not the app, and an inherited
       // `ELECTRON_RUN_AS_NODE` boots Electron as plain Node with no `app` at all.
       stdio: ['ignore', outputFd, outputFd],
@@ -510,11 +469,10 @@ async function main() {
   child.on('error', (error) => (launchFailure = `could not launch ${ELECTRON}: ${error.message}`))
 
   /**
-   * ⛔ **Ownership is captured NOW, while the launch is alive and can still be identified** (325).
-   *
-   * ⚠️ **Not on the first read**: `node_modules/.bin/electron` is `#!/bin/sh` and `exec`s node under
-   * the same pid, so for a few milliseconds that pid names two programs and `captureProcessIdentity`
-   * refuses an identity that changes between its two samples — which is the whole point of it.
+   * Ownership is captured now, while the launch is alive and can still be identified. Not on the
+   * first read: `node_modules/.bin/electron` is `#!/bin/sh` and `exec`s node under the same pid, so
+   * for a few milliseconds that pid names two programs and `captureProcessIdentity` refuses an
+   * identity that changes between its two samples.
    */
   let lifecycle = null
   let ownershipFailure = null
@@ -531,11 +489,9 @@ async function main() {
     }
   }
   if (lifecycle === null) {
-    // ⛔ **Signal the group anyway** (found reviewing this diff). This path has already SPAWNED a
-    // detached Electron; walking away from it because the identity could not be captured leaves
-    // exactly the leak 241 and 066 are about. ⚠️ The group is the weaker authority — that is the
-    // whole reason `owned-process.mjs` exists — but it is the only one this path ever had, and
-    // using it is strictly better than using nothing.
+    // Signal the group anyway. This path has already spawned a detached Electron; walking away because
+    // the identity could not be captured leaks it. The group is the weaker authority (the reason
+    // `owned-process.mjs` exists) but it is the only one this path has, and better than nothing.
     try {
       process.kill(-child.pid, 'SIGKILL')
     } catch {
@@ -559,19 +515,13 @@ async function main() {
   }
 
   /**
-   * ⛔ **Reap what we own, then remove where it was writing** (325, `scripts/lib/owned-teardown.mjs`).
+   * Reap what we own, then remove where it was writing (`scripts/lib/owned-teardown.mjs`).
    *
-   * ## ⚠️ What was here, and why the port could not be the fact
-   *
-   * This used to SIGKILL the group and then wait for `lsof` to stop naming holders of the debug
-   * port. Two things were wrong with that and 326 measured both. The port is one socket of one of
-   * five processes, released the moment the browser dies while the GPU, utility and renderer helpers
-   * and any provider child are still coming down. And the wait FAILED OPEN: `lsof -t` exits non-zero
-   * when it matches nothing, so *"nothing holds it"* and *"I could not ask"* were the same value —
-   * **every "the port is free" this file ever printed came out of that `catch`**.
-   *
-   * ⚑ On this gate's own failure path that also cost real time: the loop asks `lsof` up to fifty
-   * times, and one of those calls was measured at 21.3 s.
+   * The port is not used as the fact that teardown finished: it is one socket of one of five
+   * processes, released the moment the browser dies while the helpers and any provider child are still
+   * coming down. A wait on `lsof` also failed open, since `lsof -t` exits non-zero when it matches
+   * nothing, so "nothing holds it" and "I could not ask" were the same value; and on a failure path
+   * the loop could cost real time (one call was measured at 21.3 s).
    */
   const reap = () => {
     const outcome = tearDownAndRemove({ lifecycle, directory: userDataDir })
@@ -599,7 +549,7 @@ async function main() {
   const unreaped = (outcome) =>
     `⚠️ and this check could not reap what it launched: ` +
     `${outcome.remaining.length === 0 ? 'no pid is still alive' : `pid(s) ${outcome.remaining.join(', ')} are still alive`}` +
-    // ⚑ 333: still in the table on its way out is its own fact — see `window-opens-check.mjs`.
+    // Still in the table on its way out is its own fact; see `window-opens-check.mjs`.
     (outcome.exiting.length > 0
       ? `, pid(s) ${outcome.exiting.join(', ')} are still in the process table on their way out`
       : '') +
@@ -611,9 +561,8 @@ async function main() {
 
   const fail = async (message) => {
     const output = read()
-    // ⛔ **The teardown may not REPLACE the failure being reported** (325, found reviewing that diff).
-    // Every caller of this is naming what the app did; a `reap()` that threw would overwrite it with
-    // itself, which is the exact shape of the merge failure 325 was dispatched for.
+    // The teardown may not replace the failure being reported: every caller is naming what the app did,
+    // and a `reap()` that threw would overwrite it with itself.
     let aside = ''
     try {
       const outcome = reap()
@@ -650,10 +599,9 @@ async function main() {
   }
   if (!up) await fail(`⛔ the app never opened a window, so its quit could not be checked.`)
 
-  // ⛔ **The one place `lsof` is still the right instrument** — it NAMES the process, which the
-  // kernel's allocator cannot. ⚠️ And it can now say it does not know: *"nothing holds the port"* and
-  // *"I could not ask"* used to be the same answer, and this is the message a person would have had
-  // to debug from.
+  // The one place `lsof` is still the right instrument: it names the process, which the kernel's
+  // allocator cannot. It can also say it does not know, so "nothing holds the port" and "I could not
+  // ask" are different messages.
   const holders = whoHoldsPort(port)
   if (holders.state !== 'held') {
     await fail(
@@ -665,29 +613,25 @@ async function main() {
   }
   const [appPid] = holders.pids
 
-  // ⚠️ **Let it settle, and three seconds is a measurement rather than a pause** (271). A BroBot on
-  // its New-conversation screen is not idle: the renderer probes both providers for their model
-  // menus, and each probe spawns a real `claude` and `codex` child — observed alive at 0.6 s and
-  // gone by 1.2 s. Quit inside that window and `closeAll()` waits for their confirmed termination,
-  // which measured 0.4–1.7 s of the teardown. ⛔ **That number is a provider binary's startup time
-  // and a gate must not depend on one**, so this check waits past it and measures the quit `271`
-  // §2's first bullet is about. The probe-in-flight quit was measured by hand instead, and is in the
-  // response rather than in this budget.
+  // Let it settle; three seconds is a measurement rather than a pause. A BroBot on its
+  // New-conversation screen is not idle: the renderer probes both providers for their model menus,
+  // and each probe spawns a real `claude` and `codex` child, alive at 0.6 s and gone by 1.2 s. Quit
+  // inside that window and `closeAll()` waits for their confirmed termination, which measured
+  // 0.4-1.7 s of the teardown. That is a provider binary's startup time and a gate must not depend on
+  // one, so this check waits past it. The probe-in-flight quit was measured by hand instead.
   await sleep(3_000)
 
-  // ⛔ **The helpers are remembered HERE, with the app up** (325). `refreshDescendants` is a no-op
-  // once the launcher is gone and `remember()` refuses a pid whose parent it never saw, so a crash
-  // between this line and the teardown would otherwise leave four Electron processes that nothing
-  // has authority to signal. ⚠️ A discovery that fails is deliberately not fatal: it makes the
-  // lifecycle's uncertainty sticky, and `reap()` reports it rather than going red here, in the
-  // middle of a check that has not measured anything yet.
+  // The helpers are remembered here, with the app up. `refreshDescendants` is a no-op once the
+  // launcher is gone and `remember()` refuses a pid whose parent it never saw, so a crash between
+  // this line and the teardown would leave four Electron processes that nothing has authority to
+  // signal. A failed discovery is deliberately not fatal: it makes the lifecycle's uncertainty
+  // sticky, and `reap()` reports it rather than going red before anything has been measured.
   lifecycle.refreshDescendants()
 
-  // ⛔ **The gate RAN, asked while the app is alive** (found reviewing this diff). Without this the
-  // "nothing answers after the exit" assertion below is vacuous in the one configuration that would
-  // silently break it: a `--user-data-dir` on which `listen` failed leaves no socket at all, so
-  // nothing answers before the quit either and the check reports a released lock it never saw held.
-  // `window:check` makes the same assertion for the same reason and 241 is why it exists.
+  // The gate ran, asked while the app is alive. Without this the "nothing answers after the exit"
+  // assertion is vacuous in the one configuration that would silently break it: a `--user-data-dir`
+  // on which `listen` failed leaves no socket at all, so nothing answers before the quit either and
+  // the check reports a released lock it never saw held. `window:check` makes the same assertion.
   if (!existsSync(socketPath)) {
     await fail(
       `⛔ the app is running and 236 §3's gate left no socket at ${socketPath} — so this launch is ` +
@@ -696,7 +640,7 @@ async function main() {
     )
   }
 
-  // 🔴 **Start asking, and keep asking across the quit** (273 §3). See {@link RENDERER_ASK}.
+  // Start asking, and keep asking across the quit. See {@link RENDERER_ASK}.
   const started = await evaluateInPage(port, RENDERER_ASK)
   if (started.error !== undefined || started.value?.started !== true) {
     await fail(
@@ -705,10 +649,10 @@ async function main() {
         `shutdown-door assertions below would pass over a renderer that never spoke.`,
     )
   }
-  // ⛔ **The probe is PROVED to work before anything depends on it, and proved to be FAST.** A
+  // The probe is proved to work before anything depends on it, and proved to be fast. A
   // `listResumable` that was already failing while the app was healthy would make "nothing failed
   // after the quit" true for the wrong reason; and a probe answering four times a second would step
-  // straight over a hundred-millisecond window. Both are the vacuity 241 paid for once already.
+  // straight over a hundred-millisecond window.
   await sleep(PROVE_THE_PROBE_MS)
   const before = await evaluateInPage(port, 'JSON.stringify(window.__quitProbe)')
   const asking = before.error === undefined ? JSON.parse(before.value ?? 'null') : null
@@ -722,10 +666,9 @@ async function main() {
   // The teardown's own window is ~100ms wide (database closed at +1ms, `will-quit` at +105ms), so a
   // probe slower than this could pass the line above and still never ask inside it.
   //
-  // ⚠️ **A hundred a second is a FLOOR and not the expectation.** Measured here: **27,148**. The
-  // gap is deliberate — the number this guards against is Chromium's throttled timer, about one a
-  // second, and a bound set near the real rate would go red on a loaded machine instead of on the
-  // defect.
+  // A hundred a second is a floor, not the expectation (measured here: 27,148). The number this
+  // guards against is Chromium's throttled timer, about one a second, and a bound near the real rate
+  // would go red on a loaded machine instead of on the defect.
   const perSecond = (asking.answered * 1_000) / PROVE_THE_PROBE_MS
   if (perSecond < 100) {
     await fail(
@@ -736,11 +679,9 @@ async function main() {
     )
   }
 
-  // ⛔ **The port instrument is proved to SEE THIS APP before anything below depends on it** (241's
-  // lesson, aimed at the probe 326 introduced). The app is up, it is answering DevTools on this port
-  // and it therefore holds it — so `free` here is the instrument, not the product, and every
-  // assertion about the port being RELEASED would be true for the wrong reason. ⚑ Without this line
-  // `couldBindPort` could answer `free` unconditionally and nothing in this file would go red.
+  // The port instrument is proved to see this app before anything below depends on it. The app is up,
+  // answering DevTools on this port, and therefore holds it, so `free` here means the instrument is
+  // wrong and every assertion about the port being released would be true for the wrong reason.
   const heldWhileUp = await couldBindPort(port)
   if (heldWhileUp.state !== 'held') {
     await fail(
@@ -751,7 +692,7 @@ async function main() {
     )
   }
 
-  // ⚠️ SIGTERM, not ⌘Q — see the module note for exactly what that does and does not buy.
+  // SIGTERM, not Cmd-Q; see the module note.
   const askedAt = Date.now()
   process.kill(appPid, 'SIGTERM')
 
@@ -762,21 +703,18 @@ async function main() {
   const portUnreadable = []
   const deadline = askedAt + QUIT_BUDGET_MS + WINDOW_LAG_MS
   while (Date.now() < deadline) {
-    // 🔴 **Cheapest first, and every fact stamped when it is ASKED** (326 §1). ⛔ The three
-    // observations used to run in the written order with `Date.now()` taken after each answer came
-    // back — so *"has the app gone?"*, which costs nothing, could not be sampled until a CDP probe
-    // and an `lsof` had both returned. Instrumented under load: `targets 9ms · lsof 21295ms ·
-    // alive 0ms`, and the gate reported **THE APP DID NOT CLOSE … still running 21304ms later** for
-    // an app whose own last line is stamped `+110ms` and which was already gone at the first sample.
+    // Cheapest first, and every fact stamped when it is asked. Reading in written order with
+    // `Date.now()` taken after each answer meant "has the app gone?", which costs nothing, could not be
+    // sampled until a CDP probe and an `lsof` had both returned (under load: `targets 9ms · lsof 21295ms ·
+    // alive 0ms`, reported as "still running 21304ms later" for an app already gone).
     //
-    // ⚑ **Stamping on ASK under-attributes our own latency rather than charging it to the app**,
-    // which is the safe direction: the FACT is still whatever the kernel said, so a port that stays
-    // held stays held and the run still goes red — only the number stops being ours.
+    // Stamping on ask under-attributes our own latency rather than charging it to the app, the safe
+    // direction: the fact is still whatever the kernel said, so a port that stays held stays held.
     const askingProcess = Date.now()
     if (processGoneAt === null && !alive(appPid)) processGoneAt = askingProcess
     if (portFreeAt === null) {
-      // ⚑ The kernel's own allocator, not `lsof`: p50 0 ms against p50 277 ms, and it is also the
-      // question a person relaunching asks. `unknown` is neither answer — see `port-probe.mjs`.
+      // The kernel's own allocator, not `lsof`: p50 0 ms against p50 277 ms, and it is also the
+      // question a person relaunching asks. `unknown` is neither answer; see `port-probe.mjs`.
       const askingPort = Date.now()
       const answer = await couldBindPort(port)
       if (answer.state === 'free') portFreeAt = askingPort
@@ -784,10 +722,10 @@ async function main() {
     }
     if (windowGoneAt === null) {
       const list = await targets(port)
-      // ⚠️ **Stamped AFTER the answer, and this is the one where that is the safe direction.** This
-      // timestamp is only ever used as `processGoneAt - windowGoneAt`, so a LATE stamp makes the lag
-      // smaller and a lenient reading; an early one would invent 270's black window out of our own
-      // `fetch`. The bound this feeds is the one assertion here that must not go red on the machine.
+      // Stamped after the answer, which is the safe direction here. This timestamp is only used as
+      // `processGoneAt - windowGoneAt`, so a late stamp makes the lag smaller and a lenient reading; an
+      // early one would invent a black-window lag out of our own `fetch`. The bound this feeds is the one
+      // assertion here that must not go red on the machine.
       if (list === null || !list.some((t) => t.type === 'page')) windowGoneAt = Date.now()
     }
     if (windowGoneAt !== null && portFreeAt !== null && processGoneAt !== null) break
@@ -796,20 +734,17 @@ async function main() {
 
   const since = (at) => (at === null ? 'never' : `${String(at - askedAt)}ms`)
 
-  // ⛔ **Read what the app wrote, once it has stopped writing** (294). No wait and no drain: the
-  // output is a FILE — see {@link OUTPUT_ENCODING} — so a process that is gone has finished writing
-  // it, which a pipe could never promise.
+  // Read what the app wrote once it has stopped writing. No wait and no drain: the output is a file
+  // (see {@link OUTPUT_ENCODING}), so a process that is gone has finished writing it.
   const output = read()
 
   if (processGoneAt === null || processGoneAt - askedAt > QUIT_BUDGET_MS) {
-    // 🔴 **Stamped BEFORE the diagnostic** (326, found by this dispatch's own red/green pair).
-    // `whatIsItDoing` runs `sample` for three seconds, and this number used to be read after it —
-    // so the line a person reads said `still running 16441ms later` about a loop that gave up at
-    // 9,000 ms, the difference being our own `sample`. ⛔ The run is red either way and no verdict
-    // moves, but 326's whole subject is an instrument's cost printed as the product's behaviour,
-    // and it is no more acceptable in the failure message than it was in the loop.
+    // Stamped before the diagnostic. `whatIsItDoing` runs `sample` for three seconds, and reading this
+    // number after it made the line say `still running 16441ms later` about a loop that gave up at
+    // 9,000 ms. The run is red either way, but an instrument's cost must not be printed as the
+    // product's behaviour.
     const stillThereAt = processGoneAt ?? Date.now()
-    // ⛔ **Ask the kernel what it is doing BEFORE killing it** (294 §2). See {@link whatIsItDoing}.
+    // Ask the kernel what it is doing before killing it. See {@link whatIsItDoing}.
     const doing = alive(appPid) ? `\n${whatIsItDoing(appPid, userDataDir)}\n` : ''
     await fail(
       `⛔ THE APP DID NOT CLOSE. pid ${String(appPid)} was asked to quit and was still running ` +
@@ -821,13 +756,12 @@ async function main() {
     )
   }
 
-  // 🔴 **Measured from `processGoneAt`, not from `askedAt`** (326 §1) — see {@link PORT_RELEASE_MS}.
+  // Measured from `processGoneAt`, not from `askedAt`; see {@link PORT_RELEASE_MS}.
   //
-  // ⛔ **And this is where *"I do not know"* is spent.** The policy, in one sentence: an `unknown`
-  // never sets `portFreeAt`, never counts as `held`, kills nothing, and is carried to here. It may
-  // not be silently either outcome — so if the port was never seen free the run is RED either way,
-  // because a gate must not print a green line for an assertion it could not make — but the message
-  // names the instrument rather than the app, and the two are different sentences on purpose.
+  // This is where "I do not know" is spent. An `unknown` never sets `portFreeAt`, never counts as
+  // `held`, kills nothing, and is carried to here. If the port was never seen free the run is red
+  // either way, because a gate must not print a green line for an assertion it could not make, but the
+  // message names the instrument rather than the app.
   if (portFreeAt === null) {
     const holdingNow = whoHoldsPort(port)
     if (portUnreadable.length > 0 && holdingNow.state !== 'held') {
@@ -866,9 +800,9 @@ async function main() {
     )
   }
 
-  // ⚠️ Only meaningful in the direction that can be wrong: the CDP endpoint dies with the process,
-  // so `windowGoneAt` can never be much LATER. A window that vanished long before the process is
-  // 270's black window, and it is the only ordering this can catch.
+  // Only meaningful in the direction that can be wrong: the CDP endpoint dies with the process, so
+  // `windowGoneAt` can never be much later. A window that vanished long before the process is the
+  // black-window case, and the only ordering this can catch.
   if (windowGoneAt !== null && processGoneAt - windowGoneAt > WINDOW_LAG_MS) {
     await fail(
       `⛔ the window disappeared ${String(processGoneAt - windowGoneAt)}ms before the process did ` +
@@ -877,8 +811,8 @@ async function main() {
     )
   }
 
-  // ⛔ The instrument's own assertions. See the module note: without these the check passes on an
-  // app that has gone silent about its shutdown again, which is how 270's minute stayed unexplained.
+  // The instrument's own assertions. See the module note: without these the check passes on an app
+  // that has gone silent about its shutdown again.
   const report = /BroCrew shut down in (\d+)ms — (.+)/.exec(output)
   if (report === null) {
     await fail(
@@ -909,33 +843,22 @@ async function main() {
         `graceful door, and every number above is about some other exit.`,
     )
   }
-  // 🔴 **The last resort firing is REPORTED, not failed** (294), and the change is a finding rather
-  // than a relaxation.
+  // The last resort firing is reported, not failed. Bare Electron 43.2.0, twenty lines with one window
+  // and no BroBot code, hangs in 5 of 6 loaded quits, printing `will-quit` and `quit` and then sitting
+  // in `mach_msg2_trap` forever, so failing the run when the bound does its job would put the
+  // flakiness back.
   //
-  // ⛔ 271 wrote this as a failure — *"an idle quit reaching it means the ordinary path is broken
-  // and the hatch is hiding it"* — on the belief that the ordinary path works. It does not, and it
-  // is not ours: **bare Electron 43.2.0, twenty lines with one window and no BroBot code, hangs in
-  // 5 of 6 loaded quits**, printing `will-quit` and `quit` and then sitting in `mach_msg2_trap`
-  // forever. Failing the run when the bound does its job would put the flakiness straight back,
-  // this time on the fix.
+  // What still fails is the graceful door being missed: those two events happen at ~106 ms, long
+  // before any kill, so an app that force-exited every time is still caught. A build where the
+  // ordinary path were genuinely broken shows up as this line on every run, which is a distribution
+  // and not a run.
   //
-  // ⚠️ **What still fails is the graceful door being MISSED** — the pair above — because those two
-  // events happen at ~106 ms, long before any kill, so an app that force-exited every time would
-  // still be caught. And a build where the ordinary path were genuinely broken shows up as this
-  // line on EVERY run, which is a distribution and not a run: see 294's response.
-  //
-  // 🔴 **514 · REPORTED is not the same as READABLE, and the firing now has its own verdict.** The
-  // ruling above is unchanged and the run is still green either way; what moved is that a stopped
-  // exit stopped being a `✔` with a caveat at the far end of the line. ⛔ **The sentence this used
-  // to match on, and the word the line now leads with, are both in `./lib/quit-verdict.mjs`** —
-  // out here it could only ever be exercised by a machine under load, which is the one thing
-  // `pnpm run ci` cannot summon, and so the stopped arm had never been run by anything.
-  //
-  // ⚑ This whole note is about a fact that is READ at the foot of this function, beside the line
-  // it heads; it is written here because here is where the door it qualifies is asserted.
+  // The sentence matched and the word the line leads with are both in `./lib/quit-verdict.mjs`: out
+  // here the stopped arm could only be exercised by a machine under load, which `pnpm run ci` cannot
+  // summon. The fact itself is read at the foot of this function, beside the line it heads.
 
-  // 🔴 **`272` finding 1, as a gate** (273 §3). The renderer was still asking while the four ordered
-  // steps ran; nothing it asked for may have reached SQLite after the fourth one closed it.
+  // The renderer was still asking while the four ordered steps ran; nothing it asked for may have
+  // reached SQLite after the fourth one closed it.
   const deadDatabase = /.*database connection is not open.*/i.exec(output)
   if (deadDatabase !== null) {
     await fail(
@@ -947,20 +870,17 @@ async function main() {
     )
   }
 
-  // ⛔ **And the door was REACHED, which is what stops the line above being vacuous** (found
-  // reviewing this diff). A probe that died at the announcement, a bridge that stopped forwarding,
-  // a window torn down early — every one of them makes "no dead database" true by asking nothing,
-  // and the broken tree would then go green. So the refusal has to be IN the output, by name, for
-  // both of the two commands `272` measured.
+  // And the door was reached, which stops the line above being vacuous. A probe that died at the
+  // announcement, a bridge that stopped forwarding, a window torn down early: each makes "no dead
+  // database" true by asking nothing. So the refusal has to be in the output, by name, for one of
+  // the two commands (`listResumable`, `listUnresumable`).
   //
-  // ⚠️ **One of the two, not both, and the difference is measured rather than generous.** The
-  // renderer is torn down within about ONE round trip of the door shutting — every observed run,
-  // broken or fixed, produced exactly two lines — so which of the two chains has a request
-  // outstanding in that instant is not something this check controls. One is proof the door
-  // answered; that BOTH are refused is held by `shutdown-door.test.ts`, by name, where it costs
-  // nothing.
+  // One of the two, not both, and the difference is measured. The renderer is torn down within about
+  // one round trip of the door shutting (every observed run, broken or fixed, produced exactly two
+  // lines), so which chain has a request outstanding in that instant is not controlled here. That both
+  // are refused is held by `shutdown-door.test.ts`.
   //
-  // ⚠️ Kept in step with `refusedDuringAQuit` in `main/runtime/ipc.ts` by `one-app.test.ts`.
+  // Kept in step with `refusedDuringAQuit` in `main/runtime/ipc.ts` by `one-app.test.ts`.
   const refused = ['listResumable', 'listUnresumable'].filter((kind) =>
     output.includes(`BroCrew is shutting down, so ${kind} was not asked of its database`),
   )
@@ -974,22 +894,21 @@ async function main() {
   }
 
   const outcome = reap()
-  // ⚠️ Only on the way out clean: a FAILED run keeps its log, because the message above names it.
+  // Only on the way out clean: a failed run keeps its log, because the message above names it.
   rmSync(outputPath, { force: true })
-  // ⚑ **`complete` is three facts, not one** (326, 333): nothing owned is alive, nothing owned is
-  // still in the process table on its way out, and nothing was unverifiable. The port could only
-  // ever answer the first, and only when `lsof` happened to work.
+  // `complete` is three facts, not one: nothing owned is alive, nothing owned is still in the process
+  // table on its way out, and nothing was unverifiable. The port could only answer the first, and only
+  // when `lsof` happened to work.
   if (!outcome.complete) {
     throw new Error(`the app closed, but ${unreaped(outcome)}`)
   }
 
-  // 🔴 **The verdict is a CELL, read from the app's own words** (514). ⛔ Computed HERE, below the
-  // last `await fail(` in the file, so that nothing this word says can redden a run: both members
-  // of the vocabulary are green, and `294`'s ruling is the reason. ⚠️ And computed BELOW the
-  // shutdown-report assertion above, which is what makes `exited` mean *"the app said nothing
-  // about a last resort"* rather than *"nothing the app said reached this file"*. Both orderings
-  // are asserted in `scripts/test/quit-verdict.test.mjs`, positionally, because both are silent
-  // when they go wrong.
+  // The verdict is a cell, read from the app's own words. Computed here, below the last `await fail(`
+  // in the file, so nothing this word says can redden a run: both members of the vocabulary are green.
+  // And computed below the shutdown-report assertion, which is what makes `exited` mean "the app said
+  // nothing about a last resort" rather than "nothing the app said reached this file". Both orderings
+  // are asserted positionally in `scripts/test/quit-verdict.test.mjs`, because both are silent when
+  // they go wrong.
   const { head } = quitHeadline({
     output,
     closedIn: since(processGoneAt),
@@ -1006,9 +925,9 @@ async function main() {
             ? 'in the same sample as the process'
             : `${String(portFreeAt - processGoneAt)}ms after it, budget ${String(PORT_RELEASE_MS)}ms`
       }) · gate silent · ` +
-      // ⚑ Named on the line a person reads: a probe that could not answer is not a probe that
-      // answered "free", and a run where that happened repeatedly is worth seeing even when the
-      // port was eventually proved released.
+      // Named on the line a person reads: a probe that could not answer is not a probe that answered
+      // "free", and a run where that happened repeatedly is worth seeing even when the port was
+      // eventually proved released.
       (portUnreadable.length > 0
         ? `⚠️ ${String(portUnreadable.length)} port probe(s) could not answer · `
         : '') +

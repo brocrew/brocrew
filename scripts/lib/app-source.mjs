@@ -34,10 +34,9 @@ const DECLARED_IN = {
 /**
  * The declaration shapes {@link constantFrom} can read, tried in order.
  *
- * ⛔ **Both anchor on `const <name>`**, so neither can match a mention in prose, an import, or a
- * property of the same name on some object. ⚠️ The second is deliberately narrower than "any
- * assignment": it allows an optional type annotation and nothing else, because a reader that
- * accepted arbitrary text before the `=` would match a line of commentary quoting the constant.
+ * Both anchor on `const <name>`, so neither matches a mention in prose, an import, or a property of
+ * the same name. The second allows an optional type annotation and nothing else, so a line of
+ * commentary quoting the constant cannot match.
  */
 const SPELLINGS = [
   (name) => new RegExp(`export const ${name} = '([^']+)'`),
@@ -47,10 +46,9 @@ const SPELLINGS = [
 /**
  * The value of an `export const <name> = '<literal>'` in the app's source.
  *
- * ⛔ **A miss THROWS rather than answering `undefined`.** A constant that quietly became
- * `undefined` turns an assertion into `includes(undefined)` — a check that cannot fire, which is
- * worse than no check because it is green. Every caller here uses the value to build a path or to
- * recognise a string, so there is no safe default to fall back to.
+ * A miss throws rather than answering `undefined`: a constant that quietly became `undefined` turns
+ * an assertion into `includes(undefined)`, a check that cannot fire and is green. Every caller uses
+ * the value to build a path or recognise a string, so there is no safe default.
  *
  * @param {keyof typeof DECLARED_IN} name
  */
@@ -161,11 +159,10 @@ export function providerRoster() {
 }
 
 /**
- * 🔴 **722 · the provider's OWN sub-agent tools**, the names `ui-live-smoke.mjs` steps 57, 58 and
- * 80 look for in a launch. ⚑ **Written here, and the one value in this module that is not read
- * from the app**: every launch keeps these tools, so no app source declares a list of them to read.
- * ⚠️ They span what init lists and what the model calls: `system/init` lists the sub-agent tool as
- * `Task`, and the model calls that tool `Agent` (`722`'s batch, step 58 beside 80). Pinned by
+ * The provider's own sub-agent tools, the names `ui-live-smoke.mjs` looks for in a launch. This is
+ * the one value in this module not read from the app: every launch keeps these tools, so no app
+ * source declares a list of them. They span what init lists and what the model calls: `system/init`
+ * lists the sub-agent tool as `Task`, and the model calls it `Agent`. Pinned by
  * `front-door.test.mjs`.
  */
 export function nativeDelegationTools() {
@@ -173,12 +170,8 @@ export function nativeDelegationTools() {
 }
 
 /**
- * 🔴 **BroBot's own workspace — where a FRONT-DOOR conversation runs, full stop.**
- *
- * ⚠️ **This docblock used to carry a condition, and `424` removed it.** It read *"when, and ONLY
- * when, the pinned project has no folder"*, which was `420` §0's measurement of a host that handed
- * a front-door conversation whatever somebody had typed into the project sheet. ⚑ Since D-016 there
- * are no projects: a launch that names no folder runs here, whoever it runs as.
+ * BroBot's own workspace, where a front-door conversation runs: a launch that names no folder runs
+ * here, whoever it runs as.
  *
  * @param {string} userDataDir the `--user-data-dir` the app under test was launched with.
  */
@@ -193,21 +186,14 @@ export function brobotWorkspace(userDataDir) {
 }
 
 /**
- * 🔴 **What the PLACED door sends, lifted out of the component rather than written down here**
- * (`427` §3, `423` relay 1).
+ * What the placed door sends, lifted out of `StartAsAgent.vue` rather than written down here, so the
+ * count an instrument prints about the interim door stays true to what the surface sends.
  *
- * ⛔ **The same rule `420` applied to the front door's payload**: *"the payload the test sends is
- * DERIVED from `NewConversation.vue`, not restated"*. `StartAsAgent.vue` is the surface a person
- * presses to place a conversation, and the count an instrument prints about *"how much is still
- * waiting on the interim door"* is only true while this list is what the surface really sends.
+ * `approvalMode` is in the list but not free: the sheet sends the literal `'ask'`, so a placement
+ * asking for `'auto'` cannot be carried. {@link whatThePlacedDoorCannotCarry} judges that, since it
+ * needs the value and this function only knows the shape.
  *
- * ⚠️ **`approvalMode` is in the list and is not free.** The sheet sends the literal `'ask'`, so a
- * placement asking for `'auto'` is NOT something this door can carry —
- * {@link whatThePlacedDoorCannotCarry} is where that distinction lives, because it needs the
- * VALUE and this function only knows the shape.
- *
- * ⛔ **A shape it cannot read is a STOP.** An empty field list would make every placement look
- * movable, which is the direction that flatters the product.
+ * A shape it cannot read is a stop: an empty field list would make every placement look movable.
  *
  * @returns {string[]} the field names, in source order.
  */
@@ -270,24 +256,19 @@ export function placedDoorSendsFrom(source) {
 /**
  * The top-level keys of an object literal's body, in source order.
  *
- * ⛔ **Block comments are stripped and line comments deliberately are NOT**
- * (`a-source-census-must-strip-prose-before-it-asserts`, and the half of it that does not apply
- * here). A `//` line can never be mistaken for a field: the pattern wants an identifier character
- * straight after the indent and `/` is not one, so a filter for it would be a line no mutation
- * could kill (`a-line-no-mutation-can-kill-is-not-carrying-its-rule` — it was written, measured
- * as a no-op, and removed). ⚠️ **A BLOCK comment's inner line can be anything at all**, and this
- * repo's literals are full of them: `StartAsAgent.vue`'s own payload carries a four-line note
- * about `approvalMode` today, and the day somebody writes *"projectSlug: removed at 431"* inside
- * a `/* … *\/` the reader would count a field the component no longer sends.
+ * Block comments are stripped and line comments deliberately are not: a `//` line can never be
+ * mistaken for a field (the pattern wants an identifier character straight after the indent), so a
+ * filter for it would be a line no mutation could kill. A block comment's inner line can be anything,
+ * and a note like "projectSlug: removed" inside one would count a field the component no longer
+ * sends.
  *
- * ⚑ **D-016 · a field sent only when it has a value is a field it sends.** This wire's idiom for
- * an optional field is a conditional spread — `...(folder.value === null ? {} : { cwd: … })` in
- * `StartAsAgent.vue` — and a reader that saw only `key:` lines would report the sheet's folder as
- * a field no surface carries. ⚠️ So a spread line counts its one key, on either arm and in either
- * spelling (`{ cwd: x }` or the shorthand `{ cwd }`); a spread of anything else names no key here.
+ * A field sent only when it has a value is a field it sends: the wire's idiom for an optional field
+ * is a conditional spread, `...(folder.value === null ? {} : { cwd: ... })` in `StartAsAgent.vue`.
+ * So a spread line counts its one key, on either arm and in either spelling (`{ cwd: x }` or
+ * `{ cwd }`); a spread of anything else names no key here.
  *
- * ⚑ **Exported so that rule has a test**: the literal this reads in production is a real
- * component, which cannot have a fixture planted in it.
+ * Exported so that rule has a test: the literal this reads in production is a real component, which
+ * cannot have a fixture planted in it.
  *
  * @param {string} body everything between the literal's braces
  * @returns {string[]}
@@ -303,18 +284,13 @@ export function fieldsOf(body) {
 }
 
 /**
- * 🔴 **A design token's VALUE, read out of `tokens.css`'s `:root`** (`427` §3).
+ * A design token's value, read out of `tokens.css`'s `:root`, so the live instrument cannot drift
+ * from what the app draws (`chat-theme.test.ts:493` pins the value in the gate).
  *
- * ⛔ **`ui-live-smoke.mjs` step `1c` had `#7dbbff` written into it, and the app draws `#a7b7ff`.**
- * The token moved with design v2; `chat-theme.test.ts:493` pins the new value in the gate, so the
- * gate and the live instrument disagreed about one constant and the live half reported *"the token
- * layer is not loaded"* — an app-shaped red about a stylesheet that is perfectly fine. ⚑ Same class
- * as `420` F4's step `69`, one line over, and the same remedy standing rule 1 names: derive it.
- *
- * ⚠️ **`:root` and nothing else.** The file also declares tokens under `[data-on-white]` and inside
- * two width media queries; a reader that took the LAST declaration would answer with whatever a
- * narrow-window override happens to say. The app under test runs in the dark scope, which is
- * `:root` — the same block `chat-theme.test.ts` calls `DARK`.
+ * `:root` and nothing else: the file also declares tokens under `[data-on-white]` and inside two
+ * width media queries, and a reader that took the last declaration would answer with a narrow-window
+ * override. The app under test runs in the dark scope, which is `:root`, the block
+ * `chat-theme.test.ts` calls `DARK`.
  *
  * @param {string} name the custom property, including the leading `--`.
  */

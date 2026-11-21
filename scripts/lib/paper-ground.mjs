@@ -9,20 +9,19 @@
 /**
  * The relative luminance at or above which this app calls a surface paper.
  *
- * ⛔ **Not derived from the current palette, deliberately** — see the note above. Every paper token
- * this app has ever shipped is above 0.94 and every chrome surface is below 0.05, so the gap is two
- * orders of magnitude wide and a bound in the middle of it cannot be tuned by a palette dispatch.
+ * Deliberately not derived from the current palette: every paper token this app has shipped is above
+ * 0.94 and every chrome surface below 0.05, so a bound in the middle of that gap cannot be tuned by
+ * a palette change.
  */
 export const PAPER_FLOOR = 0.8
 
 /**
  * `[r, g, b, a]` in 0–255 (alpha 0–1) for the CSS colour forms this app's tokens are written in —
- * `#rgb`, `#rrggbb`, `rgb(…)` and `rgba(…)` — or `null` for anything else, INCLUDING the
+ * `#rgb`, `#rrggbb`, `rgb(…)` and `rgba(…)` — or `null` for anything else, including the
  * `transparent` keyword, which is a real answer here rather than a parse failure.
  *
- * ⚠️ **`null` is never treated as "probably fine"** by {@link paperVerdict}: an unparseable ground
- * is reported as unparseable and fails, because the alternative is a check that goes quiet the day
- * a token is written as `color-mix()` or `oklch()`.
+ * {@link paperVerdict} never treats `null` as "probably fine": an unparseable ground fails, so the
+ * check cannot go quiet the day a token is written as `color-mix()` or `oklch()`.
  */
 export function parseColour(value) {
   const text = String(value ?? '').trim()
@@ -61,13 +60,12 @@ export function luminance([r, g, b]) {
 /**
  * The page-side expression that reads everything {@link paperVerdict} needs, for one element.
  *
- * ⛔ **The scoped read is taken on the ELEMENT and the control on `documentElement`**, which is the
- * whole of claim 2: `--chat-bg` is `transparent` at `:root` and `var(--paper-bg)` inside
- * `[data-chat-theme='light']`, so reading it from the document would answer for the app and not for
- * the surface.
+ * The scoped read is taken on the element and the control on `documentElement`: `--chat-bg` is
+ * `transparent` at `:root` and `var(--paper-bg)` inside `[data-chat-theme='light']`, so reading it
+ * from the document would answer for the app and not for the surface.
  *
- * ⚠️ **Splices into an object literal**, so the call sites keep their own extra fields in the one
- * `evaluate` they already make — two round trips could read two different frames.
+ * Splices into an object literal, so call sites keep their own extra fields in the one `evaluate`
+ * they already make; two round trips could read two different frames.
  *
  * @param {string} element — a JS expression for the element, already in scope page-side.
  */
@@ -137,9 +135,8 @@ export function paperVerdict(read, where) {
 /**
  * The page-side expression that reads an element's resolved `--text` and the one `:root` declares.
  *
- * ⛔ **Both reads in ONE evaluate**, for {@link paperFields}'s reason: two round trips can land in
- * two frames, and the whole question here is whether two elements of the SAME frame resolved the
- * same declaration.
+ * Both reads happen in one evaluate, for {@link paperFields}'s reason: two round trips can land in
+ * two frames, and the question is whether two elements of the same frame resolved the same declaration.
  *
  * @param {string} element — a JS expression for the element, already in scope page-side.
  */
@@ -154,15 +151,12 @@ export function inkFields(element) {
  * Throw unless this element resolved the ink `:root` declares — i.e. the light scope did NOT reach
  * it — with `sceneInk` as the control that something else DID move.
  *
- * ⛔ **This replaces `if (railText !== '#e7ecf3')`, which `391` made false in the same commit as
- * the ground** (402 §2). `--text` moved to `#e3e8f4` and the resume smoke reported *"the rail was
- * re-themed with the conversation"* about a rail that had not moved at all. ⚠️ **A control that is
- * pinned to a constant is a control that goes off for the wrong reason**, and a chrome check that
- * fires on a palette dispatch is worse than none: it teaches a reader that this row means nothing.
+ * Compared against the declared ink rather than a pinned constant: a control pinned to a constant
+ * goes off for the wrong reason when the palette changes, and a chrome check that fires on a palette
+ * change teaches a reader the row means nothing.
  *
- * ⚑ **`sceneInk` is not optional and there is no default.** Without it, an app that stopped
- * scoping ink ANYWHERE would pass — every element resolving `:root` — which is the failure this
- * row exists to catch, wearing the answer it is checked against.
+ * `sceneInk` is required, with no default. Without it, an app that stopped scoping ink anywhere would
+ * pass, since every element would resolve `:root`.
  *
  * @param {{ink: string, rootInk: string, sceneInk: string}} read
  * @param {string} where — named in every failure.

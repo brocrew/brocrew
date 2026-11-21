@@ -5,20 +5,19 @@ import { describe, expect, it } from 'vitest'
 import { HIDDEN_LAUNCH_ARG } from '../lib/hidden-launch.mjs'
 
 /**
- * # ⛔ W4.90 · check 5 of `windows-packaged-check.mjs` — the data folder — run WITHOUT the app
+ * Check 5 of `windows-packaged-check.mjs` (the data folder), run without the app.
  *
- * The check launches `BroBot.exe` on its DEFAULT data folder, so it can only ever run on a
- * GitHub-hosted Windows runner — and so its branches were never run anywhere else. ⚑ This file
- * reads `theDataStaysWhereItWas` out of the script as TEXT and runs it against stand-ins: a clock, a
- * file system that is a set of paths, a `spawn` that starts nothing and a `spawnSync` that kills
- * nothing. ⛔ Nothing here starts a process, touches a real folder or imports the script (importing
- * it would run all five checks).
+ * The check launches `BroBot.exe` on its default data folder, so it can only run on a GitHub-hosted
+ * Windows runner. This file reads `theDataStaysWhereItWas` out of the script as text and runs it
+ * against stand-ins: a clock, a file system that is a set of paths, a `spawn` that starts nothing
+ * and a `spawnSync` that kills nothing. It starts no process, touches no real folder and does not
+ * import the script (importing it would run all five checks).
  *
- *  - §1 · where it refuses to launch anything: off a hosted runner, off Windows, and on a runner
- *    that already has a data folder.
- *  - §2 · what it concludes from a launch: the database in the pinned folder passes; an app that ran
- *    the whole wait and made none FAILS (the review's ask — it was a warning); an app that ended
- *    first is a warning, and is not killed; a folder named after the app fails even beside a database.
+ *  - where it refuses to launch anything: off a hosted runner, off Windows, and on a runner that
+ *    already has a data folder.
+ *  - what it concludes from a launch: the database in the pinned folder passes; an app that ran the
+ *    whole wait and made none fails; an app that ended first is a warning, and is not killed; a
+ *    folder named after the app fails even beside a database.
  */
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'windows-packaged-check.mjs')
@@ -120,7 +119,7 @@ describe('§1 · it launches nothing where a person’s data could be', () => {
       expect(run.said.join('\n')).toContain('not checked here')
       expect(run.failed).toEqual([])
     }
-    // ⚑ One fact over: the hosted runner is where it launches.
+    // One fact over: the hosted runner is where it launches.
     expect((await checkFive({ databaseAt: 0 })).spawned).toHaveLength(1)
   })
 
@@ -160,7 +159,7 @@ describe('§2 · what it concludes from the launch', () => {
     expect(run.said.join('\n')).not.toContain('✓ the data folder')
     expect(run.killed).toEqual([['taskkill', '/PID', '4242', '/T', '/F']])
     expect(run.waited).toBeGreaterThanOrEqual(90_000)
-    // ⚑ One fact over: a database a moment before the deadline passes.
+    // One fact over: a database a moment before the deadline passes.
     expect((await checkFive({ databaseAt: 89_500 })).failed).toEqual([])
   })
 
@@ -176,7 +175,7 @@ describe('§2 · what it concludes from the launch', () => {
     const stray = win32.join(APPDATA, 'BroBot')
     const run = await checkFive({ databaseAt: 1_000, makes: [stray] })
     expect(run.failed).toEqual([`the app made a data folder named after itself: ${stray}`])
-    // ⚑ One fact over: the same launch without it passes.
+    // One fact over: the same launch without it passes.
     expect((await checkFive({ databaseAt: 1_000 })).failed).toEqual([])
   })
 })

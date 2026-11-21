@@ -14,15 +14,13 @@ const CLAIM = 'brobot2-owned-launcher-claimed'
 let claimed = false
 
 // Group-directed graceful signals already reach pnpm, Electron, and their ordinary descendants.
-// The supervisor itself ignores them and stays the revalidated group leader WHILE ITS CHILD RUNS,
+// The supervisor itself ignores them and stays the revalidated group leader while its child runs,
 // so later escalation still has ownership authority. Once the child exits, these signal listeners
 // do not hold Node's event loop open; SIGKILL remains uncatchable.
-// ⛔ **722 · "while its child runs" is the whole of it, and this comment claimed more** (since 345).
-// It said the supervisor stays alive for step 38's deliberate second signal — but the child is
-// `pnpm`, and a group SIGINT ends `pnpm` in milliseconds while Electron spends a second shutting
-// down, so this process had exited before that signal in every batch that ran 38 (`717` F-3: "the
-// launcher reads gone, not alive"). ⚑ Step 38's second SIGINT now goes to the app's own main process
-// by its remembered identity — `signalRememberedWhy` in `owned-process.mjs`.
+// "While its child runs" is the whole of it: the child is `pnpm`, and a group SIGINT ends `pnpm`
+// in milliseconds while Electron spends a second shutting down, so this process is gone before
+// any later signal. A second SIGINT goes to the app's own main process by its remembered
+// identity (`signalRememberedWhy` in `owned-process.mjs`).
 process.on('SIGINT', () => {})
 process.on('SIGTERM', () => {})
 

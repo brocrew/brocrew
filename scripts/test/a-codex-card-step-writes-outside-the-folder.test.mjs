@@ -4,20 +4,17 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * ⚑ **738 · R96's re-aim, held in `ci`** (`736` F-2). `ask` on Codex is the Codex CLI's default
- * preset — `workspace-write` + `on-request` — so a write inside the conversation's own folder, or a
- * temporary folder, runs with NO card. ⛔ Every live step whose subject is Codex ASKING about a write
- * therefore aims it outside both; before `738` four `ui-live-smoke` steps and three Codex
- * smokes/probes did not, and each went red — or, worse, green — about a working app.
+ * `ask` on Codex is the Codex CLI's default preset (`workspace-write` + `on-request`), so a write
+ * inside the conversation's own folder, or a temporary folder, runs with no card. Every live step
+ * whose subject is Codex asking about a write therefore aims it outside both.
  *
- * ⚠️ **What this can and cannot say.** These are pins of each step's SOURCE: that its target is built
- * outside the folder. Whether Codex then asks is a live fact, measured by `738`'s batch (§3.1d is
- * the pair, both sides on one session); `unasked-roots.test.mjs` holds the helper that decides
- * *outside*. ⛔ A step that moves its target back inside turns this red before a batch has to.
+ * These pin each step's source: that its target is built outside the folder. Whether Codex then
+ * asks is a live fact measured by a live batch; `unasked-roots.test.mjs` holds the helper that
+ * decides "outside". A step that moves its target back inside turns this red before a batch has to.
  *
- * ⚑ **Scoped by what the steps are ABOUT, not a list of lines** (standing rule 27.1) wherever the
- * source allows: every `apply_patch` the reopen-grant probe scripts, and every write `smoke:codex`'s
- * approval steps make, is derived from the file rather than named here.
+ * Scoped by what the steps are about, not a list of lines, wherever the source allows: every
+ * `apply_patch` the reopen-grant probe scripts, and every write `smoke:codex`'s approval steps
+ * make, is derived from the file rather than named here.
  */
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (path) => readFileSync(join(REPO, path), 'utf8')
@@ -75,7 +72,7 @@ describe('738 · a Codex card step writes OUTSIDE the folder (R96)', () => {
       "const targetRootFor = (provider) => (provider === 'codex' ? matrixOutside : matrixCwd)",
     )
     expect(ui).toContain('const caseDir = join(targetRootFor(provider), `${provider}-${outcome}`)')
-    // ⚑ both reads of a row's request hold its paths to the root its file was aimed at
+    // Both reads of a row's request hold its paths to the root its file was aimed at.
     const flat = ui.replace(/\s+/g, ' ')
     const calls = flat.split('requestSafelyNamesOnlyActionScope(').length - 1
     const ownedRoots = [
@@ -93,12 +90,12 @@ describe('738 · a Codex card step writes OUTSIDE the folder (R96)', () => {
     expect(codex).toMatch(
       /const unaskedRoot = writableUnasked\(outside, scratch\)\s*if \(unaskedRoot !== null\) \{\s*throw/,
     )
-    // ⚑ derived: every file a step names by `join(<root>, '<name>.txt')`
+    // Derived: every file a step names by `join(<root>, '<name>.txt')`.
     const targets = [...codex.matchAll(/const (\w+) = join\((scratch|outside), '([^']+\.txt)'\)/g)]
     const inside = targets.filter((match) => match[2] === 'scratch').map((match) => match[3])
     expect(inside).toEqual(['r96-inside.txt'])
     expect(targets.length).toBeGreaterThanOrEqual(11) // ⚠️ the positive control: the read finds them
-    // ⚑ §3.1d, the pair: the inside write raises no card and lands; the outside one is asked
+    // The pair: the inside write raises no card and lands; the outside one is asked.
     expect(codex).toContain(
       'r1.approvals === 0 && existsSync(inside) && r2.approvals >= 1 && !existsSync(beyond)',
     )
@@ -114,7 +111,7 @@ describe('738 · a Codex card step writes OUTSIDE the folder (R96)', () => {
 
   it('⛔ probe:codex-reopen-grant — every scripted patch is outside the arm’s cwd', () => {
     const probe = read('packages/runtime/smoke/codex-reopen-grant-probe.smoke.ts')
-    // ⚑ derived: every file a scripted `apply_patch` adds or updates
+    // Derived: every file a scripted `apply_patch` adds or updates.
     const patched = [...probe.matchAll(/patch(?:Add|Update)\(join\((\w+), '([^']+)'\)/g)]
     expect(patched.length).toBe(6)
     expect(patched.map((match) => match[1])).toEqual(Array(6).fill('outside'))
@@ -127,9 +124,9 @@ describe('738 · a Codex card step writes OUTSIDE the folder (R96)', () => {
       /\s+/g,
       ' ',
     )
-    // ⚑ `738` measured all 19 of the run's command cards offering *Always allow*, where `697` and
-    // `704` measured `once`; the probe holds both groups to it in literal values, never derived
-    // from the same rule `persistenceOf` applies
+    // A live run measured all 19 of its command cards offering *Always allow*, where earlier runs
+    // measured `once`; the probe holds both groups to it in literal values, never derived from the
+    // same rule `persistenceOf` applies.
     expect(probe).toContain(
       "expect(proposed.map((card) => card.persistence)).toEqual(proposed.map(() => 'always'))",
     )

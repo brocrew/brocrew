@@ -20,16 +20,10 @@ import {
 } from '../lib/app-source.mjs'
 
 /**
- * 🔴 **420 · the two closed sets three live instruments share, and the app they are about.**
- *
- * ⛔ **A shared module with no test is a shared DEFECT waiting for a second importer.** These two
- * lists exist because the same nine-field refusal was written three times and a copy that loses a
- * field loses it silently — so the thing that must be checked is not the lists' contents but
- * their correspondence to the app: `PLACEABLE` against the wire schema, and the predicate against
- * the three values a caller can legitimately pass for *nothing asked for*.
- *
- * ⚠️ **Every assertion here is about a fact somewhere else.** A test that only restated the
- * literals would be a fourth copy.
+ * The two closed sets the live instruments share, checked against the app. The same nine-field
+ * refusal was once written three times, so what is checked is the lists' correspondence to the app
+ * (`PLACEABLE` against the wire schema, the predicate against the three values that mean nothing
+ * was asked for), not their literals; a test that restated the literals would be a fourth copy.
  */
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -38,11 +32,9 @@ const SCRIPTS = join(REPO, 'scripts')
 
 describe('PLACEABLE is the wire, not a list beside it', () => {
   /**
-   * The `createSession` arm of `runtimeCommandSchema`, sliced at its own literal.
-   *
-   * ⛔ **Sliced rather than grepped whole-file**, because half these field names appear on other
-   * arms — `cwd` is on `checkCwd`, `model` on `setSessionSetting` — and a file-wide census would
-   * pass over a `createSession` that had lost one.
+   * The `createSession` arm of `runtimeCommandSchema`, sliced at its own literal rather than grepped
+   * whole-file: half these field names appear on other arms (`cwd` on `checkCwd`, `model` on
+   * `setSessionSetting`), so a file-wide census would pass over a `createSession` that lost one.
    */
   const arm = (() => {
     const at = IPC.indexOf("z.literal('createSession')")
@@ -54,11 +46,8 @@ describe('PLACEABLE is the wire, not a list beside it', () => {
   })()
 
   it('⛔ every field PLACEABLE names is on the createSession schema', () => {
-    // ⚠️ **Two spellings, and the first draft only had one.** `profileId` is object SHORTHAND —
-    // `profileId,` on its own line, reusing the shared validator declared above the union
-    // (`169 §1`: *"the shared profileId, not a second copy of it"*) — so a pattern requiring a
-    // colon reported a live field as gone from the wire. A negative is only as strong as its
-    // search shape.
+    // Two spellings: `profileId` is object shorthand (`profileId,` on its own line, reusing the shared
+    // validator), so a pattern requiring a colon would report a live field as gone from the wire.
     for (const field of PLACEABLE) {
       expect(arm, `${field} is not on createSession's wire any more`).toMatch(
         new RegExp(`\\n\\s*${field}(:|,\\n)`),
@@ -67,17 +56,13 @@ describe('PLACEABLE is the wire, not a list beside it', () => {
   })
 
   it('⛔ …and the schema names nothing PLACEABLE has missed, except launchKey and answerARefusal', () => {
-    // 🔴 **The direction that actually rots.** A field ADDED to `createSession` and not to this
-    // list makes `placeSession` refuse a legal placement — which reads as a typo in the step and
-    // sends the next author looking in the wrong file.
+    // The direction that rots: a field added to `createSession` and not to this list makes
+    // `placeSession` refuse a legal placement, which reads as a typo in the step.
     //
-    // ⚠️ `launchKey` is excluded by name and by reason: it is the launcher's cancel token
-    // (`102`'s dead Cancel), minted per press by the renderer, and an instrument that supplied
-    // one would be claiming a press nobody made.
+    // `launchKey` is excluded: it is the launcher's cancel token, minted per press by the renderer, and
+    // an instrument that supplied one would be claiming a press nobody made.
     //
-    // ⚠️ **716 · `answerARefusal` too**: it says how a refusal comes BACK (`710` F-7), not where
-    // the conversation is placed — an instrument that supplied it would be answered a value where
-    // `placeSession` reads a rejection.
+    // `answerARefusal` too: it says how a refusal comes back, not where the conversation is placed.
     const onTheWire = [...arm.matchAll(/\n\s{2,}([a-zA-Z]+)(?::|,\n)/g)].map((m) => m[1])
     expect(onTheWire.length, 'the arm was sliced wrong — no fields came out').toBeGreaterThan(5)
     const NOT_A_PLACEMENT = ['kind', 'launchKey', 'answerARefusal']
@@ -89,7 +74,7 @@ describe('PLACEABLE is the wire, not a list beside it', () => {
     expect(PLACEABLE, 'answerARefusal is an answer, not a placement').not.toContain(
       'answerARefusal',
     )
-    // ⚑ …and each exception is still on the wire, or it excuses nothing.
+    // ...and each exception is still on the wire, or it excuses nothing.
     expect(onTheWire).toEqual(expect.arrayContaining(NOT_A_PLACEMENT.slice(1)))
   })
 
@@ -130,31 +115,29 @@ describe('the front door’s refusal, both halves', () => {
   })
 
   it('🔴 …and the WHITELIST catches what the blacklist cannot — the defect that made it exist', () => {
-    // ⛔ `profileId` is not in `FRONT_DOOR_CANNOT_ASK` — the list carries the smokes' own
-    // `profile`/`newProfile` spellings — and it is the exact field `420` introduced at forty-odd
-    // placement call sites one screen from the front door. Before the whitelist,
+    // `profileId` is not in `FRONT_DOOR_CANNOT_ASK` (the list carries the smokes' own
+    // `profile`/`newProfile` spellings), and placement call sites pass it. Without the whitelist,
     // `startSession(cdp, { prompt, profileId: 'x' })` started a `default` session with the field
     // dropped and nothing said.
     expect(whatTheFrontDoorWasAskedFor({ profileId: 'smoke-x' })).toEqual([])
     expect(whatTheFrontDoorCannotCarry({ profileId: 'smoke-x' })).toEqual(['profileId'])
     // …and the other field a placement carries that the blacklist also cannot see.
     expect(whatTheFrontDoorCannotCarry({ approvalMode: 'auto' })).toEqual(['approvalMode'])
-    // ⚑ Named fields still come FIRST, so the message leads with the one a reader likely meant.
+    // Named fields still come first, so the message leads with the one a reader likely meant.
     expect(whatTheFrontDoorCannotCarry({ profileId: 'x', provider: 'claude' })).toEqual([
       'provider',
       'profileId',
     ])
-    // ⚠️ And an empty ask is still empty — a whitelist that refused everything would refuse the
-    // seven steps that legitimately go through this door.
+    // And an empty ask is still empty: a whitelist that refused everything would refuse the seven steps
+    // that legitimately go through this door.
     expect(whatTheFrontDoorCannotCarry({})).toEqual([])
   })
 })
 
 describe('the roster this module exists for', () => {
   it('⛔ every instrument that has a front door imports the policy rather than restating it', () => {
-    // 🔴 **The failure this module was extracted to stop, checked rather than hoped for.** Three
-    // copies of a closed set is three copies that will differ once; the day a fourth instrument
-    // pastes the list instead of importing it, this goes red.
+    // Checked rather than hoped for: the day another instrument pastes the list instead of importing it,
+    // this goes red.
     const importers = readdirSync(SCRIPTS)
       .filter((name) => name.endsWith('.mjs'))
       .filter((name) =>
@@ -167,8 +150,7 @@ describe('the roster this module exists for', () => {
       expect(source, `${name} does not import the shared policy`).toContain(
         "from './lib/front-door.mjs'",
       )
-      // ⛔ The copy, by its own shape: a local array literal opening with the same first two
-      // fields. This is what was there before the extraction, in all three.
+      // The copy, by its own shape: a local array literal opening with the same first two fields.
       expect(source, `${name} has restated FRONT_DOOR_CANNOT_ASK`).not.toMatch(
         /const FRONT_DOOR_CANNOT_ASK = \[/,
       )
@@ -186,24 +168,20 @@ describe('app-source: constants read from the app, not written down twice', () =
   })
 
   it('⚑ the provider’s own sub-agent tools are the three names the live steps look for', () => {
-    // ⚑ 722 · read by `ui-live-smoke.mjs` steps 57, 58 and 80. The app holds no list of them, so
-    // the names are written in `app-source.mjs` and pinned HERE, where an edit to them fails the
-    // gate rather than a live batch.
+    // Read by `ui-live-smoke.mjs`. The app holds no list of them, so the names are written in
+    // `app-source.mjs` and pinned here, where an edit fails the gate rather than a live batch.
     expect(nativeDelegationTools()).toEqual(['Agent', 'Workflow', 'Task'])
   })
 
   /**
-   * 🔴 **`427` · the live suite had `--accent` written into it and the app had moved.**
-   *
-   * ⛔ `ui-live-smoke.mjs` step `1c` asserted `#7dbbff` and reported *"the token layer is not
-   * loaded"* on a healthy app; `chat-theme.test.ts` pins `#a7b7ff` in the gate. Two statements of
-   * one constant, the live one drifting, and the drift reading as an app defect — standing rule 1,
-   * in the instrument that costs the most to be wrong about.
+   * `--accent` is read from `tokens.css`, not written into the live suite: a hardcoded copy drifted
+   * from the value `chat-theme.test.ts` pins, and the drift read as the app defect "the token layer is
+   * not loaded".
    */
   it('🔴 a theme token is read from tokens.css, and it is the value the gate pins', () => {
     expect(themeTokenFrom('--accent')).toBe('#ff8a5c')
-    // ⚠️ **A second token, so the reader is not one lucky regex.** `--danger` sits below `--accent`
-    // in the same block, after three declarations and a comment on every line.
+    // A second token, so the reader is not one lucky regex: `--danger` sits below `--accent` in the same
+    // block, after three declarations and a comment on every line.
     expect(themeTokenFrom('--danger')).toBe('#ff6b81')
   })
 
@@ -223,27 +201,20 @@ describe('app-source: constants read from the app, not written down twice', () =
 
 describe('427 · every live script evaluates page code inside an ASYNC wrapper', () => {
   /**
-   * 🔴 **One missing word cost a packaged run, and no gate could see it.**
+   * Every wrapper of page code in the live smokes is async. A missing `async` in
+   * `packaged-smoke.mjs`'s `placeSession` made `await` a syntax error that no gate could see.
    *
-   * `packaged-smoke.mjs` step `4b` — the one real Claude turn inside the BUILT app — died on
-   * `SyntaxError: await is only valid in async functions`. Its `placeSession` writes
-   * `return await window.api.runtime.createSession(…)`, copied from `ui-live-smoke.mjs`, which
-   * wraps page code in `(async () => { … })()`. ⛔ **That file wrapped in a plain arrow**, so the
-   * expression was a syntax error the moment it was written — at `420`, wired and never run,
-   * which is precisely the risk the batching policy names.
-   *
-   * ⚑ **The rule is uniform rather than conditional.** *"A script may use `await` only if its
-   * wrapper is async"* would need a parser to find the `await`s inside evaluated template
-   * literals; *"every wrapper is async"* is one line, reads the same in three files, and makes the
-   * mismatch unrepresentable.
+   * The rule is uniform rather than conditional: "a script may use `await` only if its wrapper is
+   * async" would need a parser to find the `await`s inside evaluated template literals, while "every
+   * wrapper is async" is one line and makes the mismatch unrepresentable.
    */
   const LIVE = ['ui-live-smoke.mjs', 'resume-live-smoke.mjs', 'packaged-smoke.mjs']
 
   it.each(LIVE)('%s wraps its page expression in an async IIFE', (name) => {
     const source = readFileSync(join(SCRIPTS, name), 'utf8')
-    // ⛔ **Both spellings**: two files inline the wrapper at the `Runtime.evaluate` call site and
+    // Both spellings: two files inline the wrapper at the `Runtime.evaluate` call site and
     // `ui-live-smoke.mjs` builds it in `withPageDeadline`. A check that knew only one would report
-    // the file with the deadline — the only one that was never broken — as the offender.
+    // the wrong file as the offender.
     const wrapped = /\(async \(\) => \{/.test(source)
     expect(wrapped, `${name} evaluates page code without an async wrapper`).toBe(true)
     expect(
@@ -262,12 +233,9 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
   const SENDS = placedDoorSends()
 
   /**
-   * 🔴 **Derived from `StartAsAgent.vue`, so a field added to that sheet moves this by itself.**
-   *
-   * ⛔ **Pinned as well as derived**, for `hook-reach`'s reason: the derivation does the covering,
-   * the equality makes a field joining or leaving the door a red somebody acknowledges in a diff.
-   * ⚠️ Both halves matter here — the count `ui-live-smoke.mjs` prints about how much of its
-   * interim door is waiting on a surface is computed from this list.
+   * Derived from `StartAsAgent.vue`, so a field added to that sheet moves this by itself, and pinned
+   * so a field joining or leaving the door is a red somebody acknowledges in a diff. The count
+   * `ui-live-smoke.mjs` prints about its interim door is computed from this list.
    */
   it('⛔ the door’s payload is read out of the component and is exactly six fields', () => {
     expect(SENDS).toEqual([
@@ -341,10 +309,9 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
   })
 
   /**
-   * 🔴 **The measurement `427` §3 was asked for**, and D-016 moved it: the sheet sends the folder a
-   * person chose, so `cwd` no longer holds a placement, and what does is a field with no
-   * launch-time control. ⛔ A placement is *movable* only when the sheet could express every field
-   * it carries.
+   * The sheet sends the folder a person chose, so `cwd` no longer holds a placement; what does is a
+   * field with no launch-time control. A placement is movable only when the sheet could express every
+   * field it carries.
    */
   it('🔴 cwd is carried since D-016, and a launch-time-only field is what holds a placement', () => {
     expect(whatThePlacedDoorCannotCarry({ provider: 'claude', profileId: 'pm' }, SENDS)).toEqual([])
@@ -355,9 +322,9 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
   })
 
   /**
-   * ⚠️ **`approvalMode` is judged on its VALUE, which a set difference could not do.** The sheet
-   * sends the literal `'ask'`; `420` measured that every live approval control is queued for the
-   * NEXT message, so `'auto' on turn 1` has no surface anywhere in the product.
+   * `approvalMode` is judged on its value, which a set difference cannot do: the sheet sends the
+   * literal `'ask'`, and every live approval control is queued for the next message, so `'auto'` on
+   * turn 1 has no surface in the product.
    */
   it('⚠️ approvalMode ask is carried and auto is not — the same key, two answers', () => {
     expect(whatThePlacedDoorCannotCarry({ approvalMode: 'ask' }, SENDS)).toEqual([])
@@ -365,23 +332,21 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
   })
 
   /**
-   * ⛔ **Both kinds of prose, and the block comment is the one that can bite.** `//` can never be
-   * mistaken for a field — `/` is not an identifier character — but a block comment's inner line
-   * can be anything, and `StartAsAgent.vue`'s payload carries a four-line note today. ⚑ Planted
-   * here because the literal `placedDoorSends` reads in production is a real component and cannot
-   * have a fixture put inside it.
+   * Both kinds of prose: `//` can never be mistaken for a field (`/` is not an identifier character),
+   * but a block comment's inner line can be anything, and `StartAsAgent.vue`'s payload carries a
+   * four-line note. Planted here because the real component cannot have a fixture put inside it.
    */
   it('⛔ fieldsOf counts no field that only a comment mentions', () => {
     expect(fieldsOf('\n  provider: p,\n  profileId: q,\n')).toEqual(['provider', 'profileId'])
-    // ⚠️ **A line comment needs no stripping and gets none** — the pattern wants an identifier
-    // straight after the indent, so `/` ends it. Kept as a characterisation: the day somebody adds
-    // a `//` filter "for safety", this says it was already true and the filter carries no rule.
+    // A line comment needs no stripping: the pattern wants an identifier straight after the indent, so
+    // `/` ends it. Kept as a characterisation, so a `//` filter added "for safety" is seen to carry no
+    // rule.
     expect(fieldsOf('\n  provider: p,\n  // projectSlug: removed at 431,\n')).toEqual(['provider'])
     expect(fieldsOf('\n  provider: p,\n  /*\n    projectSlug: removed at 431,\n  */\n')).toEqual([
       'provider',
     ])
-    // ⚠️ …and the paired positive: a field written AFTER a block comment is still counted, so the
-    // strip cannot pass by eating the rest of the literal.
+    // ...and the paired positive: a field written after a block comment is still counted, so the strip
+    // cannot pass by eating the rest of the literal.
     expect(fieldsOf('\n  /* a note */\n  provider: p,\n')).toEqual(['provider'])
   })
 

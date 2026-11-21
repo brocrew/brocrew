@@ -22,9 +22,9 @@ import {
 } from '../lib/matrix-record.mjs'
 
 /**
- * ⚠️ **Every path a credential or the ledger lives at in a run's evidence root** — measured on the
- * surviving `660` evidence tree (`user-data/provider-homes/<project>/<profile>/codex/auth.json`) and
- * the Claude home's own names. ⛔ The census asks the include-list about every one of them.
+ * Every path a credential or the ledger lives at in a run's evidence root, measured on a
+ * preserved evidence tree (`user-data/provider-homes/<project>/<profile>/codex/auth.json`) and the
+ * Claude home's own names. The census asks the include-list about every one of them.
  */
 const NEVER = [
   'auth.json',
@@ -53,8 +53,8 @@ describe('665 · F8 — the matrix record is kept outside /tmp by an include-lis
       expect(pattern.source.includes('/'), String(pattern)).toBe(false)
       for (const name of NEVER) expect(pattern.test(name), `${pattern} vs ${name}`).toBe(false)
     }
-    // ⚑ Under the home, and nowhere named for itself: a test's own home is a fictional one in a
-    // temp folder, so where the home is says nothing of this.
+    // Under the home, and nowhere named for itself: a test's own home is a fictional one in a temp
+    // folder, so where the home is says nothing of this.
     expect(MATRIX_RECORD_ROOT).toBe(join(homedir(), 'brobot2-scratch', 'permission-matrix-records'))
     expect(MATRIX_RECORD_ROOT).not.toBe(
       join('/tmp', 'brobot2-scratch', 'permission-matrix-records'),
@@ -70,7 +70,7 @@ describe('665 · F8 — the matrix record is kept outside /tmp by an include-lis
       evidence = join(root, 'evidence')
       kept = join(root, 'kept')
       mkdirSync(evidence)
-      // ⚑ What the record is FOR.
+      // What the record is for.
       for (const name of [
         'permission-matrix.json',
         'criterion-17-undisplayable.json',
@@ -82,7 +82,7 @@ describe('665 · F8 — the matrix record is kept outside /tmp by an include-lis
       ]) {
         writeFileSync(join(evidence, name), `planted ${name}\n`)
       }
-      // ⛔ What it must never take — planted fakes, none of them a credential.
+      // What it must never take: planted fakes, none of them a credential.
       const home = join(evidence, 'user-data', 'provider-homes', 'default', 'default', 'codex')
       mkdirSync(home, { recursive: true })
       writeFileSync(join(home, 'auth.json'), 'planted — not a credential\n')
@@ -139,14 +139,14 @@ describe('665 · F7 — a selected step-82 run exits 0 only when step 82 PASSED'
     expect(MATRIX_NOT_MEASURED_EXIT).not.toBe(0)
     expect(MATRIX_NOT_MEASURED_EXIT).not.toBe(1)
     expect(matrixRunExitCode({ failed: 0, verdict: 'PASS' })).toBe(0)
-    // ⛔ The case `660` could not tell apart from a pass: a deadline, recorded NOT PERFORMED.
+    // A deadline, recorded NOT PERFORMED, must not read as a pass.
     expect(matrixRunExitCode({ failed: 0, verdict: 'NOT PERFORMED' })).toBe(
       MATRIX_NOT_MEASURED_EXIT,
     )
     expect(matrixRunExitCode({ failed: 0, verdict: 'NOT ASSERTED' })).toBe(MATRIX_NOT_MEASURED_EXIT)
-    // A deadline that fired before step 82 began records no verdict for it at all.
+    // A deadline that fired before the matrix step began records no verdict for it at all.
     expect(matrixRunExitCode({ failed: 0, verdict: null })).toBe(MATRIX_NOT_MEASURED_EXIT)
-    // ⚑ A FAIL anywhere stays 1, whatever step 82 said.
+    // A FAIL anywhere stays 1, whatever the matrix step said.
     expect(matrixRunExitCode({ failed: 1, verdict: 'PASS' })).toBe(1)
     expect(matrixRunExitCode({ failed: 2, verdict: 'NOT PERFORMED' })).toBe(1)
   })

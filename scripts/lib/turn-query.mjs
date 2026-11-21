@@ -8,18 +8,16 @@
 /**
  * Session ids this app mints are `sess_<n>`; imported and adopted rows keep the same alphabet.
  *
- * 🔒 **The value is interpolated into SQL**, because the smoke's `queryDatabase` runs `sqlite3` with
- * a statement rather than with bound parameters. So the shape is CHECKED rather than trusted, and
- * anything outside it is refused instead of concatenated.
+ * The value is interpolated into SQL, because the smoke's `queryDatabase` runs `sqlite3` with a
+ * statement rather than bound parameters. So the shape is checked and anything else is refused.
  */
 export const SESSION_ID_SHAPE = /^[A-Za-z0-9_-]+$/
 
 /**
- * What the ledger says about the most recent interrupted turn — of one session, or of any.
+ * What the ledger says about the most recent interrupted turn, of one session or of any.
  *
- * @param {string | null} sessionId — the app session to scope to. `null` asks the old
- *   whole-database question, which is correct for step 6: it is the first step to interrupt
- *   anything, so at that point there is only one answer it could be.
+ * @param {string | null} sessionId — the app session to scope to. `null` asks the whole-database
+ *   question, which is correct for the first step that interrupts anything.
  * @returns {string} one SQL statement.
  */
 export function interruptedTurnQuery(sessionId = null) {
@@ -37,33 +35,24 @@ export function interruptedTurnQuery(sessionId = null) {
 }
 
 /**
- * 🔴 **704 · what the PROVIDER did with a turn the app interrupted — the half the row above cannot
- * answer.**
+ * What the provider did with a turn the app interrupted, read from the rollout file (the app
+ * keeps no copy).
  *
- * ⛔ **The `turn` row WAS the app's verdict, relabelled — until `709`.** `SessionMachine.completeTurn`
- * (`packages/runtime/src/internal/session-machine.ts`) closed a turn whose interrupt was ASKED FOR as
- * `interrupted`, whatever the provider reported — so a turn Codex ran to its end and closed with
- * `task_complete` read `interrupted` in {@link interruptedTurnQuery}'s row all the same. ⚑ 704's
- * mapping read step 48's conversation in four ledgers of `smoke:ui`: Codex wrote `turn_aborted`
- * (`reason: interrupted`) in two, and `task_complete` in the other two — one of them a red, and one a
- * PASS that asserted *"turn closed interrupted"* over a count that ran to its end. The row was the
- * same in all four. 🔴 **709 · R43: the row records Codex's word now**, so the two are one fact read
- * from two places — and this one, off Codex's own file, is still the one that cannot be relabelled.
- * ⚠️ **Except where the APP ended the turn** (a Close, `forceEnd`): that word is this app's, and
- * the `events` row (type `turn`) says so — `wordOf: 'this-app'` in its payload (`720`, R71). ⛔ The
- * `turn` TABLE this query reads keeps only `end_reason`, so it cannot tell the two apart; the
- * provider's own word for such a turn is in no row.
- *
- * ⚠️ **Read from the rollout FILE**: the app keeps no copy of it.
+ * The `turn` row records the provider's own word, so this and {@link interruptedTurnQuery}'s row
+ * are one fact read from two places, and this one, off Codex's own file, cannot be relabelled.
+ * Except where the app ended the turn (a Close, `forceEnd`): that word is the app's, and the
+ * `events` row (type `turn`) says so with `wordOf: 'this-app'` in its payload. The `turn` table
+ * keeps only `end_reason`, so it cannot tell the two apart, and the provider's word for such a
+ * turn is in no row.
  */
 
 /** A Codex thread id, as `provider_session.external_ref` and the rollout's file name carry it. */
 export const CODEX_THREAD_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * Which provider ran one app session, and the ref it resumes from (704).
+ * Which provider ran one app session, and the ref it resumes from.
  *
- * 🔒 Interpolated into SQL for {@link interruptedTurnQuery}'s reason, and refused the same way.
+ * Interpolated into SQL like {@link interruptedTurnQuery}'s id, and refused the same way.
  *
  * @param {string} sessionId
  * @returns {string} one SQL statement.
@@ -78,11 +67,10 @@ export function providerRefQuery(sessionId) {
 }
 
 /**
- * The Codex thread a `provider_session.external_ref` names, or null when it names none (704).
+ * The Codex thread a `provider_session.external_ref` names, or null when it names none.
  *
- * ⚠️ **Checked, not trusted**: the id becomes part of a file name the smoke looks for, so anything
- * outside {@link CODEX_THREAD_SHAPE} is not a thread id — and a ref that is not Codex's is not one
- * either, whatever its `sessionId` looks like.
+ * Checked, not trusted: the id becomes part of a file name the smoke looks for, so anything
+ * outside {@link CODEX_THREAD_SHAPE} is not a thread id, and neither is a ref that is not Codex's.
  *
  * @param {unknown} externalRef — the column as `sqlite3 -json` returns it: JSON text, or null.
  * @returns {string | null}
@@ -103,10 +91,10 @@ export function codexThreadOf(externalRef) {
 }
 
 /**
- * Whether a file NAME is that thread's rollout — `rollout-<stamp>-<thread id>.jsonl` (704).
+ * Whether a file name is that thread's rollout: `rollout-<stamp>-<thread id>.jsonl`.
  *
- * 🔒 **The only files the smoke opens in a Codex home are the ones this answers `true` for** — so
- * `auth.json`, which is a copy of a real credential, is never read: its name cannot pass.
+ * The only files the smoke opens in a Codex home are the ones this accepts, so `auth.json`, a
+ * copy of a real credential, is never read.
  */
 export function isRolloutOf(name, threadId) {
   return (
@@ -118,18 +106,17 @@ export function isRolloutOf(name, threadId) {
 }
 
 /**
- * How the turn that carried `prompt` ended, in the rollout's own words (704).
+ * How the turn that carried `prompt` ended, in the rollout's own words.
  *
- * ⚑ **The shapes are measured, not recalled** — step 48's conversation as the bundled Codex wrote it
- * (704's copy of one run): each turn opens with `event_msg` `task_started{turn_id}` and a
- * `turn_context{turn_id}`, records the person's words as `event_msg` `user_message{message}` — the
- * app's own preamble first, the words last — and closes with EITHER `event_msg`
- * `task_complete{turn_id}` OR `event_msg` `turn_aborted{turn_id, reason}`.
+ * Measured shapes: each turn opens with `event_msg` `task_started{turn_id}` and a
+ * `turn_context{turn_id}`, records the person's words as `event_msg` `user_message{message}` (the
+ * app's preamble first, the words last), and closes with either `event_msg` `task_complete{turn_id}`
+ * or `event_msg` `turn_aborted{turn_id, reason}`.
  *
- * So the turn is the one OPEN when the person's message was recorded: the last `turn_id` a
- * `task_started` or `turn_context` named before the first `user_message` whose text contains
- * `prompt`. ⚠️ A line that does not parse is skipped rather than fatal — the provider appends while
- * this reads, and a half-written LAST line is not yet a record of anything.
+ * The turn is the one open when the person's message was recorded: the last `turn_id` named by a
+ * `task_started` or `turn_context` before the first `user_message` whose text contains `prompt`.
+ * A line that does not parse is skipped: the provider appends while this reads, and a
+ * half-written last line is not yet a record.
  *
  * @param {string} text — the rollout file's contents.
  * @param {string} prompt — words only this turn's message carries.
@@ -173,11 +160,10 @@ export function rolloutTurnEnding(text, prompt) {
 }
 
 /**
- * ⚑ **727 · what Codex ITSELF wrote about its reasoning** — every `response_item` of type
- * `reasoning` in a rollout, and how many carry a summary with words. `ui-live-smoke.mjs` step 12
- * reads it upstream of this app: a reasoning item Codex wrote with `summary: []` is Codex summarising
- * with nothing (`722`'s second batch), and words here that the app's ledger does not hold are the app
- * losing them. ⚠️ A line that does not parse is skipped, as in {@link rolloutTurnEnding}.
+ * What Codex itself wrote about its reasoning: every `response_item` of type `reasoning` in a
+ * rollout, and how many carry a summary with words. A reasoning item with `summary: []` is Codex
+ * summarising with nothing; words here that the app's ledger lacks mean the app lost them.
+ * A line that does not parse is skipped, as in {@link rolloutTurnEnding}.
  *
  * @param {string} text — the rollout file's contents.
  * @returns {{ reasoning: number, worded: number }}
@@ -204,9 +190,8 @@ export function rolloutReasoningSummary(text) {
 }
 
 /**
- * ⚑ **727 · one workflow tree per RUN** — `null` when every tree names its own run by task id, or
- * what is wrong as a sentence. `ui-live-smoke.mjs` step 57 bounds its trees by the Workflow calls
- * the ledger holds; this is the half that bound cannot see: one run drawn twice.
+ * One workflow tree per run: `null` when every tree names its own run by task id, or what is
+ * wrong as a sentence. It catches one run drawn twice, which a count of Workflow calls cannot.
  *
  * @param {string[]} runs — each tree's `data-task-id`, in document order (`''` when absent).
  * @returns {string | null}
@@ -222,12 +207,12 @@ export function oneTreePerRun(runs) {
 }
 
 /**
- * The verdict on {@link rolloutTurnEnding}'s answer (704): `null` while the turn has not ended in
+ * The verdict on {@link rolloutTurnEnding}'s answer: `null` while the turn has not ended in
  * the file, `{ ok: true, turnId }` for a turn Codex itself aborted as interrupted and did not
  * complete, and `{ ok: false, why }` for everything else.
  *
- * ⛔ **`task_complete` is the red this exists for**, and it outranks an abort in the same file: a
- * turn the provider finished was not interrupted, whatever the app's row says about it.
+ * `task_complete` outranks an abort in the same file: a turn the provider finished was not
+ * interrupted, whatever the app's row says.
  */
 export function providerInterruptVerdict(ending) {
   if (ending.turnId === null || !ending.settled) return null
@@ -250,14 +235,14 @@ export function providerInterruptVerdict(ending) {
 }
 
 /**
- * A Claude session id — a UUID — checked rather than trusted, for {@link isRolloutOf}'s reason: it
- * becomes a file name the smoke looks for (704).
+ * A Claude session id (a UUID), checked rather than trusted for {@link isRolloutOf}'s reason:
+ * it becomes a file name the smoke looks for.
  */
 const CLAUDE_SESSION_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /**
- * The Claude session a `provider_session.external_ref` names, or null when it names none (704) —
- * {@link codexThreadOf}'s shape, for the other provider.
+ * The Claude session a `provider_session.external_ref` names, or null when it names none;
+ * {@link codexThreadOf}'s shape for the other provider.
  *
  * @param {unknown} externalRef — the column as `sqlite3 -json` returns it: JSON text, or null.
  * @returns {string | null}
@@ -287,9 +272,9 @@ export function isClaudeTranscriptOf(name, sessionId) {
 }
 
 /**
- * ⚑ **704 · the prompts a Claude transcript recorded, in order — the text the CLI RECEIVED.**
- * `user` entries only; a tool's result rides a `user` entry too and is not a prompt, so an entry
- * carrying a `tool_result` part is skipped, and so is one the CLI marks `isMeta`.
+ * The prompts a Claude transcript recorded, in order: the text the CLI received.
+ * `user` entries only; an entry carrying a `tool_result` part is a tool's result, not a prompt,
+ * and an entry the CLI marks `isMeta` is skipped too.
  *
  * @param {string} jsonl — the transcript file's text.
  * @returns {string[]}
@@ -299,10 +284,9 @@ export function promptsIn(jsonl) {
 }
 
 /**
- * ⚑ **715 · {@link promptsIn}'s prompts, each with the working directory the CLI recorded beside
- * it** — the transcript's own `cwd` field, `null` where an entry carries none. Since `680`'s bump
- * the CLI records where its Bash tool's `cd` left it, so the prompt after a move names the moved
- * folder: the state a later `system/init` reports.
+ * {@link promptsIn}'s prompts, each with the working directory the CLI recorded beside it (the
+ * transcript's `cwd` field, `null` where an entry carries none). The CLI records where its Bash
+ * tool's `cd` left it, so the prompt after a move names the moved folder.
  *
  * @param {string} jsonl — the transcript file's text.
  * @returns {{ text: string, cwd: string | null }[]}
@@ -335,23 +319,17 @@ export function promptEntriesIn(jsonl) {
 }
 
 /**
- * 🔴 **704 · how a slash command a person typed ARRIVED at the CLI.**
+ * How a slash command a person typed arrived at the CLI.
  *
- * ⛔ From `607` until `708` every message a person typed was sent inside the app's authorship
- * preamble — *"Sent by a person, typed into this app.\n\nYou are answering a person. …\n\n/compact"*
- * — and a slash command is only a command at the START of a prompt. Measured on 704's run of step
- * 62: the CLI received exactly that, ran nothing, and the model answered the words. Steps 62 and 70
- * read NOT ASSERTED for it and blamed the provider (*"/compact is manual and the provider can
- * decline it"*); this is what lets them say which it was.
+ * A slash command is only a command at the start of a prompt. If the app wraps a person's
+ * message in its authorship preamble, the CLI runs nothing and the model answers the words;
+ * `wrapped` detects that regression.
  *
- * ⚑ **708 · `R42` sends a person's command as typed**, so `wrapped` is now a REGRESSION of that
- * ruling rather than the state of the product — and the two steps are still red on it.
- *
- * - `wrapped` — a prompt ENDS with the command after other text, and carries no `<command-name>`
- *   markup of the CLI's own: it was never a command;
- * - `command` — the CLI recorded it as a command (its `<command-name>` markup names it), or the
+ * - `wrapped`: a prompt ends with the command after other text and carries no `<command-name>`
+ *   markup of the CLI's own, so it was never a command;
+ * - `command`: the CLI recorded it as a command (its `<command-name>` markup names it), or the
  *   prompt was the command and nothing else;
- * - `absent` — no prompt ends with it.
+ * - `absent`: no prompt ends with it.
  *
  * @param {readonly string[]} prompts — {@link promptsIn}'s answer.
  * @param {string} command — e.g. `/compact`.
