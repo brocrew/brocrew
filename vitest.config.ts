@@ -1,8 +1,20 @@
+import { resolve } from 'node:path'
 import { defineConfig } from 'vitest/config'
+import desktop from './apps/desktop/vitest.config'
 import { THE_GUARD, theTestsEnv } from './scripts/lib/tests-run-in-a-fictional-home.mjs'
 
 // Every project's tests run in a fictional home, and refuse to run where they can see the real one.
 const sealed = { env: theTestsEnv(), setupFiles: [THE_GUARD] }
+const warmSearchFixture = 'test/profile-past-work-performance.test.ts'
+
+export const desktopProject = {
+  ...desktop,
+  root: resolve(import.meta.dirname, 'apps/desktop'),
+  test: {
+    ...desktop.test,
+    exclude: [...desktop.test!.exclude!, warmSearchFixture],
+  },
+}
 
 // Root Vitest config using per-package projects (layered, node-environment tests).
 // Renderer/component tests are intentionally out of scope for Step 0.
@@ -30,7 +42,18 @@ export default defineConfig({
       // The desktop package configures itself (apps/desktop/vitest.config.ts): one of its tests
       // renders a component, which needs the Vue plugin — and the plugin belongs in the package
       // that already depends on it.
-      './apps/desktop',
+      desktopProject,
+      {
+        root: desktopProject.root,
+        test: {
+          name: 'past-work-performance',
+          environment: 'node',
+          ...sealed,
+          include: [warmSearchFixture],
+          // Run the wall-clock benchmark after the parallel test workers finish.
+          sequence: { groupOrder: 1 },
+        },
+      },
       // ⚠️ **The same components, in a real engine** (083). SSR renders markup and has no layout,
       // no compositing and no computed styles — which is how 080 shipped a grey header and a dark
       // drawer beside paper past 2043 green tests. This project answers the one question the

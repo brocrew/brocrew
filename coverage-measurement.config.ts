@@ -2,9 +2,8 @@ import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import base from './vitest.config'
+import base, { desktopProject } from './vitest.config'
 import browser from './apps/desktop/vitest.dom.config'
-import desktop from './apps/desktop/vitest.config'
 
 const root = import.meta.dirname
 const mode = process.env.COVERAGE_PROJECT_SET ?? 'all'
@@ -39,11 +38,10 @@ const projects = base
             },
           },
         }
-      : project === './apps/desktop'
+      : project === desktopProject
         ? {
-            ...desktop,
-            root: resolve(root, 'apps/desktop'),
-            test: { ...desktop.test, testTimeout: 120_000 },
+            ...desktopProject,
+            test: { ...desktopProject.test, testTimeout: 120_000 },
           }
         : project,
   )

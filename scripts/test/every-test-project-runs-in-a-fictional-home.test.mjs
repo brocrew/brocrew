@@ -57,7 +57,7 @@ describe('every test project runs in a fictional home', () => {
         [...names].sort(),
       )
     }
-    inline('vitest.config.ts', ['shared', 'runtime', 'scripts'])
+    inline('vitest.config.ts', ['shared', 'runtime', 'scripts', 'past-work-performance'])
     inline('vitest.gate-only.config.ts', ['gate-only-desktop', 'gate-only-scripts'])
 
     const desktop = codeOf(read('apps/desktop/vitest.config.ts'))
@@ -68,11 +68,17 @@ describe('every test project runs in a fictional home', () => {
       expect(config, path).toContain('setupFiles: [THE_GUARD],')
     }
 
-    // The root config's other projects: the desktop one above, and the one that runs in a browser,
-    // which reads no file.
+    // The root config extends the checked desktop config and registers it by name.
     const root = codeOf(read('vitest.config.ts'))
+    expect(root).toContain("import desktop from './apps/desktop/vitest.config'")
+    const desktopProject = /^export const desktopProject = \{\n([\s\S]*?)^\}/m.exec(root)?.[1] ?? ''
+    expect(desktopProject).toContain('...desktop,')
+    expect(desktopProject).toMatch(/test: \{\s*\.\.\.desktop\.test,/)
+    expect(desktopProject).not.toMatch(/^\s*(env|setupFiles):/m)
+    const projects = root.split('    projects: [\n')[1]?.split('\n    ],')[0] ?? ''
+    expect(projects).toMatch(/^\s+desktopProject,$/m)
+    // The path-based project runs in a browser, which reads no file.
     expect([...root.matchAll(/^\s+'(\.\/[^']+)',$/gm)].map((one) => one[1])).toEqual([
-      './apps/desktop',
       './apps/desktop/vitest.dom.config.ts',
     ])
   })
