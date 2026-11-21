@@ -1,48 +1,8 @@
 import { MAX_BACKGROUND_WORK, type BackgroundWork } from '../background-work'
 
 /**
- * Which of Claude's tracked tasks are running in the BACKGROUND right now (247).
- *
- * `SubAgentTasks` is the shape this follows and the reason is the same one: the discriminator is
- * place-once information, and the frames that need it most carry none. It is a different question,
- * though, and deliberately a different object — `SubAgentTasks` asks *"is this task a sub-agent"*
- * and never forgets; this asks *"is this task still running"* and must forget, because forgetting is
- * the whole point of a level signal.
- *
- * ## ⛔ What the wire actually says, measured rather than read off the types
- *
- * Four live turns (`smoke/background-reach-probe.smoke.ts`). A model asked to run a 30-second
- * command in the background produced:
- *
- * ```
- * background_tasks_changed {tasks:[{task_id, task_type:'local_bash', description}]}   ← the level
- * task_started             {task_id, tool_use_id, task_type, description}             ← the binding
- * tool_result              {tool_use_id, is_error:false, content:'Command running in background…'}
- * background_tasks_changed {tasks:[]}                                                 ← the level again
- * task_updated             {task_id, patch:{status:'completed', end_time}}
- * task_notification        {task_id, tool_use_id, status:'completed', summary, output_file}
- * ```
- *
- * ⚠️ **The control — same tool, same command, not detached — produced `task_started` and
- * `task_notification` and NO `background_tasks_changed` at all.** That is what makes membership of
- * the level set the live discriminator, and it is why {@link detachedAs} asks the set rather
- * than looking for a flag.
- *
- * ⛔ **`is_backgrounded` did not appear in ANY of the four captures**, and the dispatch named it as
- * the thing to carry. It is the CONVERSION signal — a foreground task being detached by
- * `Query.backgroundTasks()` — which is the path `245`'s harness took and production could not. It is
- * still honoured in {@link update} for a reason that is not speculative: 247 exposes that very
- * control, so the conversion path becomes reachable for the first time with this change.
- *
- * ## ⚠️ Which way it fails
- *
- * Toward forgetting. Every level payload REPLACES the set, and the FIRST `system/init` empties it —
- * the SDK's own instruction, because *"the level is per-process"* and nothing is emitted at startup.
- * ⚠️ **The first one only, since 257**; see {@link processRestarted} for the cron fire that made the
- * difference between *"an init"* and *"a restart"* a live defect. A task we never saw in a level
- * payload is not called backgrounded on the strength of a later frame.
- * The alternative failure — a card that says "still running" forever because one bookend went
- * missing — is the one `222` cost a dispatch, and the SDK's doc warns against it by name.
+ * Each background_tasks_changed payload replaces the per-process membership, so the next level
+ * corrects any missed start or finish edge.
  */
 export class BackgroundTasks {
   /** The level: task id → what the provider said about it. Replaced wholesale, never merged. */
@@ -52,16 +12,7 @@ export class BackgroundTasks {
   /** The binding, from the frames that carry both ids. Outlives the level, so an ending can name it. */
   private readonly toolOf = new Map<string, string>()
   private readonly taskOf = new Map<string, string>()
-  /**
-   * Every task this session ever saw running in the background.
-   *
-   * ⛔ **Separate from {@link live} because BOTH endings must be able to report, and the first one
-   * empties the set.** `029` established the redundancy and the reason: `task_updated` and
-   * `task_notification` both close the same task, whichever arrives first wins, and the other
-   * enriches. Measured at this pin they arrive in the same millisecond — but `task_updated` carries
-   * neither `tool_use_id` nor a summary, so gating on membership would have let the poorer bookend
-   * silence the richer one every time.
-   */
+  /** Keep past membership so either ending frame can report the task after its live entry is gone. */
   private readonly everBackground = new Set<string>()
 
   /**
@@ -93,51 +44,12 @@ export class BackgroundTasks {
     for (const task of tasks) this.everBackground.add(task.id)
   }
 
-  /**
-   * Whether a `system/init` has been seen by THIS instance yet — the whole of 257's discriminator.
-   *
-   * ⚑ **One instance is one CLI process, by construction rather than by belief.** This object is a
-   * field on `ClaudeSessionHandle`, and `ClaudeRuntime.start` and `ClaudeRuntime.resume` are the only
-   * two places a handle is built — each of them constructs one, hands it exactly one `query()` via
-   * `attachQuery`, and nothing ever re-attaches. So a second `init` reaching this object cannot be a
-   * second process: it is the same one speaking again.
-   */
+  /** Each handle attaches one query, so later system/init frames belong to the same CLI process. */
   private announced = false
 
   /**
-   * A `system/init` arrived. **True when it means the CLI process (re)started** — the only condition
-   * the SDK's reset rule names — in which case the set is emptied. False for every later one.
-   *
-   * ## 🔴 It used to reset on EVERY `init`, and `253` measured why that is wrong (257 §0)
-   *
-   * `247` read an `init` as *"a new process"* and implemented it as *"every init"*, which was the
-   * same thing at the pin it measured. ⚑ **It also anticipated this cost and measured it away**: on
-   * both rows that produced a second `init`, the level payload had already said `[]` 15 ms and 42 ms
-   * earlier, so the reset was a no-op exactly where it looked alarming.
-   *
-   * 🔴 **`253`'s capture broke that.** One process, one `query()`, one `session_id` — `init` at
-   * 10 194 ms, then **54 805 ms and 114 037 ms** as a scheduled job woke the session twice. **A cron
-   * fire is an `init` that is NOT a restart**, and a session holding a detached command AND a
-   * schedule lost its running-work card the moment the job fired. Both halves shipped in the same
-   * week — `247` built the registry, `253` built the schedules — and nothing tested the pair.
-   *
-   * ⛔ **So the ruling is the SDK's own sentence, taken literally**: reset when the *CLI process*
-   * (re)starts. The message cannot say whether it did; this object's own lifetime can, and that is
-   * the discriminator — see {@link announced}. A `session_id` comparison was the other candidate and
-   * is weaker: it is unchanged across all three of the inits above, so it would have to read
-   * *changed* as the restart signal, and a changed id in one process is a `/clear` — a conversation
-   * reset, which restarts nothing and kills no background task.
-   *
-   * ⛔ **The arm is not simply deleted, and that is the difference from `253`.** `253` could delete
-   * its own `init` arm because a cron demonstrably SURVIVES the process — measured, on a resume — so
-   * a replayed ledger was already telling the truth. Background work does not: the SDK says the level
-   * is per-process and that nothing is emitted at startup, so a reopened conversation replaying a
-   * non-empty last word would resurrect a row for work that died with the process. That correction
-   * still has to happen, and the first `init` is exactly when it is due.
-   *
-   * ⚠️ The residual is unchanged and still named: a genuine restart while work is live under-reports
-   * until the next membership change. That is the direction that cannot wedge, and it is the
-   * provider's instruction; the opposite choice is the one `222` paid for.
+   * Clear replayed membership on the first system/init. A scheduled wake can send another init
+   * in the same CLI process while background work is still running.
    */
   processRestarted(): boolean {
     if (this.announced) return false
@@ -185,16 +97,7 @@ export class BackgroundTasks {
     return null
   }
 
-  /**
-   * **The stop key for this tool call, if its work is running in the background right now** — and
-   * `undefined` otherwise, which is the ordinary case.
-   *
-   * ⚑ **One question, not two, and the first draft asked two.** It had `isBackgrounded(): boolean`
-   * beside `idFor(): string | undefined`, so the caller wrote `detached && stopId` — a guard for a
-   * combination that cannot occur, since the only way to be backgrounded is to have a binding. A
-   * redundant guard is a claim that the case exists; someone maintaining it later would have had to
-   * work out that it does not.
-   */
+  /** A stop key requires both the tool-to-task binding and current background membership. */
   detachedAs(toolUseId: string): string | undefined {
     const taskId = this.taskOf.get(toolUseId)
     return taskId !== undefined && this.live.has(taskId) ? taskId : undefined

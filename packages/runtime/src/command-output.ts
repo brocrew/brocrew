@@ -1,83 +1,15 @@
 /**
- * Track output from a command while it is running.
- *
- * ## ⛔ What the wire actually gives us, measured
- *
- * `smoke/command-output-probe.smoke.ts`, bundled `codex-cli 0.146.0`, three threads:
- *
- * | question | the answer, measured |
- * |---|---|
- * | does a running command stream its output? | ⚑ **yes on Codex** — `item/commandExecution/outputDelta`, **11 frames** for a 12-tick command, one a second, `"tick-2\n"` |
- * | is the delta's `itemId` the CARD's id? | ⚑ **yes** — `exec-25999b84-…` on the delta and on `tool_call.id`, same run |
- * | does it keep streaming after the turn ends? | ⚑ **yes** — **39 frames after `turn/completed`** for a detached command |
- * | does BroBot see any of it today? | ⛔ **none of it.** In-turn frames classify as `unknown{activity}` and render as nothing; post-turn frames are dropped by `TURN_SCOPED_METHODS` before the normalizer runs |
- * | and on Claude? | ⛔ **nothing carries it.** 45 frames over a 12 s command and the output arrives once, in the `tool_result` |
- *
- * ⚠️ **`300` §3 named `command/exec/outputDelta` and `process/outputDelta` and both are the wrong
- * channel** — their own generated docblocks say they are emitted for a streaming `command/exec` /
- * `process/spawn` request, keyed by a *"client-supplied, connection-scoped"* id. Those are processes
- * the CLIENT spawns; this app spawns none, and neither method appeared in any run.
- *
- * ## ⛔ Why this is a RING the adapter holds, and not an event
- *
- * ⚠️ **Every `RuntimeEvent` is recorded.** `RuntimeHost.deliver` takes an ordinal and appends before
- * it sends, deliberately — *"recording is what makes the session survive the process"*. A delta
- * stream on that path would put one durable row per line into the ledger of every conversation that
- * ever ran a chatty command, which is `052`'s ceiling met head-on, and a replay would then render a
- * live-looking tail for a process that died months ago — `222`'s stale indicator by a new road.
- *
- * ⚑ **And it would be redundant where it is not harmful.** When a command finishes, its `tool_result`
- * carries the output and IS the record; the tail is a claim about NOW, which is the same thing
- * `background_work.running` is and the reason `247` made that a level rather than a log.
- *
- * ⛔ **So the tail is READ, on demand, by the surface that is showing the command** — the shape `296`
- * established for a live child's transcript, and for the same reason: it costs nothing while nobody
- * is looking, and there is exactly one copy for a second surface to disagree with.
- *
- * ## ⚠️ Which way this fails
- *
- * Toward showing LESS than the command printed, and saying so. The ring keeps the last
- * {@link MAX_COMMAND_TAIL} characters and counts what it dropped; {@link MAX_COMMAND_TAILS} bounds
- * how many commands are held at once. A tail that has been evicted reads as absent — *"this app is
- * not holding it"* — which is a different sentence from *"the command printed nothing"*, and
- * {@link CommandTail} keeps them apart.
+ * Keep command output deltas in a bounded adapter buffer for on-demand reads. The tool_result
+ * holds the durable output, so individual deltas do not need ledger rows or replay.
  */
 
-/**
- * ⛔ **How much of one command's output is kept, in characters.**
- *
- * ⚠️ **A tail, not a log, and the number is chosen from what a person reads rather than from what a
- * command produces.** Eight thousand characters is around a hundred wrapped lines — more than the
- * card can show at once and enough that scrolling back inside it is worth doing. Anything larger
- * would be storing a build log in memory for a panel nobody may open.
- *
- * ⚑ `092`'s rule holds: the cut is COUNTED, never silent — see {@link CommandTail.dropped}.
- */
+/** Bound each command’s live tail and count any discarded output. */
 export const MAX_COMMAND_TAIL = 8_000
 
-/**
- * ⛔ **How many commands' tails one session holds at once.**
- *
- * ⚠️ **Bounded because a turn can run dozens of commands and a session hundreds**, and a map that
- * grew with the conversation would be `052`'s blow-up with a smaller unit. Thirty-two is far past
- * what can be running simultaneously — the measured live case is one — so eviction reaches only
- * commands that finished long ago, whose `tool_result` is the record anyway.
- *
- * ⚠️ **Least-recently-WRITTEN, not least-recently-read.** A reader is a person opening a card; a
- * writer is a process still producing. Evicting by reads would throw away the tail of the one
- * command still running the moment somebody looked at an older one.
- */
+/** Evict by last write so reading an old tail cannot move it ahead of active output. */
 export const MAX_COMMAND_TAILS = 32
 
-/**
- * What one command has printed, as much of it as this app is holding.
- *
- * ⚠️ **`null` from {@link CommandTails.read} and an empty `text` are different facts and must stay
- * that way.** `null` is *"this app is not holding a tail for that command"* — it was never streamed,
- * or it has been evicted. An empty `text` is *"it is streaming and has printed nothing yet"*, which
- * is what a command that is thinking looks like. `074`'s rule: saying nothing arrived is a different
- * fact from saying what did.
- */
+/** An empty tail has held no output. A null read means no tail was retained for that command. */
 export interface CommandTail {
   /** The last {@link MAX_COMMAND_TAIL} characters the command printed, oldest first. */
   readonly text: string
