@@ -11,6 +11,8 @@ const RETRY_CAPTIONS = {
   ended: 'Claude sign-in retry ended.',
   recovered: 'Claude sign-in recovered.',
 }
+/** Refused and stale rows also carry the short line the notice shows when sign-in has expired. */
+const CAPTIONS = { ...RETRY_CAPTIONS, expired: 'Claude sign-in expired.' }
 
 /** Classify live errors and historical retry rows without changing their stored diagnostics. */
 export function signInObservation(event: TranscriptEvent): TranscriptEvent {
@@ -31,20 +33,21 @@ export function signInObservation(event: TranscriptEvent): TranscriptEvent {
       signIn: {
         ...event.signIn,
         message,
-        ...(event.signIn.state === 'retrying'
-          ? { captions: event.signIn.captions ?? RETRY_CAPTIONS }
-          : {}),
+        captions:
+          event.signIn.state === 'retrying'
+            ? (event.signIn.captions ?? RETRY_CAPTIONS)
+            : { ...CAPTIONS, ...event.signIn.captions },
       },
     }
   }
   if (event.cause === 'auth') {
-    return { ...event, signIn: { state: 'refused', message: REFUSED_NOTICE } }
+    return { ...event, signIn: { state: 'refused', message: REFUSED_NOTICE, captions: CAPTIONS } }
   }
   if (event.cause === 'auth_stale')
-    return { ...event, signIn: { state: 'stale', message: STALE_AUTH_NOTICE } }
+    return { ...event, signIn: { state: 'stale', message: STALE_AUTH_NOTICE, captions: CAPTIONS } }
   if (!/^claude could not authenticate; retrying\b/.test(event.message)) return event
   if (event.cause !== undefined)
-    return { ...event, signIn: { state: 'stale', message: STALE_AUTH_NOTICE } }
+    return { ...event, signIn: { state: 'stale', message: STALE_AUTH_NOTICE, captions: CAPTIONS } }
   return {
     ...event,
     signIn: {

@@ -863,12 +863,12 @@ const errorEventSchema = z.object({
     .object({
       state: z.enum(['retrying', 'refused', 'stale']),
       message: z.string().optional(),
-      /** Opaque ending words supplied with the retry observation. */
       captions: z
         .object({
           stopped: z.string(),
           ended: z.string(),
           recovered: z.string(),
+          expired: z.string().optional(),
         })
         .optional(),
     })

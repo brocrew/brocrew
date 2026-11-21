@@ -28,7 +28,11 @@ it('classifies a refused login, while leaving API-key and unrelated failures unc
   const event: TranscriptEvent = { type: 'error', message: 'refused', cause: 'auth', fatal: true }
   expect(signInObservation(event)).toMatchObject({
     ...event,
-    signIn: { state: 'refused', message: expect.stringContaining('Sign in again') },
+    signIn: {
+      state: 'refused',
+      message: expect.stringContaining('Sign in again'),
+      captions: expect.objectContaining({ expired: 'Claude sign-in expired.' }),
+    },
   })
   const key = { ...event, onAKey: true as const }
   const other = { ...event, cause: undefined, message: 'disk full' }
@@ -45,7 +49,7 @@ it('retains a diagnosed stale-login remedy instead of restarting its old retry r
   }
   expect(signInObservation(event)).toEqual({
     ...event,
-    signIn: { state: 'stale', message: STALE_AUTH_NOTICE },
+    signIn: { state: 'stale', message: STALE_AUTH_NOTICE, captions: expect.any(Object) },
   })
 })
 
@@ -71,7 +75,7 @@ it('fills an existing stale row without changing its diagnostic, state or lifecy
   }
   expect(signInObservation(event)).toEqual({
     ...event,
-    signIn: { state: 'stale', message: STALE_AUTH_NOTICE },
+    signIn: { state: 'stale', message: STALE_AUTH_NOTICE, captions: expect.any(Object) },
   })
 })
 
@@ -108,4 +112,22 @@ it('supplies retry endings only when classifying an unfinished native observatio
   if (supplied.type !== 'error') throw new Error('Expected an error')
   expect(supplied.signIn?.captions).toBe(captions)
   expect(event.signIn).toEqual({ state: 'retrying' })
+})
+
+it('keeps an older refused row its own endings and adds the expired line', () => {
+  const captions = { stopped: 'Fern stopped.', ended: 'Fern ended.', recovered: 'Fern recovered.' }
+  const event: TranscriptEvent = {
+    type: 'error',
+    message: 'fictional raw diagnostic',
+    fatal: true,
+    signIn: { state: 'refused', captions },
+  }
+  expect(signInObservation(event)).toEqual({
+    ...event,
+    signIn: {
+      state: 'refused',
+      message: expect.stringContaining('Sign in again'),
+      captions: { ...captions, expired: 'Claude sign-in expired.' },
+    },
+  })
 })

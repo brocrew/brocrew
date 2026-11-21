@@ -246,6 +246,21 @@ describe('Claude sign-in recovery where the error is read', () => {
     expect(m.q('claude-sign-in-action').innerText).toBe('Retry with current sign-in')
   })
 
+  it('the expired line is the one the core supplied with the sign-in row', async () => {
+    await page.viewport(1200, 800)
+    bridge(USABLE)
+    const captions = {
+      stopped: 'S.',
+      ended: 'E.',
+      recovered: 'R.',
+      expired: 'Fern sign-in expired.',
+    }
+    const signIn = { state: 'refused' as const, message: 'Fern refused it.', captions }
+    const m = scene({}, { ...refused, cause: 'auth', signIn })
+    await settled()
+    expect(m.q('what-the-notice-says').innerText).toBe('Fern sign-in expired.')
+  })
+
   it('keeps the recovery action readable and keyboard reachable in a narrow pane', async () => {
     await page.viewport(760, 800)
     const api = bridge(STALE)
