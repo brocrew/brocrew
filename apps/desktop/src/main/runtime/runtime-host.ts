@@ -3833,6 +3833,7 @@ const NEWER_WORDS_AFTER_A_DELETE =
  * one such start and the next. ⚑ One start at a time: a busy restart with many of them spreads them
  * over this, never spawning them all at once while the window is still opening.
  */
+const FIRST_BRIEF_OBSERVATION_MS = 120_000
 const RESTART_WAKE_GAP_MS = 5_000
 
 /**
@@ -5570,7 +5571,11 @@ export class RuntimeHost implements LiveHost {
     this.workReconciler = new WorkReconciler({
       holders: () => this.deps.store.reconciliationOwners(true),
       providerFailures: (holders) => this.reconcileProviderFailureNotices(holders),
-      pieces: (holders) => this.reconciliationReading(undefined, holders).rows,
+      pieces: (holders) => {
+        const rows = this.reconciliationReading(undefined, holders).rows
+        const abandonments = this.reconcileFirstBriefNotices(rows)
+        return rows.filter((row) => !abandonments.has(row.piece))
+      },
       receiptsFor: (pieces) => this.reconciliationReceiptsFor(pieces),
       receipts: (piece) => {
         const work = this.deps.store.workById(piece)
@@ -10062,6 +10067,66 @@ export class RuntimeHost implements LiveHost {
     return true
   }
 
+  private tellGiverOfItsUnstartedBrief(
+    holder: string,
+    brief: Pick<WaitingMessage, 'kind' | 'piece' | 'rebrief'>,
+    briefId: string,
+    failure:
+      'missing-session' | 'handoff-unconfirmed' | 'start-unconfirmed' | 'restart-unconfirmed',
+  ): void {
+    if (this.launches.closed || brief.kind !== 'work' || brief.rebrief === true) return
+    const pieceId = brief.piece
+    if (pieceId === undefined) return
+    const noticeId = `give-start-${briefId}`
+    const appNotice = 'a-given-brief-could-not-start'
+    try {
+      const given = this.deps.store.workById(pieceId)
+      if (given === null || given.owner !== holder || given.givenBy === null) return
+      const target = this.theOneInItsPlace(given.givenBy)
+      const name = this.nameByItsWork(holder)
+      const subject = `task ${given.label} in ${name}`
+      const unconfirmed = `Startup or brief delivery is still unconfirmed for ${subject}.`
+      const text = {
+        'missing-session': `Task ${given.label} in ${name} could not start because its provider session file is missing. To continue, give the work to a new conversation and point it at the original record.`,
+        'handoff-unconfirmed': `The provider did not confirm receiving the brief for ${subject}. Check that conversation before giving the work again.`,
+        'start-unconfirmed': unconfirmed,
+        'restart-unconfirmed': `${unconfirmed} The app cannot tell whether the earlier Give result reached you.`,
+      }[failure]
+      this.holdUntilItStarts(
+        target,
+        text,
+        { appNotice, aboutPiece: { piece: pieceId, label: given.label } },
+        'notice',
+        (where) => {
+          if (where === 'its-ledger')
+            void this.wakeReconciliationRecipient(
+              target,
+              () =>
+                this.givenBriefNoticeStillGoes(pieceId, noticeId) &&
+                this.deps.store.queuedPromptProgress(target, noticeId, appNotice) === 'pending',
+            )
+        },
+        noticeId,
+      )
+    } catch (error) {
+      console.warn(`runtime host could not tell the giver of ${pieceId}: ${errorMessage(error)}`)
+    }
+  }
+
+  private givenBriefNoticeStillGoes(pieceId: string, noticeId: string): boolean {
+    const given = this.deps.store.workById(pieceId)
+    if (given === null) return false
+    const piece = this.deps.store.piecesOwnedBy(given.owner).find((one) => one.piece === pieceId)
+    return (
+      piece !== undefined &&
+      TASK_IS_OPEN[piece.state] &&
+      piece.messageId !== null &&
+      noticeId === `give-start-${piece.messageId}` &&
+      !piece.briefHandedOver &&
+      piece.statusLine?.waiting !== true
+    )
+  }
+
   private recordItsMissingSessionWake(conversation: string): void {
     this.writeWhileNothingRunsIt(conversation, {
       type: 'error',
@@ -13142,7 +13207,9 @@ export class RuntimeHost implements LiveHost {
     const from = left === undefined ? null : this.originOf(left.by)
     // Keep the exact incident piece with its reminder as well as with an agent note.
     const itNames =
-      from?.who === 'a-caller-with-an-id' || facts.appNotice === 'a-work-wait-needs-attention'
+      from?.who === 'a-caller-with-an-id' ||
+      facts.appNotice === 'a-work-wait-needs-attention' ||
+      facts.appNotice === 'a-given-brief-could-not-start'
         ? (facts.aboutPiece?.piece ?? null)
         : null
     const rebriefs =
@@ -13185,6 +13252,7 @@ export class RuntimeHost implements LiveHost {
       ...held.authorship,
       ...rebriefs,
       ...providerFailure,
+      ...(facts.appNotice === 'a-given-brief-could-not-start' ? { forItsNextStart: true } : {}),
       ...(drives === null ? {} : { drives }),
       ...(itNames === null ? {} : { about: itNames }),
       ...(held.asks === undefined ? {} : { asks: held.asks }),
@@ -13208,6 +13276,16 @@ export class RuntimeHost implements LiveHost {
     id?: string,
     left?: WordsForTheNextStart,
   ): void {
+    if (
+      facts.appNotice === 'a-given-brief-could-not-start' &&
+      (id === undefined ||
+        facts.aboutPiece === undefined ||
+        !this.givenBriefNoticeStillGoes(facts.aboutPiece.piece, id) ||
+        this.deps.store.queuedPromptProgress(sessionId, id, facts.appNotice) !== 'missing')
+    ) {
+      kept?.('nowhere')
+      return
+    }
     const { held, row } = this.wordsThisAppHolds(sessionId, text, facts, kind, id, left)
     // ⚑ **D-030 · its mailbox, while it runs** — and a sign-in that moved on holds them there for
     // its reopen ({@link reopenForWhatWaits}), which the flush asks for.
@@ -16498,6 +16576,9 @@ export class RuntimeHost implements LiveHost {
             label: work.label,
             holder: owner,
             giver: work.givenBy,
+            ...(folded?.messageId != null && folded.briefHandedOver !== true
+              ? { unhandedBrief: folded.messageId }
+              : {}),
             stalledBy: folded?.stalledBy ?? null,
             title: root?.title ?? folded?.title ?? work.title,
             disposition: 'unknown',
@@ -17056,6 +17137,121 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  /**
+   * A fresh Give records its conversation and this exact pair together before starting it.
+   * A new brief in an existing conversation and a service assignment have other ledger shapes.
+   */
+  private originalBriefForItsStart(holder: string):
+    | (QueuedMessageEvent & {
+        kind: 'work'
+        piece: string
+        messageId: string
+        at: number
+      })
+    | null {
+    const store = this.deps.store
+    const giver = store.parentOf(holder)
+    if (giver === null) return null
+    const given = store.newestOfType?.(holder, 'work_given', 3, 1)
+    if (
+      given?.event.type !== 'work_given' ||
+      given.event.givenBy !== giver ||
+      given.event.messageId === undefined
+    )
+      return null
+    const queued = store.newestOfType?.(holder, 'message_queued', given.ordinal, given.ordinal - 1)
+    if (
+      queued?.at !== given.at ||
+      queued.event.type !== 'message_queued' ||
+      queued.event.kind !== 'work' ||
+      queued.event.forItsNextStart !== true ||
+      queued.event.rebrief === true ||
+      queued.event.piece !== given.event.piece ||
+      queued.event.messageId !== given.event.messageId ||
+      queued.event.label !== given.event.label ||
+      (given.ordinal === 2 && store.newestOfType?.(holder, 'titled', 1) == null)
+    )
+      return null
+    return {
+      ...queued.event,
+      piece: given.event.piece,
+      kind: 'work',
+      messageId: given.event.messageId,
+      at: queued.at,
+    }
+  }
+
+  private reconcileFirstBriefNotices(
+    rows: readonly (ReconciliationPiece & { readonly validWait: boolean })[],
+  ): ReadonlySet<string> {
+    const abandonments = new Set<string>()
+    const original = new Map<string, ReturnType<RuntimeHost['originalBriefForItsStart']>>()
+    const now = this.now()
+    for (const row of rows) {
+      const abandoned =
+        row.issue?.kind === 'notice-not-delivered' && row.issue.cause === 'message_never_sent'
+      if (
+        row.giver === null ||
+        row.unhandedBrief === undefined ||
+        row.disposition === 'ended' ||
+        row.disposition === 'unknown' ||
+        row.validWait ||
+        row.stoppedByPerson === true ||
+        (row.issue !== null && !abandoned)
+      )
+        continue
+      const holder = row.holder
+      try {
+        let brief = original.get(holder)
+        if (brief === undefined) {
+          brief = this.originalBriefForItsStart(holder)
+          original.set(holder, brief)
+        }
+        if (brief === null || brief.piece !== row.piece || brief.messageId !== row.unhandedBrief)
+          continue
+        const fromEarlierRun = brief.at < this.upSince
+        const slot = this.slots.get(holder)
+        const session = slot?.session
+        const stillStarting = slot !== undefined && slot.session === null && !onItsWayOut(slot)
+        const confirmingBrief =
+          session != null &&
+          (session.handingOver.some((queued) => queued.id === brief.messageId) ||
+            (session.flushing !== null &&
+              session.handle.status() === 'idle' &&
+              session.mailbox[0]?.id === brief.messageId))
+        if (!fromEarlierRun && !stillStarting && !confirmingBrief) continue
+        if (
+          this.deps.store.whatBecameOfAMessage(holder, brief.messageId, fromEarlierRun) !==
+          'waiting'
+        )
+          continue
+        // Do not feed a first brief abandoned on restart into the ordinary stall reminder,
+        // which wakes the holder. Only the giver needs to hear about this uncertain handoff.
+        if (fromEarlierRun && abandoned) abandonments.add(brief.piece)
+        if (now - brief.at < FIRST_BRIEF_OBSERVATION_MS || !this.reconciliationMayWake(holder))
+          continue
+        if (session != null && !confirmingBrief) continue
+        const recorded = this.deps.store.recordedOne(holder)
+        if (
+          recorded === null ||
+          this.theResetItWaitsFor(recorded.provider, this.limitAccountOf(holder, now)) !== null
+        )
+          continue
+        this.tellGiverOfItsUnstartedBrief(
+          holder,
+          brief,
+          brief.messageId,
+          fromEarlierRun ? 'restart-unconfirmed' : 'start-unconfirmed',
+        )
+      } catch (error) {
+        console.warn(
+          `runtime host could not check the first brief in ${holder}: ${errorMessage(error)}`,
+        )
+      }
+    }
+    return abandonments
+  }
+
   private reconcileProviderFailureNotices(holders: ReadonlySet<string>): void {
     for (const holder of holders) {
       try {
@@ -17154,7 +17350,10 @@ export class RuntimeHost implements LiveHost {
 
   private dropObsoleteReconciliationNotices(session: HostedSession): void {
     for (const queued of [...session.mailbox]) {
-      if (queued.authorship.appNotice === 'a-provider-turn-failed') {
+      if (
+        queued.authorship.appNotice === 'a-provider-turn-failed' ||
+        queued.authorship.appNotice === 'a-given-brief-could-not-start'
+      ) {
         const gone = this.whyItNoLongerGoes(session.id, queued)
         if (gone?.reason === 'retracted')
           this.takeQueuedBack(session, queued, { reason: gone.reason, detail: gone.detail })
@@ -25498,6 +25697,22 @@ export class RuntimeHost implements LiveHost {
       const raced = this.slots.get(sessionId)
       if (raced !== undefined && raced.session === null && !onItsWayOut(raced)) await raced.arrived
       if (this.runsNow(sessionId)) return sessionId
+      if (theProviderLostIt(error) && !this.launches.closed) {
+        try {
+          for (const waiting of this.deps.store.messagesWaitingIn(sessionId)) {
+            this.tellGiverOfItsUnstartedBrief(
+              sessionId,
+              waiting,
+              waiting.messageId,
+              'missing-session',
+            )
+          }
+        } catch (noticeError) {
+          console.warn(
+            `runtime host could not read held briefs in ${sessionId}: ${errorMessage(noticeError)}`,
+          )
+        }
+      }
       throw error
     } finally {
       if (headless) this.startingForADeliveryWithNoWindow.delete(sessionId)
@@ -27840,6 +28055,13 @@ export class RuntimeHost implements LiveHost {
         this.endAHeldCommandThatCarriesFiles(session, command.queued, error.message)
         return true
       }
+      if (!(error instanceof TurnInProgress) && !session.itsSignInMovedOn) {
+        const failure = theProviderLostIt(error) ? 'missing-session' : 'handoff-unconfirmed'
+        for (const { queued } of sending) {
+          if (this.holdsQueued(session, queued))
+            this.tellGiverOfItsUnstartedBrief(session.id, queued, queued.id, failure)
+        }
+      }
       // Left queued on purpose. The realistic reasons this throws are that the session went terminal
       // between the status check and the send — {@link handOnWhatItHeld} then records it as abandoned
       // during teardown — or that the sign-in check above refused it. Anything else gets another
@@ -28153,6 +28375,11 @@ export class RuntimeHost implements LiveHost {
     queued: QueuedMessage,
   ): { readonly reason: 'retracted' | 'abandoned'; readonly detail: string } | null {
     try {
+      if (queued.authorship.appNotice === 'a-given-brief-could-not-start') {
+        return queued.about !== undefined && this.givenBriefNoticeStillGoes(queued.about, queued.id)
+          ? null
+          : { reason: 'retracted', detail: 'The task no longer needs this start failure notice.' }
+      }
       if (queued.authorship.appNotice === 'a-provider-turn-failed') {
         const holder = queued.providerFailureHolder
         return holder !== undefined &&

@@ -165,6 +165,9 @@ export interface AServiceWorld {
     interruptWaitMs?: number
     deliveryWaitMs?: number
     endingWaitMs?: number
+    startGapMs?: number
+    launchTimeoutMs?: number
+    beforePreparingHome?: (profile: string | undefined) => Promise<void> | undefined
     windowWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['windowWriterStamp']
     windowReader?: ConstructorParameters<typeof RuntimeHost>[0]['windowReader']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
@@ -377,7 +380,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
           world.preparedIn.push(home)
           mkdirSync(home, { recursive: true })
-          return home
+          return opts.beforePreparingHome?.(profileId)?.then(() => home) ?? home
         },
         providerHomePath: (provider: Provider) => join(folder, 'provider-homes', provider),
         ...(opts.listProfiles === undefined ? {} : { listProfiles: opts.listProfiles }),
@@ -417,6 +420,8 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         ...(opts.interruptWaitMs === undefined ? {} : { interruptWaitMs: opts.interruptWaitMs }),
         ...(opts.deliveryWaitMs === undefined ? {} : { deliveryWaitMs: opts.deliveryWaitMs }),
         ...(opts.endingWaitMs === undefined ? {} : { endingWaitMs: opts.endingWaitMs }),
+        ...(opts.startGapMs === undefined ? {} : { startGapMs: opts.startGapMs }),
+        ...(opts.launchTimeoutMs === undefined ? {} : { launchTimeoutMs: opts.launchTimeoutMs }),
       })
       hosts.push(host)
       return host

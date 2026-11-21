@@ -3,6 +3,9 @@ import type { AppDatabase, AppStatement } from './connection'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import { thePiecesTheTurnNames } from '../../shared/tasks'
 
+export const A_RESTART_LEFT_THE_MESSAGE_WAITING =
+  'the app stopped while this message was still waiting to be sent'
+
 export interface OpenTurn {
   readonly id: string
   readonly generation: number
@@ -249,6 +252,7 @@ export function createTurnEvidenceRead(
   function whatBecameOfAMessage(
     sessionId: string,
     messageId: string,
+    keepRestartedBrief = false,
   ): 'sent' | 'ended' | 'waiting' | 'absent' {
     let held = false
     let ended: 'sent' | 'ended' | null = null
@@ -264,6 +268,12 @@ export function createTurnEvidenceRead(
         } catch {
           // An unreadable ending is still an ending.
         }
+        if (
+          keepRestartedBrief &&
+          said['reason'] === 'abandoned' &&
+          said['detail'] === A_RESTART_LEFT_THE_MESSAGE_WAITING
+        )
+          continue
         ended = said['reason'] === 'sent' ? 'sent' : (ended ?? 'ended')
       }
     }
