@@ -166,7 +166,7 @@ describe('§1 · the two lines off his ledger are read as walls', () => {
 /* ─────────── §2 · the instrument: the adapters' own literals, recognised ─────────── */
 
 describe('§2 · every sentence the adapters compose is still read as a wall', () => {
-  it('🔴 both `normalize.ts` files, every rate-limit literal, rendered with a probe', () => {
+  it('renders every rate-limit literal from both adapters with a probe', () => {
     // ⛔ **This is the whole of standing rule 27 for this dispatch.** The recogniser and the
     // producers are in different packages and `533` §3 forbids touching the producers — so the
     // coupling is invisible, and a reword there turns `readProviderLimit` into a function that
@@ -177,7 +177,7 @@ describe('§2 · every sentence the adapters compose is still read as a wall', (
     // is what arrives here; the phrase is what has to survive, which is exactly what the recogniser
     // keys on.
     const producers = [
-      '../../../packages/runtime/src/codex/normalize.ts',
+      '../../../packages/runtime/src/codex/rate-limits.ts',
       '../../../packages/runtime/src/claude/normalize.ts',
     ]
     const built: string[] = []

@@ -2,7 +2,12 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 import { MAX_USAGE_WINDOWS, type RuntimeEvent } from '../src/index'
 import { normalizeMessage } from '../src/claude/normalize'
-import { RateLimitWatch, normalizeNotification, rateLimitUsage } from '../src/codex/normalize'
+import {
+  RateLimitWatch,
+  normalizeNotification,
+  rateLimitUsage,
+  type UsageBucket,
+} from '../src/codex/normalize'
 
 /**
  * # ⚑ Usage readings — how full each metered window is, for a person's Providers screen
@@ -196,9 +201,10 @@ describe('Codex · account/rateLimits/updated → provider_usage', () => {
   })
 
   it('⚑ a snapshot with no number in any window is no reading, and neither is no snapshot', () => {
+    const bucket: UsageBucket = { snapshot: 'nonsense', mainLimitId: null }
     expect(usageOf(frame({ ...BUCKET, primary: {}, secondary: null }))).toBeUndefined()
     expect(rateLimitUsage(null)).toBeNull()
-    expect(rateLimitUsage({ snapshot: 'nonsense', mainLimitId: null })).toBeNull()
+    expect(rateLimitUsage(bucket)).toBeNull()
     expect(new RateLimitWatch().lastReading()).toBeNull()
   })
 
