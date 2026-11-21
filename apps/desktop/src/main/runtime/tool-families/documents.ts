@@ -584,11 +584,16 @@ export function createSearchPastWorkTool(
             hits: found.hits,
             complete: found.complete,
             next_cursor: found.next_cursor,
+            ...(found.transcript_next_cursor === undefined
+              ? {}
+              : { transcript_next_cursor: found.transcript_next_cursor }),
+            ...(found.work_unread === true ? { work_unread: true } : {}),
           },
           pastWorkSearchInWords(
             found,
             input.success && input.data.cursor !== undefined,
             input.success && input.data.in === 'transcripts',
+            input.success ? { words: input.data.words, profile: input.data.profile } : undefined,
           ),
         )
       }),

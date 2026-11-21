@@ -854,6 +854,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     caller: string,
     profile?: string,
     after?: string | null,
+    recent?: PastWorkSource['recent'],
   ): PastWorkSource | null
   replacements(): readonly { readonly replaced: string; readonly by: string }[]
   newestScheduleLevels(owners?: ReadonlySet<string>): readonly {
@@ -6842,8 +6843,8 @@ export function createSessionStore(
       return searchPastWork(connection, this, caller, words, undefined, profile, cursor, transcript)
     },
 
-    pastWorkSearchSource(caller, profile, after) {
-      return pastWorkSource(connection, caller, profile, after)
+    pastWorkSearchSource(caller, profile, after, recent) {
+      return pastWorkSource(connection, caller, profile, after, recent)
     },
 
     closePastWorkSearch() {

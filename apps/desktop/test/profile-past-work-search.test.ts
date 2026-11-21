@@ -576,7 +576,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     hits: [expect.objectContaining({ archived: true })],
   })
   expect(answer.text).toContain('archived')
-  expect(answer.text).toContain('brocrew://piece/')
+  expect(answer.text).toContain('brocrew://conversation/')
   expect(answer.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
   expect(answer.text).not.toContain('last active')
   const transcript = await tool.call({ words: 'archivequartz', in: 'transcripts' })
@@ -634,7 +634,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   })
 })
 
-it('returns work titles and briefs without opening the transcript reader', async () => {
+it('returns work titles and briefs alongside a bounded transcript read', async () => {
   const w = world()
   const caller = 'fictional-caller'
   const target = 'fictional-target'
@@ -689,7 +689,12 @@ it('returns work titles and briefs without opening the transcript reader', async
       hits: [{ conversation: target, piece, matched_field: 'work title or brief' }],
     })
   }
-  expect(fallback).not.toHaveBeenCalled()
+  expect(fallback).toHaveBeenCalledTimes(2)
+  expect(fallback).toHaveBeenLastCalledWith(
+    expect.objectContaining({ transcript: {}, recent: { after: null, preview: true } }),
+    caller,
+    brief,
+  )
   expect(await search.searchWork(caller, { words: 'statusquartz' })).toMatchObject({
     ok: true,
     page: { hits: [{ conversation: target }] },
@@ -698,7 +703,7 @@ it('returns work titles and briefs without opening the transcript reader', async
     ok: true,
     hits: [],
   })
-  expect(fallback).toHaveBeenCalledTimes(1)
+  expect(fallback).toHaveBeenCalledTimes(3)
   expect(await search.searchPastWork(caller, title, undefined, undefined, {})).toMatchObject({
     ok: true,
     hits: [],
@@ -711,7 +716,7 @@ it('returns work titles and briefs without opening the transcript reader', async
 })
 
 it.each([0, 1])(
-  'continues empty work pages and carries earlier unread records (%i)',
+  'previews transcripts even when work is incomplete (%i)',
   async (skipped) => {
     const w = world()
     const caller = 'fictional-caller'
@@ -748,7 +753,7 @@ it.each([0, 1])(
     )
     const first = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader')
     expect(first).toMatchObject({ ok: true, hits: [], complete: false })
-    expect(fallback).not.toHaveBeenCalled()
+    expect(fallback).toHaveBeenCalledTimes(1)
     if (!first.ok || first.next_cursor === null) throw new Error('expected a work cursor')
     const final = await search.searchPastWork(
       caller,
@@ -764,7 +769,50 @@ it.each([0, 1])(
         titlesAndBriefs: true,
       }),
     )
-    expect(final).toEqual({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
-    expect(fallback).toHaveBeenCalledTimes(skipped === 0 ? 1 : 0)
+    expect(final).toMatchObject({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
+    if (skipped > 0) expect(final).toHaveProperty('work_unread', true)
+    expect(fallback).toHaveBeenCalledTimes(1)
   },
 )
+
+
+it('continues a recent-first transcript preview through the real worker', async () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  w.create(caller)
+  for (let i = 0; i < 7; i++) {
+    const id = `fictional-${i}`
+    w.create(id)
+    w.append(id, { type: 'assistant_message', text: 'previewquartz' }, 1_800_000_000_000 + i)
+    w.db.prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?').run(1_800_000_000_000 + i, id)
+  }
+  const entry = await bundleAWorker('src/main/past-work-search.worker.ts', w.directory, 'preview.cjs')
+  const reader = new PastWorkSearchReader((file) => new Worker(entry, { workerData: { file } }))
+  cleanups.push(() => reader.close())
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: {
+        read: async () => ({
+          ok: true, page: { hits: [], searched: 8, rows_unread: 0, ledgers_skipped: 0, complete: true, next_cursor: null },
+        }),
+      },
+      pastWorkSearchReader: reader,
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  const preview = await search.searchPastWork(caller, 'previewquartz')
+  if (!preview.ok || preview.transcript_next_cursor === undefined) throw new Error('missing continuation')
+  expect(preview.hits.map((hit) => hit.conversation)).toEqual(
+    ['fictional-6', 'fictional-5', 'fictional-4', 'fictional-3', 'fictional-2'],
+  )
+  const cursor = preview.transcript_next_cursor
+  expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, {})).toEqual({
+    ok: false, reason: 'invalid',
+  })
+  const next = await search.searchPastWork(caller, 'previewquartz', undefined, cursor, {})
+  if (!next.ok) throw new Error(next.reason)
+  expect(next.hits.map((hit) => hit.conversation)).toEqual(['fictional-1', 'fictional-0'])
+  expect(next.complete).toBe(true)
+})
