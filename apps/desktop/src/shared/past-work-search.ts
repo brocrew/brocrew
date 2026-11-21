@@ -22,10 +22,12 @@ const transcriptDates = {
     ),
 }
 
-export const pastWorkTranscriptScope = z.object({
-  ...transcriptDates,
-  includeWork: z.literal(true).optional(),
-}).strict()
+export const pastWorkTranscriptScope = z
+  .object({
+    ...transcriptDates,
+    includeWork: z.literal(true).optional(),
+  })
+  .strict()
 export type PastWorkTranscriptScope = z.infer<typeof pastWorkTranscriptScope>
 
 export const pastWorkSearchQuery = z
@@ -100,15 +102,23 @@ export type PastWorkSearchResult =
   | { readonly ok: false; readonly reason: 'invalid' | 'unavailable' }
 
 const pastWorkPosition = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('event'), ordinal: z.number().int().nonnegative(), part: z.number().int().nonnegative() }).strict(),
+  z
+    .object({
+      kind: z.literal('event'),
+      ordinal: z.number().int().nonnegative(),
+      part: z.number().int().nonnegative(),
+    })
+    .strict(),
   z.object({ kind: z.literal('file'), row: z.number().int().positive() }).strict(),
 ])
 export type PastWorkPosition = z.infer<typeof pastWorkPosition>
 
-export const pastWorkPartial = z.object({
-  id: z.string().min(1).max(200),
-  position: pastWorkPosition,
-}).strict()
+export const pastWorkPartial = z
+  .object({
+    id: z.string().min(1).max(200),
+    position: pastWorkPosition,
+  })
+  .strict()
 type PastWorkPartial = z.infer<typeof pastWorkPartial>
 export type PastWorkAfter = string | PastWorkPartial | null
 
@@ -122,7 +132,10 @@ export const pastWorkRecentPoint = z
 export type PastWorkRecentPoint = z.infer<typeof pastWorkRecentPoint>
 
 const recentCursor = z.tuple([
-  z.string(), z.string().nullable(), pastWorkRecentPoint.nullable(), z.string(),
+  z.string(),
+  z.string().nullable(),
+  pastWorkRecentPoint.nullable(),
+  z.string(),
 ])
 
 export function pastWorkRecentStart(
@@ -136,7 +149,8 @@ export function pastWorkRecentStart(
       JSON.parse(Buffer.from(cursor.slice(7), 'base64url').toString('utf8')),
     )
     return terms === words && identity === profile && dates === transcriptKey(transcript)
-      ? point : undefined
+      ? point
+      : undefined
   } catch {
     return undefined
   }

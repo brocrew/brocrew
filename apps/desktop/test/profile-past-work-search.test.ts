@@ -100,7 +100,11 @@ it('returns partial hits and resumes inside one conversation when document capac
     let cursor: string | undefined
     for (const ordinal of [0, 1, 2]) {
       const result = search.read(w.store, caller, words, undefined, undefined, cursor, scope)
-      expect(result).toMatchObject({ ok: true, complete: ordinal === 2, hits: [{ conversation: target, turn: { ordinal } }] })
+      expect(result).toMatchObject({
+        ok: true,
+        complete: ordinal === 2,
+        hits: [{ conversation: target, turn: { ordinal } }],
+      })
       if (!result.ok) throw new Error('no partial result')
       expect(result.next_cursor).not.toBe(cursor)
       cursor = result.next_cursor ?? undefined
@@ -112,13 +116,51 @@ it('returns partial hits and resumes inside one conversation when document capac
   for (const ordinal of [0, 1, 2]) {
     const source = search.sourceRevision(caller, undefined, null, { after: after ?? null })!
     const result = search.read(w.store, caller, words, { ...source, transcript: transcripts })
-    expect(result).toMatchObject({ ok: true, complete: ordinal === 2, hits: [{ conversation: target, turn: { ordinal } }] })
+    expect(result).toMatchObject({
+      ok: true,
+      complete: ordinal === 2,
+      hits: [{ conversation: target, turn: { ordinal } }],
+    })
     if (!result.ok) throw new Error('no partial recent result')
-    after = result.next_cursor === null
-      ? null
-      : pastWorkRecentStart(result.next_cursor, words, null, transcripts)
+    after =
+      result.next_cursor === null
+        ? null
+        : pastWorkRecentStart(result.next_cursor, words, null, transcripts)
     if (ordinal < 2) expect(after).toMatchObject({ id: target, position: { ordinal: ordinal + 1 } })
   }
+})
+
+it('continues at the exact next message part and made-file row', () => {
+  const w = world()
+  const caller = 'capacity-caller'
+  const root = w.create(caller)
+  w.append(caller, {
+    type: 'user_turn',
+    text: 'capacityjoined',
+    parts: [{ text: 'capacityword first' }, { text: 'capacityword second' }],
+  })
+  w.db
+    .prepare(
+      `INSERT INTO work_resource(id, work_id, role, name, sha256, bytes, added_by_session_id, created_at)
+       VALUES (?, ?, 'made', 'capacityword.md', ?, 10, ?, 1800000000000)`,
+    )
+    .run('capacity-resource', root.piece, 'a'.repeat(64), caller)
+  const search = new ProfilePastWorkSearch(w.db, 1)
+  cleanups.push(() => search.close())
+  const words = 'capacityword'
+
+  let cursor: string | undefined
+  for (const suffix of ['first', 'second', '.md']) {
+    const result = search.read(w.store, caller, words, undefined, undefined, cursor)
+    expect(result).toMatchObject({
+      ok: true,
+      complete: suffix === '.md',
+      hits: [{ snippet: expect.stringContaining(suffix) }],
+    })
+    if (!result.ok) throw new Error('no partial result')
+    cursor = result.next_cursor ?? undefined
+  }
+  expect(cursor).toBeUndefined()
 })
 
 it('finds matching recorded transcript positions inside the requested profile and dates', () => {
@@ -895,7 +937,8 @@ it('continues a recent-first transcript preview through the real worker', async 
     reason: 'invalid',
   })
   expect(await search.searchPastWork(caller, words, undefined, cursor, {})).toEqual({
-    ok: false, reason: 'invalid',
+    ok: false,
+    reason: 'invalid',
   })
   const next = await search.searchPastWork(caller, words, undefined, cursor, dates)
   if (!next.ok) throw new Error(next.reason)

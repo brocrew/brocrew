@@ -148,15 +148,19 @@ it('returns a single conversation row for matching ended and open tasks', () => 
       ok: true,
       page: { hits: [{ conversation: owner }] },
     })
-    expect(engine.read(giver, {
-      grouped: true,
-      scope: 'this-conversation',
-      state: 'answered',
-      words: 'Indexed',
-    })).toMatchObject({
+    expect(
+      engine.read(giver, {
+        grouped: true,
+        scope: 'this-conversation',
+        state: 'answered',
+        words: 'Indexed',
+      }),
+    ).toMatchObject({
       ok: true,
       page: {
-        grouped: { groups: [{ previews: [{ conversation: owner, matched_task_labels: [labels[0]] }] }] },
+        grouped: {
+          groups: [{ previews: [{ conversation: owner, matched_task_labels: [labels[0]] }] }],
+        },
       },
     })
     expect(
@@ -525,10 +529,17 @@ it('stops at 1000 conversation candidates and continues without repeating a page
     const grouped = engine.read('fictional_0', { ...query, grouped: true })
     if (!grouped.ok) throw new Error('no grouped first page')
     expect(grouped.page).toMatchObject({
-      searched: 1000, complete: false, next_cursor: expect.any(String), grouped: { matched: null },
+      searched: 1000,
+      complete: false,
+      next_cursor: expect.any(String),
+      grouped: { matched: null },
     })
-    expect(engine.read('fictional_0', { ...query, grouped: true, cursor: grouped.page.next_cursor! }))
-      .toMatchObject({ ok: true, page: { searched: total - 1000, complete: true, next_cursor: null } })
+    expect(
+      engine.read('fictional_0', { ...query, grouped: true, cursor: grouped.page.next_cursor! }),
+    ).toMatchObject({
+      ok: true,
+      page: { searched: total - 1000, complete: true, next_cursor: null },
+    })
     expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
   } finally {
     engine.close()
@@ -707,7 +718,12 @@ it('groups distinct conversation matches before selecting the six visible profil
     if (!prefix.ok || prefix.page.next_cursor === null)
       throw new Error('expected grouped scan continuation')
     expect(prefix.page.grouped?.groups.map(({ profile }) => profile)).toEqual([
-      'profile_7', 'profile_6', 'profile_5', 'profile_4', 'profile_3', 'profile_2',
+      'profile_7',
+      'profile_6',
+      'profile_5',
+      'profile_4',
+      'profile_3',
+      'profile_2',
     ])
     clock = 0
     expect(engine.read(caller, { ...query, cursor: prefix.page.next_cursor })).toMatchObject({
@@ -717,8 +733,9 @@ it('groups distinct conversation matches before selecting the six visible profil
         grouped: { matched: null, groups: [{ profile: 'profile_1' }, { profile: null }] },
       },
     })
-    expect(engine.read(caller, { ...query, state: 'working', cursor: prefix.page.next_cursor }))
-      .toEqual({ ok: false, reason: 'cursor-invalid' })
+    expect(
+      engine.read(caller, { ...query, state: 'working', cursor: prefix.page.next_cursor }),
+    ).toEqual({ ok: false, reason: 'cursor-invalid' })
 
     clock = 0
     db.prepare(

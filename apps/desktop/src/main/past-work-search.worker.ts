@@ -6,7 +6,11 @@ import { z } from 'zod'
 import { createSessionStore } from './db/session-store'
 import { searchPastWork } from './db/past-work-search'
 import { WORK_SEARCH_BOUNDS } from '../shared/work-search'
-import { pastWorkPartial, pastWorkRecentPoint, pastWorkTranscriptScope } from '../shared/past-work-search'
+import {
+  pastWorkPartial,
+  pastWorkRecentPoint,
+  pastWorkTranscriptScope,
+} from '../shared/past-work-search'
 
 const request = z
   .object({

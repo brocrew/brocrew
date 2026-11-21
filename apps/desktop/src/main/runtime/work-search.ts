@@ -71,14 +71,10 @@ export class WorkSearch {
         page.ledgers_skipped > 0 ||
         (page.next_cursor === null && !page.complete)
       const recorded: PastWorkSearchResult = preview
-        ? await this.readPastWork(
-            asAgent,
-            words,
-            profile,
-            undefined,
-            dates,
-            { after: null, preview: true },
-          )
+        ? await this.readPastWork(asAgent, words, profile, undefined, dates, {
+            after: null,
+            preview: true,
+          })
         : { ok: true, hits: [], complete: true, next_cursor: null }
       if (this.launches.closed || (!recorded.ok && page === undefined))
         return { ok: false, reason: 'unavailable' }

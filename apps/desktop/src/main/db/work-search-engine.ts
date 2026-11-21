@@ -300,10 +300,12 @@ export class WorkSearchEngine {
           ledgers_skipped: unread.ledgersSkipped,
           ...(tooLarge === 0 ? {} : { candidates_too_large: tooLarge }),
           complete: complete && prefix === undefined,
-          next_cursor: next === null
-            ? null
-            : Buffer.from(JSON.stringify({ version: 2, query: queryKey, high, ...next }))
-                .toString('base64url'),
+          next_cursor:
+            next === null
+              ? null
+              : Buffer.from(
+                  JSON.stringify({ version: 2, query: queryKey, high, ...next }),
+                ).toString('base64url'),
           grouped,
         }
       }

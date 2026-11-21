@@ -45,7 +45,10 @@ type Document = {
 }
 type Recording = { turnId: string | null; at: number; generation: number; ordinal: number }
 type SearchReads = WorkLedgerRead & Parameters<typeof describeConversationForRead>[0]
-type Index = { db: Database.Database; versions: Map<string, { version: number | null; count: number }> }
+type Index = {
+  db: Database.Database
+  versions: Map<string, { version: number | null; count: number }>
+}
 const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
 
 export function searchPastWork(
@@ -161,11 +164,13 @@ export class ProfilePastWorkSearch {
         limit: WORK_SEARCH_BOUNDS.candidates + 1,
       }) as Source[]
     if (resume !== undefined) {
-      const resumed = this.source.prepare(
-        `SELECT s.id, @at AS at, coalesce(d.version, 0) AS version
+      const resumed = this.source
+        .prepare(
+          `SELECT s.id, @at AS at, coalesce(d.version, 0) AS version
         FROM provider_session s LEFT JOIN temp.past_work_dirty d ON d.session = s.id
         WHERE s.id = @id ${profile === null ? '' : 'AND s.agent_identity_id = @profile'}`,
-      ).get({ id: resume.id, at: resume.at, profile }) as Source | undefined
+        )
+        .get({ id: resume.id, at: resume.at, profile }) as Source | undefined
       if (resumed !== undefined) rows.unshift(resumed)
     }
     const sessions = rows.slice(0, WORK_SEARCH_BOUNDS.candidates)
@@ -285,7 +290,7 @@ export class ProfilePastWorkSearch {
       const resume =
         recent?.after?.position !== undefined
           ? { id: recent.after.id, position: recent.after.position }
-          : revision?.partial ?? (typeof after === 'object' && after !== null ? after : undefined)
+          : (revision?.partial ?? (typeof after === 'object' && after !== null ? after : undefined))
       const scanned = new Map<string, PastWorkRecentPoint>()
       let recentAfter: PastWorkRecentPoint | null = recent?.after ?? null
       let moreRecent = recent !== undefined && page.next !== null
@@ -313,7 +318,8 @@ export class ProfilePastWorkSearch {
             position === undefined &&
             cached?.version === session.version &&
             cached.count <= remaining
-          ) return { count: cached.count }
+          )
+            return { count: cached.count }
           if (cached !== undefined) {
             remove.run(session.id)
             removeSources.run(session.id)
@@ -328,9 +334,8 @@ export class ProfilePastWorkSearch {
             break
           }
           try {
-            const { count, position } = recent?.preview === true
-              ? refreshPreview(session)
-              : refresh(session)
+            const { count, position } =
+              recent?.preview === true ? refreshPreview(session) : refresh(session)
             remaining -= count
             processed.add(session.id)
             next.set(session.id, {
@@ -379,10 +384,14 @@ export class ProfilePastWorkSearch {
             .iterate({
               match,
               scanned: JSON.stringify([...scanned.keys()]),
-              from: transcript?.from === undefined ? Number.MIN_SAFE_INTEGER : Date.parse(transcript.from),
-              to: transcript?.to === undefined
-                ? Number.MAX_SAFE_INTEGER
-                : Date.parse(transcript.to) + 86_399_999,
+              from:
+                transcript?.from === undefined
+                  ? Number.MIN_SAFE_INTEGER
+                  : Date.parse(transcript.from),
+              to:
+                transcript?.to === undefined
+                  ? Number.MAX_SAFE_INTEGER
+                  : Date.parse(transcript.to) + 86_399_999,
             }) as Iterable<Document>
           return
         }
@@ -569,13 +578,16 @@ export class ProfilePastWorkSearch {
           .get(session.id) as { id: string } | undefined
       )?.id ?? null
     const generation = store.theActiveGeneration(session.id)
-    const events = resume?.kind === 'file' ? [] : this.source
-      .prepare(
-        `SELECT type, substr(payload, 1, ?) AS payload, turn_id, created_at, ordinal FROM events
+    const events =
+      resume?.kind === 'file'
+        ? []
+        : this.source
+            .prepare(
+              `SELECT type, substr(payload, 1, ?) AS payload, turn_id, created_at, ordinal FROM events
       WHERE session_id = ? AND generation = ? AND ordinal >= ?
       AND type IN ('user_turn', 'assistant_message') ORDER BY ordinal`,
-      )
-      .iterate(CELL_LIMIT + 1, session.id, generation, resume?.ordinal ?? 0)
+            )
+            .iterate(CELL_LIMIT + 1, session.id, generation, resume?.ordinal ?? 0)
     for (const value of events) {
       if (stopAt !== Infinity && performance.now() >= stopAt) throw PREVIEW_DEADLINE
       const event = value as {
@@ -603,14 +615,14 @@ export class ProfilePastWorkSearch {
           return { count, position: { kind: 'event', ordinal: event.ordinal, part: 0 } }
       } else {
         const parts = theMessagesOf(message as unknown as UserTurnEvent)
-        const start =
-          resume?.kind === 'event' && resume.ordinal === event.ordinal ? resume.part : 0
+        const start = resume?.kind === 'event' && resume.ordinal === event.ordinal ? resume.part : 0
         for (let i = start; i < parts.length; i++) {
           const part = parts[i]!
           if (
             (aPersonsOwnWords(part) || part.attribution === 'provider_transcript') &&
             capture('person message', part.text) === false
-          ) return { count, position: { kind: 'event', ordinal: event.ordinal, part: i } }
+          )
+            return { count, position: { kind: 'event', ordinal: event.ordinal, part: i } }
         }
       }
     }
@@ -623,12 +635,20 @@ export class ProfilePastWorkSearch {
       .iterate(session.id, resume?.kind === 'file' ? resume.row : 1)
     for (const value of resources) {
       if (stopAt !== Infinity && performance.now() >= stopAt) throw PREVIEW_DEADLINE
-      const resource = value as { rowid: number; work_id: string; name: string; owner_session_id: string }
-      if (add(
-        resource.owner_session_id === session.id ? resource.work_id : conversationPiece,
-        'made-file name',
-        resource.name,
-      ) === false) return { count, position: { kind: 'file', row: resource.rowid } }
+      const resource = value as {
+        rowid: number
+        work_id: string
+        name: string
+        owner_session_id: string
+      }
+      if (
+        add(
+          resource.owner_session_id === session.id ? resource.work_id : conversationPiece,
+          'made-file name',
+          resource.name,
+        ) === false
+      )
+        return { count, position: { kind: 'file', row: resource.rowid } }
     }
     return { count }
   }
