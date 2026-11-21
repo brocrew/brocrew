@@ -286,7 +286,7 @@ it('314 · the shipped writer puts the four memory tools in a real child’s inv
   expect(production.config).toContain('base_url = "http://127.0.0.1:')
   expect(production.config).toContain('dedicated_tools = true')
   expect(production.freshMemoryRoot).toBe(true)
-  expect(production.configuredVersion).toBe('v1')
+  expect(production.configuredVersion ?? null).toBeNull()
 
   for (const name of TOOL_NAMES) {
     expect(production.execDescription, `${name} is missing from the child's inventory`).toContain(

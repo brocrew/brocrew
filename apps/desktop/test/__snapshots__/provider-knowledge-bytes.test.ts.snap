@@ -551,7 +551,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
     "total": 3,
   },
   "page": {
-    "dir": "<root>/homes/fern/codex/memories",
+    "dir": "<root>/homes/fern/codex/memories_v2",
     "firstListed": [
       "2026-01-02-one.md",
     ],
@@ -560,7 +560,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 18,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
         "reach": "prompt",
         "text": "A memory summary.
 ",
@@ -569,7 +569,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 16,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
         "reach": "on-request",
         "text": "A memory index.
 ",
@@ -578,7 +578,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 20,
         "kind": "agent-memory-note",
-        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
         "reach": "on-request",
         "text": "A requested memory.
 ",
@@ -600,7 +600,7 @@ Work on the sample project.",
         {
           "bytes": 18,
           "kind": "agent-memory",
-          "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+          "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
           "reach": "prompt",
           "text": "A memory summary.
 ",
@@ -609,7 +609,7 @@ Work on the sample project.",
         {
           "bytes": 16,
           "kind": "agent-memory",
-          "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+          "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
           "reach": "on-request",
           "text": "A memory index.
 ",
@@ -618,7 +618,7 @@ Work on the sample project.",
         {
           "bytes": 20,
           "kind": "agent-memory-note",
-          "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+          "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
           "reach": "on-request",
           "text": "A requested memory.
 ",
@@ -631,7 +631,7 @@ Composed by BroCrew for this conversation at this launch:
 
 Work on the sample project.",
       "injected": [],
-      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. What this profile remembers is in <root>/homes/fern/codex/memories, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
+      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. What this profile remembers is in <root>/homes/fern/codex/memories_v2, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
       "provider": [],
       "recallsReported": true,
       "refused": [
@@ -672,21 +672,21 @@ Work on the sample project.",
       {
         "bytes": 18,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
         "text": "A memory summary.
 ",
       },
       {
         "bytes": 16,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
         "text": "A memory index.
 ",
       },
       {
         "bytes": 20,
         "kind": "agent-memory-note",
-        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
         "text": "A requested memory.
 ",
       },
@@ -785,7 +785,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
     "total": 3,
   },
   "page": {
-    "dir": "<root>/homes/fern/codex/memories",
+    "dir": "<root>/homes/fern/codex/memories_v2",
     "firstListed": [
       "2026-01-02-one.md",
     ],
@@ -794,7 +794,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 18,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
         "reach": "prompt",
         "text": "A memory summary.
 ",
@@ -803,7 +803,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 16,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
         "reach": "on-request",
         "text": "A memory index.
 ",
@@ -812,7 +812,7 @@ exports[`codex knowledge bytes on the landed base > keeps the exact launch, rece
       {
         "bytes": 20,
         "kind": "agent-memory-note",
-        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
         "reach": "on-request",
         "text": "A requested memory.
 ",
@@ -832,7 +832,7 @@ Work on the sample project.",
         {
           "bytes": 18,
           "kind": "agent-memory",
-          "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+          "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
           "reach": "prompt",
           "text": "A memory summary.
 ",
@@ -841,7 +841,7 @@ Work on the sample project.",
         {
           "bytes": 16,
           "kind": "agent-memory",
-          "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+          "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
           "reach": "on-request",
           "text": "A memory index.
 ",
@@ -850,7 +850,7 @@ Work on the sample project.",
         {
           "bytes": 20,
           "kind": "agent-memory-note",
-          "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+          "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
           "reach": "on-request",
           "text": "A requested memory.
 ",
@@ -861,7 +861,7 @@ Work on the sample project.",
 
 Work on the sample project.",
       "injected": [],
-      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. BroCrew published this profile's own instructions at <root>/homes/fern/codex/AGENTS.override.md for the provider to read. What this profile remembers is in <root>/homes/fern/codex/memories, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
+      "note": "BroCrew sends this provider how to use its tools and what is true of this conversation in front of a message: the whole of it the first time, and again after the conversation is compacted; otherwise only what changed — it reads its own instruction files, and the list below is the one it reported. BroCrew published this profile's own instructions at <root>/homes/fern/codex/AGENTS.override.md for the provider to read. What this profile remembers is in <root>/homes/fern/codex/memories_v2, written by the agent: only memory_summary.md is put in front of the model, and the agent reads the rest only if it chooses to.",
       "provider": [],
       "recallsReported": true,
       "refused": [],
@@ -897,21 +897,21 @@ Work on the sample project.",
       {
         "bytes": 18,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/memory_summary.md",
+        "path": "<root>/homes/fern/codex/memories_v2/memory_summary.md",
         "text": "A memory summary.
 ",
       },
       {
         "bytes": 16,
         "kind": "agent-memory",
-        "path": "<root>/homes/fern/codex/memories/MEMORY.md",
+        "path": "<root>/homes/fern/codex/memories_v2/MEMORY.md",
         "text": "A memory index.
 ",
       },
       {
         "bytes": 20,
         "kind": "agent-memory-note",
-        "path": "<root>/homes/fern/codex/memories/extensions/ad_hoc/notes/2026-01-02-one.md",
+        "path": "<root>/homes/fern/codex/memories_v2/extensions/ad_hoc/notes/2026-01-02-one.md",
         "text": "A requested memory.
 ",
       },

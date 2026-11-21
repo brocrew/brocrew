@@ -71,8 +71,9 @@ import { providerKnowledge } from '../providers/index'
 /**
  * The directory to watch for this session, or `null` when there is nothing to watch.
  *
- * ⚠️ **Derived once per session and held**, because it cannot change: a session's provider home is
- * fixed at launch and the layout is a constant of the provider.
+ * ⚠️ **Derived once per session and held**, because it does not change during one: a session's
+ * provider home is fixed at launch, and the folder the provider keeps notes in is chosen by that
+ * home before the session starts.
  */
 export function memoryNoteDir(provider: Provider, providerHome: string): string | null {
   return providerKnowledge[provider].memory.noteDirectory(providerHome)

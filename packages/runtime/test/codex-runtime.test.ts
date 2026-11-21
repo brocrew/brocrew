@@ -12546,7 +12546,6 @@ describe('Codex launch settings stay with the launch', () => {
 
   const memory = [
     'features.memories=true',
-    'memories.version=v1',
     'memories.dedicated_tools=true',
     'memories.use_memories=true',
     'memories.generate_memories=true',

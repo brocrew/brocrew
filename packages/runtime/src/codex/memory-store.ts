@@ -1,4 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 
 /**
  * **Where Codex keeps the memory 314 switched on** — the tree, as 312 measured it on a real
@@ -27,6 +29,10 @@ import { join } from 'node:path'
  * memories/rollout_summaries/<stamp>-<slug>.md      one per extracted conversation
  * ```
  *
+ * That is memory v1. Memory v2 keeps the same summary, ad-hoc notes and rollout summaries in
+ * `memories_v2/` and writes no `MEMORY.md` or `raw_memories.md`; {@link codexMemoryDir} says which
+ * folder a home uses.
+ *
  * ⚠️ **`memory_summary.md` is the only one that arrives unasked.** 312's eight-arm wire matrix
  * captured it inside the model request whenever `use_memories` was effectively true, and captured
  * nothing else from this tree. Everything else is reachable — the four `memories__*` tools can list,
@@ -46,15 +52,37 @@ import { join } from 'node:path'
  * does not follow the convention sorts by its bytes, which is the only order it has.
  */
 
-/** `$CODEX_HOME/memories` — the whole store, and the directory every path below is under. */
+/**
+ * The memory folder Codex uses in this home, chosen the way Codex chooses it: the folder of the
+ * `[memories] version` that config.toml names; otherwise `memories_v2` for a home with no
+ * `memories` folder yet (unless `dual_write = false`), and `memories` for a home that has one.
+ * Every path below is under it.
+ */
 export function codexMemoryDir(providerHome: string): string {
-  return join(providerHome, 'memories')
+  const configured = configuredMemories(providerHome)
+  const v1 = join(providerHome, 'memories')
+  const v2 = join(providerHome, 'memories_v2')
+  if (configured['version'] === 'v1') return v1
+  if (configured['version'] === 'v2') return v2
+  return configured['dual_write'] !== false && !existsSync(v1) ? v2 : v1
+}
+
+/** This home's `[memories]` table, or an empty one when config.toml has none or is unreadable. */
+function configuredMemories(providerHome: string): Record<string, unknown> {
+  try {
+    const table = parseToml(readFileSync(join(providerHome, 'config.toml'), 'utf8'))['memories']
+    return typeof table === 'object' && table !== null && !Array.isArray(table)
+      ? (table as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 /** The compressed summary Codex injects into every request. 312 captured it on the wire. */
 export const CODEX_MEMORY_SUMMARY = 'memory_summary.md'
 
-/** The consolidated handbook the agent searches. Same name as Claude's index, different door. */
+/** Memory v1's consolidated handbook the agent searches. Claude's index has the same name. */
 export const CODEX_MEMORY_INDEX = 'MEMORY.md'
 
 /** `raw_memories.md` — stage 1's dump, which phase 2 consolidates into the two files above. */

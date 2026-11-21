@@ -78,7 +78,6 @@ describe('the two gates, merged in place (314 §1)', () => {
       const parsed = parseToml(merge.text) as Record<string, Record<string, unknown>>
       expect(parsed['features']).toEqual({ memories: true })
       expect(parsed['memories']).toEqual({
-        version: 'v1',
         dedicated_tools: true,
         use_memories: true,
         generate_memories: true,

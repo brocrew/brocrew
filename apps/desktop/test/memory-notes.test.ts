@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { codexAdHocNotesDir, codexMemoryIndex, codexMemorySummary } from '@brobot2/runtime/codex'
+import {
+  codexAdHocNotesDir,
+  codexMemoryDir,
+  codexMemoryIndex,
+  codexMemorySummary,
+} from '@brobot2/runtime/codex'
 import { SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import { memoryNoteDir, noteNamesIn, notesThatAppeared } from '../src/main/runtime/memory-notes'
 import { AGENT_MEMORY_NOTES_SHOWN } from '../src/main/runtime/instructions'
@@ -97,11 +102,12 @@ describe('318 · a note that appeared while the turn ran', () => {
    */
   it('ignores every file the pipeline writes, and the store files beside them', () => {
     const before = seen()
-    mkdirSync(join(home, 'memories', 'rollout_summaries'), { recursive: true })
+    const store = codexMemoryDir(home)
+    mkdirSync(join(store, 'rollout_summaries'), { recursive: true })
     writeFileSync(codexMemoryIndex(home), '# handbook\n')
     writeFileSync(codexMemorySummary(home), 'summary\n')
-    writeFileSync(join(home, 'memories', 'raw_memories.md'), 'raw\n')
-    writeFileSync(join(home, 'memories', 'rollout_summaries', '2026-09-04T00-00-00-x.md'), 'roll\n')
+    writeFileSync(join(store, 'raw_memories.md'), 'raw\n')
+    writeFileSync(join(store, 'rollout_summaries', '2026-09-04T00-00-00-x.md'), 'roll\n')
 
     expect(
       notesThatAppeared(notes, before).event,
