@@ -26,7 +26,7 @@ export function readCodexAgentMemory(providerHome: string): CodexMemoryRead {
   const dir = codexMemoryDir(providerHome)
   const realDir = codexMemoryDir(realPath(providerHome))
   const notesDir = codexAdHocNotesDir(providerHome)
-  // ⚠️ Hoisted: `realPath` walks the filesystem, and this was being recomputed once per note.
+  // Hoisted: `realPath` walks the filesystem, so it is computed once rather than per note.
   const realNotesDir = codexAdHocNotesDir(realPath(providerHome))
   const notes = adHocNotes(notesDir)
 
@@ -41,8 +41,7 @@ export function readCodexAgentMemory(providerHome: string): CodexMemoryRead {
       path: join(notesDir, name),
       derived: join(realNotesDir, name),
       kind: 'agent-memory-note' as const,
-      // ⚠️ Availability, never comprehension: the note is in the store and the agent can search it.
-      // Saying the model "has" it would be 305's defect with a friendlier face.
+      // Availability, not comprehension: the note is in the store and the agent can search it.
       reach: 'on-request' as const,
     })),
   ]
@@ -52,18 +51,13 @@ export function readCodexAgentMemory(providerHome: string): CodexMemoryRead {
   const listed = read.memory.filter((item) => item.kind === 'agent-memory-note').length
   return {
     ...read,
-    // ⚠️ `existsSync` rather than "did we read anything": a store that exists and holds nothing we
-    // show is still a store, and the sentence about it is still true. ⛔ It follows links, so a
-    // `memories/` pointed at another disk is a store and a DANGLING one is not — which is the
-    // answer that leaves the broken-link row to say what happened.
+    // `existsSync` follows links: a `memories/` pointed at another disk is a store and a dangling
+    // one is not, which leaves the broken-link row to say what happened.
     dir: existsSync(dir) ? dir : null,
     notesFound: notes.names.length,
     notesListed: listed,
-    // ⚑ **Whether the SUMMARY is really there**, so the sentence can say what is in the prompt
-    // rather than what would be. ⚠️ Found reviewing this diff: a profile whose agent has written
-    // only ad-hoc notes has no `memory_summary.md` yet, and a sentence stating that one file is in
-    // front of the model sent the reader looking for a file that does not exist — 317's own defect
-    // class, in the sentence 317 added.
+    // Whether the summary is really there: a profile with only ad-hoc notes has no
+    // `memory_summary.md`, and a sentence stating it is in the prompt would be false.
     injects: read.memory.some((item) => item.reach === 'prompt'),
     pipeline: CODEX_MEMORY_PIPELINE_FILES.filter((name) => existsSync(join(dir, name))),
   }

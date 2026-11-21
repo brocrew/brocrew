@@ -3,36 +3,17 @@ import { basename, join } from 'node:path'
 import { CodexRequestRefused } from './codex-transport'
 
 /**
- * # 🔴 706 · a thread Codex no longer has — told BY WHAT IT IS (`705` F-3)
+ * Whether Codex answered `thread/resume` because the thread is gone. `thread/resume` refuses with
+ * JSON-RPC `-32600` for every failure, so the answer is read in full: the refusal must be the
+ * app-server's ({@link CodexRequestRefused}, not a transport that could not ask), of `thread/resume`,
+ * under that code, in one of two known sentences ("no rollout found for thread id <id>" or "failed to
+ * resolve rollout path `<...-id.jsonl>`: file does not exist") naming this thread, and the home must
+ * hold no rollout of it.
  *
- * ⚑ **Measured, `probe:codex-lost-thread`, bundled `codex-cli 0.146.0`** — what `thread/resume` is
- * answered with when the thread is gone, and beside it what a failure of the attempt looks like:
- *
- * | the thread | the answer |
- * |---|---|
- * | an id the home never had | `{"code":-32600,"message":"no rollout found for thread id <id>"}` |
- * | a home wiped under it | the same |
- * | its rollout file deleted, its state row left | `{"code":-32600,"message":"failed to resolve rollout path \`<…-<id>.jsonl>\`: file does not exist"}` |
- * | ⛔ an app-server that died as it was asked | no answer at all — the transport's `codex app-server exited` |
- *
- * ⛔ **The code says nothing on its own**: `-32600` is JSON-RPC's *invalid request*, the one code
- * Codex gives every refusal of `thread/resume`. ⚑ So the answer is read in full — the refusal must
- * be the app-server's (a {@link CodexRequestRefused}, never a transport that could not ask), of
- * `thread/resume`, under that code, in one of the two measured sentences, **about the thread this
- * resume named** — and then asked of the disk: the home must hold NO rollout of it. ⚑ **That second
- * question is Claude's own** (`defaultSessionExists` asks every project folder, and only the kernel's
- * absence is one), asked here only after the provider has answered.
- *
- * ⚠️ **An ARCHIVED rollout counts as on disk, on purpose** — `thread/unarchive` brings the thread back,
- * and nothing in this app archives one; its refusal words (*"… is archived"*) are not read here, so
- * such a conversation is kept, the direction a doubt must err in (the `706` review).
- *
- * 🔴 **Every doubt keeps the conversation** — the ruling's other half: *"a transient failure must
- * never make the app forget a conversation."* A sentence this file does not know, a code that
- * differs, another thread's id, a rollout still on disk, a directory that could not be read: each
- * answers `false`, and the next press asks again. ⚠️ **A Codex that rewords its refusal therefore
- * regresses to *never let go*, never to *forgets*** — re-run `pnpm run probe:codex-lost-thread` when
- * the bundled binary moves (its assertions name this function's answer for every arm).
+ * Every doubt keeps the conversation: an unknown sentence, another code or thread id, a rollout on
+ * disk (archived included; its "is archived" refusal is not read) or an unreadable directory
+ * answers `false`. A reworded refusal therefore means never letting go, never forgetting. Re-run
+ * `pnpm run probe:codex-lost-thread` when the bundled binary changes.
  */
 export function codexNoLongerHasTheThread(
   error: unknown,
@@ -44,10 +25,10 @@ export function codexNoLongerHasTheThread(
   return rolloutsOf(providerHome, threadId) === 'none'
 }
 
-/** ⚑ The one code `0.146.0` refused every `thread/resume` with, measured — *invalid request*. */
+/** The code Codex refuses every `thread/resume` with (JSON-RPC invalid request). */
 const REFUSED_A_RESUME = -32600
 
-/** The app-server's refusal, in one of the two measured sentences, naming THIS thread. */
+/** The app-server's refusal, in one of the two known sentences, naming this thread. */
 function saysTheThreadIsGone(refusal: unknown, threadId: string): boolean {
   if (typeof refusal !== 'object' || refusal === null) return false
   const { code, message } = refusal as { code?: unknown; message?: unknown }
@@ -59,9 +40,8 @@ function saysTheThreadIsGone(refusal: unknown, threadId: string): boolean {
 
 /**
  * Whether `home` holds a rollout of the thread: `'none'` only when both trees Codex keeps rollouts
- * in were READ and no entry names it. ⛔ Anything that could not be read is `'unknown'`, never
- * `'none'` — and a tree that does not exist is the one absence that IS an answer (a wiped home).
- * ⚑ Symlinks are not followed (`Dirent.isDirectory()` is false for one), so the walk ends.
+ * in were read and no entry names it. Anything unreadable is `'unknown'`; a missing tree is an answer
+ * (a wiped home). Symlinks are not followed.
  */
 function rolloutsOf(home: string, threadId: string): 'none' | 'some' | 'unknown' {
   const namesIt = (dir: string, root: boolean): boolean => {

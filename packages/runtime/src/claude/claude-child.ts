@@ -24,112 +24,51 @@ export async function finishClaudeChild(
 }
 
 /**
- * **The Claude CLI child, owned by this app rather than borrowed from the SDK** (233, from 229 H1).
+ * The Claude CLI child, owned by this app rather than borrowed from the SDK, so a real exit event is
+ * available.
  *
- * ## The finding
+ * The SDK's own stop is bounded (`query.return()` resolves after a timeout even if the child lives; it
+ * schedules SIGTERM/SIGKILL on `unref`'d timers that never fire if the app exits first), so it cannot
+ * certify that the process is gone. The SDK exposes no child or pid, but `Options.spawnClaudeCodeProcess`
+ * lets the caller supply the spawn, and a `ChildProcess` satisfies `SpawnedProcess`. `child.once('exit')`
+ * is then a kernel-delivered fact about a process this module spawned, and
+ * {@link SessionHandle.providerPid} is available for Claude.
  *
- * `HostedSession.terminated` is documented as *"the provider stop, UNBOUNDED — the fact, as opposed
- * to `stopping`, which is how long we were prepared to wait for it"*, and for Claude the promise
- * assigned to it was the adapter's own impatience: {@link ClaudeSessionHandle.close} awaits
- * `detachQueryAwaitingExit()`, which is `withTimeout(query.return(), 5 s)` over a
- * `performCleanup()` that itself races `transport.waitForExit()` against 2 000 ms. Every layer of
- * that stack always resolves, so the fact and the bound were one promise — and a bound cannot be a
- * receipt.
- *
- * The cost is not theoretical. `ProcessTransport.close()` schedules `SIGTERM` 2 000 ms out and
- * `SIGKILL` 5 000 ms after that, **both `unref`'d**, while cleanup reports done at 2 000 ms. So the
- * SDK can certify a clean stop with the child still between TERM and KILL — and if the app exits in
- * that window the timers never fire at all. Downstream, `runFinalize` read timely settlement as
- * `stopped = true`, archived `writerStopped: true`, wrote the turn's ending as `ended`, and
- * `launch-registry` freed the session id. A reopen inside that gap starts a SECOND writer against a
- * live process.
- *
- * ## What the signal IS, and why it is not a pid we found
- *
- * ⛔ **The pinned SDK exposes no child and no pid, and that is deliberate on its side.**
- * `ProcessTransport.spawnLocalProcess` does not return the `ChildProcess`; it returns an object
- * literal — `{stdin, stdout, get killed, get exitCode, get signalCode, kill, on, once, off}` —
- * which withholds it. `Query` (`sdk.d.ts:2705`) declares control requests only and does not carry
- * its transport, so there is nothing to reach through either. `Transport.waitForExit?()`
- * (`sdk.d.ts:9433`) is real but is consumed under the SDK's own 2 000 ms race.
- *
- * ⚑ **What the SDK does offer is the other direction: it will take OURS.**
- * `Options.spawnClaudeCodeProcess?: (options: SpawnOptions) => SpawnedProcess` (`sdk.d.ts:2377`) is
- * called *instead of* the local spawn, and `SpawnedProcess`'s own doc says *"ChildProcess already
- * satisfies this interface"* (`sdk.d.ts:9072-9075`). So the fix is not to find a handle — it is to
- * own one. `child.once('exit')` is then a kernel-delivered event about a process this module
- * spawned, which is the only thing in this stack that is a fact rather than a deadline.
- *
- * ⚠️ **186 said this repository owns no pid for a Claude CLI and was right when it was written.**
- * This is what changes that, and {@link SessionHandle.providerPid} stops being absent for Claude
- * as a direct consequence.
- *
- * ## What owning the spawn obliges us to do
- *
- * 🔴 **stderr becomes ours to drain, and forgetting would wedge the child.** `SpawnedProcess` has no
- * `stderr` member, so the SDK never reads stderr from a custom child — it reads it only from the
- * one it spawns itself. A `['pipe','pipe','pipe']` child whose stderr nobody consumes blocks
- * forever once the pipe buffer fills. {@link watchClaudeChild} therefore consumes every chunk.
- *
- * ⚠️ **And draining it moves a diagnostic, which has to be said rather than glossed.** The SDK
- * appends `formatStderrTail()` to the error `getProcessExitError` builds, reading a `stderrTail`
- * that only `spawnLocalProcess` fills — so owning the spawn empties it, and the `. stderr: …`
- * suffix leaves the message the adapter turns into a fatal session error. The tail is not lost: the
- * `'exit'` handler below logs it on any non-zero exit, which is where 085 says a provider's raw
- * text belongs. ⛔ **The user-facing error text is nevertheless one clause poorer than before**,
- * and that is a real cost of this change rather than a neutral refactor. This repository has
- * already paid once for a Claude CLI writing something important to a stderr nobody read — see
- * `ClaudeRuntime.childEnvAdditions` on `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, where a permission-mode
- * override arrived exactly that way.
- *
- * The CLI leads a private POSIX process group, reaped on exit and explicit close. Other spawn
- * options retain parity with `spawnLocalProcess`: the same stdio, the same
- * `windowsHide`, and the SDK's **forwarded** `signal` passed straight through — per `SpawnOptions`'
- * own doc it fires only after the stdin-EOF + ~2 s grace, so honouring it preserves the graceful
- * path rather than racing ahead of it. The SDK registers our child in its own `process.on('exit')`
- * SIGTERM sweep either way (`gxe(this.process)` runs on both spawn paths).
+ * Owning the spawn obliges us to:
+ *  - Drain stderr. `SpawnedProcess` has no `stderr` member, so the SDK never reads it from a custom
+ *    child, and an unread pipe blocks the child once its buffer fills. {@link watchClaudeChild}
+ *    consumes every chunk.
+ *  - Log the stderr tail on a non-zero exit. The SDK appends its own tail to the exit error only for
+ *    a child it spawned itself, so the user-facing error text lacks that clause.
+ *  - Keep spawn parity with the SDK's local spawn: the same stdio and `windowsHide`, and the SDK's
+ *    `signal` passed through (it fires only after the stdin-EOF grace, so the graceful path is kept).
+ *    The CLI leads a private POSIX process group, reaped on exit and explicit close.
  */
 export interface ClaudeChildWitness {
   /**
    * Hand to `Options.spawnClaudeCodeProcess`. Spawns the child the SDK asked for and keeps it.
    *
-   * Called at most once per query in practice — the transport spawns once — but a second call is
-   * not refused: it simply becomes the child this witness watches, because a witness that threw
-   * inside the SDK's `initialize()` would turn a diagnostic into a failed launch.
+   * Called once per query in practice; a second call is not refused but becomes the watched child,
+   * because throwing inside the SDK's `initialize()` would turn a diagnostic into a failed launch.
    */
   readonly spawn: (options: SpawnOptions) => SpawnedProcess
   /**
-   * The pid of the child we spawned — **and `undefined` the instant it is gone** (233, applying
-   * 074's rule to the adapter that finally has a pid to get it wrong).
-   *
-   * ⛔ **Node does NOT clear `ChildProcess.pid` after exit**, and this repository has already
-   * measured that across v20/v22/v24 and Electron 43 — see the table above
-   * {@link SpawnCodexTransport.pid}, whose conclusion is *"a confident wrong PID is worse than an
-   * honest absence"*. Returning the raw field would republish a number that now belongs to nothing,
-   * or, after enough churn, to somebody else's process. The deadness flag is set in the `'exit'`
-   * handler BEFORE the fact is settled, for Codex's reason: settling runs listeners, and a
-   * disclosure republished from inside one of them must not be able to read a live pid for a dead
-   * child.
+   * The pid of the child we spawned, or `undefined` once it has exited. Node does not clear
+   * `ChildProcess.pid` after exit, and a stale pid may belong to another process (see
+   * {@link SpawnCodexTransport.pid}). The deadness flag is set before the exit is settled, so a
+   * listener run by settling cannot read a live pid for a dead child.
    */
   readonly pid: number | undefined
   /**
-   * ⛔ **The exit FACT: settles only when the child is proven gone, or not at all.**
+   * The exit fact: settles only when the child is proven gone, never on a timer. The bound belongs to
+   * the waiter ({@link ClaudeSessionHandle.close}). Read at teardown:
    *
-   * Read at teardown, not at construction, which is what lets the two honest answers be one
-   * property:
+   *  - no child was spawned: already settled. The SDK spawns synchronously inside `query()` for every
+   *    option shape this adapter uses, so no child by teardown means none.
+   *  - a child was spawned: its own `'exit'` only.
    *
-   *  - **no child was ever spawned** — there is nothing running, so it is already settled. This is
-   *    not an assumption: `ProcessTransport` spawns synchronously inside `query()` for every option
-   *    shape this adapter uses (`deferSpawn` is set only on the SDK's `sessionStore` resume path,
-   *    which this adapter does not use), so "no child by teardown" means no child, not "not yet".
-   *  - **a child was spawned** — its own `'exit'`, and nothing else. No timer, no bound, no
-   *    fallback. A CLI that never dies never settles this, which is the entire point: the bound
-   *    belongs to whoever is WAITING, and {@link ClaudeSessionHandle.close} keeps it.
-   *
-   * ⚠️ **`'error'` settles it only when the spawn itself failed** (`pid === undefined`), because a
-   * process that never started is a process that is not running. An `'error'` on a child that DID
-   * start — a failed `kill`, an EPIPE — is not an exit and is not treated as one; Node still
-   * delivers `'exit'` for that child, and that is what this waits for.
+   * `'error'` settles it only when the spawn itself failed (`pid === undefined`). An `'error'` on a
+   * started child (a failed `kill`, an EPIPE) is not an exit; Node still delivers `'exit'`.
    */
   readonly exited: Promise<void>
   /** The CLI and its private process group have both stopped. */
@@ -139,24 +78,14 @@ export interface ClaudeChildWitness {
   /** The last {@link STDERR_TAIL_BYTES} of the child's stderr, for a diagnostic that needs it. */
   readonly stderrTail: string
   /**
-   * 🔴 **705 · R39 — the errno a spawn that produced NO process reported, or `null`.**
+   * The errno of a spawn that produced no process, or `null`. On `EMFILE`/`ENFILE` Node returns from
+   * `spawn` without assigning stdio, so the SDK throws a `TypeError` reaching for `stdin.on`; after
+   * pipes were made (`EACCES`, `EAGAIN`, `ENOENT`) `query()` returns with a child that never started.
+   * The errno arrives at this witness's `'error'` listener and is kept so start and resume can report
+   * the real failure.
    *
-   * ⛔ **Why this exists: a descriptor shortage reaches this adapter as somebody else's
-   * `TypeError`.** Node reports a spawn `EMFILE`/`ENFILE` a tick AFTER `spawn` returns, and returns
-   * without assigning `stdin`/`stdout`/`stderr` — so the SDK, reaching for `this.process.stdin.on`
-   * inside the same `query()` call, throws *"Cannot read properties of undefined (reading 'on')"*,
-   * and that was the whole of what a resume could say (measured: `the-errno-a-resume-carries.test.ts`
-   * §1). ⚠️ **And a spawn refused AFTER its pipes were made (`EACCES`, `EAGAIN`, `ENOENT`) reached
-   * it as nothing at all** — `query()` returned, and so did the resume, with a handle whose child had
-   * never started (705's review). ⚑ The errno itself arrives at this witness's own `'error'`
-   * listener, which kept it for nothing but the exit fact; it is kept here now, for the caller that
-   * has to say WHICH failure it was — a resume since `705`, and a start since `707` (R39, extended:
-   * the same two shapes made `start()` throw the SDK's `TypeError`, and hand back a dead handle).
-   *
-   * ⚠️ **Bounded by construction, one macrotask**: Node delivers the spawn's `'error'` from
-   * `process.nextTick`, and every tick queued before a `setImmediate` has run by the time it fires —
-   * so a spawn that failed has said so by then, and a spawn that started never will (`null`). ⛔ Not
-   * a wait on the child's life: a child that DID start is never waited for here.
+   * Bounded to one macrotask: Node delivers the spawn `'error'` from `process.nextTick`, so a failed
+   * spawn has reported by the next `setImmediate`. It never waits on a child that did start.
    */
   readonly spawnFailure: () => Promise<Error | null>
 }
@@ -188,24 +117,11 @@ export function spawnClaudeChild(options: SpawnOptions): ChildProcess {
 /**
  * Watch one Claude CLI child for the whole life of one query. See {@link ClaudeChildWitness}.
  *
- * ⚠️ **The WITNESS adds no throw of its own** — it runs inside the SDK's
- * `ProcessTransport.initialize()`, where a throw is a failed launch, and a diagnostic must not be
- * able to cost a session.
- *
- * ⛔ **What this comment used to claim, and 261 measured false:** *"Never throws out of
- * `ClaudeChildWitness.spawn`. A spawn that fails still produces a `ChildProcess` that emits
- * `'error'`."* Only for five errnos. Node's `child_process.spawn` defers to `'error'` for
- * `EACCES`, `EAGAIN`, `EMFILE`, `ENFILE` and `ENOENT` (⚑ `705` measured `EACCES` deferred too, on
- * Node 24.0.2 and on Electron 43.2.0's 24.18.0 — this sentence named four until then), and
- * **throws synchronously for everything else** —
- * including the `ENOTDIR` this app produced on every launch of the packaged build, measured inside
- * Electron 43.2.0 as `THREW SYNC ENOTDIR` rather than as an error event.
- *
- * ⚑ **Which costs nothing, and that is the honest version of the old sentence.** A `spawn` that
- * throws produced no process, so there is no child to lose and no receipt to get wrong; the throw
- * surfaces through `query()` as the failed launch it is, and the user reads the errno instead of
- * waiting on a session that was never going to start. The witness cannot make a failing spawn
- * succeed and does not pretend to — it only refrains from adding a second way to fail.
+ * The witness adds no throw of its own: it runs inside the SDK's `ProcessTransport.initialize()`,
+ * where a throw is a failed launch. Node's `spawn` defers only `EACCES`, `EAGAIN`, `EMFILE`, `ENFILE`
+ * and `ENOENT` to an `'error'` event and throws everything else synchronously (for example `ENOTDIR`).
+ * That costs nothing: a throwing spawn produced no process, and the throw surfaces through `query()`
+ * as the failed launch with its errno.
  */
 export function watchClaudeChild(
   spawnChild: SpawnChild = spawnClaudeChild,
@@ -223,16 +139,12 @@ export function watchClaudeChild(
     }
   })
   /**
-   * ⚑ **One object, built once, for the no-child answer** (233 review).
-   *
-   * {@link SessionHandle.awaitProcessExit} promises *"every call returns the same promise"*, and a
-   * bare `Promise.resolve()` in the getter would mint a new one per call — so the contract would
-   * hold for a session that spawned and quietly break for one that did not. The host asks once, but
-   * a fact whose identity depends on who is asking is not a fact.
+   * Built once for the no-child answer: {@link SessionHandle.awaitProcessExit} promises every call
+   * returns the same promise, so the getter must not mint a new one per call.
    */
   const nothingRunning = Promise.resolve()
   let stderrTail = ''
-  /** ⚑ 705 · the errno of a spawn that produced no process — see {@link ClaudeChildWitness.spawnFailure}. */
+  /** The errno of a spawn that produced no process; see {@link ClaudeChildWitness.spawnFailure}. */
   let spawnFailure: Error | null = null
   let group: ClaudeProcessGroup | undefined
 
@@ -242,28 +154,20 @@ export function watchClaudeChild(
       child = spawned
       group = claudeProcessGroups.get(spawned)
       group?.identify(sessionId)
-      // 🔴 **The drain, and it is load bearing** — see the note on {@link ClaudeChildWitness}. The
-      // SDK cannot read a custom child's stderr, so if this listener is not attached the child
-      // stops the first time it writes more than a pipe buffer's worth.
+      // The stderr drain is load-bearing: the SDK cannot read a custom child's stderr, so without
+      // this the child stops once it writes more than a pipe buffer.
       spawned.stderr?.setEncoding('utf8')
       spawned.stderr?.on('data', (chunk: string) => {
         const combined = stderrTail + chunk
         stderrTail =
           combined.length > STDERR_TAIL_BYTES ? combined.slice(-STDERR_TAIL_BYTES) : combined
       })
-      // A stderr pipe that fails to read must not become an unhandled `error` on the stream. The
-      // exit below is the signal that matters; a tail we cannot collect is a lost diagnostic, not a
-      // lost process.
+      // A failing stderr read must not become an unhandled stream `error`; it only loses a diagnostic.
       spawned.stderr?.on('error', () => {})
       spawned.once('exit', (code, signal) => {
-        // ⚠️ **Before `markExited`, exactly as `SpawnCodexTransport.onExit` does it** (074): settling
-        // runs listeners, and `pid` must already be honest by the time any of them can read it.
+        // Before `markExited`: settling runs listeners, and `pid` must already read as gone.
         dead = true
-        // ⛔ **The stderr tail the SDK can no longer add to its own exit error** — see the note on
-        // {@link ClaudeChildWitness}. `getProcessExitError` builds `…exited with code N` and appends
-        // `formatStderrTail()`, which reads a `stderrTail` only `spawnLocalProcess` fills; owning
-        // the spawn empties it. Put where 085 says a provider's raw text goes — the log gets theirs
-        // — so a CLI that explains itself on the way out is not silently unexplained.
+        // The SDK cannot add its stderr tail to its exit error for a child it did not spawn, so log it.
         const tail = stderrTail.trim()
         if (tail !== '' && (code === null ? signal !== null : code !== 0)) {
           console.warn(
@@ -274,34 +178,24 @@ export function watchClaudeChild(
         markExited()
       })
       spawned.on('error', (error: Error) => {
-        // ⛔ **Only a spawn that never produced a process.** `pid` is undefined exactly then; a
-        // child that started and later errored still delivers `'exit'`, and settling here would be
-        // this dispatch's own defect in miniature — concluding termination from something that is
-        // not one.
+        // Only a spawn that never produced a process; a started child still delivers `'exit'`.
         if (spawned.pid !== undefined) return
         spawnFailure = error
         dead = true
         markExited()
       })
-      // ⚠️ **The double cast is the `stdin`/`stdout` nullability and nothing else.** `SpawnedProcess`
-      // requires both streams; `ChildProcess` types them `| null` because they are absent under
-      // other stdio modes. {@link spawnClaudeChild} always asks for the three standard pipes, so they
-      // are present — the SDK's *"ChildProcess already satisfies this interface"* holds for this spawn.
-      // ⛔ **Except when the spawn ran out of descriptors** (`EMFILE`/`ENFILE`, 705): Node returns
-      // before assigning any of the three. The `?.` on every access above (233, written for the
-      // `| null` typing) is what keeps the witness from throwing then — ⚠️ it is load-bearing, not a
-      // typing leftover — and the SDK's own `stdin.on`, which has no `?.`, is what throws
-      // ({@link ClaudeChildWitness.spawnFailure}).
+      // The cast bridges `stdin`/`stdout` being `| null` on `ChildProcess`; {@link spawnClaudeChild}
+      // always asks for the three pipes. On `EMFILE`/`ENFILE` Node assigns none of them, so the `?.`
+      // accesses above are load-bearing, and the SDK's own `stdin.on` is what throws (see
+      // {@link ClaudeChildWitness.spawnFailure}).
       return spawned as unknown as SpawnedProcess
     },
     get pid(): number | undefined {
-      // 074's rule: a pid for a process that has exited is a confident wrong answer.
+      // A pid for a process that has exited is a confident wrong answer.
       return dead ? undefined : child?.pid
     },
     get exited(): Promise<void> {
-      // Nothing was spawned ⇒ nothing is running. Read at teardown, so this is an observation and
-      // not a prediction — see {@link ClaudeChildWitness.exited}. One shared object, so the
-      // contract's idempotence holds on this branch too.
+      // Nothing spawned means nothing running. One shared object keeps repeated reads identical.
       return child === null ? nothingRunning : childExited
     },
     get stderrTail(): string {

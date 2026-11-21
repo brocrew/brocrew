@@ -71,7 +71,7 @@ const NOT_HANDED_TO_THE_CHECK = [
 ]
 
 /**
- * How a run ended: its exit code (`null` when it could not start or was stopped). ⛔ Never what it
+ * How a run ended: its exit code (`null` when it could not start or was stopped). Never what it
  * printed: the person's own Claude Code may print anything about their account.
  */
 export interface ARunEnded {

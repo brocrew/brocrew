@@ -17,7 +17,7 @@ import {
  *
  * The cwd is read from INSIDE the file. The directory name cannot be trusted to give it back:
  * `claudeProjectDirName` maps every non-alphanumeric character to `-`, so many different cwds
- * collapse onto the same folder and the mapping has no inverse (086).
+ * collapse onto the same folder and the mapping has no inverse.
  *
  * It is still checked in the other direction, which does work: the cwd we read must encode back
  * to the folder the file is actually in. If it does not, resume would look somewhere else and
@@ -169,38 +169,22 @@ export type ListClaudeSessions = () => Promise<
 >
 
 /**
- * What Claude's own index says about the sessions in the user's home, keyed by session id (047).
+ * What Claude's own index says about the sessions in the user's home, keyed by session id.
  *
- * ## Why the SDK here, and the state database for Codex
- *
- * The two providers are read by different means, and the asymmetry is deliberate rather than
- * historical:
- *
- *  - **Claude** — `listSessions()` is the SDK's own indexed read and it is genuinely READ-ONLY.
- *    Measured against a synthetic home before this was written: it returned the planted session and
- *    changed not one byte in the directory it read. It is also the only cheap way to get a Claude
- *    title, because the transcripts themselves reach a gigabyte.
- *  - **Codex** — the equivalent call, `thread/list`, requires a running `codex app-server`, and a
- *    server can only be pointed at a home by running it THERE. Measured the same way: starting one
- *    against a home wrote **71 files** into it — four SQLite databases with their WALs, an
- *    `installation_id`, and the whole `skills/.system` tree — before any request was sent, and 77
- *    once `thread/list` was issued. `useStateDbOnly: true` does not prevent this; it only skips the
- *    rollout rescan, so the writes it avoids are not the ones that matter. Running that against
- *    `~/.codex` would break this app's one hard rule, so Codex is read from the same `threads` table
- *    `thread/list` itself reads, through a copy — see `discoverCodexSessions`.
- *
- * ## The home it reads
+ * Claude is read through the SDK's `listSessions()` because it is read-only and the only cheap way
+ * to get a title (transcripts reach a gigabyte). Codex cannot be read through `thread/list`: that
+ * needs a running `codex app-server` pointed at the home, and starting one writes dozens of files
+ * (SQLite databases, `installation_id`, the `skills/.system` tree) into it, which `useStateDbOnly`
+ * does not prevent. So Codex is read from the same `threads` table through a copy (see
+ * `discoverCodexSessions`).
  *
  * `listSessions()` takes no home option and resolves `CLAUDE_CONFIG_DIR`, falling back to
- * `~/.claude` — which is exactly what {@link userProviderHomePath} computes. They therefore agree by
- * construction rather than by coincidence, and `user-homes.test.ts` pins that agreement by planting
- * a session in a temp home and pointing the variable at it. The consequence is the one 043 named: a
- * session of OURS, in an isolated per-profile home, can never appear here — and must not, because
- * ours are already in our database with lifecycle their provider file never held.
+ * `~/.claude`, which is what {@link userProviderHomePath} computes; `user-homes.test.ts` pins that
+ * agreement. So a session of ours, in an isolated per-profile home, never appears here, and must
+ * not: ours are already in our database with lifecycle the provider file never held.
  *
- * Failure is empty, not fatal: a machine with no Claude home, or an SDK that cannot read one, costs
- * the captions on those rows and nothing else. The sessions themselves come from the filesystem
- * scan, which does not need this.
+ * Failure is empty, not fatal: it costs the captions on those rows and nothing else, since the
+ * sessions themselves come from the filesystem scan.
  */
 export async function claudeHomeDescriptions(
   listSessions?: ListClaudeSessions,

@@ -3,22 +3,10 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 
 /**
- * 🔴 **716 · R66 — Claude's missing program, as a TYPE** (`710` F-2).
- *
- * ⚑ **PM ruling R66:** *"A host step a person must fix … and Claude's 'Native CLI binary … not
- * found', thrown before any spawn, get R51's permanent word, not a broken tool. … The Claude adapter
- * throws a typed error for the missing binary, so the word is chosen by type, never by matching
- * message text."*
- *
- * ⛔ **What it was until `716`**: the SDK's own `Error`, with no code and no class — *"Native CLI
- * binary for darwin-arm64 not found. Reinstall @anthropic-ai/claude-agent-sdk without
- * --omit=optional, or set options.pathToClaudeCodeExecutable."* `spawn_agent` answered it as a broken
- * tool, a person's New Conversation read it whole, and a wake could only say its provider *could not
- * resume it*. ⚑ `CodexUnavailableError` (`apps/desktop/src/main/runtime/codex-binary.ts`) is the same
- * fact for Codex, and `716` (R67) gives both the one word.
- *
- * ⚑ **Its message is a person's**, as Codex's is: a class that crosses a window's IPC loses its name
- * (`withoutItsClassName`) and a person reads the message. The SDK's own text is the `cause`.
+ * Claude's missing program, as a type, so callers choose the wording by type and never by matching
+ * message text. The SDK's own `Error` for a missing native binary has no code or class. This error's
+ * message is meant for a person (a class crossing the window's IPC loses its name); the SDK's text is
+ * the `cause`. `CodexUnavailableError` is the same fact for Codex.
  */
 export class ClaudeUnavailableError extends Error {
   constructor(message: string, options?: { readonly cause?: unknown }) {
@@ -31,12 +19,10 @@ export class ClaudeUnavailableError extends Error {
 const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk'
 
 /**
- * 🔴 **The candidates the SDK itself tries, in its order** — the resolver `query()` runs when
- * `pathToClaudeCodeExecutable` is not set (the adapter sets it whenever it is
- * given a program, which the app always does; a development checkout's lookup uses this one):
+ * The candidates the SDK itself tries, in its order, when `pathToClaudeCodeExecutable` is not set
+ * (the adapter sets it whenever it is given a program; a development checkout uses this lookup):
  * `@anthropic-ai/claude-agent-sdk-<platform>-<arch>/claude`, `.exe` on Windows, and on Linux the
- * `-musl` build first when the process has no glibc (`process.report`'s `glibcVersionRuntime`).
- * ⚑ Read at CALL time, as the SDK reads them, so a test that moves `process.arch` moves both.
+ * `-musl` build first when the process has no glibc. Read at call time, as the SDK reads them.
  */
 export function claudeProgramCandidates(
   platform: string = process.platform,
@@ -65,13 +51,9 @@ function noGlibc(): boolean {
 }
 
 /**
- * 🔴 **Where the SDK would find its program, or `null` when it would not** — the SDK's own
- * resolution, asked from the SDK's own directory.
- *
- * ⚠️ **From the SDK's entry, never from this file**: under pnpm a platform package is visible only
- * from the SDK's own `node_modules`, so a lookup from `@brobot2/runtime` would miss a binary the SDK
- * finds. `existsSync`, as the SDK asks it. A download carries no platform package, so only a
- * development checkout asks this (`claude-program.ts` never does in a packaged app).
+ * Where the SDK would find its program, or `null`: its own resolution, asked from the SDK's own
+ * directory (under pnpm a platform package is visible only from the SDK's `node_modules`). A download
+ * carries no platform package, so only a development checkout asks this.
  */
 export function claudeProgramWhereTheSdkLooks(
   candidates: readonly string[] = claudeProgramCandidates(),
@@ -89,8 +71,7 @@ export function claudeProgramWhereTheSdkLooks(
 }
 
 function sdkEntry(): string {
-  // `import.meta.url` survives both worlds this module runs in — vitest executes it as real ESM, and
-  // the electron-vite main bundle rewrites it to a file URL (`codex-binary.ts` says the same).
+  // `import.meta.url` works under vitest (real ESM) and in the electron-vite main bundle (rewritten to a file URL).
   return createRequire(import.meta.url).resolve(CLAUDE_SDK)
 }
 
@@ -100,11 +81,9 @@ function sdkResolver(): (specifier: string) => string {
 }
 
 /**
- * ⚑ **Does the SDK ship a program for this computer at all?** — its own `optionalDependencies`,
- * asked of the first candidate's package. The difference is what a developer can do: a program the
- * SDK ships and this checkout lacks comes back with a reinstall of its dependencies; one it never
- * ships does not.
- * ⛔ Unreadable is answered `true`, so the reinstall is offered — the sentence it picks is still true.
+ * Does the SDK ship a program for this computer at all (its `optionalDependencies`, checked against
+ * the first candidate's package)? A shipped program missing from the checkout is fixed by reinstalling
+ * dependencies; one never shipped is not. Unreadable answers `true`, so the reinstall is offered.
  */
 export function claudeProgramShipsHere(
   candidates: readonly string[] = claudeProgramCandidates(),
@@ -140,13 +119,10 @@ export function claudeVersionTheSdkShips(): string | null {
 }
 
 /**
- * 🔴 **716 · the SDK refused before it spawned — was it the missing program?** The error this adapter
- * throws in its place when it was, or the SDK's own error, untouched, when it was not.
- *
- * ⚑ **Asked only AFTER `query()` threw**, so a launch that would work never pays for it and can never
- * be refused by it: the SDK's resolver is the one that decides whether a launch runs, and this reads
- * the same places afterwards to name why it did not. ⛔ **Never by the SDK's text** (R66): if the
- * program is where the SDK looks, whatever the SDK threw was something else, and goes on as it came.
+ * The SDK refused before it spawned: was it the missing program? Returns this adapter's typed error
+ * if so, else the SDK's own error untouched. Asked only after `query()` threw, so a launch that works
+ * never pays for it, and never by matching the SDK's text: if the program is where the SDK looks,
+ * the failure was something else.
  */
 export function aProgramTheSdkCouldNotFind(
   thrown: unknown,

@@ -18,7 +18,7 @@ import {
   notInTheRecord,
 } from '../../archive/turn-reading'
 /**
- * ⚑ Claude Code's own records, known by how their text opens, in plain words — ⛔ a later change to
+ * Claude Code's own records, known by how their text opens, in plain words — a later change to
  * one (*"…no longer available…"*) opens otherwise, and is left to its provider name.
  */
 const CLAUDE_TITLES: readonly (readonly [string, string, string])[] = [
@@ -41,13 +41,13 @@ const CLAUDE_TITLES: readonly (readonly [string, string, string])[] = [
 /** A reminder's text, without the `<system-reminder>` line Claude Code opens it with. */
 const opening = (text: string): string => text.replace(/^<system-reminder>\n/, '')
 
-/** ⚑ What Claude Code's instruction-files reminder carries, in plain words. */
+/** What Claude Code's instruction-files reminder carries, in plain words. */
 function instructionFilesTitle(text: string): string {
-  // ⚑ A notice of files gone alone; one that also re-sends changed files is a re-send.
+  // A notice of files gone alone; one that also re-sends changed files is a re-send.
   if (text.includes('Instructions no longer present') && !text.includes('\nContents of ')) {
     return 'Claude Code’s notice that instruction files it had sent are gone'
   }
-  // ⚑ "Its memory index" only when that is the one file it carries: a conversation found in a
+  // "Its memory index" only when that is the one file it carries: a conversation found in a
   // person's own Claude home carries their own instruction files here too.
   const onlyTheIndex =
     text.split('\nContents of ').length - 1 === 1 && text.includes('/MEMORY.md (')
@@ -94,7 +94,7 @@ const contentOf = (record: Json): unknown =>
   isRecord(record['message']) ? record['message']['content'] : undefined
 
 /**
- * Whether a `user` record is a message BroBot handed over: a string, or text beside an image. ⛔
+ * Whether a `user` record is a message BroBot handed over: a string, or text beside an image.
  * Not a tool's answer, not the harness speaking in the user's name (`isMeta`, a compaction's
  * summary, an array of text blocks alone), not a sub-agent's.
  */
@@ -114,7 +114,7 @@ function unwrapped(text: string): string {
 }
 
 /**
- * 🔴 **Claude's turn in the order its model got it** — the message, the reminders at its head, and
+ * Claude's turn in the order its model got it: the message, the reminders at its head, and
  * the sections Claude Code rendered in the system's role, which went where this model's kind puts
  * them (measured on 2.1.287, `probe:provider-snapshots`):
  *  - a model that takes a context message (`hasAContextMessage` true) got them in it, after the
@@ -122,7 +122,7 @@ function unwrapped(text: string): string {
  *  - one that takes none (false, Haiku) got them wrapped, at the head of the message, among the
  *    reminders in the record's order;
  *  - unknown (null): as the record keeps them — wrapped, after the message — and said so.
- * ⚑ `contextSections` is `null` when the turn has no section. A `meta` record stays after the message.
+ * `contextSections` is `null` when the turn has no section. A `meta` record stays after the message.
  */
 export function claudePartsAsTheModelGotThem(
   added: readonly { readonly as: 'reminder' | 'section' | 'meta'; readonly part: AsSentPart }[],
@@ -202,11 +202,11 @@ export function readingClaude(asked: TurnAsked, options: TurnReadingOptions): Tu
       const type = asText(record['type'])
       if (state === 'looking') {
         if (type !== 'user' || !isHandedOver(record)) return 'more'
-        // ⚑ Another provider conversation's record; one that names none is not refused for it.
+        // Another provider conversation's record; one that names none is not refused for it.
         const its = record['sessionId']
         if (asked.life !== null && typeof its === 'string' && its !== asked.life) return 'more'
         const content = contentOf(record)
-        // ⚑ The rule of the message this record would be next: an earlier one, else this turn.
+        // The rule of the message this record would be next: an earlier one, else this turn.
         const by = asked.before[taken] ?? asked.by
         const isIt =
           by === 'handed-over'
@@ -219,7 +219,7 @@ export function readingClaude(asked: TurnAsked, options: TurnReadingOptions): Tu
         state = 'in-turn'
         return 'more'
       }
-      // ⚑ In the turn: everything up to the model's answer, or the next message.
+      // In the turn: everything up to the model's answer, or the next message.
       if (type === 'assistant') {
         const said = isRecord(record['message']) ? record['message']['model'] : undefined
         model = typeof said === 'string' && said !== '' ? said : null
@@ -258,7 +258,7 @@ export function readingClaude(asked: TurnAsked, options: TurnReadingOptions): Tu
           return 'more'
         }
         const role = asText(record['renderedRole']) || 'user'
-        // ⚑ What it is: a reminder in the user's role, or a section in the system's, which went where
+        // What it is: a reminder in the user's role, or a section in the system's, which went where
         // the model's kind puts it ({@link claudePartsAsTheModelGotThem}).
         for (const one of rendered) {
           const text = isRecord(one) ? blocksOf(one['content']).join('\n\n') : ''
@@ -325,9 +325,9 @@ function titleOf(part: AsSentPart): string | null {
   if (said.startsWith('Attribution for git commits')) {
     return 'Claude Code’s instructions on attribution lines for commits and pull requests'
   }
-  // ⚑ BroBot's among them only when they are: a person's own conversation has none of its tools.
+  // BroBot's among them only when they are: a person's own conversation has none of its tools.
   if (said.startsWith('The following deferred tools are now available')) {
-    // ⚑ In the first section only: a later one may list tools that are no longer available.
+    // In the first section only: a later one may list tools that are no longer available.
     return (said.split('\n\n')[0] ?? '').includes('mcp__brobot__')
       ? 'The tools the agent can load by name, BroCrew’s among them'
       : 'The tools the agent can load by name'

@@ -26,7 +26,7 @@ const THIS_CONVERSATION_CHANGED_LINES = [
   'Composed by BroBot for this conversation at this launch. These sections replace the ones of the same name you were given earlier in this conversation:',
 ] as const
 
-/** ⚑ Codex's own blocks, known by how they begin, in plain words. */
+/** Codex's own blocks, known by how they begin, in plain words. */
 const CODEX_TITLES: readonly (readonly [string, string])[] = [
   ['## Memory', 'Codex’s memory instructions, with this agent’s memory summary'],
   ['<skills_instructions>', 'The skills Codex offers'],
@@ -153,7 +153,7 @@ export function readingCodex(asked: TurnAsked): TurnReading {
               state = 'done'
               return 'done'
             }
-            // ⚑ An earlier turn's answer: what came before it was that turn's, not this one's.
+            // An earlier turn's answer: what came before it was that turn's, not this one's.
             startTurn()
             return 'more'
           }
@@ -221,7 +221,7 @@ export function readingCodex(asked: TurnAsked): TurnReading {
         records.push({ label: type, kind: 'not-sent', raw: null })
         return 'more'
       }
-      // ⚑ Kept whole — a compaction's summary among them, which stands in for the history it replaced.
+      // Kept whole — a compaction's summary among them, which stands in for the history it replaced.
       records.push({
         label: kind === '' ? type || 'a record with no type' : `${type}: ${kind}`,
         kind: 'unknown',
@@ -253,7 +253,7 @@ function titleOf(part: AsSentPart): string | null {
     if (THIS_CONVERSATION_LINES.some((line) => part.text.startsWith(`${line}\n\n`))) {
       return 'What is true of this conversation, then the message'
     }
-    // ⚑ A reopened thread is sent only the sections that changed since it got them.
+    // A reopened thread is sent only the sections that changed since it got them.
     return THIS_CONVERSATION_CHANGED_LINES.some((line) => part.text.startsWith(`${line}\n\n`))
       ? 'What changed in what is true of this conversation, then the message'
       : 'The message'

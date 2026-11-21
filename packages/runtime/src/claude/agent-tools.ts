@@ -64,22 +64,17 @@ export function claudeMcpServersFor(
   external: readonly { readonly name: string; readonly url: string }[] = [],
   managed: readonly ManagedPluginMcpServer[] = [],
 ): Record<string, McpServerConfig> | undefined {
-  // ⚠️ **An empty toolset is not the same as no toolset, and both answer `undefined` here.** A
-  // server advertising nothing would still appear in the child's inventory and in its prompt — a
-  // capability block that promises a catalogue and then lists none, which is acceptance #7's
-  // "nothing unwired implies a working state" written as an MCP handshake.
-  //
-  // ⚑ **516 · …and a launch with NO toolset and a granted server still gets the server.** The two
-  // halves are independent: `agentTools` is what this app offers, and a registry grant is what a
-  // person gave. ⛔ A session holding neither answers `undefined` exactly as it always has, so
-  // nothing changes for a launch nobody granted anything.
+  // An empty toolset answers `undefined` like no toolset: a server advertising nothing would still
+  // show in the child's inventory and prompt, promising a catalogue and listing none. A granted
+  // external server is independent of this app's own toolset, so it still gets its server; a session
+  // with neither answers `undefined`.
   const ownServer = toolset === undefined || toolset.tools.length === 0 ? null : toolset.server
   // Managed BroCrew routes are explicit too; provider-owned plugin discovery stays excluded.
   const pluginServers = managedPluginHttpServers(managed)
   if (ownServer === null && external.length === 0 && managed.length === 0) return undefined
   const servers: Record<string, McpServerConfig> = {}
-  // ⛔ **Every external name checked BEFORE anything is constructed** — see the docblock. A
-  // duplicate is a throw and never a silent overwrite.
+  // Every external name is checked before anything is constructed; a duplicate throws rather than
+  // silently overwriting.
   const taken = new Set<string>(ownServer === null ? [] : [ownServer])
   for (const one of external) {
     if (taken.has(one.name)) {
@@ -91,10 +86,8 @@ export function claudeMcpServersFor(
     taken.add(one.name)
   }
   for (const one of external) {
-    // ⛔ **`{type:'http', url}` and nothing else.** No `headers` — stage 1 is unauthenticated
-    // loopback only — and no `tools` policy: an external tool is NOT auto-allowed, it reaches
-    // `canUseTool` like every other consequential call, which is the whole reason HO-040 §4.1 says
-    // external tools are governed by permissions rather than by our rails.
+    // `{type:'http', url}` only: no `headers` (loopback, unauthenticated) and no `tools` policy, so an
+    // external tool is not auto-allowed and reaches `canUseTool` like any consequential call.
     servers[one.name] = { type: 'http', url: one.url }
   }
   for (const [name, config] of Object.entries(pluginServers)) {
@@ -110,32 +103,15 @@ export function claudeMcpServersFor(
 }
 
 /**
- * 🔴 **Every spelling of one of OUR tool names an external server could publish** (516, HO-040 §4.3,
- * `HO-042` §2) — Claude's provider-side deny vocabulary, derived and never written down.
+ * Every spelling of one of our tool names that an external server could publish: Claude's
+ * provider-side deny vocabulary, derived rather than written down. The registration preflight and
+ * Claude's own handshake are independent asks, so a server changing its roster between them could
+ * offer a name the preflight never saw. This set does not depend on asking the server: the SDK
+ * removes a `disallowedTools` name from the model's context whatever the server answers.
  *
- * ## ⛔ This is where the ruled security property actually rests
- *
- * `HO-042` §2: *"The property I ruled is none of our verb names reaches the model, and your rail
- * guarantees it."* ⚠️ **The registration preflight and Claude's own handshake are two independent
- * asks** — `507` §4.2 says so in as many words — so a server that changes its roster between them
- * would offer Claude a name the preflight never saw. ⛔ **This set does not depend on asking the
- * server anything.** The pinned SDK says a `disallowedTools` name *"is removed from the model's
- * context and cannot be used even if otherwise allowed"*, and it also *"blocks harness-internal
- * direct calls that hold the tool object without a name lookup"* — so the leaf is gone whatever the
- * server answers.
- *
- * ⚑ **`qualifyWith(CLAUDE_TOOL_NAMING, …)` and not a template literal**, because only this package
- * knows how each provider spells `<server>__<tool>` and `tool-inventory.ts` is where that was
- * MEASURED (`mcp__brobot__spawn_agent`, 5 of 5, off a real `system/init`). A second spelling here
- * would be `169` §1's two statements of one rule, with the copy further from the measurement.
- *
- * ⛔ **It blocks a NAME and does not refuse a server.** Refusing the whole server is the
- * registration door's act; this is the race backstop the PO accepted in place of a proxy, and it
- * filters the forbidden leaf rather than detecting that the remote roster moved. ⚠️ Saying which of
- * the two this is is the difference between a guarantee and a hope.
- *
- * ⚑ **Empty when nothing was granted**, so a launch with no registry grant carries no
- * `disallowedTools` it did not carry before this build.
+ * It uses `qualifyWith(CLAUDE_TOOL_NAMING, …)` because only this package knows how each provider
+ * spells `<server>__<tool>` (measured in `tool-inventory.ts`). It blocks a name and does not refuse a
+ * server; refusing is the registration door's job. Empty when nothing was granted.
  */
 export function forbiddenExternalSpellings(reach: ExternalMcpReach | undefined): readonly string[] {
   if (reach === undefined) return []

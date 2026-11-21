@@ -12,42 +12,30 @@ export interface CodexToolCall {
 }
 
 /**
- * ⛔ **Answer one tool call** (348).
- *
- * ## 🔴 `success` is `isError` in Codex's spelling, and a refusal is not one
- *
- * `307`, on both providers: *"a refusal must be a SUCCESSFUL call whose payload says refused"*, and
- * a thrown handler becomes transport-shaped `-32603` which *"carries no machine-readable policy
- * meaning"*. The JSON-RPC response is a result either way — that is the successful call — so
- * `success` is the finer question, and it is answered exactly as {@link claudeMcpServersFor}
- * answers `isError`:
+ * Answer one tool call. `success` is `isError` in Codex's spelling, and a refusal is not one: a
+ * refusal is a successful call whose payload says refused.
  *
  * | what happened | `success` |
  * |---|---|
- * | the tool answered — granted **or refused** | `true` |
- * | no tool ran (nothing by that name, or the arguments were not an object) | `false` |
+ * | the tool answered, granted or refused | `true` |
+ * | no tool ran (unknown name, or arguments not an object) | `false` |
  * | the handler threw | `false` |
  *
- * Only the prose is sent as model content. Structured facts stay inside the application.
+ * Only the prose is sent as model content; structured facts stay inside the application.
  */
 export async function answerCodexToolCall(
   /**
-   * ⚠️ **`undefined` is accepted, and answers the same sentence a wrong name does.** A session that
-   * declared no tools cannot be called, so a call that arrives anyway is addressing something that
-   * does not exist here — which is exactly what {@link TOOL_REFUSALS}' `no-such-agent` ruling is
-   * about one door over: two different sentences for *"never existed"* and *"not yours"* would let
-   * a caller learn which sessions have tools from the shape of the answer.
+   * `undefined` (a session that declared no tools) answers the same sentence as a wrong name, so
+   * the answer does not reveal which sessions have tools.
    */
   toolset: AgentToolset | undefined,
   call: CodexToolCall,
   completed?: (answer: AgentToolAnswer) => void,
 ): Promise<DynamicToolCallResponse> {
   if (toolset === undefined) return failed(`${call.tool} is not a tool this session offers`)
-  // ⚠️ **`null` is accepted as well as our own name.** We declare a namespace, so a call should
-  // carry it; `null` is the shape a FLAT declaration produces and the live rig records which one
-  // actually arrives. Accepting both costs nothing — the namespace is an address, not a
-  // credential, and `serverRequestScopeProblem` has already bound this request to this thread and
-  // this turn before anything here runs.
+  // `null` is accepted as well as our own name: a flat declaration produces a null namespace. The
+  // namespace is an address, not a credential; `serverRequestScopeProblem` has already bound this
+  // request to its thread and turn.
   if (call.namespace !== null && call.namespace !== toolset.server) {
     return failed(`${call.namespace}/${call.tool} is not a tool this session offers`)
   }
@@ -65,9 +53,8 @@ export async function answerCodexToolCall(
     }
     return succeeded(answer)
   } catch (error) {
-    // ⚠️ **`success: false` HERE and nowhere else** — this is the one shape that really is a broken
-    // tool, and saying so is what keeps a refusal meaning something. The contract this translates
-    // from says a handler must not throw; this exists because "must not" is not "cannot".
+    // `success: false` only here: a throwing handler is a broken tool, and keeping it distinct
+    // keeps a refusal meaningful.
     return failed(`${tool.name} failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }

@@ -12,13 +12,9 @@ export function readString(value: unknown, key: string): string {
 }
 
 /**
- * A finite number at `key`, or undefined (087) — the same helper `claude/normalize.ts` already has,
- * and it is a copy for the same reason every other one here is: these two files share no runtime
- * module by design, so neither can drift the other's parsing.
- *
- * ⚠️ **`Number.isFinite` is not decoration.** `modelContextWindow` is a denominator, and JSON is
- * perfectly happy to carry a value that is not a number; absence must stay absence rather than
- * becoming a zero the meter would divide by.
+ * A finite number at `key`, or undefined. Copied from `claude/normalize.ts` because the two files
+ * share no runtime module by design. `modelContextWindow` is a denominator, so absence must stay
+ * absence rather than becoming a zero.
  */
 export function readNumber(value: unknown, key: string): number | undefined {
   const found = isRecord(value) ? value[key] : undefined

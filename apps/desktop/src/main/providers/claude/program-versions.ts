@@ -26,7 +26,7 @@ export function claudeVersionReader(
   claudeProgram: () => ClaudeProgram,
 ): () => Promise<ProviderVersion> {
   /**
-   * Each Claude Code file's answer, while that same file answers. ⚑ The running copy's silence is
+   * Each Claude Code file's answer, while that same file answers. The running copy's silence is
    * asked again at the next read; another copy's is kept, so a copy that never answers costs one ask
    * per file, never one per read.
    */
@@ -66,9 +66,9 @@ export function claudeVersionReader(
       versionOf(program.path, false),
       ...program.others.map((copy) => versionOf(copy.path, true)),
     ])
-    // ⚑ Only the files this read met are kept, so an old version's answer goes with its file.
+    // Only the files this read met are kept, so an old version's answer goes with its file.
     claudeSaid = read
-    // ⚑ An update that landed is said until the next one: the version before it stays beside it.
+    // An update that landed is said until the next one: the version before it stays beside it.
     if (version !== null && version !== undefined) {
       if (lastRun !== null && lastRun !== version) updatedFrom = lastRun
       lastRun = version
@@ -208,7 +208,7 @@ async function askClaudeCodeItsVersion(path: string): Promise<string | null> {
 /**
  * The Claude Code a launch runs, as a person reads it: its version, where it came from and its path
  * — and, beside other copies, that it is the first one BroBot finds — and how it stands against the
- * versions tested. ⚑ Newer than tested is said quietly ({@link A_STANDING_WARNS}).
+ * versions tested. Newer than tested is said quietly ({@link A_STANDING_WARNS}).
  */
 export function claudeAnswer(
   program: ClaudeCopy,

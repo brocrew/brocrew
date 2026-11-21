@@ -2,34 +2,20 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderRefusal } from '../events'
 
 /**
- * 🔴 **Whose words an assistant message holds when the CLI, not a model, wrote it** (680, PM ruling
- * R28a).
+ * Whose words an assistant message holds when the CLI, not a model, wrote it. The CLI writes its own
+ * notices (a version floor, an unknown model id, an output-limit cut) into assistant-shaped frames,
+ * and they must not speak in the agent's voice. The marker is `message.model === '<synthetic>'` with
+ * all-zero usage; `test/fixtures/claude-model-floor-refusal.json` holds example frames.
  *
- * The CLI can write its own refusal into an assistant-shaped frame. Distinguish every synthetic notice from model-authored text instead of diverting only `authentication_failed`; a version-floor notice must not speak in the agent's voice.
+ * A notice is the marker plus either an `error` word or the snake-case `is_api_error_message` flag
+ * newer CLI builds put on the frame (neither is declared in the SDK types; the archived record uses
+ * camel-case `isApiErrorMessage`). Some notices carry the flag and no `error` (a tool call the model
+ * could not form twice, a raw model error, a model-policy refusal). The marker alone is not enough:
+ * `/context` and `/usage` replies are `<synthetic>` too and are what the person asked for.
  *
- * ## ⚑ The marker, measured on the SDK frame itself (680 §1)
- *
- * | frame | `error` | `message.model` | `is_api_error_message` | `usage` |
- * |---|---|---|---|---|
- * | the version floor, CLI 2.1.218 | `unknown` | ⚑ `<synthetic>` | — (absent at 0.3.218) | all zeroes |
- * | an id no server serves, CLI 2.1.218 | `model_not_found` | ⚑ `<synthetic>` | — | all zeroes |
- * | the same id, CLI 2.1.281 | `model_not_found` | ⚑ `<synthetic>` | ⚑ `true` | all zeroes |
- * | the same session moved to a model it can run | — | `claude-opus-5` | — | real |
- *
- * `test/fixtures/claude-model-floor-refusal.json` holds every one of those frames. ⚠️ The camel-case
- * `isApiErrorMessage` 110 found is on the ARCHIVED record; the SDK frame carries the snake-case
- * `is_api_error_message` from 0.3.281 on, and neither is declared in `sdk.d.ts`.
- *
- * ⚠️ **Not every notice carries an error word**: a tool call the model could not form twice, a raw
- * model error and a model-policy refusal are written with `<synthetic>` and `is_api_error_message`
- * and NO `error`. So a notice is the marker PLUS either an error word or that flag — never the
- * marker alone, because `/context` and `/usage` replies are `<synthetic>` too and they are what the
- * person asked for.
- *
- * ⛔ **Moved by the marker, never by "one text block and nothing else".** A reply cut at its output
- * limit arrives as TWO frames: the model's partial text, one text block with its REAL model and no
- * error word, and then the CLI's own `max_output_tokens` notice, `<synthetic>`. The shape rule
- * would take the partial reply for a notice; the marker keeps it the model's.
+ * The marker is used, never "one text block and nothing else": a reply cut at its output limit arrives
+ * as two frames, the model's partial text with its real model and no error word, then the CLI's
+ * `max_output_tokens` notice. A shape rule would take the partial reply for a notice.
  */
 export const THE_CLIS_OWN_MODEL = '<synthetic>'
 
@@ -42,9 +28,9 @@ function isTheClisOwnMessage(message: SDKMessage): boolean {
 }
 
 /**
- * ⚑ **Whether this frame is the CLI's NOTICE** — its own message, marked as an error by a word or
- * by the flag 0.3.281 puts on the frame. A `<synthetic>` frame with neither (a `/context` reply) is
- * the CLI answering the person, and stays where it is.
+ * Whether this frame is the CLI's notice: its own message, marked as an error by a word or by the
+ * `is_api_error_message` flag. A `<synthetic>` frame with neither (a `/context` reply) is the CLI
+ * answering the person, and stays where it is.
  */
 export function isTheClisNotice(message: SDKMessage): boolean {
   if (!isTheClisOwnMessage(message) || message.type !== 'assistant') return false
@@ -53,12 +39,10 @@ export function isTheClisNotice(message: SDKMessage): boolean {
 }
 
 /**
- * ⚑ **What the CLI announced about itself in the turn's own `system/init`** — the version this app
- * spawned and the model the turn asked for. Held per session, like `ClaudeMemoryStore`'s root,
- * because the init arrives frames before the refusal that needs it.
- *
- * ⚠️ `model` follows the conversation: after `setModel`, the next turn's init names the new model
- * (measured, 680 §1). A replay with no init leaves both `null`, and no refusal is recognised.
+ * What the CLI announced in the turn's `system/init`: the version this app spawned and the model the
+ * turn asked for. Held per session because the init arrives frames before the refusal that needs it.
+ * `model` follows the conversation (after `setModel` the next init names the new model). A replay
+ * with no init leaves both `null`, and no refusal is recognised.
  */
 export class AnnouncedCli {
   version: string | null = null
@@ -75,24 +59,23 @@ export class AnnouncedCli {
 }
 
 /**
- * The floor the provider named, read out of its own sentence: *"…does not support this model;
- * version 2.1.280 or newer is required."* ⚠️ Anchored on the clause that carries the number, so a
- * rewording of the advice after it cannot move what is read.
+ * The floor the provider named, read out of its own sentence ("…does not support this model; version
+ * 2.1.280 or newer is required."). Anchored on the clause that carries the number, so rewording the
+ * advice after it cannot move what is read.
  */
 const MODEL_FLOOR = /does not support this model; version (\d+(?:\.\d+)+) or newer is required/
 
 /**
- * The output limit the CLI names when it cuts a reply: *"API Error: Claude's response exceeded the
+ * The output limit the CLI names when it cuts a reply ("API Error: Claude's response exceeded the
  * 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS
- * environment variable."* ⛔ Its advice is an environment variable of a process this app spawns with
- * an allow-listed environment, so it cannot be taken here — which is what R28c says a reader must
- * not be handed as what to do.
+ * environment variable."). Its advice cannot be taken here: this app spawns the process with an
+ * allow-listed environment, so a reader must not be handed it as what to do.
  */
 const OUTPUT_LIMIT = /response exceeded the (\d+) output token maximum/
 
 /**
- * 🔴 **R28c's values, or `null` when this is not a refusal this adapter recognises.** `null` means
- * the surface shows the provider's own sentence (R28b) — never guessed advice.
+ * The structured refusal for a notice, or `null` when this adapter does not recognise it; `null`
+ * means the surface shows the provider's own sentence, never guessed advice.
  */
 export function recognisedRefusal(notice: string, announced: AnnouncedCli): ProviderRefusal | null {
   const limit = OUTPUT_LIMIT.exec(notice)

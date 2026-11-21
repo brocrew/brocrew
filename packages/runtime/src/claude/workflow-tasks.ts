@@ -1,66 +1,38 @@
 /**
- * Which of Claude's tracked tasks are **dynamic workflows** (108) — and what the `Workflow` tool call
- * that launched each one was called.
+ * Which of Claude's tracked tasks are dynamic workflows, and the `Workflow` tool call that launched
+ * each. Like {@link SubAgentTasks} for a different `task_type`, and a separate registry because the
+ * admissions are mutually exclusive: a `local_workflow` is deliberately not admitted as a sub-agent
+ * (`AGENT_TASK_TYPE = 'local_agent'`).
  *
- * This is {@link SubAgentTasks} solving the same problem for a different `task_type`, and it is a
- * separate registry rather than a flag on that one because the two admissions are mutually exclusive
- * by design: a `local_workflow` is deliberately **not** admitted as a sub-agent
- * (`AGENT_TASK_TYPE = 'local_agent'`), which is exactly why a 22-agent run had nothing on screen.
+ * It must remember two things. Only `task_started` carries `task_type`, and `task_updated` (one of
+ * the two endings) carries neither `task_type` nor `tool_use_id`, so an ending arriving there would
+ * otherwise have no tree to land on and the tree would stay "running" forever.
  *
- * ## Why it has to remember two things
- *
- * Measured across every `task_*` message in this machine's database (4 real workflow runs, 8
- * `local_bash` tasks, 95 messages):
- *
- * ```
- * task_started       task_type ✓   tool_use_id ✓   workflow_name ✓   prompt ✓ (the whole script)
- * task_progress      task_type ✗   tool_use_id ✓   workflow_progress ✓ on 22 of 41
- * task_updated       task_type ✗   tool_use_id ✗   ← carries a bare task_id and a patch
- * task_notification  task_type ✗   tool_use_id ✓   status ✓  output_file ✓
- * ```
- *
- * So **admission** is place-once (only `task_started` says `task_type`) and **the anchor** is nearly
- * place-once too: `task_updated` sends no `tool_use_id` at all, and it is one of the two endings. A
- * run whose ending arrived on `task_updated` would otherwise have nowhere to land, and the tree it
- * belongs to would sit "running" forever.
- *
- * ## Which way it fails
- *
- * Toward silence, exactly as 035 chose. A task we never saw start is admitted only if it names itself
- * — and the only self-naming a workflow does is carrying a `workflow_progress` roster. That cannot
- * strand a tree, because a tree that was never opened has nothing to leave running.
+ * It fails toward silence: a task whose start was never seen is admitted only if it names itself, and
+ * the only self-naming a workflow does is carrying a `workflow_progress` roster. That cannot strand a
+ * tree, because a tree that was never opened has nothing to leave running.
  */
 
-/** The `task_type` that means "a dynamic workflow ran here". Observed on 4 of 4 real runs. */
+/** The `task_type` that means "a dynamic workflow ran here". */
 const WORKFLOW_TASK_TYPE = 'local_workflow'
 
 export class WorkflowTasks {
   /** task_id → the `Workflow` tool call's id, or `''` when we were admitted without ever seeing one. */
   private readonly runs = new Map<string, string>()
   /**
-   * Tasks we saw start and deliberately did NOT open (108 review).
-   *
-   * ⚠️ **A refusal has to leave a trace, or it is not a refusal.** {@link start} declining a
-   * `skip_transcript` task used to record nothing, so the very next `task_progress` — which carries a
-   * roster and therefore names itself — walked in through {@link join} and un-hid the exact task the
-   * SDK asked us to hide. 035's rule is that a task hidden at birth has no ending to report; this is
-   * what makes it true for more than one message.
+   * Tasks we saw start and deliberately did not open. Declining a `skip_transcript` task must leave a
+   * trace, or the next `task_progress` (which carries a roster and so names itself) would walk in
+   * through {@link join} and un-hide a task the SDK asked us to hide.
    */
   private readonly hidden = new Set<string>()
 
   /**
-   * Decide, at `task_started`, whether this task is a workflow — and remember its anchor.
+   * Decide, at `task_started`, whether this task is a workflow, and remember its anchor.
    *
-   * ⚠️ **`subagentType` REFUSES admission here, and that is deference rather than caution.**
-   * `sub-agent-tasks.ts` documents that a `local_workflow` which also declares `subagent_type` is
-   * correctly admitted as a sub-agent — *"at that point the provider has told us it is one"*. If this
-   * registry also claimed it, one task would render as a sub-agent card **and** a workflow tree: the
-   * same fact twice, which is the defect class 028 and 037 exist to prevent. Never observed on the
-   * wire (0 of 12 `task_started` messages carry both), and settled here so it cannot become a race
-   * between two registries later.
-   *
-   * `skipTranscript` suppresses the OPENING, on 035's reasoning verbatim: the SDK documents it as an
-   * ambient task the consumer should hide, and a task hidden at birth has no ending to show.
+   * `subagentType` refuses admission: `sub-agent-tasks.ts` admits a `local_workflow` that declares
+   * `subagent_type` as a sub-agent, and claiming it here too would render one task as both a sub-agent
+   * card and a workflow tree. `skipTranscript` suppresses the opening: the SDK marks it as an ambient
+   * task to hide, and a task hidden at birth has no ending to show.
    */
   start(taskId: string, taskType: string, subagentType: string, skipTranscript: boolean): boolean {
     if (this.runs.has(taskId)) return true
@@ -80,7 +52,7 @@ export class WorkflowTasks {
    */
   join(taskId: string, carriesRoster: boolean): boolean {
     if (this.runs.has(taskId)) return true
-    // Hidden at birth, hidden for good — a roster does not overrule the SDK asking us not to show it.
+    // Hidden at birth, hidden for good: a roster does not overrule the SDK asking us not to show it.
     if (this.hidden.has(taskId)) return false
     if (!carriesRoster) return false
     this.runs.set(taskId, '')
@@ -93,12 +65,9 @@ export class WorkflowTasks {
   }
 
   /**
-   * Remember the anchoring tool-use id the first time a message carries one.
-   *
-   * **First wins, and it is not arbitrary.** Every message that carries the id carries the same one
-   * (measured: 34 of 34 agree within a run), so a later value can only ever be a different run's id
-   * arriving under a task id we already know — which would move a live tree onto someone else's tool
-   * call. Keeping the first makes that impossible without needing to detect it.
+   * Remember the anchoring tool-use id the first time a message carries one. First wins: every
+   * message carrying it carries the same one, so a later value could only be another run's id under a
+   * task id we already know, which would move a live tree onto someone else's tool call.
    */
   anchor(taskId: string, toolUseId: string): void {
     if (!toolUseId) return

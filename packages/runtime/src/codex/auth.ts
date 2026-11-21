@@ -102,12 +102,10 @@ export function aNewerCodexSignInIsAvailable(
 }
 
 /**
- * Copy the personal Codex `auth.json` into the profile home **once**, atomically, at
- * mode `0600` (022, from 015). It copies **only** `auth.json` (never history/config/
- * db), copies its **content** (never symlinks the profile to the personal file,
- * which Codex may truncate/rewrite), and **never overwrites** an existing profile
- * credential. Automatic refreshes use {@link reprovisionCodexAuth} after stopping its app-server.
- *
+ * Copy the personal Codex `auth.json` into the profile home once, atomically, at mode `0600`. It
+ * copies only that file's content (never a symlink, since Codex may rewrite the personal file) and
+ * never overwrites an existing profile credential. Refreshes use {@link reprovisionCodexAuth}
+ * after the app-server is stopped.
  * Where the computer has no Codex sign-in, it copies `fallbackAuthPath` instead when one is given:
  * BroBot's own profile's sign-in, so an agent can start on a computer signed in to Codex only
  * inside BroBot. Both copies then share one renewing sign-in, and whichever renews first spends
@@ -127,12 +125,9 @@ export async function provisionCodexAuth(
   if (opts.fallbackAuthPath !== undefined && opts.managedRoot === undefined) {
     throw new Error('A fallback Codex sign-in is read only under a managed root.')
   }
-  // 🔴 **This is the step that puts the credential on disk, so it re-proves the home it is writing
-  // into** (293 §1). `provisionProviderHome` now survives its own lock, but it RETURNS — and the
-  // ancestor can be swapped between that return and this call, which is the same escape one
-  // function later. ⚠️ **Optional, and a caller that does not know the managed root gets the
-  // behaviour it always had**: every test that copies into a bare temp directory, and
-  // `reprovisionCodexAuth`, which is 098's separate writer.
+  // This writes the credential to disk, so it re-proves the home's ancestry even though
+  // `provisionProviderHome` already did; the ancestor could be swapped in between. Callers without a
+  // managed root (tests, `reprovisionCodexAuth`) skip it.
   const ancestry =
     opts.managedRoot === undefined
       ? null
@@ -170,7 +165,7 @@ export interface Fallback {
  *   moved. A machine that ran short is said as itself. Codex rewrites its file in place, so a read
  *   that meets it half-written is tried again first.
  *
- * `between` is called between the look and the open, for a test to act in. ⚠️ Windows has no
+ * `between` is called between the look and the open, for a test to act in. Windows has no
  * `O_NOFOLLOW`, so its open follows a link put at the path: there the path is looked at again once
  * the file is open, and must still be that very regular file.
  */
@@ -280,9 +275,7 @@ async function provisionCodexAuthLocked(
   ancestry: TrustedAncestry | null,
   fallback: Fallback | undefined,
 ): Promise<void> {
-  // Serialize concurrent provisioning/auth writes for this home (027 P1-H).
-  // ⚠️ `async` since 243: the copy is the same synchronous sequence it always was, and only the
-  // WAIT for another process's copy stopped blocking the thread. See `withProviderHomeLock`.
+  // Serialize concurrent provisioning and auth writes for this home.
   await withProviderHomeLock(
     providerHome,
     () => {
@@ -319,15 +312,12 @@ async function provisionCodexAuthLocked(
               (fallback === undefined ? '' : `, and BroBot's own has none at ${fallback.path}`),
           )
         }
-        // 🔴 **710 · R52 — a machine that ran short did not lose a credential.** ⛔ Until `710` an
-        // `EMFILE` here told a person *"personal Codex auth.json not found at <home>"* — a sign-in to
-        // fix, with a path in it, about a file that was there. ⚑ Thrown as it came, for the door
-        // that asked to say in its own words — the doors {@link defaultKeychainReader}'s note lists.
+        // A machine out of resources (e.g. `EMFILE`) is not a missing file; it is rethrown as it
+        // came so the caller can word it.
         if (transientSetupFailureOf(error) !== null) throw error
         throw new AuthUnavailableError('codex', `personal Codex auth.json not found at ${source}`)
       }
-      // ⛔ **Immediately before the bytes exist anywhere**, not only before the lock (293 §1). This
-      // is the last instruction that can still refuse; after it a credential is on some disk.
+      // Last point that can still refuse before the credential reaches disk.
       ancestry?.verify()
       writeAtomicallySync(dest, data, { exclusive: true })
     },
@@ -352,7 +342,7 @@ export type CodexCopyCandidate =
  * copied again, and one replacement leaves nothing later to replace it with again. A home on an API key, on another
  * account, or whose account or date cannot be read is left as it is, and a candidate that cannot be
  * read, or names no date, is not used. Of a file, only its account and that date are read.
- * ⚑ And only the copy that was refused: `refused` says which it was, and a copy on disk that is no
+ * And only the copy that was refused: `refused` says which it was, and a copy on disk that is no
  * longer that file, unchanged, is left as it is.
  */
 export async function replaceARefusedCodexCopy(
@@ -375,8 +365,7 @@ export async function replaceARefusedCodexCopy(
     return await withProviderHomeLock(
       providerHome,
       () => {
-        // ⛔ First, before the copy or any candidate is read: the wait for this lock may have
-        // outlasted the conversation or the launch that asked.
+        // The wait for the lock may have outlasted the conversation or launch that asked.
         if (!opts.stillWanted()) return 'not-tried'
         ancestry.verify()
         const dest = join(providerHome, CODEX_AUTH_FILE)
@@ -384,8 +373,7 @@ export async function replaceARefusedCodexCopy(
         if (held === null || !held.isFile() || held.size > BigInt(CODEX_AUTH_FILE_MAX)) {
           return 'not-tried'
         }
-        // ⛔ Only the copy that was refused. Codex has renewed this one in place since, or
-        // something else has replaced it: it is not the refused copy any more, and may work.
+        // Only the copy Codex refused; one renewed in place or replaced since may work.
         if (!isTheSameCopy(held, opts.refused)) return 'not-tried'
         const refused = readOrNull(dest)
         if (refused === null) return 'not-tried'
@@ -486,10 +474,8 @@ export async function reprovisionCodexAuth(
     try {
       data = readFileSync(source) // the CONTENT, never a symlink to it
     } catch (error) {
-      // 🔴 **716 · `710` F-4 — the launch copy's rethrow, on the re-copy** (R52's class). ⛔ Until
-      // `716` a machine that ran short told a person *"personal Codex auth.json not found … sign in
-      // with the codex CLI first"* — a sign-in to redo, about a file that was there. ⚑ Thrown as it
-      // came; `RuntimeHost.reprovisionProviderAuth` says it in a person's words, by the code.
+      // A machine out of resources is not a missing file; rethrown as it came so the caller can
+      // word it.
       if (transientSetupFailureOf(error) !== null) throw error
       throw new AuthUnavailableError(
         'codex',
@@ -502,8 +488,7 @@ export async function reprovisionCodexAuth(
       if (account === null || account === 'api-key') return 'unchanged'
     }
 
-    // Report honestly when there was nothing to do. A surface that says "re-copied" over identical
-    // bytes teaches the user that the button does nothing, which is worse than saying so.
+    // Report an identical copy as unchanged so a re-copy button does not claim work it did not do.
     const existing = destStat?.isFile() ? readOrNull(dest) : null
     if (existing && existing.equals(data)) return 'unchanged'
 
@@ -546,7 +531,7 @@ const CODEX_AUTH_FILE_MAX = 1024 * 1024
 export async function codexAccountIn(providerHome: string): Promise<string | null> {
   try {
     const file = join(providerHome, CODEX_AUTH_FILE)
-    // ⛔ Only a regular file: a link or a pipe in a home is not read.
+    // Only a regular file: a link or a pipe in a home is not read.
     const found = await lstat(file)
     if (!found.isFile() || found.size > CODEX_AUTH_FILE_MAX) return null
     return codexAccountOf(await readFile(file, 'utf8'))
@@ -592,7 +577,7 @@ function codexAccountOf(text: string): string | null {
 /**
  * When Codex last refreshed the sign-in a Codex `auth.json`'s text holds, by the `last_refresh`
  * date Codex writes beside the tokens at a sign-in and at every renewal. Null when the file names
- * none. ⚑ Not the file's own date on disk, which for a copy is when it was copied.
+ * none. Not the file's own date on disk, which for a copy is when it was copied.
  */
 function codexRefreshedAt(text: string): number | null {
   let json: unknown

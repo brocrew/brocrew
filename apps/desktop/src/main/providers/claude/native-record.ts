@@ -7,11 +7,11 @@ import { type SessionRef } from '@brobot2/runtime'
 const REPLY_MODEL_BUDGET_BYTES = 4 * 1024 * 1024
 
 /**
- * ⚑ **W4.203 · the model Claude Code recorded on the newest reply of its own transcript** — the
+ * The model Claude Code recorded on the newest reply of its own transcript — the
  * `message.model` of the last `assistant` line, read back from the end of the file a page at a
- * time — or `null` when none is found within {@link REPLY_MODEL_BUDGET_BYTES}. ⛔ A reply of the
+ * time — or `null` when none is found within {@link REPLY_MODEL_BUDGET_BYTES}. A reply of the
  * CLI's own making (`<synthetic>`: an error it reports as a reply) and a line of one of its own
- * sub-agents (`isSidechain`) do not count. ⚠️ Read only, and for Claude's transcripts only.
+ * sub-agents (`isSidechain`) do not count. Read only, and for Claude's transcripts only.
  */
 export function newestReplyModel(path: string): string | null {
   const fd = openSync(path, 'r')
@@ -20,12 +20,12 @@ export function newestReplyModel(path: string): string | null {
     const stop = Math.max(0, size - REPLY_MODEL_BUDGET_BYTES)
     /**
      * The pages, in file order, of the line read so far without the break before it: a line not
-     * yet whole. ⚑ Kept as pages and joined once, so one long line is not copied again per page.
+     * yet whole. Kept as pages and joined once, so one long line is not copied again per page.
      */
     let carried: Buffer[] = []
     let from = size
     const modelOf = (line: string): string | null => {
-      // ⚑ Most lines are not replies, and some are large: only one that names a model is parsed.
+      // Most lines are not replies, and some are large: only one that names a model is parsed.
       if (!line.includes('"model"')) return null
       try {
         const entry = JSON.parse(line) as {
@@ -45,8 +45,8 @@ export function newestReplyModel(path: string): string | null {
       const chunk = Buffer.alloc(from - start)
       readSync(fd, chunk, 0, chunk.length, start)
       from = start
-      // ⚑ The bytes before this page's first line break may begin mid-line — and mid-character —
-      // unless the page starts the file: they wait, as bytes, for the page before it. ⚑ The break
+      // The bytes before this page's first line break may begin mid-line — and mid-character —
+      // unless the page starts the file: they wait, as bytes, for the page before it. The break
       // is looked for in this page alone: what is carried has none, by construction.
       const firstBreak = start === 0 ? -1 : chunk.indexOf(0x0a)
       if (start !== 0 && firstBreak === -1) {
@@ -61,7 +61,7 @@ export function newestReplyModel(path: string): string | null {
         if (model !== null) return model
       }
     }
-    // ⚑ The whole file was read, or the budget ran out before a reply was found.
+    // The whole file was read, or the budget ran out before a reply was found.
     return null
   } finally {
     closeSync(fd)

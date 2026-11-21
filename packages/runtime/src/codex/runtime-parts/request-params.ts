@@ -190,7 +190,7 @@ export function sayingTheRelease(settled: () => void, phase: StartPhaseSink): ()
   }
 }
 
-// Codex retains dynamic tools on resume; re-send the config overlay, not a second declaration.
+// Resume re-sends the thread config overlay (MCP servers, tool settings), since it is per thread.
 // excludeTurns avoids loading the full transcript while the provider restores its own model context.
 export function threadResumeParams(
   threadId: string,

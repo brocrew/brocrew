@@ -37,7 +37,7 @@ async function codexVersion(
   try {
     program = codexProgram()
   } catch (error) {
-    // ⚑ `CodexUnavailableError`'s message is already a person's sentence.
+    // `CodexUnavailableError`'s message is already a person's sentence.
     const said = error instanceof Error ? error.message : String(error)
     return {
       answer: {
@@ -60,7 +60,7 @@ async function codexVersion(
     }
   }
   const where = `${FROM[program.from]}, at ${program.path}`
-  // ⚑ A copy this app carries is the one it was built with: no tested range applies, and there is
+  // A copy this app carries is the one it was built with: no tested range applies, and there is
   // nothing for a person to install.
   const facts = {
     from: program.from,

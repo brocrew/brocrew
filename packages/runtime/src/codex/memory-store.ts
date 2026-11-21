@@ -3,53 +3,20 @@ import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 
 /**
- * **Where Codex keeps the memory 314 switched on** — the tree, as 312 measured it on a real
- * 0.146.0 child, and nothing about what to do with it.
+ * Where Codex keeps its memory tree, and which files reach the model unasked. Display decisions
+ * live in `instructions.ts`. Paths live here, beside the adapter, because the directory scheme is a
+ * fact about Codex.
  *
- * ## ⚠️ Why this is a module and not four `join`s at the call site
+ * Memory v1 holds `memory_summary.md` (injected into every request), `MEMORY.md` (consolidated
+ * handbook), `raw_memories.md`, `rollout_summaries/` and ad-hoc notes under
+ * `extensions/ad_hoc/notes/`. Memory v2 keeps the summary, notes and rollout summaries in
+ * `memories_v2/` with no `MEMORY.md` or `raw_memories.md`; {@link codexMemoryDir} picks the folder.
  *
- * 032's rule about second copies applies to path rules as much as to tool names, and
- * `claude/auto-memory.ts` is the precedent one directory over: *"this lives in the runtime package,
- * beside the adapter, because it is a fact about CLAUDE — the desktop reader that displays the file
- * has no business knowing the provider's directory scheme."* Same argument, other provider.
+ * Only `memory_summary.md` arrives unasked; the rest is reachable through the `memories__*` tools
+ * if the model chooses, which is why {@link CodexMemoryReach} exists.
  *
- * ⛔ **The DISPLAY ruling is not here.** Which of these files belong on the instructions panel, and
- * why the rest do not, is `instructions.ts`'s call (317 §2.1) — this module only says what exists
- * and which of it reaches the model without being asked for.
- *
- * ## 🔴 The tree, measured rather than read off a README (312 §5)
- *
- * A Codex home with memory on and a completed background pipeline held:
- *
- * ```text
- * memories/memory_summary.md                        ⚑ injected into every request
- * memories/MEMORY.md                                the consolidated handbook
- * memories/extensions/ad_hoc/notes/<stamp>-<slug>.md  ⛔ the ones a person ASKED for
- * memories/raw_memories.md                          stage 1's own dump
- * memories/rollout_summaries/<stamp>-<slug>.md      one per extracted conversation
- * ```
- *
- * That is memory v1. Memory v2 keeps the same summary, ad-hoc notes and rollout summaries in
- * `memories_v2/` and writes no `MEMORY.md` or `raw_memories.md`; {@link codexMemoryDir} says which
- * folder a home uses.
- *
- * ⚠️ **`memory_summary.md` is the only one that arrives unasked.** 312's eight-arm wire matrix
- * captured it inside the model request whenever `use_memories` was effectively true, and captured
- * nothing else from this tree. Everything else is reachable — the four `memories__*` tools can list,
- * read and search the whole directory — but only if the model decides to, in a turn, with the user
- * watching the transcript. ⛔ **That distinction is the whole of 317 §2.2** and the reason
- * {@link CodexMemoryReach} exists.
- *
- * ## ⚠️ The ad-hoc filename convention, and why order comes off the NAME
- *
- * 312 read the tool signature out of the child's own `exec` description: `filename` must be
- * `YYYY-MM-DDTHH-MM-SS-<slug>.md`, the slug lowercase ASCII letters, digits and hyphens. A
- * fixed-width leading timestamp means **byte order is chronological order**, so a caller that wants
- * the newest notes sorts the names descending and needs no `stat` at all.
- *
- * ⚑ **And the name is the more honest key anyway**: it is the timestamp the AGENT declared and the
- * one the user sees in the path, where an `mtime` is whatever last touched the file. A name that
- * does not follow the convention sorts by its bytes, which is the only order it has.
+ * Ad-hoc note filenames are `YYYY-MM-DDTHH-MM-SS-<slug>.md` (slug: lowercase ASCII letters, digits,
+ * hyphens), so byte order is chronological order and the name is a better sort key than `mtime`.
  */
 
 /**
@@ -79,7 +46,7 @@ function configuredMemories(providerHome: string): Record<string, unknown> {
   }
 }
 
-/** The compressed summary Codex injects into every request. 312 captured it on the wire. */
+/** The compressed summary Codex injects into every request. */
 export const CODEX_MEMORY_SUMMARY = 'memory_summary.md'
 
 /** Memory v1's consolidated handbook the agent searches. Claude's index has the same name. */
@@ -107,13 +74,8 @@ export function codexAdHocNotesDir(providerHome: string): string {
 }
 
 /**
- * ⛔ **Whether this text is in the prompt, or merely on disk** (317 §2.2) — the one fact a panel
- * about memory must not get wrong.
- *
- * `'prompt'` means the provider put it in front of the model before anyone asked a question.
- * `'on-request'` means it is in the store and the agent reads it **if it chooses to** — which is a
- * claim about availability, never about what the model has read. 009's rule and 305's defect: a
- * disclosure that says the model knows something it has not been told is worse than no disclosure.
+ * Whether a file is in the prompt or merely on disk. `'on-request'` is a claim about availability,
+ * never about what the model has read.
  */
 export type CodexMemoryReach = 'prompt' | 'on-request'
 
@@ -126,10 +88,7 @@ export interface CodexMemoryStoreFile {
   readonly what: string
 }
 
-/**
- * ⚑ **The two fixed files, in the order the model meets them.** The ad-hoc notes are a directory
- * rather than a fixed name, so they are not on this list — see {@link codexAdHocNotesDir}.
- */
+/** The two fixed files, in the order the model meets them. Ad-hoc notes are a directory; see {@link codexAdHocNotesDir}. */
 export const CODEX_MEMORY_STORE_FILES: readonly CodexMemoryStoreFile[] = [
   {
     at: [CODEX_MEMORY_SUMMARY],
@@ -144,12 +103,9 @@ export const CODEX_MEMORY_STORE_FILES: readonly CodexMemoryStoreFile[] = [
 ]
 
 /**
- * 🔴 **The pipeline's own working material** — named here so that a reader who declines to show it
- * can say WHAT it declined rather than leaving the store looking three files deep (317 §2.1).
- *
- * ⚠️ **Not "the model cannot see these".** It can: `memories__list`/`read`/`search` reach the whole
- * directory. The reason they are the pipeline's rather than the memory is that phase 2 rewrites
- * them, and a person who edited one would be editing an input.
+ * The pipeline's working material, named so a reader that hides it can say what it hid. The model
+ * can still reach these through `memories__list`/`read`/`search`; they are the pipeline's because
+ * phase 2 rewrites them.
  */
 export const CODEX_MEMORY_PIPELINE_FILES: readonly string[] = [
   CODEX_RAW_MEMORIES,

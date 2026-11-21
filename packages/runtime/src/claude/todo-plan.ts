@@ -2,8 +2,8 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { PlanStep, RuntimeEvent } from '../events'
 
 /**
- * Claude emits per-task changes, with create IDs supplied on the result. Keep one checklist per session.
- * Unknown tool names or malformed inputs remain ordinary tool calls.
+ * Claude emits per-task changes, with create ids supplied on the result; one checklist is kept per
+ * session. Unknown tool names or malformed inputs remain ordinary tool calls.
  */
 
 /** Keep TodoWrite for provider versions that send a full list. Every write tool requires a switch arm. */
@@ -13,9 +13,9 @@ export const TODO_WRITE_TOOLS = ['TaskCreate', 'TaskUpdate', 'TodoWrite'] as con
 export type TodoWriteTool = (typeof TODO_WRITE_TOOLS)[number]
 
 /**
- * The todo tools that only READ the list. They never reach {@link TodoPlan} — mapping a result shape
- * nobody has seen on the wire is the guessing this file refuses — but reading the agent's own
- * checklist has no effect at all, so for permission purposes they belong with the rest of it (032).
+ * The todo tools that only read the list. They never reach {@link TodoPlan} (no result shape is
+ * mapped that has not been seen on the wire), but they have no effect, so for permission purposes
+ * they belong with the rest of the checklist tools.
  */
 export const TODO_READ_TOOLS = ['TaskList', 'TaskGet'] as const
 
@@ -34,10 +34,9 @@ export const TODO_TOOLS: readonly TodoTool[] = [...TODO_WRITE_TOOLS, ...TODO_REA
 /** One line of the running list, plus the key a later update addresses it by. */
 interface TodoStep {
   /**
-   * How `TaskUpdate` finds this step. It starts as the CREATE's tool-use id — a placeholder, since
-   * the provider's own id does not exist yet — and is replaced by the real task id the moment the
-   * create's result binds it. Until then the step is visible but not addressable, which is the
-   * truth: it exists, and nothing can name it yet.
+   * How `TaskUpdate` finds this step. It starts as the create's tool-use id, a placeholder, and is
+   * replaced by the real task id when the create's result binds it. Until then the step is visible
+   * but not addressable.
    */
   key: string
   text: string
@@ -45,9 +44,8 @@ interface TodoStep {
 }
 
 /**
- * `deleted` is not a status: it means the row goes away. Claude's live `TaskUpdate` schema really
- * does offer it beside the three real ones, and mapping it to `done` would report a task the model
- * ABANDONED as one it finished — a lie in the one direction a checklist must never lie.
+ * `deleted` is not a status: it removes the row. Claude's `TaskUpdate` offers it beside the three
+ * real ones, and mapping it to `done` would report an abandoned task as finished.
  */
 const REMOVE = Symbol('deleted')
 
@@ -66,9 +64,8 @@ export class TodoPlan {
   private readonly awaitingId = new Map<string, TodoStep>()
 
   /**
-   * Fold one SDK message into the running list, returning the `plan_update` it produced — at most
-   * one per message, never one per call. The event states the COMPLETE list, so emitting one per
-   * call inside a message that creates three tasks would just publish two states nobody sees.
+   * Fold one SDK message into the running list, returning the `plan_update` it produced: at most one
+   * per message, since the event states the complete list.
    */
   observe(message: SDKMessage): RuntimeEvent[] {
     if (message.type === 'assistant') return this.observeCalls(message)
@@ -76,7 +73,7 @@ export class TodoPlan {
     return []
   }
 
-  /** The tool calls in one assistant message, in source order — the same order 058 renders them. */
+  /** The tool calls in one assistant message, in source order. */
   private observeCalls(message: Extract<SDKMessage, { type: 'assistant' }>): RuntimeEvent[] {
     const content = message.message.content
     if (!Array.isArray(content)) return []
@@ -91,10 +88,7 @@ export class TodoPlan {
     return absorbed.length > 0 ? [this.snapshot(absorbed)] : []
   }
 
-  /**
-   * Narrow to the write-tool union for exhaustive handling. TaskList and TaskGet are read-only
-   * bookkeeping and do not update the checklist.
-   */
+  /** Narrow to the write-tool union for exhaustive handling; `TaskList` and `TaskGet` do not update the checklist. */
   private apply(name: string, callId: string, input: unknown): boolean {
     if (!isTodoWriteTool(name)) return false
     switch (name) {
@@ -110,8 +104,8 @@ export class TodoPlan {
   }
 
   /**
-   * Drain every settled call. Bind only a structured ID, using a unique subject match or the sole
-   * settled create. Unmatched steps remain visible with their placeholder keys.
+   * Drain every settled call. Bind only a structured id, using a unique subject match or the sole
+   * settled create; unmatched steps stay visible with their placeholder keys.
    */
   private observeResults(message: Extract<SDKMessage, { type: 'user' }>): RuntimeEvent[] {
     if (this.awaitingId.size === 0) return []
@@ -128,22 +122,20 @@ export class TodoPlan {
       settled.push(waiting)
     }
     if (settled.length === 0) return []
-    // `tool_use_result` is a sibling field the SDK carries beside `message`, not part of its typed
-    // shape — read defensively rather than asserted into existence.
+    // `tool_use_result` is a sibling of `message` outside the SDK's typed shape; read it defensively.
     const result = (message as unknown as { tool_use_result?: unknown }).tool_use_result
     const task = readField(result, 'task')
     const taskId = readString(task, 'id')
     if (!taskId) return [] // no structured id: every step here stays unaddressable, honestly
     const subject = readString(task, 'subject')
     const named = subject ? settled.filter((step) => step.text === subject) : []
-    // Exactly one candidate, by name or by being the only one settled here. Anything else is a
-    // coin flip and is declined.
+    // Exactly one candidate, by name or as the only one settled; anything else is a guess and is declined.
     const target = named.length === 1 ? named[0] : settled.length === 1 ? settled[0] : undefined
     if (target) target.key = taskId
     return []
   }
 
-  /** `TaskCreate` — one new task, always `pending` (its own tool documents that). */
+  /** `TaskCreate`: one new task, always `pending`. */
   private create(callId: string, input: unknown): boolean {
     const subject = readString(input, 'subject')
     if (!subject) return false // no subject → not a shape we recognize → not a checklist
@@ -163,10 +155,8 @@ export class TodoPlan {
     const rawStatus = readString(input, 'status')
     const status = rawStatus ? TASK_STATUS.get(rawStatus) : undefined
     if (rawStatus && status === undefined) return false // a status we do not recognize → do not guess
-    // ABSENT and EMPTY are different asks, and `readString` flattens both to `''`. Absent means "do
-    // not rename"; an explicit `''` means "rename to nothing", which is not a step anyone can read.
-    // Absorbing the call while ignoring the rename would hide the tool row and leave the old text —
-    // the update reported as applied and visibly not applied.
+    // Absent `subject` means "do not rename"; an explicit `''` would rename to nothing, which is not
+    // readable, so the call is declined rather than reported as applied and visibly not applied.
     const subject = readField(input, 'subject')
     if (subject !== undefined && typeof subject !== 'string') return false
     if (subject === '') return false
@@ -188,23 +178,19 @@ export class TodoPlan {
     for (const todo of todos) {
       const text = readString(todo, 'content')
       const status = TASK_STATUS.get(readString(todo, 'status'))
-      // One UNREADABLE row condemns the whole write, exactly as one unreadable step condemns a
-      // Codex plan: a list with a line missing reads as complete and is not.
+      // One unreadable row rejects the whole write: a list with a line missing reads as complete.
       if (!text || !status) return false
-      // A `deleted` row is a different thing entirely — it is READ perfectly well, and in a
-      // wholesale replace it says "this one is retired". Omitting it is the whole point; treating
-      // it as unreadable would throw away a list the model stated completely and correctly, leaving
-      // the previous checklist standing while the tool row said otherwise.
+      // A `deleted` row is readable and means "retired" in a wholesale replace, so it is omitted.
       if (status === REMOVE) continue
       next.push({ key: `todo:${next.length}`, text, status })
     }
     this.steps.splice(0, this.steps.length, ...next)
-    // Whatever those creates were going to become, this list is now the truth about the plan.
+    // This list is now the truth about the plan, whatever those creates were going to become.
     this.awaitingId.clear()
     return true
   }
 
-  /** Include the current checklist with the proposed document because each plan_update replaces the list. */
+  /** Pair the current checklist with the proposed document, since each `plan_update` replaces the list. */
   document(body: string): RuntimeEvent {
     return {
       type: 'plan_update',
@@ -213,7 +199,7 @@ export class TodoPlan {
     }
   }
 
-  /** Include the complete checklist and only the calls this event absorbed. */
+  /** The complete checklist plus only the calls this event absorbed. */
   private snapshot(absorbed: string[]): RuntimeEvent {
     return {
       type: 'plan_update',
@@ -228,17 +214,16 @@ function isTodoWriteTool(name: string): name is TodoWriteTool {
 }
 
 /**
- * Is `name` a tool whose only effect is the agent's own checklist? The one place the literal union
- * is widened to `string`, so that every caller asking the question gets the same answer instead of
- * casting the set at its own call site.
+ * Is `name` a tool whose only effect is the agent's own checklist? The single place the literal union
+ * is widened to `string`, so every caller gets the same answer.
  */
 export function isTodoTool(name: string): name is TodoTool {
   return (TODO_TOOLS as readonly string[]).includes(name)
 }
 
-/** The exhaustive switch makes this unreachable. Return false to keep the message loop running. */
+/** The exhaustive switch makes this unreachable; returning false keeps the message loop running. */
 function unhandledTodoTool(name: never): boolean {
-  void name // the parameter's TYPE is the whole mechanism; its value cannot exist
+  void name
   return false
 }
 

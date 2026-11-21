@@ -10,53 +10,23 @@ import {
 } from '../../archive/transcript-types'
 
 /**
- * Turn a Codex ROLLOUT file into the entries our ledger holds (036) — the counterpart to
- * `import-claude.ts`, and the thing 088 deferred with *"importing it would mean a second normalizer
- * written against a format nothing else here reads"*. It is written now because the same parser
- * that reads a finished rollout is the one that tails a running sub-agent's.
+ * Turn a Codex rollout file into the entries our ledger holds, the counterpart to
+ * `claude/import-transcript.ts`. The same parser reads a finished rollout and tails a running
+ * sub-agent's.
  *
- * ## It is NOT the app-server protocol
+ * A rollout is the CLI's own record, not the app-server protocol `codex-runtime.ts` normalizes. Each
+ * line is `{type, timestamp, payload}` with `type` one of `session_meta`, `turn_context`,
+ * `response_item` (the model transcript: message, reasoning, function_call, function_call_output)
+ * and `event_msg` (the CLI's own view).
  *
- * `codex-runtime.ts` normalizes the JSON-RPC `thread/*` stream. A rollout is a different format
- * entirely — the CLI's own record — and that is why no existing code could be reused. Measured
- * against the 1,811 rollouts on this machine, every line is
- * `{type, timestamp, payload}` with four values of `type`:
+ * `response_item` is read because it is complete: tool calls and their results appear only there.
+ * `event_msg` duplicates it (messages and reasoning would render twice), except
+ * `image_generation_end`, which appears nowhere else. The rule is to read whatever is not already
+ * said elsewhere.
  *
- * ```
- * session_meta    the thread's identity: {id, timestamp, cwd, originator, cli_version, git, …}
- * turn_context    {cwd, approval_policy, sandbox_policy, model, effort, summary} — per turn
- * response_item   the MODEL transcript: message | reasoning | function_call | function_call_output
- * event_msg       the CLI's own view: user_message | agent_message | agent_reasoning | token_count
- * ```
- *
- * ## `response_item` is read, and exactly one kind of `event_msg`
- *
- * `response_item` and `event_msg` OVERLAP: an assistant turn appears as both a
- * `response_item{message, role:'assistant'}` and an `event_msg{agent_message}`, and reasoning
- * appears as both `response_item{reasoning}` and `event_msg{agent_reasoning}`. Reading both would
- * render every message twice.
- *
- * `response_item` is the one to keep because it is the only one that is COMPLETE: tool calls
- * (`function_call`) and their results (`function_call_output`) appear there and nowhere else. A
- * transcript built from `event_msg` would be prose with the work missing — which is precisely the
- * misattribution 029 spent a task removing.
- *
- * ⚠️ **`image_generation_end` is the exception, and it is one because it does not overlap** (065,
- * closing 067's gap). A generated image appears as an `event_msg` and **nowhere else** — measured on
- * both rollouts that have one on this machine, and the reason a swept or re-derived Codex session
- * showed no pictures at all while the PNGs sat on disk the whole time. There is no
- * `response_item` to double it against, so reading it renders nothing twice.
- *
- * The rule this file follows is therefore not "only `response_item`". It is **read whatever is not
- * already said elsewhere**, and `event_msg` happens to be a duplicate of `response_item` for
- * everything except this.
- *
- * ## What it deliberately does not do
- *
- *  - **No lifecycle.** Like the Claude importer: the file records what was said, not a session
- *    machine's transitions. `session`/`turn`/`status` are the live adapter's to emit.
- *  - **No deltas.** The file holds finished messages; the partial stream was never written to it.
- *  - **No status inference.** A rollout that stops is a file that stops. See `session-reader.ts`.
+ * It emits no lifecycle (the file records what was said, not session transitions), no deltas (only
+ * finished messages are written) and no status inference (a rollout that stops is a file that
+ * stops; see `session-reader.ts`).
  */
 
 type Record_ = Record<string, unknown>
@@ -82,7 +52,6 @@ function parseAt(record: Record_): number | null {
  * The text of a `message` payload. Codex spells the block types by DIRECTION —
  * `input_text` on the way in, `output_text` on the way back — and both carry `text`. Anything else
  * (images, refusals) contributes nothing rather than being stringified into the conversation.
- * ⚑ R1 finds an imported turn by it too (`turn-as-sent.ts`): one rule for the turn and its finding.
  */
 export function messageText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -98,9 +67,8 @@ export function messageText(content: unknown): string {
 }
 
 /**
- * The first line of a reasoning payload's summary — the same "a count, or a summary, never invented
- * words" rule 027 set. `content` is usually null and `encrypted_content` is opaque by design; only
- * `summary[].text` is anything a reader could be shown.
+ * The first line of a reasoning payload's summary; never invented words. `content` is usually null
+ * and `encrypted_content` is opaque, so only `summary[].text` can be shown.
  */
 function reasoningText(payload: Record_): string {
   const summary = payload['summary']
@@ -172,8 +140,7 @@ function lineEvents(payload: Record_): TranscriptEvent[] {
     }
     case 'reasoning': {
       const text = reasoningText(payload)
-      // A reasoning item with nothing readable is still a statement that it thought — the same
-      // distinction 027 draws between "no words" and "no thinking".
+      // A reasoning item with nothing readable still says it thought, so it is marked redacted.
       return [{ type: 'thinking', phase: 'complete', ...(text ? { text } : { redacted: true }) }]
     }
     case 'function_call': {
@@ -191,8 +158,7 @@ function lineEvents(payload: Record_): TranscriptEvent[] {
     case 'function_call_output': {
       const id = readString(payload, 'call_id')
       if (!id) return []
-      // No `ok` on the wire here: a rollout records the output, not whether the caller judged it a
-      // success. Reported as ok rather than guessing a failure that was never stated.
+      // A rollout records the output, not whether the caller judged it a success, so ok is assumed.
       return [{ type: 'tool_result', id, summary: outputSummary(payload), ok: true }]
     }
     default:
@@ -204,45 +170,25 @@ export interface CodexImportOptions {
   resolveImage?: ResolveImagePath | undefined
 }
 
-/**
- * The longest `call_id` an image item may carry before it is refused as malformed.
- *
- * Both measured ids are 28 and 41 characters (`call_FefXSBqxpzAw3EgxSeGZt6gC`,
- * `exec-297ad8c6-8e4e-403d-a8af-4d6a5e025cb2`), and the format caps nothing. 200 is generous enough
- * that no real id could reach it and small enough that the value can never become a payload.
- */
+/** The longest `call_id` an image item may carry before it is refused as malformed. Real ids are under 50 characters. */
 const MAX_IMAGE_ID_CHARS = 200
 
 /**
- * A generated image, from the one `event_msg` that is not a duplicate of anything (065/067).
- *
- * ⚠️ **The feature is which field is NOT read.** The measured lines are 2.15 MB and 2.92 MB, and
- * essentially all of it is `result` — the whole PNG as base64. Three small reads and it is never
- * touched: the id, the path claim and the prompt come out, and the bytes stay in the provider's
- * file where the verbatim copy belongs. The same rule `codex/normalize.ts` follows on the live wire, for
- * the same reason: the provider hands us the picture twice, and the useful copy is the file.
- *
- * `call_id` is the id, and it is the id BECAUSE it is the filename: both files on disk are named
- * `<call_id>.png` — `call_FefXSBqxpzAw3EgxSeGZt6gC.png` and `exec-297ad8c6-….png`. So the same value
- * that identifies the item is the one the naming convention looks a file up by.
+ * A generated image, from the one `event_msg` that duplicates nothing. The `result` field is the
+ * whole PNG as base64 (megabytes) and is never read; only the id, the path claim and the prompt
+ * are, and the bytes stay in the provider's file. `call_id` is the id because the provider names
+ * the file `<call_id>.png`.
  */
 function imageEvent(payload: Record_, resolveImage?: ResolveImagePath): TranscriptEvent[] {
   const imageId = readString(payload, 'call_id')
-  // No id is no image: there is nothing to name it by and nothing to look a file up with. Dropped
-  // rather than surfaced as `unknown{raw}` — that path would drag the base64 back in, which is the
-  // one thing this whole function exists not to do.
-  //
-  // ⚠️ **And an absurd id is treated the same way** (review). Unlike `revised_prompt` below, an id
-  // cannot be truncated — a shortened id is a WRONG id, naming a file that is not the one meant. So
-  // it is refused instead, at a bound two orders of magnitude above the measured 28-character
-  // values. Without it the string rides unbounded into the ledger, across IPC for the life of the
-  // session, and into a filesystem path — the exact retention 052 spent a task removing, through a
-  // field nobody thought to cap because ids are short in every file anybody has looked at.
+  // No id is no image, so nothing to name or look up. Dropped rather than surfaced as
+  // `unknown{raw}`, which would pull the base64 back in. An oversized id is refused too: it cannot
+  // be truncated (a shortened id names the wrong file) and would otherwise ride unbounded into the
+  // ledger, over IPC and into a filesystem path.
   if (!imageId || imageId.length > MAX_IMAGE_ID_CHARS) return []
   const savedPath = readString(payload, 'saved_path')
   const path = resolveImage?.({ imageId, ...(savedPath ? { savedPath } : {}) }) ?? null
-  // Bounded like every other provider string that becomes a caption: 745 and 915 characters in the
-  // two measured cases, with nothing in the format capping it.
+  // Bounded like every other provider string that becomes a caption.
   const prompt = truncate(readString(payload, 'revised_prompt').trim())
   return [
     {
@@ -256,11 +202,8 @@ function imageEvent(payload: Record_, resolveImage?: ResolveImagePath): Transcri
 
 /**
  * The whole rollout, in order. Same contract as {@link importClaudeTranscript}: raw lines in,
- * `{at, event}` out, and `unreadable` counts lines that were not JSON at all rather than hiding
- * them.
- *
- * `fallbackAt` is REQUIRED for the same reason it is there: a file naming no time would otherwise
- * render a confident "12:00 AM" on every line of a conversation dated to 1970.
+ * `{at, event}` out, and `unreadable` counts lines that were not JSON. `fallbackAt` is required so
+ * a file naming no time does not render a confident "12:00 AM" dated to 1970.
  */
 export function importCodexRollout(
   frames: string[],
@@ -288,25 +231,21 @@ export function importCodexRollout(
     if (at !== null) lastAt = at
     const payload = record['payload']
     if (!isRecord(payload)) continue
-    // `event_msg` is otherwise a DUPLICATE of what `response_item` already says, and rendering it
-    // quietly would render every assistant message twice — but a generated image appears here and
-    // NOWHERE else, so skipping the whole line type was 067's missing picture. Named exactly, so a
-    // second `event_msg` kind cannot arrive through the same door by accident.
+    // `event_msg` duplicates `response_item`, except a generated image, which appears only here.
+    // Named exactly so a second `event_msg` kind cannot arrive through the same door.
     if (record['type'] === 'event_msg') {
       if (payload['type'] !== 'image_generation_end') continue
       for (const event of imageEvent(payload, options.resolveImage))
         entries.push({ at: lastAt, event })
       continue
     }
-    // `session_meta`/`turn_context` are configuration, and the reader surfaces the meta separately
-    // rather than as a line of conversation.
+    // `session_meta`/`turn_context` are configuration; the reader surfaces the meta separately.
     if (record['type'] !== 'response_item') continue
     for (const event of lineEvents(payload)) entries.push({ at: lastAt, event })
   }
 
-  // 096: Codex's file changes come off `turn/diff/updated`, which is self-contained per line, so
-  // there is nothing in flight to carry — an empty registry says exactly that. The field is on the
-  // shared shape because both importers return it; only one has state to keep.
+  // Codex file changes come off `turn/diff/updated`, self-contained per line, so there is no state
+  // to carry. The field exists because both importers return the shared shape.
   return { entries, unreadable, lastAt, edits: undefined }
 }
 
@@ -317,10 +256,7 @@ export interface CodexRolloutMeta {
   at: number | null
 }
 
-/**
- * Read the identity line without parsing the whole file — the reader needs it to bind a rollout to
- * a thread, and a rollout can be megabytes.
- */
+/** Read the identity line without parsing the whole file, which can be megabytes. */
 export function readCodexRolloutMeta(frames: string[]): CodexRolloutMeta | null {
   for (const frame of frames) {
     if (frame.trim() === '') continue

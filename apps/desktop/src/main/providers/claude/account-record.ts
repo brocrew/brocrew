@@ -3,11 +3,11 @@ import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /**
- * **The Claude account this computer was last seen signed in to**, as Claude Code's own documented
+ * The Claude account this computer was last seen signed in to, as Claude Code's own documented
  * interface named it (`SessionHandle.account`), with the id this app stamps that account's usage
  * readings with: `<userData>/provider-accounts.json`.
  *
- * ⛔ **The one place the email is kept.** Readings carry the id, minted here and not derived from
+ * The one place the email is kept. Readings carry the id, minted here and not derived from
  * the email. A recovery copy does not carry this file (`recovery/state-files.ts`), no log line says
  * what it holds, and nothing in it is given to an agent or a window.
  *

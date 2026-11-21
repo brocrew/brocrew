@@ -3,33 +3,23 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 
 /**
- * Where the `codex` executable actually is (014).
- *
- * The app used to spawn the bare command `codex` — a PATH lookup that worked only because the
- * developer happened to have a global install on their shell PATH. A packaged app double-clicked
- * from Finder inherits launchd's minimal PATH and has none, so Codex could never start in
- * production; and whatever version the user's global happened to be is what the handshake was
- * checked against, not the version this app was built for. So the app ships its own: the
- * platform package (`@openai/codex-darwin-arm64`, and since F072 `-win32-x64`), pinned to the same version the vendored
- * protocol types were generated from, and always spawned by absolute path. The user's PATH — and
- * the user's codex — no longer participate.
+ * Where the bundled `codex` executable is. The app spawns it by absolute path and never uses the
+ * user's PATH or global install: a packaged app opened from Finder inherits launchd's minimal PATH,
+ * and the handshake must be checked against the version this app was built for. Each platform
+ * package is pinned to the version the vendored protocol types were generated from.
  *
  * Two places the binary can be, one layout:
- *  - **dev** — `node_modules/<platform package>/vendor/<triple>/bin/<binary>`, resolved
- *    through the module system so pnpm's layout is its problem, not ours.
- *  - **packaged** — `<resourcesPath>/{@link PACKAGED_CODEX_DIR}/<triple>/bin/<binary>`: a native
- *    binary cannot execute from inside `app.asar`, so electron-builder copies the platform
- *    package's `vendor/` tree there as `extraResources` (see `electron-builder.yml`, which a
- *    test holds to these constants).
+ *  - dev: `node_modules/<platform package>/vendor/<triple>/bin/<binary>`, resolved through the
+ *    module system so pnpm's layout is its problem, not ours.
+ *  - packaged: `<resourcesPath>/{@link PACKAGED_CODEX_DIR}/<triple>/bin/<binary>`. A native binary
+ *    cannot execute from inside `app.asar`, so electron-builder copies the platform package's
+ *    `vendor/` tree there as `extraResources` (`electron-builder.yml`; a test holds it to these
+ *    constants).
  *
- * The binary's sibling dirs (`codex-path/rg`, `codex-resources/zsh`) ride along in both cases —
- * codex finds them relative to its own location, which is also exactly how the official
- * `bin/codex.js` launcher runs it: the native binary directly, argv passed through, no special
- * environment.
- *
- * ⚑ **F072 — two platforms are bundled: macOS arm64 and Windows x64** ({@link BUNDLED_CODEX}), each
- * its own platform package, vendor triple and file name — the same three Codex's own launcher reads
- * (`codex-cli/bin/codex.js`: `x86_64-pc-windows-msvc`, `codex.exe`).
+ * The binary's sibling dirs (`codex-path/rg`, `codex-resources/zsh`) ride along in both cases;
+ * codex finds them relative to its own location, as the official `bin/codex.js` launcher does.
+ * Two platforms are bundled, macOS arm64 and Windows x64 ({@link BUNDLED_CODEX}), each with its own
+ * package, vendor triple and file name.
  */
 
 /** One Codex build this app bundles: its npm package, vendor triple, and the binary's file name. */
@@ -43,10 +33,7 @@ export interface BundledCodex {
 }
 
 /**
- * ⚑ **The Codex builds this app bundles, by `<platform>/<arch>`** — each package pinned in
- * `package.json`'s optionalDependencies, and copied by its platform's `extraResources` in
- * `electron-builder.yml` (a test holds the three together).
- */
+/** The Codex builds this app bundles by `<platform>/<arch>`, each pinned in `package.json`'s optionalDependencies and copied by `electron-builder.yml` (a test holds the three together). */
 export const BUNDLED_CODEX: Readonly<Record<string, BundledCodex>> = {
   'darwin/arm64': {
     package: '@openai/codex-darwin-arm64',
@@ -63,11 +50,7 @@ export const BUNDLED_CODEX: Readonly<Record<string, BundledCodex>> = {
 /** The directory under `process.resourcesPath` the packaged build copies the vendor tree to. */
 export const PACKAGED_CODEX_DIR = 'codex-vendor'
 
-/**
- * What the resolver needs to know about where it is running. Plain data + seams, no `electron`
- * import, so the module (and its tests) load under node; the composition root fills it from
- * `app.isPackaged` / `process.resourcesPath`.
- */
+/** What the resolver needs to know about where it runs. Plain data and seams, no `electron` import, so the module loads under node. */
 export interface CodexBinaryContext {
   isPackaged: boolean
   resourcesPath: string
@@ -126,7 +109,7 @@ export function resolveCodexBinary(context: CodexBinaryContext): string {
     : devBinaryPath(context, bundled)
 
   try {
-    // ⚠️ On Windows `X_OK` is checked as `F_OK` — it exists — which is what Windows can say.
+    // On Windows `X_OK` is checked as `F_OK` — it exists — which is what Windows can say.
     accessSync(binary, constants.X_OK)
   } catch {
     throw new CodexUnavailableError(
@@ -138,7 +121,7 @@ export function resolveCodexBinary(context: CodexBinaryContext): string {
 }
 
 /**
- * The Codex program a launch runs, and where it comes from — `ClaudeProgram`'s shape. ⚑ Only the
+ * The Codex program a launch runs, and where it comes from — `ClaudeProgram`'s shape. Only the
  * copy this app carries today: a second source widens `from`, and its version read then needs the
  * tested range a carried copy does without.
  */

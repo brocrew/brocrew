@@ -13,7 +13,7 @@ export const CODEX_LAUNCH_SETTING_KEYS = [
   'approval-sandbox',
   /**
    * Its collaboration mode as the adapter chose it at this launch: `plan`, or `default`, which also
-   * covers a launch that sends no mode at all. ⚠️ Not proof of the mode a resumed thread is in.
+   * covers a launch that sends no mode at all. Not proof of the mode a resumed thread is in.
    */
   'collaboration-mode',
 ] as const

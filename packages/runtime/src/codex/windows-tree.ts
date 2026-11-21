@@ -3,12 +3,12 @@ import { execFile, spawn } from 'node:child_process'
 /**
  * A process tree on Windows, which has no process groups and no signals: what a leader started is
  * found in the process table by parent and creation time, and each process is ended through a handle
- * opened on it once its creation time says it is still the one found. ⚠️ A process keeps the number
+ * opened on it once its creation time says it is still the one found. A process keeps the number
  * of the parent that started it after that parent exits, so what an exited process started is still
  * found under its number when that process was seen running, and was started before it was last
  * seen running: after that, its number may belong to a stranger.
  *
- * ⚠️ **What this cannot find**: a program started by a process that no reading saw running — a
+ * What this cannot find: a program started by a process that no reading saw running — a
  * launcher that starts it and exits between two readings — or started by a seen process after the
  * last reading that saw it. Readings cannot close that; a job object that ends its processes when
  * closed would.

@@ -26,8 +26,8 @@ export function readInstructionFile(path: string, cap = INSTRUCTION_FILE_CAP): I
     // refusal. Anything else (a permission wall, a broken mount) is, because we cannot say the
     // file is absent when what we learned is that we could not look.
     //
-    // ⚠️ A DANGLING link is ENOENT and therefore `absent` — which is also what the provider's own
-    // `stat` makes of it, so nothing reached the model and there is nothing to report. ⚑ A LOOP is
+    // A DANGLING link is ENOENT and therefore `absent` — which is also what the provider's own
+    // `stat` makes of it, so nothing reached the model and there is nothing to report. A LOOP is
     // ELOOP, and it is refused as a link: there is no file at the end of it to read.
     if (isAbsent(error)) return { ok: false, reason: 'absent' }
     return { ok: false, reason: isSymlinkError(error) ? 'symlink' : 'unreadable' }
@@ -36,12 +36,12 @@ export function readInstructionFile(path: string, cap = INSTRUCTION_FILE_CAP): I
 
   let fd: number
   try {
-    // ⚠️ **`O_NONBLOCK`, for the swap step 2 cannot see** (`733` review): a link retargeted at a
-    // FIFO between the `stat` and this `open` would otherwise block the main process on the open
-    // itself. On a regular file it changes nothing; the `fstat` below then refuses the FIFO.
+    // `O_NONBLOCK`: a link retargeted at a FIFO between the `stat` and this `open` would otherwise
+    // block the main process on the open itself. It changes nothing on a regular file, and the
+    // `fstat` below refuses the FIFO.
     fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
   } catch (error) {
-    // ⚠️ ELOOP here is a path that became a loop after the `stat` above.
+    // ELOOP here is a path that became a loop after the `stat` above.
     return { ok: false, reason: isSymlinkError(error) ? 'symlink' : 'unreadable' }
   }
   try {
@@ -72,7 +72,7 @@ export function readInstructionFile(path: string, cap = INSTRUCTION_FILE_CAP): I
     try {
       text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
     } catch {
-      // ⚠️ A truncated read can split a multi-byte character, which would refuse a perfectly good
+      // A truncated read can split a multi-byte character, which would refuse a perfectly good
       // UTF-8 file for the cap's sake. Drop the trailing partial sequence and decode again; only a
       // file that is still invalid after that is refused.
       const trimmed = dropPartialTail(Buffer.concat(chunks))
@@ -148,7 +148,7 @@ export function isHomeOrAbove(dir: string, home: string): boolean {
 export function readMemoryStore(candidates: readonly MemoryCandidate[]): AgentMemoryRead {
   const memory: InjectedInstruction[] = []
   const refused: RefusedInstruction[] = []
-  // ⚠️ A broken `memories/` directory link makes EVERY leaf under it absent, so without this the
+  // A broken `memories/` directory link makes EVERY leaf under it absent, so without this the
   // same one-line finding would be reported once per candidate.
   const reported = new Set<string>()
   let budget = AGENT_MEMORY_TOTAL_CAP
@@ -160,12 +160,12 @@ export function readMemoryStore(candidates: readonly MemoryCandidate[]): AgentMe
   }
 
   for (const candidate of candidates) {
-    // ⛔ **The per-file cap, NOT what is left of the budget** (187 §2). Reading at the remaining
-    // budget is the defect that made "there is no room left" and "there is no file there" the same
-    // answer; the file is read whole and the fit is decided afterwards, so a drop can be stated.
+    // The per-file cap, not what is left of the budget: reading at the remaining budget would make
+    // "no room left" and "no file there" the same answer. The file is read whole and the fit is
+    // decided afterwards, so a drop can be stated.
     const read = readInstructionFile(candidate.path, INSTRUCTION_FILE_CAP)
     if (!read.ok) {
-      // ⛔ `absent` is silent — unless what is absent is the far end of a LINK (314 §3).
+      // `absent` is silent, unless what is absent is the far end of a link.
       if (read.reason === 'absent') {
         const broken = brokenMemoryLink(candidate.path)
         if (broken !== null) declare(broken)
@@ -174,11 +174,10 @@ export function readMemoryStore(candidates: readonly MemoryCandidate[]): AgentMe
       declare({ path: candidate.path, reason: read.reason })
       continue
     }
-    // An empty file is not an item — a heading over no text is 086 in the other direction.
+    // An empty file is not an item: a heading over no text would claim something was sent.
     if (read.text.trim() === '') continue
-    // ⚠️ Silent, and deliberately: what did not fit is counted and named in the note sentence
-    // ({@link codexMemoryNote}), because a store of a thousand one-line notes would otherwise turn
-    // 187's "a dropped file is a row" into a thousand rows nobody can read.
+    // Silent on purpose: what did not fit is counted in the note sentence ({@link codexMemoryNote}),
+    // since a store of a thousand notes would otherwise become a thousand unreadable rows.
     if (read.bytes > budget) continue
     budget -= read.bytes
     const link = read.real !== undefined && read.real !== candidate.derived ? read.real : undefined
@@ -216,11 +215,9 @@ export function brokenMemoryLink(path: string): RefusedInstruction | null {
       continue // nothing at this name at all — the ordinary case, and it stays silent
     }
     if (!seen.isSymbolicLink()) continue
-    // ⛔ **A link is only reported when it leads NOWHERE, and this line is why.** Found reviewing
-    // this diff: `memory/` may be a symlink somebody pointed at a real directory on another disk,
-    // and the index inside it simply has not been written yet — a perfectly working redirect with
-    // no file at the far end of the LEAF. Without this the panel told them their memory was gone.
-    // ⚠️ `stat` follows; a link that resolves answers here and is left alone.
+    // A link is only reported when it leads nowhere: `memory/` may be a working symlink to another
+    // disk whose index is just not written yet, and reporting that would tell the person their
+    // memory was gone. `stat` follows, so a link that resolves is left alone.
     if (resolves(candidate)) continue
     let target: string
     try {

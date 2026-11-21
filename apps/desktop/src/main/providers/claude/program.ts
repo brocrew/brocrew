@@ -48,7 +48,7 @@ export interface ClaudeCopy {
 /**
  * The program found: the path every launch passes and where it came from, and the other copies
  * installed on this computer that a launch does not run — each its own file, in the order they are
- * looked for. ⚑ None for a program given to the launch or a checkout's own: nothing else is looked for.
+ * looked for. None for a program given to the launch or a checkout's own: nothing else is looked for.
  */
 export interface ClaudeProgram extends ClaudeCopy {
   readonly others: readonly ClaudeCopy[]
@@ -73,7 +73,7 @@ export interface ClaudeProgramContext {
   readonly list?: (folder: string) => readonly string[]
   readonly whereTheSdkLooks?: () => string | null
   /**
-   * Look on past the first copy for every other one, as the Providers page reads them. ⚑ A launch
+   * Look on past the first copy for every other one, as the Providers page reads them. A launch
    * does not: it runs the first, and stops looking there.
    */
   readonly everyCopy?: boolean
@@ -120,7 +120,7 @@ export function findClaudeProgram(context: ClaudeProgramContext): ClaudeProgram 
       return { path: carried, from: 'development-checkout', update: null, others: [] }
     }
   }
-  // ⚑ Every copy that runs, each file once — a link and the file it points to are one copy, and on
+  // Every copy that runs, each file once — a link and the file it points to are one copy, and on
   // a Mac or Windows two spellings of one path differ only in case: the first is the one a launch
   // runs, and the rest say why an update of another did not take.
   const realOf = (candidate: Candidate): string => {
@@ -237,7 +237,7 @@ export function installedCandidates(context: ClaudeProgramContext): Candidate[] 
  * (https://code.claude.com/docs/en/setup: "Update manually", the Homebrew and WinGet tabs, and
  * "Install with npm"), or `null` where BroBot cannot say how it was installed. Homebrew has two
  * casks, `claude-code` and `claude-code@latest`, and each is upgraded by its own name.
- * ⚑ The installer's own copy updates itself, so its command runs that copy as the person's shell
+ * The installer's own copy updates itself, so its command runs that copy as the person's shell
  * runs it (`run`, `claudeCommandIn`): a bare `claude` may be another copy, or one the shell does
  * not find.
  */

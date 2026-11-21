@@ -7,23 +7,22 @@ import {
 } from '../scheduled-work'
 
 /**
- * **The provider's scheduling calls, read at its documented `PreToolUse` and `PostToolUse` hooks**,
- * and published as receipts on `scheduled_work` rows that state no level.
+ * The provider's scheduling calls, read at its `PreToolUse` and `PostToolUse` hooks and published as
+ * receipts on `scheduled_work` rows that state no level.
  *
- * Measured from outside (`smoke/claude-scheduling-receipts-probe.smoke.ts`, CLI 2.1.287): both
- * hooks fire for `CronCreate`, `CronDelete`, `CronList` and `ScheduleWakeup`; `tool_response` has
- * the shape the SDK publishes for each (`sdk-tools.d.ts`); a call the provider refuses (an unknown
- * job id, a cron that is not one) runs neither hook, so it leaves no receipt.
+ * Both hooks fire for `CronCreate`, `CronDelete`, `CronList` and `ScheduleWakeup`
+ * (`smoke/claude-scheduling-receipts-probe.smoke.ts`), and `tool_response` has the shape the SDK
+ * publishes for each. A call the provider refuses (an unknown job id, a cron that is not one) runs
+ * neither hook, so it leaves no receipt.
  *
- * The two hooks bracket the call: `calledAt` is when the provider was about to run it and
- * `answeredAt` when it reported the result. That bracket is kept only when the wall clock and a
- * monotonic one agree on the time between them, so a clock set while the call ran cannot make it
- * look earlier or later than it was.
+ * `calledAt` is when the provider was about to run the call and `answeredAt` when it reported the
+ * result. That bracket is kept only when the wall clock and a monotonic one agree on the time between
+ * them, so a clock set mid-call cannot skew it.
  *
- * Every value arrives through a hook callback with no schema in front of it, so each field a
- * receipt keeps is checked here against the published type, and an answer whose kept fields do not
- * check is kept with no `result`: the call happened, and what it did is not known. Total and non-throwing: a hook that throws would fail
- * inside the provider's tool call.
+ * Every value arrives through a hook callback with no schema, so each kept field is checked against
+ * the published type, and an answer whose fields do not check is kept with no `result`: the call
+ * happened, and what it did is not known. It is total and non-throwing, since a throwing hook would
+ * fail inside the provider's tool call.
  */
 
 /** The most calls waiting for their result at once; past it, the oldest loses its bracket. */

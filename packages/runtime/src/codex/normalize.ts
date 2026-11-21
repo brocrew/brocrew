@@ -28,23 +28,16 @@ import { rateLimitPressure, rateLimitUsage, type RateLimitWatch } from './rate-l
 export { RateLimitWatch, rateLimitUsage, type UsageBucket } from './rate-limits'
 
 /**
- * Normalize one `codex app-server` NOTIFICATION into **content** `RuntimeEvent`s
- * only (assistant deltas/messages, tool calls/results, informational errors) —
- * 001 Codex→RuntimeEvent table. Pure.
+ * Normalize one `codex app-server` notification into content `RuntimeEvent`s (assistant deltas and
+ * messages, tool calls and results, informational errors). Unmapped methods become `unknown{raw}`.
  *
- * Session/turn LIFECYCLE is NOT emitted here: the `session` event comes from the
- * `thread/start`/`resume` RESPONSE, and the turn terminal is driven by the shared
- * `SessionMachine` from {@link codexTurnOutcome} (`turn/completed`). `turn/started` binds
- * nothing — the id comes from the `turn/start` RESPONSE (037) — and is where the handle sends an
- * interrupt it was asked for again (704: Codex refuses one before the turn runs). Unmapped →
- * `unknown{raw}`.
+ * Lifecycle is not emitted here: the `session` event comes from the `thread/start`/`resume` response
+ * and the turn terminal from `SessionMachine` via {@link codexTurnOutcome}. `turn/started` binds
+ * nothing; the id comes from the `turn/start` response, and the handle re-sends a requested interrupt
+ * on `turn/started` because Codex refuses one before the turn runs.
  *
- * ⚠️ **Still pure except for `watch`, and the exception is named rather than hidden** (188 §2, from
- * 182 M4). Exactly one notification — `account/rateLimits/updated` — is defined by the provider as a
- * SPARSE update over earlier ones, so judging it needs a memory of the session it belongs to. That
- * memory is {@link RateLimitWatch}, owned by the handle and passed in. ⛔ **Omitting it is not a
- * default, it is the older per-frame reading**: every other caller (sub-agent normalization, and
- * every fixture in `codex-normalize.test.ts`) gets exactly what it got before.
+ * Pure except for `watch`: `account/rateLimits/updated` is a sparse update over earlier frames, so
+ * judging it needs the handle's {@link RateLimitWatch}. Omitting `watch` gives the per-frame reading.
  */
 export function normalizeNotification(
   method: string,
@@ -53,10 +46,7 @@ export function normalizeNotification(
 ): RuntimeEvent[] {
   switch (method) {
     case 'item/agentMessage/delta': {
-      // An intentional no-content delta and a MALFORMED payload are different things (055,
-      // fixing 044 P2 #5). Both used to return `[]`, so a delta whose `delta` field was missing
-      // or not a string vanished without trace — indistinguishable from the provider sending
-      // nothing. A well-formed empty delta is still a no-op; anything else is SURFACED.
+      // A well-formed empty delta is a no-op; a missing or non-string `delta` is surfaced.
       const raw = readField(params, 'delta')
       if (typeof raw !== 'string') return [unrecognized(method, params)]
       return raw ? [{ type: 'assistant_delta', text: raw }] : []
@@ -68,33 +58,22 @@ export function normalizeNotification(
     case 'item/completed':
       return itemToEvents(readField(params, 'item'), 'completed')
 
-    // The reasoning SUMMARY stream (027). It only exists because the turn asks for it —
-    // `TurnStartParams.summary`; without that, reasoning items arrive empty and none of this
-    // fires. `content` is never delivered by the server, so what reaches the UI is a summary of
-    // the reasoning and never the raw chain of thought.
+    // Reasoning summary stream. Reasoning items arrive empty unless the turn asks for
+    // `TurnStartParams.summary`; the server never delivers `content`, so only a summary reaches the UI.
     case 'item/reasoning/summaryTextDelta': {
       const delta = readField(params, 'delta')
       if (typeof delta !== 'string') return [unrecognized(method, params)]
       return delta ? [{ type: 'thinking', phase: 'delta', text: delta }] : []
     }
 
-    // The boundary between one summary part and the next: a delta carrying NOTHING — no text, no
-    // count. That emptiness is the whole signal, and the fold reads it as "a new paragraph of
-    // reasoning begins" — it separates the parts already on screen and never starts a block of its
-    // own, because a boundary with nothing on either side of it is not a thought.
+    // A delta with no text and no count marks the boundary between summary parts; it separates the
+    // parts already shown and never starts a block of its own.
     case 'item/reasoning/summaryPartAdded':
       return [{ type: 'thinking', phase: 'delta' }]
 
-    // The agent's working CHECKLIST (028). Codex states the WHOLE plan every time — captured live
-    // as `[inProgress, pending, pending]` and then `[completed, completed, completed]` — which is
-    // exactly the neutral event's replace-don't-append contract, so there is nothing to accumulate
-    // here and no per-session state to keep. (Claude's half of this is the opposite; see
-    // `claude/todo-plan.ts`.)
-    //
-    // `item/plan/delta` is deliberately NOT first-class beside it: the protocol marks it
-    // EXPERIMENTAL and warns that concatenated deltas need not match the completed plan, and it
-    // never fired in capture. It stays classified chatter rather than a second, weaker source of
-    // truth for the same checklist.
+    // Working checklist. Codex states the whole plan each time, matching the neutral event's replace
+    // contract, so no state is kept. `item/plan/delta` stays chatter: the protocol marks it experimental
+    // and says concatenated deltas need not match the completed plan.
     case 'turn/plan/updated': {
       const plan = readField(params, 'plan')
       if (!Array.isArray(plan)) return [unrecognized(method, params)]
@@ -102,37 +81,22 @@ export function normalizeNotification(
       for (const entry of plan) {
         const text = readString(entry, 'step')
         const status = planStepStatus(readString(entry, 'status') as TurnPlanStepStatus)
-        // One unreadable entry condemns the WHOLE notification, rather than rendering a checklist
-        // with a hole in it. A step we cannot read is not a step we may guess at, and a plan that
-        // silently drops a line is worse than no plan: the user cannot tell it is incomplete.
+        // One unreadable entry rejects the whole notification rather than render a plan with a hole.
         if (!text || !status) return [unrecognized(method, params)]
         steps.push({ text, status })
       }
-      // `explanation` is `null` while the plan is being worked and a sentence once it is done, so
-      // absence is the normal case and must stay absence rather than becoming an empty note.
+      // `explanation` is null while the plan is in progress; keep absence as absence.
       const explanation = readString(params, 'explanation')
       return [{ type: 'plan_update', steps, ...(explanation ? { note: explanation } : {}) }]
     }
 
-    // **How full the context window is** (087). The one signal in this switch that is a MEASUREMENT
-    // rather than a message, and the only reason the meter can draw a percentage at all.
-    //
-    // ⚠️ **`last`, never `total` — and this is not a preference, it is the difference between a
-    // reading and a lie.** Measured over all 198 of these payloads in this machine's own database:
-    // `total.totalTokens` is CUMULATIVE billing for the thread. It climbs monotonically past the
-    // window and **exceeded `modelContextWindow` in 29 of the 198** (445,780 against a 258,400
-    // window — a gauge reading 172%). `last.*` is the most recent request's usage and exceeded it in
-    // **zero**. `last.totalTokens` is therefore the tokens actually in the window; `total` is what
-    // the turn cost.
-    //
-    // `modelContextWindow` is `number | null` in the generated type, so the reading kind is decided
-    // by what arrived rather than by which provider sent it — and `<= 0` is treated as absent, since
-    // a zero denominator produces `Infinity` and `Infinity` renders.
+    // Context window fill. Uses `last`, never `total`: `total.totalTokens` is cumulative billing and
+    // can exceed `modelContextWindow`, while `last.totalTokens` is what is in the window now.
+    // `modelContextWindow` is `number | null`; a value <= 0 counts as absent so no ratio divides by zero.
     case 'thread/tokenUsage/updated': {
       const usage = readField(readField(params, 'tokenUsage'), 'last')
       const used = readNumber(usage, 'totalTokens')
-      // No readable count is a malformed first-class method, not chatter: `unrecognized` is loud on
-      // purpose, because a meter silently receiving nothing looks exactly like a quiet provider.
+      // An unreadable count is a malformed first-class method, kept loud rather than chatter.
       if (used === undefined) return [unrecognized(method, params)]
       const window = readNumber(readField(params, 'tokenUsage'), 'modelContextWindow')
       return [
@@ -147,41 +111,22 @@ export function normalizeNotification(
       ]
     }
 
-    // Compaction, announced by the notification. ⚠️ **It carries no magnitudes and none are
-    // invented**: `ContextCompactedNotification` is `{threadId, turnId}` in the generated protocol,
-    // full stop. It is also DEPRECATED there (*"Use `ContextCompaction` item type instead"*) and has
-    // fired zero times on this machine while the item has fired four, so the item in
-    // {@link itemToEvents} is the path that actually runs. Both are handled because a live
-    // app-server older than that deprecation is a thing that exists, and a compaction we saw and
-    // discarded is the one thing this feature must never do.
+    // Compaction notification. It carries no magnitudes and none are invented. The protocol marks it
+    // deprecated in favour of the `ContextCompaction` item ({@link itemToEvents}), but older app-servers
+    // still send it.
     case 'thread/compacted':
       return [{ type: 'compaction', source: method }]
 
-    // **What the turn did to the working tree** (096, designed in 092).
-    //
-    // ⚠️ **This is not the source 092 designed on, and that is the finding.** 092 named
-    // `item/fileChange/patchUpdated` — `FileUpdateChange{path,kind,diff}`, per-file, renames via
-    // `move_path` — as *"the richest source we have and we drop it."* It is in the generated
-    // protocol and it has **never arrived**: zero occurrences in 458,200 recorded wire frames and
-    // zero across three live probe runs whose turns edited four files each with real `apply_patch`
-    // calls. `turn/diff/updated` arrived in every one of them, three to five times per turn.
-    //
-    // 092 also read this payload as *"one aggregated unified-diff string… no per-file split."* It is
-    // one string **made of per-file sections**: git format, `diff --git a/… b/…` per file, with
-    // `new file mode` / `deleted file mode` markers and real hunks. So the split is there, and
-    // {@link parseUnifiedDiff} does it — including renames, which appear as a header with two
-    // different paths and NOT as the `rename from`/`rename to` pair (measured; the probe asserts it).
-    //
-    // Each payload is a full snapshot of the turn, not a delta — three were byte-identical in one
-    // measured turn — so the consumer folds by path and the repetition costs nothing.
+    // What the turn did to the working tree. `turn/diff/updated` carries one git-format unified diff of
+    // per-file sections ({@link parseUnifiedDiff} splits it, including renames shown as a header with two
+    // paths). Each payload is a full snapshot, so the consumer folds by path.
+    // `item/fileChange/patchUpdated` is declared in the protocol but is not the source used.
     case 'turn/diff/updated': {
       const diff = readString(params, 'diff')
-      // A payload with no readable diff is a malformed first-class method, not chatter — the same
-      // ruling `thread/tokenUsage/updated` makes one case up. A pane silently receiving nothing looks
-      // exactly like an agent that changed nothing, and those must never render the same.
+      // A payload with no readable diff is a malformed first-class method, not chatter.
       if (!diff) return [unrecognized(method, params)]
       const parsed = parseUnifiedDiff(diff)
-      // Not a git diff at all: keep it loud and lossless rather than report zero changes.
+      // Not a git diff: keep it loud and lossless rather than report zero changes.
       if (parsed.changes.length === 0) return [unrecognized(method, params)]
       return [
         {
@@ -194,13 +139,10 @@ export function normalizeNotification(
     }
 
     case 'error': {
-      // The current `ErrorNotification` carries `error.message` (a `TurnError`);
-      // read it, falling back to a legacy top-level `message` (007 P2-2).
+      // Current `ErrorNotification` carries `error.message`; fall back to a legacy top-level `message`.
       const turnError = readField(params, 'error')
       const message = turnErrorText(turnError, readString(params, 'message') || 'codex error')
-      // 098: the typed half. `codexErrorInfo: "unauthorized"` is how a rejected credential arrives —
-      // as turn OUTPUT rather than as a refusal, which is why 085's conversion of the throw sites
-      // did not already cover it. The sentence is kept verbatim; the cause is what a surface reads.
+      // `codexErrorInfo: "unauthorized"` marks a rejected credential delivered as turn output.
       return [
         {
           type: 'error',
@@ -211,57 +153,22 @@ export function normalizeNotification(
       ]
     }
 
-    // ⛔ **The wall you hit without warning** (177 §1). This arrives ROUTINELY — once or twice a
-    // turn, measured — and until 177 it fell into the chatter list below, where `normal` mode drops
-    // it entirely (`transcript-mode.ts`). So a Codex user at 99% of their weekly window learned
-    // nothing, and the app's own stall notice was left GUESSING at it in prose:
-    // *"the provider may be busy, rate-limited, or stalled"* (`liveness.ts`).
-    //
-    // ⚑ **Content-gated, exactly as Claude's `rate_limit_event` is** (074): routine is noise, a
-    // throttle the user is FEELING is not. The quiet half still becomes chatter, so nothing is lost
-    // — same shape, same reason, as `claude/normalize.ts`'s `break`.
+    // Content-gated: routine rate-limit frames stay chatter; a throttle the user is feeling is surfaced.
     case 'account/rateLimits/updated': {
       const snapshot = readField(params, 'rateLimits')
-      // With a watch: merged against this session's earlier frames, and silent when it would repeat
-      // itself. Without one: the pure per-frame reading this had before 188. See the parameter.
+      // With a watch, merged against earlier frames and silent on repeats; without, the per-frame reading.
       const pressure = watch ? watch.observe(snapshot) : rateLimitPressure(snapshot)
-      // ⚑ **Every reading, near a limit or not, for a person's Providers screen** — a
-      // `provider_usage` the host keeps and never records; from the bucket as merged, so a sparse
-      // frame does not read as a window that lost its reset ({@link rateLimitUsage}).
+      // Every reading, near a limit or not, becomes a `provider_usage` for the Providers screen, taken
+      // from the merged bucket so a sparse frame does not look like a window that lost its reset.
       const usage = rateLimitUsage(watch ? watch.lastReading() : { snapshot, mainLimitId: null })
-      // ⚠️ The quiet half is spelled out rather than `break`-ing to the classifier, because this
-      // switch has nothing after it — a `break` here would return `undefined`. It is the same
-      // category the chatter list gave it, and it is now stated where the gate is.
+      // The quiet half returns chatter directly because nothing follows this switch.
       const said: RuntimeEvent[] = pressure
         ? [{ type: 'error', message: pressure, fatal: false }]
         : [wrapUnknown('codex', { method, params }, 'lifecycle', method)]
       return usage === null ? said : [...said, usage]
     }
 
-    // ⛔ **"You are talking to the model you picked" is a state, and 086 says the app must not imply
-    // one it cannot back** (177 §2). The parity matrix carries a row called *"Model silently
-    // rerouted"*, and while this sat in the chatter list the adjective was doing the work the app
-    // was not.
-    //
-    // ⚠️ **Not content-gated, and the generated type is why.** `ModelRerouteReason` has exactly one
-    // member — `highRiskCyberActivity` — so this notification is never routine: it fires when the
-    // provider decides a turn looks like high-risk cyber activity and swaps the model out from under
-    // the request. Every one of them is a fact the person who chose the model needs.
-    //
-    // `codex-runtime.ts` separately merges `toModel` into the session's agent info, so the header
-    // already shows what is running; this is the sentence that says WHY it changed.
-    // ⛔ **The provider ships a boolean called `showBufferingUi`, and BroBot was hiding it** (188 §2,
-    // from 182 M5). `ModelSafetyBufferingUpdatedNotification` carries `threadId`, `turnId`, `model`,
-    // `useCases`, `reasons`, `fasterModel` and that flag; every one of them landed in the chatter
-    // list, so in normal mode a turn could pause mid-stream with nothing on screen and the reason
-    // reachable only from raw history. 177 left it there on the honest grounds that **no payload had
-    // been captured** — and 182's correction is the one this codebase has now made twice: an absent
-    // capture is not an absent field. The generated type is a measurement of its own, it declares
-    // the boolean as non-nullable, and it is the provider telling us to show something.
-    //
-    // ⚑ **Content-gated exactly like the rate-limit line above**, and the flag IS the gate rather
-    // than a threshold of ours: `false` — the provider saying "do not show a buffering UI" — stays
-    // lifecycle chatter and is lossless in raw history, so nothing routine reaches the transcript.
+    // `showBufferingUi` is the provider's own gate: `false` stays lifecycle chatter.
     case 'model/safetyBuffering/updated': {
       if (readField(params, 'showBufferingUi') !== true) {
         return [wrapUnknown('codex', { method, params }, 'lifecycle', method)]
@@ -269,10 +176,12 @@ export function normalizeNotification(
       return [{ type: 'error', message: safetyBufferingMessage(params), fatal: false }]
     }
 
+    // Surfaced whenever it fires: `ModelRerouteReason` has one member, `highRiskCyberActivity`, so a
+    // reroute is never routine. `codex-runtime.ts` merges `toModel` into the agent info; this says why.
     case 'model/rerouted':
       return [{ type: 'error', message: rerouteMessage(params), fatal: false }]
 
-    // Lifecycle — owned by the handle + machine, not emitted as content here.
+    // Lifecycle is owned by the handle and machine.
     case 'turn/started':
     case 'turn/completed':
     case 'thread/started':
@@ -280,28 +189,19 @@ export function normalizeNotification(
       return []
 
     default:
-      // A warning must be SEEN (065): it surfaces as a non-fatal `error` — visible in the UI —
-      // rather than as quiet chatter. `fatal:false` keeps the session and turn alive; only a real
-      // fatal terminalizes.
+      // Warnings surface as non-fatal `error` events; only a real fatal ends the turn.
       if (isWarningMethod(method)) {
         return [{ type: 'error', message: warningMessage(method, params), fatal: false }]
       }
-      // Raw provider payload → wrapped, never re-parsed as a real variant (007 P2-8), but
-      // CLASSIFIED by method so recognized streams don't drown the signal (049).
+      // Wrapped raw payload, classified by method so recognized streams stay quiet.
       return [wrapUnknown('codex', { method, params }, notificationCategory(method), method)]
   }
 }
 
 /**
- * Methods {@link normalizeNotification} handles itself — first-class content, or lifecycle the
- * handle + `SessionMachine` own. They never reach the chatter classifier, so excluding them keeps
- * {@link notificationCategory} exhaustive over exactly the methods it is responsible for.
- *
- * This list is the DECLARATION and the switch is the implementation, so keep them together: adding
- * a `case` above without adding it here leaves a dead arm in the classifier that quietly satisfies
- * the exhaustiveness check (027 shipped that way for a day). The reverse — a name here with no
- * `case` — fails loudly at runtime as an `unrecognized` card rather than silently, which is the
- * right way round for the one direction the compiler cannot see.
+ * Methods {@link normalizeNotification} handles itself. Excluding them keeps {@link notificationCategory}
+ * exhaustive over its own methods. Keep this list in step with the switch: a `case` missing here leaves
+ * a dead classifier arm that still satisfies exhaustiveness.
  */
 type FirstClassMethod =
   | 'error'
@@ -323,13 +223,10 @@ type FirstClassMethod =
   | 'thread/closed'
 
 /**
- * The generated methods that report a PROBLEM rather than progress (065, from 064's flagged call).
- * 064 filed these as quiet `lifecycle` chatter, which meant a possibly security-relevant
- * `guardianWarning` could never reach the user. They are now surfaced as **non-fatal `error`
- * events** — visible, but they must never end the session or turn (only a real fatal does).
- *
- * ONE source of truth: {@link isWarningMethod} dispatches from this array and {@link ChatterMethod}
- * excludes it, so a method cannot be both routed as a warning and classified as chatter.
+ * Generated methods that report a problem rather than progress. They surface as non-fatal `error`
+ * events (a `guardianWarning` may be security-relevant) and never end the session or turn.
+ * {@link isWarningMethod} dispatches from this array and {@link ChatterMethod} excludes it, so a
+ * method cannot be both a warning and chatter.
  */
 const WARNING_METHODS = [
   'warning',
@@ -343,9 +240,8 @@ const WARNING_METHODS = [
 type WarningMethod = (typeof WARNING_METHODS)[number]
 
 /**
- * Compile-time proof that every entry above is a REAL generated method — a typo or a method dropped
- * by a protocol bump resolves the conditional to `never` and fails the build, rather than silently
- * routing nothing (the array is a runtime list, so `Exclude` alone would not catch it).
+ * Compile-time proof that every entry above is a real generated method; a typo or a method dropped by
+ * a protocol bump fails the build (the array is a runtime list, so `Exclude` alone would not).
  */
 const WARNING_METHODS_ARE_GENERATED: WarningMethod extends ServerNotification['method']
   ? true
@@ -357,10 +253,8 @@ function isWarningMethod(method: string): method is WarningMethod {
 }
 
 /**
- * A readable line for a warning: the method (so the source is unambiguous) plus whatever text the
- * payload carries — `message` on the warning/guardian/realtime shapes, `summary` (+ `details`) on
- * the config/deprecation ones. A payload with no text degrades to the method name alone rather
- * than to an empty string.
+ * A readable line for a warning: the method plus the payload's `message`, or `summary` (+ `details`).
+ * A payload with no text degrades to the method name alone.
  */
 function warningMessage(method: string, params: unknown): string {
   const summary = readString(params, 'summary')
@@ -371,12 +265,8 @@ function warningMessage(method: string, params: unknown): string {
 }
 
 /**
- * The line for a model the provider swapped out from under the request (177 §2).
- *
- * Both model names are carried because "which model answered" is the whole fact, and the reason is
- * carried verbatim: it is a generated enum with one member today, and paraphrasing it would age
- * badly the moment a second one appears. A payload missing a name degrades to what it does have
- * rather than asserting a swap it cannot describe.
+ * The line for a model the provider swapped mid-request. The reason is quoted verbatim rather than
+ * paraphrased; a payload missing a name says only what it has.
  */
 function rerouteMessage(params: unknown): string {
   const from = readString(params, 'fromModel')
@@ -389,16 +279,8 @@ function rerouteMessage(params: unknown): string {
 }
 
 /**
- * What a safety-buffering pause says out loud (188 §2, from 182 M5).
- *
- * ⚠️ **The provider's own `reasons` strings, quoted rather than translated.** They are the only
- * account of why this turn is being held, and 086 is against inventing a friendlier one; a payload
- * that carries none simply says less. ⚑ Bounded at three, because `reasons` is an unbounded array
- * and one notification may not become an unbounded transcript line.
- *
- * ⚑ **`fasterModel` is named when the provider offers one**, because the one thing a person waiting
- * can act on is knowing there is a quicker way through — and it is the provider's suggestion, not
- * ours. Nothing here selects it: the app has never changed a model without being asked.
+ * What a safety-buffering pause says: the provider's own `reasons` strings, quoted, at most three
+ * because the array is unbounded, plus `fasterModel` when offered. Nothing here selects that model.
  */
 function safetyBufferingMessage(params: unknown): string {
   const reasons = readField(params, 'reasons')
@@ -411,25 +293,21 @@ function safetyBufferingMessage(params: unknown): string {
   return `codex is holding this turn for a safety check${why} — generation may pause${instead}`
 }
 
-/** Every generated notification method that classification must account for (064/065). */
+/** Every generated notification method that classification must account for. */
 type ChatterMethod = Exclude<ServerNotification['method'], FirstClassMethod | WarningMethod>
 
 /**
- * Methods the CURRENT protocol no longer declares but an older app-server may still send. They are
- * kept out of the generated-union switch (a `case` for one would not compile) and matched first, so
- * legacy tolerance never weakens the exhaustiveness guarantee below.
+ * Methods the current protocol no longer declares but an older app-server may still send. They are
+ * matched before the generated-union switch so legacy tolerance never weakens its exhaustiveness.
  */
 const LEGACY_METHOD_CATEGORIES = new Map<string, UnknownCategory>([
   ['contextCompacted', 'lifecycle'], // superseded by the generated `thread/compacted`
 ])
 
 /**
- * Compile-time exhaustiveness over the generated notification methods (064, fixing 060 P2) —
- * mirrors {@link assertItemExhaustive}. Regenerating the protocol with a new method is now a
- * **compile error** here, forcing a deliberate classification; previously the classifier was a
- * plain string switch that silently drifted, which is how the current `thread/compacted` ended up
- * rendering as a prominent `unrecognized` card. At RUNTIME this is reached only by a method outside
- * the generated union — genuinely unknown, and correctly loud.
+ * Compile-time exhaustiveness over the generated notification methods, mirroring
+ * {@link assertItemExhaustive}: a new protocol method fails the build until classified. At runtime it
+ * is reached only by a method outside the generated union, which stays loud.
  */
 function assertNotificationExhaustive(method: never): UnknownCategory {
   void method
@@ -437,41 +315,28 @@ function assertNotificationExhaustive(method: never): UnknownCategory {
 }
 
 /**
- * Neutral category for a notification we recognize by NAME but deliberately don't map to a content
- * event (049). These are the high-volume streams — reasoning and plan deltas especially — that
- * flooded the UI as `unknown` cards. Classifying them keeps the payload (a later chat UI can render
- * reasoning richly) while letting the UI quiet them now. Anything not in the generated union is
- * genuinely `unrecognized` and stays loud.
+ * Category for a notification recognized by name but not mapped to a content event (high-volume
+ * streams such as reasoning and plan deltas). The payload is kept; anything outside the generated
+ * union is `unrecognized` and stays loud.
  */
 function notificationCategory(method: string): UnknownCategory {
-  // A `Map`, not a record (068, fixing 066 F3): an object lookup reads INHERITED members, so a
-  // provider method named `toString` / `constructor` / `hasOwnProperty` returned an
-  // `Object.prototype` function as the category — a value `runtimeEventSchema` rejects, i.e. a
-  // malformed method could produce a schema-invalid event. A Map has no prototype chain to walk,
-  // so such a name simply misses and classifies as `unrecognized` (loud), as it should.
+  // A `Map`, not a record: an object lookup would return inherited members for names like
+  // `toString`, yielding a non-category value.
   const legacy = LEGACY_METHOD_CATEGORIES.get(method)
   if (legacy) return legacy
-  // The cast lives HERE, at the boundary, exactly as `itemCategory` does it — never inside the
-  // switch's `default`. A cast in there (`assertX(method as never)`) silently defeats the whole
-  // guard: the parameter must genuinely be the union so TypeScript can narrow it to `never`.
+  // The cast lives here at the boundary, not in the switch's `default`, where `as never` would
+  // defeat the exhaustiveness guard.
   return generatedNotificationCategory(method as ChatterMethod)
 }
 
 function generatedNotificationCategory(method: ChatterMethod): UnknownCategory {
   switch (method) {
-    // The model thinking out loud. The two SUMMARY streams left this classifier in 027 — they are
-    // first-class `thinking` now — and their absence here is load-bearing rather than an omission.
-    // Taking either one out of `FirstClassMethod` puts it back in `ChatterMethod`, this switch stops
-    // being exhaustive over that union, and the build fails on `assertNotificationExhaustive`
-    // (verified). Dead `case` arms left here would have satisfied the compiler instead, and quietly
-    // demoting reasoning back to chatter is precisely what the pattern exists to prevent.
+    // Reasoning. The summary streams are first-class and must stay out of this switch: removing one
+    // from `FirstClassMethod` makes the switch fail `assertNotificationExhaustive`.
     case 'item/reasoning/textDelta':
       return 'reasoning'
-    // Plan text as it is written/revised. `turn/plan/updated` left this classifier in 028 the same
-    // way the reasoning summaries left it in 027 — it is a first-class `plan_update` now, and its
-    // ABSENCE here is load-bearing rather than an oversight (a dead `case` would still compile).
-    // `item/plan/delta` stays: it is marked EXPERIMENTAL in the protocol, which explicitly warns
-    // that concatenated deltas need not match the finished plan, and it never fired in capture.
+    // Plan text as it is written. `turn/plan/updated` is first-class and stays out of this switch;
+    // `item/plan/delta` is experimental and may not match the finished plan.
     case 'item/plan/delta':
       return 'plan'
     // Work in progress: output streams, tool/hook/search/realtime progress.
@@ -506,20 +371,10 @@ function generatedNotificationCategory(method: ChatterMethod): UnknownCategory {
     case 'rawResponseItem/completed':
     case 'rawResponse/completed':
       return 'echo'
-    // Session / thread / account / model housekeeping.
-    //
-    // ⚠️ **`thread/compacted` and `thread/tokenUsage/updated` LEFT this list in 087**, and their
-    // absence is load-bearing in exactly the way 027's and 028's was: they are first-class events
-    // now, and a dead `case` left behind here would still satisfy the exhaustiveness check while
-    // quietly demoting the context meter's only two Codex inputs back to chatter.
-    //
-    // ⚠️ **`account/rateLimits/updated` and `model/rerouted` LEFT it in 177**, for the same reason
-    // and with the same hazard. The rate-limit one is CONTENT-GATED rather than promoted outright,
-    // so its routine heartbeat still ends up as `lifecycle` — but it is stated at the gate now, and
-    // a `case` here would take the throttled frame with it.
-    // ⚑ **`model/verification` deliberately STAYS**, and the difference is the state each claims.
-    // `ModelVerification` is `trustedAccessForCyber` — the provider saying this turn was granted
-    // access, which changes no fact the user chose. A reroute changes WHICH MODEL ANSWERED.
+    // Session, thread, account and model housekeeping. `thread/compacted`, `thread/tokenUsage/updated`,
+    // `account/rateLimits/updated` and `model/rerouted` are handled first-class and must stay out of this
+    // switch. `model/verification` stays chatter: `trustedAccessForCyber` changes no fact the user chose,
+    // unlike a reroute, which changes which model answered.
     case 'thread/status/changed':
     case 'thread/archived':
     case 'thread/deleted':
@@ -562,21 +417,16 @@ function generatedNotificationCategory(method: ChatterMethod): UnknownCategory {
 }
 
 /**
- * A notification this file RECOGNIZES by name but whose payload it could not read — surfaced loud
- * (007 P2-8: wrapped, never re-parsed), because a first-class method arriving malformed is a fact
- * about the provider worth seeing, not chatter to file away.
+ * A notification recognized by name whose payload could not be read; surfaced loud because a
+ * malformed first-class method is a fact about the provider, not chatter.
  */
 function unrecognized(method: string, params: unknown): RuntimeEvent {
   return wrapUnknown('codex', { method, params }, 'unrecognized', method)
 }
 
 /**
- * Codex's plan-step status → the neutral one (028). Exhaustive over the generated
- * `TurnPlanStepStatus`, mirroring {@link assertStatusExhaustive}: a protocol bump that adds a state
- * is a **compile error** here rather than a step quietly rendered as `pending`.
- *
- * `null` means "not one of ours", and the caller drops the entire plan on it — see the fail-loud
- * rule at the `turn/plan/updated` case.
+ * Codex plan-step status to the neutral one, exhaustive over the generated `TurnPlanStepStatus`.
+ * `null` means unreadable, and the caller drops the entire plan on it.
  */
 function planStepStatus(status: TurnPlanStepStatus): PlanStep['status'] | null {
   switch (status) {
@@ -604,9 +454,8 @@ interface TurnOutcome {
 }
 
 /**
- * Compile-time exhaustiveness over `TurnStatus` — a new status is a type error here, forcing a
- * deliberate mapping (mirrors {@link assertItemExhaustive}). At RUNTIME this is reached only by a
- * value outside the generated union, which we must never assume succeeded.
+ * Compile-time exhaustiveness over `TurnStatus`. At runtime it is reached only by a value outside the
+ * generated union, which must never be assumed to have succeeded.
  */
 function assertStatusExhaustive(status: never): TurnOutcome {
   return {
@@ -615,10 +464,7 @@ function assertStatusExhaustive(status: never): TurnOutcome {
   }
 }
 
-/**
- * ⚑ **F074 — Codex refused this turn for its usage limit**: `turn/completed` failed with
- * `TurnError.codexErrorInfo: "usageLimitExceeded"` — the typed half, never the message's English.
- */
+/** Codex refused this turn for its usage limit: `TurnError.codexErrorInfo` is `usageLimitExceeded`. */
 export function codexTurnHitItsUsageLimit(params: unknown): boolean {
   const turn = readField(params, 'turn')
   return (
@@ -628,35 +474,23 @@ export function codexTurnHitItsUsageLimit(params: unknown): boolean {
 }
 
 /**
- * Whether Codex's `error` notification carries `usageLimitExceeded`. What that means depends on
- * the credential, which only the handle knows: a ChatGPT plan's usage limit, or an API key's
- * account out of quota.
+ * Whether Codex's `error` notification carries `usageLimitExceeded`. Its meaning (plan limit or API
+ * key out of quota) depends on the credential, which only the handle knows.
  */
 export function codexErrorIsAUsageLimit(params: unknown): boolean {
   return readField(readField(params, 'error'), 'codexErrorInfo') === 'usageLimitExceeded'
 }
 
-/**
- * ⚑ **F076 — Codex refused the credential this turn ran on**: `turn/completed` failed with
- * `TurnError.codexErrorInfo: "unauthorized"` — the typed half, never the message's English. ⛔ A
- * usage limit is `usageLimitExceeded`, another member, and is never read as this.
- */
+/** Codex refused the credential: `codexErrorInfo` is `unauthorized`, never `usageLimitExceeded`. */
 export function codexTurnFailedOnItsCredential(params: unknown): boolean {
   const turn = readField(params, 'turn')
   return readString(turn, 'status') === 'failed' && isCodexUnauthorized(readField(turn, 'error'))
 }
 
 /**
- * The terminal outcome a `turn/completed` reports (its `turn.status`), **fail-closed** (055,
- * fixing 044 P2 #5).
- *
- * Everything that was not `failed`/`interrupted` used to be reported as `completed` — including
- * the type-valid **`inProgress`** and any future status. A turn the provider never said succeeded
- * was shown to the user as a success. Now the mapping is exhaustive over the generated union and
- * anything that is not an affirmative terminal state fails closed:
- *  - `inProgress` on a `turn/completed` is a contradiction (the notification says the turn ended,
- *    the payload says it is still running) — we surface it rather than pick the happy reading;
- *  - an unknown runtime value likewise reports `failed`, never a silent success.
+ * The terminal outcome a `turn/completed` reports, fail-closed: only an affirmative terminal status
+ * succeeds. `inProgress` on a completed notification contradicts itself and, like an unknown runtime
+ * value, reports `failed`.
  */
 export function codexTurnOutcome(params: unknown): TurnOutcome {
   const turn = readField(params, 'turn')
@@ -681,8 +515,7 @@ export function codexTurnOutcome(params: unknown): TurnOutcome {
   }
 }
 
-/** Same inherited-read hazard as {@link LEGACY_METHOD_CATEGORIES} — a Map, so an item `type` of
- *  `toString` cannot yield an `Object.prototype` function as the tool NAME (068, F3). */
+/** A Map for the same inherited-read reason as {@link LEGACY_METHOD_CATEGORIES}. */
 const TOOL_ITEM_NAMES = new Map<string, string>([
   ['commandExecution', 'shell'],
   ['fileChange', 'apply_patch'],
@@ -693,15 +526,12 @@ const TOOL_ITEM_NAMES = new Map<string, string>([
 ])
 
 /**
- * The provider's qualified name: MCP uses `mcp__server__tool`, dynamic calls `namespace__tool`.
- * A real 0.146.0 Responses request declared
- * `mcp__brobot_316_wire__echo_probe: {name: "echo_probe", namespace: "mcp__brobot_316_wire"}`;
- * its exec instructions use the same spelling. Keep both server and tool, or the old `mcp`
- * label for a malformed item: a missing half must not become a claim about another server.
+ * The provider's qualified name: MCP uses `mcp__server__tool`, dynamic calls `namespace__tool`. Keep
+ * both server and tool, or the generic label for a malformed item, so a missing half never names
+ * another server.
  */
 function toolItemName(type: string, item: Record<string, unknown>): string {
-  // Dynamic tools use their declared namespace, without the MCP prefix. The captured
-  // probe:codex-dynamic-tools arm A declared `brobot__spawn_agent` under `## brobot`.
+  // Dynamic tools use their declared namespace, without the MCP prefix.
   if (type === 'dynamicToolCall') {
     const tool = readString(item, 'tool')
     if (tool) {
@@ -712,42 +542,31 @@ function toolItemName(type: string, item: Record<string, unknown>): string {
   if (type === 'mcpToolCall') {
     const server = readString(item, 'server')
     const tool = readString(item, 'tool')
-    // ⛔ **Bounded, because this field stopped being a constant** (327, found reviewing this
-    // dispatch's own diff). Every name this Map has ever produced was a literal written here;
-    // `server` and `tool` are strings a third-party MCP server chose, `toolCallSchema.name` carries
-    // no `.max()`, and the event is cloned across IPC and written to the ledger twice. The plain
-    // {@link truncate} and not {@link boundedSummary}: a name is an identifier, so an over-long one
-    // is a broken server rather than a payload with a remainder worth stating.
+    // Bounded because `server` and `tool` come from third-party MCP servers and the event is cloned
+    // across IPC and ledger writes. A plain `truncate`: an over-long name is a broken server.
     if (server && tool) return truncate(`mcp__${server}__${tool}`)
   }
   return TOOL_ITEM_NAMES.get(type) ?? 'tool'
 }
 
 /**
- * Whether an item `type` is one of the provider's TOOL items — the same judgement
- * {@link itemCategory} already makes, exported so a caller counting a child's tool calls does not
- * grow a second list that could disagree with this one (226).
+ * Whether an item `type` is a tool item, the same judgement as {@link itemCategory}, exported so
+ * callers counting tool calls do not keep a second list.
  */
 export function isCodexToolItem(type: string): boolean {
   return itemCategory(type as ThreadItem['type']) === 'tool'
 }
 
-/**
- * Compile-time exhaustiveness: a new (unhandled) `ThreadItem['type']` makes this a type error,
- * forcing a deliberate classification decision rather than silently becoming chatter (049).
- */
+/** Compile-time exhaustiveness: a new `ThreadItem['type']` fails the build until classified. */
 function assertItemExhaustive(type: never): UnknownCategory {
   void type // reachable at runtime only for an unrecognized `type` string → genuinely unknown
   return 'unrecognized'
 }
 
 /**
- * Coverage category for every `ThreadItem` kind (007 P2-2; classified in 049). The switch is
- * exhaustive over the generated `ThreadItem['type']` union — a new/unhandled branch is a
- * **compile error**, never a silent gap. `tool`/`message` kinds map to real events; every other
- * kind has no dedicated event but is CLASSIFIED into a neutral {@link UnknownCategory} so the UI
- * can render it quietly while keeping genuinely-novel messages loud. At runtime an unrecognized
- * `type` string falls through to `unrecognized`.
+ * Coverage category for every `ThreadItem` kind. `tool` and `message` kinds map to real events; the
+ * rest are classified into a neutral {@link UnknownCategory} so the UI can quiet them. An
+ * unrecognized `type` string falls through to `unrecognized`.
  */
 function itemCategory(
   type: ThreadItem['type'],
@@ -755,8 +574,7 @@ function itemCategory(
   switch (type) {
     case 'agentMessage':
       return 'message'
-    // An agent Codex dispatched (033). First-class since the wire proved it fires; its ABSENCE from
-    // the `activity` list below is load-bearing exactly as `turn/plan/updated`'s was in 028.
+    // A dispatched agent is first-class and stays out of the `activity` list below.
     case 'subAgentActivity':
       return 'subAgent'
     case 'commandExecution':
@@ -766,34 +584,26 @@ function itemCategory(
     case 'webSearch':
     case 'collabAgentToolCall':
       return 'tool'
-    // --- no dedicated event, but recognized: classified, never dropped (raw is carried) ---
+    // No dedicated event, but recognized: classified, never dropped (raw is carried).
     case 'reasoning':
       return 'reasoning'
-    // The plan DOCUMENT (057). Reaches a real `plan_update{body}` in {@link itemToEvents}, so this
-    // classification only still decides where a MALFORMED one is filed — and it stays 'plan' so
-    // `item/plan/delta`, which is chatter under the same name, keeps landing beside it.
+    // The plan document becomes `plan_update{body}` in {@link itemToEvents}; this only files a
+    // malformed one, beside the `item/plan/delta` chatter.
     case 'plan':
       return 'plan'
-    // Our own input reflected back. `functionCallOutput` is the output of a function call the
-    // CLIENT supplied with `turn/start`'s `toolOutput`, which this app never sends.
+    // Our own input reflected back; `functionCallOutput` answers a `toolOutput` this app never sends.
     case 'userMessage':
     case 'hookPrompt':
     case 'functionCallOutput':
       return 'echo'
-    // The picture the model made (067). First-class because the provider writes it to a real file
-    // and names the file on the wire, so the image never has to travel as a payload at all.
+    // The provider writes a generated image to a file and names it on the wire.
     case 'imageGeneration':
       return 'image'
-    // ⚠️ **`imageView` deliberately stays chatter.** It is an image the agent LOOKED at, and its
-    // `path` is a `LegacyAppPathString` pointing anywhere the agent can read — the workspace, the
-    // repo, /tmp. It has never been observed on the wire: zero occurrences across every rollout on
-    // this machine. (Until `726` · R92 a second reason stood: `generated-image.ts` refused a path
-    // outside the provider's images directory, and R92 removed that check.) If it is ever wanted,
-    // it needs its own argument, not this one's.
+    // `imageView` stays chatter: it is an image the agent looked at, and its `path` can point anywhere
+    // the agent can read.
     case 'imageView':
       return 'activity'
-    // Context was dropped (087). First-class since the wire proved it is the path that runs: four
-    // real `contextCompaction` items on this machine against zero `thread/compacted` notifications.
+    // Context was dropped; the `contextCompaction` item is the path that runs.
     case 'contextCompaction':
       return 'compaction'
     case 'sleep':
@@ -806,43 +616,15 @@ function itemCategory(
 }
 
 /**
- * 🔴 **`agentMessage.memoryCitation` → the neutral `memory_recall` event** (319, friction log F5).
+ * `agentMessage.memoryCitation` to the neutral `memory_recall` event. The model appends an
+ * `<oai-mem-citation>` block to its reply and the app-server parses it into `{entries, threadIds}`,
+ * so this is the model's own statement of what it used, not an observation of a read; surfaces must
+ * not word it as seen.
  *
- * ## ⛔ How this field went unread for three dispatches
- *
- * 316 was sent to find the wire trace of a memory call. It enumerated item TYPES across fifteen
- * config arms — raw events on, `direct_only_tool_namespaces` set, code mode off — looking for a tool
- * item, found none, and concluded the act was *"invisible, permanently"*. ⚑ **The trace was a FIELD
- * on the item that search had already found and discarded.** A filter that counts kinds cannot see a
- * property, and the conclusion it produced then justified not looking again. 318 re-measured with a
- * control and the field was populated, structured and stripped out of `text`.
- *
- * ## ⚠️ What is being read here, and what it is NOT
- *
- * The model appends an `<oai-mem-citation>` block as the last content of its reply; the app-server
- * parses it into `{entries, threadIds}`, removes it from `text` and publishes both on the item. So
- * this is **the model's own statement about what it used**, structured by the provider — not an
- * observation of a read. `memory-recall.ts` holds the rules that follow, and `009`'s is the one that
- * decides the wording downstream: a surface must not say we saw something we were only told about.
- *
- * ## ⛔ Malformed is "no citation", never an error, and never a partial invention
- *
- * ⚠️ **This field is not in a contract this app controls.** The vendored v2 protocol declares
- * `MemoryCitation {entries, threadIds}` with `MemoryCitationEntry {path, lineStart, lineEnd, note}`,
- * all required — but a shape that arrives from a future pin, or from an app-server that parsed a
- * malformed reply, must degrade rather than shout. So:
- *
- *  - anything that is not a record — **including `null`, which is the provider's real answer for
- *    *"no memory was consulted"*** — is no event at all;
- *  - an entry with no usable `path` is dropped and COUNTED, because a path is the answer to *"which
- *    memory?"* and an entry without one has nothing left to say;
- *  - a range whose two numbers are not both usable is dropped as a pair, and the entry keeps its
- *    path and its note (`074`: never print a measurement nobody made);
- *  - ⛔ **and a citation from which nothing at all survives emits NOTHING, rather than a row saying
- *    only *"the agent used memory"***. 319 §1.1: a row that throws away the file, the range and the
- *    note has thrown away the part that made it worth showing. A shape change therefore costs this
- *    channel its rows and costs the conversation nothing else — which is the failure mode chosen on
- *    purpose over an `unknown` row on every assistant message a future pin ever sends.
+ * Malformed input degrades quietly because the shape is not under this app's control: a non-record
+ * (including `null`, meaning no memory was consulted) yields no event, an entry without a usable
+ * `path` is dropped and counted, a range whose numbers are not both usable is dropped while the entry
+ * keeps its path and note, and a citation with nothing left emits nothing.
  */
 function codexMemoryRecall(citation: unknown): RuntimeEvent | null {
   if (!isRecord(citation)) return null
@@ -850,9 +632,7 @@ function codexMemoryRecall(citation: unknown): RuntimeEvent | null {
   const entries: MemoryRecallEntry[] = sent.map((raw) => {
     const lineStart = readNumber(raw, 'lineStart')
     const lineEnd = readNumber(raw, 'lineEnd')
-    // ⚠️ **Both, integral, and in order — or neither.** `readNumber` only refuses a non-finite
-    // value, so a fractional line, a negative one, or an end BEFORE the start would all reach a
-    // surface as a printable range. `234-3` is not a shortened fact, it is a wrong one.
+    // Both numbers must be integral and in order, or neither: `readNumber` only refuses non-finite values.
     const ranged =
       lineStart !== undefined &&
       lineEnd !== undefined &&
@@ -871,7 +651,7 @@ function codexMemoryRecall(citation: unknown): RuntimeEvent | null {
     ? (citation['threadIds'] as unknown[]).filter((id): id is string => typeof id === 'string')
     : []
   const bound = boundRecall(entries, threads)
-  // ⛔ Nothing survived — see the last clause of the note above. Silence, not a bare claim.
+  // Nothing survived: stay silent rather than emit a bare claim.
   if (bound.entries.length === 0) return null
   return {
     type: 'memory_recall',
@@ -884,7 +664,7 @@ function codexMemoryRecall(citation: unknown): RuntimeEvent | null {
 }
 
 function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEvent[] {
-  // Malformed item (not a record, or no string `type`) → surfaced LOUDLY, not dropped.
+  // A malformed item (not a record, or no string `type`) is surfaced loudly, not dropped.
   if (!isRecord(item)) return [wrapUnknown('codex', item, 'unrecognized', 'malformed item')]
   const type = item['type']
   if (typeof type !== 'string')
@@ -898,18 +678,12 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     if (phase !== 'completed') return []
     const text = readField(item, 'text')
     if (typeof text !== 'string') return [wrapUnknown('codex', item, 'unrecognized', type)]
-    // 🔴 **The citation this function used to read past** (319). See {@link codexMemoryRecall} for
-    // what the field is and why 316 could not find it.
-    //
-    // ⛔ **AFTER the message, and the position is a ruling rather than an ordering accident.** The
-    // block is appended by the model as the VERY LAST content of its reply (the provider's own
-    // instruction), so a row under the answer is where the agent itself put it — and it is the only
-    // position that is STABLE. The fold finalizes a streamed assistant block in place, so an event
-    // emitted first would land above the answer when nothing streamed and below it when something
-    // did: one payload, two layouts, decided by a delta channel the reader cannot see.
+    // Placed after the message: the model appends the citation as the last content of its reply, and
+    // an event emitted first would land above the answer when nothing streamed and below it when
+    // something did, since the fold finalizes a streamed block in place.
     const recall = codexMemoryRecall(readField(item, 'memoryCitation'))
-    // ⚑ 0.160.0 · an ASYNC message's questions, carried for a surface to draw as choices — see
-    // {@link asyncQuestionsOf}. Nothing waits on them: Codex raised no request.
+    // Questions from an async message, for a surface to draw as choices ({@link asyncQuestionsOf});
+    // nothing waits on them because Codex raised no request.
     const questions = asyncQuestionsOf(item)
     const message: RuntimeEvent = {
       type: 'assistant_message',
@@ -924,11 +698,9 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     return recall ? [message, recall] : [message]
   }
 
-  // Reasoning is first-class since 027. The item itself carries no usable text — captured live,
-  // `summary`/`content` are empty on the item even when the summary stream is on — so what it
-  // contributes is the FACT that reasoning is happening (and, on completion, that it stopped).
-  // `redacted` says the text was withheld rather than absent; the deltas above supply the words
-  // when the server was asked for them.
+  // The reasoning item carries no usable text (`summary`/`content` are empty on it), so it only states
+  // that reasoning is happening or stopped. `redacted` means withheld rather than absent; the summary
+  // deltas supply the words when the turn asked for them.
   if (category === 'reasoning') {
     return phase === 'started'
       ? [
@@ -938,66 +710,30 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
       : [{ type: 'thinking', phase: 'complete' }]
   }
 
-  // Context was dropped (087).
-  //
-  // ⚠️ **The boundary row is `completed` only, and that is the whole of the dedup story.** Codex
-  // opens this item and then closes it, so both phases arrive carrying the SAME id — observed as four
-  // events for two compactions on this machine. Emitting the row on both would draw two boundary
-  // rows for one compaction and make the meter's tally say 2. The `compactionId` is carried anyway so
-  // a consumer folding a ledger written by an older build still has an identity to collapse on.
-  //
-  // ⚑ **717 · the `started` phase says a compaction is UNDER WAY** (`713` F-3): measured, the item
-  // opens as the compaction starts — `item/started` came 140 ms before `item/completed`, with Codex's
-  // summary request between them (`probe:codex-command-as-typed`, arm `compact-person`). So it raises
-  // the live `compacting` pill Claude raises from its `status: compacting`, and draws no row: an
-  // activity is a statement about the present — replaced by the next phase, cleared by the turn, and
-  // ended by the `completed` phase's row below (the folds' rule; `events.ts` states it).
-  //
-  // The item is `{type, id}` and nothing else — no `before`, no `after`, no trigger — so the event
-  // carries no magnitudes. That is the case the optional fields exist for.
+  // Context was dropped. Codex opens and closes this item with the same id, so only `completed`
+  // draws the boundary row, or one compaction would count twice; `compactionId` is kept for folding
+  // older ledgers. `started` raises the live `compacting` activity without a row, since an activity
+  // describes the present and the `completed` row ends it. The item is `{type, id}` only, so the
+  // event carries no magnitudes.
   if (category === 'compaction') {
     if (phase === 'started') return [{ type: 'activity', phase: 'compacting' }]
     const id = readString(item, 'id')
     return [{ type: 'compaction', ...(id ? { compactionId: id } : {}), source: type }]
   }
 
-  // An agent Codex dispatched (033). See {@link subAgentBirth} for why only ONE of the two phases
-  // produces an event.
+  // A dispatched agent; see {@link subAgentBirth} for why only one phase produces an event.
   if (category === 'subAgent') {
     if (phase !== 'started') return []
     const event = subAgentBirth(item)
     return event ? [event] : [wrapUnknown('codex', item, 'unrecognized', type)]
   }
 
-  // The plan DOCUMENT — Codex's, measured, and NOT the same object as the checklist above (057).
-  //
-  // 030 shipped "Codex has no plan mode"; 044 found `collaborationMode` in the vendored types; 057
-  // asked the running 0.146.0 server and watched it answer. One plan-mode turn, `--verbose flag`
-  // prompt, isolated `CODEX_HOME`:
-  //
-  //   235 × item/plan/delta  →  item/completed {type:'plan', id, text: '# Add verbose CLI output…'}
-  //
-  // 1,049 characters of markdown, headed Summary / Implementation / Test Plan / Assumptions. That
-  // is a plan document by any reading, so it becomes `plan_update.body` — the SAME field Claude's
-  // `ExitPlanMode.input.plan` lands in (030/056). The two providers reach it through completely
-  // different machinery and the UI is not told which one it got, which is the whole point of 039.
-  //
-  // ⚠️ **`steps: []` here does NOT mean "no checklist" — it is completed upstream.** The neutral
-  // contract is that every `plan_update` states the COMPLETE checklist (028), so an event carrying
-  // an empty list erases an open one. This function is pure and sees one notification at a time, so
-  // it cannot state a list it never saw; `ClaudeRuntime` has the same problem and solves it in the
-  // adapter, and `CodexSessionHandle.restatePlan` is where this one is solved. Emitting the document
-  // with the steps left empty and fixing it up there keeps this layer a translation of one frame.
-  //
-  // The two plans do appear to be disjoint on this provider — the server's own injected plan-mode
-  // instructions say *"if you try to use `update_plan` in Plan mode, it will return an error"*, and
-  // `turn/plan/updated` fired zero times across the measured plan turn and its default-mode control.
-  // That is two turns and a sentence, which is a reason to expect the erase never fires, not a
-  // reason to leave it possible.
-  //
-  // The `started` phase is skipped rather than classified: its `text` is `""` on the wire (measured
-  // — the item is opened before a single delta lands), and an empty document announces a plan that
-  // is not there yet. A `completed` plan with no text at all is malformed and stays loud.
+  // The plan document, distinct from the checklist above. It becomes `plan_update.body`, the same
+  // field Claude's `ExitPlanMode.input.plan` lands in. `steps: []` here means "not stated by this
+  // frame", not "no checklist": every `plan_update` is meant to state the complete list, so
+  // `CodexSessionHandle.restatePlan` fills it in, keeping this layer a translation of one frame.
+  // `started` is skipped because its `text` is empty before any delta lands; a `completed` plan with no
+  // text is malformed and stays loud.
   if (category === 'plan') {
     if (phase !== 'completed') return []
     const body = readString(item, 'text').trim()
@@ -1006,63 +742,41 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
       : [wrapUnknown('codex', item, 'unrecognized', type)]
   }
 
-  // The picture the model made (067).
-  //
-  // ⚠️ **The feature is which fields are NOT read.** `ImageGenerationItem` is
-  // `{ id, status, revisedPrompt, result, savedPath? }`, and `result` is the whole PNG as base64 —
-  // 2.9 MB in the measured case, 45× the ceiling on unknown payloads. Until now the item went to
-  // `wrapUnknown`, which serialized all of it just to discover it was too big and then replaced the
-  // lot with a marker; the path was in there, and went out with the bytes. Four `readString` calls
-  // and the base64 is simply never touched: no copy, no ceiling, no marker, and a path to a file
-  // that is already on disk. Nothing about 052's bound had to move.
-  //
-  // ⚠️ **`completed` only.** The `started` item exists before the image does — no `savedPath`, no
-  // file — so emitting on it would produce an image event that can never resolve, and then a second
-  // one that can. Same rule as `plan` above, same reason.
+  // A generated image. The item's `result` is the whole PNG as base64, so only `id`, `savedPath` and
+  // `revisedPrompt` are read and the bytes are never copied or serialized. `completed` only: the
+  // `started` item has no `savedPath` yet, so it could not resolve.
   if (category === 'image') {
     if (phase !== 'completed') return []
     const id = readString(item, 'id')
-    // ⚠️ **The malformed exit drops `result` FIRST, and it is not a special case for its own sake**
-    // (067 review, HIGH). Handing the whole item to `wrapUnknown` would have made the paragraph
-    // above false on this path: `boundRaw` would serialize the 2.9 MB, find it oversized, and
-    // replace the lot with a marker — the exact behaviour 067 removed, reappearing on the one path
-    // nobody looks at. And the marker is the WORSE outcome here: what makes a malformed image item
-    // interesting is the missing `id`, not the base64, and dropping the base64 is what lets every
-    // other field survive verbatim under the ceiling instead of being erased with it. Described,
-    // never truncated — the same rule `boundRaw` follows one level up.
+    // A malformed item drops `result` first, so the other fields survive `wrapUnknown`'s size ceiling
+    // instead of the whole payload being replaced by an erasure marker.
     if (!id) return [wrapUnknown('codex', withoutImageBytes(item), 'unrecognized', type)]
-    // ⛔ **A generation that failed made no image** (0.160.0's `ImageGenerationItem.failure`, today
-    // only `usageLimitExceeded`). Drawn as an image it would read as *"its file is no longer where it
-    // was saved"* — a lost file instead of a limit. It is said as what it is, without stopping the turn.
+    // A failed generation (`ImageGenerationItem.failure`) made no image; say that as a non-fatal error
+    // rather than draw an image whose file seems lost.
     const failure = readField(item, 'failure')
     if (isRecord(failure)) {
       return [{ type: 'error', message: imageFailureMessage(failure), fatal: false }]
     }
     const savedPath = readString(item, 'savedPath')
-    // ⚠️ **Bounded, like every other provider string that becomes a summary line.** `revisedPrompt`
-    // was 745 characters in the measured case, but nothing in the protocol caps it, and this event
-    // is written to the ledger and cloned across IPC for the life of the session — the shape of
-    // problem 052 spent a task on. `truncate` is the SAME helper every tool summary already uses,
-    // and its 200 is right for what this is used for: a caption and an `alt`. The viewer shows the
-    // whole of what we kept, which is what we kept.
+    // Bounded like every provider string that becomes a summary line: the event is persisted and
+    // cloned across IPC, and the protocol does not cap `revisedPrompt`.
     const prompt = truncate(readString(item, 'revisedPrompt').trim())
     return [
       {
         type: 'image',
         imageId: id,
-        // Unresolved and unchecked HERE, on purpose: this function is pure and has no home to
-        // check against. `CodexRuntime` replaces it with a real one or removes it before the event
-        // is emitted — see {@link CodexSessionHandle.resolveImage} there.
+        // Not checked here because this function is pure; `CodexRuntime` resolves or removes the path
+        // before the event is emitted ({@link CodexSessionHandle.resolveImage}).
         ...(savedPath ? { path: savedPath } : {}),
         ...(prompt ? { prompt } : {}),
       },
     ]
   }
 
-  // Kinds with no dedicated event carry their full payload as a CLASSIFIED `unknown{raw}`.
+  // Kinds with no dedicated event carry their full payload as a classified `unknown{raw}`.
   if (category !== 'tool') return [wrapUnknown('codex', item, category, type)]
 
-  // A known tool kind missing its `id` is malformed → surfaced.
+  // A known tool kind missing its `id` is malformed and surfaced.
   const id = readString(item, 'id')
   if (!id) return [wrapUnknown('codex', item, 'unrecognized', type)]
   const name = toolItemName(type, item)
@@ -1085,22 +799,13 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
       },
     ]
   }
-  // Affirmative-only (062): the reason travels with the result so a fail-closed card explains
-  // itself instead of just looking failed.
+  // The reason travels with the result so a fail-closed card explains itself.
   const outcome = toolOutcome(type, item)
-  // ⚑ **What came BACK, for the one kind that sends it** (327) — every other kind repeats the call's
-  // own summary here, which is right for a `commandExecution` (the command is the row) and wrong for
-  // an MCP call, where the whole question is what the server answered. ⛔ **And this is Claude's rule,
-  // not a new one**: `claude/normalize.ts` builds its `tool_result.summary` from
-  // `summarizeToolResult(block.content)` — the OUTPUT — and has since 001.
+  // What came back, where the kind sends it: other kinds repeat the call's summary, which is right
+  // for a command but not for an MCP call, matching Claude's `tool_result.summary` from the output.
   const settled = resultSummary(type, item, summary)
-  // ⚠️ **Joined rather than interpolated, because `settled` can be EMPTY here.** ⛔ The first draft
-  // of this comment said the empty came from {@link argumentsSummary} — it does not, and `M22`
-  // surviving its own table is what said so: that summary rides the CALL row, which never reaches
-  // this line. The reachable empty is a provider string that is entirely WHITESPACE — `mcpResultText`
-  // returns it, the truthiness test above passes it, and {@link oneLine} trims it to nothing. Written
-  // as `${settled} — ${note}` that row opens with a dangling em dash. Every other kind reaches here
-  // non-empty, so this changes nothing for them.
+  // Joined rather than interpolated: `settled` can be empty (a whitespace-only provider string after
+  // {@link oneLine}), and interpolation would open the row with a dangling dash.
   const spoken = [settled, outcome.note].filter(Boolean).join(' — ')
   return [
     {
@@ -1115,25 +820,11 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
 }
 
 /**
- * ⚑ **How long the tool call itself took, as the PROVIDER measured it** (327 §2.1).
- *
- * ⛔ **It is not the duration the row already had.** `ToolEntry.took` subtracts two `RuntimeHost`
- * delivery stamps (`deliver` → `at = this.now()`), so it measures the call *plus* JSON-RPC framing,
- * the host's event pump and whatever else the machine was doing. The gap is visible in the one
- * capture that has both: the `item/started` → `item/completed` envelopes were 7 ms apart while the
- * item's own `durationMs` was **4**. This is the tighter number and the only one that survives a
- * loaded machine, which is `321`'s whole subject.
- *
- * ⚠️ **`!== undefined`, and a measured `0` is why.** The failing arm of `327`'s capture reported
- * `durationMs: 0` — a real, instantaneous failure — and `...(ms ? { ms } : {})` would have dropped
- * exactly that row's duration while keeping every slower one. {@link readNumber} already refuses a
- * non-finite value; a negative one is refused here rather than in the schema, so a nonsense duration
- * costs its own field instead of failing validation for the whole event.
- *
- * ⛔ **`mcpToolCall` only, deliberately.** `commandExecution` and `dynamicToolCall` declare a
- * `durationMs` with the same meaning and are NOT read here: that would change the duration shown on
- * every shell row in the app, which is not what this dispatch was asked for. See the response doc —
- * it is named there as a follow-on, with this measurement as its evidence.
+ * How long an MCP tool call took, as the provider measured it. This excludes the JSON-RPC framing and
+ * host event pump that `ToolEntry.took` includes. A measured `0` is real, so test `!== undefined`; a
+ * negative value is refused here so it costs its own field rather than failing event validation.
+ * Only `mcpToolCall` is read: `commandExecution` and `dynamicToolCall` also declare `durationMs`, but
+ * reading them would change the duration shown on every shell row.
  */
 function mcpDuration(type: string, item: Record<string, unknown>): { durationMs?: number } {
   if (type !== 'mcpToolCall') return {}
@@ -1142,115 +833,43 @@ function mcpDuration(type: string, item: Record<string, unknown>): { durationMs?
 }
 
 /**
- * **The PTY process behind a Codex command, which this app used to throw away** (247 §2).
- *
- * ⛔ `ThreadItem`'s `commandExecution` arm carries `processId: string | null` — *"Identifier for the
- * underlying PTY process (when available)"* — and until now {@link itemSummary} read `command` and
- * nothing else, so the one string that can act on a running command died at this line. `245` §1.4
- * found it and named it: BroBot *"discards the command item's `processId`"*.
- *
- * ## ⚑ Why this exact string, and not a pid
- *
- * It is the JOIN KEY, and the generated protocol says so at the pin. `ThreadBackgroundTerminal` is
- * `{itemId, processId, command, cwd, osPid, cpuPercent, rssKb}` and
- * `ThreadBackgroundTerminalsTerminateParams` is `{threadId, processId}` — so the registry Codex
- * would list and the control that would stop one row both key on this, and the card is where the
- * user is looking when they want it stopped. Carrying it is what makes that dispatch possible
- * without re-deriving a binding from a list nobody has asked for yet.
- *
- * ## ⚠️ What it does NOT say
- *
- * ⛔ **Presence is not "this is running in the background."** Codex attaches a `processId` to every
- * PTY-backed command including ordinary foreground ones, so reading it as a running marker would
- * produce the false-settled card's mirror image — a row that claims live work where the command
- * finished inside the turn. `247` sets `backgrounded` from a level the provider states; Codex states
- * no such level to this app today, and that absence is reported honestly in the response rather than
- * papered over with this field.
- *
- * ⚑ **Codex only.** A `mcpToolCall` or a `webSearch` has no process, and a `processId` on one would
- * be a field nothing could act on.
+ * The PTY process id behind a Codex command (`commandExecution.processId`). It is the join key for
+ * `ThreadBackgroundTerminal` and `ThreadBackgroundTerminalsTerminateParams`, so the card can later stop
+ * the process. Its presence does not mean the command runs in the background: Codex attaches one to
+ * every PTY-backed command, including foreground ones. Only commands carry it.
  */
 function commandProcessId(type: string, item: Record<string, unknown>): string {
   return type === 'commandExecution' ? readString(item, 'processId') : ''
 }
 
 /**
- * ⛔ **What a tool ROW says it is doing** — one branch per tool kind, and since `457` there is no
- * kind without one.
- *
- * ## 🔴 The defect this closes, measured off a live app-server
- *
- * ⚠️ **`dynamicToolCall` had no branch and fell through to `return type`**, so both of this app's
- * own rows summarised as the literal word `dynamicToolCall`. `405` recorded the pair from a real
- * Codex worker — `tool_call name: brobot__spawn_agent summary: dynamicToolCall` — and `348`
- * rescued only the NAME. ⛔ **Every tool BroBot has is a dynamic tool on Codex**, so on the
- * provider a fresh install actually runs, the answer to every question a person asks rendered as
- * one meaningless word. `probe:codex-tool-answer` reproduces it from the wire in under two
- * seconds.
- *
- * ⚑ **`arguments` is the right field and the probe says so**: it is present on BOTH `item/started`
- * and `item/completed`, while `contentItems` is `null` until the call completes. So the CALL row
- * reads the arguments — which is what Claude's row shows for the same gesture — and
- * {@link dynamicResultSummary} reads what came back.
- *
- * ## ⛔ The fall-through no longer prints a discriminator
- *
- * ⚠️ **Returning `type` is what produced the defect**, and it would produce it again for the next
- * tool kind somebody classifies in {@link itemCategory} and forgets here. An unrecognized state
- * must SAY it is unrecognized rather than look like content — *an unenumerated state counts as
- * success* is the rule, and a protocol discriminator sitting where a summary goes is exactly that
- * failure wearing a plausible word.
+ * What a tool row says it is doing, one branch per tool kind. `mcpToolCall` and `dynamicToolCall` read
+ * their `arguments` (present on both `item/started` and `item/completed`; the answer is null until
+ * completion) and {@link mcpResultSummary} or {@link dynamicResultSummary} reads the answer. The fall-through never prints the item type: an unrecognized kind must not look like
+ * content.
  */
 function itemSummary(type: string, item: Record<string, unknown>): string {
   if (type === 'commandExecution') return truncate(readString(item, 'command') || 'shell command')
   if (type === 'fileChange') return 'file change'
   if (type === 'webSearch') return truncate(readString(item, 'query') || 'web search')
   if (type === 'collabAgentToolCall') return collabSummary(item)
-  // ⚑ **One helper for both, because both kinds declare the same `arguments` field** — a second
-  // copy is `169` §1's drift, and these two rows have to keep agreeing about what a call looks
-  // like.
+  // One helper for both kinds: they declare the same `arguments` field and must read alike.
   if (type === 'mcpToolCall' || type === 'dynamicToolCall') return argumentsSummary(item)
   return UNSUMMARISED_TOOL_KIND
 }
 
 /**
- * ⛔ **What a tool row says when this file has no branch for its kind** (457).
- *
- * ⚠️ **It names no kind, and that is deliberate.** The string a reader would most like here is the
- * item type — which is precisely the defect `405` recorded and `457` fixed, and putting it back
- * behind a label would put a protocol discriminator on a person's row again. ⚑ The kind is already
- * on the row: `toolItemName` names the tool, and `unknown{raw}` carries the whole item for
- * anything this file does not classify as a tool at all.
+ * What a tool row says when this file has no branch for its kind. It names no kind, so a protocol
+ * discriminator never appears as content; `toolItemName` names the tool and `unknown{raw}` carries
+ * unclassified items.
  */
 export const UNSUMMARISED_TOOL_KIND = 'a tool call this app cannot describe yet'
 
 /**
- * 🔴 **What a dynamic tool ANSWERED, which is the half a person is reading for** (457).
- *
- * ## ⛔ The FIRST text item, and the boundary is structural rather than parsed
- *
- * ⚠️ **Codex has no `structuredContent`,** so `answerCodexToolCall` sends the prose and the JSON
- * payload as two content items — measured to be byte-identical at the model to the single joined
- * string it used to send, because the isolate joins them with a newline before the model sees
- * them. ⚑ **So the first item is the half written for a person and the second is the half written
- * for a machine**, and reading index 0 needs no knowledge of what this app's own sentences look
- * like. ⛔ A rule that stripped a trailing JSON line instead would be parsing our own words back
- * out of a provider's transport — the derivation `405` refuses, and one that empties in silence
- * the day either side is reworded.
- *
- * ⚠️ **Non-empty, not merely first.** A tool that answers only a payload has an empty prose half,
- * and a row saying nothing about an answer that exists is worse than a row saying the payload.
- *
- * ## ⚑ Image and audio get a word, from a table a fourth arm would break
- *
- * `DynamicToolCallOutputContentItem` is a closed vocabulary of three. ⛔ A `?? ''` on a member
- * nobody thought about is the fall-through this whole function exists to remove, so the words live
- * in a `Record` keyed on the union: a fourth arm fails to compile until somebody decides what a
- * row says about it.
- *
- * ⚠️ **`'done'` is Claude's own word** for a result that carried no text (`summarizeToolResult`),
- * reused rather than invented — and it is what `mcpResultSummary` already falls back to one
- * function over. It is reached when `contentItems` is `null`, which the probe measured is exactly
+ * What a dynamic tool answered. `answerCodexToolCall` sends one prose text item, so the first
+ * non-empty `inputText` is read; a payload-only answer with empty prose falls through to the next
+ * readable item. Image and audio get a word from a `Record` keyed on the union, so a new member fails
+ * to compile. `'done'` (Claude's word for a textless result) covers `contentItems: null`, which is
  * what `item/started` carries.
  */
 function dynamicResultSummary(item: Record<string, unknown>): string {
@@ -1265,16 +884,8 @@ function dynamicResultSummary(item: Record<string, unknown>): string {
       if (text) return boundedSummary(text)
       continue
     }
-    // ⛔ **`Object.hasOwn`, never `in`** — `068` F3's hazard, and this dispatch reintroduced it
-    // before its own review caught it. `'toString' in NON_TEXT_ANSWER` is TRUE through the
-    // prototype chain and the lookup answers `Object.prototype.toString`, so a wire item declaring
-    // `{type: 'toString'}` would put `function toString() { [native code] }` on a person's row.
-    // ⚑ `TOOL_ITEM_NAMES` is a `Map` for exactly this reason; a `Record` is kept here because it
-    // is what makes a fourth arm a compile error, and `hasOwn` buys the same safety.
-    //
-    // ⚠️ **REMEMBERED, not returned** (found by this dispatch's review). A picture followed by a
-    // sentence is an answer with words in it, and returning here would have shown `an image`
-    // about a row that said something — the first item winning over the first READABLE one.
+    // `Object.hasOwn`, not `in`: `'toString' in NON_TEXT_ANSWER` is true through the prototype chain.
+    // The non-text word is remembered rather than returned, so a later readable text item still wins.
     if (!notWords && typeof kind === 'string' && Object.hasOwn(NON_TEXT_ANSWER, kind)) {
       notWords =
         NON_TEXT_ANSWER[kind as Exclude<DynamicToolCallOutputContentItem['type'], 'inputText'>]
@@ -1284,14 +895,9 @@ function dynamicResultSummary(item: Record<string, unknown>): string {
 }
 
 /**
- * ⛔ **What a row says about an answer that is not words** — one cell per non-text arm of
- * `DynamicToolCallOutputContentItem`, so a fourth arm is a compile error rather than a silent
- * `''`.
- *
- * ⚠️ **It says what arrived, never a URL.** `imageUrl` and `audioUrl` are base64 `data:` URLs by
- * the provider's own description of `image()` and `audio()`, and a megabyte of base64 on a
- * one-line summary — written to the ledger and cloned across IPC for the life of the session — is
- * `052`'s problem arriving through a new door.
+ * What a row says about a non-text answer, one entry per non-text arm of
+ * `DynamicToolCallOutputContentItem` so a new arm fails to compile. It names what arrived, never the
+ * URL: `imageUrl` and `audioUrl` are base64 `data:` URLs and would bloat a one-line summary.
  */
 const NON_TEXT_ANSWER: Readonly<
   Record<Exclude<DynamicToolCallOutputContentItem['type'], 'inputText'>, string>
@@ -1304,24 +910,9 @@ const NON_TEXT_ANSWER: Readonly<
 const SUMMARY_CAP = 200
 
 /**
- * ⛔ **The cap on what an MCP row carries, and it SAYS SO when it bites** (327 §2.3).
- *
- * ⚠️ **A bare `…` is not enough here, and the measurement is why.** A real `big_probe` call came back
- * with a single 90 047-character text block; bounded the ordinary way the row would read
- * `BROBOT_327_MCP_BIG:…` and a reader could not tell 201 characters from ninety thousand. So the
- * remainder is STATED. `187 §2`'s rule is that a budget which bites says so on the row it bit, and
- * `316` measured the alternative shape this must not repeat: an `unknown.raw` payload over 64 KiB is
- * replaced *wholesale* by an erasure marker, which is the right answer for a verbatim payload and
- * the wrong one for a summary line.
- *
- * ⚑ **The bound itself is {@link truncate}'s, unchanged** — the same 200 every other tool summary in
- * both providers already uses. Only the sentence after the ellipsis is new, and it appears only when
- * something was actually dropped.
- *
- * ⚠️ **The count is of the string this line summarizes**, which for a provider message is the
- * whitespace-collapsed one {@link oneLine} produced — not the raw byte length of the item. Collapsing
- * drops no word, so the two differ only by runs of spacing; saying `200 of N` about a string other
- * than the one on the row would be the more confusing of the two answers.
+ * The cap on what an MCP row carries. It states the remainder when it cuts, so a reader can tell 201
+ * characters from ninety thousand. The bound is {@link truncate}'s; the count is of the
+ * whitespace-collapsed string {@link oneLine} produced, which is what is on the row.
  */
 function boundedSummary(text: string): string {
   if (text.length <= SUMMARY_CAP) return text
@@ -1329,24 +920,16 @@ function boundedSummary(text: string): string {
 }
 
 /**
- * ⚠️ **One line, because the row is one line.** `.tool-summary` is `white-space: nowrap` with an
- * ellipsis, and the provider's own failure text is deliberately multi-line — the measured timeout
- * read `tool call error: …\n\nCaused by:\n    timed out awaiting tools/call after 4s`. Left as sent,
- * five whitespace characters push the sentence that says WHAT failed towards the clip. Collapsing
- * runs of whitespace loses no word and is applied only to the two provider strings this file puts on
- * a single-line row.
+ * Collapse whitespace so a multi-line provider failure text fits the one-line row (`.tool-summary` is
+ * `nowrap` with an ellipsis). No word is lost; applied only to the two provider strings put on one line.
  */
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
 
 /**
- * **What the model asked the server to do** (327) — the arguments, which is what Claude's row shows
- * for the same gesture (`summarizeToolInput`'s `JSON.stringify` fallback, same 200).
- *
- * ⚠️ **Empty when there is nothing to say**, rather than a fabricated word. `arguments` is a
- * `JsonValue` and a tool can legitimately take none; `'{}'` is what an empty OBJECT serializes to and
- * is kept, but an absent field becomes an empty summary and the row shows the qualified name alone.
+ * What the model asked the server to do: the arguments, as Claude's row shows for the same gesture.
+ * Empty when there are none, so the row shows the qualified name alone; an empty object stays `'{}'`.
  */
 function argumentsSummary(item: Record<string, unknown>): string {
   const args = item['arguments']
@@ -1361,16 +944,9 @@ function argumentsSummary(item: Record<string, unknown>): string {
 }
 
 /**
- * ⛔ **Which reading a RESULT row shows, per tool kind** (457, generalising 327).
- *
- * ⚠️ **Two kinds send an answer back and the rest do not.** `mcpToolCall` carries `result`/`error`
- * and `dynamicToolCall` carries `contentItems`; for a `commandExecution` the command IS the row
- * and repeating the call summary is right. ⛔ **This used to be a ternary on one kind**, and the
- * second kind arriving is exactly the shape a ternary cannot grow into without somebody noticing
- * — `457` is that dispatch.
- *
- * ⚑ **Named rather than inlined so the choice is one expression a test can reason about**, and so
- * a third answering kind is one row here instead of a second nested conditional.
+ * Which reading a result row shows, per tool kind. `mcpToolCall` (`result`/`error`) and
+ * `dynamicToolCall` (`contentItems`) send an answer back; for a `commandExecution` the command is the
+ * row, so repeating the call summary is right.
  */
 function resultSummary(type: string, item: Record<string, unknown>, calledWith: string): string {
   if (type === 'mcpToolCall') return mcpResultSummary(item)
@@ -1379,33 +955,15 @@ function resultSummary(type: string, item: Record<string, unknown>, calledWith: 
 }
 
 /**
- * 🔴 **What came back — and on a failure, WHAT FAILED** (327 §2.2).
+ * What an MCP call answered and, on failure, what failed. The two failure shapes are disjoint: a tool
+ * that threw has `status: failed`, `error: null` and the message in `content[0].text`; a transport
+ * failure (such as `tool_timeout_sec`) has `error.message` and `result: null`. So both are read,
+ * `error` first because a transport failure invalidates any partial result.
  *
- * ## ⛔ The two failure shapes are DISJOINT, and `327` measured both
- *
- * The dispatch was written expecting the reason to live on `error.message`. Against a real 0.146.0
- * child and a real stdio MCP server, it does — for exactly one of the two ways a call can fail:
- *
- * | how it failed | `status` | `error` | `result` | `durationMs` |
- * |---|---|---|---|---|
- * | the TOOL reported a failure (it threw) | `failed` | **`null`** | `content[0].text` = the thrown message | `0` |
- * | the TRANSPORT failed (`tool_timeout_sec`) | `failed` | **`{message: "tool call error: … timed out awaiting tools/call after 4s"}`** | **`null`** | `4002` |
- *
- * ⚑ **Exactly one of the two carries the reason, and which one depends on where the failure was.**
- * A row that read `error.message` alone would have said nothing at all about the thrown failure —
- * the commoner of the two — and one that read the result alone would have said nothing about the
- * timeout. So both are read, `error` first because a transport failure invalidates whatever partial
- * result may sit beside it.
- *
- * ⚠️ **`isError` is not on this wire.** The MCP SDK sets it on the tool result; the app-server's
- * generated `McpToolCallResult` is `{content, structuredContent, _meta}` and has no such field. It
- * appeared **zero** times across both captures — the app-server re-encodes it as `status: "failed"`,
- * which {@link toolOutcome} already reads. There is nothing to add for it and nothing being missed.
- *
- * ⛔ **A bare-string `error` is handled for the same reason {@link hasReportedError} handles one**
- * (068): the generated shape is a record, and a non-conformant server has already been the reason
- * that guard exists. Reading only `error.message` would let such a server's reason fall through to
- * `'done'` — the row saying a call succeeded quietly when it had failed loudly.
+ * `isError` is not on this wire: `McpToolCallResult` is `{content, structuredContent, _meta}`, and the
+ * app-server reports it as `status: "failed"`, which {@link toolOutcome} reads. A bare-string `error`
+ * is accepted, as {@link hasReportedError} does, so a non-conformant server's reason is not read as
+ * `'done'`.
  */
 function mcpResultSummary(item: Record<string, unknown>): string {
   const error = item['error']
@@ -1415,52 +973,28 @@ function mcpResultSummary(item: Record<string, unknown>): string {
   const result = readField(item, 'result')
   const text = mcpResultText(readField(result, 'content'))
   if (text) return boundedSummary(oneLine(text))
-  // `structuredContent` second, because it is the machine's copy of an answer whose readable form is
-  // the text blocks — but a server that sends only the structured half must still say something.
+  // `structuredContent` second: the text blocks are the readable half, but a server that sends only
+  // the structured half must still say something.
   const structured = readField(result, 'structuredContent')
   if (structured !== undefined && structured !== null) {
     try {
       const json = JSON.stringify(structured)
       if (json !== undefined) return boundedSummary(json)
     } catch {
-      // Unserializable: fall through to the word below rather than guess at it.
+      // Unserializable: fall through to the word below.
     }
   }
-  // Claude's own word for a result that carried no text (`summarizeToolResult`), not a new one.
+  // Claude's own word for a result with no text (`summarizeToolResult`).
   return 'done'
 }
 
 /**
- * 🔴 **The WHOLE of what a tool answered, in the order the receipt carried it** (462) — the bytes
- * `dynamicResultSummary` and {@link mcpResultSummary} each cut down to one 200-character line.
- *
- * ## ⛔ It reads the same array those two read, and it makes the same structural claim
- *
- * ⚑ **`457` put the prose and the payload in two content items so the boundary would be an ARRAY
- * INDEX**, and {@link dynamicResultSummary} takes index 0 for that reason. This takes all of them,
- * in order, and hands the ordering on untouched — so the half a person reads is `parts[0]` at the
- * far end too. ⛔ **Nothing here looks at the characters to decide what a part is**: a rule that
- * called a part *the payload* because it opens with `{` is the derivation `405` refuses.
- *
- * ## ⚠️ Two kinds, and the other item kinds are deliberately NOT here
- *
- * ⛔ **A `commandExecution` is not a tool answer and must not be held here.** What a command printed
- * already has a surface of its own — `300`'s tail, read through `SessionHandle.commandOutput` —
- * and a second hold of the same bytes is two accounts of one thing, which is the shape `command-
- * output.ts` §4 warns will end up disagreeing. ⚑ `fileChange` has the diff, `agentMessage` is the
- * transcript. **What these two kinds have that the others do not is a STRUCTURED half**, which is
- * the thing `457` found has no surface anywhere in this app.
- *
- * ## ⚑ Non-text items contribute NO part, and the row is where they are named
- *
- * ⚠️ `DynamicToolCallOutputContentItem` is text, image or audio, and an image's `imageUrl` is a
- * base64 `data:` URL by the provider's own description. ⛔ Holding one would put a megabyte of
- * base64 in memory for a panel that shows what a tool SAID — `052`'s problem through a new door,
- * and exactly what {@link NON_TEXT_ANSWER} exists to keep off the row. **The word for a picture is
- * on the row; the panel shows the words the answer carried, and an answer with none holds none.**
- *
- * `null` means *this item is not a tool answer this app holds* — a kind with no branch, or a call
- * with no result yet, which is what the probe measured `item/started` to be.
+ * The whole of what a tool answered, in order: the text parts that {@link dynamicResultSummary} and
+ * {@link mcpResultSummary} each cut to one line. Only `dynamicToolCall` and `mcpToolCall` have a
+ * structured answer; a command's output already has its own surface (the command tail), and a second
+ * copy of the same bytes could disagree. Non-text items contribute no part, since an image's
+ * `imageUrl` is a base64 `data:` URL ({@link NON_TEXT_ANSWER} names them on the row instead).
+ * `null` means the item is not a held tool answer: another kind, or a call with no result yet.
  */
 export function codexToolAnswerParts(item: unknown): readonly string[] | null {
   if (!isRecord(item)) return null
@@ -1487,24 +1021,15 @@ export function codexToolAnswerParts(item: unknown): readonly string[] | null {
         }
       }
     }
-    // ⚠️ **LAST, and that is {@link mcpResultSummary}'s own ordering rather than a new one**: the
-    // text blocks are the readable half and `structuredContent` is *"the machine's copy of an
-    // answer whose readable form is the text blocks"*. ⛔ Serialised here rather than handed on as
-    // an object, because what crosses to a surface is characters — see `tool-answer.ts`.
-    // ⚠️ **`machineHalf` and not `structured`, and the rename is not a style choice.** `327 M25`
-    // anchors on `const structured = readField(result, 'structuredContent')` in
-    // {@link mcpResultSummary} ALONE, and a second identically spelled line in this file makes that
-    // row unappliable — a verdict it earned, retired by a door that had nothing to do with it. ⛔ A
-    // mutation table's anchor is a fact about the source, and a new door that collides with one is
-    // the NEW door's to avoid. Found by this dispatch's own census, which is what it is for.
+    // `structuredContent` goes last, as in {@link mcpResultSummary}, serialised because surfaces receive
+    // characters. Named `machineHalf` so a mutation anchor on `structured` in `mcpResultSummary` stays unique.
     const machineHalf = readField(result, 'structuredContent')
     if (machineHalf !== undefined && machineHalf !== null) {
       try {
         const encoded = JSON.stringify(machineHalf)
         if (encoded !== undefined) parts.push(encoded)
       } catch {
-        // Unserializable: the text blocks above are still the answer, and inventing a word for what
-        // could not be serialised would put this app's sentence where the tool's belongs.
+        // Unserializable: the text blocks above are still the answer; no invented word.
       }
     }
     return parts
@@ -1513,12 +1038,8 @@ export function codexToolAnswerParts(item: unknown): readonly string[] | null {
 }
 
 /**
- * The readable half of an MCP result — `content[]`'s text blocks, joined.
- *
- * ⚑ **This is `claude/normalize.ts`'s `joinText`, and it is a COPY for the reason every other helper
- * in this file is one**: the two normalizers share no runtime module by design, so neither can drift
- * the other's parsing. The block shape is the same because MCP's `content` is the same shape Claude's
- * `tool_result.content` is.
+ * The readable half of an MCP result: `content[]`'s text blocks, joined. A copy of `claude/normalize.ts`'s
+ * `joinText`, since the two normalizers share no runtime module by design.
  */
 function mcpResultText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -1533,45 +1054,10 @@ function mcpResultText(content: unknown): string {
 }
 
 /**
- * The BIRTH of an agent Codex dispatched → the neutral `sub_agent` card (033).
- *
- * **Only `item/started` reaches here, and that is the whole of the "duplication" fix.** Every
- * sub-agent used to render twice, and 033 was dispatched believing the provider sent each event
- * twice. It does not: `item/started` and `item/completed` carry a BYTE-IDENTICAL item, with
- * `startedAtMs === completedAtMs` to the millisecond, because a `subAgentActivity` is an
- * instantaneous ANNOUNCEMENT rather than a thing with a duration. The old code fell into
- * {@link itemToEvents}' non-tool catch-all, which wraps a kind on both phases — so we emitted it
- * twice ourselves. Keying a dedupe on the item id would have hidden that; mapping the announcement
- * once, where it is announced, removes it. **`item/completed` for one of these does not mean the
- * sub-agent completed** — the child's ending arrives on its own thread, in `sub-agents.ts`.
- *
- * `agentThreadId` is the identity: it is the child's real thread id, so it correlates the birth here
- * with every `thread/status/changed` the child sends afterwards.
- *
- * `parentToolCallId` is the collab call that spawned it. No such tool row has EVER been rendered —
- * in four captured sessions only `wait` produced a `collabAgentToolCall` item, never `spawnAgent` —
- * so the card is top-level today, which 029's fold already handles as a first-class case. It is
- * carried anyway rather than dropped: the renderer adopts an orphan the moment a row with that id
- * appears, so "bind it only if there is a row" is enforced by the thing that can actually see the
- * rows instead of guessed at here.
- */
-/**
- * One `skills/list` row read as a {@link ProviderCommand} (279).
- *
- * ⛔ **`interface.shortDescription` FIRST, and the live rows are why.** Measured against the bundled
- * binary, every one of the six carries both — and they are not the same sentence. `imagegen`'s
- * `shortDescription` is *"Generate or edit images for websites, games, and more"* (52 characters,
- * written for a person) while its `description` opens *"Generate or edit raster images when the task
- * benefits from AI-created bitmap visuals such as photos, illustrations, textures, sprites,
- * mockups…"* — a **trigger** written for the model, about when to reach for the skill. The palette
- * draws one line, so it draws the one written to be read, and falls back to the trigger when a skill
- * ships no interface at all.
- *
- * ⚠️ **`argumentHint` and `aliases` are deliberately absent, not forgotten.** The Codex protocol
- * declares neither on a skill: `SkillMetadata` carries `name`, `description`, `shortDescription`,
- * `interface`, `dependencies`, `path`, `scope` and `enabled`, and nothing that means *"and then
- * type this"*. Inventing either from the `defaultPrompt` would be putting words in the provider's
- * mouth on the one surface whose whole job is to report what it said.
+ * One `skills/list` row read as a {@link ProviderCommand}. `interface.shortDescription` comes first
+ * because it is written for a person, while `description` is a trigger written for the model; the
+ * trigger is the fallback for a skill with no interface. `argumentHint` and `aliases` are absent
+ * because `SkillMetadata` declares neither.
  */
 export function readCodexSkill(skill: unknown): ProviderCommand {
   const short = readString(readField(skill, 'interface'), 'shortDescription')
@@ -1581,7 +1067,7 @@ export function readCodexSkill(skill: unknown): ProviderCommand {
   return {
     name: readString(skill, 'name'),
     ...(described ? { description: described } : {}),
-    // ⚑ Its file, and the description the model is given, which `<skills_instructions>` sends whole.
+    // Its file, and the full description the model is given.
     ...(path
       ? {
           skill: {
@@ -1594,10 +1080,17 @@ export function readCodexSkill(skill: unknown): ProviderCommand {
   }
 }
 
+/**
+ * The birth of an agent Codex dispatched as the neutral `sub_agent` card. Only `item/started` reaches
+ * here: `item/started` and `item/completed` carry a byte-identical item because a `subAgentActivity` is
+ * an announcement, not a span, and `item/completed` does not mean the sub-agent finished (its ending
+ * arrives on its own thread, in `sub-agents.ts`). `agentThreadId` is the child's real thread id and
+ * correlates later `thread/status/changed` frames. `parentToolCallId` is the collab call that spawned
+ * it, carried so the renderer can adopt an orphan card once a row with that id appears.
+ */
 export function subAgentBirth(item: Record<string, unknown>): RuntimeEvent | null {
   const agentId = readString(item, 'agentThreadId')
-  // No identity, no card: correlation is the whole mechanism, and a card that can never be updated
-  // or ended is worse than the classified `unknown` the caller falls back to.
+  // No identity, no card: a card that can never be updated or ended is worse than the `unknown`.
   if (!agentId) return null
   const activity = subAgentActivity(readString(item, 'kind') as SubAgentActivityKind)
   if (!activity) return null
@@ -1606,8 +1099,7 @@ export function subAgentBirth(item: Record<string, unknown>): RuntimeEvent | nul
   return {
     type: 'sub_agent',
     agentId,
-    // 111 — a REAL thread id, with a rollout file of its own. The one difference from Claude's that
-    // decides what a reader could do next, so it is stated rather than left to be inferred.
+    // A real thread id with a rollout file of its own, unlike Claude's.
     idKind: 'thread',
     ...activity,
     ...(parentToolCallId ? { parentToolCallId } : {}),
@@ -1616,22 +1108,15 @@ export function subAgentBirth(item: Record<string, unknown>): RuntimeEvent | nul
 }
 
 /**
- * What one phase of a sub-agent's life contributes to its card. No `summary` — and ⚠️ **226 changed
- * the reason from impossible to unspent.** This said *"Codex never sends the child's answer down
- * this connection"*; it does, in `turn.items` and in the child's own `agentMessage` deltas, both
- * measured. Forwarding them is refused rather than impossible: a child's words have to be owned by
- * the card that says who is speaking (128), and a Codex card has no body to own them yet.
+ * What one phase of a sub-agent's life contributes to its card. No `summary`: a child's words must be
+ * owned by the card that says who is speaking, and a Codex card has no body for them yet.
  */
 type SubAgentPhase = Pick<Extract<RuntimeEvent, { type: 'sub_agent' }>, 'phase' | 'outcome'>
 
 /**
- * Codex's `SubAgentActivityKind` → the neutral phase, exhaustive over the generated union so a
- * protocol bump is a compile error rather than an activity silently read as a birth.
- *
- * Only `started` has ever fired. The others are mapped from what the names mean and nothing more:
- * `interacted` is the parent and child exchanging a message, which is progress and not an ending;
- * `interrupted` is an ending that is neither a success nor the sub-agent's fault, so it reports
- * itself rather than being rounded to `failed` or hidden behind "we were not told".
+ * Codex's `SubAgentActivityKind` to the neutral phase, exhaustive over the generated union. `interacted`
+ * is progress, not an ending; `interrupted` is an ending that is neither success nor the sub-agent's
+ * fault, so it reports itself rather than becoming `failed`.
  */
 function subAgentActivity(kind: SubAgentActivityKind): SubAgentPhase | null {
   switch (kind) {
@@ -1641,9 +1126,8 @@ function subAgentActivity(kind: SubAgentActivityKind): SubAgentPhase | null {
       return { phase: 'progress' }
     case 'interrupted':
       return { phase: 'ended', outcome: 'interrupted' }
-    // ⚑ No `outcome` (0.160.0): the name says the child is done, not how it went. Its own
-    // `turn/completed` says that, as for an idle child (`CodexSubAgents`), and an outcome here could
-    // land after a failed one and overwrite it.
+    // No `outcome`: the name says the child is done, not how it went. Its own `turn/completed` says that,
+    // and an outcome here could overwrite a failed one.
     case 'completed':
       return { phase: 'ended' }
     default:
@@ -1658,42 +1142,31 @@ function assertSubAgentKindExhaustive(kind: never): null {
 }
 
 /**
- * `/root/workspace_mapper` → `workspace_mapper` — the name the model coined for this child.
- *
- * The leading `/root/` is the PRIMARY agent, present on every path and therefore carrying no
- * information; everything after it is kept exactly as sent, so a nested `/root/a/b` reads `a/b`
- * rather than losing which agent spawned it. A path shaped otherwise is shown whole rather than
- * trimmed by a rule that was never meant for it.
+ * `/root/workspace_mapper` to `workspace_mapper`, the name the model coined for the child. The leading
+ * `/root/` is the primary agent and is dropped; the rest is kept as sent (`/root/a/b` reads `a/b`).
+ * A path shaped otherwise is shown whole.
  */
 function agentName(path: string): string {
   return path.startsWith('/root/') ? path.slice('/root/'.length) : path
 }
 
 /**
- * A `collab` row that says what it DID (033). It used to read `collab · wait`, or — worse, when a
- * prompt was present — the prompt with the operation nowhere on the row, so the one field that says
- * whether the agent spawned, messaged, waited for or CLOSED a sub-agent was the one field hidden.
- *
- * Who it concerns is stated as a COUNT, not as names. `receiverThreadIds` was `[]` and `agentsStates`
- * was `{}` in every `collabAgentToolCall` ever captured — the observed `wait` is a broadcast, which
- * "every agent" says exactly — so resolving ids to names would be machinery for a payload nobody
- * has seen. When the provider starts populating them, one function changes.
+ * A `collab` row that says what it did: the operation (spawn, message, wait, close) and who it
+ * concerns as a count, since `receiverThreadIds` and `agentsStates` are empty on captured items.
  */
 function collabSummary(item: Record<string, unknown>): string {
   const tool = readString(item, 'tool')
   const receivers = readField(item, 'receiverThreadIds')
   const count = Array.isArray(receivers) ? receivers.length : 0
-  // ⚠️ "every agent" only for `wait`, the one measured broadcast; for the other operations an empty
-  // list says only that the provider did not name the agent.
+  // "every agent" only for `wait`, the one broadcast; otherwise an empty list says only that the
+  // provider named no agent.
   const who =
     count > 0
       ? `${count} agent${count === 1 ? '' : 's'}`
       : tool === 'wait'
         ? 'every agent'
         : 'an agent'
-  // An unrecognized tool keeps its OWN name rather than degrading to the generic 'collab': the name
-  // is the most informative thing we have about an operation we do not know. Only a missing one
-  // falls all the way back.
+  // An unrecognized tool keeps its own name; only a missing one falls back to 'collab'.
   const operation = collabOperation(tool as CollabAgentTool, who) ?? tool ?? ''
   const head = operation || 'collab'
   const model = readString(item, 'model')
@@ -1703,8 +1176,8 @@ function collabSummary(item: Record<string, unknown>): string {
 }
 
 /**
- * Codex's `CollabAgentTool` → a phrase, exhaustive over the generated union. `null` means "not one
- * of ours", and the caller shows the raw name instead of inventing a phrase for it.
+ * Codex's `CollabAgentTool` to a phrase, exhaustive over the generated union. `null` means unknown,
+ * and the caller shows the raw name.
  */
 function collabOperation(tool: CollabAgentTool, who: string): string | null {
   switch (tool) {
@@ -1738,10 +1211,8 @@ function assertCollabToolExhaustive(tool: never): null {
 }
 
 /**
- * Every status ANY tool item can report — the union of the generated per-type status unions
- * (062). Taking the union rather than five copied switches keeps one choke point while staying
- * exhaustive **per type**: if any one of these unions gains a member, the union grows and
- * {@link toolStatusOutcome}'s switch stops being exhaustive — a compile error, never a silent gap.
+ * Every status any tool item can report, the union of the generated per-type status unions. A new
+ * member in any of them makes {@link toolStatusOutcome}'s switch non-exhaustive.
  */
 type ToolStatus =
   | CommandExecutionStatus
@@ -1753,27 +1224,21 @@ type ToolStatus =
 /** The `ok` a tool result reports, plus the reason when it is not an affirmative success. */
 interface ToolOutcome {
   ok: boolean
-  /** Appended to the summary so a fail-closed result says WHY, rather than just looking failed. */
+  /** Appended to the summary so a fail-closed result says why. */
   note?: string
 }
 
 /**
- * Compile-time exhaustiveness over {@link ToolStatus} — mirrors `assertItemExhaustive` and 055's
- * `assertStatusExhaustive`. At RUNTIME this is reached only by a value outside the generated
- * union, which must never be read as a success the provider never claimed.
+ * Compile-time exhaustiveness over {@link ToolStatus}. At runtime it is reached only by a value outside
+ * the generated union, which must never be read as a success.
  */
 function assertToolStatusExhaustive(status: never): ToolOutcome {
   return { ok: false, note: `unrecognized status ${JSON.stringify(status)}` }
 }
 
 /**
- * Map a tool item's status to its outcome, **affirmative-only** (062, fixing 060 P2 — the
- * un-generalized sibling of 055's turn-status fix).
- *
- * `itemOk` used to return `true` for everything except `failed`/`declined`, so an `item/completed`
- * carrying **`inProgress`** — a contradiction the generated unions permit — a **missing** status,
- * or a **future** status all rendered as a successful tool result. Only `completed` is success now;
- * everything else fails closed with a reason.
+ * Map a tool item's status to its outcome, affirmative-only: only `completed` succeeds, and
+ * `inProgress`, a missing status or a future status fail closed with a reason.
  */
 function toolStatusOutcome(status: ToolStatus): ToolOutcome {
   switch (status) {
@@ -1796,21 +1261,16 @@ function toolStatusOutcome(status: ToolStatus): ToolOutcome {
 }
 
 /**
- * Web search has no status field, so item/completed is its affirmative completion.
- * If the protocol adds a status, this assignment fails compilation and requires status mapping.
+ * Web search has no status field, so `item/completed` is its affirmative completion. A protocol status
+ * field would fail this assignment to compile.
  */
 const WEB_SEARCH_HAS_NO_STATUS: 'status' extends keyof WebSearchItem ? never : true = true
 
 /**
- * The outcome for one completed tool item — affirmative-only, per tool kind (062).
- *
- * A **missing / non-string** status is malformed: it fails closed as a `tool_result` carrying the
- * reason rather than as an `unknown`, so the UI's tool card is still resolved (an unresolved card
- * would hang in the transcript forever) while never claiming a success.
- *
- * Two in-family contradictions are also refused, because "affirmative-only" means the item must
- * not *contradict* its own success: `dynamicToolCall.success === false` and a `mcpToolCall.error`
- * present alongside `completed`.
+ * The outcome for one completed tool item, affirmative-only per kind. A missing or non-string status
+ * fails closed as a `tool_result` with the reason (so the card still resolves) rather than an
+ * `unknown`. A `dynamicToolCall.success === false` or an `mcpToolCall.error` beside `completed` is a
+ * contradiction and also fails.
  */
 function toolOutcome(type: string, item: Record<string, unknown>): ToolOutcome {
   if (type === 'webSearch') {
@@ -1823,9 +1283,8 @@ function toolOutcome(type: string, item: Record<string, unknown>): ToolOutcome {
   }
   const outcome = toolStatusOutcome(status as ToolStatus)
   if (!outcome.ok) return outcome
-  // A contradiction is anything that is NOT an affirmative success — not just the two exact shapes
-  // the first pass checked (068, fixing 066 F4). `success:'false'` (a STRING) and `error:'boom'` (a
-  // string rather than a record) both slipped through and rendered as successful tool results.
+  // A contradiction is anything that is not an affirmative success, including `success: 'false'` and a
+  // string `error`.
   if (type === 'dynamicToolCall' && isNonAffirmativeSuccess(item['success'])) {
     return { ok: false, note: `completed but reported success:${JSON.stringify(item['success'])}` }
   }
@@ -1836,11 +1295,9 @@ function toolOutcome(type: string, item: Record<string, unknown>): ToolOutcome {
 }
 
 /**
- * Whether a `success` field CONTRADICTS the completed status (068). The generated shape is
- * `boolean | null`, so `null`/absent means "not reported" and the status alone decides — reporting
- * those as failures would turn real successes into false negatives, the mirror of the bug being
- * fixed. Anything else PRESENT and not literally `true` is a contradiction: `false`, `'false'`,
- * `'true'` (a string is not an affirmation), `0`, `1`, `{}`, `[]`.
+ * Whether a `success` field contradicts the completed status. The shape is `boolean | null`, where
+ * null or absent means not reported and the status decides; anything else present and not literally
+ * `true` (`false`, `'true'`, `0`, `{}`) is a contradiction.
  */
 function isNonAffirmativeSuccess(success: unknown): boolean {
   if (success === undefined || success === null) return false
@@ -1848,9 +1305,8 @@ function isNonAffirmativeSuccess(success: unknown): boolean {
 }
 
 /**
- * Whether an `error` field is actually REPORTING an error (068). The generated shape is
- * `McpToolCallError | null`, but a non-conformant server may send a bare string — so any present,
- * non-empty value counts, not only a record. `null`/absent/`''` are "no error".
+ * Whether an `error` field reports an error. The shape is `McpToolCallError | null`, but a
+ * non-conformant server may send a bare string, so any present non-empty value counts.
  */
 function hasReportedError(error: unknown): boolean {
   if (error === undefined || error === null) return false
@@ -1859,9 +1315,9 @@ function hasReportedError(error: unknown): boolean {
 }
 
 /**
- * The questions an `agentMessage` asked WITHOUT waiting — 0.160.0's `delivery: "async"` with
- * `questions: [{title, options}]`, which `request_user_input_async` emits — bounded by
- * {@link ASKED_QUESTION_LIMITS}. Empty for every other message, and for a malformed entry.
+ * The questions an `agentMessage` asked without waiting (`delivery: "async"` with
+ * `questions: [{title, options}]`), bounded by {@link ASKED_QUESTION_LIMITS}. Empty for every other
+ * message and for a malformed entry.
  */
 function asyncQuestionsOf(item: Record<string, unknown>): { title: string; options?: string[] }[] {
   if (readString(item, 'delivery') !== 'async') return []
@@ -1910,23 +1366,16 @@ function imageFailureMessage(failure: Record<string, unknown>): string {
 }
 
 /**
- * Keep `max` characters and say so with an ellipsis — so a bounded string is `max + 1` long.
- *
- * ⛔ **Exported since 275, for the one caller that has to agree with it exactly.**
- * `MAX_BACKGROUND_TEXT` is **201** rather than 200 precisely because of the line below, and
- * `background-terminals.ts` bounds a provider `command` with the same helper rather than a second
- * copy of the same arithmetic — a rule spelled in two places is `169` §1's drift.
+ * Keep `max` characters and say so with an ellipsis, so a bounded string is `max + 1` long.
+ * Exported because `background-terminals.ts` bounds a provider `command` with the same arithmetic.
  */
 export function truncate(text: string, max = 200): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
 /**
- * The same item with its base64 image replaced by a description of it (067, from its review).
- *
- * For surfacing a MALFORMED `imageGeneration` as `unknown{raw}`. Everything about the item that
- * makes it surprising is kept; the one field that is merely enormous is described instead. Which is
- * what {@link boundRaw} would do to the whole object, less well: it would replace every field.
+ * The same item with its base64 image replaced by a description of it, for surfacing a malformed
+ * `imageGeneration` as `unknown{raw}`. Every other field is kept; {@link boundRaw} would erase them all.
  */
 function withoutImageBytes(item: Record<string, unknown>): Record<string, unknown> {
   const result = item['result']

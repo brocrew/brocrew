@@ -16,21 +16,17 @@ export class BackgroundTasks {
   private readonly everBackground = new Set<string>()
 
   /**
-   * Replace the set from a `background_tasks_changed` payload.
-   *
-   * ⛔ **REPLACE, in the SDK's own word.** *"consumers that only need 'is background work running'
-   * should replace their set with each payload rather than pairing edges, so a missed bookend cannot
-   * wedge a stale running indicator."*
+   * Replace the set from a `background_tasks_changed` payload. The SDK says consumers should replace
+   * their set with each payload rather than pair edges, so a missed bookend cannot wedge a stale
+   * running indicator.
    */
   replace(
     tasks: readonly { id: string; kind?: string; description?: string }[],
     dropped = 0,
   ): void {
-    // ⛔ **The shortfall is remembered with the set it belongs to** (248). `task_started` re-emits
-    // this very set — see `backgroundWorkEvents` — and the first version of that re-emission carried
-    // no `dropped`, so a consumer replacing both together (which the event's own doc tells it to do)
-    // wiped a *"this list is understating itself"* notice one millisecond after it appeared, while
-    // the set was still short. Keeping the two facts in one place is what makes them arrive together.
+    // The shortfall is kept with the set it belongs to: `task_started` re-emits this set (see
+    // `backgroundWorkEvents`), and a consumer replacing both together must not lose a "list is
+    // understating itself" notice while the set is still short.
     this.droppedCount = dropped
     this.live = new Map(
       tasks.slice(0, MAX_BACKGROUND_WORK).map((task) => [
@@ -55,8 +51,7 @@ export class BackgroundTasks {
     if (this.announced) return false
     this.announced = true
     this.live = new Map()
-    // …and the shortfall goes with the set it described (248). A reset states an EMPTY level, and an
-    // empty level cannot be understating anything.
+    // The shortfall goes with the set it described; an empty level understates nothing.
     this.droppedCount = 0
     return true
   }
@@ -76,11 +71,9 @@ export class BackgroundTasks {
    * detach receipt it has been told about and refuses to believe.
    */
   update(taskId: string, patch: { status?: string; isBackgrounded?: boolean }): 'ended' | null {
-    // ⛔ **The ceiling is enforced HERE, not only at the caller, and that is not belt-and-braces.**
-    // `backgroundWorkSchema.running` is `.max(MAX_BACKGROUND_WORK)`, and `toWireEvent` re-validates
-    // every event — so a set one over the cap would fail the contract and the WHOLE registry frame
-    // would degrade to `unknown`. The level payload is already sliced on the way in; the conversion
-    // signal is the other door into this map, and a class that owns a bound has to own both.
+    // The ceiling is enforced here too: `backgroundWorkSchema.running` is `.max(MAX_BACKGROUND_WORK)`
+    // and `toWireEvent` re-validates every event, so an over-cap set would degrade the whole registry
+    // frame to `unknown`. The level payload is sliced on the way in; this is the other door.
     if (
       patch.isBackgrounded === true &&
       !this.live.has(taskId) &&
@@ -114,34 +107,26 @@ export class BackgroundTasks {
   }
 
   /**
-   * Did this task EVER run in the background — the question an ending needs answered.
-   *
-   * Use the history, because completion and live-set updates can arrive in either order.
-   * SDK 0.3.322 removes a finished task after its ending, unlike the earlier ordering.
+   * Did this task ever run in the background — the question an ending needs answered. Uses the
+   * history, because completion and live-set updates can arrive in either order.
    */
   wasBackground(taskId: string): boolean {
     return this.everBackground.has(taskId)
   }
 
   /**
-   * An ending we were told about, honoured directly.
-   *
-   * ⚠️ **This is not "pairing edges", and the distinction matters.** The hazard the SDK warns about
-   * is INFERRING the level from bookends — reconstructing membership by counting starts against
-   * ends, where one missed frame wedges the set forever. Removing a task the provider has just named
-   * as finished only ever fails toward forgetting, and the next level payload REPLACES the set
-   * outright, so a premature removal is corrected by the very next thing the provider says.
+   * An ending we were told about, honoured directly. This is not the "pairing edges" the SDK warns
+   * about (inferring the level by counting starts against ends): removing a task the provider named
+   * as finished only errs towards forgetting, and the next level payload replaces the set.
    */
   finish(taskId: string): void {
     this.live.delete(taskId)
   }
 
   /**
-   * How many rows the last level payload carried that {@link snapshot} does not (248).
-   *
-   * ⚠️ Read by every event that states the level, including the `task_started` re-emission — so a
-   * consumer that replaces `running` and `dropped` together, which is what the event's doc asks for,
-   * never sees the second silently reset while the first is still short.
+   * How many rows the last level payload carried that {@link snapshot} does not. Read by every event
+   * that states the level, so a consumer replacing `running` and `dropped` together never sees one
+   * reset while the other is still short.
    */
   dropped(): number {
     return this.droppedCount
@@ -162,11 +147,8 @@ export class BackgroundTasks {
 }
 
 /**
- * The `task_updated` statuses that mean the work is over.
- *
- * Taken from the pinned SDK's own union (`sdk.d.ts:5864`), which is
- * `'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'paused'`. ⚠️ **`paused` is
- * deliberately NOT here**: paused work still exists and still has a stop control, and removing it
- * from the set would tell the user it finished.
+ * The `task_updated` statuses that mean the work is over (the SDK's union is `pending`, `running`,
+ * `completed`, `failed`, `killed`, `paused`). `paused` is deliberately not here: paused work still
+ * exists and has a stop control.
  */
 const TERMINAL_STATUS = new Set(['completed', 'failed', 'killed'])
