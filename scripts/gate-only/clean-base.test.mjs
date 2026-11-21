@@ -19,8 +19,10 @@ import {
   HOME_FOLDER,
   HOMES_DIRNAME,
 } from '../lib/clean-base.mjs'
-import { DATA_FOLDER_NAME, pastedImagesRoot } from '../lib/user-data.mjs'
+import { theVariablesFor } from '../lib/tests-run-in-a-fictional-home.mjs'
+import { pastedImagesRoot } from '../lib/user-data.mjs'
 import {
+  fallbacksUnder,
   fixture,
   HIS_PROFILES,
   mustNameScratch,
@@ -559,23 +561,22 @@ describe('§4b · ⛔ it scans BOTH spellings of the target', () => {
 
 describe('§5 · the command line refuses before it acts', () => {
   /**
-   * Give this one call a scratch HOME because it names no --dir. If the unknown-option check fails,
-   * fallback must still stay in scratch. Other calls keep their own environment unless they can fall
-   * back; forbidden-root tests need the real provider-home roots.
+   * A scratch home for this one call, every variable of it, as it names no --dir: off the Mac
+   * XDG_CONFIG_HOME beats HOME. If the unknown-option check fails, fallback must stay in scratch.
+   * Others keep their own environment unless they fall back: forbidden-root tests need real roots.
    */
   it('an unknown option is an error, not a run against the default directory', () => {
-    const home = fixture()
-    const fallback = join(home, 'Library', 'Application Support', DATA_FOLDER_NAME)
+    const env = theVariablesFor(fixture())
+    const [fallback] = fallbacksUnder({ ...process.env, ...env })
     mkdirSync(fallback, { recursive: true })
     writeFileSync(join(fallback, 'brobot2.sqlite'), 'ledger\n')
 
-    const result = run(['--wipe-everything'], { HOME: home })
+    const result = run(['--wipe-everything'], env)
     expect(result.status).toBe(2)
     expect(result.stderr).toContain('unknown option')
     expect(result.stdout).not.toContain('removed')
     // ⚑ The directory it would have fallen back to, read afterwards: the refusal is measured by what
-    // it protected. That this IS where the script falls back under this `HOME` is held in-process,
-    // with nothing started, by `clean-base-starts-only-on-scratch.test.mjs` (`fallbacksUnder`).
+    // it protected. `clean-base-starts-only-on-scratch.test.mjs` holds `fallbacksUnder` to the script.
     expect(readFileSync(join(fallback, 'brobot2.sqlite'), 'utf8')).toBe('ledger\n')
   })
 
@@ -583,8 +584,7 @@ describe('§5 · the command line refuses before it acts', () => {
     // ⚑ A development build and an installed BroBot share one folder, so `--packaged` named a
     // folder no build used. ⛔ **717 · R46** — a scratch `HOME` all the same: were it ever accepted,
     // it would fall back to a directory derived from `HOME`.
-    const home = fixture()
-    const result = run(['--packaged'], { HOME: home })
+    const result = run(['--packaged'], theVariablesFor(fixture()))
     expect(result.status).toBe(2)
     expect(result.stderr).toContain('unknown option --packaged')
     expect(result.stdout).not.toContain('removed')
@@ -597,7 +597,7 @@ describe('§5 · the command line refuses before it acts', () => {
       'the data of every BroBot on this machine not started with its own --user-data-dir'
     // ⛔ **717 · R46** — the call falls back, so a scratch `HOME` for it; and a dry run, on a folder
     // that is not there.
-    const shared = run(['--dry-run'], { HOME: fixture() })
+    const shared = run(['--dry-run'], theVariablesFor(fixture()))
     expect(shared.status).toBe(0)
     expect(shared.stdout).toContain(WHOSE)
     // ⚑ One fact over: a folder of its own is not everybody's.
@@ -618,7 +618,7 @@ describe('§5 · the command line refuses before it acts', () => {
 
   it('--dir with no value is refused rather than defaulted', () => {
     // ⛔ **717 · R46** — "defaulted" is the directory derived from `HOME`, so a scratch one.
-    const result = run(['--dir'], { HOME: fixture() })
+    const result = run(['--dir'], theVariablesFor(fixture()))
     expect(result.status).toBe(2)
     expect(result.stderr).toContain('--dir needs a path')
   })
