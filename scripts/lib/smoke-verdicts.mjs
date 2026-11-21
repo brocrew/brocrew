@@ -24,30 +24,27 @@ export function isNotAsserted(value) {
 }
 
 /**
- * ⛔ **The FIFTH cell: a step whose SUBJECT the product no longer offers** (420 §4, standing rule 13).
+ * A step whose subject the product no longer offers, or whose wait ran past its deadline.
  *
- * ⚠️ **It is a different absence from {@link notAsserted} and conflating them would lose the one
- * that is actionable.** A blank step ASKED and the provider declined — the model chose not to plan,
- * nothing was behind the archive. Nobody can act on that; it is weather. A **NOT PERFORMED** step
- * never asked, because the gesture it exists to make has been taken out of the product or the wait
- * it needed ran past its deadline. ⚑ **That is a fact about US**, and somebody can act on it: either
- * the surface comes back, or the rule the step carried is a rule nothing measures any more.
+ * This differs from {@link notAsserted}: a blank step asked and the provider declined, which
+ * nobody can act on. A NOT PERFORMED step never asked, because its gesture was removed from the
+ * product or its wait ran out. That is a fact about us: either the surface comes back, or the rule
+ * the step carried is no longer measured.
  *
- * 🔴 **The rule it exists to enforce** (420 §4): *"An instrument may lose a step. It may not lose a
- * step silently."* ⛔ A step whose control was deleted has exactly three honest endings — drive it
- * another way, move it to the surface that now carries it, or report it here **with the reason** and
- * file the capability as a finding. ⚠️ **What must never happen is the fourth**: deleting the step,
- * or quietly returning early, and letting the headline keep its old denominator.
+ * An instrument may lose a step, but not silently. A step whose control was deleted has three
+ * honest endings: drive it another way, move it to the surface that now carries it, or report it
+ * here with the reason and file the capability as a finding. Never delete the step or return
+ * early and leave the headline with its old denominator.
  *
- * ⚑ **And it is NOT a `skip`.** A skipped step was not selected for this run and might be green in
- * the next one; this one cannot be performed by anybody, today, and says so on every run until the
- * product changes. `skip` moves the denominator; this does not.
+ * It is not a `skip`: a skipped step was not selected for this run and might be green in the
+ * next, while this one cannot be performed today and says so every run. `skip` moves the
+ * denominator; this does not.
  *
- * @param {string} why — what could not be performed, and why. ⛔ Name the surface or the deadline;
- *   *"not reachable"* on its own is the silence this cell exists to break.
- * @param {{ deadlineMs?: number }} [bound] — for §13's other half: a wait that ran out. The
- *   deadline is printed with the row, because *"not performed, deadline 90s"* is a different fact
- *   from *"not performed, the control is gone"* and the reader has to be able to tell them apart.
+ * @param {string} why — what could not be performed, and why. Name the surface or the deadline;
+ *   "not reachable" alone is the silence this cell exists to break.
+ * @param {{ deadlineMs?: number }} [bound] — for a wait that ran out. The deadline is printed with
+ *   the row, because "not performed, deadline 90s" differs from "not performed, the control is
+ *   gone".
  */
 export function notPerformed(why, bound = {}) {
   if (typeof why !== 'string' || why.trim() === '') {
@@ -65,23 +62,12 @@ export function isNotPerformed(value) {
 }
 
 /**
- * ⛔ **A step's sub-claims were English inside its result string, and the headline summed the
- * step** (206 H1, from 193's class and one layer above 196 H1).
- *
- * `196` gave a STEP the fourth cell. It did not give one to a step's individual claims — and
- * several steps make three. `ui-live-smoke.mjs` step 58 returned, in one string,
- * *"1 ASSERTED, 2 ASSERTED (positive half), 3 NOT ASSERTED"*, and `record(true, …)` summed the
- * whole thing as one PASS. ⚠️ **That is not hypothetical**: dispatch `138` ran exactly that, and the
- * headline it produced was quoted onwards as evidence.
- *
- * ⛔ **String-matching the result was already ruled out, in this file's own test** (`142`): several
- * steps quote "NOT ASSERTED" about a SUB-claim while asserting everything else they exist for, so
- * sweeping on the words would understate the run in the other direction. The verdict has to be
- * DATA, per claim — which is what these three functions are.
- *
- * ⚑ **And the words leave the string.** A claim carries what was checked; the verdict is the type.
- * That is what makes the invariant checkable from outside (`scripts/test/smoke-claims.test.mjs`
- * reads the smoke's source for it) rather than a convention the next author has to remember.
+ * A step's sub-claims are data, not English inside its result string: a claim carries what was
+ * checked and the verdict is the type. Otherwise a step returning "1 ASSERTED, 2 ASSERTED,
+ * 3 NOT ASSERTED" would be summed as one PASS. String-matching "NOT ASSERTED" is no alternative,
+ * since several steps quote it about a sub-claim while asserting everything else they exist for.
+ * Being data also makes the invariant checkable from outside (`scripts/test/smoke-claims.test.mjs`
+ * reads the smoke's source for it).
  *
  * @typedef {{ claim: string, verdict: 'ASSERTED' | 'NOT ASSERTED' }} Claim
  */
@@ -97,12 +83,11 @@ export function unasserted(what) {
 }
 
 /**
- * What a step returns when it makes MORE THAN ONE claim.
+ * What a step returns when it makes more than one claim.
  *
- * ⛔ **Throws on an empty list rather than returning one.** A step whose claims collapsed to none —
- * a `.filter` that matched nothing, a branch that fell through — would otherwise report as a step
- * that ran and asserted nothing at all, indistinguishable from an honest blank, and would count
- * zero in both columns. That is `129`'s trap on the instrument that exists to close it.
+ * Throws on an empty list: a step whose claims collapsed to none (a `.filter` that matched
+ * nothing, a branch that fell through) would otherwise look like an honest blank and count zero
+ * in both columns.
  *
  * @param {...Claim} entries
  */
@@ -131,20 +116,18 @@ export function isClaims(value) {
 }
 
 /**
- * The verdict, the detail, and the CLAIMS for whatever a step's callback returned.
+ * The verdict, the detail, and the claims for whatever a step's callback returned.
  *
- * ⚠️ A step that returns nothing is a PASS with no detail — the majority of them — so the absence
- * of a return value must never be confused with the absence of an assertion.
+ * A step that returns nothing is a PASS with no detail, so the absence of a return value must
+ * never be confused with the absence of an assertion.
  *
- * ⛔ **Every outcome normalizes to a claim list**, including the two that existed before (206 H1).
- * An ordinary step is one claim, asserted; a `notAsserted(…)` step is one claim, not asserted; a
- * `claims(…)` step is however many it makes. That is what lets `summarize` count claims across a
- * run without knowing which shape any given step used.
+ * Every outcome normalizes to a claim list: an ordinary step is one asserted claim, a
+ * `notAsserted(…)` step is one unasserted claim, a `claims(…)` step is however many it makes. That
+ * lets `summarize` count claims without knowing which shape a step used.
  *
- * ⚑ **A step with at least one asserted claim is a PASS.** It checked something, and calling the
- * whole step blank would understate it exactly as badly as calling it a clean pass overstates it —
- * the two errors 142's test pins are the two directions of the same mistake. The unreached claims
- * are counted in their own column instead.
+ * A step with at least one asserted claim is a PASS: calling it blank would understate it as
+ * badly as calling it clean would overstate it. The unreached claims are counted in their own
+ * column.
  *
  * @param {unknown} outcome
  * @returns {{ verdict: 'PASS' | 'NOT ASSERTED' | 'NOT PERFORMED', detail: string | undefined, claims: Claim[] }}
@@ -154,17 +137,14 @@ export function outcomeVerdict(outcome) {
     const entries = outcome.entries
     return {
       verdict: entries.some((entry) => entry.verdict === 'ASSERTED') ? 'PASS' : 'NOT ASSERTED',
-      // The per-step LINE still prints every claim and its verdict verbatim — it always did, and
-      // 206 H1 is about the aggregate above it, not about what a step says for itself.
+      // The per-step line still prints every claim and its verdict verbatim.
       detail: entries.map((entry) => `${entry.verdict}: ${entry.claim}`).join(' · '),
       claims: entries,
     }
   }
   if (isNotPerformed(outcome)) {
-    // ⚑ **One unreached claim, exactly as a blank step contributes one** — the step made no
-    // assertion and the claim column must not pretend otherwise. ⚠️ The two cells are told apart at
-    // the STEP level, which is where the difference is actionable; a claim that was never reached is
-    // the same shape of nothing whichever way it got there.
+    // One unreached claim, as a blank step contributes one. The two cells are told apart at the step
+    // level, where the difference is actionable.
     return { verdict: 'NOT PERFORMED', detail: outcome.why, claims: [unasserted(outcome.why)] }
   }
   if (isNotAsserted(outcome)) {
@@ -175,35 +155,19 @@ export function outcomeVerdict(outcome) {
 }
 
 /**
- * The run's headline, with the four verdicts kept apart.
+ * The run's headline, with the verdicts kept apart.
  *
- * ⛔ **The denominator is still every result**, so nothing is hidden by being renamed; what changed
- * is that `passed` no longer absorbs the cells that asserted nothing.
+ * The denominator is every result, so nothing is hidden by renaming; `passed` does not absorb the
+ * cells that asserted nothing. The failed cell is printed, and the claims are counted beside the
+ * steps: both numbers are needed, since claims alone hide which step is in trouble and steps alone
+ * hide unreached claims. `NOT PERFORMED` (the gesture is gone, or the wait ran out) and
+ * `NOT REACHED` (an earlier step aborted the sequence) are printed too; neither is a `skip` or a
+ * blank. A step past its own deadline is NOT PERFORMED, and a report is computed from the outcome,
+ * not from the plan.
  *
- * ⛔ **And since 202, the failed cell is PRINTED.** This function has computed `failed` since 196
- * and never put it in the line: a run with one red step read `86/88 passed · ⚠️ 1 ran but asserted
- * nothing · 1 skipped`, and the only trace of the failure in the headline was two missing from the
- * denominator. ⚑ That is 196's own subject — *every green is a claim* — one layer up from where 196
- * fixed it, and it was found by a 202 step going red and the summary not saying so.
- *
- * ⛔ **And the CLAIMS are counted beside the steps** (206 H1). A run of 90 steps in which three
- * steps each left one of three sub-claims unreached used to read `90/90 passed`; it now says how
- * many claims those 90 steps actually reached. ⚠️ **Both numbers, never one**: claims alone would
- * hide which step is in trouble, and steps alone is the defect.
- *
- * ⛔ **And since 420, the fifth and sixth cells are printed too** — `NOT PERFORMED` (a step whose
- * gesture the product no longer offers, or whose wait ran out) and `NOT REACHED` (a step the run
- * never got to, because an earlier one aborted the sequence). ⚠️ **Neither is a `skip` and neither
- * is a blank**, and `417` is why they are now separate cells: it removed three launcher controls,
- * every step that drove them died, and the words available to say so were *"FAIL"* — which reads
- * as a broken app — or silence. 🔴 **Standing rule 13**: *"a step past its own deadline is NOT
- * PERFORMED"*, and *"a report is computed from the outcome, not from the plan."*
- *
- * ⚑ **`notReached` is the caller's number, not this function's, and it has to be.** It is
- * `<the steps this instrument offers> − <the ones that produced a row> − <the ones it skipped>`,
- * and only the caller knows the first term: a run that aborts never calls `step()` again, so the
- * missing tokens leave no trace in `results` at all. ⛔ A summary computed from `results` alone
- * cannot see the steps that never happened — which is exactly the absence this cell is for.
+ * `notReached` is the caller's number: `<the steps this instrument offers> − <the ones that
+ * produced a row> − <the ones it skipped>`. Only the caller knows the first term, since a run that
+ * aborts never calls `step()` again and the missing steps leave no trace in `results`.
  *
  * @param {readonly { verdict: string, line: string, name?: string, claims?: Claim[] }[]} results
  * @param {{ skipped?: number, notReached?: number, evidence?: string }} [context]
@@ -223,18 +187,16 @@ export function summarize(results, context = {}) {
   const line =
     `${passed}/${results.length} passed` +
     (blank > 0 ? ` · ⚠️ ${blank} ran but asserted nothing` : '') +
-    // ⛔ **Printed whenever there is one, and never folded into the blanks.** These are the steps
-    // this instrument is no longer performing at all, and a reader who cannot see the number cannot
-    // tell a suite that got smaller from a suite that got greener (420 §4).
+    // Printed whenever there is one, and never folded into the blanks: a reader who cannot see the
+    // number cannot tell a suite that got smaller from one that got greener.
     (unperformed > 0 ? ` · ⚑ ${unperformed} NOT PERFORMED` : '') +
     (notReached > 0 ? ` · ⚑ ${notReached} NOT REACHED` : '') +
     (claimsTotal > 0 ? ` · ${claimsAsserted}/${claimsTotal} claims asserted` : '') +
     (skipped > 0 ? ` · ${skipped} skipped` : '') +
     (failed > 0 ? ` · ⛔ ${failed} FAILED` : '') +
     (context.evidence ? ` · evidence in ${context.evidence}` : '')
-  // Named individually: "four steps asserted nothing" is only actionable if you know WHICH four,
-  // and the reason is usually a fact about the provider worth reading. ⚑ The same rule one level
-  // down: a claim nobody can name is a number nobody can act on.
+  // Named individually: "four steps asserted nothing" is only actionable if you know which four,
+  // and the reason is usually a fact about the provider worth reading.
   const blankClaims = results.flatMap((r) =>
     (r.claims ?? [])
       .filter((c) => c.verdict === 'NOT ASSERTED')
@@ -250,9 +212,8 @@ export function summarize(results, context = {}) {
     claimsTotal,
     line,
     blanks: of('NOT ASSERTED').map((r) => r.line),
-    // ⚑ **Named individually, for the blanks' own reason one cell over.** *"Two steps were not
-    // performed"* is only actionable if you know which two and what took them away — and unlike a
-    // blank, the answer is a thing somebody can put back.
+    // Named individually for the same reason; unlike a blank, the answer is something somebody can
+    // put back.
     unperformed: of('NOT PERFORMED').map((r) => r.line),
     blankClaims,
   }

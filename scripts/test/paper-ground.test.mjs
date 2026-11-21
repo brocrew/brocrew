@@ -13,16 +13,12 @@ import {
 } from '../lib/paper-ground.mjs'
 
 /**
- * ⛔ **402 §2 · the red that was an assertion and not a defect.**
+ * The paper checks must survive a palette change. They once matched one hex value, so moving
+ * `--paper-bg` from `#f7f8fa` to `#f8faff` turned three live steps red on a build where the
+ * reopen they prove worked. The first test below is that exact substitution.
  *
- * Three live steps asserted *"on paper"* by matching one hex value. `391` moved `--paper-bg` from
- * `#f7f8fa` to `#f8faff` in a palette dispatch and all three went red on a build where the reopen
- * they exist to prove worked. ⚑ **The first test below is that exact substitution**, and it is the
- * one thing the old check could not survive and this one must.
- *
- * ⚠️ **Every negative here is paired with the positive on the SAME reading**, because a check with
- * three claims can be made to pass by two of them and this is where that is decidable — a live step
- * cannot construct a surface that lost its scope.
+ * Every negative is paired with the positive on the same reading, because a check with three
+ * claims can pass by two of them, and a live step cannot construct a surface that lost its scope.
  */
 describe('paperVerdict (402 §2)', () => {
   /** What the app really produces today: light scope on the pane, `transparent` at `:root`. */
@@ -31,29 +27,29 @@ describe('paperVerdict (402 §2)', () => {
     paperScoped: 'var(--paper-bg)',
     paperRoot: 'transparent',
   }
-  // ⚠️ `getComputedStyle` substitutes a custom property's `var()`, so what comes back from a real
-  // page is the colour. Both spellings are exercised: the fixture above is what the AUTHORED stream
-  // looks like, and this is what Chromium returns.
+  // `getComputedStyle` substitutes a custom property's `var()`, so a real page returns the colour.
+  // Both spellings are exercised: the fixture above is the authored stream, this is what Chromium
+  // returns.
   const resolved = { ...onPaper, paperScoped: '#f8faff' }
 
   it('⛔ survives the palette move that made the hex literal red — both palettes pass', () => {
     expect(paperVerdict(resolved, 'the reopened conversation')).toMatch(/on paper/)
-    // `391`'s predecessor, unchanged in every way that matters to this claim.
+    // The previous palette, unchanged in every way that matters to this claim.
     const before = {
       paperBg: 'rgb(247, 248, 250)',
       paperScoped: '#f7f8fa',
       paperRoot: 'transparent',
     }
     expect(paperVerdict(before, 'the reopened conversation')).toMatch(/on paper/)
-    // And the literal the three steps used to pin does NOT appear in this module, so it cannot
-    // drift again — the value arrives from the page or it is not used.
+    // The literal the steps used to pin does not appear in this module, so it cannot drift: the value
+    // arrives from the page or it is not used.
     const here = dirname(fileURLToPath(import.meta.url))
     expect(readFileSync(join(here, '../lib/paper-ground.mjs'), 'utf8')).not.toMatch(/rgb\(\s*247/)
   })
 
   it('⛔ claim 2 · a surface that lost its light scope cannot pass by agreeing with itself', () => {
-    // The failure this is here for: `[data-chat-theme="light"]` stops applying, so the pane paints
-    // the app's own ground AND resolves `--chat-bg` to it. Claim 1 holds; the check must not.
+    // The failure this is for: `[data-chat-theme="light"]` stops applying, so the pane paints the
+    // app's own ground and resolves `--chat-bg` to it. Claim 1 holds; the check must not.
     const unscoped = {
       paperBg: 'rgb(13, 17, 24)',
       paperScoped: 'rgb(13, 17, 24)',
@@ -62,7 +58,7 @@ describe('paperVerdict (402 §2)', () => {
     expect(() => paperVerdict(unscoped, 'the reopened conversation')).toThrow(
       /the light scope is not applying/,
     )
-    // ⚑ The paired positive on the same shape — one field different, and it passes.
+    // The paired positive on the same shape: one field different, and it passes.
     expect(paperVerdict({ ...unscoped, paperBg: '#f8faff', paperScoped: '#f8faff' }, 'x')).toMatch(
       /on paper/,
     )
@@ -77,9 +73,9 @@ describe('paperVerdict (402 §2)', () => {
   })
 
   it('⛔ claim 3 · a palette that made the ground dark passes claims 1 and 2 and fails this one', () => {
-    // ⚠️ **This is what the hex literal was standing in for**, and the reason a token comparison
-    // alone would be a tautology: the scope is applying, the paint is the token, and the
-    // conversation has stopped being paper.
+    // This is what the hex literal stood in for, and why a token comparison alone would be a
+    // tautology: the scope is applying, the paint is the token, and the conversation has stopped
+    // being paper.
     const darkPaper = {
       paperBg: 'rgb(20, 24, 30)',
       paperScoped: '#14181e',
@@ -118,9 +114,9 @@ describe('paperVerdict (402 §2)', () => {
   })
 
   it('⛔ the scoped read is taken on the ELEMENT and the control on the document', () => {
-    // ⚠️ The whole of claim 2 is which element each read is taken on, and that is decided here
-    // rather than at three call sites. A reader that took both from `documentElement` would make
-    // claim 2 compare a value with itself and pass for every build.
+    // The whole of claim 2 is which element each read is taken on, decided here rather than at three
+    // call sites. A reader that took both from `documentElement` would compare a value with itself
+    // and pass for every build.
     const fields = paperFields('pane')
     expect(fields).toContain("getComputedStyle(pane).getPropertyValue('--chat-bg')")
     expect(fields).toContain(
@@ -131,17 +127,17 @@ describe('paperVerdict (402 §2)', () => {
 })
 
 /**
- * ⛔ **The same palette move, one row later** (402 §2). `391` took `--text` from `#e7ecf3` to
- * `#e3e8f4`, and the resume smoke's chrome CONTROL — the row that exists to catch a light scope
- * leaking into the app — fired at a rail that had not moved. ⚠️ **A control that goes off for the
- * wrong reason is worse than no control**, because the next reader learns to discount it.
+ * The same palette move, one row later: `--text` changed from `#e7ecf3` to `#e3e8f4`, and the
+ * resume smoke's chrome control, which exists to catch a light scope leaking into the app, fired
+ * at a rail that had not moved. A control that goes off for the wrong reason is worse than none,
+ * because readers learn to discount it.
  */
 describe('chromeInkVerdict (402 §2)', () => {
   const rail = { ink: '#e3e8f4', rootInk: '#e3e8f4', sceneInk: '#28334e' }
 
   it('⛔ survives the palette move, on both palettes', () => {
     expect(chromeInkVerdict(rail, 'the rail')).toMatch(/chrome kept :root ink/)
-    // `391`'s predecessor: every value different, the RELATIONSHIPS identical.
+    // The previous palette: every value different, the relationships identical.
     expect(
       chromeInkVerdict({ ink: '#e7ecf3', rootInk: '#e7ecf3', sceneInk: '#1b1f24' }, 'the rail'),
     ).toMatch(/chrome kept :root ink/)
@@ -169,10 +165,10 @@ describe('chromeInkVerdict (402 §2)', () => {
   })
 
   it('⛔ both fragments splice into an object literal that PARSES', () => {
-    // ⚠️ **The one thing a live step cannot report cheaply.** These fragments are spliced into a
-    // page-side template literal that only Chromium ever evaluates, so a stray comma or a missing
-    // one is a runtime failure inside a $1.45 smoke — and `node --check` on the smoke file cannot
-    // see inside its own string. ⚑ Parsing the composed body here is the same check, at gate time.
+    // A live step cannot report this cheaply: these fragments are spliced into a page-side template
+    // literal that only Chromium evaluates, so a stray comma is a runtime failure inside a paid
+    // smoke, and `node --check` cannot see inside its own string. Parsing the composed body here is
+    // the same check at gate time.
     for (const body of [
       `const pane = document.body; return { theme: 1, ${paperFields('pane')} }`,
       `const rail = document.body; return { chat: 1, ${inkFields('rail')} sceneInk: 1 }`,
@@ -180,7 +176,7 @@ describe('chromeInkVerdict (402 §2)', () => {
     ]) {
       expect(() => new Function(body), body.slice(0, 60)).not.toThrow()
     }
-    // ⛔ …and no BACKTICK in either, because a backtick inside a page-side template ends it.
+    // No backtick in either, because a backtick inside a page-side template ends it.
     expect(paperFields('x') + inkFields('x')).not.toContain('`')
   })
 

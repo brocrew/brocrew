@@ -49,34 +49,23 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 /**
  * What `db/migrations/` holds, so the last line states a fact rather than a memory.
  *
- * ⚑ **D-016 · one migration**, `0000_the_tree`, generated from the final schema, with the one
- * app-policy row written by hand below it. ⛔ **Every table it creates lives in `brobot2.sqlite`,
- * which this script removes whole**, and the one folder the tree writes under `userData/` —
- * `resources/`, where a piece's files are kept — is in `MANIFEST` and goes with it. ⚑ So a fresh
- * base is *MIGRATED AND UNSEEDED*: the tables, the policy row, and nothing else.
+ * One migration, `0000_the_tree`, generated from the final schema, with the one app-policy row
+ * written by hand below it. Every table it creates lives in `brobot2.sqlite`, which this script
+ * removes whole, and the one folder the tree writes under `userData/` (`resources/`, where a
+ * piece's files are kept) is in `MANIFEST` and goes with it. So a fresh base is migrated and
+ * unseeded: the tables, the policy row, and nothing else.
  *
- * ⚠️ A migration added after it owes this count, and the sentence it sits in, a decision:
- * `a-new-durable-write-under-userdata-owes-clean-base-a-decision`. ⚑ **D-042 · `0001_the_model_list`**
- * adds the person's model list — hand-added models and the last pick — in a table it creates EMPTY,
- * so the sentence names both as gone. ⚑ **D-050 · `0002_no_agent_limit`** drops two of that
- * table's columns and creates nothing, so the sentence names nothing more. ⚑ **`0003_the_api_keys`**
- * creates the table of the API keys a person saved, sealed, EMPTY — so the sentence names them as
- * gone. `0004_no_stream_fragments` removes rows and creates nothing, so the sentence names nothing
- * more. `0005_the_fold_index` creates an index and no table, so the sentence names nothing more.
- * `0006_the_inventory_index` creates an index and no table, so the sentence names nothing more.
- * `0007_the_mcp_request_index` creates an index and no table, so the sentence names nothing more.
- * `0008_work_receipt_reads` creates two indexes and no table, so the sentence names nothing more.
- * `0009_the_fold_index_ends_passed_up_questions` recreates an index and creates no table, so the
- * sentence names nothing more. `0011_the_transcript_copy_goes` drops a table and creates nothing, so
- * the sentence names nothing more.
+ * A migration added after it owes this count, and the sentence it sits in, a decision:
+ * `a-new-durable-write-under-userdata-owes-clean-base-a-decision`. Migrations that create a table
+ * empty (`0001_the_model_list`: hand-added models and the last pick; `0003_the_api_keys`: saved,
+ * sealed API keys) make the sentence name what is gone. The rest only drop columns or rows or add
+ * indexes (`0002`, `0004` to `0009`, `0011`), so the sentence names nothing more.
  */
-// Rules provenance, seen state and saved method recovery live in the database being removed.
-// Compatibility connection entries are recreated; personal defaults and credential rows are removed.
 const MIGRATIONS = 33
 
 const FLAGS = new Set([
   '--dry-run',
-  // ⚑ W4.90 — no `--packaged`: every build keeps its data in the one folder (`lib/user-data.mjs`).
+  // No `--packaged`: every build keeps its data in the one folder (`lib/user-data.mjs`).
   '--drop-exports',
   '--keep-profile-auth',
   '--help',
@@ -118,13 +107,11 @@ function bytes(count) {
 }
 
 /**
- * ⛔ **`process.exitCode`, never `process.exit()`** (351, found by measuring it).
- *
- * 🔴 On POSIX, writes to a PIPED stdout or stderr are ASYNCHRONOUS, and `process.exit()` does not
- * wait for them. Measured: a script that `console.log`s 20 000 lines and then calls
- * `process.exit(1)` delivered **937** of them through a pipe. ⚠️ **The path that matters most is the
- * one that exits non-zero after removing things** — the report is the only record of what went, and
- * `351` §3.2 is that a silent success and a silent partial failure must not look identical.
+ * `process.exitCode`, never `process.exit()`. On POSIX, writes to a piped stdout or stderr are
+ * asynchronous and `process.exit()` does not wait for them (measured: a script logging 20 000
+ * lines then calling `process.exit(1)` delivered 937 through a pipe). The path that matters most
+ * is the one that exits non-zero after removing things, since the report is the only record of
+ * what went.
  *
  * Setting the code and returning lets Node drain and exit on its own. The one thing this file must
  * therefore not do is leave a handle open; the gate probe destroys its socket on every path.
@@ -137,8 +124,8 @@ function parse(argv) {
     const arg = argv[i]
     const value = arg === '--dir' ? argv[i + 1] : arg.startsWith('--dir=') ? arg.slice(6) : null
     if (value !== null || arg === '--dir') {
-      // ⛔ **A second `--dir` is a refusal, not last-wins** (351 review). This flag selects what gets
-      // DELETED; silently taking the last of two is how a person watches the wrong directory empty.
+      // A second `--dir` is a refusal, not last-wins. This flag selects what gets deleted; silently
+      // taking the last of two is how a person watches the wrong directory empty.
       if (sawDir) return { error: '--dir was given twice, and it names what gets deleted' }
       sawDir = true
       if (value === undefined || value === null || value === '') {
@@ -157,26 +144,21 @@ function parse(argv) {
 const USAGE = `pnpm clean-base [--dry-run] [--dir <path>] [--drop-exports] [--keep-profile-auth]`
 
 /**
- * 🔴 **The acceptance test, printed** (352 §2.1).
+ * The acceptance test, printed.
  *
- * ⚑ **The launcher's menu is `listProfileIds`**, which is `provider-homes/default/<profile>` read
- * back off the disk — so the only honest way to say what a clean base did to it is to name the
- * homes that were in it. ⚠️ **BroBot's own profile is in the menu whether or not it is on disk**
- * (`provider-homes.ts:164`), which is why the sentence below says what the launcher WILL offer
- * rather than counting what went.
+ * The launcher's menu is `listProfileIds`, which is `provider-homes/default/<profile>` read back
+ * off the disk, so the honest way to say what a clean base did to it is to name the homes that
+ * were in it. BroBot's own profile is in the menu whether or not it is on disk
+ * (`provider-homes.ts:164`), so the sentence says what the launcher will offer rather than
+ * counting what went. The profile's name is read from {@link DEFAULT_PROFILE_LABEL}, not spelled.
  *
- * ⛔ **620 · this said `default` and that stopped being the profile's name at `592`** — the same
- * rename, in the docblock ABOVE the sentence `592` repaired. ⚑ It is named rather than spelled
- * here for {@link DEFAULT_PROFILE_LABEL}'s reason.
+ * Three things this sentence is not allowed to do:
  *
- * ## ⛔ Three things this sentence is not allowed to do (352 review)
- *
- *  - 🔴 **claim the past tense on a preview.** `--dry-run` removed nothing;
- *  - 🔴 **claim it at all when the removal did not finish.** `applyChecked` reports `partly removed`
- *    when one entry could not come off, and one unremovable byte under a profile leaves that whole
- *    profile on disk and in the menu — while the plan, which is all this used to be handed, says it
- *    went. ⛔ That is the half-clean base `351` §3.3 calls worse than not running;
- *  - ⚠️ **say "the launcher" about a home the launcher never listed.** `listProviderHomes` and
+ *  - claim the past tense on a preview: `--dry-run` removed nothing;
+ *  - claim it at all when the removal did not finish: `applyChecked` reports `partly removed` when
+ *    one entry could not come off, and one unremovable byte under a profile leaves that whole
+ *    profile on disk and in the menu. A half-clean base is worse than not running;
+ *  - say "the launcher" about a home the launcher never listed: `listProviderHomes` and
  *    `listProfileIds` read only {@link HOME_FOLDER}, so a home in any other folder is removed by
  *    this reset and was never in the menu. They are printed apart.
  */
@@ -210,16 +192,10 @@ function homesFootnote(plan, { dryRun, keepAuth, partial }) {
     lines.push(...wrap(offMenu, 92, '        '))
   }
   if (!keepAuth && !partial) {
-    // ⚑ **592 · the slug is NOT spelled here, and that is the repair** (`HO-078` §2). ⛔ It read
-    // *"the launcher will offer `default`"*, which the rename made false — and this file cannot
-    // import `DEFAULT_PROFILE_ID`, so spelling the new word would put the same sentence one
-    // rename away from being false again (`a-number-can-survive-the-death-of-its-derivation`, on
-    // a name). ⚠️ **The sentence says WHOSE profile rather than which word**, which is true of
-    // every spelling this app ever seeds and is what a person reading a reset needs to know.
-    // ⛔ **620 · and the NAME is now read rather than restated.** `592` wrote `BroBot` as a
-    // literal here, which is the same failure one level in: correct today, and answerable by
-    // nothing if the app renames itself. {@link DEFAULT_PROFILE_LABEL} is the product's own
-    // constant, held to `runtime-ipc.ts` by a test.
+    // The profile slug is not spelled here: this file cannot import `DEFAULT_PROFILE_ID`, and a
+    // spelled word would be one rename away from being false. The sentence says whose profile rather
+    // than which word. The name itself is read from {@link DEFAULT_PROFILE_LABEL}, the product's own
+    // constant, held to `runtime-ipc.ts` by a test, instead of restated as a literal.
     lines.push(
       dryRun
         ? `      afterwards the launcher would offer ${DEFAULT_PROFILE_LABEL}'s own profile, and nothing else`
@@ -230,34 +206,18 @@ function homesFootnote(plan, { dryRun, keepAuth, partial }) {
 }
 
 /**
- * ⛔ **The last line describes the behaviour this run actually had** (352 §2.4).
+ * The last line describes the behaviour this run actually had.
  *
- * 🔴 **The sentence it replaces was wrong and cost a working day.** `351` printed *"auth.json stays,
- * so Codex does not have to sign in again; provider-homes/ keeps its directories, so the profile
- * names survive"* — as a courtesy, in the report of the very act it was undoing. Both halves were
- * defects, both read as features, and the sentence is what got them relayed as features.
+ * It must not promise that auth or profile names survive: a report is computed from the outcome,
+ * not from the plan or the flag. `standing` and `credentials` are measured off the disk after a
+ * real run ({@link homesOnDisk}); `keepAuth` there only qualifies the sentence, and is named where
+ * a person asked for something and did not get it. `--dir <userData>/.. --keep-profile-auth`
+ * removed the whole userData as one unrecognised entry, so the report must not claim
+ * `provider-homes/` still stands (`kept on purpose` is pushed only when the walk really found a
+ * credential).
  *
- * ## 🔴 539 · and the second time it was wrong it was the FLAG, not the default
- *
- * ⛔ **`return keepAuth ? … : …` selected this sentence from the ARGUMENT.** The PM ran
- * `--dir <userData>/.. --keep-profile-auth` twice; both runs removed the whole userData as one
- * unrecognised entry and both printed *"provider-homes/ still stands: every profile you made is
- * still in the launcher, each with the auth.json it already had"* over a directory that no longer
- * existed. ⚠️ **The report already knew.** `kept on purpose` is pushed only when the walk really
- * found a credential (`planCleanBase`: `keepAuth && homes.kept > 0`), so the two halves of one page
- * contradicted each other and only the false one was read.
- *
- * ⚑ **So `standing` and `credentials` are MEASURED** — off the disk after a real run
- * ({@link homesOnDisk}), from the plan for a preview, which is the one run with no post-state to
- * read. 🔴 **A report is computed from the outcome, not from the plan** — the rule `351` §3.2
- * wrote and this line spent twelve days breaking.
- *
- * ⚠️ **On a REAL run `keepAuth` no longer selects anything**; it only qualifies the sentence, and
- * is named where a person asked for something and did not get it. ⛔ **On a PREVIEW it is still
- * part of the selector, and that is correct rather than an exception** — `standing` there is
- * `keepAuth && plan.sawHomes`, because what a preview predicts is what a run WITH THESE FLAGS
- * would leave, and the flag is the only evidence of that there can be. ⚑ Said out loud so the
- * sentence above is not read as a claim about both paths.
+ * On a preview there is no post-state, so `standing` is `keepAuth && plan.sawHomes`: a preview
+ * predicts what a run with these flags would leave, and the flag is the only evidence of that.
  */
 function nextLaunch({
   keepAuth = false,
@@ -266,8 +226,8 @@ function nextLaunch({
   standing = false,
   credentials = 0,
 } = {}) {
-  // ⛔ **A run that did not finish has no post-state to describe** (352 review). Saying
-  // "provider-homes/ is gone" under a `⛔ left in place` block is the 351 sentence in a new place.
+  // A run that did not finish has no post-state to describe. Saying "provider-homes/ is gone" under
+  // a `left in place` block would repeat the old false sentence.
   if (partial) {
     return (
       `  ⛔ next launch: NOT a clean base. This run could not remove everything it planned to — see ` +
@@ -275,65 +235,51 @@ function nextLaunch({
       `asked to go is still there, and the launcher may still offer profiles you meant to drop.`
     )
   }
-  // ⚑ **The conditional mood on a preview.** `--dry-run` removed nothing, so the indicative would
-  // describe a state this run deliberately did not produce — including the migration it counts,
-  // which a database that was never deleted does not run.
+  // The conditional mood on a preview: `--dry-run` removed nothing, so the indicative would describe
+  // a state this run deliberately did not produce, including the migration it counts, which a
+  // database that was never deleted does not run.
   const opening =
     `  next launch${dryRun ? ', if you run this without --dry-run' : ''}: MIGRATED AND UNSEEDED, ` +
     `not empty — ${String(MIGRATIONS)} migration${MIGRATIONS === 1 ? '' : 's'}, one app-policy row, ` +
     `four compatibility connection entries, no connection defaults, ` +
-    // 🔴 **500 · the one thing on that row a PERSON set, named because this line is where they
-    // learn it went.** ⛔ The approval default lives on `app_policy` and the ledger is deleted, so
-    // a reset puts every new conversation back to asking — which is the decision (a first-time
-    // install has never been asked), not an accident of where the value landed. ⚠️ Saying *one
-    // app-policy row* and stopping would have been true and would have hidden exactly the setting
-    // somebody set once and would not think to check.
-    // 🔴 **516 · and the two registry tables, created EMPTY, named because a person has to be able
-    // to tell *nothing is registered* from *the registry was lost*.** ⛔ The migration writes no row
-    // there and there is no built-in `brobot` registration — BroBot2's own in-process server is
-    // product plumbing with no URL to store (`507` §2.3) — so a clean base really does hold none,
-    // rather than holding some this line failed to mention. ⚠️ **`--keep-profile-auth` does not
-    // preserve these**: it keeps `provider-homes/`, and these rows are in the database this run
-    // deletes. ⚑ **524 · a registered server reaches everyone by default**
-    // (`external_mcp_server.reach`), but a clean base holds no rows at all, so *everyone's* reaches
-    // nothing here.
-    // ⚑ **D-042 · and the model list a person keeps** — a reset that drops it says so. ⚑ And the API
-    // keys a person saved, which live in that database too.
+    // Named because this line is where a person learns it went: the approval default lives on
+    // `app_policy` and the ledger is deleted, so a reset puts every new conversation back to asking,
+    // as a first-time install does. Saying only "one app-policy row" would hide a setting somebody
+    // set once and would not think to check.
+    // The two registry tables are created empty and named, so a person can tell "nothing is
+    // registered" from "the registry was lost". The migration writes no row there and there is no
+    // built-in `brobot` registration (BroBot2's own in-process server has no URL to store).
+    // `--keep-profile-auth` does not preserve these: it keeps `provider-homes/`, and these rows are in
+    // the database this run deletes. A registered server reaches everyone by default
+    // (`external_mcp_server.reach`), but a clean base holds no rows, so that reaches nothing here.
+    // The model list a person keeps and the API keys they saved live in that database too.
     `no approval default set, no external MCP servers and no grants, no hand-added models, no last ` +
     `model picked, no API keys, no conversations` +
     `, no personal skills or skill choices, no history of standing rules or saved methods`
-  // ⛔ **539 · selected by what is THERE, never by what was asked for.** Both arms of this
-  // condition are reachable with the flag passed, which is the whole of the repair: the run that
-  // kept nothing and the run that kept something no longer share a sentence.
+  // Selected by what is there, never by what was asked for: the run that kept nothing and the run
+  // that kept something do not share a sentence, even with the flag passed.
   if (!standing) {
     return (
-      // ⛔ **620 · D23 · the SECOND copy of the sentence `592` repaired, and the one its sweep
-      // could not see.** ⚠️ It read *"the launcher offers `default` and nothing else"* — the same
-      // claim as {@link homesFootnote}'s in different words, split across a `+` at a line break,
-      // so a grep for either whole sentence found neither. 🔴 **This is the last thing a person
-      // reads before relaunching a wiped install**, which is the worst place for a name the app
-      // stopped using at `592` (`HO-078` §2, standing rule 8.1's PERSON half).
+      // The second copy of the sentence {@link homesFootnote} repairs: it claimed the launcher offers a
+      // profile name the app no longer uses, split across a `+` at a line break so a grep for the whole
+      // sentence missed it. It is the last thing a person reads before relaunching a wiped install.
       `${opening} and no profiles: ${HOMES_DIRNAME}/ is gone, so the launcher offers ` +
       `${DEFAULT_PROFILE_LABEL}'s own profile and nothing else. ` +
       `Codex copies ~/.codex/${CODEX_AUTH} into the new home on the first ` +
       `conversation; Claude reads the machine Keychain, which never had a copy to go stale.` +
-      // ⚑ **A person who typed the flag is owed the answer, and silence is not it** (539). A fresh
-      // base has no `provider-homes/` at all, so this is the ordinary outcome of asking for it —
-      // and it is the outcome the false sentence used to hide.
+      // A person who typed the flag is owed an answer, and silence is not one. A fresh base has no
+      // `provider-homes/` at all, so this is the ordinary outcome of asking for it.
       (keepAuth
         ? ` ⛔ You passed --keep-profile-auth and there is nothing here for it to keep: this path ` +
           `has no ${HOMES_DIRNAME}/${dryRun ? '' : ' now'}.`
         : '')
     )
   }
-  // ⚠️ **The flag is NAMED here as a description of the flag, not as a claim about argv** — so the
-  // sentence stays true in the one state nothing can reach today (a tree left standing by a run
-  // that did not ask), instead of carrying an arm no test could ever enter.
-  // ⛔ **539 review · the launcher's list is NOT this line's to give.** `homesOnDisk` counts every
-  // folder, `listProfileIds` reads only {@link HOME_FOLDER}, and the `provider homes` block
-  // above already splits the two — so a count attached to *"still in the launcher"* blurs exactly
-  // what `352` made that footnote print apart. This says what is on DISK and leaves the menu to
-  // the block whose job it is.
+  // The flag is named as a description of the flag, not as a claim about argv, so the sentence stays
+  // true in the one state nothing can reach today (a tree left standing by a run that did not ask).
+  // The launcher's list is not this line's to give: `homesOnDisk` counts every folder while
+  // `listProfileIds` reads only {@link HOME_FOLDER}, and the `provider homes` block above already
+  // splits the two. This says what is on disk and leaves the menu to that block.
   return (
     `${opening} — ${HOMES_DIRNAME}/ still stands, which is what --keep-profile-auth asks for: ` +
     `every profile home you made is still there, ` +
@@ -365,12 +311,11 @@ async function main() {
   const out = []
   out.push(`clean base${dryRun ? ' (dry run — nothing is removed)' : ''} · ${target}`)
 
-  // ⚠️ **The shared folder is said for what it is, at the head of the report** (W4.90): a development
-  // build and an installed BroBot both keep their data there — whether it was named with `--dir` or
-  // fallen back to. ⛔ Until W4.90 this named a second, "packaged" default that no build ever used.
-  // 🔴 **W4.117 · asked of the FOLDER, wherever the target leads** — a link to it, a linked parent, or
-  // another case passed a `resolve()` of each spelling (see `againstTheSharedFolder`). ⚑ A folder
-  // INSIDE it, or one HOLDING it, is said too: what goes from there goes for every one of them.
+  // The shared folder is said for what it is, at the head of the report: a development build and an
+  // installed BroBot both keep their data there, whether named with `--dir` or fallen back to.
+  // Asked of the folder wherever the target leads (a link to it, a linked parent, or another case
+  // passed a `resolve()` of each spelling; see `againstTheSharedFolder`). A folder inside it, or one
+  // holding it, is said too: what goes from there goes for every build.
   const shared = againstTheSharedFolder(target)
   if (shared !== null) {
     const where = {
@@ -390,16 +335,16 @@ async function main() {
     return
   }
   if (anchor.kind === 'absent') {
-    // ⛔ **W4.117 · a link that leads nowhere is not "nothing at this path"** — something IS there,
-    // and whoever made the link meant a folder it no longer reaches.
+    // A link that leads nowhere is not "nothing at this path": something is there, and whoever made
+    // the link meant a folder it no longer reaches.
     const nowhere = aLinkThatLeadsNowhere(anchor.lexical)
     if (nowhere !== null) {
       console.error(`${out.join('\n')}\n\n  ⛔ refused · ${nowhere}`)
       process.exitCode = 1
       return
     }
-    // ⚠️ **A statement about the PATH, not about BroBot's history** (352 review). The old wording
-    // asserted a fact this script cannot know, and printed it, exit 0, for `--dir` with a typo in it.
+    // A statement about the path, not about BroBot's history: the old wording asserted a fact this
+    // script cannot know, and printed it, exit 0, for a `--dir` with a typo in it.
     out.push(
       `  nothing at this path, so there is nothing to remove.` +
         `\n      ⚠️  if you meant a userData that exists, check the spelling — this is what a typo` +
@@ -436,10 +381,10 @@ async function main() {
     keepAuth,
   })
 
-  // ⚠️ **`anchor.real`, not `anchor.lexical`** (351 review). The product builds this root from the
-  // path `app.getPath('userData')` returns, and Chromium resolves `--user-data-dir` before it
-  // answers — so on a symlinked userData the lexical spelling names a sibling that does not exist
-  // and the whole clipboard sweep is silently skipped.
+  // `anchor.real`, not `anchor.lexical`. The product builds this root from the path
+  // `app.getPath('userData')` returns, and Chromium resolves `--user-data-dir` before it answers, so
+  // on a symlinked userData the lexical spelling names a sibling that does not exist and the whole
+  // clipboard sweep is silently skipped.
   const pastedRoot = trustedAnchor(pastedImagesRoot(anchor.real), { repoRoot: REPO_ROOT })
   let pasted = { actions: [], strays: [], refusals: [] }
   if (pastedRoot.kind === 'refused') plan.refusals.push(`the pasted-image root: ${pastedRoot.why}`)
@@ -448,9 +393,8 @@ async function main() {
     plan.refusals.push(...pasted.refusals)
   }
 
-  // ⛔ **Everything is CHECKED before anything is removed** — 351 §3.3. A refusal that arrives from
-  // the middle of a removal loop leaves a half-clean base, which is the one outcome worse than not
-  // running at all, because nothing on screen says which half.
+  // Everything is checked before anything is removed. A refusal from the middle of a removal loop
+  // leaves a half-clean base, worse than not running, because nothing on screen says which half.
   const inUserData = checkPlan(anchor, plan.actions)
   const inPasted =
     pastedRoot.kind === 'trusted'
@@ -473,13 +417,13 @@ async function main() {
 
   const done = applyChecked(inUserData.checked, { dryRun })
   const donePasted = applyChecked(inPasted.checked, { dryRun })
-  // ⛔ **What the report is allowed to claim comes from the OUTCOME, not the plan** (352 review).
-  // One entry that could not be unlinked leaves its whole profile on disk and in the launcher.
+  // What the report may claim comes from the outcome, not the plan. One entry that could not be
+  // unlinked leaves its whole profile on disk and in the launcher.
   const homesPartial = done.some((a) => a.why === HOMES && a.outcome === 'partly removed')
-  // 🔴 **539 · what the last line may say, MEASURED.** A real run HAS a post-state and this reads
-  // it, after the removals and never before; a preview deliberately produced none, so it predicts
-  // from the plan — `sawHomes` is whether `provider-homes/` was a top-level entry at all, and
-  // `kept` is how many managed credentials the walk really found under it.
+  // What the last line may say, measured. A real run has a post-state and this reads it, after the
+  // removals and never before; a preview produced none, so it predicts from the plan: `sawHomes` is
+  // whether `provider-homes/` was a top-level entry at all, and `kept` is how many managed
+  // credentials the walk found under it.
   const after = dryRun
     ? { standing: keepAuth && plan.sawHomes, credentials: plan.kept }
     : homesOnDisk(anchor)
@@ -487,8 +431,8 @@ async function main() {
   out.push('', dryRun ? '  would remove' : '  removed')
   const groups = new Map()
   for (const action of [...done, ...donePasted]) {
-    // ⚑ Only what actually came off. `absent` never existed; `partly removed` says so beside its
-    // own name rather than sitting in this list as if it were finished.
+    // Only what actually came off. `absent` never existed; `partly removed` says so beside its own
+    // name rather than sitting here as if it were finished.
     if (action.outcome === 'absent') continue
     if (!groups.has(action.why)) groups.set(action.why, [])
     groups.get(action.why).push(action)
@@ -506,9 +450,8 @@ async function main() {
     totalBytes += size
     totalPaths += count
     out.push(`    ${why} — ${paths(count)} · ${bytes(size)}`)
-    // ⚑ **Every name, wrapped — never an elision.** `350`'s rule is that an unfamiliar entry must
-    // not be re-labelled, and a line reading `16 entries: Cache, Code Cache, …` has re-labelled the
-    // ones it cut. Being able to read what went is the whole point of the `other` group.
+    // Every name, wrapped, never an elision: an unfamiliar entry must not be re-labelled, and a line
+    // reading `16 entries: Cache, Code Cache, ...` re-labels the ones it cut.
     out.push(
       ...wrap(
         group.map(
@@ -523,15 +466,15 @@ async function main() {
   }
   if (groups.size === 0) out.push('    (nothing — this directory is already a clean base)')
 
-  // ⚑ `350`: "then remove the root only if empty". An unfamiliar entry keeps it, and so does a
-  // failed removal, because `rmdir` refuses a directory that still has anything in it.
+  // Remove the root only if empty. An unfamiliar entry keeps it, and so does a failed removal,
+  // because `rmdir` refuses a directory that still has anything in it.
   let rootFailed = false
   if (pastedRoot.kind === 'trusted' && pasted.strays.length === 0) {
     const root = removeEmptyRoot(pastedRoot, { dryRun })
-    // ⚠️ A continuation of the group above, not a second header for the same group.
+    // A continuation of the group above, not a second header for the same group.
     if (root.removed || root.planned) {
-      // ⚑ **Counted** (352 review). A directory came off disk and the total said `0 paths`, which
-      // is the one number a person reads to know whether the command did anything.
+      // Counted: a directory that came off disk must not leave the total at `0 paths`, the one number a
+      // person reads to know whether the command did anything.
       totalPaths += 1
       out.push(
         root.removed
@@ -539,9 +482,8 @@ async function main() {
           : `      …and the root itself, which a real run would then leave empty: ${pastedRoot.real}`,
       )
     } else {
-      // ⛔ **A removal that failed must reach the exit code** (352 review). This one was printed and
-      // exited 0 — the single path where "a silent success and a silent partial failure look
-      // identical" was true of the very script whose header forbids it.
+      // A failed removal must reach the exit code: printing it and exiting 0 would make a silent partial
+      // failure look like success.
       rootFailed = true
       out.push(`      ⛔ the root stays (${root.why}): ${pastedRoot.real}`)
     }
@@ -550,9 +492,9 @@ async function main() {
   const kept = [
     ...plan.keeps,
     ...pasted.strays.map((name) => ({
-      // ⛔ **`anchor.real`, for the reason written 100 lines above and missed here** (352 review).
-      // On a symlinked userData the lexical spelling names a sibling that does not exist, so the
-      // report told a person their file was kept at a path they would find nothing at.
+      // `anchor.real`, for the reason given above: on a symlinked userData the lexical spelling names a
+      // sibling that does not exist, so the report would tell a person their file was kept at a path
+      // they would find nothing at.
       rel: `${pastedImagesRoot(anchor.real)}/${name}`,
       why: 'not a name BroBot writes into that directory, so it is not ours to remove',
     })),
@@ -563,8 +505,8 @@ async function main() {
     out.push(`      ${keep.why}`)
   }
 
-  // ⚑ `outcome === 'refused'` stood here and `applyChecked` never sets it (352 review) — a
-  // disjunct no mutation could kill, which is a disjunct carrying no rule.
+  // `outcome === 'refused'` is not tested here because `applyChecked` never sets it; such a
+  // disjunct would carry no rule.
   const failed = [...done, ...donePasted].filter((a) => a.failed?.length)
   if (failed.length > 0) {
     out.push('', '  ⛔ left in place')

@@ -7,15 +7,14 @@ import {
 } from '../lib/smoke-target.mjs'
 
 /**
- * The UI smoke must OWN its target (050). During 049 it attached to a shared CDP port held by a
- * DIFFERENT worktree's app, reloaded that app's page and drove someone else's build.
- *
- * These tests pin the guard that makes that impossible. The `listeners`/`executablePath` seams
- * stand in for the OS lookups, so a foreign target is modelled exactly — no second app required.
+ * The UI smoke must own its target: it once attached to a shared CDP port held by a different
+ * worktree's app and drove that build. These tests pin the guard against that. The
+ * `listeners`/`executablePath` seams stand in for the OS lookups, so a foreign target is
+ * modelled without a second app.
  */
 
 const OURS = '/Users/dev/app'
-/** The real shape of the 049 collision: a sibling path that merely SHARES A PREFIX with ours. */
+/** A sibling path that merely shares a string prefix with ours. */
 const FOREIGN = '/Users/dev/app-ui-slice/node_modules/electron/dist/Electron.app/MacOS/Electron'
 
 const guard = (pids, paths) =>

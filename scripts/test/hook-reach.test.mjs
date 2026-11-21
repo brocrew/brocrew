@@ -3,9 +3,9 @@ import { WIDE_READ_MARK, builtHookViolations } from '../lib/tab-flow.mjs'
 
 describe('…and the guard can actually go red', () => {
   /**
-   * ⛔ **310's line, verbatim.** This is the plant-and-find half: it proves the DETECTOR, and on its
-   * own it would prove nothing about whether the real file is ever opened — which is what the
-   * `REACH` floors above are for.
+   * The exact selector that once shipped, verbatim. This is the plant-and-find half: it proves the
+   * detector, and says nothing about whether the real file is opened, which the `REACH` floors
+   * above cover.
    */
   it('🔴 reports the exact selector 310 shipped, with its line number', () => {
     const planted = [
@@ -23,9 +23,9 @@ describe('…and the guard can actually go red', () => {
   })
 
   /**
-   * ⛔ **727 · step 37's line, as it stood from `105` to `722`** — a JSON-quoted id inside a quoted
-   * selector. Its quotes end the attribute at run time, so the live walk refuses it; filled with a
-   * bare `x` it read as a hook here, and the step was red on the first run ever to reach it.
+   * A JSON-quoted id inside a quoted selector. Its quotes end the attribute at run time, so the
+   * live walk refuses it; filled with a bare `x` it read as a hook here, and the live step went red
+   * on the first run to reach it.
    */
   it('🔴 reports a JSON-quoted hole inside a quoted selector, as the live walk does', () => {
     const planted =
@@ -33,18 +33,17 @@ describe('…and the guard can actually go red', () => {
     expect(builtHookViolations(planted)).toHaveLength(1)
   })
 
-  /** 113's shape — a name whose literal head DOES belong to an owned family. */
+  /** A name whose literal head does belong to an owned family. */
   it('🔴 reports a built name whose prefix could be a drawer hook', () => {
     const planted = `const rows = (section) => document.querySelectorAll('[data-cy=' + section + ']')`
     expect(builtHookViolations(planted)).toHaveLength(1)
   })
 
   /**
-   * ⚠️ **The negative half, and each of these WOULD be reported without one specific rule.** Review
-   * checked that claim by removing each rule in turn and re-running every fixture; two of the
-   * original eight passed under every removal, including the guard deleted outright, and are gone or
-   * rewritten. A guard that waves everything through is green on a broken tree, so every legitimate
-   * spelling in the guarded files is named here rather than left to the whole-file assertion above.
+   * The negative half. Each of these would be reported without one specific rule; that was checked
+   * by removing each rule in turn and re-running every fixture, and fixtures that passed under every
+   * removal were dropped or rewritten. A guard that waves everything through is green on a broken
+   * tree, so every legitimate spelling in the guarded files is named here.
    */
   it.each([
     ['a node-side hole, quoted', `const el = document.querySelector('[data-cy="${'${cy}'}"]')`],
@@ -53,18 +52,16 @@ describe('…and the guard can actually go red', () => {
       'a page-side build whose head is provably outside the drawer',
       `document.querySelector('[data-cy=open-session-' + ${'${JSON.stringify(id)}'} + ']')`,
     ],
-    // ⛔ A scan whose value is ALSO built, so the scan rule is what excuses it. Review measured the
-    // first version — a plain `[data-cy^=drawer-tab-]` — passing under every rule removal there is,
-    // including the guard deleted outright: it asserted nothing.
+    // A scan whose value is also built, so the scan rule is what excuses it. A plain
+    // `[data-cy^=drawer-tab-]` passed under every rule removal, including the guard deleted outright.
     [
       'a prefix scan, whose value is built as well',
       `document.querySelectorAll('[data-cy^=' + p + ']')`,
     ],
     ['a literal hook', `document.querySelector('[data-cy=session-info]')`],
-    // ⛔ **The nested hole is written under an OWNED prefix on purpose.** The first version of this
-    // fixture used an ordinary one, and the brace-counting mutation survived it: with `injected-`
-    // absent, the leftover `x.a }` fails `HOOK_NAME` and is then waved through by the prefix rule,
-    // so both readings give the same answer and the comparison measured nothing.
+    // The nested hole is written under an owned prefix on purpose: with an ordinary one, the
+    // brace-counting mutation survived, since with `injected-` absent the leftover `x.a }` fails
+    // `HOOK_NAME` and is then waved through by the prefix rule, so both readings agree.
     [
       'a nested node-side hole, under a prefix a drawer hook could own',
       `document.querySelector('[data-cy=injected-${'${ {a: 1}.a }'}]')`,
@@ -78,10 +75,9 @@ describe('…and the guard can actually go red', () => {
   })
 
   /**
-   * ⚑ **A documented BLIND SPOT, not a rule.** The smokes hand a whole selector to a page-side
-   * helper at eight-odd sites and say at each why. ⛔ The live walk cannot see those either — it is
-   * handed the same string — so this is the same blind spot rather than a new one, and it is here to
-   * be found when somebody asks what the guard's zero means.
+   * A documented blind spot, not a rule. The smokes hand a whole selector to a page-side helper at
+   * eight-odd sites and say at each why. The live walk cannot see those either, so this is the same
+   * blind spot, recorded for whoever asks what the guard's zero means.
    */
   it('⚠️ cannot see a whole selector passed as a parameter — the walk cannot either', () => {
     expect(builtHookViolations(`const el = (sel) => document.querySelector(sel)`)).toEqual([])
@@ -93,14 +89,11 @@ describe('…and the guard can actually go red', () => {
   })
 
   /**
-   * ⛔ **There is no exemption, and this is the assertion that keeps it that way** (345 review).
-   *
-   * A first draft carried a `BUILT_HOOK_MARK`, and measuring it is what removed it: a mark honoured
-   * HERE and not by `assertTabFlow` gives `pnpm run ci` green with the live step still dead — `310`'s
-   * state exactly, reached by following the guard's own instruction. ⚠️ **`WIDE_READ_MARK` is the
-   * one mark this module has, it exempts a read that crosses tabs, and it does not and must not
-   * excuse a hook the walk cannot read** — the live walk checks the unreadable rule first and only
-   * lets the mark past it, so a wide-marked built hook still throws at run time.
+   * There is no exemption, and this assertion keeps it that way. A mark honoured here and not by
+   * `assertTabFlow` gives `pnpm run ci` green with the live step still dead. `WIDE_READ_MARK` is
+   * the one mark this module has: it exempts a read that crosses tabs, and must not excuse a hook
+   * the walk cannot read, since the live walk checks the unreadable rule first and only lets the
+   * mark past it.
    */
   it('⛔ no mark in this module stands a built hook down', () => {
     const built = `document.querySelector('[data-cy=' + cy + ']')`

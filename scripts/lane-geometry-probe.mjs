@@ -35,18 +35,18 @@ const OWNERSHIP_MS = 10_000
 const GESTURE_MS = 8_000
 const POLL_MS = 250
 
-/** What `338` measured in the shipped window, on the HEIGHT axis. */
+/** What was measured in the shipped window, on the height axis. */
 const CLASSIC_BAR = 11
 /**
- * The three widths the delivery names, and a fourth that is the CONTROL.
+ * The three widths the delivery names, and a fourth that is the control.
  *
- * ⛔ **Without the fourth this probe is an instrument nobody has seen fire.** At 1200, 1180 and
- * 1440 nothing overflows `#app` — `.app` is `min-width: var(--app-min-w)` = 1180 — so BOTH
- * `offsetWidth - clientWidth` and `offsetHeight - clientHeight` read 0, which is exactly what the
- * overlay-scrollbar runner reads, and *"the width axis has no bar"* would be unfalsifiable.
- * ⚑ **1000 is under the floor**, so the app overflows horizontally, `overflow-x: auto` draws a
- * CLASSIC bar, and the height axis must read {@link CLASSIC_BAR} — in the same run, in the same
- * window. Only then does a 0 on the width axis mean anything.
+ * Without the fourth this probe is an instrument nobody has seen fire. At 1200, 1180 and 1440
+ * nothing overflows `#app` (`.app` is `min-width: var(--app-min-w)` = 1180), so both
+ * `offsetWidth - clientWidth` and `offsetHeight - clientHeight` read 0, which is what the
+ * overlay-scrollbar runner reads, and "the width axis has no bar" would be unfalsifiable. 1000 is
+ * under the floor, so the app overflows horizontally, `overflow-x: auto` draws a classic bar, and
+ * the height axis must read {@link CLASSIC_BAR} in the same run and window. Only then does a 0 on
+ * the width axis mean anything.
  */
 const WIDTHS = [1200, 1180, 1440, 1000]
 /** The one that is a control rather than a claim. */
@@ -59,8 +59,8 @@ const SHOT_DIR = (() => {
 
 // --- page-side expressions ---
 //
-// ⛔ **No backticks below this line inside an evaluate template, comments included** — a backtick
-// closes the literal, and the resulting syntax error is invisible until the page throws.
+// No backticks below this line inside an evaluate template, comments included: a backtick closes
+// the literal, and the resulting syntax error is invisible until the page throws.
 
 /** The window's own numbers, plus both scrollbar axes on the element that can draw one. */
 const WINDOW_AXES = `
@@ -94,19 +94,13 @@ const LANE = `
 `
 
 /**
- * Open ANY overlay, so the lane exists at all.
+ * Open any overlay, so the lane exists at all.
  *
- * ⛔ **Two openers, in order, and the fallback is the load-bearing one.** Every `OverlayHost` in
- * the app is behind a `v-if` that is false until something opens it, and a FRESH INSTALL has no
- * identity row to press — measured: the first run of this probe reported the lane NOT PERFORMED
- * for exactly that reason. The roster's add button is always there.
- *
- * ## ⚑ 570 · it goes through a DESTINATION now, and the fallback is why
- *
- * ⛔ **`EXT-008` §4.4 took the AGENTS section out of the rail**, so both openers moved onto the
- * Team page and the walk to it is the first step. ⚠️ **The fallback's argument survives intact**
- * and got slightly stronger: `New agent` is drawn on that page's header whether or not the
- * identities read has landed, so a fresh install with no row still has a press.
+ * Two openers, in order, and the fallback is the load-bearing one. Every `OverlayHost` in the app is
+ * behind a `v-if` that is false until something opens it, and a fresh install has no identity row to
+ * press (measured: the first run reported the lane NOT PERFORMED for that reason). Both openers go
+ * through the Team page, so the walk to it is the first step; `New agent` is drawn on that page's
+ * header whether or not the identities read has landed, so there is always a press.
  */
 const OPEN_AN_OVERLAY = `
   const team = document.querySelector('[data-cy=rail-team]')
@@ -115,7 +109,7 @@ const OPEN_AN_OVERLAY = `
   return 'the Team destination'
 `
 
-/** ⚑ The press itself, once the page is up. Separate, because the route needs a frame first. */
+/** The press itself, once the page is up. Separate, because the route needs a frame first. */
 const PRESS_AN_OPENER = `
   const row = document.querySelector('[data-cy^="team-open-"]')
   if (row) { row.click(); return 'an identity row' }
@@ -262,12 +256,11 @@ async function main() {
         }
         if (windowId === null) {
           /**
-           * ⚠️ **A layout override is NOT a resized window, and the row says so.** Electron's CDP
-           * carries no `Browser` domain, so the OS window cannot be resized from here and
-           * `main/index.ts` opens one fixed size. ⚑ What this does buy is the SHIPPED engine
-           * laying the page out at the other two widths — the same Chromium, the same scrollbar
-           * behaviour, the same cascade — which is strictly more than the vitest runner can say
-           * and strictly less than a window a person could drag.
+           * A layout override is not a resized window, and the row says so. Electron's CDP carries no
+           * `Browser` domain, so the OS window cannot be resized from here and `main/index.ts` opens one fixed
+           * size. What this does buy is the shipped engine laying the page out at the other two widths (same
+           * Chromium, same scrollbar behaviour, same cascade): more than the vitest runner can say and less
+           * than a window a person could drag.
            */
           try {
             await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -288,8 +281,8 @@ async function main() {
       rows.push({ asked: width, how, ...axes, lane })
       if (SHOT_DIR) written.push(await cdp.shot(join(SHOT_DIR, `455-window-${String(width)}.png`)))
     }
-    // ⛔ Put the page back, so a screenshot taken after this loop is of the app and not of a
-    // viewport this probe invented.
+    // Put the page back, so a screenshot taken after this loop is of the app and not of a viewport
+    // this probe invented.
     try {
       await cdp.send('Emulation.clearDeviceMetricsOverride')
     } catch {
@@ -300,11 +293,10 @@ async function main() {
     teardown = stop()
   }
 
-  // ⛔ **Two facts, not one** — `tearDownAndRemove`'s own words: whether the processes were REAPED
-  // and whether the directory came off. ⚠️ A first version of this file checked only the second,
-  // and `kill9()`'s result has no `why`, so the line it printed always said `unknown`.
-  // 🔴 A leaked Electron perturbs everything measured after it and must not hide behind a green
-  // line — every other launcher in this repository checks `complete`.
+  // Two facts, not one, in `tearDownAndRemove`'s own words: whether the processes were reaped and
+  // whether the directory came off. `kill9()`'s result has no `why`, so a check of only the second
+  // would print `unknown`. A leaked Electron perturbs everything measured after it and must not hide
+  // behind a green line; every other launcher in this repository checks `complete`.
   if (!teardown.complete) {
     throw new Error(
       `the app this probe launched was not reaped: ${JSON.stringify(teardown)}\n` +
@@ -338,8 +330,8 @@ async function main() {
   if (measured.length === 0) throw new Error('no width was measured — nothing above is a reading')
 
   const failures = []
-  // ⛔ **A report is computed from the OUTCOME** (standing rule 13). A run that measured one width
-  // of four, or never opened an overlay, is not the run this file claims to perform.
+  // A report is computed from the outcome. A run that measured one width of four, or never opened an
+  // overlay, is not the run this file claims to perform.
   if (rows.length !== WIDTHS.length) {
     failures.push(
       `measured ${String(rows.length)} of ${String(WIDTHS.length)} widths — see NOT PERFORMED above`,
@@ -347,9 +339,9 @@ async function main() {
   }
   if (!rows.some((row) => row.lane)) failures.push('no lane was measured at any width')
 
-  // 🔴 **The control, and everything else is read against it.** At the width under the app's own
-  // floor the shipped window must draw a CLASSIC horizontal bar; if it reads 0 there too, this
-  // instrument cannot tell a classic bar from an overlay one and none of its zeroes mean anything.
+  // The control; everything else is read against it. At the width under the app's own floor the
+  // shipped window must draw a classic horizontal bar; if it reads 0 there too, this instrument
+  // cannot tell a classic bar from an overlay one and none of its zeroes mean anything.
   const control = measured.find((row) => row.asked === CONTROL_WIDTH)
   if (!control) failures.push(`the control width ${String(CONTROL_WIDTH)} was not measured`)
   else if (control.appBarHeight !== CLASSIC_BAR) {
@@ -360,9 +352,9 @@ async function main() {
     )
   }
   for (const row of measured) {
-    // 🔴 **The claim this probe exists to settle.** If a classic vertical bar could appear, the
-    // fixed host's 100% would be `innerWidth` short of the window and every panel width in the
-    // delivery would be 11px out in the shipped app.
+    // The claim this probe exists to settle. If a classic vertical bar could appear, the fixed host's
+    // 100% would be `innerWidth` short of the window and every panel width in the delivery would be
+    // 11px out in the shipped app.
     if (row.appBarWidth !== 0) {
       failures.push(
         `at ${String(row.asked)}px #app draws a ${String(row.appBarWidth)}px VERTICAL bar`,
@@ -385,9 +377,9 @@ async function main() {
       failures.push(`at ${String(row.asked)}px the lane ends at ${String(row.lane.right)}, not 210`)
     }
   }
-  // ⚠️ Reported, never asserted: the height-axis bar is the OS's and a machine without one is not
-  // a defect in this app. The number is here so the two axes are never confused again.
-  // ⚠️ **Derived from the readings, not a fixed narrative beside a number that may contradict it.**
+  // Reported, never asserted: the height-axis bar is the OS's and a machine without one is not a
+  // defect in this app. The number is here so the two axes are never confused.
+  // Derived from the readings, not a fixed narrative beside a number that may contradict it.
   process.stdout.write(
     `  ⚑ height-axis bar, per width: ${measured
       .map((row) => `${String(row.asked)}→${String(row.appBarHeight)}px`)

@@ -19,11 +19,10 @@ import { join } from 'node:path'
 /** The placeholder every `${…}` becomes: one identifier, typed `any`, so interpolation never types. */
 const INTERPOLATION = '__interpolated'
 
-// ⚑ **A type the LANGUAGE declares is the only one excluded** — a DOM read the page's `lib` cannot
-// type (`Element.dataset`) is the page's business, not a stale IPC read. ⚠️ Everything else counts,
-// `node_modules` included, and that is deliberate: `AppInfo` is `z.infer<…>`, so its fields'
-// declarations live in zod's own types, and a filter on `apps/` or `packages/` went blind to it.
-// The census's own file is excluded too: a page's own object literal is not the bridge.
+// Only a type the language itself declares is excluded: a DOM read the page's `lib` cannot type
+// (`Element.dataset`) is the page's business. Everything else counts, `node_modules` included:
+// `AppInfo` is `z.infer<…>`, so its fields are declared in zod's own types. The census's own
+// file is excluded too, since a page's own object literal is not the bridge.
 const THE_LANGUAGE = /[\\/]node_modules[\\/]typescript[\\/]lib[\\/]/
 const MENTIONS_API = /\bwindow\.api\b/
 
@@ -42,8 +41,8 @@ function parsesAsAPage(ts, body) {
 }
 
 /**
- * ⚑ **A call that runs its argument IN THE PAGE** — `cdp.evaluate`, `#evaluateRaw`, and
- * `app-closes-check.mjs`'s `evaluateInPage`: every executor in these smokes is named for it.
+ * A call that runs its argument in the page: `cdp.evaluate`, `#evaluateRaw`, and
+ * `app-closes-check.mjs`'s `evaluateInPage`.
  */
 const EXECUTOR = /^#?evaluate/
 
@@ -69,18 +68,17 @@ function isInsideAnEvaluate(ts, node) {
 }
 
 /**
- * ⚑ **Every page in one file** — cooked text, file, and the line it starts on.
+ * Every page in one file: cooked text, file, and the line it starts on.
  *
- * ⚑ **A candidate is any string or template that names `window.api`.** One that parses as a page
- * body is a page, and is type-checked. ⛔ **One that does not parse is REFUSED** (`unparsed`) when it
- * is a template or sits inside an `evaluate(` argument — page code the compiler cannot read is
- * page code this census cannot see. ⚠️ **A plain string that does not parse and is not handed to
- * `evaluate` is PROSE** — an error message naming the bridge — and is returned as such, never
- * checked. That is the one place it is blind: page code split across concatenated plain strings,
- * built OUTSIDE the arguments of a page executor.
+ * A candidate is any string or template that names `window.api`. One that parses as a page body
+ * is type-checked. One that does not parse is refused (`unparsed`) when it is a template or sits
+ * inside an `evaluate(` argument. A plain string that does not parse and is not handed to
+ * `evaluate` is prose (an error message naming the bridge) and is returned as such; the blind
+ * spot is page code split across concatenated plain strings built outside a page executor's
+ * arguments.
  *
- * ⛔ A matched template is not descended into: a template nested in one of its `${…}` is Node-side
- * code that builds the page, never the page.
+ * A matched template is not descended into: a template nested in one of its `${…}` is Node-side
+ * code that builds the page.
  */
 export function pageTemplatesIn(ts, file, text) {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
@@ -114,15 +112,14 @@ export function pageTemplatesIn(ts, file, text) {
 }
 
 /**
- * 🔴 **Type-check the pages and return the reads no declared arm has.**
- *
- * ⚑ One program for every page, so the cost is one compile (~9 s measured on 49 pages, 2026-09-23).
- * `syntactic` is returned rather than thrown so a caller can say WHICH page did not parse.
+ * Type-check the pages and return the reads no declared arm has. One program covers every page,
+ * so the cost is one compile (~9 s measured on 49 pages). `syntactic` is returned rather than
+ * thrown so a caller can say which page did not parse.
  */
 export function staleIpcReads(ts, root, pages) {
-  // ⚑ The page's own declaration of the bridge, as a ROOT file of the program, so its global
-  // augmentation types `window.api` exactly as the renderer compiles it. ⛔ The census adds only an
-  // index signature — a page's own globals (`window.__paste254`) are the page's business.
+  // The page's own declaration of the bridge, as a root file of the program, so its global
+  // augmentation types `window.api` exactly as the renderer compiles it. The census adds only an
+  // index signature: a page's own globals are the page's business.
   const rendererWindow = join(root, 'apps/desktop/src/renderer/src/env.d.ts')
   const header =
     'declare global {\n' +
@@ -204,8 +201,8 @@ export function staleIpcReads(ts, root, pages) {
   for (const diagnostic of program.getSemanticDiagnostics(source)) {
     const node = nodeAt(diagnostic.start)
     if (!node) continue
-    // ⚑ **A read the type does not have** (2339, and 2551's *did you mean*) — off a property access
-    // or out of a destructuring pattern.
+    // A read the type does not have (2339, and 2551's "did you mean"), off a property access or
+    // out of a destructuring pattern.
     if ((diagnostic.code === 2339 || diagnostic.code === 2551) && ts.isIdentifier(node)) {
       let objectType = null
       if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
@@ -224,9 +221,9 @@ export function staleIpcReads(ts, root, pages) {
       )
       continue
     }
-    // ⚑ **A key or a value the bridge's INPUT does not take** (2353/2561 an unknown key, 2322 a value
-    // outside the field's type) — an object literal the page hands the bridge. ⚠️ The wire schema
-    // strips an unknown key silently, so a renamed input field launches on a default instead.
+    // A key or value the bridge's input does not take (2353/2561 unknown key, 2322 value outside the
+    // field's type) in an object literal the page hands the bridge. The wire schema strips an unknown
+    // key silently, so a renamed input field would launch on a default.
     if (
       (diagnostic.code === 2353 || diagnostic.code === 2561 || diagnostic.code === 2322) &&
       ts.isIdentifier(node) &&
@@ -239,8 +236,8 @@ export function staleIpcReads(ts, root, pages) {
       report(diagnostic, node.parent.getText(), inputType)
       continue
     }
-    // ⚑ **A comparison that can never be true** (2367) — a literal no longer in a field's union,
-    // read off a value whose type the app declares (`ack.outcome === 'taken'`).
+    // A comparison that can never be true (2367): a literal absent from a field's union, read off a
+    // value whose type the app declares (`ack.outcome === 'taken'`).
     if (diagnostic.code === 2367) {
       let comparison = node
       while (
@@ -271,7 +268,7 @@ export function staleIpcReads(ts, root, pages) {
   return { findings, syntactic }
 }
 
-/** ⚑ The whole census over files under `root`: pages, refused candidates, prose, findings. */
+/** The whole census over files under `root`: pages, refused candidates, prose, findings. */
 export function censusOf(root, files, extraPages = []) {
   const ts = typescriptAt(root)
   const pages = []

@@ -58,8 +58,8 @@ function withFile(file, text) {
 }
 
 /**
- * Apply a mutation and REFUSE to continue if the anchor was not found. 118's rule: a mutation that
- * silently no-ops leaves the test asserting over an unchanged string and passing for free.
+ * Apply a mutation and refuse to continue if the anchor was not found: a mutation that silently
+ * no-ops leaves the test asserting over an unchanged string and passing for free.
  */
 function mutate(file, from, to) {
   const text = source(file)
@@ -75,32 +75,18 @@ const LIBRARY = 'components/SessionLibrary.vue'
 
 describe('the guard over the renderer tree', () => {
   /**
-   * ⛔ **A known defect, named rather than tolerated in silence.**
+   * A known defect, named rather than tolerated in silence. `--space-13` does not exist (the ladder
+   * goes `--space-12: 24px` then `--space-14: 28px`) and `SessionChanges.vue`'s `.empty` writes
+   * `padding: var(--space-12) var(--space-9) var(--space-13)`. The whole declaration is invalid at
+   * computed-value time, so that block loses all four sides of its padding.
    *
-   * `--space-13` does not exist — the spacing ladder goes `--space-12: 24px` then `--space-14: 28px`
-   * — and `SessionChanges.vue`'s `.empty` writes
-   * `padding: var(--space-12) var(--space-9) var(--space-13)`. Because the whole declaration is
-   * invalid at computed-value time, that block loses **all four sides** of its padding, not just
-   * the bottom one. It arrived with the Changes pane in `096` and `125 §4` rules it explicitly out
-   * of scope: *"Do NOT fix anything it turns up beyond `--surface-1` — name them and stop."*
-   *
-   * It is listed here so a NEW one fails the build while this one stays visible in the source. When
-   * the PM rules on it, this entry goes and the assertion tightens to an empty list by itself.
-   *
-   * ⚑ **The line moved 433 → 444 in `299` and 444 → 505 in `541`**, which is this pin working
-   * exactly as its author intended: eleven lines were added above it in the first case (the
-   * sentence a window release's dropped reports are said in) and sixty-one in the second (the
-   * docblocks `541` left where it moved every size in that stylesheet onto a ROLE). The finding is
-   * unchanged and still unfixed — ⛔ **and `541` is the dispatch that raised the type inside this
-   * very block**, so the empty state a clean base shows is now readable and still has no padding.
-   *
-   * ⚠️ **The LINE is part of the pin, deliberately.** Review found the weaker key: `token in file`
-   * would still pass if this one were fixed and a different `--space-13` appeared elsewhere in the
-   * same file. The cost is that an unrelated edit above line 433 makes this fail — with a message
-   * naming the new line, so it is a reading rather than a puzzle.
+   * It is listed so a new one fails the build while this one stays visible. The line is part of the
+   * pin deliberately: keying on `token in file` would still pass if this one were fixed and a
+   * different `--space-13` appeared elsewhere in the file. An unrelated edit above the line makes
+   * this fail with a message naming the new line.
    */
-  // ⚑ **Empty since the app-wide look unified the tokens**: `--space-13` is declared now, so the
-  // assertion tightened to an empty list, as this note said it would.
+  // Empty since the app-wide look unified the tokens: `--space-13` is declared now, so the
+  // assertion tightened to an empty list.
   const KNOWN = []
 
   it('every var(--x) is declared in this tree, or carries a fallback', () => {
@@ -112,9 +98,9 @@ describe('the guard over the renderer tree', () => {
   })
 
   /**
-   * ⚠️ **The scan is really reading the tree.** A walker that matched nothing, a comment stripper
-   * that ate the file, a regex that never fired — every one of those produces a clean report, which
-   * is indistinguishable from a clean tree unless the volume is asserted too.
+   * The scan is really reading the tree. A walker that matched nothing, a comment stripper that ate
+   * the file, or a regex that never fired all produce a clean report, indistinguishable from a clean
+   * tree unless the volume is asserted too.
    */
   it('…and it is reading a real tree, not an empty one', () => {
     expect(tree.size).toBeGreaterThan(80)
@@ -143,11 +129,11 @@ describe('the guard over the renderer tree', () => {
   })
 
   /**
-   * The other list — reported, not enforced. These four are undeclared everywhere and every use
-   * carries a fallback, which the rule permits. `125 §4` says a sweep is the PM's call, so they are
-   * pinned here to stay visible rather than fixed.
+   * The other list, reported and not enforced. These four are undeclared everywhere and every use
+   * carries a fallback, which the rule permits. A sweep is the PM's call, so they are pinned here to
+   * stay visible rather than fixed.
    */
-  // ⚑ **Empty since the app-wide look**: SignInPanel's four fallback names became semantic tokens.
+  // Empty since the app-wide look: SignInPanel's four fallback names became semantic tokens.
   it('no token is fallback-only, and nothing has quietly joined the empty list', () => {
     expect(fallbackOnlyTokens(tree).map((t) => t.token)).toEqual([])
   })
@@ -187,10 +173,10 @@ describe('⛔ it catches both tokens this class has already cost', () => {
   })
 
   /**
-   * ⛔ **And the correction, asserted rather than described.** This is `105`'s defect *verbatim* —
-   * the string git says was on `SessionLibrary.vue:581` before `a67e476` — and the guard passes it,
-   * because `125 §3` rules that form legal. A reader who assumed this file catches "the `--warning`
-   * bug" would be wrong about which half.
+   * The correction, asserted rather than described. This is the shipped defect verbatim, the string
+   * that was once in `SessionLibrary.vue`, and the guard passes it because a
+   * fallback form is legal. A reader who assumed this file catches "the `--warning` bug" would be
+   * wrong about which half.
    */
   it('105 as it ACTUALLY shipped — var(--warning, var(--text-soft)) — passes, by design', () => {
     const mutated = mutate(
@@ -237,12 +223,10 @@ describe('what the scanner does and does not see', () => {
   })
 
   /**
-   * ⛔ **The false negative review found, closed and pinned.** `//` is a line comment in JS and is
-   * NOT a CSS comment, so the first version of this scanner read `<script setup>` as CSS — and one
-   * `// --space-13: was 26px` anywhere in the tree made the guard's single real finding vanish.
-   * Reproduced by review against the real tree, which is the only reason it is not still true.
-   *
-   * The fix is a boundary rather than a second comment stripper: only `<style>` blocks are CSS.
+   * `//` is a line comment in JS and not a CSS comment, so an earlier version of this scanner read
+   * `<script setup>` as CSS, and one `// --space-13: was 26px` anywhere in the tree made the guard's
+   * single real finding vanish. The fix is a boundary rather than a second comment stripper: only
+   * `<style>` blocks are CSS.
    */
   it('⛔ a token named in a // comment or in template PROSE declares nothing', () => {
     const vue = [
@@ -268,10 +252,9 @@ describe('what the scanner does and does not see', () => {
   })
 
   /**
-   * ⚠️ **The formatter could have caused this one on its own.** `prettier --write .` runs in CI at
-   * `printWidth: 100`, and it breaks inside `var(` when the call is long enough. A line-based
-   * scanner read `var(\n  --x\n)` as zero uses — a silent blind spot arriving with a reformat that
-   * nobody would connect to this guard. Found in review; the scan now runs over the whole region.
+   * `prettier --write .` runs in CI at `printWidth: 100` and breaks inside `var(` when the call is
+   * long enough. A line-based scanner read `var(\n  --x\n)` as zero uses, a silent blind spot after
+   * a reformat nobody would connect to this guard. The scan runs over the whole region.
    */
   it('⚠️ a var( that prettier split across lines is still a use, at the line it starts on', () => {
     const css = ['.x {', '  color: var(', '    --a-very-long-name,', '    #fff', '  );', '}'].join(
@@ -285,8 +268,8 @@ describe('what the scanner does and does not see', () => {
   })
 
   it('⛔ a token named only inside a COMMENT is not declared', () => {
-    // This is the one that would have hidden 125 from its own guard: two components carry long
-    // comments about `--surface-1`, and one of them now quotes the declaration it replaced.
+    // This is the one that would have hidden the finding from its own guard: two components carry long
+    // comments about `--surface-1`, and one of them quotes the declaration it replaced.
     expect([
       ...tokenDeclarationsIn('/* --surface-1: #101010; */ .x { color: var(--surface-1); }'),
     ]).toEqual([])
@@ -312,10 +295,10 @@ describe('what the scanner does and does not see', () => {
   })
 
   /**
-   * ⚠️ **Stated, because it is the guard's real limit.** `AgentState` writes `` `var(${dotToken})` ``
-   * and the name arrives from `agent-state.ts` at runtime. No static scan can resolve that, so those
-   * uses are invisible here — not caught, and not falsely reported either. `agent-state.test.ts`
-   * pins that table's tokens, which is the other half of the answer.
+   * The guard's real limit. `AgentState` writes `` `var(${dotToken})` `` and the name arrives from
+   * `agent-state.ts` at runtime. No static scan can resolve that, so those uses are invisible here,
+   * neither caught nor falsely reported. `agent-state.test.ts` pins that table's tokens, which is
+   * the other half of the answer.
    */
   it('⚠️ a computed var(${…}) is invisible to it — neither caught nor falsely reported', () => {
     expect(tokenUsesIn('.x { color: var(${dotToken}); }')).toEqual([])

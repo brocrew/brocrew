@@ -166,7 +166,7 @@ async function launch(userDataDir) {
       45_000,
       'a window',
     )
-    // ⛔ The security block: the port's listener must be THIS launch, never somebody else's app.
+    // Security: the port's listener must be this launch, never somebody else's app.
     const holders = whoHoldsPort(port)
     const mine = await pidsLaunchedOn(userDataDir)
     if (holders.state !== 'held' || !holders.pids.every((pid) => mine.includes(pid))) {
@@ -186,7 +186,7 @@ async function launch(userDataDir) {
     )
     return { lifecycle, session, appPid: holders.pids[0], done, output: () => output }
   } catch (error) {
-    // ⚑ Said on the error, so the caller keeps the directory when this reap did not complete.
+    // Said on the error, so the caller keeps the directory when this reap did not complete.
     const reaped = lifecycle.kill9().complete
     done()
     throw Object.assign(error instanceof Error ? error : new Error(String(error)), { reaped })
@@ -261,11 +261,11 @@ async function runArm(arm) {
   let first = null
   let firstReaped = false
   let second = null
-  // ⚠️ A launch that threw after taking ownership reaped itself, and says whether it completed.
+  // A launch that threw after taking ownership reaped itself, and says whether it completed.
   let aLaunchLeftRunning = false
   try {
     first = await launch(userDataDir)
-    // ⚑ Read BEFORE the typing, so nothing slow stands between the words and the quit.
+    // Read before the typing, so nothing slow stands between the words and the quit.
     const pids = await pidsLaunchedOn(userDataDir)
     const typedAt = await type(first.session, text)
     if (arm.wait > 0) await sleep(arm.wait)
@@ -285,7 +285,7 @@ async function runArm(arm) {
       }
       row.quitWithin30s = await gone(pids, 30_000)
       firstReaped = row.quitWithin30s || first.lifecycle.kill9().complete
-      // ⚑ The app's own account of its quit — `keep its unsent drafts` is the step that waited.
+      // The app's own account of its quit; `keep its unsent drafts` is the step that waited.
       row.shutdownReport = /BroCrew shut down in [^\n]*/.exec(first.output())?.[0] ?? null
       first.session.close()
       first.done()
@@ -297,11 +297,11 @@ async function runArm(arm) {
     row.localStorageBack = row.localStorage === text
   } catch (error) {
     if (error?.reaped === false) aLaunchLeftRunning = true
-    // ⚑ On the row, so what the teardown below decides is reported beside it.
+    // On the row, so what the teardown below decides is reported beside it.
     row.error = error instanceof Error ? error.message : String(error)
   } finally {
-    // ⛔ Every launch is reaped by the identities it was captured with, and the directory comes off
-    // only when every reap completed — never from under an app still writing to it.
+    // Every launch is reaped by the identities it was captured with, and the directory comes off
+    // only when every reap completed, never from under an app still writing to it.
     if (first !== null && !firstReaped) {
       firstReaped = first.lifecycle.kill9().complete
       first.session.close()
@@ -328,7 +328,7 @@ async function runArm(arm) {
 async function main() {
   if (!existsSync(ENTRY)) throw new Error(`${ENTRY} is not built — run \`pnpm run build\` first`)
   const rows = []
-  // ⚑ `--arm <name>` runs one arm — for measuring a build variant on the one question it changes.
+  // `--arm <name>` runs one arm, for measuring a build variant on the one question it changes.
   const only = process.argv.indexOf('--arm')
   const arms = only === -1 ? ARMS : ARMS.filter((arm) => arm.name === process.argv[only + 1])
   if (arms.length === 0) throw new Error(`no arm is called ${String(process.argv[only + 1])}`)
@@ -341,7 +341,7 @@ async function main() {
   }
   console.log(`desktop: ${DESKTOP}`)
   for (const row of rows) console.log(JSON.stringify(row))
-  // ⚑ The localStorage reading is the kill-0.5s launch's own key, read back by the same relaunch —
+  // The localStorage reading is the kill-0.5s launch's own key, read back by the same relaunch,
   // and it is a reading only when that arm ran to the end.
   const ls = rows.find(
     (row) => row.arm === 'kill-0.5s' && typeof row.localStorageBack === 'boolean',

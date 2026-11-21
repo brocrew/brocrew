@@ -1,11 +1,10 @@
 /**
- * ⚑ **How many times each release file was downloaded, one row per file per day** — the daily
- * record `.github/workflows/download-counts.yml` keeps on the `download-counts` branch.
+ * How many times each release file was downloaded, one row per file per day: the daily record
+ * `.github/workflows/download-counts.yml` keeps on the `download-counts` branch.
  *
- * GitHub counts the downloads of every file a release carries (`download_count` on each asset) and
- * keeps only the running total. This writes that total down once a day, so a day's downloads are
- * the difference between two rows. ⛔ Metadata only: the release's tag, the file's name and its
- * count — nothing about who downloaded it, which GitHub does not tell anyway.
+ * GitHub keeps only the running `download_count` of each release asset. This writes that total
+ * down once a day, so a day's downloads are the difference between two rows. Metadata only: the
+ * release's tag, the file's name and its count, nothing about who downloaded it.
  *
  * Run: `node scripts/download-counts.mjs <releases.json> <counts.csv> <YYYY-MM-DD>`, where
  * `releases.json` is `gh api --paginate --slurp repos/<owner>/<repo>/releases`. It rewrites
@@ -50,7 +49,7 @@ export function rowsFrom(releases, day) {
   )
 }
 
-/** ⚑ The record with `day`'s rows put in: any earlier rows for that day replaced, the rest kept. */
+/** The record with `day`'s rows put in: any earlier rows for that day replaced, the rest kept. */
 export function withTheDay(csv, rows, day) {
   const kept = csv
     .split('\n')
@@ -76,7 +75,7 @@ export function summaryOf(rows, day) {
   return lines.join('\n')
 }
 
-// ⚠️ Only when this file IS the command. Importing it from the test must not exit the runner.
+// Only when this file is the command. Importing it from the test must not exit the runner.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const [releasesFile, csvFile, day] = process.argv.slice(2)
   if (day === undefined) {

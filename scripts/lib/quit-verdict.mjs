@@ -1,42 +1,31 @@
 /**
  * Give clean exit and last-resort stop distinct verdict tokens at the front of the line.
- * Both outcomes pass the gate: Electron can reach its quit phases yet need the detached
- * closer, and that bound doing its job must not become a failure.
+ * Both pass the gate: Electron can reach its quit phases yet need the detached closer, and
+ * that bound doing its job must not become a failure.
  *
- * Keep `quit:check ✔` for clean exits so existing readers continue to find them; STOPPED is
- * separately countable without reading a trailing caveat. This one line remains the readable
- * and machine-readable result, with no second channel or load threshold.
+ * Keep `quit:check ✔` for clean exits so existing readers find them; STOPPED is separately
+ * countable without reading a trailing caveat. This one line is the whole result.
  *
  * Do not use smoke-step aggregation here: a force-stopped quit can satisfy most shutdown
- * assertions, yet must retain its stopped verdict. Direct controls exercise this otherwise
- * load-dependent arm without needing to create an engine hang.
+ * assertions yet must keep its stopped verdict. Direct controls exercise the load-dependent arm.
  */
 
 /**
- * ⛔ **The app's own words, matched rather than inferred.**
+ * The app's own words, matched rather than inferred. `apps/desktop/src/main/last-resort-exit.ts`
+ * bakes this sentence into the closer's program and prints it immediately before the SIGKILL, so
+ * there is no stop without it. The two files cannot import each other: `quit-verdict.test.mjs`
+ * derives its fixture from the closer's source and `one-app.test.ts` keeps the spellings in step.
  *
- * `apps/desktop/src/main/last-resort-exit.ts` bakes this into the closer's program — *"BroBot2
- * asked Electron to exit 2000ms ago and is still running; everything of ours is closed, so it is
- * being stopped now"* — and the closer prints it immediately BEFORE `process.kill(target,
- * "SIGKILL")`, so there is no stop without the sentence. ⚠️ **The two files cannot import each
- * other**, so `quit-verdict.test.mjs` derives the fixture from the closer's source and
- * `one-app.test.ts` keeps the spellings in step, exactly as the `ipc.ts` refusal sentence is kept.
- *
- * ⚑ **And the absence of it is only meaningful because the gate has already proved the app's words
- * arrived.** `app-closes-check.mjs` goes red when the shutdown report is missing — *"the app closed
- * inside the budget but said NOTHING about where the time went"* — which is what stops `exited`
- * being the answer to a question nobody could hear. ⛔ That ordering is asserted, not assumed.
+ * Its absence is meaningful only because the gate has already proved the app's shutdown report
+ * arrived (`app-closes-check.mjs` goes red when it is missing), and that ordering is asserted.
  */
 export const LAST_RESORT_SAID = 'is being stopped now'
 
 /**
- * 🔴 **The two ways a quit ends. There is no third, and both are green.**
- *
- * ⛔ **Every cell carries all three of its parts**, because the defect was a cell that carried only
- * a mark while the other carried a mark and a sentence. ⚠️ **The reasons are a negation pair on
- * purpose and neither contains the other**: `did not exit on its own` matches the stopped line and
- * only the stopped line, which keeps every brief that already greps for that phrase correct rather
- * than stale — asserted in `quit-verdict.test.mjs`, not hoped for.
+ * The two ways a quit ends; there is no third, and both are green. Every cell carries a mark,
+ * a word and a reason. The reasons are a negation pair and neither contains the other:
+ * `did not exit on its own` matches the stopped line only, which keeps existing greps correct
+ * (asserted in `quit-verdict.test.mjs`).
  */
 export const QUIT_VERDICTS = Object.freeze({
   exited: Object.freeze({
@@ -54,11 +43,10 @@ export const QUIT_VERDICTS = Object.freeze({
 /**
  * Which cell this run landed in, read from what the app itself wrote.
  *
- * ⚠️ **A non-string is `exited`, and that is the wrong-but-safe direction on purpose.** The caller
- * reads the app's output from a FILE whose read already answers `''` on failure, and a gate that
- * announced a force-stop because its own `readFileSync` threw would be `326` again — an instrument
- * reporting itself as the product. ⛔ The honest guard against a lost report is the gate's own
- * shutdown-report assertion, which is red rather than green and runs first.
+ * A non-string is `exited`, the wrong-but-safe direction on purpose: the caller's file read
+ * already answers `''` on failure, and a gate that announced a force-stop because its own read
+ * threw would be an instrument reporting itself as the product. A lost report is caught by the
+ * gate's shutdown-report assertion, which is red and runs first.
  *
  * @param {unknown} appOutput — everything the app wrote to its own stdout and stderr.
  * @returns {'exited' | 'stopped'}
@@ -70,12 +58,9 @@ export function quitVerdict(appOutput) {
 }
 
 /**
- * The verdict, its cell, and the head of the line `quit:check` prints.
- *
- * ⛔ **The head, rather than the whole line, and the boundary is deliberate.** Everything after it
- * — window, port, gate, teardown — is measurement the gate owns and this module has no opinion
- * about; folding it in here would move six numbers into a file whose subject is one word, and would
- * put a second copy of `since()` in the tree.
+ * The verdict, its cell, and the head of the line `quit:check` prints. Only the head: the rest
+ * (window, port, gate, teardown) is measurement the gate owns, and folding it in would put a
+ * second copy of `since()` in the tree.
  *
  * @param {{ output: unknown, closedIn: string, budgetMs: number }} run
  * @returns {{ verdict: 'exited' | 'stopped', mark: string, word: string, because: string, head: string }}

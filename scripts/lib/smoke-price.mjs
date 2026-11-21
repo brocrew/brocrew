@@ -14,10 +14,9 @@ export const RATES_AS_OF = '2026-08-25'
 /**
  * $ per 1M tokens, by model: `[input, output, cacheRead, cacheWrite5m, cacheWrite1h]`.
  *
- * ⚠️ **Keyed by the model id the PROVIDER wrote into its own transcript**, not by the id we asked
- * for — those differ (a request for `claude-haiku-4-5` is recorded as
- * `claude-haiku-4-5-20251001`), and pricing the string we sent would price a model that may not be
- * the one that answered.
+ * Keyed by the model id the provider wrote into its own transcript, not the id we asked for (a
+ * request for `claude-haiku-4-5` is recorded as `claude-haiku-4-5-20251001`); pricing the string we
+ * sent could price a model that did not answer.
  */
 export const RATES = {
   'claude-haiku-4-5-20251001': [1.0, 5.0, 0.1, 1.25, 2.0],
@@ -26,11 +25,9 @@ export const RATES = {
 }
 
 /**
- * The usage a provider recorded for ONE model, over a whole run.
- *
- * ⚠️ **Deduplicated by message id.** A resumed conversation replays its own transcript into a second
- * file, so the same billed message appears more than once on disk; counting both would inflate every
- * total on any run that reopens anything — which is most of them.
+ * The usage a provider recorded for one model, over a whole run, deduplicated by message id: a
+ * resumed conversation replays its transcript into a second file, so the same billed message appears
+ * more than once on disk, and counting both would inflate every run that reopens anything.
  */
 export function tallyUsage(records) {
   const seen = new Set()
@@ -91,10 +88,9 @@ export function priceRow(row, rates = RATES) {
 /**
  * Price a whole tally.
  *
- * ⛔ **`unpriced` is a first-class part of the answer.** A model this file has no rate for is named
- * and its tokens are reported; it is NOT added to the total as zero, and the caller is expected to
- * say so out loud. That is the same rule the smoke's own tri-state follows: not knowing is a third
- * answer, and printing it as a small number is the one thing that must not happen.
+ * `unpriced` is part of the answer: a model this file has no rate for is named and its tokens are
+ * reported, never added to the total as zero, and the caller is expected to say so. Not knowing is a
+ * third answer, and printing it as a small number must not happen.
  */
 export function priceTally(rows, rates = RATES) {
   let total = 0
@@ -150,7 +146,7 @@ export function readJsonl(path) {
 }
 
 /**
- * ⚑ **Is this transcript a Codex rollout?** — read off its RECORDS, never its path: a rollout's
+ * Whether this transcript is a Codex rollout, read off its records and never its path: a rollout's
  * lines are `session_meta` / `turn_context` / `event_msg` / `response_item`, and none of them
  * carries the `message.usage` {@link tallyUsage} bills.
  */
@@ -161,11 +157,9 @@ export function isCodexRollout(records) {
 }
 
 /**
- * ⛔ **What this run cost, read out of the provider homes the run itself created.**
- *
- * ⚑ **`user-data/provider-homes` and nothing else**: those are the ISOLATED homes this run laid
- * down, so the answer is about this run alone. 🔒 It never reads the personal `~/.claude`, which is
- * both the standing rule and the only way the number can mean "this run".
+ * What this run cost, read out of `user-data/provider-homes` and nothing else: those are the
+ * isolated homes this run laid down, so the answer is about this run alone. It never reads the
+ * personal `~/.claude`.
  */
 export function priceRun(evidenceRoot, { rates = RATES, providerHomes } = {}) {
   const homes = [...new Set(providerHomes ?? [join(evidenceRoot, 'user-data', 'provider-homes')])]
@@ -177,7 +171,7 @@ export function priceRun(evidenceRoot, { rates = RATES, providerHomes } = {}) {
     ...priceTally(rows, rates),
     asOf: RATES_AS_OF,
     files: files.length,
-    // 🔴 665 · a transcript this table CANNOT bill, counted, so the line can say *unpriced*.
+    // A transcript this table cannot bill, counted, so the line can say unpriced.
     codexFiles: perFile.filter(isCodexRollout).length,
     expectedHomes: homes.length,
     missingHomes: missingHomePaths.length,
@@ -188,11 +182,10 @@ export function priceRun(evidenceRoot, { rates = RATES, providerHomes } = {}) {
 /**
  * The one line the run prints. Never a bare number: it carries what it was derived from.
  *
- * 🔴 **665 · zero and UNPRICED are different facts.** `660`'s run spent real Codex turns and printed
- * `$0.0000`, because Codex rollouts carry no billed message and so contributed nothing to a table
- * that prices Claude alone. ⛔ A run with any Codex transcript is UNPRICED for that part: when EVERY
- * transcript is Codex the line opens with the word; when Claude was billed too, the figure is
- * Claude's alone and the same line names the Codex part as UNPRICED beside it.
+ * Zero and unpriced are different facts: Codex rollouts carry no billed message, so they contribute
+ * nothing to a table that prices Claude alone. A run with any Codex transcript is UNPRICED for that
+ * part: when every transcript is Codex the line opens with the word; when Claude was billed too, the
+ * figure is Claude's alone and the same line names the Codex part as UNPRICED beside it.
  */
 export function describePrice(answer) {
   const homeCoverage =
@@ -207,11 +200,10 @@ export function describePrice(answer) {
     )
   }
   if (answer.priced.length === 0 && answer.unpriced.length === 0) {
-    // ⚠️ **"Recorded", and the file count is why that word is not a hedge.** The price is read when
-    // the run summarises, and a turn still in flight has not been written to the provider's
-    // transcript yet — measured on a filtered run whose one session was still `working` at the end.
-    // Zero files means nothing ran; files with no billed message means something ran and had not
-    // settled. Collapsing those two into "$0.0000" would be the tri-state defect, in a dollar sign.
+    // "Recorded" is not a hedge: the price is read when the run summarises, and a turn still in flight
+    // has not been written to the provider's transcript yet. Zero files means nothing ran; files with no
+    // billed message means something ran and had not settled. Collapsing those into "$0.0000" would hide
+    // the difference.
     const scanned = answer.files ?? 0
     return (
       `$0.0000 — no billed provider message was recorded in ${scanned} transcript file(s) ` +

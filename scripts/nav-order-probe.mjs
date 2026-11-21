@@ -161,8 +161,8 @@ function build(dir) {
   writeFileSync(join(dir, 'main.js'), PROBE_MAIN)
   writeFileSync(join(dir, 'app', 'index.html'), INDEX_HTML)
   writeFileSync(join(dir, 'app', 'other.html'), OTHER_HTML)
-  // ⚠️ The SHIPPED module, compiled — not a copy of its policy. 094 established the rule and it is
-  // the only thing that makes a probe evidence about this app rather than about a probe.
+  // The shipped module, compiled, not a copy of its policy: that is what makes a probe evidence
+  // about this app rather than about a probe.
   execFileSync(ESBUILD, [
     GUARD,
     '--bundle',
@@ -220,15 +220,13 @@ function verdicts(result) {
     }
   }
 
-  // ⚠️ The claim the fix rests on, asserted rather than assumed: under the shipped guard a click
-  // reaches `will-frame-navigate` and stops there. A hand-off owned by `will-navigate` is a
-  // hand-off that never runs, and this is the line that would go red if it were moved back.
+  // The claim the fix rests on, asserted rather than assumed: under the shipped guard a click
+  // reaches `will-frame-navigate` and stops there. A hand-off owned by `will-navigate` never
+  // runs, and this is the line that would go red if it were moved back.
   //
-  // **Every click, not just the external one** (found in review). The comment in
-  // `window-navigation.ts` says the guard logged `will-frame-navigate` and nothing else for all
-  // five gestures; checking one of them left the other four as a claim rather than a measurement,
-  // and a future Electron that reached `will-navigate` for, say, a same-document click would have
-  // been invisible here.
+  // Every click is checked, not just the external one. `window-navigation.ts` says the guard
+  // logged `will-frame-navigate` and nothing else for all five gestures; a future Electron that
+  // reached `will-navigate` for, say, a same-document click would otherwise be invisible here.
   const CLICKS = [
     'external link',
     'the app own document, as ?v=2',
@@ -272,12 +270,12 @@ function verdicts(result) {
     'and it really did refuse the navigation',
   )
 
-  // The release side (dispatch §4): which event a crash raises, and which a close does.
+  // The release side: which event a crash raises, and which a close does.
   //
-  // ⚠️ **Both are compared as the WHOLE list, not by presence** (found in review). "and nothing
-  // else" is the sentence `window-navigation.ts` writes about each of them, and a check that named
-  // two events to be absent left five unexamined — including `did-navigate`, which is in
-  // `SESSION_RELEASE_EVENTS` and would double-release if a close ever raised it.
+  // Both are compared as the whole list, not by presence. `window-navigation.ts` says "and nothing
+  // else" about each of them, and naming two absent events would leave five unexamined, including
+  // `did-navigate`, which is in `SESSION_RELEASE_EVENTS` and would double-release if a close
+  // ever raised it.
   const exactly = (gesture, expected) => {
     const saw = by(gesture).events.map((e) => e.event)
     check(

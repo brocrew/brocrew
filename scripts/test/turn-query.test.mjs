@@ -16,17 +16,13 @@ import {
 } from '../lib/turn-query.mjs'
 
 /**
- * ⛔ **A step that asks someone else to check is a step with a claim and no coverage** (206 H1).
+ * A step that asks someone else to check has a claim and no coverage. The live smoke's
+ * interrupted-turn step used a query over the whole database ordered by `ordinal`, which counts
+ * turns within a session, so its answer was about whichever session had the most turns.
  *
- * `ui-live-smoke.mjs` step 48 interrupts a turn, replaces it, and used to end with the sentence
- * *"confirm `turn.end_reason='interrupted'` in the ledger"*. `inspectInterruptedTurn` was in the
- * same file — written for step 6 — and its query was over the WHOLE database ordered by `ordinal`,
- * which counts turns within a session. So the answer it returned was about whichever session had
- * the most turns, and step 48's claim was unassertable by construction.
- *
- * ⚑ **The scoping is the fix, so the scoping is what is testable.** The live step is not: a live run
- * is the one thing `pnpm run ci` cannot do (`smoke-verdicts.mjs` and `personal-home-guard.mjs` are
- * in `lib/` for the same reason).
+ * The scoping is the fix, so the scoping is what is tested here: a live run is the one thing
+ * `pnpm run ci` cannot do (`smoke-verdicts.mjs` and `personal-home-guard.mjs` are in `lib/` for
+ * the same reason).
  */
 describe('the interrupted-turn query (206 H1)', () => {
   it('⛔ scopes to the session it was asked about', () => {
@@ -34,14 +30,14 @@ describe('the interrupted-turn query (206 H1)', () => {
 
     expect(sql).toContain("t.session_id = 'sess_12'")
     expect(sql).toContain("t.end_reason = 'interrupted'")
-    // ⚠️ Ordered within that session. `ordinal` is `(session_id, generation, ordinal)`-unique, so
-    // ordering by it across sessions — which is what this did — compares turn NUMBERS, not times.
+    // Ordered within that session. `ordinal` is `(session_id, generation, ordinal)`-unique, so
+    // ordering by it across sessions compares turn numbers, not times.
     expect(sql).toContain('ORDER BY t.ordinal DESC LIMIT 1')
   })
 
   it('⚑ …and the paired negative: step 6’s unscoped question is still available, and is unscoped', () => {
-    // Step 6 is the first step in the file to interrupt anything, so at that point the whole-
-    // database answer is the only answer it could be. Removing the option would have made 6 lie.
+    // The first interrupting step in the file has no session yet, so the whole-database answer is
+    // the only answer it can get; removing the option would make it lie.
     const sql = interruptedTurnQuery(null)
 
     expect(sql).not.toContain('session_id')
@@ -54,24 +50,22 @@ describe('the interrupted-turn query (206 H1)', () => {
   })
 
   it('🔒 refuses an id of an unexpected shape rather than concatenating it', () => {
-    // The value goes into SQL text — `queryDatabase` runs `sqlite3` with a statement, not with
-    // bound parameters — so the alphabet is checked at the one place that builds the string.
+    // The value goes into SQL text (`queryDatabase` runs `sqlite3` with a statement, not bound
+    // parameters), so the alphabet is checked at the one place that builds the string.
     expect(() => interruptedTurnQuery("x' OR '1'='1")).toThrow(/unexpected shape/)
     expect(() => interruptedTurnQuery('sess_1; DROP TABLE turn')).toThrow(/unexpected shape/)
-    // …and the ordinary shapes are not refused, or the guard would be a way to break step 48.
+    // The ordinary shapes are not refused, or the guard would break the live step.
     expect(() => interruptedTurnQuery('sess_12')).not.toThrow()
     expect(() => interruptedTurnQuery('01d3f20a-aaaa-bbbb-cccc-ddddeeeeffff')).not.toThrow()
   })
 })
 
 /**
- * 🔴 **704 · the PROVIDER's half — because the row above was the app's verdict, relabelled until
- * `709` (R43), and Codex's own file is the copy nothing in the app can rewrite.**
- *
- * ⚑ The fixture lines keep the SHAPES 704 read off step 48's conversation in a real ledger — which
- * record types, which fields, in which order — with the long fields cut down: the person's message
- * carries the app's preamble FIRST and the words last, and a turn closes with exactly one of
- * `task_complete` / `turn_aborted`. ⛔ They are not built by the function under test.
+ * The provider's half: the app's own row is the app's verdict, and Codex's own file is the copy
+ * nothing in the app can rewrite. The fixture lines keep the shapes read off a real ledger
+ * (record types, fields, order) with long fields cut down: the person's message carries the app's
+ * preamble first and the words last, and a turn closes with exactly one of `task_complete` /
+ * `turn_aborted`. They are not built by the function under test.
  */
 const THREAD = '01a0d18a-75bf-7a71-a0b8-27b560210606'
 const COUNT = 'Count slowly from 1 to 200, one number per line.'
@@ -107,7 +101,7 @@ describe('704 · what Codex did with the turn step 48 interrupted', () => {
   })
 
   it('🔴 a turn Codex COMPLETED is red — the interrupt was not honoured (and until 709 the row said interrupted)', () => {
-    // ⚑ The paired control: the SAME file with one ending changed, so the red is the ending's.
+    // The paired control: the same file with one ending changed, so the red is the ending's.
     const ending = rolloutTurnEnding(rollout(turnOf('tn_48', COUNT, 'completed')), COUNT)
     expect(ending).toMatchObject({ turnId: 'tn_48', aborted: null, completed: true })
     const verdict = providerInterruptVerdict(ending)
@@ -157,7 +151,7 @@ describe('704 · what Codex did with the turn step 48 interrupted', () => {
 
   it('🔒 the rollout is found by NAME, and no other file in a Codex home can pass', () => {
     expect(isRolloutOf(`rollout-2026-09-24T03-51-47-${THREAD}.jsonl`, THREAD)).toBe(true)
-    // ⛔ The credential beside it, and a rollout of another thread, are never opened.
+    // The credential beside it, and a rollout of another thread, are never opened.
     expect(isRolloutOf('auth.json', THREAD)).toBe(false)
     expect(isRolloutOf(`rollout-2026-09-24T03-51-47-${THREAD}.jsonl.bak`, THREAD)).toBe(false)
     expect(
@@ -187,9 +181,9 @@ describe('704 · what Codex did with the turn step 48 interrupted', () => {
 })
 
 /**
- * 🔴 **704 · steps 62 and 70 ask what the CLI RECEIVED for `/compact` and `/clear`.** From `607`
- * until `708` a person's words went out inside the app's authorship preamble, and a slash command
- * mid-prompt is words (`708`'s `R42` sends a person's command as typed). The WRAPPED fixture below is the prompt the CLI recorded on 704's run of step 62, verbatim.
+ * The live steps ask what the CLI received for `/compact` and `/clear`. A person's words go out
+ * inside the app's authorship preamble, and a slash command mid-prompt is words; a person's
+ * command is sent as typed. The WRAPPED fixture below is the prompt the CLI recorded, verbatim.
  */
 describe('704 · how a slash command arrived at the CLI', () => {
   const SESSION = 'c281b912-ab31-4f35-aeb2-bb95f6fc1d82'
@@ -212,9 +206,9 @@ describe('704 · how a slash command arrived at the CLI', () => {
       ),
     ).toEqual({ arrived: 'command' })
     expect(howACommandArrived(['summarise this'], '/compact')).toEqual({ arrived: 'absent' })
-    // ⛔ A word that merely ENDS in the command is not it — `x/compact` is not `/compact`.
+    // A word that merely ends in the command is not it: `x/compact` is not `/compact`.
     expect(howACommandArrived(['see docs/compact'], '/compact')).toEqual({ arrived: 'absent' })
-    // ⚑ The LAST prompt that names it decides: a later bare command after an earlier wrapped one.
+    // The last prompt that names it decides: a later bare command after an earlier wrapped one.
     expect(howACommandArrived([WRAPPED, '/compact'], '/compact')).toEqual({ arrived: 'command' })
   })
 
@@ -231,7 +225,7 @@ describe('704 · how a slash command arrived at the CLI', () => {
         },
       }),
       line({ type: 'user', message: { content: [{ type: 'tool_result', content: '/compact' }] } }),
-      // ⚠️ A tool's result that carries a text part beside it is still not a prompt.
+      // A tool's result that carries a text part beside it is still not a prompt.
       line({
         type: 'user',
         message: {
@@ -265,7 +259,7 @@ describe('704 · how a slash command arrived at the CLI', () => {
       { text: 'after', cwd: '/w/findings' },
       { text: 'no cwd', cwd: null },
     ])
-    // ⚑ …and `promptsIn` is the same prompts, text only.
+    // `promptsIn` is the same prompts, text only.
     expect(promptsIn(jsonl)).toEqual(['move', 'after', 'no cwd'])
   })
 
@@ -273,7 +267,7 @@ describe('704 · how a slash command arrived at the CLI', () => {
     expect(isClaudeTranscriptOf(`${SESSION}.jsonl`, SESSION)).toBe(true)
     expect(isClaudeTranscriptOf('.credentials.json', SESSION)).toBe(false)
     expect(isClaudeTranscriptOf(`${SESSION}.jsonl.bak`, SESSION)).toBe(false)
-    // ⛔ Another conversation's transcript, in the same folder, is not this one's.
+    // Another conversation's transcript, in the same folder, is not this one's.
     expect(isClaudeTranscriptOf('00000000-0000-4000-8000-000000000000.jsonl', SESSION)).toBe(false)
     expect(isClaudeTranscriptOf('.jsonl', '')).toBe(false)
     expect(isClaudeTranscriptOf('x.jsonl', 'x')).toBe(false)
@@ -286,7 +280,7 @@ describe('704 · how a slash command arrived at the CLI', () => {
 })
 
 describe('727 · what Codex wrote about its reasoning, and one tree per run', () => {
-  /** A rollout line, in the shape `722`'s two batches recorded. */
+  /** A rollout line, in the shape of the recorded batches. */
   const reasoningLine = (summary) =>
     JSON.stringify({
       timestamp: '2026-09-25T17:30:48.149Z',

@@ -25,9 +25,9 @@ export function assertGapFree(ordinals, what) {
         `${ordinals[backwards]} at entry ${backwards}`,
     )
   }
-  // Strictly increasing AND spanning exactly as many values as there are entries ⇒ no gaps. Stated
-  // as the span rather than as `n === first + i` so the failure can name how many are missing, and
-  // so a window that legitimately does not begin at zero is not called broken for it.
+  // Strictly increasing and spanning exactly as many values as there are entries means no gaps.
+  // Stated as the span, not `n === first + i`, so the failure can name how many are missing and a
+  // window that does not begin at zero is not called broken.
   const first = ordinals[0]
   const last = ordinals[ordinals.length - 1]
   const span = last - first + 1

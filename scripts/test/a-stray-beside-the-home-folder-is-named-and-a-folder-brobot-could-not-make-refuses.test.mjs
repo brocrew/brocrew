@@ -12,23 +12,20 @@ import {
 } from './fixtures/a-planted-user-data.mjs'
 
 /**
- * # What `clean-base` does with the entries BESIDE the one home folder, asked without running it
+ * What `clean-base` does with the entries beside the one home folder, asked without running it.
  *
- * ⚑ **Why this file exists.** Since D-016a's second commit (`a5d66e92`) every provider home lives
- * in ONE folder under `provider-homes/` (`HOME_FOLDER`, `default`), and the walk that plans the reset
- * reads that level as folders rather than projects. Three rules about that level were pinned only
- * by `scripts/gate-only/clean-base.test.mjs`, which SPAWNS the script and runs only inside the
- * whole `pnpm run ci` — so `verify_row` could not re-verify rows `351 M29`, `351 M45` and `352 M4`
- * after the rename moved their anchors. This file asks the same three questions of
- * `planProviderHomes`, which only reads the tree and returns a plan.
+ * Every provider home lives in one folder under `provider-homes/` (`HOME_FOLDER`, `default`), and
+ * the walk that plans the reset reads that level as folders rather than projects. The spawning
+ * test (`scripts/gate-only/clean-base.test.mjs`) runs only inside the whole `pnpm run ci`, so
+ * these questions are asked of `planProviderHomes`, which only reads the tree and returns a plan:
  *
- *  - a Finder `.DS_Store` beside the folders is a named stray, never a refusal (`351` review: a
- *    refusal on it could never be cleared);
+ *  - a Finder `.DS_Store` beside the folders is a named stray, never a refusal (a refusal on it
+ *    could never be cleared);
  *  - a folder whose name BroBot could not have made refuses the whole run;
  *  - the ordinary tree, planted the same way, plans the removal with no refusal and no stray.
  *
- * ⚑ **Every negative is paired** with the ordinary tree on the same walk, so an empty `refusals`
- * or `strays` is a measurement of that entry and not of a walk that found nothing.
+ * Every negative is paired with the ordinary tree on the same walk, so an empty `refusals` or
+ * `strays` is a measurement of that entry and not of a walk that found nothing.
  */
 
 const SCRIPTS = dirname(dirname(fileURLToPath(import.meta.url)))

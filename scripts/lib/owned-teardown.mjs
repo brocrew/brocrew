@@ -20,67 +20,58 @@ export function launchedProcessLifecycle(launcherPid) {
 }
 
 /**
- * How many surviving entries a failed removal names. ⚠️ **A cap the sentence has to admit to**: the
- * count below is uncapped and the list is not, so the message says how many it is SHOWING of how
- * many there are rather than pointing at a list as if it were the set.
+ * How many surviving entries a failed removal names. The count is uncapped and the list is not, so
+ * the message says how many it is SHOWING of how many there are.
  */
 const MAX_SURVIVORS_SHOWN = 25
 
 /**
- * 🔴 **The millisecond `Date.now()` throws away, and which of the two claims has to pay for it**
- * (387).
+ * The millisecond `Date.now()` throws away, and which of the two claims pays for it.
  *
- * ⛔ **`Date.now()` floors to the integer millisecond and an mtime does not**, so the two sides of
- * `mtimeMs >= askedAt` are not on the same scale. The ask happened at some real instant inside
- * `[askedAt, askedAt + 1)`, and an entry stamped anywhere in that same millisecond is **written
- * before the ask as often as after it** — the comparison cannot tell which.
+ * `Date.now()` floors to the integer millisecond and an mtime does not, so the two sides of
+ * `mtimeMs >= askedAt` are not on the same scale. The ask happened at some instant inside
+ * `[askedAt, askedAt + 1)`, and an entry stamped in that same millisecond was written before the ask
+ * as often as after it. Measured over 200 files each written and then followed by a `Date.now()`
+ * reading: 193 carried an `mtimeMs` at or above a stamp taken AFTER the write (median +0.49ms, max
+ * +0.98ms), on Node 20 and 24 alike. Each would have been reported as "written 0ms AFTER the
+ * removal was asked".
  *
- * ⚠️ Measured on this machine, 200 files each written and then immediately followed by a
- * `Date.now()` reading: **193 of 200 carried an `mtimeMs` at or above a stamp taken AFTER the
- * write** (median `+0.49ms`, max `+0.98ms`), on Node 20 and Node 24 alike. ⛔ Every one of those
- * would have been reported as *"written 0ms AFTER the removal was asked — so something was still
- * WRITING"*, which is 360's false accusation arriving by arithmetic instead of by directories.
+ * Only the FILE rule gets the millisecond, and the asymmetry is deliberate:
  *
- * ## ⚑ Headroom on the accusation, none on the exoneration
+ * - A file's late mtime accuses, so it has to be certain: `mtimeMs >= askedAt + 1` is "strictly
+ *   later than any instant the ask could have been".
+ * - A directory's late mtime explains ("this removal emptied it, and it is evidence of nothing").
+ *   Being generous there accuses nobody; being strict would drop the clause on the fast failures
+ *   where the survivor list most needs it (with the millisecond applied to both, the real-directory
+ *   fixture lost the clause in 4 of 10 runs on Node 24, because the whole removal fit in one
+ *   millisecond).
  *
- * ⛔ **Only the FILE rule gets the millisecond**, and the asymmetry is the point rather than an
- * oversight:
- *
- * - A file's late mtime **accuses**, so it has to be certain: `mtimeMs >= askedAt + 1` is the whole
- *   of *"strictly later than any instant the ask could have been"*.
- * - A directory's late mtime **explains** — *"this removal emptied it, and it is evidence of
- *   nothing"* (360). Being generous there accuses nobody; being strict there would drop the clause
- *   on exactly the fast failures where the survivor list most needs it. Measured: with the
- *   millisecond applied to both, the real-directory fixture below lost the clause in **4 of 10 runs
- *   on Node 24**, because the whole removal fit inside one millisecond.
- *
- * ⚑ **Both errors fall the same way — toward accusing nobody** — which is the rule the
- * unreadable-mtime branch of {@link defaultSurvivors} already follows. ⛔ And the headroom costs
- * nothing real: the removal is asked seconds after a reap that waited for the process table, and a
- * writer racing that walk keeps writing for as long as the walk lasts.
+ * Both errors fall toward accusing nobody, as the unreadable-mtime branch of
+ * {@link defaultSurvivors} does. The headroom costs nothing real: the removal is asked seconds after
+ * a reap that waited for the process table, and a writer racing that walk keeps writing for as long
+ * as the walk lasts.
  */
 const A_WHOLE_MILLISECOND = 1
 
 /**
  * The `ppid` edges of the whole process table.
  *
- * ⚠️ Two fields, not `command`: this is the input to a BFS, and a command string with embedded
- * whitespace is exactly what makes such a parse silently drop rows.
+ * Two fields, not `command`: this is the input to a BFS, and a command string with embedded
+ * whitespace makes such a parse silently drop rows.
  */
 export function readProcessTable() {
   return execFileSync('ps', ['-A', '-o', 'pid=,ppid='], { encoding: 'utf8' })
 }
 
 /**
- * Every descendant of `root`, **parents before children**.
+ * Every descendant of `root`, parents before children.
  *
- * ⛔ The order is a contract, not a detail: `createOwnedProcessLifecycle`'s `remember()` accepts a
- * pid only when its parent is already remembered or it shares the launcher's group, so a child
- * offered before its parent is refused and the helper it leads is never signalled.
+ * The order is a contract: `createOwnedProcessLifecycle`'s `remember()` accepts a pid only when its
+ * parent is already remembered or it shares the launcher's group, so a child offered before its
+ * parent is refused and the helper it leads is never signalled.
  *
- * ⚠️ Electron is five processes and none of them carries the user-data-dir in its argv below the
- * browser, so an enumeration by command line — the shape three instruments used — cannot see the
- * helpers at all. Ancestry can.
+ * Electron is five processes and none below the browser carries the user-data-dir in its argv, so
+ * an enumeration by command line cannot see the helpers at all. Ancestry can.
  */
 export function descendantsOf(root, { readTable = readProcessTable } = {}) {
   const children = new Map()
@@ -93,11 +84,10 @@ export function descendantsOf(root, { readTable = readProcessTable } = {}) {
     children.get(parent).push(pid)
   }
   const found = []
-  // ⛔ **`seen` is what makes this terminate**, and it is not defensive dressing: the table is TEXT
-  // read from a live `ps`, so a torn read can name a parent that is also a descendant, and a walk
-  // without it never returns — a teardown that hangs removes nothing and reports nothing. ⚠️ A
-  // separate `pid === parent` guard was written here first and a mutation row proved it dead: the
-  // self-parent case is the one-element cycle this already covers.
+  // `seen` is what makes this terminate: the table is TEXT read from a live `ps`, so a torn read can
+  // name a parent that is also a descendant, and a walk without it never returns. A separate
+  // `pid === parent` guard would be dead, since the self-parent case is the one-element cycle this
+  // already covers.
   const seen = new Set([root])
   const queue = [root]
   while (queue.length > 0) {
@@ -112,11 +102,11 @@ export function descendantsOf(root, { readTable = readProcessTable } = {}) {
 }
 
 /**
- * ⛔ **Reap what we launched, and only then remove where it was writing.**
+ * Reap what we launched, and only then remove where it was writing.
  *
  * Returns the lifecycle's own outcome with `removed` added, so a caller can report the two facts
- * separately: whether the app is gone, and whether its directory came off. ⚠️ They are not the same
- * fact, and a gate that reports only the second is the gate that started this dispatch.
+ * separately: whether the app is gone, and whether its directory came off. They are not the same
+ * fact.
  *
  * @param {object} options
  * @param {{ kill9: () => { complete: boolean } }} options.lifecycle a lifecycle handle
@@ -124,7 +114,7 @@ export function descendantsOf(root, { readTable = readProcessTable } = {}) {
  * @param {(path: string) => void} [options.remove] injected for the test; default is the real one
  * @param {(path: string) => { path: string, mtimeMs: number, isDirectory?: boolean }[]}
  *   [options.survivors] what is left after a removal that threw; injected for the test, and only
- *   ever called on that path. ⚠️ `isDirectory` decides whether an entry's mtime can carry the
+ *   ever called on that path. `isDirectory` decides whether an entry's mtime can carry the
  *   writer claim at all — see {@link describeFailedRemoval}
  * @param {() => number} [options.now] the clock the survivor ages are measured from
  */
@@ -136,18 +126,15 @@ export function tearDownAndRemove({
   now = () => Date.now(),
 }) {
   const outcome = lifecycle.kill9()
-  // ⛔ The one ordering this module exists for. The removal sits below the reap and behind its
-  // verdict, so a reader asking *"when does the directory come off?"* finds the condition on the
-  // line above the answer.
+  // The one ordering this module exists for: the removal sits below the reap and behind its verdict.
   //
-  // ⚑ **`complete` now carries a third way of being false** (360): `outcome.refused` is non-empty
-  // when the reap could not freeze the tree it was about to enumerate, so it cannot say what it
-  // owns. ⚠️ The condition below is unchanged and that is the point — a teardown that does not know
-  // what it owns must not remove anything, and it did not need a new branch here to say so.
+  // `complete` is also false when `outcome.refused` is non-empty, meaning the reap could not freeze
+  // the tree it was about to enumerate and so cannot say what it owns. A teardown that does not know
+  // what it owns must not remove anything, and the condition below already says so.
   if (!outcome.complete) return Object.freeze({ ...outcome, removed: false })
-  // ⚠️ Stamped when the removal is ASKED, never when it answers (326): every survivor's age below
-  // is measured from this line, and a walk that took two seconds would otherwise make a file
-  // written before the removal look like one written during it.
+  // Stamped when the removal is ASKED, never when it answers: every survivor's age below is measured
+  // from this line, and a slow walk would otherwise make a file written before the removal look like
+  // one written during it.
   const askedAt = now()
   try {
     remove(directory)
@@ -158,43 +145,27 @@ export function tearDownAndRemove({
 }
 
 /**
- * 🔴 **A removal that failed, said in the only terms that can settle why** (333).
+ * A removal that failed, said in the terms that can settle why.
  *
- * ## ⛔ What this replaces, and why a bare `ENOTEMPTY` was not enough to act on
- *
- * The message this gate used to print was the whole of `rmSync`'s: *"ENOTEMPTY, Directory not empty:
- * …/brobot2-window-oAuZlk"*. Three re-runs were green, so it read as flake — and a gate that cries
- * wolf on its own cleanup is how the next real red gets waved through.
- *
- * ⚠️ **On Node 24 that path is the one `rmSync` was HANDED, never the directory whose `rmdir`
- * failed** — so it carries no information about where the race was, and reading it as if it did is
- * how an investigation starts in the wrong place. Measured on this machine, same fixture, a writer
- * racing the walk one level down:
+ * A bare `ENOTEMPTY` is not enough to act on, and on Node 24 the path in it is the one `rmSync` was
+ * HANDED, never the directory whose `rmdir` failed (`fs.rmSync` is the JS `rimraf` on 20 and 22 and
+ * a C++ binding on 24). Measured, same fixture, a writer racing the walk one level down:
  *
  * ```
  *   v22.22.0   ENOTEMPTY: directory not empty, rmdir '/tmp/rmv-I7qEso/deep'   ← the failing directory
  *   v24.0.2    ENOTEMPTY, Directory not empty: /tmp/rmv-6TaHm4 '/tmp/rmv-6TaHm4'
  * ```
  *
- * ⛔ `fs.rmSync` is the JS `rimraf` on 20 and 22 and a C++ binding on 24; the rewrite is where the
- * location went. This repo is on 24, and the second line is the shape of the message that opened
- * this dispatch, character for character.
+ * What does carry the answer is what is left and when it was written. The reap has already reported
+ * complete, meaning every pid it owns has left the process table, so a FILE written certainly after
+ * the removal was asked is a WRITER, and one written before it is a slow unlink. "Certainly"
+ * matters: `Date.now()` floors and an mtime does not, so the millisecond the ask lands in belongs to
+ * neither side (see {@link A_WHOLE_MILLISECOND}).
  *
- * ⚑ **What does carry it is what is left and when it was written.** The reap has already reported
- * complete — which since 333 means every pid it owns has left the process table — so a FILE written
- * **certainly after** the moment the removal was asked is a WRITER, and one written before it is a
- * slow unlink. Those are different failures and they were arriving as one sentence. ⚠️ *Certainly*
- * is doing work in that sentence and 387 is why: `Date.now()` floors and an mtime does not, so the
- * millisecond the ask lands in belongs to neither side — see {@link A_WHOLE_MILLISECOND}.
- *
- * ## ⛔ A DIRECTORY's mtime is not that fact, and this said it was (360)
- *
- * Until 360 the filter below ran over every surviving entry, directories included, and the sentence
- * it printed was *"N of them written AT OR AFTER the moment it was asked — so something was still
- * WRITING"*. ⚠️ **Removing an entry from a directory sets that directory's mtime**, so a removal
- * that gets part-way through leaves a fresh mtime on every directory it emptied — its OWN work,
- * indistinguishable from a writer's. Measured on this machine, one fixture, **no process involved at
- * all**: a tree whose deepest directory is `0500` so the `unlink` inside it fails `EACCES`.
+ * Only files carry that claim. Removing an entry from a directory sets that directory's mtime, so a
+ * removal that gets part-way through leaves a fresh mtime on every directory it emptied, its OWN
+ * work, indistinguishable from a writer's. Measured with no process at all: a tree whose deepest
+ * directory is `0500` so the `unlink` inside fails `EACCES`.
  *
  * ```
  *   rmSync threw: ENOTEMPTY, Directory not empty: …/A
@@ -204,35 +175,29 @@ export function tearDownAndRemove({
  *     -1104ms  file  B/C/locked      ← the one thing that actually blocked the removal
  * ```
  *
- * ⛔ **One of four survivors reported as a writer, with nothing running.** On a tree the size of a
- * `codex` provider home — `skills/.system` alone is dozens of directories — that arithmetic is most
- * of the count, and the sentence it produced sent 360 looking for a process on the strength of its
- * own footprints. ⚑ **A file's mtime is untouched by unlinking its siblings**, so files are the only
- * survivors that can carry this claim, and directories are now reported as what they are.
+ * On a tree the size of a `codex` provider home (`skills/.system` alone is dozens of directories)
+ * that arithmetic would be most of the count. Directories are reported as what they are.
  *
- * ⛔ **It says a writer, and stops there.** Whose it is, this cannot know: a descendant that appeared
- * after the last discovery is the reason to suspect first, but nothing here establishes that the
- * process was ours rather than something else on the machine reaching into a temp directory. ⚠️ The
- * two want different next steps, so the line names the fact and hands over the pids to look at.
+ * It says a writer and stops there: whose it is, this cannot know. A descendant that appeared after
+ * the last discovery is the first suspect, but nothing here establishes the process was ours, so
+ * the line names the fact and hands over the pids to look at.
  */
 function describeFailedRemoval(directory, askedAt, error, survivors) {
   const left = survivors(directory)
-  // ⛔ **Files only** — see the note above for the measurement that made this a filter rather than a
-  // sentence about every entry. ⚠️ An entry with NO kind counts as a file: the only producer that
-  // can omit it is an injected `survivors` double, and this keeps such a double saying what it said
-  // before 360 rather than silently losing the claim.
+  // Files only: a directory's mtime is not evidence of a writer (see the docblock). An entry with NO
+  // kind counts as a file: the only producer that can omit it is an injected `survivors` double, and
+  // this keeps such a double saying what it said before.
   //
-  // ⛔ **And the two thresholds differ on purpose** (387) — {@link A_WHOLE_MILLISECOND} carries the
-  // measurement. A file's late mtime ACCUSES, so it has to clear the millisecond `Date.now()`
-  // floors away; a directory's EXPLAINS, and being generous there accuses nobody.
+  // The two thresholds differ on purpose: a file's late mtime ACCUSES, so it has to clear the
+  // millisecond `Date.now()` floors away; a directory's EXPLAINS, and being generous there accuses
+  // nobody. See {@link A_WHOLE_MILLISECOND}.
   const written = left.filter(
     (entry) => entry.isDirectory !== true && entry.mtimeMs >= askedAt + A_WHOLE_MILLISECOND,
   )
   const stamped = left.filter((entry) => entry.isDirectory === true && entry.mtimeMs >= askedAt)
-  // ⛔ **The writers first, because the cap is real** (360). `MAX_SURVIVORS_SHOWN` is 25 and a
-  // `codex` provider home is dozens of directories — so the ONE file that carries the claim can sit
-  // past the cut and never be printed, in the message somebody reads to find out what happened. The
-  // rest keep their walk order, which is parents before children.
+  // The writers first, because the cap is real: `MAX_SURVIVORS_SHOWN` is 25 and a `codex` provider
+  // home is dozens of directories, so the one file that carries the claim could sit past the cut and
+  // never be printed. The rest keep their walk order, parents before children.
   const shown = [...written, ...left.filter((entry) => !written.includes(entry))].slice(
     0,
     MAX_SURVIVORS_SHOWN,
@@ -270,10 +235,9 @@ function describeFailedRemoval(directory, askedAt, error, survivors) {
           .map(
             (entry) =>
               `   · ${entry.path}${
-                // ⛔ **The line is derived from the two lists the summary counted** (387), not from
-                // a third reading of the same mtimes. A per-entry rule written out again is a
-                // second place for the answer to live, and 360's M17 is the row that says what it
-                // costs: a summary and a list under it that say different things.
+                // The line is derived from the two lists the summary counted, not from a third reading of the same
+                // mtimes: a per-entry rule written out again is a second place for the answer to live, and a
+                // summary and a list under it could then disagree.
                 written.includes(entry)
                   ? ` ← written ${String(Math.round(entry.mtimeMs - askedAt))}ms AFTER the removal was asked`
                   : stamped.includes(entry)
@@ -293,10 +257,9 @@ function describeFailedRemoval(directory, askedAt, error, survivors) {
 /**
  * Every path still under `directory`, with its mtime, parents before their children.
  *
- * ⚠️ **It must not be able to throw**: this runs inside the report for a failure that has already
+ * It must not be able to throw: this runs inside the report for a failure that has already
  * happened, and an instrument that fails while describing a failure replaces the subject with
- * itself — 325's defect, one layer in. A directory that cannot be read is named as such and the
- * walk goes on.
+ * itself. A directory that cannot be read is named as such and the walk goes on.
  */
 function defaultSurvivors(directory) {
   const found = []
@@ -339,11 +302,10 @@ function errorCode(error) {
 }
 
 /**
- * ⛔ **No `maxRetries`, and that is the point** (333 §3.2). `rmSync(..., { maxRetries })` sleeps and
- * tries again, which would turn every one of these failures green while the directory of a live app
- * came off underneath it — the same defect, hidden, and `241`/`066` are what it costs. The remedy is
- * upstream: `complete` now means the processes are out of the table, so there is nothing left to
- * race. `force` stays for `ENOENT` alone.
+ * No `maxRetries`, on purpose: `rmSync(..., { maxRetries })` sleeps and tries again, which would
+ * turn these failures green while the directory of a live app came off underneath it. The remedy is
+ * upstream: `complete` means the processes are out of the table, so there is nothing left to race.
+ * `force` stays for `ENOENT` alone.
  */
 function defaultRemove(directory) {
   rmSync(directory, { recursive: true, force: true })

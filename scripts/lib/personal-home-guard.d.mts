@@ -4,7 +4,7 @@
  * TypeScript callers the same contract without suppressing import errors.
  */
 
-/** A thing this run owns, and the name it reports itself by. 🔒 The VALUE is never printed. */
+/** A thing this run owns, and the name it reports itself by. The value is never printed. */
 export interface Marker {
   readonly label: string
   readonly value: string
@@ -17,12 +17,11 @@ export interface Hit {
 }
 
 /**
- * What one walk of a personal home actually saw — and, as importantly, what it did not.
+ * What one walk of a personal home actually saw, and what it did not.
  *
- * ⛔ **`hits` alone is not an answer** (196 M2). A walk that hit its limit, stopped at the depth
- * bound, or met a directory it could not open has left part of the home unexamined, and an empty
- * `hits` from such a walk means "we found nothing where we looked", not "there is nothing".
- * {@link Scan.complete} is the question to ask first; {@link whyIncomplete} is the sentence.
+ * `hits` alone is not an answer: a walk that hit its limit, stopped at the depth bound, or met a
+ * directory it could not open left part of the home unexamined, so an empty `hits` means "found
+ * nothing where we looked". Ask {@link Scan.complete} first; {@link whyIncomplete} is the sentence.
  */
 export interface Scan {
   readonly hits: Hit[]
@@ -48,13 +47,9 @@ export declare function requireMarkers(markers: readonly Marker[]): readonly Mar
 /**
  * Every path under `root` whose name contains one of `markers`. Symlinks are not followed.
  *
- * ⛔ **It returns a {@link Scan}, and this line used to say `Hit[]`** (202, from 200 §8 and 201 §8).
- * The declaration was wrong from the day 196 gave the walk its completeness fields, and a `.d.mts`
- * beside a `.mjs` is the one seam nothing typechecks against the implementation — so the compiler
- * agreed with every caller and none of them agreed with the runtime. It cost five smokes a `TypeError`
- * on the line that proves nothing leaked (`hits.map`, and a spread of a non-iterable), and the other
- * four a silent vacuous pass (`.length` on an object is `undefined`, never `0`). Among the five was
- * `credential-ownership.smoke.ts` — the instrument for the very finding 202 exists to fix.
+ * Returns a {@link Scan}, not `Hit[]`. A `.d.mts` beside a `.mjs` is a seam nothing typechecks
+ * against the implementation, so a wrong declaration here lets callers compile while failing at
+ * run time (`hits.map` on an object) or passing vacuously (`.length` of an object is `undefined`).
  */
 export declare function pathsNaming(
   root: string,
@@ -82,8 +77,8 @@ export declare function describeHits(hits: readonly Hit[]): string
 export declare function describeScan(...scans: readonly Scan[]): string
 
 /**
- * `'none'` only when every marker was FOUND — the idiom for the opposite claim, *everything of ours
- * is where it should be* (206 H3). A missing marker from an incomplete walk says so; a marker that
+ * `'none'` only when every marker was FOUND — the idiom for the opposite claim, everything of ours
+ * is where it should be. A missing marker from an incomplete walk says so; a marker that
  * was found needs no completeness, because a hit is proof.
  */
 export declare function describeMissing(scan: Scan, markers: readonly Marker[]): string

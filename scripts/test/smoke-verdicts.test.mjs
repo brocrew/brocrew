@@ -12,20 +12,18 @@ import {
 } from '../lib/smoke-verdicts.mjs'
 
 /**
- * ⛔ **196 H1, the live-smoke half: a step that ran and asserted nothing was counted as a pass.**
- *
- * `193` named four steps in `ui-live-smoke.mjs` that return a `NOT ASSERTED — …` sentence when the
- * provider declines to produce the thing under test. `step()` handed every ordinary return to
- * `record(true, …)`, so those sentences printed as `PASS` and were summed into the headline — and
- * the headline is the number this project has been reporting onwards.
+ * A step that ran and asserted nothing must not be counted as a pass. Steps in `ui-live-smoke.mjs`
+ * return a `NOT ASSERTED — …` sentence when the provider declines to produce the thing under test;
+ * `step()` must not hand those to `record(true, …)`, or they print as `PASS` and are summed into
+ * the headline.
  */
 describe('the fourth outcome (196 H1)', () => {
   it('⛔ a not-asserted return is its own verdict, not a pass carrying a sad string', () => {
     const outcome = notAsserted('the provider ran no compaction for this window')
     expect(isNotAsserted(outcome)).toBe(true)
-    // ⛔ The third field is 206 H1's: every outcome now normalizes to a claim list, so a run can
-    // count claims as well as steps. Asserted in full rather than loosened to `toMatchObject` — a
-    // shape that grew a field silently is how the last two verdict bugs got in.
+    // The third field is the claim list: every outcome normalizes to one, so a run can count claims as
+    // well as steps. Asserted in full rather than loosened to `toMatchObject`, so a shape that grew a
+    // field silently is caught.
     expect(outcomeVerdict(outcome)).toEqual({
       verdict: 'NOT ASSERTED',
       detail: 'the provider ran no compaction for this window',
@@ -45,25 +43,23 @@ describe('the fourth outcome (196 H1)', () => {
     expect(outcomeVerdict(undefined)).toEqual({
       verdict: 'PASS',
       detail: undefined,
-      // ⚑ …and it is still ONE asserted claim, so an ordinary step contributes to the ratio rather
-      // than sitting outside it. A step with no claims would make the run's denominator a figure
-      // about the steps that opted in.
+      // …and it is still one asserted claim, so an ordinary step contributes to the ratio rather than
+      // sitting outside it. A step with no claims would make the denominator a figure about the steps
+      // that opted in.
       claims: [{ claim: 'what the step exists to check', verdict: 'ASSERTED' }],
     })
   })
 
   it('a step that merely PRINTS the words is not laundered into the fourth cell either', () => {
-    // ⚠️ The four steps carried the sentence long before it carried a verdict, and several other
-    // steps quote "NOT ASSERTED" about a SUB-claim while asserting everything else they exist for.
-    // Matching on the string would have swept those into the blank column and understated the run.
+    // The steps carried the sentence before it carried a verdict, and several other steps quote
+    // "NOT ASSERTED" about a sub-claim while asserting everything else they exist for. Matching on the
+    // string would sweep those into the blank column and understate the run.
     expect(isNotAsserted('NOT ASSERTED — the provider declined')).toBe(false)
     expect(outcomeVerdict('3 NOT ASSERTED — no prose row was ever SEEN').verdict).toBe('PASS')
 
-    // ⛔ **CORRECTED, not deleted, and 206 H1 is what it was missing** (142's rule about this very
-    // file). Both lines above are still right — string-matching a result would understate the run —
-    // and what neither of them said is that such a step is nonetheless MIS-counted: it makes three
-    // claims and the headline had a column for one. The right answer is not a better match on the
-    // string, it is for the step to stop putting a verdict in one.
+    // Both lines above still hold: string-matching a result would understate the run. But such a step
+    // is still mis-counted: it makes three claims and the headline had a column for one. The fix is
+    // not a better string match; it is for the step to stop putting a verdict in a string.
     expect(outcomeVerdict('3 NOT ASSERTED — no prose row was ever SEEN').claims).toEqual([
       { claim: '3 NOT ASSERTED — no prose row was ever SEEN', verdict: 'ASSERTED' },
     ])
@@ -72,12 +68,12 @@ describe('the fourth outcome (196 H1)', () => {
     )
     expect(typed.verdict).toBe('PASS') // it DID check something — see below
     expect(typed.claims.filter((c) => c.verdict === 'NOT ASSERTED')).toHaveLength(1)
-    // ⚠️ The source-level half of this rule — that no step writes the words into a sentence at all
-    // — is `smoke-claims.test.mjs`, because it is the half a value can never enforce.
+    // The source-level half of this rule, that no step writes the words into a sentence at all, is
+    // `smoke-claims.test.mjs`, because it is the half a value can never enforce.
   })
 
   it('⛔ the headline keeps the three verdicts apart, over 193 exact numbers', () => {
-    // `188` ran 86 results: 85 PASS + 1 SKIP. Four of the 85 were blanks nobody could see.
+    // A run of 86 results: 85 PASS + 1 SKIP. Four of the 85 were blanks nobody could see.
     const results = [
       ...Array.from({ length: 81 }, (_, i) => ({ verdict: 'PASS', line: `PASS ${i}` })),
       ...Array.from({ length: 4 }, (_, i) => ({
@@ -90,8 +86,8 @@ describe('the fourth outcome (196 H1)', () => {
     expect(summary.line).toBe(
       '81/85 passed · ⚠️ 4 ran but asserted nothing · 1 skipped · evidence in /tmp/evidence',
     )
-    // ⚑ The denominator is unchanged: nothing is hidden by being renamed. What is gone is the
-    // sentence "85/85 passed" over a run in which 81 things were checked.
+    // The denominator is unchanged: nothing is hidden by being renamed. What is gone is the sentence
+    // "85/85 passed" over a run in which 81 things were checked.
     expect(summary.line).not.toContain('85/85')
     // …and WHICH four, because a count nobody can act on is the defect one level up.
     expect(summary.blanks).toHaveLength(4)
@@ -110,16 +106,14 @@ describe('the fourth outcome (196 H1)', () => {
       { verdict: 'NOT ASSERTED', line: 'NOT ASSERTED 3 — no plan arrived' },
     ]
     expect(summarize(results)).toMatchObject({ passed: 1, failed: 1, blank: 1 })
-    // ⛔ **This line used to read `'1/3 passed · ⚠️ 1 ran but asserted nothing'`** — and it was
-    // pinned that way, under a test whose own name says a failure is not softened. It was: in the
-    // NUMBER, which nobody reads, and not in the sentence, which is what a run reports onwards.
-    // 202 found it by having a step go red and the headline not say so.
+    // A failure is not softened: it must be stated in the sentence a run reports onwards, not only
+    // in the number.
     expect(summarize(results).line).toBe('1/3 passed · ⚠️ 1 ran but asserted nothing · ⛔ 1 FAILED')
   })
 
   it('⚑ …and a clean run still says nothing about failures', () => {
     // The pairing: the new cell must not appear when there is nothing to report, or every green run
-    // grows a `⛔ 0 FAILED` and the marker stops meaning anything.
+    // grows a `0 FAILED` cell and the marker stops meaning anything.
     const results = [{ verdict: 'PASS', line: 'PASS 1' }]
     expect(summarize(results).line).toBe('1/1 passed')
     expect(summarize(results).line).not.toContain('FAILED')
@@ -127,12 +121,9 @@ describe('the fourth outcome (196 H1)', () => {
 })
 
 /**
- * ⛔ **206 H1 · one level down: a step's own sub-claims.**
- *
- * `196` gave a STEP the fourth cell. Several steps make three claims, and those were English inside
- * the result string — so `ui-live-smoke.mjs` step 58 returned *"1 ASSERTED, 2 ASSERTED (positive
- * half), 3 NOT ASSERTED"* and the run summed it as one clean PASS. Dispatch `138` ran exactly that,
- * and the headline was quoted onwards as evidence.
+ * One level down: a step's own sub-claims. Several steps make three claims, which were English
+ * inside the result string, so a step returning "1 ASSERTED, 2 ASSERTED (positive half),
+ * 3 NOT ASSERTED" was summed as one clean PASS.
  */
 describe('per-claim results (206 H1)', () => {
   it('⛔ a step with three claims counts as three, not as one pass', () => {
@@ -147,9 +138,9 @@ describe('per-claim results (206 H1)', () => {
     expect(outcome.verdict).toBe('PASS')
     const summary = summarize([{ verdict: outcome.verdict, line: 'PASS 58', ...outcome }])
     expect(summary).toMatchObject({ passed: 1, claimsAsserted: 2, claimsTotal: 3 })
-    // ⛔ The sentence 138's run could not say about itself.
+    // The sentence the run could not say about itself before.
     expect(summary.line).toBe('1/1 passed · 2/3 claims asserted')
-    // …and WHICH claim, because a count nobody can act on is the defect one level up (196).
+    // …and which claim, because a count nobody can act on is the same defect one level up.
     expect(summary.blankClaims).toEqual([
       'PASS 58 → 3 · the card held no tool row, so there is no boundary',
     ])
@@ -195,38 +186,35 @@ describe('per-claim results (206 H1)', () => {
   })
 
   it('⛔ refuses a claim list that collapsed to nothing, and one with no verdict', () => {
-    // 129's trap on the instrument built to close it: a step whose claims filtered down to none
-    // would report as an honest blank and count zero in both columns.
+    // A step whose claims filtered down to none would report as an honest blank and count zero in both
+    // columns; the constructor refuses that.
     expect(() => claims()).toThrow(/at least one/)
     expect(() => claims({ claim: 'something', verdict: 'PROBABLY' })).toThrow(/no verdict/)
     expect(() => claims({ verdict: 'ASSERTED' })).toThrow(/what was checked/)
   })
 
   it('⚑ a run with no claims at all reads exactly as it did before', () => {
-    // The synthetic results in the block above carry none, and the cell must not appear for them —
-    // the same pairing `⛔ 0 FAILED` gets.
+    // The synthetic results in the block above carry none, and the cell must not appear for them: the
+    // same pairing the failed cell gets.
     expect(summarize([{ verdict: 'PASS', line: 'PASS 1' }]).line).toBe('1/1 passed')
     expect(summarize([{ verdict: 'PASS', line: 'PASS 1' }]).line).not.toContain('claims')
   })
 })
 
 /**
- * 🔴 **420 §4 · the fifth and sixth cells: a step the instrument is no longer performing.**
+ * The fifth and sixth cells: a step the instrument is no longer performing. Removing launcher
+ * controls left many live-instrument steps without the only gesture they had. The vocabulary to say
+ * so was `FAIL`, which reads as a broken app and teaches people to ignore reds, or a deletion,
+ * which is silence. The rule: an instrument may lose a step, but not silently.
  *
- * ⛔ **`417` removed three launcher controls and fifty-four steps across three live instruments lost
- * the only gesture they had.** The vocabulary available to say so was `FAIL` — which reads as a
- * broken app and teaches people to ignore reds — or a deletion, which is silence. The rule 420 was
- * given is one sentence: *"An instrument may lose a step. It may not lose a step silently."*
+ * Two absences, not the same one:
  *
- * ⚠️ **Two absences, and they are not the same absence.**
+ *  - NOT PERFORMED: the step was reached and could not be done: the surface is gone, or a
+ *    bounded wait ran out. It is a fact about us and somebody can act on it.
+ *  - NOT REACHED: the run never got to the step, because something earlier aborted the
+ *    sequence. It leaves no trace in `results` at all, which is why the count is the caller's.
  *
- *  - **NOT PERFORMED** — the step was reached and could not be done: the surface is gone, or a
- *    bounded wait ran out (standing rule 13). It is a fact about US and somebody can act on it.
- *  - **NOT REACHED** — the run never got to the step, because something earlier aborted the
- *    sequence. ⛔ It leaves no trace in `results` at all, which is why the count is the caller's.
- *
- * ⚑ **And both are apart from `skip`**, which means *not selected for this run* and might be green
- * in the next one.
+ * Both are apart from `skip`, which means not selected for this run and might be green in the next.
  */
 describe('the fifth and sixth cells (420 §4)', () => {
   it('⛔ a not-performed return is its own verdict — not a FAIL, not a blank, not a pass', () => {
@@ -249,13 +237,13 @@ describe('the fifth and sixth cells (420 §4)', () => {
   })
 
   it('⛔ …and the two absences do not answer each other’s predicate', () => {
-    // ⚠️ **The control the fourth cell needed too.** Both are `Symbol.for` marks on a plain object,
-    // so a shared brand — or one predicate written as `typeof value === 'object'` — would make
-    // every blank step report as unperformed and the count that matters would be noise.
+    // The control the fourth cell needed too. Both are `Symbol.for` marks on a plain object, so a
+    // shared brand, or one predicate written as `typeof value === 'object'`, would make every blank
+    // step report as unperformed and the count that matters would be noise.
     expect(isNotAsserted(notPerformed('the control is gone'))).toBe(false)
     expect(isNotPerformed(notAsserted('the provider ran no compaction'))).toBe(false)
-    // …and the words alone launder nothing, for the fourth cell's own reason: several steps quote
-    // this phrase about a sub-claim while performing everything else they exist for.
+    // …and the words alone launder nothing, for the fourth cell's reason: several steps quote this
+    // phrase about a sub-claim while performing everything else they exist for.
     expect(isNotPerformed('NOT PERFORMED — the launcher has no provider control')).toBe(false)
     expect(outcomeVerdict('NOT PERFORMED — the launcher has no provider control').verdict).toBe(
       'PASS',
@@ -263,18 +251,17 @@ describe('the fifth and sixth cells (420 §4)', () => {
   })
 
   it('⛔ refuses an unexplained absence — the silence it exists to break', () => {
-    // 🔴 **The whole cell is the REASON.** A row reading `NOT PERFORMED 13` with nothing after it
-    // is a step that vanished with extra steps, and the next reader has to re-derive why. The
-    // constructor is where that can be made impossible.
+    // The whole cell is the reason. A row reading `NOT PERFORMED 13` with nothing after it is a step
+    // that vanished, and the next reader has to re-derive why. The constructor makes that impossible.
     expect(() => notPerformed('')).toThrow(/needs a reason/)
     expect(() => notPerformed('   ')).toThrow(/needs a reason/)
     expect(() => notPerformed(undefined)).toThrow(/needs a reason/)
   })
 
   it('⚑ …and §13’s other half — a wait that ran out carries its deadline into the row', () => {
-    // ⛔ *"A table row that says 'not performed, deadline 90s' is worth more than a run that is
-    // still going."* The two reasons must be tellable apart by a reader of the log alone: a control
-    // that is gone comes back when somebody builds it; a deadline comes back on a quieter machine.
+    // A row that says "not performed, deadline 90s" is worth more than a run that is still going. The
+    // two reasons must be tellable apart from the log alone: a control that is gone comes back when
+    // somebody builds it; a deadline comes back on a quieter machine.
     expect(notPerformed('the provider never answered', { deadlineMs: 90_000 }).why).toBe(
       'the provider never answered (deadline 90000ms)',
     )
@@ -305,11 +292,11 @@ describe('the fifth and sixth cells (420 §4)', () => {
       '40/44 passed · ⚠️ 1 ran but asserted nothing · ⚑ 2 NOT PERFORMED · ⚑ 2 NOT REACHED · ' +
         '3 skipped · ⛔ 1 FAILED · evidence in /tmp/evidence',
     )
-    // ⛔ **The denominator still counts them**, for the fourth cell's reason: a run that stopped
-    // performing two steps must not read as a smaller, greener run.
+    // The denominator still counts them, for the fourth cell's reason: a run that stopped performing
+    // two steps must not read as a smaller, greener run.
     expect(summary.line).not.toContain('40/40')
     expect(summary.line).not.toContain('40/42')
-    // …and WHICH two, because a capability nobody can name is a capability nobody puts back.
+    // …and which two, because a capability nobody can name is a capability nobody puts back.
     expect(summary.unperformed).toEqual([
       'NOT PERFORMED 13 — the launcher has no provider control',
       'NOT PERFORMED 46 — the cwd field was deleted by 417',
@@ -317,8 +304,8 @@ describe('the fifth and sixth cells (420 §4)', () => {
   })
 
   it('⚑ a run with neither cell reads exactly as it did before 420', () => {
-    // The pairing every new cell owes: it must be invisible when there is nothing to report, or
-    // `⚑ 0 NOT PERFORMED` joins every green run and the marker stops meaning anything.
+    // The pairing every new cell owes: invisible when there is nothing to report, or
+    // `0 NOT PERFORMED` joins every green run and the marker stops meaning anything.
     const results = Array.from({ length: 7 }, (_, i) => ({ verdict: 'PASS', line: `PASS ${i}` }))
     expect(summarize(results).line).toBe('7/7 passed')
     expect(summarize(results)).toMatchObject({ notPerformed: 0, notReached: 0 })
@@ -328,10 +315,9 @@ describe('the fifth and sixth cells (420 §4)', () => {
   })
 
   it('⛔ NOT REACHED is the CALLER’s number — results alone cannot see a step that never ran', () => {
-    // 🔴 **The reason this parameter exists rather than being derived here.** A run that aborts
-    // never calls `step()` again, so the tokens it skipped past leave nothing behind to count. Only
-    // the instrument knows its own census. Passing 0 must therefore be a real claim of "none", and
-    // omitting it must not invent one.
+    // This parameter exists rather than being derived here because a run that aborts never calls
+    // `step()` again, so the tokens it skipped leave nothing behind to count. Only the instrument knows
+    // its own census. Passing 0 must be a real claim of "none", and omitting it must not invent one.
     const results = [{ verdict: 'PASS', line: 'PASS 1' }]
     expect(summarize(results, { notReached: 61 }).line).toBe('1/1 passed · ⚑ 61 NOT REACHED')
     expect(summarize(results, { notReached: 0 }).line).toBe('1/1 passed')
