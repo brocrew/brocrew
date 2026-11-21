@@ -267,7 +267,7 @@ describe('710 · R52 — a person whose machine ran short', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⚑ A person's New Conversation — the launcher's door, answered as the launcher reads it. */
+  /** The provider's launch read, with a fake native query that refuses the login. */
   const claudeLaunchOnItsLogin = async (how: 'start' | 'models' = 'start'): Promise<Error> => {
     const runtime = new ClaudeRuntime(
       () => {
@@ -280,7 +280,7 @@ describe('710 · R52 — a person whose machine ran short', () => {
       undefined,
       undefined,
       undefined,
-      undefined,
+      '/fictional/claude',
       claudeKeychainTokenProviderForALaunch(),
     )
     const options = {
