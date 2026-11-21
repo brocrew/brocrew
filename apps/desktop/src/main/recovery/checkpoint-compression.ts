@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { dirname } from 'node:path'
 import { Readable, Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { createGunzip, createGzip } from 'node:zlib'
+import { promisify } from 'node:util'
+import { createGunzip, gzip } from 'node:zlib'
 import { syncFolder, type RecoveryFs, type RecoveryFileHandle } from './files'
 
 export interface PlainDatabaseFacts {
@@ -10,14 +11,55 @@ export interface PlainDatabaseFacts {
   readonly sha256: string
 }
 
-/** Streams the closed source directly into its compressed checkpoint; no plain staging copy. */
+const PIECE_BYTES = 16 * 1024 * 1024
+/** Matches Node's default thread pool, where zlib compresses. */
+const PIECES_AT_ONCE = 4
+const gzipPiece = promisify(gzip)
+
+/**
+ * Streams the closed source into its compressed checkpoint; no plain staging copy. Pieces are
+ * compressed side by side and written in order as separate gzip members, which is one gzip file.
+ */
 export function gzipCheckpoint(
   source: string,
   target: string,
   fs: RecoveryFs,
   signal?: AbortSignal,
 ): Promise<PlainDatabaseFacts> {
-  return transcode(source, target, fs, true, undefined, signal)
+  return withFiles(source, target, fs, signal, async (input, output) => {
+    const hash = createHash('sha256')
+    let bytes = 0
+    let ended = false
+    const compressing: Promise<Buffer>[] = []
+    try {
+      for (;;) {
+        while (!ended && compressing.length < PIECES_AT_ONCE) {
+          signal?.throwIfAborted()
+          const buffer = Buffer.allocUnsafe(PIECE_BYTES)
+          const { bytesRead } = await input.read(buffer, 0, buffer.length, null)
+          if (bytesRead === 0) ended = true
+          else {
+            const piece = buffer.subarray(0, bytesRead)
+            bytes += bytesRead
+            hash.update(piece)
+            const compressed = gzipPiece(piece, { level: 1 })
+            // A piece that fails while an earlier one is written is reported when its turn comes.
+            compressed.catch(() => undefined)
+            compressing.push(compressed)
+          }
+        }
+        const next = compressing.shift()
+        if (next === undefined) break
+        const written = await next
+        signal?.throwIfAborted()
+        await output.writeFile(written)
+      }
+    } finally {
+      // A gzip already started cannot be stopped; the files close only once none is running.
+      await Promise.allSettled(compressing)
+    }
+    return { bytes, sha256: hash.digest('hex') }
+  })
 }
 
 export function gunzipCheckpoint(
@@ -27,32 +69,13 @@ export function gunzipCheckpoint(
   fs: RecoveryFs,
   signal?: AbortSignal,
 ): Promise<PlainDatabaseFacts> {
-  return transcode(source, target, fs, false, expectedBytes, signal)
-}
-
-async function transcode(
-  source: string,
-  target: string,
-  fs: RecoveryFs,
-  compress: boolean,
-  expectedBytes?: number,
-  signal?: AbortSignal,
-): Promise<PlainDatabaseFacts> {
-  signal?.throwIfAborted()
-  const input = await fs.open(source, 'r')
-  let output: RecoveryFileHandle | undefined
-  let failed = false
-  let failure: unknown
-  let result!: PlainDatabaseFacts
-  try {
-    output = await fs.open(target, 'wx', 0o600)
-    const destination = output
+  return withFiles(source, target, fs, signal, async (input, destination) => {
     const hash = createHash('sha256')
     let bytes = 0
     const inspect = new Transform({
       transform(chunk: Buffer, _encoding, done) {
         bytes += chunk.length
-        if (expectedBytes !== undefined && bytes > expectedBytes) {
+        if (bytes > expectedBytes) {
           done(new Error('The recovery copy expands beyond its recorded database size.'))
           return
         }
@@ -77,13 +100,32 @@ async function transcode(
         )
       },
     })
-    const stages = compress ? [inspect, createGzip({ level: 1 })] : [createGunzip(), inspect]
-    await pipeline([Readable.from(chunks()), ...stages, sink], { signal })
-    if (expectedBytes !== undefined && bytes !== expectedBytes)
+    await pipeline([Readable.from(chunks()), createGunzip(), inspect, sink], { signal })
+    if (bytes !== expectedBytes)
       throw new Error('The recovery copy does not hold its recorded database size.')
-    await destination.sync()
+    return { bytes, sha256: hash.digest('hex') }
+  })
+}
+
+/** Opens both files, runs `work`, makes the target durable, and closes both whatever happens. */
+async function withFiles(
+  source: string,
+  target: string,
+  fs: RecoveryFs,
+  signal: AbortSignal | undefined,
+  work: (input: RecoveryFileHandle, output: RecoveryFileHandle) => Promise<PlainDatabaseFacts>,
+): Promise<PlainDatabaseFacts> {
+  signal?.throwIfAborted()
+  const input = await fs.open(source, 'r')
+  let output: RecoveryFileHandle | undefined
+  let failed = false
+  let failure: unknown
+  let result!: PlainDatabaseFacts
+  try {
+    output = await fs.open(target, 'wx', 0o600)
+    result = await work(input, output)
+    await output.sync()
     await syncFolder(dirname(target), fs)
-    result = { bytes, sha256: hash.digest('hex') }
   } catch (error) {
     failed = true
     failure = error
