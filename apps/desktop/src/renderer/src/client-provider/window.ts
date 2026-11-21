@@ -15,6 +15,7 @@ export const desktopProviderApi = createDesktopProviderApi(
   () => globalThis.window?.api?.workspaces,
   () => globalThis.window?.api?.themes,
   () => globalThis.window?.api,
+  () => globalThis.window?.api?.runtime,
 )
 
 export const desktopBootstrap = {

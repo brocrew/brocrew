@@ -83,7 +83,7 @@ it('uses each injected desktop client’s updates and preserves the method recei
   function menuWith(updates: ReturnType<typeof fakeUpdates>) {
     const client = {
       ...createDesktopProviderApi(noProvider, () => undefined),
-      desktop: { updates, chooseCwd: noProvider, chooseBundle: noProvider },
+      desktop: { updates, chooseCwd: noProvider, chooseBundle: noProvider, getAppInfo: noProvider },
     }
     return mount(
       defineComponent({
