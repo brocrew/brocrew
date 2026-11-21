@@ -181,6 +181,7 @@ export class WorkSearchEngine {
       query.limit,
       ...(query.includeConversationMetadata === true ? [true] : []),
       ...(query.grouped === true ? ['grouped'] : []),
+      ...(query.titlesAndBriefs === true ? ['titles-and-briefs'] : []),
     ])
     let cursor: Cursor | null = null
     if (query.cursor !== undefined) {
@@ -585,7 +586,9 @@ export class WorkSearchEngine {
       candidate.provider === null
         ? undefined
         : store.conversationTitle(id, query.grouped === true ? unread : undefined)
-    const { address, title, line } = describeConversationForRead(store, id, service, savedTitle)
+    const { address, title, line, profileFallback } = describeConversationForRead(
+      store, id, service, savedTitle,
+    )
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
     const pieces =
@@ -645,16 +648,18 @@ export class WorkSearchEngine {
           eligible(task) &&
           matches(
             words,
-            query.scope === undefined
-              ? [
-                  task.label,
-                  task.title,
-                  task.brief,
-                  task.done,
-                  task.status?.text ?? null,
-                  task.piece?.summary ?? null,
-                ]
-              : [task.title, task.done, task.piece?.summary ?? null],
+            query.titlesAndBriefs === true
+              ? [task.title, task.brief]
+              : query.scope === undefined
+                ? [
+                    task.label,
+                    task.title,
+                    task.brief,
+                    task.done,
+                    task.status?.text ?? null,
+                    task.piece?.summary ?? null,
+                  ]
+                : [task.title, task.done, task.piece?.summary ?? null],
           ),
       )
       .sort((left, right) => right.givenAt - left.givenAt || right.id.localeCompare(left.id))
@@ -662,7 +667,12 @@ export class WorkSearchEngine {
     const matchesConversation =
       query.scope === undefined &&
       query.state === undefined &&
-      matches(words, [address, title, candidate.profile, latest?.text ?? null])
+      matches(
+        words,
+        query.titlesAndBriefs === true
+          ? [profileFallback ? null : title]
+          : [address, title, candidate.profile, latest?.text ?? null],
+      )
     if (!matchesConversation && matched.length === 0) return null
 
     const toShow = matched.slice(0, taskLimit)

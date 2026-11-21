@@ -44,6 +44,7 @@ export const workSearchQuery = conversationSearchQuery.extend({
   state: z.enum(TASK_STATES).optional(),
   includeConversationMetadata: z.literal(true).optional(),
   grouped: z.literal(true).optional(),
+  titlesAndBriefs: z.literal(true).optional(),
 })
 export type WorkSearchQuery = z.input<typeof workSearchQuery>
 

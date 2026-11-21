@@ -6,6 +6,7 @@ import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { createSessionStore } from '../src/main/db/session-store'
 import {
   pastWorkSearchInWords,
@@ -19,6 +20,8 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { WorkSearch } from '../src/main/runtime/work-search'
+import type { WorkSearchPage } from '../src/shared/work-search'
 import { FakeRuntime } from '@brobot2/runtime'
 import { archivedInMemory } from '../src/main/archived-file'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -526,9 +529,15 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   )
   const archived = archivedInMemory()
   archived.add(['fictional-target'], 1_800_000_000_000)
+  const engine = new WorkSearchEngine(w.file)
+  cleanups.push(() => engine.close())
   const host = new RuntimeHost({
     store: w.store,
     archived,
+    workSearchReader: {
+      read: async (caller, query) => engine.read(caller, query),
+      close: async () => {},
+    },
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: () => '/fictional/provider-home',
     providerHomePath: () => '/fictional/provider-home',
@@ -594,6 +603,8 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     'fictional-caller',
     'archivequartz',
     'fictional-other-profile',
+    undefined,
+    {},
   )
   w.db
     .prepare(
@@ -621,4 +632,117 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     ok: false,
     reason: 'unavailable',
   })
+})
+
+it('returns work titles and briefs without opening the transcript reader', async () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  const target = 'fictional-target'
+  w.create(caller)
+  const root = w.create(target)
+  const piece = 'fictional-piece'
+  const title = 'titlequartz'
+  const brief = 'briefquartz'
+  const label = `${root.label}.1`
+  w.store.recordGive(
+    {
+      piece,
+      parent: root.piece,
+      number: 1,
+      owner: target,
+      givenBy: null,
+      title,
+      brief,
+      folder: null,
+      inputs: [],
+    },
+    0,
+    { type: 'work_given', piece, label, parent: root.piece, givenBy: null, title, brief },
+    1_800_000_000_000,
+  )
+  w.store.append(
+    target,
+    1,
+    { type: 'work_status_set', piece, line: 'statusquartz', by: target },
+    1_800_000_000_001,
+  )
+  const engine = new WorkSearchEngine(w.file)
+  cleanups.push(() => engine.close())
+  const fallback = vi.fn(async () => ({ ok: true as const, hits: [], complete: true, next_cursor: null }))
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: { read: async (as, query) => engine.read(as, query) },
+      pastWorkSearchReader: { read: fallback },
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  for (const phrase of [title, brief]) {
+    expect(await search.searchPastWork(caller, phrase)).toMatchObject({
+      ok: true,
+      hits: [{ conversation: target, piece, matched_field: 'work title or brief' }],
+    })
+  }
+  expect(fallback).not.toHaveBeenCalled()
+  expect(await search.searchWork(caller, { words: 'statusquartz' })).toMatchObject({
+    ok: true,
+    page: { hits: [{ conversation: target }] },
+  })
+  expect(await search.searchPastWork(caller, 'statusquartz')).toMatchObject({
+    ok: true,
+    hits: [],
+  })
+  expect(fallback).toHaveBeenCalledTimes(1)
+  expect(await search.searchPastWork(caller, title, undefined, undefined, {})).toMatchObject({
+    ok: true,
+    hits: [],
+  })
+  expect(fallback).toHaveBeenLastCalledWith(
+    expect.objectContaining({ transcript: {} }),
+    caller,
+    title,
+  )
+})
+
+it.each([0, 1])('continues empty work pages and carries earlier unread records (%i)', async (skipped) => {
+  const w = world()
+  const caller = 'fictional-caller'
+  w.create(caller)
+  const page: WorkSearchPage = {
+    hits: [],
+    searched: 10,
+    rows_unread: 0,
+    ledgers_skipped: 0,
+    complete: true,
+    next_cursor: null,
+  }
+  const metadata = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      page: { ...page, ledgers_skipped: skipped, complete: false, next_cursor: 'next' },
+    })
+    .mockResolvedValueOnce({ ok: true, page })
+  const fallback = vi.fn(async () => ({ ok: true as const, hits: [], complete: true, next_cursor: null }))
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: { read: metadata },
+      pastWorkSearchReader: { read: fallback },
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  const first = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader')
+  expect(first).toMatchObject({ ok: true, hits: [], complete: false })
+  expect(fallback).not.toHaveBeenCalled()
+  if (!first.ok || first.next_cursor === null) throw new Error('expected a work cursor')
+  const final = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader', first.next_cursor)
+  expect(metadata).toHaveBeenLastCalledWith(
+    caller,
+    expect.objectContaining({ cursor: 'next', profile: 'fictional-reader', titlesAndBriefs: true }),
+  )
+  expect(final).toEqual({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
+  expect(fallback).toHaveBeenCalledTimes(skipped === 0 ? 1 : 0)
 })
