@@ -11,7 +11,7 @@
   "apps/desktop/src/main/runtime/agent-tools.ts": 10252,
   "apps/desktop/src/main/runtime/digest.ts": 1003,
   "apps/desktop/src/main/runtime/factory-text.ts": 1004,
-  "apps/desktop/src/main/runtime/ipc.ts": 3247,
+  "apps/desktop/src/main/runtime/ipc.ts": 1217,
   "apps/desktop/src/main/runtime/question-rails.ts": 1160,
   "apps/desktop/src/main/runtime/reply-rails.ts": 1433,
   "apps/desktop/src/main/runtime/runtime-host.ts": 44304,

@@ -27,7 +27,10 @@ import {
  */
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../..')
-const IPC = readFileSync(join(REPO, 'apps/desktop/src/main/runtime/ipc.ts'), 'utf8')
+const IPC = readFileSync(
+  join(REPO, 'apps/desktop/src/main/runtime/ipc-conversation-commands.ts'),
+  'utf8',
+)
 const SCRIPTS = join(REPO, 'scripts')
 
 describe('PLACEABLE is the wire, not a list beside it', () => {
@@ -40,7 +43,7 @@ describe('PLACEABLE is the wire, not a list beside it', () => {
     const at = IPC.indexOf("z.literal('createSession')")
     expect(
       at,
-      'ipc.ts has no createSession arm — this whole file measures nothing',
+      'ipc-conversation-commands.ts has no createSession arm — this whole file measures nothing',
     ).toBeGreaterThan(0)
     return IPC.slice(at, IPC.indexOf("z.literal('", at + 30))
   })()
