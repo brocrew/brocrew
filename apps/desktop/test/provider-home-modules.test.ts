@@ -240,7 +240,7 @@ for (const reason of ['read timed out', 'read denied', 'no current local token']
       provider: 'claude',
       name: 'Sign in',
       authMethod: 'sign-in',
-      credentialSource: 'machine-sign-in',
+      credentialSource: 'provider-sign-in',
       baseUrl: null,
       enabled: true,
       contractVersion: 1,
