@@ -474,7 +474,7 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
     })
 
     it('⛔ a later stop that ended nothing never names an earlier stop’s commands', async () => {
-      const { pm, worker, pmTools, handle, its, label, profile } = await aPmAndItsWorker({
+      const { pm, pmTools, handle, its, label, profile } = await aPmAndItsWorker({
         quietAfterTheFirst: true,
       })
       const first = await callOn(pmTools, 'interrupt_agent', { agent: label, reason: 'one' })
@@ -489,17 +489,14 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
         brief: 'the second',
       })
       const label2 = given.structured.label as string
+      // ⚑ The withdrawal notice starts no turn: the second piece's own turn carries it.
       await waitFor(
         () => its.words.length >= 2 && handle.status() === 'working',
-        'the turn carrying the withdrawal',
+        'the second piece’s own turn, carrying the withdrawal',
       )
       // ⚑ That turn says the first stop's commands — the positive this test is paired with.
       expect(its.words[1]).toContain(TOLD_BOTH)
-      await callOn(pmTools, 'interrupt_agent', { agent: worker, reason: 'the withdrawal turn' })
-      await waitFor(
-        () => its.words.length >= 3 && handle.status() === 'working',
-        'the second piece’s own turn',
-      )
+      expect(its.words[1]).toContain('the second')
       const from = ledger(pm).length
       const second = await callOn(pmTools, 'interrupt_agent', { agent: label2, reason: 'two' })
       expect(second.structured.ended ?? []).toEqual([])

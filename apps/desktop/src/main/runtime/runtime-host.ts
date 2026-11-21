@@ -2004,8 +2004,65 @@ interface ProviderHandover {
   noteInputRecorded?(): void
 }
 
-function isRunnableHeldMessage(message: Pick<QueuedMessage, 'authorship'>): boolean {
-  return message.authorship.appNotice !== 'a-conversation-was-compacted'
+/**
+ * App notices that never start a turn of their own: each is recorded at once and rides the
+ * conversation's next ordinary input (§8: who ended, stopped or compacted its work, and why).
+ */
+const NOTICES_FOR_ITS_NEXT_INPUT: ReadonlySet<AppNotice> = new Set<AppNotice>([
+  'a-conversation-was-compacted',
+  'a-piece-closed',
+  'a-piece-a-person-closed',
+  'a-piece-taken-back',
+  'a-piece-a-person-took-back',
+  'a-piece-it-gave-closed',
+  'a-piece-it-gave-a-person-closed',
+  'a-piece-it-gave-taken-back',
+  'a-piece-it-gave-a-person-took-back',
+])
+
+function isANoticeForItsNextInput(message: Pick<QueuedMessage, 'authorship'>): boolean {
+  const notice = message.authorship.appNotice
+  return notice !== undefined && NOTICES_FOR_ITS_NEXT_INPUT.has(notice)
+}
+
+/**
+ * Whether held words drive a turn of their own. A notice for the next input does not, and neither
+ * does a new brief: it waits in the mailbox and goes with the next ordinary input.
+ */
+function isRunnableHeldMessage(message: Pick<QueuedMessage, 'authorship' | 'rebrief'>): boolean {
+  return !isANoticeForItsNextInput(message) && message.rebrief !== true
+}
+
+/** Whether anything held in its mailbox would drive a turn. */
+function somethingRunnableIsHeld(session: Pick<HostedSession, 'mailbox'>): boolean {
+  return session.mailbox.some(isRunnableHeldMessage)
+}
+
+/**
+ * Whether words take the held notices with them: any ordinary input, and the notice that a wait
+ * on a piece has ended, which starts the conversation that recorded that wait.
+ */
+function itTakesTheHeldNotices(
+  authorship: Pick<QueuedMessage['authorship'], 'appNotice'>,
+): boolean {
+  return (
+    authorship.appNotice === undefined || authorship.appNotice === 'a-work-wait-needs-attention'
+  )
+}
+
+/** The reason a notice says when its sender gave none. */
+const NO_REASON_GIVEN = 'no reason given'
+
+/** The reason slot of a notice: the reason given, or {@link NO_REASON_GIVEN}. */
+function reasonSaid(reason: string | undefined): string {
+  const given = aReasonGiven(reason)
+  return given === null ? `Reason: ${NO_REASON_GIVEN}.` : `Reason: ${given}`
+}
+
+/** A reason as given, or `null` for none or only blanks. */
+function aReasonGiven(reason: string | undefined): string | null {
+  const trimmed = reason?.trim()
+  return trimmed === undefined || trimmed === '' ? null : trimmed
 }
 
 interface HostedSession {
@@ -2214,8 +2271,8 @@ interface HostedSession {
    */
   firstTurnLead: string | null
   explicitCompaction?: CompactionRequest
-  /** Confirmed notices that ride ordinary input instead of driving their own turn. */
-  readonly confirmedCompactionNotices: QueuedMessage[]
+  /** Notices that ride its next ordinary input instead of driving their own turn. */
+  readonly noticesForItsNextInput: QueuedMessage[]
   /**
    * ⚑ **W4.179 — what {@link firstTurnLead} is**: the whole of this conversation's text, or only the
    * sections that changed since its Codex thread got it (`codex-lead.ts`).
@@ -6343,7 +6400,7 @@ export class RuntimeHost implements LiveHost {
   /**
    * ⚑ **Nothing newer in this life than the cut** — no turn has gone in it, its provider is not
    * running one of its own, nothing is being sent, stopped or closed, and what waits is this app's
-   * own notices only, which go with the continuation.
+   * own notices or a held new brief only, which go with the continuation.
    */
   private freshForTheContinuation(session: HostedSession): boolean {
     const slot = this.slots.get(session.id)
@@ -6357,7 +6414,9 @@ export class RuntimeHost implements LiveHost {
       session.handingOver.length === 0 &&
       session.stopStillAsked === null &&
       session.holdingQueue === 0 &&
-      session.mailbox.every((queued) => queued.authorship.appNotice !== undefined)
+      session.mailbox.every(
+        (queued) => queued.authorship.appNotice !== undefined || !isRunnableHeldMessage(queued),
+      )
     )
   }
 
@@ -6376,7 +6435,7 @@ export class RuntimeHost implements LiveHost {
     return (
       this.slots.get(session.id)?.session === session &&
       this.freshForTheContinuation(session) &&
-      session.mailbox.length === 0 &&
+      !somethingRunnableIsHeld(session) &&
       !this.somethingIsOnItsWayTo(session) &&
       !this.arrivals.has(session.id) &&
       !keptBusy
@@ -8831,7 +8890,7 @@ export class RuntimeHost implements LiveHost {
       !this.itStoppedUnder(session) &&
       session.flushing === null &&
       session.handle.status() === 'idle' &&
-      session.mailbox.length === 0 &&
+      !somethingRunnableIsHeld(session) &&
       session.holdingQueue === 0 &&
       !this.arrivals.has(session.id) &&
       !this.somethingIsOnItsWayTo(session) &&
@@ -11502,8 +11561,7 @@ export class RuntimeHost implements LiveHost {
           ? 'A person'
           : didIt(actor)
         : this.whatToCallTheConversation(endedBy)
-    const why = reason === undefined ? '' : ` Reason: ${reason}`
-    const text = `${who} ${act} ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer.${why}`
+    const text = `${who} ${act} ${pieceLine(piece.label, piece.title)}. It is no longer owed: do not wait for its answer. ${reasonSaid(reason)}`
     const notices =
       endedBy === null
         ? ({
@@ -11515,27 +11573,11 @@ export class RuntimeHost implements LiveHost {
       appNotice: notices[act],
       aboutPiece: { piece: piece.piece, label: piece.label },
     } as const
-    try {
-      await this.queueMessage(
-        giver,
-        text,
-        THE_APP_ITSELF,
-        [],
-        'notice',
-        facts,
-        WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS,
-      )
-    } catch (error) {
+    const told = await this.holdANoticeForItsNextInput(giver, text, facts)
+    if (told.delivery === 'not-delivered') {
       console.warn(
-        `runtime host could not deliver ending notice to ${giver} for ${piece.label}: ${errorMessage(error)}`,
+        `runtime host could not keep ending notice for ${giver} on ${piece.label}: ${told.whyNotTold}`,
       )
-      try {
-        this.holdUntilItStarts(giver, text, facts)
-      } catch (again) {
-        console.warn(
-          `runtime host could not keep ending notice for ${giver} on ${piece.label}: ${errorMessage(again)}`,
-        )
-      }
     }
   }
 
@@ -11616,7 +11658,7 @@ export class RuntimeHost implements LiveHost {
     if (session.turnsEnded !== itsTurn.turnsEnded || !this.itsTurnIsThePieces(session, piece)) {
       return false
     }
-    const held = session.mailbox.find(
+    const held = session.noticesForItsNextInput.find(
       (one) => one.authorship.appNotice === notice && one.drives === piece.piece,
     )
     if (held === undefined) return false
@@ -11713,16 +11755,14 @@ export class RuntimeHost implements LiveHost {
       endedBy === null
         ? `${actor === undefined || actor.who === 'a-person' ? 'A person' : didIt(actor)} took back ${pieceLine(piece.label, piece.title)}. Stop working on it and do not reply_to_parent about it.`
         : `${this.whatToCallTheConversation(endedBy)} took back ${pieceLine(piece.label, piece.title)}. Stop working on it and do not reply_to_parent about it.`,
-      ...(reason === undefined ? [] : [`Reason: ${reason}`]),
+      reasonSaid(reason),
       ...this.itsOpenPiecesAreStillYours(piece),
     ].join(' ')
     try {
       if (endedBy === null && (actor === undefined || actor.who === 'a-person')) {
-        return deliveryOf(
-          await this.anAppNoticeToItsHolder(piece, text, 'a-piece-a-person-took-back'),
-        )
+        return await this.aNoticeForItsHolder(piece, text, 'a-piece-a-person-took-back')
       }
-      return deliveryOf(await this.anAppNoticeToItsHolder(piece, text, 'a-piece-taken-back'))
+      return await this.aNoticeForItsHolder(piece, text, 'a-piece-taken-back')
     } catch (error) {
       console.warn(
         `runtime host could not tell ${piece.owner} that ${piece.label} was taken back: ${errorMessage(error)}`,
@@ -11748,21 +11788,18 @@ export class RuntimeHost implements LiveHost {
     const words =
       endedBy === null
         ? `${actor === undefined || actor.who === 'a-person' ? 'A person' : didIt(actor)} closed ${named}: its reply is no longer owed. Stop working on it and do not reply_to_parent about it.`
-        : `${this.whatToCallTheConversation(endedBy)}, ${this.nameByItsWork(endedBy)}, closed your task ${named}. It keeps its outcome; stop work on it.`
+        : `${this.whatToCallTheConversation(endedBy)}, ${this.nameByItsWork(endedBy)}, closed your task ${named}. ${reasonSaid(reason)} It keeps its outcome; stop work on it.`
     const text = [
-      words,
-      ...(reason === undefined ? [] : [`Reason: ${reason}`]),
+      endedBy === null ? `${words} ${reasonSaid(reason)}` : words,
       ...this.itsOpenPiecesAreStillYours(piece),
     ].join(' ')
     try {
-      return deliveryOf(
-        await this.anAppNoticeToItsHolder(
-          piece,
-          text,
-          endedBy === null && (actor === undefined || actor.who === 'a-person')
-            ? 'a-piece-a-person-closed'
-            : 'a-piece-closed',
-        ),
+      return await this.aNoticeForItsHolder(
+        piece,
+        text,
+        endedBy === null && (actor === undefined || actor.who === 'a-person')
+          ? 'a-piece-a-person-closed'
+          : 'a-piece-closed',
       )
     } catch (error) {
       console.warn(
@@ -11829,45 +11866,45 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
     withItsGive: boolean,
   ): Promise<Told<NewBriefDelivery>> {
-    const rebriefing = {
-      ...(piece.definitionOfDone == null ? {} : { definitionOfDone: piece.definitionOfDone }),
-      piece: piece.piece,
-      label: piece.label,
-      title: piece.title,
-      ...grantOf(piece.givenFolder),
-    }
-    const atTheHolder = (
-      to: string,
-      onAStop?: (to: string) => Promise<QueueOutcome>,
-    ): Promise<QueueOutcome> => {
-      // 🔴 R1 — the give it rides carries it: nothing is queued, and the answer is that give's.
-      if (withItsGive) return this.whereTheGiveItRidesStands(to, piece)
-      // 🔴 R2 — a piece that ended while the words were on their way is given no new brief.
-      if (this.itHasEnded(to, piece.piece)) return Promise.reject(new ItEndedBeforeItsNewBrief())
-      return this.queueAs(
-        to,
-        brief,
-        by,
-        [],
-        'work',
-        { rebriefing },
-        null,
-        'as-it-finds-it',
-        onAStop,
-      )
-    }
     try {
-      const delivered = await this.toItsHolderAlone(piece, brief, by, null, atTheHolder)
-      if (delivered === null) return deliveryOf(null)
-      if (delivered.outcome === 'sent') {
-        this.takeBackWhatALaterFactMadeFalse(piece, 'rebriefed')
-        return { delivery: 'sent' }
+      // 🔴 R1 — the give it rides carries it: nothing is queued, and the answer is that give's.
+      if (withItsGive) {
+        const delivered = await this.toItsHolderAlone(piece, brief, by, null, (to) =>
+          this.whereTheGiveItRidesStands(to, piece),
+        )
+        if (delivered === null) return deliveryOf(null)
+        if (delivered.outcome === 'sent') {
+          this.takeBackWhatALaterFactMadeFalse(piece, 'rebriefed')
+          return { delivery: 'sent' }
+        }
+        return { delivery: 'with-its-give' }
       }
-      if (withItsGive) return { delivery: 'with-its-give' }
-      // ⚑ **R2 — held for a piece that ended while the words were on their way into the mailbox**:
-      // the reply that ended it found no new brief waiting, so it did not say so, and the flush ends
-      // the words unsent ({@link whyItNoLongerGoes}) — this answer is where the giver reads it.
-      return { delivery: this.itHasEnded(piece.owner, piece.piece) ? 'after-it-ended' : 'held' }
+      if (this.theOneInItsPlace(piece.owner) !== piece.owner) return deliveryOf(null)
+      // 🔴 R2 — a piece that has ended is given no new brief.
+      if (this.itHasEnded(piece.owner, piece.piece)) return { delivery: 'after-it-ended' }
+      // Held for the holder's next input, in its giver's words: nothing starts it to deliver it, and
+      // the flush that carries it ends it unsent if the piece ends first.
+      const held = await new Promise<Told<NewBriefDelivery>>((resolve) => {
+        this.holdUntilItStarts(
+          piece.owner,
+          brief,
+          {},
+          'work',
+          (where) =>
+            resolve(
+              where === 'nowhere'
+                ? { delivery: 'not-delivered', whyNotTold: ITS_RECORD_WOULD_NOT_TAKE_IT }
+                : { delivery: 'held' },
+            ),
+          undefined,
+          { by, attachments: [], rebriefs: { piece: piece.piece, label: piece.label } },
+        )
+      })
+      // ⚑ **R2 — held for a piece that ended while the words were on their way**: the flush ends
+      // them unsent ({@link whyItNoLongerGoes}), and this answer is where the giver reads it.
+      return held.delivery === 'held' && this.itHasEnded(piece.owner, piece.piece)
+        ? { delivery: 'after-it-ended' }
+        : held
     } catch (error) {
       if (error instanceof ItEndedBeforeItsNewBrief) return { delivery: 'after-it-ended' }
       console.warn(
@@ -11934,6 +11971,46 @@ export class RuntimeHost implements LiveHost {
    * kind), delivered by {@link toItsHolderAlone}. ⚑ **Commit 6 · R4** — it names the piece, so its
    * turn drives that piece and no other.
    */
+  /** A notice about a piece for the conversation holding it, held for its next ordinary input. */
+  private aNoticeForItsHolder(
+    piece: Pick<PieceRow, 'piece' | 'owner' | 'label'>,
+    text: string,
+    appNotice: AppNotice,
+  ): Promise<Told> {
+    if (this.theOneInItsPlace(piece.owner) !== piece.owner) return Promise.resolve(deliveryOf(null))
+    return this.holdANoticeForItsNextInput(piece.owner, text, {
+      appNotice,
+      aboutPiece: { piece: piece.piece, label: piece.label },
+    })
+  }
+
+  /**
+   * Hold a notice for a conversation's next ordinary input: recorded at once, and nothing is
+   * started to deliver it. Answers `held`, or `not-delivered` when its record would not take it.
+   */
+  private holdANoticeForItsNextInput(
+    conversation: string,
+    text: string,
+    facts: FactsAQueueCarries,
+  ): Promise<Told> {
+    return new Promise((resolve) => {
+      try {
+        this.holdUntilItStarts(conversation, text, facts, 'notice', (where) => {
+          resolve(
+            where === 'nowhere'
+              ? { delivery: 'not-delivered', whyNotTold: ITS_RECORD_WOULD_NOT_TAKE_IT }
+              : { delivery: 'held' },
+          )
+        })
+      } catch (error) {
+        console.warn(
+          `runtime host could not hold a notice for ${conversation}: ${errorMessage(error)}`,
+        )
+        resolve(notTold(error))
+      }
+    })
+  }
+
   private anAppNoticeToItsHolder(
     piece: Pick<PieceRow, 'piece' | 'owner' | 'label'>,
     text: string,
@@ -13169,6 +13246,14 @@ export class RuntimeHost implements LiveHost {
     const { held, row } = this.wordsThisAppHolds(sessionId, text, facts, kind, id, left)
     // ⚑ **D-030 · its mailbox, while it runs** — and a sign-in that moved on holds them there for
     // its reopen ({@link reopenForWhatWaits}), which the flush asks for.
+    if (session !== null && session.finalizing === null && isANoticeForItsNextInput(held)) {
+      // Recorded now; it rides the next ordinary input and starts no turn of its own.
+      this.publishOurs(session, row)
+      session.noticesForItsNextInput.push(held)
+      this.theWorldMoved('work')
+      kept?.('its-ledger', held.id)
+      return
+    }
     if (session !== null && session.finalizing === null) {
       // ⚑ Its mailbox: a turn's end sends it, and a stop that has not yet handed on what it held does.
       this.publishOurs(session, row)
@@ -20232,12 +20317,12 @@ export class RuntimeHost implements LiveHost {
    */
   private nothingIsOnItsWayTo(holder: string, answer?: RowsUnread): boolean {
     if (this.startsInFlight.has(holder) || this.arrivals.has(holder)) return false
-    if ((this.heldAtAStop.get(holder)?.length ?? 0) > 0) return false
+    if (this.heldAtAStop.get(holder)?.some(isRunnableHeldMessage) === true) return false
     const slot = this.slots.get(holder)
     if (slot !== undefined) {
       const session = slot.session
       if (session === null) return false
-      return session.handle.status() !== 'working' && session.mailbox.length === 0
+      return session.handle.status() !== 'working' && !somethingRunnableIsHeld(session)
     }
     // ⛔ A held row that can't be read may be words on their way: none is said only of a whole read
     // of this holder's own, whatever else the answer could not read.
@@ -21854,13 +21939,14 @@ export class RuntimeHost implements LiveHost {
     // (it goes as typed, above), so a person's command on a fresh life leaves it for the next turn.
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const compactionNotices =
-      authorship.appNotice === undefined ? session.confirmedCompactionNotices.slice() : []
+    const heldNotices = itTakesTheHeldNotices(authorship)
+      ? session.noticesForItsNextInput.slice()
+      : []
     const words = this.withWhatThisLifeOwes(
       session,
       framed,
       drives ?? handing?.piece ?? null,
-      compactionNotices,
+      heldNotices,
     )
     // 🔴 **W4.189** — the folders this turn may also work in, the piece it hands over among them.
     session.handle.setWorkFolders(
@@ -21881,7 +21967,7 @@ export class RuntimeHost implements LiveHost {
       return this.sendOrdinaryInput(session, owedLead, owedLeadIs, {
         words,
         stamp: this.stampFor(from, handed),
-        compactionNotices,
+        heldNotices,
       })
     } catch (error) {
       session.itsTurnIs = kept
@@ -21982,16 +22068,14 @@ export class RuntimeHost implements LiveHost {
     const nothingRuns = session.handle.status() === 'idle'
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const compactionNotices = messages.some(
-      ({ queued }) => queued.authorship.appNotice === undefined,
-    )
-      ? session.confirmedCompactionNotices.slice()
+    const heldNotices = messages.some(({ queued }) => itTakesTheHeldNotices(queued.authorship))
+      ? session.noticesForItsNextInput.slice()
       : []
-    const words = this.withWhatThisLifeOwes(session, turn, currentPiece, compactionNotices)
+    const words = this.withWhatThisLifeOwes(session, turn, currentPiece, heldNotices)
     const handover = this.sendOrdinaryInput(session, owedLead, owedLeadIs, {
       words,
       stamp: this.stampForATurnOf(messages),
-      compactionNotices,
+      heldNotices,
     })
     this.aTurnIsHandedOver(
       session,
@@ -22088,7 +22172,7 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     said: string,
     currentPiece: string | null,
-    compactionNotices: readonly QueuedMessage[],
+    heldNotices: readonly QueuedMessage[],
   ): string {
     // ⚑ …and this app's own block last, after the message ({@link whatThisAppAddsAtItsEnd}).
     const plugins = pluginInstructionSection(readPluginInstructions(this.deps.plugins))
@@ -22098,7 +22182,7 @@ export class RuntimeHost implements LiveHost {
       !session.firstTurnLead?.includes(plugins)
         ? `\n\n${whatChangedBlock([plugins])}`
         : ''
-    const words = `${this.withWhatThisLifeStillOwes(session, said, compactionNotices)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
+    const words = `${this.withWhatThisLifeStillOwes(session, said, heldNotices)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // ⚑ **F093 · R2 — the whole text, kept for the turn's row** ({@link HostedSession.wordsJustHandedOver}):
     // both doors that frame words compose their last step here, just before the hand-over.
     session.wordsJustHandedOver = words
@@ -22213,7 +22297,7 @@ export class RuntimeHost implements LiveHost {
     input: {
       words: string
       stamp: TurnProvenance | undefined
-      compactionNotices: readonly QueuedMessage[]
+      heldNotices: readonly QueuedMessage[]
     },
   ): ProviderHandover {
     const consumed = session.leadJustHandedOver
@@ -22230,15 +22314,15 @@ export class RuntimeHost implements LiveHost {
         session.leadJustHandedOver = null
       }
     }
-    const { words, stamp, compactionNotices } = input
+    const { words, stamp, heldNotices } = input
     let inputAccepted = false
     let inputRecorded = false
     const noteNotices = () => {
-      if (inputAccepted && inputRecorded) this.noteCompactionNoticesSent(session, compactionNotices)
+      if (inputAccepted && inputRecorded) this.noteHeldNoticesSent(session, heldNotices)
     }
     try {
       const accepted =
-        compactionNotices.length === 0
+        heldNotices.length === 0
           ? session.handle.send(words, stamp)
           : session.handle.send(words, stamp, () => {
               inputAccepted = true
@@ -22719,6 +22803,8 @@ export class RuntimeHost implements LiveHost {
       if (facts.messageAct === undefined && this.aCallersWordsNoLongerGoStraightIn(sessionId, by)) {
         throw new TurnInProgress()
       }
+      // Held words that wait for the next input go with these: they are held, and the flush carries both.
+      if (!session.mailbox.every(isRunnableHeldMessage)) throw new TurnInProgress()
       handover = this.handToProvider(
         session,
         text,
@@ -25291,6 +25377,13 @@ export class RuntimeHost implements LiveHost {
         by: caller,
         // ⚑ **D-022 · R1 — the held give it rides**, said once, as the row is written.
         ...(withItsGive && folded?.messageId != null ? { messageId: folded.messageId } : {}),
+        ...(newBrief !== null &&
+        folded !== undefined &&
+        givenByAConversation(folded) &&
+        !withItsGive &&
+        !queued
+          ? { held: true as const }
+          : {}),
       })
     }
     let closed: { readonly tookBackTheMessage: boolean; readonly endedQuestions: number } | null =
@@ -27119,7 +27212,7 @@ export class RuntimeHost implements LiveHost {
       !somethingRunning(session.background) &&
       !scheduleHeld(session.scheduled) &&
       session.handle.status() === 'idle' &&
-      session.mailbox.length === 0 &&
+      !somethingRunnableIsHeld(session) &&
       !this.somethingIsOnItsWayTo(session) &&
       session.holdingQueue === 0 &&
       !planning.effective &&
@@ -27157,7 +27250,12 @@ export class RuntimeHost implements LiveHost {
     session: HostedSession,
     mode: 'as-it-finds-it' | 'after-a-lost-race' | 'with-what-waits',
   ): boolean {
-    return mode === 'as-it-finds-it' && session.handle.status() === 'idle' && !session.holdingQueue
+    return (
+      mode === 'as-it-finds-it' &&
+      session.handle.status() === 'idle' &&
+      !session.holdingQueue &&
+      session.mailbox.every(isRunnableHeldMessage)
+    )
   }
 
   /**
@@ -27187,7 +27285,9 @@ export class RuntimeHost implements LiveHost {
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
-    if (session.mailbox.length > 0) this.queueANewerHomeCopy(session.provider, session.profileId)
+    if (somethingRunnableIsHeld(session)) {
+      this.queueANewerHomeCopy(session.provider, session.profileId)
+    }
     if (this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') {
       void this.copyHomeWhenIdle(session.provider, session.profileId)
       if (this.homeCopyJobs.has(profileSignInKey(session.provider, session.profileId))) return
@@ -27209,7 +27309,7 @@ export class RuntimeHost implements LiveHost {
     // other** ({@link continueOnItsLife}): one handed on to a later life is ended unsent.
     this.dropObsoleteReconciliationNotices(session)
     this.letGoOfAContinuationNotForThisLife(session)
-    if (session.mailbox.length === 0) return
+    if (!somethingRunnableIsHeld(session)) return
     // 🔴 **The first words of a life started to continue a cut turn wait for its account check**, so
     // the continuation goes with them as one turn ({@link cutHoldsTheFirstBatch}). ⛔ A person's own
     // words never wait for it: they go, and the continuation does not follow them.
@@ -28325,8 +28425,8 @@ export class RuntimeHost implements LiveHost {
     const waiting: QueuedMessage[] = []
     for (const row of open) {
       const queued = inThisRun.get(row.messageId) ?? this.rebuiltFromItsRow(row)
-      if (queued.authorship.appNotice === 'a-conversation-was-compacted') {
-        session.confirmedCompactionNotices.push(queued)
+      if (isANoticeForItsNextInput(queued)) {
+        session.noticesForItsNextInput.push(queued)
         continue
       }
       const gone = this.whyItNoLongerGoes(session.id, queued)
@@ -29588,7 +29688,8 @@ export class RuntimeHost implements LiveHost {
         conversationLine: (conversation) =>
           describeConversation(this.deps.store, conversation, this.itIsAService(conversation)).line,
         waitForEnding: (session) => this.whatTheStopOfItsTurnEnds(session, this.interruptWaitMs),
-        askToStop: (session, caller, why) => this.askTheWorkToStop(session, caller, false, why),
+        askToStop: (session, caller, why) =>
+          this.askTheWorkToStop(session, caller, false, aReasonGiven(why) ?? NO_REASON_GIVEN),
         reportUnanswered: (session, requested, caller) => {
           this.sayWhenTheStopGoesUnanswered(session, requested, caller)
           void requested.catch((error: unknown) => {
@@ -29616,7 +29717,7 @@ export class RuntimeHost implements LiveHost {
         !this.stopsOnTheirWay.has(session) &&
         session.flushing === null &&
         session.handingOver.length === 0 &&
-        session.mailbox.length === 0 &&
+        !somethingRunnableIsHeld(session) &&
         session.explicitCompaction === undefined,
       checkSignIn: (session) => this.assertSignInCurrent(session, 'send'),
       providerCommands: (session) => this.theCommandsItAnswersTo(session),
@@ -29655,7 +29756,7 @@ export class RuntimeHost implements LiveHost {
       request.agent,
       this.itIsAService(request.agent),
     )
-    const text = `${actor}, ${address}, compacted this conversation: ${request.reason}.`
+    const text = `${actor}, ${address}, compacted this conversation: ${aReasonGiven(request.reason) ?? NO_REASON_GIVEN}.`
     const { held, row } = this.wordsThisAppHolds(
       session.id,
       text,
@@ -29664,15 +29765,12 @@ export class RuntimeHost implements LiveHost {
     )
     // Keep the caption and reason in the ledger without opening the runnable mailbox.
     this.publishOurs(session, row)
-    session.confirmedCompactionNotices.push(held)
+    session.noticesForItsNextInput.push(held)
   }
 
-  private noteCompactionNoticesSent(
-    session: HostedSession,
-    notices: readonly QueuedMessage[],
-  ): void {
+  private noteHeldNoticesSent(session: HostedSession, notices: readonly QueuedMessage[]): void {
     for (const notice of notices) {
-      const index = session.confirmedCompactionNotices.indexOf(notice)
+      const index = session.noticesForItsNextInput.indexOf(notice)
       if (index < 0) continue
       try {
         this.publishOurs(session, {
@@ -29682,7 +29780,7 @@ export class RuntimeHost implements LiveHost {
           text: notice.text,
           ...notice.authorship,
         })
-        session.confirmedCompactionNotices.splice(index, 1)
+        session.noticesForItsNextInput.splice(index, 1)
       } catch (error) {
         console.warn(
           `runtime host could not record a sent compaction notice for ${session.id}: ${errorMessage(error)}`,
@@ -31852,7 +31950,9 @@ export class RuntimeHost implements LiveHost {
           this.heldAtAStop
             .get(session.id)
             ?.some(
-              (queued) => queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run',
+              (queued) =>
+                isRunnableHeldMessage(queued) &&
+                queued.authorship.appNotice !== 'a-scheduled-job-that-will-not-run',
             ) &&
           !this.signInStops.has(session) &&
           session.diedOnAStaleSignIn !== true
@@ -31891,7 +31991,9 @@ export class RuntimeHost implements LiveHost {
     watching: RuntimeEventSink | null,
   ): Promise<void> {
     try {
-      if (!this.heldAtAStop.has(sessionId) || this.launches.closed) return
+      // Only words that drive a turn start it; notices and a new brief wait for its next input.
+      if (this.heldAtAStop.get(sessionId)?.some(isRunnableHeldMessage) !== true) return
+      if (this.launches.closed) return
       // An archived conversation keeps what it held until it is brought back.
       if (this.keptStopped(sessionId)) return
       await this.ensureRunning(sessionId, watching)
@@ -37105,7 +37207,7 @@ export class RuntimeHost implements LiveHost {
     const session = slot.session
     if (
       session.handle.status() !== 'idle' ||
-      session.mailbox.length > 0 ||
+      somethingRunnableIsHeld(session) ||
       session.flushing !== null
     )
       return
@@ -38928,7 +39030,7 @@ export class RuntimeHost implements LiveHost {
         ? this.explicitNoticeFromItsLastTurn(id)
         : null,
       explicitStopSaid: null,
-      confirmedCompactionNotices: [],
+      noticesForItsNextInput: [],
       askedSinceItsLastTurnEnded: new Set<string>(),
       questionsAStopEndedUntold: options.continuesARecording
         ? this.theQuestionsTheStopOfItsLastTurnEnded(id)
@@ -40122,7 +40224,7 @@ export class RuntimeHost implements LiveHost {
         )
           return null
       }
-      if (session.mailbox.length > 0 || session.holdingQueue > 0) return null
+      if (somethingRunnableIsHeld(session) || session.holdingQueue > 0) return null
       if (this.somethingIsOnItsWayTo(session)) return null
       if (this.itWaitsForItsLimit(session, false)) return null
       const current = this.whatACarryOnWouldAnswer(session, decided.piece !== null)
@@ -40203,7 +40305,7 @@ export class RuntimeHost implements LiveHost {
       console.warn(`runtime host could not record its sign-in recovery: ${errorMessage(error)}`)
     }
     let held = false
-    const carried = this.heldAtAStop.has(session.id)
+    const carried = this.heldAtAStop.get(session.id)?.some(isRunnableHeldMessage) === true
     let attempted = false
     let waitsForThePerson = false
     try {
@@ -40531,7 +40633,10 @@ export class RuntimeHost implements LiveHost {
       } finally {
         this.signInStops.delete(session)
         delete session.reopeningOnTheCurrentSignIn
-        if (this.isCurrentLife(session) || !this.heldAtAStop.has(session.id)) {
+        if (
+          this.isCurrentLife(session) ||
+          this.heldAtAStop.get(session.id)?.some(isRunnableHeldMessage) !== true
+        ) {
           this.reopeningForWhatWaited.delete(session.id)
         }
       }
@@ -40544,7 +40649,7 @@ export class RuntimeHost implements LiveHost {
    * bar's, and a cancelled message leaves nothing to reopen for.
    */
   private aReopenIsOwedFor(session: HostedSession): boolean {
-    return session.mailbox.length > 0
+    return somethingRunnableIsHeld(session)
   }
 
   /**

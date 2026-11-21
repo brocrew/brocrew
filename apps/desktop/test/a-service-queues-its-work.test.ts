@@ -1,7 +1,6 @@
 import { giveLateServiceTask } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { SendReceipt } from '../src/shared/tool-outcome'
-import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -880,15 +879,19 @@ describe('a service queues the work it is given', () => {
       })
       if (actor !== first) {
         await vi.waitFor(() => {
+          // The giver's notice is held for its next input, with the fallback reason.
           const notices = world
             .ledger(first)
-            .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
-            .filter((message) => message.appNotice === 'a-piece-it-gave-taken-back')
+            .filter(
+              (row) =>
+                row.type === 'message_queued' && row.appNotice === 'a-piece-it-gave-taken-back',
+            )
+            .map((row) => (row.type === 'message_queued' ? row.text : ''))
           expect(notices).toHaveLength(1)
-          expect(notices[0]?.text).toContain(
+          expect(notices[0]).toContain(
             `${host.whatToCallTheConversation(actor)} took back ${one.label} · One.`,
           )
-          expect(notices[0]?.text).not.toContain('Reason:')
+          expect(notices[0]).toContain('Reason: no reason given.')
         })
       }
       expect(

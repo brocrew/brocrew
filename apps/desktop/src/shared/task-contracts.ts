@@ -901,6 +901,11 @@ export interface WorkRebriefedEvent {
    * turn, or not at all. Never rewritten: the row says it once.
    */
   messageId?: string
+  /**
+   * Its brief is held for the holder's next input, so the holder's wait on purpose ends when that
+   * brief is sent, not at this row. Rows without it end the wait here.
+   */
+  held?: true
 }
 
 /**

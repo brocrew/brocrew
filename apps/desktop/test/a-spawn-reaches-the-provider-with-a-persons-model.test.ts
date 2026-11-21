@@ -813,10 +813,13 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
     const { pm, worker } = ended
     expect(rowOf(worker)).toEqual({ model: 'opus', reasoning_effort: 'high' })
     // ⚑ Its piece taken back first: a give to a helper still holding stalled work is refused
-    // (`its-work-has-stalled`), and taking it back wakes the helper to hear so — on its row's pair.
+    // (`its-work-has-stalled`). The take-back notice waits for its next input; a message is that
+    // input, starting the helper on its row's pair.
     const turns = turnsIn(worker)
     const took = await callOn(pm, 'withdraw_task', { piece: ended.piece })
     expect(took.outcome, JSON.stringify(took)).toBe('ok')
+    const told = await callOn(pm, 'message_agent', { agent: worker, text: 'that piece is off' })
+    expect(told.outcome, JSON.stringify(told)).toBe('ok')
     await waitFor(
       () => resumed.at(-1)?.model === 'opus' && turnsIn(worker) > turns,
       'the worker to hear it',

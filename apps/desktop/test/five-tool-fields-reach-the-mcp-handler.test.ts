@@ -459,31 +459,30 @@ describe('five more tools answer field failures through Claude MCP', () => {
     expect(effects()).toEqual(before)
   })
 
-  it('compact_agent keeps required text fields and records malformed requests at the handler', async () => {
+  it('compact_agent requires its agent, takes an optional reason, and records malformed requests at the handler', async () => {
     const wire = await server('compact_agent')
     const advertised = await wire.list()
     expect(advertised.error).toBeUndefined()
     const schema = advertised.result!.tools![0]!.inputSchema
-    expect(schema.required).toEqual(['agent', 'reason'])
+    expect(schema.required).toEqual(['agent'])
     expect(schema.properties).toMatchObject({
       agent: { type: 'string', description: 'The conversation, by any of its labels.' },
-      reason: { type: 'string', description: 'Why you are asking for compaction.' },
+      reason: {
+        type: 'string',
+        description:
+          "Why, optional. The conversation reads it with your name; without one it reads 'no reason given'.",
+      },
     })
 
     const compact = vi.spyOn(host, 'compactConversation')
     const before = effects()
     const reason = 'Make room for the next reply'
-    for (const args of [
-      { reason },
-      { agent: worker },
-      { agent: ['PRIVATE_VALUE'], reason },
-      { agent: worker, reason: ['PRIVATE_VALUE'] },
-    ]) {
-      const text = ownRefusal(
-        'compact_agent',
-        await wire.call(args),
-        'agent and reason are both required',
-      )
+    for (const [args, problem] of [
+      [{ reason }, 'agent is required'],
+      [{ agent: ['PRIVATE_VALUE'], reason }, 'agent is required'],
+      [{ agent: worker, reason: ['PRIVATE_VALUE'] }, 'reason must be text'],
+    ] as const) {
+      const text = ownRefusal('compact_agent', await wire.call(args), problem)
       expect(text).not.toContain('Symbol')
       expect(kept().at(-1)).toMatchObject({
         tool: 'compact_agent',
@@ -493,8 +492,8 @@ describe('five more tools answer field failures through Claude MCP', () => {
         },
       })
     }
-    expect(calls).toHaveLength(4)
-    expect(kept()).toHaveLength(4)
+    expect(calls).toHaveLength(3)
+    expect(kept()).toHaveLength(3)
     expect(compact).not.toHaveBeenCalled()
     expect(effects()).toEqual(before)
   })

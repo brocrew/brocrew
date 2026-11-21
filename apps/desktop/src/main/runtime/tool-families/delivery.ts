@@ -191,16 +191,12 @@ export function whatReachedItsHolder(
     case 'sent':
       return `${owner} has been told.`
     case 'held':
-      if (waits !== null) {
-        return what === 'a-new-brief'
-          ? `${owner} is not told yet: the new brief is held. ${waits}`
-          : `${owner} is not told yet: it is held. ${waits}`
+      if (what === 'a-stop' || what === 'a-stop-asked') {
+        return `${owner} will be told with its next input.`
       }
-      return what === 'a-stop'
-        ? `${owner} is not told yet: it is held${untilItIsFree}, ${withTheRest} — interrupt_agent asks the turn ${owner} is running now to stop.`
-        : what === 'a-new-brief'
-          ? `${owner} is not told yet: the new brief is held${untilItIsFree}, ${withTheRest}.`
-          : `${owner} is not told yet: it is held${untilItIsFree}, ${withTheRest}.`
+      if (what === 'a-new-brief') return `${owner} will get the new brief with its next input.`
+      if (waits !== null) return `${owner} is not told yet: it is held. ${waits}`
+      return `${owner} is not told yet: it is held${untilItIsFree}, ${withTheRest}.`
     case 'with-its-give':
       return `${owner} is not told yet: the give of ${label} is still held${untilItIsFree}, and the new brief goes out with it, in place of the first.${
         waits === null ? '' : ` ${waits}`

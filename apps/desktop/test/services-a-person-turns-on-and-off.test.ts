@@ -9,6 +9,7 @@ import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
 import { theMessagesOf, type AgentIdentity, type RuntimeBridge } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { aHeldNoticeWent } from './helpers/held-notices'
 
 type Given = Extract<GiveOutcome, { ok: true }>
 
@@ -623,38 +624,15 @@ describe('Service lifecycle', () => {
       const before = rows(service, 'user_turn').length
       const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
+      // The notice is held, starts nothing of its own, and rides the turn that hands the next piece
+      // over: both are marked sent with that one turn.
       await vi.waitFor(() => {
         const delivered = rows(service, 'user_turn')
           .slice(before)
           .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
-        const notice = delivered.findIndex(
-          (message) =>
-            message.appNotice === 'a-piece-taken-back' &&
-            message.drives === one.piece &&
-            message.text.includes(`took back ${one.label}`),
-        )
-        const handover = delivered.findIndex((message) => message.piece === two.piece)
-        expect(notice).toBeGreaterThanOrEqual(0)
-        expect(handover).toBeGreaterThan(notice)
-      })
-    })
-
-    it('hands the next piece over when the take-back notice cannot start the service', async () => {
-      const { after, caller, service, one, two } = await aStoppedService()
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      world.failNextResumeFor = 'browser-driver'
-
-      const taken = await call(after, caller, 'withdraw_task', { piece: one.label })
-      expect(taken.structured).toMatchObject({
-        outcome: 'ok',
-        state: 'withdrawn',
-        delivery: 'not-delivered',
-      })
-      expect(world.failNextResumeFor).toBeNull()
-      await vi.waitFor(() => {
-        expect(
-          world.store.piecesOwnedBy(service).find((row) => row.piece === two.piece),
-        ).toMatchObject({ briefHandedOver: true })
+        expect(delivered.findIndex((message) => message.piece === two.piece)).toBe(0)
+        const said = `took back ${one.label}`
+        expect(aHeldNoticeWent(world.ledger(service), 'a-piece-taken-back', said)).toBe(true)
       })
     })
 
@@ -728,18 +706,27 @@ describe('Service lifecycle', () => {
     })
 
     it.each([false, true])(
-      'delivers a new brief to a stopped service after restart (deferred %s)',
+      'holds a new brief for a stopped service after restart and delivers it with its next input (deferred %s)',
       async (deferred) => {
         const { after, caller, service, one } = await aStoppedService(deferred)
         const brief = 'Look at the second floor instead.'
         const updated = await call(after, caller, 'update_work', { piece: one.label, brief })
-        expect(updated.structured).toMatchObject({ outcome: 'ok' })
+        expect(updated.structured).toMatchObject({ outcome: 'ok', delivery: 'held' })
+        await new Promise((settled) => setTimeout(settled, 100))
+        expect(wentIn(service, brief)).toBe(false)
+        const followed = await call(after, caller, 'message_agent', {
+          agent: service,
+          kind: 'follow-up',
+          piece: one.label,
+          text: 'see the new brief',
+        })
+        expect(followed.structured).toMatchObject({ outcome: 'ok' })
         await vi.waitFor(() => {
           expect(wentIn(service, brief)).toBe(true)
         })
-        const turn = rows(service, 'user_turn').find(
-          (row) => row.type === 'user_turn' && row.text.includes(brief),
-        )
+        const turn = rows(service, 'user_turn')
+          .flatMap((row) => (row.type === 'user_turn' ? theMessagesOf(row) : []))
+          .find((message) => message.text.includes(brief))
         expect(turn).toMatchObject({ piece: one.piece })
       },
     )

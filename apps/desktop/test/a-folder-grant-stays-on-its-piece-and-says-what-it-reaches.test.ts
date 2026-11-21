@@ -354,8 +354,9 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
         'the grant gone from the window',
         () => window.latest(helper)?.workFolders === undefined,
       )
-      // ⛔ The card answered, the next turn goes — and neither the brief nor its folder is in it.
+      // ⛔ The card answered, its next input goes — and neither the brief nor its folder is in it.
       await host.respondPermission(helper, cardsOf(helper)[0]!, { outcome: 'cancel' }, window)
+      await callAs(giver, 'message_agent', { agent: helper, text: 'carry on' })
       await waitFor('the next turn', () => cardsOf(helper).length === 2)
       expect(sentOf(helper).some((one) => one.includes('work in B'))).toBe(false)
       expect(handleOf(helper).workFolders.effective).toEqual([])

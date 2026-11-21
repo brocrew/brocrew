@@ -710,7 +710,7 @@ describe('a successful answer says in words what its payload held', () => {
         brief: 'A memorable corrected brief.',
       })
       expect(briefed.structured?.['delivery']).toBe('held')
-      expect(briefed.text).toContain('is not told yet: the new brief is held')
+      expect(briefed.text).toContain('will get the new brief with its next input.')
       expect(briefed.text).not.toContain('A memorable corrected brief.')
     })
 
@@ -757,33 +757,26 @@ describe('a successful answer says in words what its payload held', () => {
       expect(line?.split(' · started by ')[0]).not.toContain('the owner of')
     })
 
-    it('update_work a new brief its holder could not be started for: no Done, who could not be told, and why', async () => {
+    it('update_work a new brief for a stopped holder: nothing is started, and it waits for its next input', async () => {
       const { pmTools, worker, label } = await aPmAndItsWorker()
-      // The holder is stopped, and its provider fails to bring it back this time.
       aPersonTakesOver(worker)
       await host.close(worker, window)
       const ref = store.find(worker)?.ref
       if (ref === undefined) throw new Error('the worker has no provider ref')
-      nextResumeThrows = new ResumeError(ref, 'resume failed: the handshake died')
+      const notTried = new ResumeError(ref, 'resume failed: the handshake died')
+      nextResumeThrows = notTried
 
       const briefed = await ok(pmTools, 'update_work', {
         piece: label,
         brief: 'A memorable corrected brief.',
       })
-      expect(nextResumeThrows, 'the start was tried').toBeNull()
-      expect(briefed.structured).toMatchObject({
-        label,
-        rebriefed: true,
-        delivery: 'not-delivered',
-      })
-      const why = briefed.structured?.['whyNotTold'] as string
-      expect(why.length).toBeGreaterThan(0)
-      expect(briefed.text).toBe(
-        `${host.whatToCallTheConversation(worker)} could not be told. ${why}`,
+      expect(nextResumeThrows, 'no start was tried').toBe(notTried)
+      nextResumeThrows = null
+      expect(briefed.structured).toMatchObject({ label, rebriefed: true, delivery: 'held' })
+      expect(briefed.text).toContain(
+        `${host.whatToCallTheConversation(worker)} will get the new brief with its next input.`,
       )
-      expect(briefed.text).not.toMatch(/^Done/)
       expect(briefed.text).not.toContain('A memorable corrected brief.')
-      // The new brief stands on the piece, whoever could not be told.
       expect(store.piecesOwnedBy(worker).find((one) => one.label === label)?.brief).toBe(
         'A memorable corrected brief.',
       )

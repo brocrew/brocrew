@@ -66,8 +66,12 @@ describe('folders passed with work', () => {
         { ownerId: agentCallerId(caller) },
       )
     expect(await change('Check the revised fictional draft.', false)).toMatchObject({ ok: true })
+    // The new brief waits for its holder's next input; a message from its giver is that input.
+    await next.send(given.owner, 'See the revised brief.', { ownerId: agentCallerId(caller) })
     await vi.waitFor(() =>
-      expect(world.sent.at(-1)?.words).toContain(`Put this piece's output in ${folder}.`),
+      expect(
+        world.sent.some((one) => one.words.includes(`Put this piece's output in ${folder}.`)),
+      ).toBe(true),
     )
     expect(world.handleOf('document-reader').workFolders.effective).toEqual([realpathSync(folder)])
     expect(await change(null, true)).toMatchObject({ ok: true })

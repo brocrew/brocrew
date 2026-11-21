@@ -22,6 +22,7 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceLine } from '../src/shared/piece-called'
 
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { aHeldNoticeWent } from './helpers/held-notices'
 
 type Given = Extract<GiveOutcome, { ok: true }>
 
@@ -549,13 +550,12 @@ describe('a service is reached through the piece it is on', () => {
         expect(lives()).toBe(before + 1)
       })
       await host.close(service, THE_APP_ITSELF)
+      // The take-back notice waits for its next input and starts nothing of its own.
       expect(
         (await call(host, caller, 'withdraw_task', { piece: one.label })).structured,
       ).toMatchObject({ outcome: 'ok' })
-      await vi.waitFor(() => {
-        expect(lives()).toBe(before + 2)
-      })
-      await host.close(service, THE_APP_ITSELF)
+      await new Promise((settled) => setTimeout(settled, 100))
+      expect(lives()).toBe(before + 1)
       const late = await call(host, caller, 'message_agent', {
         agent: service,
         kind: 'follow-up',
@@ -563,7 +563,7 @@ describe('a service is reached through the piece it is on', () => {
         text: 'one more thing',
       })
       expect(late.structured).toMatchObject({ outcome: 'ok', agent: service })
-      expect(lives()).toBe(before + 3)
+      expect(lives()).toBe(before + 2)
     })
 
     it('stops no turn of its that drives another piece when that piece is taken back', async () => {
@@ -1045,6 +1045,21 @@ describe('a service is reached through the piece it is on', () => {
   })
 
   describe('taking back the piece it is working on', () => {
+    /** A stop answered late: the next piece waits for it, and is handed over once it lands. */
+    const theLateStopHandsOver = async (
+      service: string,
+      piece: string,
+      stop: { release(): void },
+    ) => {
+      await new Promise((settled) => setTimeout(settled, 100))
+      expect(stateOf(service, piece)).toBe('waiting')
+      const theNext = aGate()
+      world.turnsWait = theNext.held
+      stop.release()
+      await handedOver(service, piece)
+      return theNext
+    }
+
     it('asks that turn to stop as it is taken back, through the notice held behind it, and hands the next piece over only once that stop is answered', async () => {
       // A bound long enough that only the stop's answer lets the next piece go.
       const { host, caller, other, service, one, two, releaseTheTurn } =
@@ -1068,27 +1083,24 @@ describe('a service is reached through the piece it is on', () => {
       expect(types.lastIndexOf('work_interrupted')).toBeGreaterThan(
         types.indexOf('work_taken_back'),
       )
-      // The turn ends before the stop is answered; its notice goes on its own.
+      // The turn ends before the stop is answered; its notice starts no turn of its own and waits
+      // for the next input.
       releaseTheTurn()
       await vi.waitFor(() => {
-        expect(rows(service, 'turn')).toHaveLength(2)
+        expect([rows(service, 'turn').length, rows(service, 'user_turn').length]).toEqual([1, 1])
       })
-      expect(rows(service, 'user_turn')).toHaveLength(2)
       // ⛔ The stop is still on its way, and a provider that answers it late ends whatever turn is
       // open then: the next piece waits for it.
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      const theNext = aGate()
-      world.turnsWait = theNext.held
-      stop.release()
-      await handedOver(service, two.piece)
+      const theNext = await theLateStopHandsOver(service, two.piece, stop)
+      // The next piece's turn, its second, carries the take-back notice.
       await vi.waitFor(() => {
-        expect(rows(service, 'user_turn')).toHaveLength(3)
+        expect(aHeldNoticeWent(world.ledger(service), 'a-piece-taken-back')).toBe(true)
       })
+      expect(rows(service, 'user_turn')).toHaveLength(2)
       world.turnsWait = null
       theNext.release()
       await vi.waitFor(() => {
-        expect(rows(service, 'turn')).toHaveLength(3)
+        expect(rows(service, 'turn')).toHaveLength(2)
       })
       const ended = rows(service, 'turn').at(-1)
       expect(ended?.type === 'turn' && ended.state).toBe('completed')
@@ -1115,7 +1127,7 @@ describe('a service is reached through the piece it is on', () => {
       releaseTheTurn()
       await handedOver(service, two.piece)
       await vi.waitFor(() => {
-        expect(rows(service, 'turn')).toHaveLength(3)
+        expect(rows(service, 'turn')).toHaveLength(2)
       })
       const ended = rows(service, 'turn').at(-1)
       expect(ended?.type === 'turn' && ended.state).toBe('completed')
@@ -1129,17 +1141,18 @@ describe('a service is reached through the piece it is on', () => {
       world.stopsWait = stop.held
       const taken = await call(host, caller, 'withdraw_task', { piece: one.label })
       expect(taken.structured).toMatchObject({ outcome: 'ok', askedItsTurnToStop: true })
-      // Its turn ends and its notice goes; the bound passes and the next piece's turn opens.
+      // Its turn ends and its notice waits for the next input; the bound passes and the next
+      // piece's turn opens, carrying it.
+      const theNext = aGate()
       releaseTheTurn()
       await vi.waitFor(() => {
-        expect(rows(service, 'turn')).toHaveLength(2)
+        expect(rows(service, 'turn')).toHaveLength(1)
       })
-      const theNext = aGate()
       world.turnsWait = theNext.held
       expect(stateOf(service, two.piece)).toBe('waiting')
       await handedOver(service, two.piece)
       await vi.waitFor(() => {
-        expect(rows(service, 'user_turn')).toHaveLength(3)
+        expect(rows(service, 'user_turn')).toHaveLength(2)
       })
       // …and then the first piece's stop lands.
       stop.release()
@@ -1147,7 +1160,7 @@ describe('a service is reached through the piece it is on', () => {
       world.turnsWait = null
       theNext.release()
       await vi.waitFor(() => {
-        expect(rows(service, 'turn')).toHaveLength(3)
+        expect(rows(service, 'turn')).toHaveLength(2)
       })
       const ended = rows(service, 'turn').at(-1)
       expect(ended?.type === 'turn' && ended.state).toBe('completed')
@@ -1187,12 +1200,7 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(rows(service, 'turn')).toHaveLength(2)
       })
-      await new Promise((settled) => setTimeout(settled, 100))
-      expect(stateOf(service, two.piece)).toBe('waiting')
-      const theNext = aGate()
-      world.turnsWait = theNext.held
-      stop.release()
-      await handedOver(service, two.piece)
+      const theNext = await theLateStopHandsOver(service, two.piece, stop)
       await vi.waitFor(() => {
         expect(rows(service, 'user_turn')).toHaveLength(3)
       })
@@ -1649,7 +1657,7 @@ describe('a service is reached through the piece it is on', () => {
       theirs.release()
     })
 
-    it('asks no stop once the turn it read has ended, of the turn that runs after it', async () => {
+    it('asks the stop only of the turn it read, never of the turn that runs after it', async () => {
       const { host, caller, service, one, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
         turnHeld: true,
         signInsChecked: true,
@@ -1674,14 +1682,19 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(rows(service, 'user_turn')).toHaveLength(2)
       })
-      const taken = await taking
-      expect(taken.structured).toMatchObject({ outcome: 'ok', state: 'withdrawn' })
-      expect(taken.structured['askedItsTurnToStop']).toBeUndefined()
-      expect(world.stopsAsked).toEqual([])
+      // The take-back holds its notice without waiting on a start, so it asks the stop while the
+      // turn it read still runs on the piece: that one stop, and no other.
+      const { structured } = await taking
+      expect(structured).toMatchObject({
+        outcome: 'ok',
+        state: 'withdrawn',
+        askedItsTurnToStop: true,
+      })
+      expect(world.stopsAsked).toEqual(['browser-driver'])
       world.turnsWait = null
       theReply.release()
       await handedOver(service, two.piece)
-      expect(world.stopsAsked).toEqual([])
+      expect(world.stopsAsked).toEqual(['browser-driver'])
     })
 
     it.each(['drive another piece', 'are a person’s'])(
@@ -1933,7 +1946,7 @@ describe('a service is reached through the piece it is on', () => {
       const line = pieceLine(one.label, 'One')
       await vi.waitFor(() => {
         expect(toldUnder(service, 'a-piece-a-person-took-back')).toEqual([
-          `A person took back ${line}. Stop working on it and do not reply_to_parent about it.`,
+          `A person took back ${line}. Stop working on it and do not reply_to_parent about it. Reason: no reason given.`,
         ])
       })
       await vi.waitFor(() => {

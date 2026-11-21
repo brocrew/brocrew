@@ -1492,7 +1492,13 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           { ownerId: agentCallerId(giver) },
         )
         expect(changed.ok).toBe(true)
+        await settled()
+        expect(codex.sent).toHaveLength(1)
+        await host.queueMessage(helper, 'Carry on with the brief.', {
+          ownerId: agentCallerId(giver),
+        })
         await vi.waitFor(() => expect(codex.sent).toHaveLength(2))
+        expect(codex.sent[1]).toContain(MESSAGE)
         switchAndRefuse()
         await vi.waitFor(() => expect(endingsOf(helper)).toEqual(['completed', 'failed']))
         await settled()

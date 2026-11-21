@@ -37,27 +37,37 @@ export function createCompactAgentTool(
     name: 'compact_agent',
     handlerOwnsMissingInput: true,
     description:
-      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; give the reason. The first answer acknowledges the request. When the provider confirms manual compaction, the notice of who requested it and why waits for the conversation's next ordinary input. Use it when get_agent_status shows a high context size and more work is coming.",
+      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may. The first answer acknowledges the request. When the provider confirms manual compaction, the notice of who requested it and why waits for the conversation's next ordinary input. Use it when get_agent_status shows a high context size and more work is coming.",
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
       agent: agentToolHandlerInput(z.string().describe('The conversation, by any of its labels.')),
-      reason: agentToolHandlerInput(z.string().describe('Why you are asking for compaction.')),
+      reason: agentToolHandlerInput(
+        z
+          .string()
+          .optional()
+          .describe(
+            "Why, optional. The conversation reads it with your name; without one it reads 'no reason given'.",
+          ),
+      ),
     },
     call: (args) =>
       guarded(async () => {
         const { agent, reason } = toolArgumentsAtHandler(args)
-        if (
-          typeof agent !== 'string' ||
-          typeof reason !== 'string' ||
-          !agent.trim() ||
-          !reason.trim()
-        ) {
+        if (typeof agent !== 'string' || !agent.trim()) {
+          return refusalAnswer(refuseTool('malformed-request', { problems: ['agent is required'] }))
+        }
+        if (reason !== undefined && typeof reason !== 'string') {
           return refusalAnswer(
-            refuseTool('malformed-request', { problems: ['agent and reason are both required'] }),
+            refuseTool('malformed-request', { problems: ['reason must be text'] }),
           )
         }
         const conversation = host.theConversationAddressed(agent, by, me, 'interrupting')
-        const result = await host.compactConversation({ conversation, agent: me, reason })
+        const given = reason?.trim()
+        const result = await host.compactConversation({
+          conversation,
+          agent: me,
+          ...(given ? { reason: given } : {}),
+        })
         if (result.ok) {
           return answer(
             { outcome: 'ok', agent: result.conversation, requested: true },
@@ -423,7 +433,7 @@ export function createInterruptAgentTool(
     name: 'interrupt_agent',
 
     description:
-      'Ask the turn a conversation is running to stop, by any of its labels. Any conversation may do this; give the reason in reason — the conversation is told who stopped it and why. Its conversation stays open and can be given more work. That turn may end there, throwing away what it was part-way through, or may finish anyway; get_agent_status says which once it has stopped working. Work it already recorded and what it already did stay as they were. The stop also ends commands that turn started: ' +
+      'Ask the turn a conversation is running to stop, by any of its labels. Any conversation may do this; the conversation is told who stopped it and why. Its conversation stays open and can be given more work. That turn may end there, throwing away what it was part-way through, or may finish anyway; get_agent_status says which once it has stopped working. Work it already recorded and what it already did stay as they were. The stop also ends commands that turn started: ' +
       PROVIDER_DESCRIPTORS.map(
         (descriptor) => `on ${descriptor.displayName}, ${descriptor.words.interruptActionSummary}`,
       ).join('; ') +
@@ -441,16 +451,20 @@ export function createInterruptAgentTool(
         .describe('The conversation, by any of its task labels or its id from list_agents.'),
       reason: z
         .string()
+        .optional()
         .describe(
-          'Why you are stopping it. The conversation reads this, with your name, before it goes on.',
+          "Why, optional. The conversation reads it with your name; without one it reads 'no reason given'.",
         ),
     },
     call: (args) =>
       guarded(async () => {
         const { agent, reason } = args
-        if (typeof agent !== 'string' || typeof reason !== 'string' || reason.length === 0) {
+        if (typeof agent !== 'string') {
+          return refusalAnswer(refuseTool('malformed-request', { problems: ['agent is required'] }))
+        }
+        if (reason !== undefined && typeof reason !== 'string') {
           return refusalAnswer(
-            refuseTool('malformed-request', { problems: ['agent and reason are both required'] }),
+            refuseTool('malformed-request', { problems: ['reason must be text'] }),
           )
         }
         const addressed = host.theConversationAddressed(agent, by, me, 'interrupting')

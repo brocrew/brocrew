@@ -270,11 +270,15 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
     await waitFor(() => runningOf(worker) === 'not-running', 'the worker to be over')
 
     // ⚑ Its first piece taken back: a give to a helper still holding stalled work is refused
-    // (`its-work-has-stalled`), and taking it back wakes the helper to hear so — on its row's pair.
+    // (`its-work-has-stalled`). The take-back notice waits for its next input, and a message is
+    // that input: it starts the helper, on its row's pair, and carries the notice.
     const turns = turnsIn(worker)
     const resumed = world.resumed.length
     const took = await callOn(pm, 'withdraw_task', { piece: first })
     expect(structured(took).outcome, took.text).toBe('ok')
+    expect(world.resumed.length).toBe(resumed)
+    const told = await callOn(pm, 'message_agent', { agent: worker, text: 'that piece is off' })
+    expect(structured(told).outcome, told.text).toBe('ok')
     await waitFor(
       () => world.resumed.length > resumed && turnsIn(worker) > turns,
       'the worker to hear its piece was taken back',

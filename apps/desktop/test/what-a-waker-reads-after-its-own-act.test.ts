@@ -526,7 +526,7 @@ describe('what a waker reads after its own act', () => {
        * is the stall's, on the turn the quit cut; nothing says the holder is still open.
        * ⚑ **D-016** — and the holder is started once, to be told its piece was taken back.
        */
-      it('§1.9 withdrawing its work takes the held notice back, and starts only the holder, to tell it', async () => {
+      it('§1.9 withdrawing its work takes the held notice back, and starts nothing to tell the holder', async () => {
         await host.close(await personOpens('worker'), window)
         await host.close(await personOpens('builder'), window)
         const pm = await personOpens('pm')
@@ -563,16 +563,12 @@ describe('what a waker reads after its own act', () => {
         ])
         expect(saysItStopped(unqueued(pm)[0]?.text ?? '')).toBe(true)
         expect(unqueued(pm)[0]?.text).toContain(`naming ${heldAbout.label}`)
-        // ⚑ **D-016 · re-aimed: the holder is TOLD, so it is started to hear it** (ruling 8). ⛔ This
-        // read *"no provider was started to make it"*: the withdrawal was a ledger fact alone. ⚑ Now
-        // the take-back writes `work_taken_back` and tells the owner with the `a-piece-taken-back`
-        // notice, which starts the one holder it was about — and nothing else.
-        expect(handles).toHaveLength(started + 1)
+        // ⚑ The take-back writes `work_taken_back` and holds the `a-piece-taken-back` notice for the
+        // holder's next input: nothing is started just to tell it.
+        expect(handles).toHaveLength(started)
         expect(
           events(heldAbout.child).some(
-            (event) =>
-              (event.type === 'user_turn' || event.type === 'message_queued') &&
-              event.appNotice === 'a-piece-taken-back',
+            (event) => event.type === 'message_queued' && event.appNotice === 'a-piece-taken-back',
           ),
         ).toBe(true)
       })

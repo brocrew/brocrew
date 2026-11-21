@@ -1207,6 +1207,18 @@ export function derivePieces(
   // has already let it go.
   const indexOfPiece = new Map<string, number>(from?.indexOfPiece)
   const byMessage = new Map<string, string>(from?.byMessage)
+  const rebriefsToHold = new Set<string>(from?.rebriefsToHold)
+  const rebriefsHeld = new Map<string, string>(from?.rebriefsHeld)
+  /** Ends a piece's wait on purpose: a follow-up naming it, or a new brief reaching its holder. */
+  const endTheWaitOf = (piece: string): void => {
+    const index = indexOfPiece.get(piece) ?? -1
+    const held = rows[index]
+    if (held?.statusLine?.waiting !== true) return
+    const next: PieceRow = { ...held, statusLine: withoutTheWait(held.statusLine) }
+    noteChange(held, next)
+    rows[index] = next
+    if (open.has(piece)) open.set(piece, { row: next, index })
+  }
   // ⚑ **Which of this conversation's questions were the PARENT's to answer** (400) — see
   // {@link PieceRow.questionLostAtRestart}. ⛔ Ids only: what became of each one is
   // `deriveRoutedRequests`' answer and this fold must not grow a second opinion about it.
@@ -2048,14 +2060,7 @@ export function derivePieces(
       // A follow-up naming a piece ends its wait on purpose; any other words leave it standing.
       for (const one of parts) {
         const followedUp = one.says === 'follow-up' ? theDriveOf(one) : null
-        const index = followedUp === null ? undefined : indexOfPiece.get(followedUp)
-        const held = index === undefined ? undefined : rows[index]
-        if (followedUp === null || index === undefined || held?.statusLine?.waiting !== true)
-          continue
-        const next: PieceRow = { ...held, statusLine: withoutTheWait(held.statusLine) }
-        noteChange(held, next)
-        rows[index] = next
-        if (open.has(followedUp)) open.set(followedUp, { row: next, index })
+        if (followedUp !== null) endTheWaitOf(followedUp)
       }
       carryOnWithWhatTheCutDrove(carriesOn, startedFor)
       if (parts.length === 0) drivenAgain(null)
@@ -2105,6 +2110,9 @@ export function derivePieces(
       continue
     }
     if (event.type === 'message_queued') {
+      if (event.rebrief === true && event.piece !== undefined && event.messageId !== undefined) {
+        if (rebriefsToHold.delete(event.piece)) rebriefsHeld.set(event.messageId, event.piece)
+      }
       // 🔴 **D-005a** — see {@link waitingToDriveIt}.
       if (event.messageId !== undefined) {
         waitingToDriveIt.set(event.messageId, {
@@ -2153,6 +2161,9 @@ export function derivePieces(
           }
         }
       }
+      const rebriefed = rebriefsHeld.get(event.messageId)
+      rebriefsHeld.delete(event.messageId)
+      if (rebriefed !== undefined && event.reason === 'sent') endTheWaitOf(rebriefed)
       const piece = byMessage.get(event.messageId)
       if (piece === undefined) continue
       if (event.reason === 'sent') {
@@ -2250,6 +2261,9 @@ export function derivePieces(
       // brief stands, open or ended. ⛔ **A piece this ledger holds no row for is passed over**, and
       // that is every line about the owner's own ROOT: a root is never a row here (R1), and the store
       // reads a root's lines off the rows themselves.
+      if (event.type === 'work_rebriefed' && event.held === true) rebriefsToHold.add(event.piece)
+      else if (event.type === 'work_rebriefed' && event.brief !== undefined)
+        endTheWaitOf(event.piece)
       const index = indexOfPiece.get(event.piece)
       const held = index === undefined ? undefined : rows[index]
       if (index === undefined || held === undefined) continue
@@ -2259,9 +2273,7 @@ export function derivePieces(
           : event.type === 'work_rebriefed'
             ? {
                 ...held,
-                ...(event.brief === undefined
-                  ? {}
-                  : { brief: event.brief, statusLine: withoutTheWait(held.statusLine) }),
+                ...(event.brief === undefined ? {} : { brief: event.brief }),
                 ...(event.definitionOfDone === undefined
                   ? {}
                   : { definitionOfDone: event.definitionOfDone }),
@@ -2658,6 +2670,8 @@ export function derivePieces(
     workDrivenThisTurn: new Set(workDrivenThisTurn),
     waitsOnWhoWroteSince: new Map(waitsOnWhoWroteSince),
     waitingToDriveIt: new Map(waitingToDriveIt),
+    rebriefsToHold: new Set(rebriefsToHold),
+    rebriefsHeld: new Map(rebriefsHeld),
     heldForTheQueue: new Map(heldForTheQueue),
     inTheBackground: new Map(inTheBackground),
     scheduled: new Map(scheduled),

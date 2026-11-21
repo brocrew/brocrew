@@ -1546,16 +1546,18 @@ describe('D-027 · the work a turn of several drives', () => {
       'the second turn to park',
     )
 
-    // ⚑ Two new briefs of the SECOND piece are held behind that turn, and go as ONE turn at its end.
+    // ⚑ Two new briefs of the SECOND piece are held, and go as ONE turn with its next message.
     for (const brief of ['fix one: rename the ledger', 'fix two: drop the archive']) {
       const held = await callOn(pm.tools, 'update_work', { piece: second.label, brief })
-      expect(held.outcome, JSON.stringify(held)).toBe('ok')
-      expect(held.delivery).toBe('held')
+      expect(held, JSON.stringify(held)).toMatchObject({ outcome: 'ok', delivery: 'held' })
     }
     await app.answerTheNewestCard(worker)
+    await callOn(pm.tools, 'message_agent', { agent: worker, piece: second.label, text: 'go' })
     await waitFor(() => app.turns(worker).length === 3, 'the one turn of two briefs to go')
     const together = app.turns(worker)[2]
-    expect(together?.parts?.map((one) => one.piece)).toEqual([second.piece, second.piece])
+    expect(together?.parts?.map((one) => one.piece ?? one.drives)).toEqual(
+      Array(3).fill(second.piece),
+    )
     await waitFor(() => app.cards(worker).length >= 3, 'that turn to park')
 
     // ⚑ Every message of the running turn drives the second piece, so an unnamed give hangs under it.
@@ -1581,17 +1583,17 @@ describe('D-027 · the work a turn of several drives', () => {
         piece: piece.label,
         brief: `a new brief of ${piece.label}`,
       })
-      expect(held.outcome, JSON.stringify(held)).toBe('ok')
-      expect(held.delivery).toBe('held')
+      expect(held, JSON.stringify(held)).toMatchObject({ outcome: 'ok', delivery: 'held' })
     }
     await app.answerTheNewestCard(worker)
+    await callOn(pm.tools, 'message_agent', { agent: worker, piece: first.label, text: 'go' })
     await waitFor(() => app.turns(worker).length === 5, 'the turn of two pieces’ briefs to go')
     expect(
       app
         .turns(worker)[4]
-        ?.parts?.map((one) => one.piece)
+        ?.parts?.map((one) => one.piece ?? one.drives)
         .sort(),
-    ).toEqual([first.piece, second.piece].sort())
+    ).toEqual([first.piece, first.piece, second.piece].sort())
     await waitFor(() => app.cards(worker).length >= 5, 'that turn to park')
     const refused = await callOn(
       app.toolsFor(worker),

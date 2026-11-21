@@ -354,7 +354,8 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
   it('a piece taken back from a conversation that was replaced is not told to the one that took its place', async () => {
     const { pm, worker, pmTools, label } = await aPmAndItsWorker('the piece')
 
-    // The paired positive first: a stopped owner that was NOT replaced is told, and its answer says so.
+    // The paired positive first: a stopped owner that was NOT replaced has the notice held for its
+    // next input, and its answer says so. ⛔ The boolean it replaced is gone, not false.
     await bringIdentityIntoBeing('helper')
     const second = await aGive(pmTools, 'helper', 'second piece', 'new')
     const helper = second.agent
@@ -362,11 +363,9 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     await stop(helper)
     const backFromHelper = await callWithWords(pmTools, 'withdraw_task', { piece: second.label })
     expect(backFromHelper.structured.outcome, JSON.stringify(backFromHelper.structured)).toBe('ok')
-    // ⚑ **D-022 · R3 — `sent`**: the notice went out as the helper's turn, and only then does the
-    // answer say *told*. ⛔ The boolean it replaced is gone, not false.
-    expect(backFromHelper.structured.delivery).toBe('sent')
+    expect(backFromHelper.structured.delivery).toBe('held')
     expect(backFromHelper.structured).not.toHaveProperty('told')
-    expect(backFromHelper.text).toContain('has been told.')
+    expect(backFromHelper.text).toContain('will be told with its next input.')
     expect(backFromHelper.text).not.toContain('could not be told')
     const helperWasTold = await theNoticeIn(helper)
     expect(helperWasTold).toContain(second.label)

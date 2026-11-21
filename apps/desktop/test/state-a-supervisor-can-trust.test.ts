@@ -1338,10 +1338,8 @@ describe('484 · state a supervisor can trust', () => {
       await letTheTurnFinish(worker)
       const withdrawn = await callOn(pmTools, 'withdraw_task', { piece: label })
       expect(withdrawn.outcome, JSON.stringify(withdrawn)).toBe('ok')
-      // ⚑ **D-016 · the holder is told it was taken back**, in a turn of its own that parks on its
-      // card; a person answers it, so the conversation is idle again before the PM's call below.
-      await cardOn(worker, 2)
-      await letTheTurnFinish(worker)
+      // ⚑ **D-016 · the holder is told it was taken back** with its next input, so no turn of its
+      // own opens and the conversation stays idle before the PM's call below.
 
       // ⛔ The PM calls `interrupt_agent` on this conversation, and no turn is running.
       // ⚑ **D-017 — an idle conversation has no turn to interrupt, so nothing is asked and no ask is
@@ -1364,7 +1362,7 @@ describe('484 · state a supervisor can trust', () => {
         worker,
       )
       expect(second.agent).toBe(worker)
-      await cardOn(worker, 3)
+      await cardOn(worker, 2)
       const card = [...store.events(worker)]
         .reverse()
         .find((entry) => entry.event.type === 'permission_request')?.event

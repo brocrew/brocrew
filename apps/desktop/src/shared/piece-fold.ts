@@ -97,6 +97,10 @@ export interface PieceFold {
   readonly open: ReadonlyMap<string, { readonly row: PieceRow; readonly index: number }>
   readonly indexOfPiece: ReadonlyMap<string, number>
   readonly byMessage: ReadonlyMap<string, string>
+  /** Pieces whose newest brief is to be held, until its held message is queued. */
+  readonly rebriefsToHold: ReadonlySet<string>
+  /** Held new briefs, by message id, and the piece each names. */
+  readonly rebriefsHeld: ReadonlyMap<string, string>
   readonly travelled: ReadonlySet<string>
   readonly asked: Pick<AskToStop, 'by' | 'asker'> | null
   readonly whoseWordsDroveItLast: ReadonlyMap<string, boolean>

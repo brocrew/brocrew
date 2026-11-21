@@ -566,7 +566,7 @@ describe('692 · a restart keeps what was open', () => {
      * `withdraw_task` wakes a stopped owner to hear the notice). ⛔ This measured the take-back
      * starting nothing, which was true while nothing was said to the owner.
      */
-    it('⚑ withdraw_task takes work back from a child that came back open — and the telling starts exactly that child', async () => {
+    it('⚑ withdraw_task takes work back from a child that came back open — and starts none of them to tell it', async () => {
       const { lead, children, leadTools } = await theFourOpen()
       const piece = await giveTo(leadTools, children[0], 'the work to take back')
       await quitAndRelaunch()
@@ -574,20 +574,18 @@ describe('692 · a restart keeps what was open', () => {
       const before = launched.length
 
       const withdrawn = await callOn(tools, 'withdraw_task', { piece })
-      // ⚑ **D-022 · R3 — `sent`**: the child runs nothing after the relaunch, so it is woken and the
-      // notice goes out as its turn now — told, not held.
+      // The child runs nothing after the relaunch: the notice is held for its next input, and
+      // nothing starts it just to tell it.
       expect(withdrawn, JSON.stringify(withdrawn)).toMatchObject({
         outcome: 'ok',
-        delivery: 'sent',
+        delivery: 'held',
       })
       expect(store.piecesOwnedBy(children[0]).find((one) => one.piece === piece)?.state).toBe(
         'withdrawn',
       )
       await letItSettle()
-      expect(launched.length - before).toBe(1)
-      expect(launched.at(-1)?.kind).toBe('resume')
-      expect(listed(children[0])).toEqual({ running: 'unwatched' })
-      for (const other of children.slice(1)) {
+      expect(launched.length - before).toBe(0)
+      for (const other of children) {
         expect(listed(other), other).toEqual({ running: 'not-running' })
       }
     })

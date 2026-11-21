@@ -372,6 +372,21 @@ describe('a helper that stopped with a piece open reads as stopped', () => {
       expect(await whatEachSays(brobot)).toEqual({ ...notStopped, unread: readWhole })
     })
 
+    it('is stopped when only a new brief waits for its next input', async () => {
+      const { brobot, piece } = await aClosedHelper()
+      const briefed = await callOn(agentToolsFor(host, brobot), 'update_work', {
+        piece: 'W1.1',
+        brief: 'Build the pages again.',
+      })
+      expect(briefed, JSON.stringify(briefed)).toMatchObject({ outcome: 'ok', delivery: 'held' })
+      expect(await whatEachSays(brobot)).toEqual({
+        line: [piece],
+        list: [piece],
+        handBack: { ok: true, piece, label: 'W1.1', askedItsTurnToStop: false },
+        unread: readWhole,
+      })
+    })
+
     // The piece's own read meets this row too, and each reading counts it once.
     it('is not stopped when a held row can’t be read', async () => {
       const { brobot, ada } = await aClosedHelper()

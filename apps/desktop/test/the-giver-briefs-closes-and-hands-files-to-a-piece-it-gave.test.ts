@@ -19,7 +19,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
+import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourceBytes, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -220,6 +220,11 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
           }))
         : [],
     )
+  /** The held notices of one kind: recorded at once, riding that conversation's next input. */
+  const heldNotices = (id: string, appNotice: string): string[] =>
+    events(id).flatMap((event) =>
+      event.type === 'message_queued' && event.appNotice === appNotice ? [event.text] : [],
+    )
   /** What is HELD for a conversation, in the order it was queued. */
   const held = (id: string): string[] =>
     events(id).flatMap((event) => (event.type === 'message_queued' ? [event.text] : []))
@@ -317,7 +322,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(briefed.outcome, JSON.stringify(briefed)).toBe('ok')
       expect(briefed.rebriefed).toBe(true)
       // ⚑ D-022 · R3: the giver hears the delivery in the shared vocabulary, never a boolean `told`.
-      expect(briefed.delivery).toBe('sent')
+      expect(briefed.delivery).toBe('held')
       expect(briefed).not.toHaveProperty('told')
 
       // ⚑ The ledger: one row, the new words as said, by the giver.
@@ -327,12 +332,19 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       // ⚑ The fold: the newest brief stands, not the give's.
       expect(pieceOf(worker, piece).brief).toBe(THE_NEW_BRIEF)
 
-      // ⚑ The owner READ the giver's bare words, on the piece, and nothing was held for it.
-      const turns = read(worker)
-      expect(turns.at(-1)).toMatchObject({ text: THE_NEW_BRIEF, piece, label })
-      expect(rowsOf(worker, 'message_queued')).toHaveLength(queuedBefore)
+      // ⚑ Held, not sent: one queued row carries the mark, and nothing starts the idle owner for it.
+      const turnsBefore = turnsOn(worker)
+      expect(rowsOf(worker, 'message_queued').slice(queuedBefore)).toEqual([
+        expect.objectContaining({ rebrief: true, piece, label, text: THE_NEW_BRIEF }),
+      ])
+      await letItSettle()
+      expect(turnsOn(worker)).toBe(turnsBefore)
+      expect(
+        saidToProvider(worker).filter((said) => said.includes('sends you the new brief of')),
+      ).toEqual([])
 
-      // ⚑ The PROVIDER was handed the words framed by who sent them and which piece they are about.
+      // ⚑ Its next input carries it, framed by who sent it and which piece it is about.
+      await callOn(pm, 'message_agent', { agent: worker, text: 'see the new brief' })
       await waitFor(
         () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
         'the provider to be handed the new brief',
@@ -357,7 +369,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(pieceOf(worker, piece).brief).toBe(THE_NEW_BRIEF)
     })
 
-    it('a new brief for an owner mid-turn is held with the piece named, and the provider hears it only after the turn ends', async () => {
+    it('a new brief for an owner mid-turn is held with the piece named, and the provider hears it with its next input after the turn ends', async () => {
       const { pm, worker, piece, label } = await aPmAndItsWorker()
       expect(isIdle(worker)).toBe(false)
 
@@ -381,8 +393,13 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         saidToProvider(worker).filter((said) => said.includes('sends you the new brief of')),
       ).toEqual([])
 
-      // ⚑ The turn ends: the provider hears it once, and the held row is closed as sent.
+      // ⚑ The turn ends and the brief still waits: it drives no turn of its own. Its next input
+      // carries it once, and the held row is closed as sent.
       await letTheTurnEnd(worker)
+      expect(
+        saidToProvider(worker).filter((said) => said.includes('sends you the new brief of')),
+      ).toEqual([])
+      await callOn(pm, 'message_agent', { agent: worker, text: 'see the new brief' })
       await waitFor(
         () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
         'the held brief to reach the provider',
@@ -437,7 +454,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         state: 'closed',
         tookBackTheMessage: false,
         endedQuestions: 0,
-        delivery: 'sent',
+        delivery: 'held',
       })
       expect(closed).not.toHaveProperty('told')
 
@@ -450,30 +467,24 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(folded.state).not.toBe('withdrawn')
       expect(TASK_IS_OPEN[folded.state]).toBe(false)
 
-      // ⚑ The owner heard it, in the app's own words, naming what stays its own to settle.
-      await waitFor(
-        () => read(worker).some((turn) => turn.appNotice === 'a-piece-closed'),
-        'the owner to be told the piece was closed',
-      )
-      const notice = read(worker).find((turn) => turn.appNotice === 'a-piece-closed')
+      // ⚑ The owner's notice is recorded at once, in the app's own words, naming what stays its own
+      // to settle; it rides the owner's next input and starts no turn of its own.
+      const turnsBefore = turnsOn(worker)
+      const [notice] = heldNotices(worker, 'a-piece-closed')
       const who = host.whatToCallTheConversation(closer)
-      expect(notice?.text).toContain(
-        `${who}, ${host.nameByItsWork(closer)}, closed your task ${pieceLine(label, title)}. It keeps its outcome; stop work on it.`,
+      expect(notice).toContain(
+        `${who}, ${host.nameByItsWork(closer)}, closed your task ${pieceLine(label, title)}. Reason: ${closer === pm ? 'no reason given.' : reason} It keeps its outcome; stop work on it.`,
       )
-      expect(notice?.text).toContain(
+      expect(notice).toContain(
         `Its open pieces ${child.label} are still yours: take each back with withdraw_task, or close it with update_work, if it is no longer needed.`,
       )
 
-      const giveNotice = () =>
-        read(pm).filter((turn) => turn.appNotice === 'a-piece-it-gave-closed')
-      if (closer === pm) {
-        expect(notice?.text).not.toContain('Reason:')
-      } else {
+      const giveNotice = () => heldNotices(pm, 'a-piece-it-gave-closed')
+      if (closer !== pm) {
         await waitFor(() => giveNotice().length > 0, 'the giver to be told')
         expect(giveNotice()).toHaveLength(1)
-        expect(giveNotice()[0]?.text).toContain(`${who} closed ${pieceLine(label, title)}`)
-        expect(giveNotice()[0]?.text).toContain(`Reason: ${reason}`)
-        expect(notice?.text).toContain(`Reason: ${reason}`)
+        expect(giveNotice()[0]).toContain(`${who} closed ${pieceLine(label, title)}`)
+        expect(giveNotice()[0]).toContain(`Reason: ${reason}`)
       }
 
       // ⚑ A reply owed no more is not taken: the owner's reply is refused and writes no answer.
@@ -488,15 +499,8 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       // ⚑ Nothing can take it back, close it again or brief it: each is refused for the piece having
       // ended, and writes no row and tells nobody.
       await letItSettle()
-      if (closer === pm) {
-        expect(giveNotice()).toHaveLength(0)
-        expect(
-          events(pm).filter(
-            (event) =>
-              event.type === 'message_queued' && event.appNotice === 'a-piece-it-gave-closed',
-          ),
-        ).toHaveLength(0)
-      }
+      expect(turnsOn(worker)).toBe(turnsBefore)
+      if (closer === pm) expect(giveNotice()).toHaveLength(0)
       const before = tally(worker, pm)
       refusedWith(
         await callOn(pm, 'withdraw_task', { piece: label }),
@@ -563,17 +567,17 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(first.outcome, JSON.stringify(first)).toBe('ok')
       expect(first).toMatchObject({ state: 'closed', tookBackTheMessage: false })
 
-      // ⚑ The turn ends and what was held for the worker is flushed: the first piece's close reaches
-      // it (the positive, through the very flush the held give would have gone with), and the held
-      // work never does. 🔴 D-027: the flush hands everything held as ONE turn, so the close is a
-      // part of it (both closes are held by now) — read per message, and still never the held work.
+      // ⚑ The turn ends: both close notices are held for the worker's next input, and the held work
+      // never goes. Its next input carries the close of the first piece.
       await letTheTurnEnd(worker)
+      expect(heldNotices(worker, 'a-piece-closed').some((text) => text.includes(label))).toBe(true)
+      await callOn(pm, 'message_agent', { agent: worker, text: 'thanks' })
       await waitFor(
         () =>
-          read(worker).some(
-            (turn) => turn.appNotice === 'a-piece-closed' && turn.text.includes(label),
+          saidToProvider(worker).some((said) =>
+            said.includes('It keeps its outcome; stop work on it.'),
           ),
-        'the flush to hand the worker the close of the first piece',
+        'the next input to carry the close of the first piece',
       )
       expect(saidToProvider(worker).some((said) => said.includes(THE_GIVES_BRIEF))).toBe(true)
       expect(
@@ -823,6 +827,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       await waitFor(() => isIdle(worker), 'the worker to go idle')
       const briefed = await callOn(pm, 'update_work', { piece: given.label, brief: THE_NEW_BRIEF })
       expect(briefed.outcome, JSON.stringify(briefed)).toBe('ok')
+      await callOn(pm, 'message_agent', { agent: worker, text: 'see the new brief' })
       await waitFor(
         () => saidToProvider(worker).some((said) => said.includes('sends you the new brief of')),
         'the worker to be handed the new brief',
@@ -894,7 +899,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
     const pushStillHeld = (pm: string): boolean =>
       stillHeld(store.events(pm)).some((one) => isGiverStallNotice(one.text))
 
-    it("a close, and a brief that was sent, take back the giver's held is-not-being-worked-on push, and a title or a held brief does not", async () => {
+    it("a close takes back the giver's held is-not-being-worked-on push, and a title or a new brief, held for the next input, does not", async () => {
       // ⚑ (a) A close: the work is closed, so it is no longer true that it waits for someone.
       const closing = await aBusyParentHoldingThePush('-close')
       expect(pushStillHeld(closing.pm)).toBe(true)
@@ -914,29 +919,6 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         'the parent to have read its own message',
       )
       expect(pushesRead(closing.pm)).toEqual([])
-
-      // ⚑ (b) A brief that was SENT: the owner is at work on new words, so the push is no longer true.
-      const briefing = await aBusyParentHoldingThePush('-brief')
-      expect(pushStillHeld(briefing.pm)).toBe(true)
-      const sent = await callOn(briefing.pm, 'update_work', {
-        piece: briefing.label,
-        brief: THE_NEW_BRIEF,
-      })
-      expect(sent.outcome, JSON.stringify(sent)).toBe('ok')
-      const holder = host.whatToCallTheConversation(briefing.worker)
-      expect(unqueued(briefing.pm)).toMatchObject([
-        {
-          reason: 'retracted',
-          detail: `${TAKEN_BACK}this conversation gave ${holder} a new brief for that work`,
-        },
-      ])
-      // ⚑ No receipt is written beside the take-back: the push's own stands as the telling, so the
-      // giver still counts as told about the piece and nothing is owed to it again.
-      expect(giverStallReceipts(store, briefing.pm)).toEqual([
-        expect.objectContaining({ piece: briefing.piece, step: 'giver', outcome: 'delivered' }),
-      ])
-      await letTheTurnEnd(briefing.pm)
-      expect(pushesRead(briefing.pm)).toEqual([])
 
       // ⚑ (c) Controls: a title makes nothing false, so the push is still held, and it is read.
       const titling = await aBusyParentHoldingThePush('-title')

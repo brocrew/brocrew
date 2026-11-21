@@ -277,73 +277,76 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     ).toBe(true)
   })
 
-  it('waits for native confirmation and delivers the compaction notice with the next input once', async () => {
-    const { id, codex } = await aPersonOpensCodex()
-    app.store.createAgentIdentity(
-      { slug: 'director', displayName: 'Ada', provider: 'claude' },
-      { by: 'a-person' },
-    )
-    const { sessionId: caller } = await app.host.createSession(
-      { provider: 'claude', profileId: 'director', approvalMode: 'auto', cwd: app.root },
-      app.window,
-    )
-    const address = app.host.addressOf(caller)
-    const title = 'Plan the migration'
-    expect(app.host.retitleForAPerson(address, title)).toMatchObject({ ok: true })
-    const tool = agentToolsFor(app.host, caller).tools.find((one) => one.name === 'compact_agent')
-    if (tool === undefined) throw new Error('no compact_agent tool')
-    let confirm = (): void => {}
-    codex.compactionMayFinish = new Promise<void>((resolve) => {
-      confirm = resolve
-    })
-    const reason = 'Keep the settled plan and free its context'
-    const notice = `Ada, conversation ${address} · ${title}, compacted this conversation: ${reason}.`
-    const notices = () =>
-      app
-        .ledger(id)
-        .filter(
-          (event) => 'appNotice' in event && event.appNotice === 'a-conversation-was-compacted',
-        )
-    try {
-      const requested = await tool.call({ agent: app.host.addressOf(id), reason })
-      expect(requested.structured).toMatchObject({ outcome: 'ok', agent: id, requested: true })
-      expect(requested.text).toMatch(/^Compaction requested for conversation W\d+ · /)
-      expect(codex.asked('thread/compact/start')).toBe(1)
-      expect(codex.turnTexts()).toEqual([])
-      expect(compactionsIn(app.ledger(id))).toEqual([])
-      expect(notices()).toEqual([])
-
-      const busy = await tool.call({ agent: id, reason })
-      expect(busy.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'compaction-target-busy',
+  it.each(['Keep the settled plan and free its context', undefined])(
+    'waits for native confirmation and delivers the compaction notice (%s) with the next input once',
+    async (given) => {
+      const { id, codex } = await aPersonOpensCodex()
+      app.store.createAgentIdentity(
+        { slug: 'director', displayName: 'Ada', provider: 'claude' },
+        { by: 'a-person' },
+      )
+      const { sessionId: caller } = await app.host.createSession(
+        { provider: 'claude', profileId: 'director', approvalMode: 'auto', cwd: app.root },
+        app.window,
+      )
+      const address = app.host.addressOf(caller)
+      const title = 'Plan the migration'
+      expect(app.host.retitleForAPerson(address, title)).toMatchObject({ ok: true })
+      const tool = agentToolsFor(app.host, caller).tools.find((one) => one.name === 'compact_agent')
+      if (tool === undefined) throw new Error('no compact_agent tool')
+      let confirm = (): void => {}
+      codex.compactionMayFinish = new Promise<void>((resolve) => {
+        confirm = resolve
       })
-      expect(busy.text).toMatch(/is busy\. Wait until it is idle, then try again\.$/)
-      expect(codex.asked('thread/compact/start')).toBe(1)
-    } finally {
-      confirm()
-    }
-    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 1, 'the compaction to end')
-    expect(compactionsIn(app.ledger(id))).toMatchObject([{ trigger: 'manual' }])
-    expect(codex.turnTexts(), 'a confirmed notice must not start a model turn').toEqual([])
-    expect(notices()).toMatchObject([{ text: notice }])
-    expect(userTurns(app.ledger(id))).not.toContain('/compact')
+      const reason = given ?? 'no reason given'
+      const notice = `Ada, conversation ${address} · ${title}, compacted this conversation: ${reason}.`
+      const notices = () =>
+        app
+          .ledger(id)
+          .filter(
+            (event) => 'appNotice' in event && event.appNotice === 'a-conversation-was-compacted',
+          )
+      try {
+        const requested = await tool.call({ agent: app.host.addressOf(id), reason: given })
+        expect(requested.structured).toMatchObject({ outcome: 'ok', agent: id, requested: true })
+        expect(requested.text).toMatch(/^Compaction requested for conversation W\d+ · /)
+        expect(codex.asked('thread/compact/start')).toBe(1)
+        expect(codex.turnTexts()).toEqual([])
+        expect(compactionsIn(app.ledger(id))).toEqual([])
+        expect(notices()).toEqual([])
 
-    const next = 'Check the migration plan'
-    await app.host.send(id, next, app.window)
-    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 2, 'the next input to end')
-    expect(codex.turnTexts()).toHaveLength(1)
-    const [first = ''] = codex.turnTexts()
-    expect(first).toContain(next)
-    expect(first.split(notice)).toHaveLength(2)
+        const busy = await tool.call({ agent: id, reason: given })
+        expect(busy.structured).toMatchObject({
+          outcome: 'refused',
+          rail: 'compaction-target-busy',
+        })
+        expect(busy.text).toMatch(/is busy\. Wait until it is idle, then try again\.$/)
+        expect(codex.asked('thread/compact/start')).toBe(1)
+      } finally {
+        confirm()
+      }
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 1, 'the compaction to end')
+      expect(compactionsIn(app.ledger(id))).toMatchObject([{ trigger: 'manual' }])
+      expect(codex.turnTexts(), 'a confirmed notice must not start a model turn').toEqual([])
+      expect(notices()).toMatchObject([{ text: notice }])
+      expect(userTurns(app.ledger(id))).not.toContain('/compact')
 
-    const later = 'List the remaining tasks'
-    await app.host.send(id, later, app.window)
-    await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 3, 'the later input to end')
-    expect(codex.turnTexts()).toHaveLength(2)
-    expect(codex.turnTexts()[1]).toContain(later)
-    expect(codex.turnTexts()[1]).not.toContain(reason)
-  })
+      const next = 'Check the migration plan'
+      await app.host.send(id, next, app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 2, 'the next input to end')
+      expect(codex.turnTexts()).toHaveLength(1)
+      const [first = ''] = codex.turnTexts()
+      expect(first).toContain(next)
+      expect(first.split(notice)).toHaveLength(2)
+
+      const later = 'List the remaining tasks'
+      await app.host.send(id, later, app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') >= 3, 'the later input to end')
+      expect(codex.turnTexts()).toHaveLength(2)
+      expect(codex.turnTexts()[1]).toContain(later)
+      expect(codex.turnTexts()[1]).not.toContain(reason)
+    },
+  )
 
   it('keeps the notice when Codex stops before dispatching its carrying input', async () => {
     awaitManagedPlugin = true

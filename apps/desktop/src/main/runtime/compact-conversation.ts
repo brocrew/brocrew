@@ -3,7 +3,8 @@ import type { Provider } from '@brobot2/shared'
 
 export interface CompactionRequest {
   readonly agent: string
-  readonly reason: string
+  /** Why it was asked, when the caller gave a reason. */
+  readonly reason?: string
 }
 
 export interface CompactConversationInput extends CompactionRequest {
@@ -67,7 +68,11 @@ export async function compactConversation<Target extends CompactionTarget>(
     if (run === null) {
       return { ok: false, refusal: 'compaction-unavailable', provider: target.provider, ...said }
     }
-    await deps.request(target, { agent: input.agent, reason: input.reason }, run)
+    await deps.request(
+      target,
+      { agent: input.agent, ...(input.reason === undefined ? {} : { reason: input.reason }) },
+      run,
+    )
     return { ok: true, ...said }
   } catch (error) {
     deps.reportFailure(conversation, error)

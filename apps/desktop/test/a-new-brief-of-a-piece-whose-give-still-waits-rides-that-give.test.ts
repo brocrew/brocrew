@@ -347,17 +347,15 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       const briefed = await callFull(pm, 'update_work', { piece: label, brief: B1 })
       expect(briefed.structured.outcome, JSON.stringify(briefed.structured)).toBe('ok')
       expect(briefed.structured.delivery).toBe('held')
-      // ⚑ Its owner's turn is stopped on a person's card, so the answer says what the brief waits for.
-      expect(briefed.text).toContain(
-        'the new brief is held. Its turn is stopped until a person answers its request to use Bash',
-      )
+      // ⚑ The answer says it waits for its owner's next input.
+      expect(briefed.text).toMatch(/\S+ will get the new brief with its next input\.$/)
       expect(briefed.text).not.toContain('as its own turn')
       expect(briefed.text).not.toContain('in place of the first')
       expect(briefed.text).not.toContain('interrupt_agent')
 
       // ⚑ The row names no message, and exactly one message of its own was queued, marked a new brief.
       const rows = rowsOf(worker, 'work_rebriefed')
-      expect(rows).toEqual([{ type: 'work_rebriefed', piece, brief: B1, by: pm }])
+      expect(rows).toEqual([{ type: 'work_rebriefed', piece, brief: B1, by: pm, held: true }])
       expect(rows[0]).not.toHaveProperty('messageId')
       const queued = rowsOf(worker, 'message_queued')
       expect(queued).toHaveLength(queuedBefore + 1)
@@ -365,8 +363,11 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
         expect.objectContaining({ piece, label, text: B1 }),
       ])
 
-      // ⚑ The turn ends: the provider hears it framed as the giver's new brief of the piece.
+      // ⚑ The turn ends and the brief still waits; its next input carries it, framed as the
+      // giver's new brief of the piece.
       await letTheTurnEnd(worker)
+      expect(saidToProvider(worker).some((said) => said.includes(A_NEW_BRIEF_TURN))).toBe(false)
+      await callOn(pm, 'message_agent', { agent: worker, text: 'see the new brief' })
       await waitFor(
         () => saidToProvider(worker).some((said) => said.includes(A_NEW_BRIEF_TURN)),
         'the held new brief to reach the provider',
@@ -389,10 +390,11 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       await letItSettle()
       expect(saidToProvider(worker).some((said) => said.includes(B1))).toBe(false)
 
-      // ⚑ **D-027 · the turn ends: BOTH go, in ONE turn, the first first** — this read *"the first
-      // brief is handed over … and not the second. Its turn ends: the second follows"*. ⛔ Each
-      // still carries its OWN words: the first is never replaced by the fold's newest.
+      // ⚑ **D-027 · BOTH go with the next input, in ONE turn, the first first.** ⛔ Each still
+      // carries its OWN words: the first is never replaced by the fold's newest.
       await letTheTurnEnd(worker)
+      expect(saidToProvider(worker).some((said) => said.includes(B1))).toBe(false)
+      await callOn(pm, 'message_agent', { agent: worker, text: 'see the new briefs' })
       await waitFor(
         () => saidToProvider(worker).some((said) => said.includes(B1)),
         'the new briefs to reach the provider',
@@ -412,7 +414,11 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
         theMessagesOf(turn).some((one) => one.text === B1 || one.text === B2),
       )
       expect(together).toHaveLength(1)
-      expect(together[0]?.parts?.map((one) => [one.text, one.piece, one.label])).toEqual([
+      expect(
+        together[0]?.parts
+          ?.filter((one) => one.text === B1 || one.text === B2)
+          .map((one) => [one.text, one.piece, one.label]),
+      ).toEqual([
         [B1, piece, label],
         [B2, piece, label],
       ])
@@ -474,47 +480,35 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§3 · what the verbs answer', () => {
-    it('R3 · a close, a take-back and a file handed over say sent to a free owner and held behind a running turn, and a held stop adds that interrupt_agent asks the turn to stop', async () => {
-      // ⚑ **D-027 moved the way out's words** — this read *"interrupt_agent asks that turn to stop
-      // now"*: what is held goes when the owner is FREE, which a person's command held ahead makes
-      // later than this turn's end, so the turn a stop is asked of is named as the one running now.
-      const STOP = /interrupt_agent asks the turn (\S+) is running now to stop\.$/
-      /** ⛔ The way out names the SAME owner the answer says is not told yet. */
-      const namesTheOwnerItHolds = (text: string): void => {
-        const owner = /(\S+) is not told yet/.exec(text)?.[1]
-        expect(owner).toBeDefined()
-        expect(STOP.exec(text)?.[1]).toBe(owner)
+    it('R3 · a close and a take-back are held for the next input, free or busy, and a file handed over is held behind a running turn', async () => {
+      const NEXT_INPUT = /(\S+) will be told with its next input\.$/
+      const heldForItsNextInput = (answer: {
+        structured: Record<string, unknown>
+        text: string
+      }): void => {
+        expect(answer.structured.outcome, JSON.stringify(answer.structured)).toBe('ok')
+        expect(answer.structured.delivery).toBe('held')
+        expect(answer.structured).not.toHaveProperty('told')
+        expect(answer.text).toMatch(NEXT_INPUT)
+        expect(answer.text).not.toContain('has been told.')
+        expect(answer.text).not.toContain('interrupt_agent')
       }
 
-      // (a) A close, its owner FREE: told, and it says so.
+      // (a) A close, its owner FREE: held for its next input, and nothing starts it.
       const free = await anIdleWorker('a')
-      const closedFree = await callFull(free.pm, 'update_work', { piece: free.label, close: true })
-      expect(closedFree.structured.outcome, JSON.stringify(closedFree.structured)).toBe('ok')
-      expect(closedFree.structured.delivery).toBe('sent')
-      expect(closedFree.structured).not.toHaveProperty('told')
-      expect(closedFree.text).toContain('has been told.')
-      expect(closedFree.text).not.toContain('is not told yet')
+      heldForItsNextInput(
+        await callFull(free.pm, 'update_work', { piece: free.label, close: true }),
+      )
 
-      // (b) A close, its owner BUSY: held, and the way out is named.
+      // (b) A close, its owner BUSY: the same.
       const busy = await aBusyWorker('b')
-      const closedBusy = await callFull(busy.pm, 'update_work', { piece: busy.label, close: true })
-      expect(closedBusy.structured.outcome, JSON.stringify(closedBusy.structured)).toBe('ok')
-      expect(closedBusy.structured.delivery).toBe('held')
-      expect(closedBusy.structured).not.toHaveProperty('told')
-      expect(closedBusy.text).toContain('is not told yet')
-      expect(closedBusy.text).toMatch(STOP)
-      namesTheOwnerItHolds(closedBusy.text)
-      expect(closedBusy.text).not.toContain('has been told.')
+      heldForItsNextInput(
+        await callFull(busy.pm, 'update_work', { piece: busy.label, close: true }),
+      )
 
-      // (c) A take back, its owner BUSY: the same word and the same way out.
+      // (c) A take back, its owner BUSY: the same.
       const taking = await aBusyWorker('c')
-      const taken = await callFull(taking.pm, 'withdraw_task', { piece: taking.label })
-      expect(taken.structured.outcome, JSON.stringify(taken.structured)).toBe('ok')
-      expect(taken.structured.delivery).toBe('held')
-      expect(taken.structured).not.toHaveProperty('told')
-      expect(taken.text).toContain('is not told yet')
-      expect(taken.text).toMatch(STOP)
-      namesTheOwnerItHolds(taken.text)
+      heldForItsNextInput(await callFull(taking.pm, 'withdraw_task', { piece: taking.label }))
 
       // (d) A file handed over, its owner BUSY: held, and NO stop is asked for — files wait.
       const handing = await aBusyWorker('d')
@@ -529,26 +523,18 @@ describe('D-022 · a giver’s correction reaches the owner, and the verbs say w
       expect(handed.text).toContain('is not told yet: it is held until')
       expect(handed.text).not.toContain('interrupt_agent')
 
-      // (e) A take back, its owner's turn stopped on a person's card: held, and the person's answer
-      // is what it waits for — no stop is offered, since none can be asked of that turn.
+      // (e) A take back, its owner's turn stopped on a person's card: held for its next input too.
       const parked = await aPmAndItsWorker('e')
-      const takenParked = await callFull(parked.pm, 'withdraw_task', { piece: parked.label })
-      expect(takenParked.structured.delivery).toBe('held')
-      expect(takenParked.text).toContain(
-        'is not told yet: it is held. Its turn is stopped until a person answers',
-      )
-      expect(takenParked.text).not.toContain('interrupt_agent')
+      heldForItsNextInput(await callFull(parked.pm, 'withdraw_task', { piece: parked.label }))
 
-      // (f) A new brief, its owner BUSY on a turn of its own: held until it is free.
+      // (f) A new brief, its owner BUSY on a turn of its own: held for its next input.
       const rebriefing = await aBusyWorker('f')
       const rebriefed = await callFull(rebriefing.pm, 'update_work', {
         piece: rebriefing.label,
         brief: B1,
       })
       expect(rebriefed.structured.delivery).toBe('held')
-      expect(rebriefed.text).toMatch(
-        /is not told yet: the new brief is held until \S+ is free, then goes out with whatever else is held for it/,
-      )
+      expect(rebriefed.text).toMatch(/\S+ will get the new brief with its next input\.$/)
       expect(rebriefed.text).not.toContain('interrupt_agent')
     })
   })
