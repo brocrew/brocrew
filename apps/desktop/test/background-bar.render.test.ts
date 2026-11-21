@@ -141,7 +141,8 @@ describe('the tool card', () => {
       },
     })
     expect(stopped).toContain('data-status="stopped"')
-    expect(stopped).toContain('>stopped</span>')
+    // The ending's word is said once on the row, not again as the outcome beside it.
+    expect(stopped.split('>stopped</span>')).toHaveLength(2)
     const unknown = await tool({
       item: {
         ...CALL,
@@ -150,7 +151,7 @@ describe('the tool card', () => {
       },
     })
     expect(unknown).toContain('data-status="unknown"')
-    expect(unknown).toContain('>ended, outcome not reported</span>')
+    expect(unknown.split('>ended, outcome not reported</span>')).toHaveLength(2)
     expect(unknown).not.toContain('data-status="error"')
   })
 })

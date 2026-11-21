@@ -4,7 +4,7 @@ import type { CapabilityStatus, ChildWorkInput, CommandTail } from '../../../sha
 import { BACKGROUND_SENTENCE, BACKGROUND_WORD, backgroundState } from '../lib/background-work'
 import { commandIsLive, outputStandingFor, tailAbsence, tailDroppedNote } from '../lib/command-tail'
 import { ANSWER_NOT_HELD } from '../lib/tool-answer'
-import { toolOutcome, toolTook } from '../lib/tool-outcome'
+import { TOOL_OUTCOME_WORD, didNotPlainlySucceed, toolOutcome, toolTook } from '../lib/tool-outcome'
 import type { ToolItem, TranscriptItem } from '../lib/transcript'
 import SubAgentEntry from './SubAgentEntry.vue'
 import WorkflowEntry from './WorkflowEntry.vue'
@@ -12,11 +12,9 @@ import WorkflowEntry from './WorkflowEntry.vue'
 /**
  * One thing the agent did: a foldable row, with its output underneath when it lands.
  *
- * ⚑ **Since `587` this draws the tool calls a quiet run may NOT hold** — a live one (`300`'s Stop
- * must not go behind a triangle), one with sub-agent cards (`029`), one with a workflow tree
- * (`108`), and detached work that has reported back while still running. ⛔ **A settled, childless
- * call is a member of a `ToolRun` line instead**, which is where most of a transcript's tool rows
- * now live. See `tool-runs.ts`.
+ * ⚑ **The one drawing of a tool call.** A call on its own is this row; a settled call inside a
+ * `ToolRun` is this row opened in the run's panel; the whole-answer panel is this row opened with
+ * the answer in its `answer` slot. See `tool-runs.ts` for which calls stand alone.
  *
  * ⚠️ **658 · and not a call of this app's two messaging tools** — `reply_to_parent` and
  * `message_agent` draw as `OutgoingEntry`'s card, routed before this one in `TranscriptView`.
@@ -84,6 +82,8 @@ const props = withDefaults(
     canOpenChild?: boolean
     /** Whether a workflow's output file has somewhere to open. Off, only its name is shown. */
     canOpenOutput?: boolean
+    /** Starts open: a run's selected call and the whole-answer panel draw the call this way. */
+    opened?: boolean
   }>(),
   {
     tail: null,
@@ -95,6 +95,7 @@ const props = withDefaults(
     canReadAnswer: false,
     canOpenChild: true,
     canOpenOutput: true,
+    opened: false,
   },
 )
 
@@ -134,7 +135,7 @@ const emit = defineEmits<{
 }>()
 
 /** Folded by default — a turn can run a dozen of these, and the output is for when you ask. */
-const folded = ref(true)
+const folded = ref(!props.opened)
 
 /**
  * ⛔ **What became of this call's DETACHED work, or null for the ordinary call** (248).
@@ -176,6 +177,13 @@ const status = computed(() => toolOutcome(props.item))
 const backgroundWord = computed(() =>
   background.value === null ? null : BACKGROUND_WORD[background.value],
 )
+/** The outcome's word on the row, for a settled call that did not plainly succeed. */
+const amiss = computed(() => {
+  if (props.item.result === null || !didNotPlainlySucceed(props.item)) return null
+  const word = TOOL_OUTCOME_WORD[status.value]
+  // Detached work's ending already says this word beside it; one word, said once.
+  return word === backgroundWord.value ? null : word
+})
 const backgroundNote = computed(() =>
   background.value === null ? undefined : BACKGROUND_SENTENCE[background.value],
 )
@@ -347,6 +355,7 @@ const droppedNote = computed(() =>
       </span>
       <span class="tool-meta">
         <span class="status-dot" :class="status"></span>
+        <span v-if="amiss" class="took amiss" data-cy="tool-amiss">{{ amiss }}</span>
         <!-- ⛔ The detached row's own word, FIRST, because it is the fact the row was missing (248).
              It sits beside `took` rather than instead of it: once the work ends, how long it really
              ran is the other half of the completion record, and the two are one sentence — "finished
@@ -403,63 +412,60 @@ const droppedNote = computed(() =>
         {{ props.stopping ? 'Stopping…' : 'Stop this command' }}
       </button>
     </div>
-    <!-- Show command output while it is being printed.
-
-         ⛔ **Only while it is LIVE, and only when the row is open.** A finished command has a
-         receipt two blocks down and that receipt is the record; showing a tail beside it would be
-         two accounts of one thing, which is exactly what §4 warns will end up disagreeing.
-
-         ⚠️ **`absence` is a SENTENCE and never a blank.** There are three ways to have no tail and
-         they are three different facts — see `command-tail.ts` — and on a provider that will never
-         stream, the sentence is the provider's own, out of its capability. `106`: a surface that
-         shows nothing where something was expected is a surface a person cannot act on. -->
-    <div v-if="!folded && live" class="tool-tail" :data-cy="`tool-tail-${item.id}`">
-      <p v-if="absence" class="tail-absent" :data-cy="`tool-tail-absent-${item.id}`">
-        {{ absence }}
-      </p>
-      <template v-else>
-        <!-- ⛔ **A COUNT of what is gone, never a leading ellipsis** (092, and `cutNote` one surface
-             over): a `…` the renderer draws cannot be told from one the command printed. -->
-        <p v-if="droppedNote" class="tail-cut" :data-cy="`tool-tail-dropped-${item.id}`">
-          {{ droppedNote }}
+    <!-- Opened: what the call was asked, its live output, and what it answered, as sent. The
+         `answer` slot is where the whole-answer panel puts the complete answer instead. -->
+    <div class="tool-open">
+      <p class="cap">what it was asked</p>
+      <pre class="text" data-cy="tool-input">{{ item.summary }}</pre>
+      <div v-if="!folded && live" class="tool-tail" :data-cy="`tool-tail-${item.id}`">
+        <p v-if="absence" class="tail-absent" :data-cy="`tool-tail-absent-${item.id}`">
+          {{ absence }}
         </p>
-        <pre class="tail-text" :data-cy="`tool-tail-text-${item.id}`">{{ props.tail?.text }}</pre>
+        <template v-else>
+          <!-- ⛔ **A COUNT of what is gone, never a leading ellipsis** (092, and `cutNote` one surface
+               over): a `…` the renderer draws cannot be told from one the command printed. -->
+          <p v-if="droppedNote" class="tail-cut" :data-cy="`tool-tail-dropped-${item.id}`">
+            {{ droppedNote }}
+          </p>
+          <pre class="tail-text" :data-cy="`tool-tail-text-${item.id}`">{{ props.tail?.text }}</pre>
+        </template>
+      </div>
+      <!-- The provider's own sentence about how detached work ended (248), after the receipt of
+           it leaving: together they are the whole record. -->
+      <template v-if="item.background?.summary">
+        <p class="cap">what became of it</p>
+        <p class="ended" data-cy="tool-background-summary">{{ item.background.summary }}</p>
       </template>
-    </div>
-    <div v-if="item.result" class="tool-body" :class="item.result.ok ? 'out-ok' : 'out-bad'">
-      {{ item.result.summary }}
-    </div>
-    <!-- ⛔ **The provider's own sentence about how the detached work ended** (248) — *"Background
-         command … completed (exit code 0)"*. It is a SECOND block rather than a replacement for the
-         one above: that one is the detachment receipt, which is what really happened at the time it
-         says, and overwriting it would delete a fact to show a fact. Together they are the whole
-         record — it left, and this is what became of it — which is the half `245` measured as never
-         arriving at all. -->
-    <div v-if="item.background?.summary" class="tool-body ended" data-cy="tool-background-summary">
-      {{ item.background.summary }}
-    </div>
-    <!-- 🔴 **The door to the whole answer** (462), or the sentence that says there is none.
-         ⛔ **INSIDE the fold, and that is the opposite call from the Stop above** — deliberately.
-         `300` put the Stop outside because the one control this app has over a running command must
-         not be behind a disclosure triangle. This is not a control over anything: it is more of what
-         the row already shows, and opening the row IS the gesture that asks for more. ⚠️ The tail is
-         inside for the same reason and they are neighbours on purpose.
-         ⚑ **And where it cannot be asked, the GAP is drawn in its place** rather than the row going
-         quiet — see `ANSWER_NOT_HELD`. -->
-    <div v-if="item.result" class="answer-ask">
-      <button
-        v-if="props.canReadAnswer"
-        class="ask-one"
-        type="button"
-        :data-cy="`tool-answer-open-${item.id}`"
-        title="Show everything this tool answered, not just the short form on this row."
-        @click="emit('openAnswer', item.callId, item.name)"
-      >
-        Show the whole answer
-      </button>
-      <p v-else class="answer-gone" :data-cy="`tool-answer-gone-${item.id}`">
-        {{ ANSWER_NOT_HELD }}
-      </p>
+      <slot name="answer">
+        <template v-if="item.result">
+          <p class="cap">what it answered</p>
+          <pre
+            class="text tool-body"
+            :class="item.result.ok ? 'out-ok' : 'out-bad'"
+            data-cy="tool-output"
+            >{{ item.result.summary }}</pre>
+          <!-- The door to the whole answer (462), or the sentence that says there is none. -->
+          <div class="answer-ask">
+            <button
+              v-if="props.canReadAnswer"
+              class="ask-one"
+              type="button"
+              :data-cy="`tool-answer-open-${item.id}`"
+              title="Show everything this tool answered, not just the short form on this row."
+              @click="emit('openAnswer', item.callId, item.name)"
+            >
+              Show the whole answer
+            </button>
+            <p v-else class="answer-gone" :data-cy="`tool-answer-gone-${item.id}`">
+              {{ ANSWER_NOT_HELD }}
+            </p>
+          </div>
+        </template>
+        <!-- No receipt came and none will (074): the outcome's word is all this app can say. -->
+        <p v-else-if="!live" class="none" data-cy="tool-no-output">
+          {{ TOOL_OUTCOME_WORD[status] }} — nothing was ever reported back
+        </p>
+      </slot>
     </div>
     <!-- Keep child cards outside the tool output fold so running work stays visible. -->
     <div v-if="item.subAgents?.length" class="subagents" data-cy="tool-subagents">
@@ -536,6 +542,7 @@ const droppedNote = computed(() =>
 }
 
 .tool-summary strong {
+  margin-right: var(--space-3);
   color: var(--text-soft);
   font-weight: var(--fw-bold);
 }
@@ -594,26 +601,63 @@ const droppedNote = computed(() =>
 }
 
 .chevron {
+  transform: rotate(90deg);
   transition: transform var(--dur-fast) ease;
 }
 
-.tool-entry.folded .tool-body {
+.tool-entry.folded .tool-open {
   display: none;
 }
 
 .tool-entry.folded .chevron {
-  transform: rotate(90deg);
+  transform: none;
 }
 
-.tool-entry.folded .answer-ask {
-  display: none;
+.took.amiss {
+  color: var(--waiting);
+  font-weight: var(--fw-semibold);
+}
+
+.tool-open {
+  padding: var(--space-5) var(--space-6);
+  border-top: var(--border-width) solid var(--line);
+}
+
+.cap {
+  margin: 0 0 var(--space-2);
+  color: var(--faint);
+  font-size: var(--type-caption);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.text {
+  max-height: 220px;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--code-text-dim);
+  font: var(--type-caption) / 1.55 var(--font-mono);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.text.out-bad {
+  color: var(--danger);
+}
+
+.none,
+.ended {
+  margin: 0 0 var(--space-5);
+  color: var(--muted);
+  font: var(--type-caption) / 1.5 var(--font-sans);
 }
 
 .answer-ask {
   display: flex;
   justify-content: flex-end;
-  padding: var(--space-4) var(--space-6);
-  border-top: var(--border-width) solid var(--line);
 }
 
 .ask-one {
@@ -659,14 +703,15 @@ const droppedNote = computed(() =>
 }
 
 .tool-tail {
-  border-top: var(--border-width) solid var(--line);
+  margin: 0 0 var(--space-5);
+  border-radius: var(--radius-sm);
   background: var(--code-bg);
 }
 
 .tail-text {
   max-height: 220px;
   margin: 0;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-5);
   overflow: auto;
   color: var(--code-text-dim);
   font: var(--type-caption) / 1.55 var(--font-mono);
@@ -677,7 +722,7 @@ const droppedNote = computed(() =>
 .tail-absent,
 .tail-cut {
   margin: 0;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-4) var(--space-5);
   color: var(--muted);
   font: var(--type-caption) / 1.5 var(--font-sans);
 }
@@ -685,25 +730,5 @@ const droppedNote = computed(() =>
 .tail-cut {
   color: var(--waiting);
   font-size: var(--type-caption);
-}
-
-.tool-body {
-  padding: var(--space-5) var(--space-6);
-  border-top: var(--border-width) solid var(--line);
-  background: var(--code-bg);
-  color: var(--code-text-dim);
-  font: var(--type-caption) / 1.55 var(--font-mono);
-  overflow-x: auto;
-  white-space: pre-wrap;
-}
-
-.tool-body.out-bad {
-  color: var(--danger);
-}
-
-.tool-body.ended {
-  color: var(--text-soft);
-  font: var(--type-caption) / 1.55 var(--font-sans);
-  white-space: normal;
 }
 </style>

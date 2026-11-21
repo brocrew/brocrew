@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ANSWER_NOT_HELD } from '../lib/tool-answer'
-import { TOOL_OUTCOME_WORD, didNotPlainlySucceed, toolOutcome, toolTook } from '../lib/tool-outcome'
+import { didNotPlainlySucceed } from '../lib/tool-outcome'
 import { runLine, type RunCall, type RunMember, type RunThought } from '../lib/tool-runs'
-import type { ToolItem } from '../lib/transcript'
 import ThinkingEntry from './ThinkingEntry.vue'
+import ToolEntry from './ToolEntry.vue'
 
 /**
  * 🔴 **587 · a run of settled tool calls, as ONE quiet line** — `EXT-013` §3.1.
@@ -24,13 +23,10 @@ import ThinkingEntry from './ThinkingEntry.vue'
  * dominate a transcript was a `--line` border, a `--wash-1` fill and a 34 px floor. ⚑ **The chrome
  * was the loudness, and the chrome is what went.**
  *
- * ## ⚑ Expanded: the two things a person could not see
+ * ## ⚑ Expanded: a tab per call, each drawn by `ToolEntry`
  *
- * ⚠️ **`EXT-013` §3.1:** *"expanded → input AND output, both formatted"*, and *"several in a run →
- * a tab per tool."* ⛔ **The output was never missing** — `.tool-entry.folded .tool-body` hid it and
- * the row opened by itself — but it was behind a press on a row that gave no reason to press it,
- * which is `106`'s shape. ⚑ Now opening the run IS the gesture that asks for it, and both halves
- * arrive together under labels that say which is which.
+ * ⚑ The run owns the line and the tabs only. The selected call is `ToolEntry` opened, the same
+ * drawing a call has on its own, and a selected thought is `ThinkingEntry` opened.
  *
  * ## 🔴 What is NOT in here, and each absence is somebody's ruling
  *
@@ -123,50 +119,6 @@ const shownThought = computed<RunThought | undefined>(() =>
   shown.value?.kind === 'thinking' ? shown.value : undefined,
 )
 
-/**
- * ⚑ **Pretty-print when it really is JSON, and otherwise print what we were given.**
- *
- * ⛔ **Never a claim that this is the whole input.** `summarizeToolInput` cut it in the ADAPTER, and
- * `normalize.ts` says the cut *"is irreversible: the full text is never carried on the event, so
- * nothing downstream can restore it"* — so a truncated object will not parse and falls through to
- * the raw branch, which is the honest outcome rather than a failure. ⚠️ **The cap's number is not
- * named here**, for `ANSWER_NOT_HELD`'s own reason: it lives in `@brobot2/runtime` and importing it
- * would cost the renderer 135 kB to print a figure.
- */
-function formatted(text: string): string {
-  const trimmed = text.trim()
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return text
-  try {
-    return JSON.stringify(JSON.parse(trimmed), null, 2)
-  } catch {
-    return text
-  }
-}
-
-const wordOf = (call: ToolItem): string => TOOL_OUTCOME_WORD[toolOutcome(call)]
-const amissOn = didNotPlainlySucceed
-
-const took = computed(() => {
-  const call = shownCall.value
-  return call === undefined ? null : toolTook(call, call.at)
-})
-
-/**
- * ⚠️ **Computed rather than called from the template**, found by the adversarial pass over this
- * dispatch's diff. `TranscriptView`'s `rows` rebuilds its `calls` arrays on every fold, so a
- * template call would re-run `JSON.parse` plus a pretty `stringify` on BOTH halves once per
- * streaming delta, for every open run on screen. ⛔ The card this replaces did no JSON work at all,
- * so it would have been a cost this dispatch introduced and never measured.
- */
-const asked = computed(() => {
-  const call = shownCall.value
-  return call === undefined ? '' : formatted(call.summary)
-})
-const answered = computed(() => {
-  const summary = shownCall.value?.result?.summary
-  return summary === undefined ? '' : formatted(summary)
-})
-
 function moveTab(event: KeyboardEvent, index: number): void {
   const last = tabbed.value.length - 1
   const to =
@@ -250,7 +202,10 @@ function moveTab(event: KeyboardEvent, index: number): void {
           :id="`tool-run-tab-${member.id}`"
           :key="member.id"
           class="tab"
-          :class="{ on: index === tab, amiss: member.kind === 'tool' && amissOn(member) }"
+          :class="{
+            on: index === tab,
+            amiss: member.kind === 'tool' && didNotPlainlySucceed(member),
+          }"
           type="button"
           role="tab"
           :aria-selected="index === tab"
@@ -274,66 +229,13 @@ function moveTab(event: KeyboardEvent, index: number): void {
         :aria-labelledby="tabbed.length > 1 ? `tool-run-tab-${shownCall.id}` : undefined"
         :data-cy="`tool-run-panel-${shownCall.id}`"
       >
-        <p class="what">
-          <strong>{{ shownCall.name }}</strong>
-          <span
-            class="outcome"
-            :class="{ amiss: amissOn(shownCall) }"
-            :data-outcome="toolOutcome(shownCall)"
-            data-cy="tool-run-outcome"
-            >{{ wordOf(shownCall) }}</span
-          >
-          <span v-if="took" class="took" data-cy="tool-run-took">{{ took }}</span>
-        </p>
-
-        <!-- ⚠️ **A memory write says so here too** (330). The badge is the row's, moved: the path is
-             what `summary` leads with and the word *memory* was never on screen without it. -->
-        <p class="cap">
-          what it was asked
-          <span v-if="shownCall.memoryPath" class="memory-badge" data-cy="tool-run-memory"
-            >this profile’s memory</span
-          >
-        </p>
-        <pre class="text" data-cy="tool-run-input">{{ asked }}</pre>
-
-        <p class="cap">what it answered</p>
-        <pre
-          v-if="shownCall.result"
-          class="text"
-          :class="{ bad: !shownCall.result.ok }"
-          data-cy="tool-run-output"
-          >{{ answered }}</pre>
-        <!-- ⛔ **Says what we know and stops there** (074). No receipt arrived and none ever will;
-             the outcome's own word is the whole of what this app can honestly report. -->
-        <p v-else class="none" data-cy="tool-run-no-output">
-          {{ wordOf(shownCall) }} — nothing was ever reported back
-        </p>
-
-        <!-- ⚑ **The ending's own sentence, under the receipt it follows** (248) — a SECOND block and
-             never a replacement, because the receipt is what really happened at the time it says. -->
-        <template v-if="shownCall.background?.summary">
-          <p class="cap">what became of it</p>
-          <p class="ended" data-cy="tool-run-background-summary">
-            {{ shownCall.background.summary }}
-          </p>
-        </template>
-
-        <!-- 🔴 **The door to the whole answer** (462), or the sentence that says there is none. -->
-        <div v-if="shownCall.result" class="ask">
-          <button
-            v-if="props.canReadAnswer"
-            class="ask-one"
-            type="button"
-            :data-cy="`tool-run-answer-open-${shownCall.id}`"
-            title="Show everything this tool answered, not just the short form on this row."
-            @click="emit('openAnswer', shownCall.callId, shownCall.name)"
-          >
-            Show the whole answer
-          </button>
-          <p v-else class="gone" :data-cy="`tool-run-answer-gone-${shownCall.id}`">
-            {{ ANSWER_NOT_HELD }}
-          </p>
-        </div>
+        <ToolEntry
+          :key="shownCall.id"
+          :item="shownCall"
+          :can-read-answer="props.canReadAnswer"
+          opened
+          @open-answer="(callId, name) => emit('openAnswer', callId, name)"
+        />
       </div>
 
       <!-- A thought with words, drawn as it is on its own row and already open. -->
@@ -397,8 +299,9 @@ function moveTab(event: KeyboardEvent, index: number): void {
   white-space: nowrap;
 }
 
-/* The thought's own row, inside the panel: no message-column indent of its own. */
-.panel > .thinking {
+/* The selected member's own row, inside the panel: no message-column indent of its own. */
+.panel > .thinking,
+.panel > .tool-entry {
   max-width: none;
   margin: 0;
   padding-left: 0;
@@ -454,105 +357,5 @@ function moveTab(event: KeyboardEvent, index: number): void {
 .tab.amiss,
 .tab.on.amiss {
   color: var(--waiting);
-}
-
-.what {
-  display: flex;
-  align-items: baseline;
-  margin: 0 0 var(--space-4);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-.what strong {
-  color: var(--text-soft);
-  font-weight: var(--fw-bold);
-}
-
-.outcome.amiss {
-  color: var(--waiting);
-}
-
-.took {
-  color: var(--faint);
-}
-
-.cap {
-  display: flex;
-  align-items: center;
-  margin: 0 0 var(--space-2);
-  color: var(--faint);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.cap + .text,
-.cap + .ended {
-  margin-bottom: var(--space-5);
-}
-
-.memory-badge {
-  padding: 0 var(--space-3);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-2xs);
-  background: var(--wash-2);
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.text {
-  max-height: 220px;
-  margin: 0;
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-sm);
-  background: var(--code-bg);
-  color: var(--code-text-dim);
-  font: var(--type-caption) / 1.55 var(--font-mono);
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.text.bad {
-  color: var(--danger);
-}
-
-.none,
-.ended {
-  margin: 0;
-  color: var(--muted);
-  font: var(--type-caption) / 1.5 var(--font-sans);
-}
-
-.ask {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-top: var(--space-4);
-  gap: var(--space-4);
-}
-
-.ask-one {
-  padding: var(--space-3) var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-}
-
-.ask-one:hover {
-  background: var(--wash-2);
-}
-
-.gone {
-  margin: 0 auto 0 0;
-  color: var(--muted);
-  font: var(--type-caption) / 1.5 var(--font-sans);
 }
 </style>

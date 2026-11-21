@@ -341,7 +341,7 @@ describe('§5 · opened, it shows what was asked and what came back', () => {
     { type: 'tool_result', id: `n${n}`, summary: `{"answered":${n}}`, ok: true } as TranscriptEvent,
   ])
 
-  it('gives a tab per call and formats both halves', async () => {
+  it('gives a tab per call and shows both halves as sent', async () => {
     await page.viewport(1100, 900)
     const view = paneOf(ADA)
     await nextTick()
@@ -351,12 +351,9 @@ describe('§5 · opened, it shows what was asked and what came back', () => {
 
     const tabs = [...row.querySelectorAll<HTMLElement>('[role="tab"]')]
     expect(tabs).toHaveLength(7)
-    expect(row.querySelector('[data-cy="tool-run-input"]')!.textContent).toContain('{}')
-    // ⚑ **Formatted, and that is what the assertion reads**: the receipt is a JSON object on one
-    // line in the ledger, and a formatted one is more than one line.
-    const out = row.querySelector('[data-cy="tool-run-output"]')!.textContent ?? ''
-    expect(out).toContain('profiles')
-    expect(out.split('\n').length, `the output is still on one line:\n${out}`).toBeGreaterThan(1)
+    expect(row.querySelector('[data-cy="tool-input"]')!.textContent).toBe('{}')
+    // The receipt is shown exactly as the ledger holds it: one line of JSON, not reformatted.
+    expect(row.querySelector('[data-cy="tool-output"]')!.textContent).toBe('{"profiles":[]}')
   })
 
   it('shows the call the selected tab NAMES, not the first one', async () => {
@@ -379,14 +376,12 @@ describe('§5 · opened, it shows what was asked and what came back', () => {
     for (const [index, tab] of tabs.entries()) {
       tab.click()
       await nextTick()
-      expect(
-        row.querySelector('[data-cy="tool-run-input"]')!.textContent,
-        `tab ${index}`,
-      ).toContain(`"which": ${index}`)
-      expect(
-        row.querySelector('[data-cy="tool-run-output"]')!.textContent,
-        `tab ${index}`,
-      ).toContain(`"answered": ${index}`)
+      expect(row.querySelector('[data-cy="tool-input"]')!.textContent, `tab ${index}`).toBe(
+        `{"which":${index}}`,
+      )
+      expect(row.querySelector('[data-cy="tool-output"]')!.textContent, `tab ${index}`).toBe(
+        `{"answered":${index}}`,
+      )
     }
   })
 

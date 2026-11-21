@@ -4000,13 +4000,6 @@ async function main() {
           status: el.dataset.status,
           took: el.querySelector('[data-cy=tool-took]')?.textContent.trim() ?? null,
         })),
-        ...[...document.querySelectorAll('[data-cy=tool-run-outcome]')].map((el) => ({
-          status: el.dataset.outcome,
-          took: el
-            .closest('[data-cy=tool-run]')
-            ?.querySelector('[data-cy=tool-run-took]')
-            ?.textContent.trim() ?? null,
-        })),
       ]`)
     const finished = tools.filter((tool) => tool.status !== 'running')
     if (finished.length === 0) throw new Error('no finished tool row to read a duration from')
@@ -15954,14 +15947,17 @@ async function main() {
     //
     // Every settled call is read, not named. A settled call is a member of one quiet `ToolRun`
     // (`tool-runs.ts`'s `joinsARun`), whose toggle title gives every member the status `collapsed`.
-    // `ToolRun.vue` draws each call's outcome as `tool-run-outcome`'s `data-outcome` (`toolOutcome`:
-    // done for an ok result, error for a refused one) behind the run's toggle and one tab per call,
+    // The run draws its selected call as `ToolEntry`, whose `data-status` is the outcome (`toolOutcome`:
+    // done for an ok result, error for a refused one), behind the run's toggle and one tab per call,
     // so this read opens every run and presses every tab.
     const rows = `
       // A timer, not a frame (175 §1): Vue flushes on a microtask, a setTimeout(0) runs after
       // it, and a hidden document runs no frames. (No backticks: this is a page-side template.)
       const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
       const norm = (el) => el?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''
+      const alone = [...document.querySelectorAll('[data-cy=tool-entry]')].filter(
+        (el) => el.closest('[data-cy=tool-run]') === null,
+      )
       const members = []
       for (const run of document.querySelectorAll('[data-cy=tool-run]')) {
         if (run.dataset.open !== 'true') {
@@ -15974,20 +15970,21 @@ async function main() {
             tab.click()
             await tick()
           }
-          const panel = run.querySelector('[data-cy^=tool-run-panel-]')
+          const call = run.querySelector('[data-cy^=tool-run-panel-] [data-cy=tool-entry]')
+          if (call === null) continue
           members.push({
-            name: norm(panel?.querySelector('.what strong')),
-            status: panel?.querySelector('[data-cy=tool-run-outcome]')?.dataset.outcome ?? '',
-            summary: norm(panel?.querySelector('[data-cy=tool-run-input]')),
+            name: norm(call.querySelector('strong')),
+            status: call.dataset.status ?? '',
+            summary: norm(call.querySelector('[data-cy=tool-input]')),
             body: norm(
-              panel?.querySelector('[data-cy=tool-run-output]') ??
-                panel?.querySelector('[data-cy=tool-run-no-output]'),
+              call.querySelector('[data-cy=tool-output]') ??
+                call.querySelector('[data-cy=tool-no-output]'),
             ),
           })
         }
       }
       return [
-        ...[...document.querySelectorAll('[data-cy=tool-entry]')].map((el) => ({
+        ...alone.map((el) => ({
           name: el.querySelector('strong')?.textContent?.trim() ?? '',
           status: el.dataset.status,
           summary: el.querySelector('code')?.textContent?.replace(/\\s+/g, ' ').trim() ?? '',

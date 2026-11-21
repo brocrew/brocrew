@@ -143,7 +143,7 @@ describe('a Codex turn of searches and thoughts', () => {
     expect(m.q('thinking-text').textContent).toContain('Look up the hours first.')
     tabs[1]!.click()
     await nextTick()
-    expect(m.q('tool-run-outcome')).toBeTruthy()
+    expect(m.q('tool-run').querySelectorAll('[data-cy="tool-entry"]')).toHaveLength(1)
     expect(m.all('thinking-entry')).toHaveLength(0)
     // The thought between the second and third calls, read in its place.
     tabs[3]!.click()
