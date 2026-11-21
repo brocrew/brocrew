@@ -278,7 +278,8 @@ export function pastWorkSearchInWords(
     )
   }
   if (result.work_unread === true) rows.push('Some work records could not be read.')
-  if (result.transcript_unread === true) rows.push('The transcript preview could not be read.')
+  if (result.transcript_unread === true)
+    rows.push('The transcript preview could not be read. Search again with in: "transcripts".')
   if (result.next_cursor !== null) {
     rows.push(
       `More of this search remains. Continue with cursor: ${JSON.stringify(result.next_cursor)} and the same words and filters, even if this page has no matches.`,
