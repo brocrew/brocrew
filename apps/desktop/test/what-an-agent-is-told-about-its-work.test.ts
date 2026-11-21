@@ -356,6 +356,7 @@ describe('what an agent is told about its work', () => {
         'message_agent',
         'read_transcript',
         'request_action',
+        'search_past_work',
         'search_work',
         'update_work',
       ])
