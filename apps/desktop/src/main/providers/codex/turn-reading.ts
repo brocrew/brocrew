@@ -163,7 +163,11 @@ export function readingCodex(asked: TurnAsked): TurnReading {
           if (
             candidate &&
             next() === 'its-own-record' &&
-            splitCodexMessage(role, messageText(payload['content'])).said === asked.text
+            splitCodexMessage(
+              role,
+              messageText(payload['content']),
+              payload['internal_chat_message_metadata_passthrough'],
+            ).said === asked.text
           ) {
             if (taken < asked.before.length) {
               taken += 1

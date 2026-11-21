@@ -41,6 +41,22 @@ const PERSON_AUTHORED_TAGS = new Set(['image'])
  */
 const AGENTS_HEADING = '# AGENTS.md instructions'
 
+/**
+ * ⚑ **Who wrote each block, as Codex itself records it** (card 51). Codex puts
+ * `internal_chat_message_metadata_passthrough.content_item_kinds` on nearly every message: `user.*`
+ * (`user.text`) is what the person sent, anything else (`agents_md.instructions`,
+ * `environments.environment_context`, `generic.turn_aborted`) is the harness. On 74,126 recorded
+ * user-role messages the text rules below agreed with it every time; it is what decides when
+ * present, so a person's own `<note>…</note>` stays theirs. Files without it keep the text rules.
+ */
+const isTyped = (kind: unknown): boolean => typeof kind === 'string' && kind.startsWith('user.')
+
+function recordedKinds(metadata: unknown): readonly unknown[] | null {
+  if (typeof metadata !== 'object' || metadata === null) return null
+  const kinds = (metadata as Record<string, unknown>)['content_item_kinds']
+  return Array.isArray(kinds) && kinds.length > 0 ? kinds : null
+}
+
 /** What one `message` line really contains. */
 export interface CodexMessageParts {
   /** True when any part of this line was put there by the harness rather than typed. */
@@ -59,8 +75,13 @@ export interface CodexMessageParts {
  *
  * `role` is passed as the raw value off the line — `unknown`, because the file is input and a role
  * this build has never heard of must land in rule 1 rather than in a `default` that means "user".
+ * `metadata` is the line's raw `internal_chat_message_metadata_passthrough`.
  */
-export function splitCodexMessage(role: unknown, text: string): CodexMessageParts {
+export function splitCodexMessage(
+  role: unknown,
+  text: string,
+  metadata?: unknown,
+): CodexMessageParts {
   // 1 · Not the user's role at all. `developer` today; whatever Codex adds next, tomorrow.
   if (role !== 'user') return { injected: true, said: null }
 
@@ -73,6 +94,11 @@ export function splitCodexMessage(role: unknown, text: string): CodexMessagePart
     // Events tab hold a second full copy of the person's words labelled "injected context".
     return { injected: text.slice(0, marker).trim() !== '', said: said === '' ? null : said }
   }
+
+  // ⚑ Codex's own record of who wrote it — see {@link isTyped}. A mix (never seen) falls to the rules.
+  const kinds = recordedKinds(metadata)
+  if (kinds?.every(isTyped)) return { injected: false, said: text }
+  if (kinds?.every((kind) => !isTyped(kind))) return { injected: true, said: null }
 
   // 3 · A preamble with the environment block appended and no request attached.
   if (text.trimEnd().endsWith(ENVIRONMENT_CLOSE)) return { injected: true, said: null }

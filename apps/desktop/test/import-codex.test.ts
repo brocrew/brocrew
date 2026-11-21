@@ -417,6 +417,45 @@ describe('214 §2 · injected provider context is not the user speaking', () => 
     })
   })
 
+  it('🔴 card 51 · Codex’s recorded content_item_kinds decides, not the text’s shape', () => {
+    // CLI 0.160+ records who wrote each block: `user.text` is typed, anything else is the harness.
+    const recorded = (text: string, kinds: string[]): string =>
+      JSON.stringify({
+        type: 'response_item',
+        timestamp: '2026-08-25T09:00:00.000Z',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text }],
+          internal_chat_message_metadata_passthrough: { content_item_kinds: kinds },
+        },
+      })
+    const typed = [
+      '<note>ship it</note>',
+      '# AGENTS.md instructions are wrong, fix them',
+      'see <environment_context>\n</environment_context>',
+    ]
+    const events = eventsOf(
+      ...typed.map((text) => recorded(text, ['user.text'])),
+      // Any `user.*` kind is the person's — a picture beside the words included.
+      recorded('<figure>chart</figure>', ['user.text', 'user.image']),
+      recorded('cwd: /x\nshell: zsh', ['environments.environment_context']),
+    )
+
+    expect(events.map((event) => event.type)).toEqual([
+      'user_turn',
+      'user_turn',
+      'user_turn',
+      'user_turn',
+      'unknown',
+    ])
+    expect(events.slice(0, 4).map((event) => event.text)).toEqual([
+      ...typed,
+      '<figure>chart</figure>',
+    ])
+    expect(events[4]?.category).toBe('echo')
+  })
+
   it('an assistant line is untouched by every rule here', () => {
     // Non-vacuity for the whole block: a classifier that answered "injected" to everything would
     // pass every negative above.

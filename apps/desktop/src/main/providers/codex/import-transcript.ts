@@ -154,7 +154,11 @@ function lineEvents(payload: Record_): TranscriptEvent[] {
 
       if (payload['role'] === 'assistant') return [{ type: 'assistant_message', text }]
 
-      const parts = splitCodexMessage(payload['role'], text)
+      const parts = splitCodexMessage(
+        payload['role'],
+        text,
+        payload['internal_chat_message_metadata_passthrough'],
+      )
       const events: TranscriptEvent[] = []
 
       if (parts.injected) {

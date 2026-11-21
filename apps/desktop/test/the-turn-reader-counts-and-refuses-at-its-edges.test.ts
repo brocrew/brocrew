@@ -299,6 +299,27 @@ describe('§4 · Codex: which block is the message, and how it is reported', () 
     // ⚑ …and the block's exact text is.
     expect(read('codex', file, asked(block)).found).toBe(true)
   })
+
+  it('⚑ card 51 · a typed message that is one XML element is found from its own record', () => {
+    const typed = '<note>ship it</note>'
+    const file = [
+      codexMeta({ id: 't' }),
+      codexEvent('task_started'),
+      JSON.stringify({
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: typed }],
+          internal_chat_message_metadata_passthrough: { content_item_kinds: ['user.text'] },
+        },
+      }),
+      CODEX_ANSWER,
+    ]
+    const turn = read('codex', file, asked(typed, { by: 'its-own-record' }))
+    if (!turn.found) throw new Error(turn.why)
+    expect(turn.message).toBe(typed)
+  })
 })
 
 describe('§5 · ⛔ Codex: the base prompt is this conversation’s', () => {
