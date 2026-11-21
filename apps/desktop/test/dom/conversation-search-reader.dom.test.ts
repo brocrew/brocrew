@@ -526,6 +526,22 @@ it('searches recorded conversations with the same cursor and opens an archived m
   expect(runtime.startAndSend).not.toHaveBeenCalled()
 })
 
+it('adds deferred title details to the existing palette row', async () => {
+  const title = hit('title-result', 'Recorded title', 'W4.5')
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValueOnce(result([title], 'title-details'))
+    .mockResolvedValueOnce(result([{ ...title, status: 'Ready to read' }], null))
+  window.api.runtime.searchWork = search
+  await openPalette()
+  typeQuery('recorded title')
+  const row = () => insidePalette('palette-row-open-title-result')
+  await expect.poll(() => row()?.textContent).toContain('Recorded title')
+  insidePalette('palette-search-more')!.click()
+  await expect.poll(() => row()?.textContent).toContain('Ready to read')
+  expect(document.querySelectorAll('[data-cy="palette-row-open-title-result"]')).toHaveLength(1)
+})
+
 it('ignores a delayed page after the query changes without affecting command keys', async () => {
   let settle!: (answer: WorkSearchResult) => void
   const old = new Promise<WorkSearchResult>((resolve) => {

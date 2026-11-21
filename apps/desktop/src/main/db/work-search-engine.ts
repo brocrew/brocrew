@@ -22,6 +22,8 @@ import {
   isRecordedServiceConversation,
 } from '../runtime/conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
+import { LimitsReadUnavailable } from './limits-read-protocol'
+import { matchingWorkTitles, type WorkSearchTitleMatch } from './work-search-titles'
 import { agentIdentityRowId } from './identity'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import {
@@ -37,6 +39,8 @@ const cursorSchema = z
     query: z.string().min(1).max(1024),
     high: point,
     after: point.nullable(),
+    titleAfter: point.nullable().optional(),
+    titleDetails: z.object({ after: point.nullable(), through: point }).strict().optional(),
     within: point
       .extend({ offset: z.number().int().positive().max(WORK_SEARCH_BOUNDS.ledgerRows) })
       .optional(),
@@ -44,6 +48,8 @@ const cursorSchema = z
   })
   .strict()
 type Point = z.infer<typeof point>
+const before = (one: Point, other: Point): boolean =>
+  one.at < other.at || (one.at === other.at && one.id < other.id)
 type Cursor = z.infer<typeof cursorSchema>
 type Search = z.output<typeof workSearchQuery>
 type Candidate = Point & {
@@ -60,6 +66,7 @@ type MatchedTask = {
   givenAt: number
   status: StatusLine | null
   done: string | null
+  root: boolean
   piece: PieceRow | null
 }
 
@@ -182,6 +189,12 @@ export class WorkSearchEngine {
         if (
           cursor.query !== queryKey ||
           (cursor.within !== undefined && query.scope === undefined) ||
+          (cursor.titleDetails !== undefined &&
+            (cursor.titleAfter === undefined ||
+              cursor.after !== null ||
+              before(cursor.high, cursor.titleDetails.through) ||
+              (cursor.titleDetails.after !== null &&
+                !before(cursor.titleDetails.through, cursor.titleDetails.after)))) ||
           (query.grouped === true
             ? cursor.after !== null || cursor.groupOffset === undefined
             : cursor.groupOffset !== undefined) ||
@@ -237,14 +250,33 @@ export class WorkSearchEngine {
         )
         .get(params) as Point | undefined)
     let through = cursor?.after ?? null
+    const titleFirst =
+      words.length > 0 &&
+      query.profile === undefined &&
+      query.from === undefined &&
+      query.to === undefined &&
+      query.scope === undefined &&
+      query.state === undefined &&
+      query.grouped !== true &&
+      (through === null || cursor?.titleAfter !== undefined)
+    const includeMetadata = query.includeConversationMetadata === true || query.grouped === true
+    let titleThrough = cursor?.titleAfter
+    let titleDetails = cursor?.titleDetails
+    const detailsPage = titleDetails !== undefined
+    let detailsRead = 0
     let within = cursor?.within
     const unread = rowsUnreadOnce()
     const hits: ConversationSearchHit[] = []
     const groups = query.grouped === true ? new SearchGroups(cursor?.groupOffset ?? 0) : null
     let searched = 0
     let matchedTasks = 0
+    let tooLarge = 0
+    let titleDetailsUnread = 0
     const result = (finished: boolean): WorkSearchPage => {
-      const complete = finished && unread.count === 0 && unread.ledgersSkipped === 0
+      const visibleHits = detailsPage ? hits.slice(0, detailsRead) : [...hits]
+      const unreadDetails = titleDetailsUnread - (hits.length - visibleHits.length)
+      const complete =
+        finished && unread.count === 0 && unread.ledgersSkipped === 0 && unreadDetails === 0
       if (groups !== null) {
         const grouped = groups.page(complete)
         const groupOffset = groups.offset + grouped.groups.length
@@ -254,6 +286,7 @@ export class WorkSearchEngine {
           searched,
           rows_unread: unread.count,
           ledgers_skipped: unread.ledgersSkipped,
+          ...(tooLarge === 0 ? {} : { candidates_too_large: tooLarge }),
           complete,
           next_cursor: hasNext
             ? Buffer.from(
@@ -264,10 +297,13 @@ export class WorkSearchEngine {
         }
       }
       return {
-        hits: [...hits],
+        hits: visibleHits,
         searched,
         rows_unread: unread.count,
         ledgers_skipped: unread.ledgersSkipped,
+        ...(tooLarge === 0 ? {} : { candidates_too_large: tooLarge }),
+        ...(unreadDetails === 0 ? {} : { title_details_unread: unreadDetails }),
+        ...(titleDetails === undefined ? {} : { title_details_pending: true as const }),
         complete,
         next_cursor: finished
           ? null
@@ -277,6 +313,8 @@ export class WorkSearchEngine {
                 query: queryKey,
                 high,
                 after: through,
+                ...(titleThrough === undefined ? {} : { titleAfter: titleThrough }),
+                ...(titleDetails === undefined ? {} : { titleDetails }),
                 ...(within === undefined ? {} : { within }),
               }),
             ).toString('base64url'),
@@ -285,45 +323,104 @@ export class WorkSearchEngine {
     if (high === undefined) return result(true)
     checkpoint?.({ ok: true, page: result(false) })
 
-    const includeMetadata = query.includeConversationMetadata === true || groups !== null
-    const candidates = this.db
-      .prepare(
-        'SELECT s.id, s.updated_at AS at, a.slug AS profile, ' +
-          (includeMetadata
-            ? 's.provider AS provider, archived.archived_at AS archivedAt '
-            : 'NULL AS provider, NULL AS archivedAt ') +
-          CANDIDATES +
-          (includeMetadata
-            ? ' LEFT JOIN archived_conversation archived ON archived.conversation_id = s.id'
-            : '') +
-          ' WHERE ' +
-          DATE_SCOPE +
-          ' AND (s.updated_at, s.id) <= (@highAt, @highId)' +
-          ' AND (@afterId IS NULL OR (s.updated_at, s.id) < (@afterAt, @afterId))' +
-          ' ORDER BY s.updated_at DESC, s.id DESC LIMIT @cap',
+    const titles = titleFirst
+      ? matchingWorkTitles(this.db, high, includeMetadata, (title) => matches(words, [title]))
+      : []
+    const titleIds = new Set(titles.map(({ id }) => id))
+    const toEnrich: { candidate: Candidate; titleIndex: number }[] = []
+    let titleCandidates = 0
+    if (titleFirst && (detailsPage || titleThrough !== null)) {
+      const store = createSessionStore(this.db, this.now)
+      const range = titleDetails
+      const titleStart = detailsPage ? range?.after : titleThrough
+      const remaining = titles.filter(
+        (title) =>
+          (titleStart == null || before(title, titleStart)) &&
+          (range === undefined || !before(title, range.through)),
       )
-      .all({
-        ...params,
-        highAt: high.at,
-        highId: high.id,
-        afterAt: through?.at ?? null,
-        afterId: through?.id ?? null,
-        cap: WORK_SEARCH_BOUNDS.candidates + 1,
-      }) as Candidate[]
+      titleCandidates = remaining.length
+      let lastTitle: Point | undefined
+      for (const title of remaining) {
+        if (hits.length >= query.limit) break
+        const hit = this.titleHit(title, store, this.db)
+        if (JSON.stringify([...hits, hit]).length > WORK_SEARCH_BOUNDS.responseUnits - 2200) break
+        toEnrich.push({
+          candidate: {
+            id: title.id,
+            at: title.at,
+            profile: title.profile,
+            provider: title.provider,
+            archivedAt: title.archivedAt,
+          },
+          titleIndex: hits.length,
+        })
+        hits.push(hit)
+        titleDetailsUnread++
+        lastTitle = { id: title.id, at: title.at }
+      }
+      if (!detailsPage) {
+        const more = toEnrich.length < titleCandidates
+        titleThrough = more ? (lastTitle ?? titleThrough) : null
+        if (lastTitle !== undefined && (hits.length === query.limit || more)) {
+          titleDetails = { after: titleStart ?? null, through: lastTitle }
+          return result(false)
+        }
+      }
+      checkpoint?.({ ok: true, page: result(false) })
+    }
+
+    const moreTitles = titleFirst && titleThrough !== null
+    const candidates =
+      moreTitles || detailsPage
+        ? []
+        : (this.db
+            .prepare(
+              'SELECT s.id, s.updated_at AS at, a.slug AS profile, ' +
+                (includeMetadata
+                  ? 's.provider AS provider, archived.archived_at AS archivedAt '
+                  : 'NULL AS provider, NULL AS archivedAt ') +
+                CANDIDATES +
+                (includeMetadata
+                  ? ' LEFT JOIN archived_conversation archived ON archived.conversation_id = s.id'
+                  : '') +
+                ' WHERE ' +
+                DATE_SCOPE +
+                ' AND (s.updated_at, s.id) <= (@highAt, @highId)' +
+                ' AND (@afterId IS NULL OR (s.updated_at, s.id) < (@afterAt, @afterId))' +
+                ' ORDER BY s.updated_at DESC, s.id DESC LIMIT @cap',
+            )
+            .all({
+              ...params,
+              highAt: high.at,
+              highId: high.id,
+              afterAt: through?.at ?? null,
+              afterId: through?.id ?? null,
+              cap: WORK_SEARCH_BOUNDS.candidates + 1,
+            }) as Candidate[])
     const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
     const scanMs = groups === null ? WORK_SEARCH_BOUNDS.pageMs : workerScanMs
     const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
     const groupedMeasure = groups === null ? null : workSearchMaterialization(pageBudget)
     let groupedRead: { db: Database.Database; store: SessionStore } | undefined
-    for (const candidate of candidates.slice(0, WORK_SEARCH_BOUNDS.candidates)) {
+    const scans: { candidate: Candidate; titleIndex?: number }[] = [
+      ...toEnrich,
+      ...candidates.slice(0, WORK_SEARCH_BOUNDS.candidates).map((candidate) => ({ candidate })),
+    ]
+    for (const { candidate, titleIndex } of scans) {
       if (
-        (groups === null &&
+        (titleIndex === undefined &&
+          groups === null &&
           (query.scope === undefined ? hits.length : matchedTasks) >= query.limit) ||
-        (searched > 0 &&
+        ((searched > 0 || (titleIndex !== undefined && (!detailsPage || detailsRead > 0))) &&
           (this.now() - started >= scanMs ||
             pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows))
       )
         break
+      if (titleIndex === undefined && titleIds.has(candidate.id)) {
+        searched++
+        through = { at: candidate.at, id: candidate.id }
+        continue
+      }
       const measure = groupedMeasure ?? workSearchMaterialization(pageBudget)
       groupedMeasure?.resetLedger()
       const localUnread = workSearchUnread(unread)
@@ -350,19 +447,42 @@ export class WorkSearchEngine {
         )
         measure.assert()
         if (localUnread.count > 0 || localUnread.ledgersSkipped > 0) match = null
-      } catch {
-        if (pageBudget.overflowed) break
-        unread.in(candidate.id)('the-whole-ledger')
+      } catch (error) {
+        if (!pageBudget.overflowed) {
+          if (error instanceof LimitsReadUnavailable && error.why === 'overflow') tooLarge++
+          unread.in(candidate.id)('the-whole-ledger')
+        }
         match = null
       }
-      const hit = match?.hit ?? null
+      if (pageBudget.overflowed && (!detailsPage || detailsRead > 0)) break
+      const hit = pageBudget.overflowed ? null : (match?.hit ?? null)
+      if (titleIndex !== undefined) {
+        if (hit !== null) {
+          const updated = [...hits]
+          updated[titleIndex] = hit
+          if (JSON.stringify(updated).length <= WORK_SEARCH_BOUNDS.responseUnits - 2200) {
+            hits[titleIndex] = hit
+            titleDetailsUnread--
+          }
+        }
+        if (detailsPage && titleDetails !== undefined) {
+          detailsRead++
+          titleDetails =
+            detailsRead === titleCandidates
+              ? undefined
+              : { ...titleDetails, after: { id: candidate.id, at: candidate.at } }
+        }
+        checkpoint?.({ ok: true, page: result(false) })
+        continue
+      }
       if (
         groups === null &&
         hit !== null &&
+        !titleIds.has(candidate.id) &&
         JSON.stringify([...hits, hit]).length > WORK_SEARCH_BOUNDS.responseUnits - 2200
       )
         break
-      if (match !== null) {
+      if (match !== null && !titleIds.has(candidate.id)) {
         if (groups !== null) groups.add(match)
         else {
           hits.push(match.hit)
@@ -384,7 +504,63 @@ export class WorkSearchEngine {
       through = { at: candidate.at, id: candidate.id }
       checkpoint?.({ ok: true, page: result(false) })
     }
-    return result(searched === candidates.length)
+    if (detailsPage) {
+      if (titleCandidates === 0) titleDetails = undefined
+      return result(false)
+    }
+    return result(!moreTitles && searched === candidates.length)
+  }
+
+  private titleHit(candidate: WorkSearchTitleMatch, store: SessionStore, db: Database.Database) {
+    const { id, profile, at, tasks, provider, archivedAt } = candidate
+    const savedTitle = provider === null ? undefined : store.conversationTitle(id)
+    const { address, title, line } = describeConversationForRead(store, id, undefined, savedTitle)
+    const matched_tasks: WorkSearchHit[] = []
+    let units = 0
+    for (const task of tasks.slice(0, 50)) {
+      const row = store.workById(task.id)
+      if (row === null) continue
+      const hit = this.taskHit(
+        {
+          id: row.piece,
+          label: row.label,
+          title: task.title,
+          brief: null,
+          giver: row.givenBy,
+          givenAt: row.createdAt,
+          status: null,
+          done: null,
+          root: row.parent === null,
+          piece: null,
+        },
+        id,
+        store,
+        db,
+      )
+      units += JSON.stringify(hit).length
+      if (units > (WORK_SEARCH_BOUNDS.responseUnits - 2200) / 2) break
+      matched_tasks.push(hit)
+    }
+    return {
+      conversation: id,
+      address,
+      title: clippedWorkText(title, WORK_SEARCH_BOUNDS.titleUnits).text ?? '',
+      line,
+      profile,
+      last_active_at: at,
+      status: null,
+      matched_tasks,
+      tasks_omitted: tasks.length - matched_tasks.length,
+      ...(provider === null
+        ? {}
+        : {
+            metadata: {
+              provider,
+              archived_at: archivedAt,
+              title_author: savedTitle?.author ?? null,
+            },
+          }),
+    }
   }
 
   private conversationHit(
@@ -410,7 +586,11 @@ export class WorkSearchEngine {
     const { address, title, line } = describeConversationForRead(store, id, service, savedTitle)
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
-    const tasks: MatchedTask[] = store.piecesWithTheirWaits(id, unread).map((piece) => ({
+    const pieces =
+      query.state === undefined
+        ? store.piecesOwnedBy(id, unread)
+        : store.piecesWithTheirWaits(id, unread)
+    const tasks: MatchedTask[] = pieces.map((piece) => ({
       id: piece.piece,
       label: piece.label,
       title: piece.title,
@@ -419,6 +599,7 @@ export class WorkSearchEngine {
       givenAt: piece.givenAt,
       status: piece.statusLine,
       done: piece.definitionOfDone ?? null,
+      root: false,
       piece,
     }))
     if (root !== null && rootLines !== null) {
@@ -431,6 +612,7 @@ export class WorkSearchEngine {
         givenAt: root.createdAt,
         status: rootLines.statusLine,
         done: store.rootDoneCondition(root.piece),
+        root: true,
         piece: null,
       })
     }
@@ -481,10 +663,24 @@ export class WorkSearchEngine {
       matches(words, [address, title, candidate.profile, latest?.text ?? null])
     if (!matchesConversation && matched.length === 0) return null
 
+    const toShow = matched.slice(0, taskLimit)
+    const withWaits =
+      query.state === undefined && toShow.length > 0
+        ? new Map(
+            store
+              .piecesWithTheirWaits(
+                id,
+                unread,
+                toShow.flatMap(({ piece }) => (piece === null ? [] : [piece])),
+              )
+              .map((piece) => [piece.piece, piece]),
+          )
+        : undefined
     const matched_tasks: WorkSearchHit[] = []
     let units = 0
-    for (const task of matched.slice(0, taskLimit)) {
-      const one = this.taskHit(task, id, store, db)
+    for (const task of toShow) {
+      const piece = withWaits?.get(task.id)
+      const one = this.taskHit(piece === undefined ? task : { ...task, piece }, id, store, db)
       units += JSON.stringify(one).length
       if (units > (WORK_SEARCH_BOUNDS.responseUnits - 2200) / 2) break
       matched_tasks.push(one)
@@ -559,16 +755,14 @@ export class WorkSearchEngine {
     const summary = clippedWorkText(task.piece?.summary ?? null, WORK_SEARCH_BOUNDS.resultUnits)
     const outcome = task.piece?.outcome ?? null
     return {
-      kind: task.piece === null ? 'root' : 'piece',
+      kind: task.root ? 'root' : 'piece',
       piece: task.id,
       label: task.label,
       title: title.text,
       given_at: task.givenAt,
       definition_of_done: clippedWorkText(task.done, 512).text,
       state: task.piece?.state ?? null,
-      ...(task.piece === null
-        ? { conversation_state: store.recordedOne(owner)?.status ?? 'unknown' }
-        : {}),
+      ...(task.root ? { conversation_state: store.recordedOne(owner)?.status ?? 'unknown' } : {}),
       owner: name(owner),
       giver: task.giver === null ? null : name(task.giver),
       result: outcome === null ? null : { outcome, summary: summary.text },

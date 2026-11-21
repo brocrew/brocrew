@@ -6712,11 +6712,8 @@ export function createSessionStore(
       return foldPiecesOfSession(owner, unread?.in(owner), false, ordinal)
     },
 
-    piecesWithTheirWaits(owner, unread) {
-      return composeWhatEachPieceIsWaitingOn(
-        piecesOfSession(owner, unread?.in(owner)),
-        oneWaitReadPerHolder(unread),
-      )
+    piecesWithTheirWaits(owner, unread, pieces = piecesOfSession(owner, unread.in(owner))) {
+      return composeWhatEachPieceIsWaitingOn(pieces, oneWaitReadPerHolder(unread))
     },
 
     turnBlockPiecesOwnedBy(owner, unread) {

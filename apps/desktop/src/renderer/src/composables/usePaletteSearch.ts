@@ -97,7 +97,9 @@ export function usePaletteSearch(
         searchFailed.value = 'Could not search conversations.'
         return
       }
-      searchHits.value = [...searchHits.value, ...result.page.hits]
+      const hits = new Map(searchHits.value.map((hit) => [hit.conversation, hit]))
+      for (const hit of result.page.hits) hits.set(hit.conversation, hit)
+      searchHits.value = [...hits.values()]
       if (result.page.grouped) {
         const groups = new Map(searchGroups.value.map((group) => [group.profile, group]))
         for (const group of result.page.grouped.groups) groups.set(group.profile, group)

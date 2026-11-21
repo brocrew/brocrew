@@ -95,6 +95,9 @@ export interface WorkSearchPage {
   readonly searched: number
   readonly rows_unread: number
   readonly ledgers_skipped: number
+  readonly candidates_too_large?: number
+  readonly title_details_unread?: number
+  readonly title_details_pending?: true
   readonly complete: boolean
   readonly next_cursor: string | null
   readonly grouped?: GroupedWorkSearch
@@ -229,6 +232,9 @@ export const workSearchResult = z
             searched: count.max(WORK_SEARCH_BOUNDS.candidates),
             rows_unread: count,
             ledgers_skipped: count,
+            candidates_too_large: count.optional(),
+            title_details_unread: count.max(50).optional(),
+            title_details_pending: z.literal(true).optional(),
             complete: z.boolean(),
             next_cursor: z.string().max(2048).nullable(),
             grouped: groupedSearch.optional(),

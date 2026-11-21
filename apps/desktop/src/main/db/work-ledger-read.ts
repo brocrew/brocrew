@@ -21,7 +21,11 @@ export interface WorkRow {
 
 /** The work-ledger reads used to index and describe past work. */
 export interface WorkLedgerRead {
-  piecesWithTheirWaits(owner: string, unread: RowsUnread): readonly PieceRow[]
+  piecesWithTheirWaits(
+    owner: string,
+    unread: RowsUnread,
+    pieces?: readonly PieceRow[],
+  ): readonly PieceRow[]
   theActiveGeneration(sessionId: string): number
   /** One `work` row by its id, or `null`. */
   workById(piece: string): WorkRow | null

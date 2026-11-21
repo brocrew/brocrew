@@ -73,8 +73,24 @@ export function workSearchInWords(page: WorkSearchPage): string {
     `Searched: ${page.searched}; rows_unread: ${page.rows_unread}; ledgers_skipped: ${page.ledgers_skipped}; complete: ${page.complete}.`,
   )
   if (page.rows_unread > 0 || page.ledgers_skipped > 0) lines.push(WORK_SEARCH_WORDS.unread)
+  const tooLarge = page.candidates_too_large ?? 0
+  if (tooLarge > 0)
+    lines.push(
+      tooLarge === 1
+        ? '1 conversation was too large to search.'
+        : `${tooLarge} conversations were too large to search.`,
+    )
+  const titleDetailsUnread = page.title_details_unread ?? 0
+  if (titleDetailsUnread > 0 && page.title_details_pending !== true)
+    lines.push(
+      titleDetailsUnread === 1
+        ? 'One title match has unread details. Use list_tasks.'
+        : `${titleDetailsUnread} title matches have unread details. Use list_tasks.`,
+    )
   if (page.next_cursor !== null)
-    lines.push(`${WORK_SEARCH_WORDS.older} next_cursor: ${page.next_cursor}`)
+    lines.push(
+      `${page.title_details_pending === true ? 'Continue for title details.' : WORK_SEARCH_WORDS.older} next_cursor: ${page.next_cursor}`,
+    )
   lines.push(WORK_SEARCH_WORDS.changing)
   return lines.join('\n\n')
 }

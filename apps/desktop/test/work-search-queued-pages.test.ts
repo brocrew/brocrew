@@ -206,6 +206,95 @@ it('returns a single conversation row for matching ended and open tasks', () => 
   }
 })
 
+it('finds a conversation title without reading waits for tasks that do not match', () => {
+  const owner = 'fictional_10'
+  const child = 'fictional_11'
+  const caller = 'fictional_12'
+  const root = store.rootOf(caller)!
+  const at = Date.now()
+  const give = (
+    from: string,
+    to: string,
+    under: { piece: string; label: string },
+    piece: string,
+    title: string,
+  ) => {
+    const number = store.numberUnder(under.piece)
+    const given = {
+      type: 'work_given' as const,
+      piece,
+      label: `${under.label}.${String(number)}`,
+      parent: under.piece,
+      givenBy: from,
+      title,
+      brief: 'Check the fixture.',
+    }
+    store.recordGive(
+      { ...given, number, owner: to, folder: null, inputs: [] },
+      store.nextOrdinal(to),
+      given,
+      at,
+    )
+    return given
+  }
+  const held = give(caller, owner, root, 'work_wait_search_held', 'Calibrate the meter')
+  const delegated = give(owner, child, held, 'work_wait_search_child', 'Read the output')
+  const title = 'Wheatstone bridge'
+  store.titleConversation(
+    owner,
+    store.nextOrdinal(owner),
+    { type: 'titled', title, author: { kind: 'person' } },
+    at,
+  )
+  const engine = new WorkSearchEngine(file, () => at)
+  const profile = 'profile_10'
+  const heldQuery = {
+    profile,
+    words: held.title,
+    scope: 'all',
+    state: 'waiting-on-a-worker',
+  } as const
+  const childEvent = db
+    .prepare("SELECT ordinal, payload FROM events WHERE session_id = ? AND type = 'work_given'")
+    .get(child) as { ordinal: number; payload: string }
+  const setChildEvent = db.prepare(
+    'UPDATE events SET payload = ? WHERE session_id = ? AND ordinal = ?',
+  )
+  try {
+    expect(engine.read(caller, { profile, words: held.title })).toMatchObject({
+      ok: true,
+      page: { hits: [{ matched_tasks: [{ label: held.label, state: 'waiting-on-a-worker' }] }] },
+    })
+    expect(engine.read(caller, heldQuery)).toMatchObject({
+      ok: true,
+      page: { hits: [{ matched_tasks: [{ label: held.label, state: 'waiting-on-a-worker' }] }] },
+    })
+    setChildEvent.run(
+      JSON.stringify({ ...delegated, brief: 'x'.repeat(WORK_SEARCH_BOUNDS.cellBytes) }),
+      child,
+      childEvent.ordinal,
+    )
+    expect(engine.read(caller, { profile, words: title })).toMatchObject({
+      ok: true,
+      page: {
+        complete: true,
+        ledgers_skipped: 0,
+        hits: [{ conversation: owner, title, matched_tasks: [] }],
+      },
+    })
+    const incomplete = engine.read(caller, heldQuery)
+    expect(incomplete).toMatchObject({
+      ok: true,
+      page: { complete: false, hits: [] },
+    })
+    if (!incomplete.ok) throw new Error('expected a partial work search page')
+    expect(incomplete.page.ledgers_skipped).toBeGreaterThan(0)
+  } finally {
+    engine.close()
+    setChildEvent.run(childEvent.payload, child, childEvent.ordinal)
+  }
+})
+
 it('continues all matching tasks for the existing task palette through the same conversation search', () => {
   const owner = 'fictional_3'
   const giver = 'fictional_2'
@@ -674,3 +763,162 @@ it('finds all 72 groups and exact totals for 640 conversations in the real worke
     await reader.close()
   }
 }, 90_000)
+
+it('finds current titles before the fold budget and keeps oversized title hits visible', () => {
+  const caller = 'fictional_0'
+  const owner = 'fictional_14'
+  const newer = 'fictional_15'
+  const parent = store.rootOf(caller)!
+  const number = store.numberUnder(parent.piece)
+  const given = {
+    type: 'work_given' as const,
+    piece: 'work_meter_title',
+    label: `${parent.label}.${String(number)}`,
+    parent: parent.piece,
+    givenBy: caller,
+    title: 'Obsolete measurement title',
+    brief: 'Record the reading.',
+  }
+  const at = Date.parse('2030-01-01')
+  store.recordGive(
+    { ...given, number, owner, folder: null, inputs: [] },
+    store.nextOrdinal(owner),
+    given,
+    at,
+  )
+  store.append(
+    owner,
+    store.nextOrdinal(owner),
+    {
+      type: 'work_retitled',
+      piece: given.piece,
+      title: 'Archived meter protocol index',
+      by: owner,
+    },
+    at + 1,
+  )
+  store.titleConversation(
+    newer,
+    store.nextOrdinal(newer),
+    { type: 'titled', title: 'Meter protocol index release', author: { kind: 'person' } },
+    at + 2,
+  )
+  const newerRoot = store.rootOf(newer)!
+  store.append(
+    newer,
+    store.nextOrdinal(newer),
+    { type: 'work_status_set', piece: newerRoot.piece, line: 'Ready to compare', by: newer },
+    at + 3,
+  )
+  archivedConversationsIn(db).add([owner], at + 4)
+
+  let clock = at
+  let cutInsideDetails = false
+  let detailClockChecks = 0
+  const engine = new WorkSearchEngine(file, () =>
+    cutInsideDetails && ++detailClockChecks >= 3 ? at + WORK_SEARCH_BOUNDS.workerMs : clock,
+  )
+  try {
+    const titlesOnly = engine.read(
+      caller,
+      { words: 'archived meter protocol index', includeConversationMetadata: true },
+      (progress) => {
+        if (progress.ok && progress.page.hits.length > 0) clock += WORK_SEARCH_BOUNDS.pageMs + 1
+      },
+    )
+    expect(titlesOnly).toMatchObject({
+      ok: true,
+      page: {
+        hits: [
+          {
+            conversation: owner,
+            matched_tasks: [{ label: given.label }],
+            metadata: { provider: 'codex', archived_at: at + 4, title_author: null },
+          },
+        ],
+        complete: false,
+        title_details_unread: 1,
+      },
+    })
+    clock = at
+    const stale = engine.read(caller, { words: given.title }, (progress) => {
+      if (progress.ok && progress.page.searched > 0) clock += WORK_SEARCH_BOUNDS.pageMs + 1
+    })
+    expect(stale).toMatchObject({ ok: true, page: { hits: [] } })
+    clock = at
+    const query = { words: 'meter protocol index', limit: 2 }
+    const replaceGiven = db.prepare(
+      "UPDATE events SET payload = ? WHERE session_id = ? AND type = 'work_given'",
+    )
+    replaceGiven.run(
+      JSON.stringify({ ...given, brief: 'x'.repeat(WORK_SEARCH_BOUNDS.cellBytes) }),
+      owner,
+    )
+    try {
+      const head = engine.read(caller, query)
+      expect(head).toMatchObject({
+        ok: true,
+        page: {
+          title_details_pending: true,
+          title_details_unread: 2,
+          ledgers_skipped: 0,
+          hits: [
+            { conversation: newer, status: null },
+            { conversation: owner, status: null, matched_tasks: [{ label: given.label }] },
+          ],
+        },
+      })
+      if (!head.ok || head.page.next_cursor === null) throw new Error('expected title details')
+      expect(workSearchInWords(head.page)).toContain('Continue for title details.')
+      expect(workSearchInWords(head.page)).not.toContain('Use list_tasks.')
+      const details = engine.read(
+        caller,
+        { ...query, cursor: head.page.next_cursor },
+        (progress) => {
+          if (progress.ok && progress.page.hits.length > 0) cutInsideDetails = true
+        },
+      )
+      expect(detailClockChecks).toBeGreaterThanOrEqual(3)
+      expect(details).toMatchObject({
+        ok: true,
+        page: {
+          title_details_pending: true,
+          hits: [{ conversation: newer, status: 'Ready to compare' }],
+        },
+      })
+      if (!details.ok || details.page.next_cursor === null)
+        throw new Error('expected the remaining title details')
+      cutInsideDetails = false
+      const pending = engine.read(caller, { ...query, cursor: details.page.next_cursor })
+      expect(pending).toMatchObject({
+        ok: true,
+        page: {
+          complete: false,
+          candidates_too_large: 1,
+          title_details_unread: 1,
+          hits: [
+            {
+              conversation: owner,
+              matched_tasks: [{ label: given.label, title: 'Archived meter protocol index' }],
+            },
+          ],
+        },
+      })
+      if (!pending.ok || pending.page.next_cursor === null) throw new Error('expected more work')
+      expect(workSearchInWords(pending.page)).toContain('1 conversation was too large to search.')
+      expect(workSearchInWords(pending.page)).toContain('Use list_tasks.')
+      const rest = engine.read(
+        caller,
+        { ...query, cursor: pending.page.next_cursor },
+        (progress) => {
+          if (progress.ok && progress.page.searched > 0) clock += WORK_SEARCH_BOUNDS.pageMs + 1
+        },
+      )
+      expect(rest).toMatchObject({ ok: true, page: { hits: [] } })
+    } finally {
+      replaceGiven.run(JSON.stringify(given), owner)
+    }
+  } finally {
+    engine.close()
+  }
+})
