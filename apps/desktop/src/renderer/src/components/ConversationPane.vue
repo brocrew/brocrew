@@ -1,20 +1,10 @@
 <script setup lang="ts">
-import type { RunTarget } from '../lib/panel-runs'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 
-import {
-  computed,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  provide,
-  ref,
-  shallowReactive,
-  watch,
-} from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref } from 'vue'
 import type {
   AgentIdentity,
   PermissionDecision,
@@ -33,15 +23,10 @@ import type {
   ConfigFileResult,
   SessionPathTarget,
 } from '../../../shared/runtime-ipc'
-import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
-import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
-import { useClientApi } from '../client-provider/injection'
-import { useProviderNames } from '../composables/useProviderNames'
-import { useProviderSetup } from '../composables/useProviderSetup'
 import {
   activityLine,
   facetsOfState,
@@ -88,7 +73,6 @@ import {
   LEAVE_PLAN_LABEL,
   LEAVE_PLAN_TITLE,
 } from '../lib/plan-mode'
-import { reopeningHeldBy, reopeningSays } from '../lib/reopening'
 import { sessionPanel } from '../lib/session-panel'
 import { CLOSING_BLOCK, SIGN_IN_SUPERSEDED_BLOCK } from '../lib/send-refusals'
 import { aCommandInTheBox, aCommandTakesNoAttachmentsYet } from '../lib/a-command-with-files'
@@ -101,7 +85,6 @@ import {
 } from '../lib/opening-a-document'
 import { A_COMMAND_HAS_NOT_ANSWERED, type SendIntent } from '../lib/session-store'
 import type { ForestView } from '../lib/the-forest'
-import { receiptOf } from '../lib/transcript'
 import ActivityPill from './ActivityPill.vue'
 import ImageViewer from './ImageViewer.vue'
 import CanonicalDocumentOverlay from './CanonicalDocumentOverlay.vue'
@@ -127,6 +110,9 @@ import SessionHeader from './SessionHeader.vue'
 import SessionShelf from './SessionShelf.vue'
 import TranscriptView from './TranscriptView.vue'
 import { useClientMessagePaths } from '../composables/useMessagePaths'
+import { useConversationSignIn } from '../composables/useConversationSignIn'
+import { useConversationOverlays } from '../composables/useConversationOverlays'
+import { useToolRowControls } from '../composables/useToolRowControls'
 
 /**
  * Render the supplied conversation record; the parent owns which record is selected.
@@ -774,356 +760,34 @@ const compaction = computed<CompactionFacts>(() => ({
  */
 const needsGoAhead = computed(() => props.record.meta?.planNeedsGoAhead ?? false)
 
-/**
- * The machine Claude sign-in has moved on without this conversation (147).
- *
- * ⚠️ **Read from `meta.liveness`, and NOT folded flat onto `meta` like its neighbours.** The fold in
- * `acceptLiveness` exists for disclosures with a same-named reader already on `meta` — approval,
- * plan, settings, queued all have one — and its whole purpose is to stop there being two answers.
- * This has exactly one reader, so flattening it would create the second copy that pattern exists to
- * prevent rather than removing one.
- *
- * `=== true` rather than `?? false`: the field is absent on every liveness message published before
- * the session was described, and absent must read as "nothing has moved" rather than as unknown.
- */
-const signInSuperseded = computed(() => props.record.meta?.liveness.signInSuperseded === true)
-/** Probe only for each on-screen refusal; renew this profile here, or null if it runs as nobody. */
-const signInClient = useClientApi()
-const providerName = useProviderNames(signInClient)
-const profileSignIn = computed<ProfileSignIn | null>(() => {
-  const meta = props.record.meta
-  const profileId = profileItRunsAs(meta)
-  return meta && profileId !== null
-    ? useProfileSignIn(meta.provider, profileId, signInClient)
-    : null
-})
-const signInRefused = computed(() => {
-  for (let index = transcript.value.items.length - 1; index >= 0; index--) {
-    const item = transcript.value.items[index]
-    if (item?.kind === 'user') return null
-    if (item?.kind === 'notice' && item.signIn?.state === 'refused') return item.id
-  }
-  return null
-})
-const signInTarget = ref<string | null>(null)
-const signInRenewedFor = ref<string | null>(null)
-const signInSetup = useProviderSetup(
-  () => props.record.meta?.provider ?? DEFAULT_CONVERSATION_PROVIDER,
-  async (operation) => {
-    if (operation !== 'signIn' || signInTarget.value !== props.record.sessionId) return
-    const sessionId = props.record.sessionId
-    await profileSignIn.value?.check()
-    if (sessionId === props.record.sessionId && profileSignIn.value?.auth?.state === 'usable') {
-      signInRenewedFor.value = sessionId
-      emit('reopenSignIn')
-    }
-  },
-)
-async function signInAgain(): Promise<void> {
-  signInRenewedFor.value = null
-  signInTarget.value = props.record.sessionId
-  await signInSetup.signIn()
-}
-watch(
-  () => [profileSignIn.value, props.record.error, signInRefused.value] as const,
-  ([signIn, error, refused], before) => {
-    if (refused !== before?.[2]) signInRenewedFor.value = null
-    if (signIn === null || (error === null && !refused)) return
-    if (signIn.auth === null || error !== before?.[1] || refused !== before?.[2])
-      void signIn.check()
-  },
-  { immediate: true },
-)
-const PENDING_CAPABILITY = {
-  state: 'absent',
-  reason: 'Still asking this provider what it can do.',
-  checkedAgainst: 'the capability fetch has not returned yet',
-} as const
-const signInNeeded = computed(() => {
-  const state = profileSignIn.value?.auth?.state
-  return state === 'stale' || state === 'absent'
-})
+const {
+  signInSuperseded,
+  signInClient,
+  providerName,
+  profileSignIn,
+  signInRefused,
+  signInTarget,
+  signInRenewedFor,
+  signInSetup,
+  signInAgain,
+  PENDING_CAPABILITY,
+  signInNeeded,
+  canReopenSignIn,
+  signInBarCost,
+  signInOf,
+} = useConversationSignIn(props, transcript, control, emit)
 
-/**
- * ⛔ **Whether this conversation's adapter can stop one piece of background work** (248).
- *
- * `=== true` on an OPTIONAL disclosure, the way `signInSuperseded` is read one line up: absent means
- * *"this adapter cannot say"* and covers two real states that mean the same thing to a button — a
- * recording, which has no handle at all, and a liveness message published before the session was
- * described. `106`: a control that cannot act is not offered.
- *
- * 🔴 **`closing` is a third state where it cannot act, and it was missing** (287 §2, finding 5).
- * `SessionStore.close` sets `record.phase = 'closing'` before it awaits the host — 089 put it there
- * on purpose — and this read straight past it, so Stop stayed live through the whole teardown. This
- * is an ordinary conversation close, so the app-wide quit door does not cover it; both adapters
- * silently no-op once they are shutting down. ⚠️ **The adapters answer `false` for that now too, and
- * this is still not redundant with it**: a control that cannot act must not be OFFERED, which is a
- * different requirement from a request that must not lie about having gone out. `interruptible` one
- * screen down reads the same phase for the same reason.
- *
- * ⚠️ **`ended` is deliberately NOT named here**, and it is not an omission: the three session
- * boundaries run `stopDetachedWork`, which empties the registry — so `BackgroundBar`'s own `v-if` is
- * already false and there is no row to carry a button. `closing` is the one phase where the rows are
- * still on screen and the adapter has already stopped listening.
- */
-const canStopBackgroundWork = computed(
-  () =>
-    props.record.meta?.liveness.canStopBackgroundWork === true &&
-    props.onStopBackgroundWork !== undefined &&
-    props.record.phase !== 'closing',
-)
-
-/**
- * ⛔ **May a card ASK what its command has printed** (300) — `SessionLiveness.canReadCommandOutput`,
- * plus a prop to ask through.
- *
- * ⚠️ **`closing` is deliberately NOT here, and the asymmetry with {@link canStopBackgroundWork} one
- * screen up is the point.** That gate is about a control that ACTS: a Stop offered through a
- * teardown is `106`'s control that cannot act. This is a READ of a buffer, and a conversation being
- * closed is exactly when the last thing a command printed is worth seeing. The read answers `null`
- * once the handle is gone, which the card says in words.
- */
-const canWatchCommands = computed(
-  () =>
-    props.record.meta?.liveness.canReadCommandOutput === true &&
-    props.onReadCommandOutput !== undefined,
-)
-
-/**
- * ⛔ **May a row offer to show the whole of what its tool answered** (462) —
- * `SessionLiveness.canReadToolAnswer`, plus a prop to ask through.
- *
- * ⚠️ **`closing` is deliberately NOT here either**, on {@link canWatchCommands}' own ruling one
- * block up: this is a READ, and a conversation being closed is exactly when what its last tool said
- * is worth having. ⛔ And unlike that gate there is no capability beside this one, because both
- * adapters hold answers — what differs is which receipts carry what, which the panel reports from
- * what actually arrived.
- */
-const canReadToolAnswers = computed(
-  () =>
-    props.record.meta?.liveness.canReadToolAnswer === true && props.onReadToolAnswer !== undefined,
-)
-
-/**
- * ⛔ **This provider's standing on watching a command** (300, 039's rule) — the sentence a card shows
- * where there will never be a tail.
- *
- * ⚠️ **Looked up by the session's provider rather than branched on it.** `provider-neutrality.test.ts`
- * is the gate; the whole of `capabilities.ts` exists so a surface asks what a session SUPPORTS. Null
- * before the session has been described, which reads as "nothing to say" and gets the short sentence.
- */
-const outputCapability = computed(() => {
-  const provider = props.record.meta?.provider
-  if (provider === undefined) return null
-  // ⚠️ **`?.` and not a `=== null` guard, and the difference is a crash the type did not predict.**
-  // The prop is declared `ProviderCapabilityMap | null`, so `null` looks like the whole absence —
-  // but a mount that OMITS a required prop passes `undefined`, and five render tests do exactly
-  // that. Found by those tests; the reading rule is `074`'s either way: nothing declared is nothing
-  // to say, whichever shape the nothing arrives in.
-  return props.capabilities?.[provider]?.commandOutput ?? null
-})
-
-/** The same, for a command that went to the background — its own entry since provider follow-ups 1. */
-const backgroundOutputCapability = computed(() => {
-  const provider = props.record.meta?.provider
-  if (provider === undefined) return null
-  return props.capabilities?.[provider]?.backgroundCommandOutput ?? null
-})
-
-/**
- * 🔴 **The commands being FOLLOWED, and what each has printed** (300).
- *
- * ## ⛔ Why the timer is here and not in the card
- *
- * `255` virtualizes the transcript, so a row that owns a poller owns it for as long as the scroller
- * keeps that row mounted — which is a lifetime nobody chose. One timer on the pane reads every
- * followed call, and a card that scrolls away withdraws before it unmounts (`ToolEntry`'s
- * `onBeforeUnmount`, which is `onUnmounted` for a measured reason).
- *
- * ⚠️ **`shallowReactive` over a `Map`, and the tails are replaced rather than mutated.** A deep
- * `reactive` would proxy every value; the card compares nothing and only reads, so identity is all
- * that has to change for it to re-render — the same trade `drafts.ts` records for its own map.
- */
-const followed = shallowReactive(new Map<string, CommandTail | null>())
-/** ⚠️ Not a `computed` over `followed`: a call can be followed before its first read answers. */
-const following = new Set<string>()
-let followTimer: ReturnType<typeof setInterval> | null = null
-
-/**
- * ⛔ **How often a followed command is re-read.**
- *
- * ⚠️ **One second, and it is chosen against the thing being watched rather than against a frame
- * budget.** Codex delivers a command's output as the process produces it — measured at one line a
- * second for a ticker — and a person reading a scrolling log cannot tell 1 Hz from smoother. It is
- * also `275`'s own poll interval halved, over a read that costs a map lookup rather than a request
- * to a child process, so it is the cheaper of the two by a wide margin.
- */
-const FOLLOW_MS = 1_000
-
-/**
- * ⛔ **One drain at a time** — found by the adversarial pass over this diff.
- *
- * The timer fires every second and the drain is asynchronous; nothing bounded how long a read takes,
- * so a slow bridge would have had two drains overlapping and a third behind them. The `following`
- * re-check below keeps the ANSWERS correct either way, but a queue of drains is not a follow, it is
- * a backlog — the same single-flight `BackgroundTerminals.refresh` states for the same reason.
- */
-let draining: Promise<void> | null = null
-/** An ask that arrived mid-drain — collapsed into ONE follow-up, never a queue. */
-let drainAgain = false
-
-async function readFollowed(): Promise<void> {
-  const read = props.onReadCommandOutput
-  if (read === undefined) return
-  // ⛔ **A card that opens mid-drain still gets its immediate answer**, and it gets exactly one.
-  // Returning early here would leave the newly-opened card saying *"nothing kept"* for a whole
-  // second about a command that has been printing for a minute — the thing `onWatchCommand`'s own
-  // note calls reading as broken. `BackgroundTerminals.refresh` collapses the same way.
-  if (draining !== null) {
-    drainAgain = true
-    return
-  }
-  draining = (async () => {
-    // ⚠️ **The id list is snapshotted before the awaits**, so a card that withdraws mid-drain does
-    // not mutate the set being iterated — and the write below re-checks membership, because a
-    // withdrawal that lands while its own read is in flight must not put the answer back.
-    for (const callId of [...following]) {
-      const tail = await read(callId)
-      if (following.has(callId)) followed.set(callId, tail)
-    }
-  })()
-  try {
-    await draining
-  } finally {
-    draining = null
-  }
-  if (drainAgain) {
-    drainAgain = false
-    await readFollowed()
-  }
-}
-
-function tick(): void {
-  if (following.size === 0) {
-    stopFollowing()
-    return
-  }
-  void readFollowed()
-}
-
-function stopFollowing(): void {
-  if (followTimer === null) return
-  clearInterval(followTimer)
-  followTimer = null
-}
-
-/**
- * A card asking to be followed, or letting go (300).
- *
- * ⛔ **The first read is immediate and the timer is second**, because a card that opened would
- * otherwise show *"not holding anything"* for a whole second about a command that has been printing
- * for a minute — a true sentence at the wrong moment, which reads as a broken feature.
- */
-function onWatchCommand(callId: string, on: boolean): void {
-  if (!on) {
-    following.delete(callId)
-    followed.delete(callId)
-    if (following.size === 0) stopFollowing()
-    return
-  }
-  if (!canWatchCommands.value) return
-  following.add(callId)
-  void readFollowed()
-  if (followTimer === null) followTimer = setInterval(tick, FOLLOW_MS)
-}
-
-const tailFor = (callId: string): CommandTail | null => followed.get(callId) ?? null
-
-/**
- * ⛔ **The CALLS whose stop is in flight** — the card's own latch, and `BackgroundBar`'s to the
- * letter (see its `asked`, and 287 finding 4 for what it cost to get wrong).
- *
- * 🔴 **Keyed by the CALL and not by the provider's key, and the first draft got that wrong.** The
- * key is what a stop is SENT with; it is also a counter Codex recycles. A latch on it could not tell
- * the command we asked about from the next one born wearing its number — and the test written for
- * the retirement below is what found it, by putting a second command on screen with the same
- * `processId` and watching it arrive disabled. A call id is unique by construction.
- */
-const stoppingCalls = ref(new Set<string>())
-const stoppingCall = (callId: string): boolean => stoppingCalls.value.has(callId)
-
-/**
- * ⛔ **There is no retirement sweep here, and the ABSENCE is the finding** (300, adversarial pass).
- *
- * The first draft keyed this latch on the provider's key and added a watcher that swept it against
- * the still-live rows — `BackgroundBar`'s `retire`, ported. ⚑ **Keying by CALL id removed the need
- * for it**: a call id is unique by construction, so the hazard that sweep existed for — a recycled
- * `processId` arriving on a new command and finding itself already latched — cannot be reached at
- * all. The test written to prove the sweep worked passed with the sweep DELETED, which is `260`'s
- * rule from the inside: a mechanism whose test cannot fail is proving nothing.
- *
- * ⚠️ **What is left held is one string per press, for the life of the conversation, reaching no
- * button** — the row stops being live, so `ToolEntry` stops offering one. The conversation switch
- * below empties it. `246` §2: do not keep a mechanism nothing can produce a need for.
- */
-
-async function onStopCommand(callId: string, key: string): Promise<void> {
-  const stop = props.onStopBackgroundWork
-  if (stop === undefined || stoppingCalls.value.has(callId)) return
-  stoppingCalls.value = new Set(stoppingCalls.value).add(callId)
-  // ⚠️ No `catch` that swallows, for `BackgroundBar`'s stated reason: the store already turns a
-  // refusal into `false` AND the sentence beside the conversation, so a rejection reaching here
-  // would be a contract break rather than an outcome.
-  if (!(await stop(key))) {
-    const next = new Set(stoppingCalls.value)
-    next.delete(callId)
-    stoppingCalls.value = next
-  }
-}
-
-/**
- * **What the Reopen button would destroy if it were live right now** (149, from 148 M3).
- *
- * 🔴 **The RULE moved to `lib/reopening.ts` at `470` and nothing about it changed** — see
- * {@link reopeningHeldBy} for the whole of 149's reasoning, which is where it now lives. ⛔ It moved
- * because HO-028 §3 put a second reopen offer on the grant sheet, and a second surface deciding
- * *is this conversation holding work* from its own copy of the rule is `099`/`064`.
- *
- * ⚠️ **It still reads {@link control} and not {@link transcript}**, which is the distinction this
- * component owns: the panel a reader is scrolled away from is not what a press would destroy.
- */
-const signInHeldBy = computed<'question' | 'turn' | null>(() => reopeningHeldBy(control.value))
-
-/**
- * …and `busy` on top, the same double-click guard {@link canGoAhead} uses, for the same reason —
- * inside a command's bound (739, `A_COMMAND_IS_WAITED_ON_MS`).
- */
-const canReopenSignIn = computed(() => signInHeldBy.value === null && !props.record.busy)
-
-/**
- * The second line of the bar: what reopening costs, or what it is waiting for (149).
- *
- * 🔴 **The three sentences moved to {@link REOPENING_SAYS} at `470`**, with 149's measurement of
- * what a close-then-resume keeps and loses carried across in the docblock over them. ⛔ **Two of
- * them had to lose their DEIXIS**: they opened *"Answer the question ABOVE first"* and *"THIS
- * conversation is still working"*, which are true of a bar bolted to one conversation and false of
- * a row in a list of them. ⚑ Both open on `It` now — named by the note directly above this line
- * here, and by the row it sits in on the grant sheet.
- *
- * ⚠️ **One of the two needed more than a deictic swap, and `470 · relay 1` is where that was
- * measured.** The turn sentence is *"This"* → *"It"* and nothing else; the question sentence could
- * not be, because dropping *"above"* leaves *"Answer the question first"* naming no question — so
- * it gained a clause that names one: *"It has a question waiting. Answer that first…"*. ⛔ This
- * paragraph said *one word each* until the sweep read the two literals side by side.
- */
-// ⚑ **678 · one sentence for every conversation again** — R26: a reopen keeps the draft of the
-// selected conversation and of every other, so the bar and the grant sheet read the same words.
-const signInBarCost = computed(() => reopeningSays(signInHeldBy.value))
-/** The provider whose sign-in the bar is about, by its name, or plain words for none recorded. */
-const signInOf = computed(() => {
-  const name = props.record.meta && providerName(props.record.meta.provider)
-  return name ? `the ${name} sign-in` : 'the sign-in'
-})
+const {
+  canStopBackgroundWork,
+  canWatchCommands,
+  canReadToolAnswers,
+  outputCapability,
+  backgroundOutputCapability,
+  onWatchCommand,
+  tailFor,
+  stoppingCall,
+  onStopCommand,
+} = useToolRowControls(props)
 
 /**
  * The button is disabled unless the composer would accept a message, because pressing it SENDS
@@ -1584,85 +1248,27 @@ function draftFor(requestId: string): RequestDraft {
   return requestDraft(props.record, requestId)
 }
 
-/**
- * The image being looked at, or null (067).
- *
- * ⚠️ **One piece of state for two entrances, and that is the point.** The transcript entry and the
- * panel's Assets index both open images; if each owned its own overlay there would be two viewers
- * that could be open at once, stacked, with two Escape handlers. This pane is the lowest surface
- * both of them are inside, so it is where the one viewer lives.
- *
- * It is view state — which picture you are looking at — and therefore does NOT belong to the
- * session record.
- *
- * ⚠️ **Cleared when the record changes, and it took a review to notice that mattered.** An earlier
- * version of this comment claimed the overlay could not outlive a conversation switch because "the
- * props are replaced" — which is not a mechanism. Vue resets nothing on a prop change, and this
- * component is deliberately NOT keyed by session, so without the watcher below an image opened in
- * one conversation kept floating over the next one, showing another session's file. The path in it
- * would still be real; it would simply belong to a conversation you are no longer looking at.
- *
- * Watched on `sessionId` rather than on the record object: the record is replaced on every event
- * for the same conversation, and closing the viewer under the user because a delta arrived would
- * be a different bug.
- *
- * ⚠️ **And the state carries the session it belongs to, so the watcher is a tidy-up rather than the
- * guarantee.** A reset is an ordering promise — it holds only as long as nothing ever renders
- * between the prop changing and the effect running, which is a thing to be true rather than a thing
- * that cannot be false. With the id in the value, {@link openFor} simply cannot match a
- * conversation that is not on screen, and the bug is unreachable rather than corrected.
- */
-const viewing = ref<{ sessionId: string; path: string; prompt?: string } | null>(null)
-
-/** The image to show, and only if it belongs to the conversation being rendered right now. */
-const openFor = computed(() =>
-  viewing.value?.sessionId === props.record.sessionId ? viewing.value : null,
-)
-
-/**
- * 🔴 **Whether the tools sheet is open, and for WHICH conversation** (358).
- *
- * ⚠️ **The session id rides the value, exactly as `viewing` above carries one and for the same
- * reason.** Switching conversation while a sheet is open must not leave one conversation's
- * inventory floating over another's transcript — and with the id in the value that is unreachable
- * rather than corrected by a watcher.
- */
-const toolsFor = ref<string | null>(null)
-/**
- * 🔴 **Whether the agent's side is open wide, and for WHICH conversation** (`527`, `HO-050` §1.1).
- *
- * ⚠️ **The session id rides the value**, exactly as `viewing` and `toolsFor` do and for the same
- * reason `067` found: switching conversation while a sheet is open must not leave one
- * conversation's composed instructions floating over another's transcript. ⛔ With the id in the
- * value that is unreachable rather than corrected by a watcher.
- */
-const instructionsFor = ref<string | null>(null)
-/**
- * The sheet's own precondition, as ONE computed: this conversation, and a session to be about.
- *
- * ⚑ **It needs nothing else.** The sheet is not told which provider it is drawing — how a tool
- * name is spelled rides the registry as data (039) — so this is the whole precondition.
- */
-const toolsOpen = computed(() => toolsFor.value === props.record.sessionId)
-
-/**
- * The sheet's precondition: this conversation, and a session described well enough to have any.
- *
- * ⛔ **`meta` and not merely the id.** `record.meta` is null until the host answers the create, and
- * `SessionInstructions` takes `instructions` as a REQUIRED prop — a sheet opened in that window
- * would be a sheet about nothing. ⚑ The index entry that opens it lives inside the drawer, which
- * is itself behind `props.record.meta`, so today nothing can press it that early; the guard is
- * here because the press is two components away and this is where the answer is.
- */
-const instructionsOpen = computed(() =>
-  instructionsFor.value === props.record.sessionId ? props.record.meta : null,
-)
-
-/**
- * 🔴 **F093 · "What this agent receives"**, opened from the Open tab's door — scoped to the
- * conversation that opened it, exactly as {@link instructionsFor} is, and for the same reason.
- */
-const inputsFor = ref<string | null>(null)
+const {
+  viewing,
+  openFor,
+  toolsFor,
+  instructionsFor,
+  toolsOpen,
+  instructionsOpen,
+  inputsFor,
+  inputsOpen,
+  readingOutput,
+  outputFor,
+  readingChild,
+  childFor,
+  readingAnswer,
+  answerFor,
+  openWorkflowOutput,
+  openChildWork,
+  openPanelRun,
+  openToolAnswer,
+  openImage,
+} = useConversationOverlays(props, transcript)
 
 /**
  * 🔴 **F093 (C9 d) · what the model got with one message**, for the switch under each message here
@@ -1674,53 +1280,6 @@ provide(READ_WHAT_THE_MODEL_GOT, (ordinal: number) => {
   if (read === undefined) return Promise.reject(new Error('This window cannot read it.'))
   return read.call(sessions, props.record.sessionId, ordinal)
 })
-const inputsOpen = computed(() =>
-  inputsFor.value === props.record.sessionId ? props.record.meta : null,
-)
-
-// Keep workflow output bound to the conversation that opened it.
-const readingOutput = ref<{
-  sessionId: string
-  workflow: string
-  result: WorkflowOutputResult
-} | null>(null)
-
-const outputFor = computed(() =>
-  readingOutput.value?.sessionId === props.record.sessionId ? readingOutput.value : null,
-)
-
-/** What a sub-agent did (112). Same shape, same `sessionId` guard, for the same 067 reason. */
-const readingChild = ref<{
-  sessionId: string
-  label: string
-  /** The child to refresh; null for task-owned journals or scripts. */
-  agentId: string | null
-  result: ChildWorkResult
-} | null>(null)
-
-const childFor = computed(() =>
-  readingChild.value?.sessionId === props.record.sessionId ? readingChild.value : null,
-)
-
-/**
- * 🔴 **The tool answer a person opened** (462) — `null` until they press one.
- *
- * ⚠️ **Same shape as `readingChild` above, and the `sessionId` guard is the same fix** for the same
- * reason: this pane is reused across conversations without a `key`, and a panel opened in one must
- * not float over the next. ⛔ **`answer` may legitimately be `null` inside a non-null value** — that
- * is the whole point of the panel: the person asked, this app is holding nothing, and the panel says
- * which silence it is. A `null` here means nobody has asked.
- */
-const readingAnswer = ref<{
-  sessionId: string
-  name: string
-  answer: ToolAnswer | null
-  /** ⚑ **685 · the row's own short form** — see `ToolAnswerViewer`'s `shortForm`. */
-  shortForm: string | null
-} | null>(null)
-const answerFor = computed(() =>
-  readingAnswer.value?.sessionId === props.record.sessionId ? readingAnswer.value : null,
-)
 
 /**
  * 🔴 **The resource a person opened off a work report** (510) — ⚑ **and since `640` the
@@ -1744,40 +1303,6 @@ const mayOpenADocument = computed(() => aSurfaceMayOpenADocument(props.onReadRes
 /** The paths this conversation's messages name, as main answers for them. */
 const messagePaths = useClientMessagePaths(() => props.record.sessionId)
 
-watch(
-  () => props.record.sessionId,
-  () => {
-    viewing.value = null
-    readingOutput.value = null
-    readingChild.value = null
-    readingAnswer.value = null
-    // 🔴 **The follow and the latch belong to ONE conversation** (300). This pane is reused across
-    // conversations without a `key` — `BackgroundBar` took a `conversation` prop in 287 for exactly
-    // this reason — so a tail left here would be drawn under the next conversation's card, and a
-    // held stop key would disable a button over a request nobody made for it. ⚠️ A provider id is
-    // only unique within a session, which is what makes the second one reachable rather than tidy.
-    following.clear()
-    followed.clear()
-    drainAgain = false
-    stopFollowing()
-    if (stoppingCalls.value.size > 0) stoppingCalls.value = new Set()
-  },
-)
-
-async function openWorkflowOutput(
-  taskId: string,
-  workflow: string,
-  shortMiss = false,
-): Promise<boolean> {
-  const read = props.onReadWorkflowOutput
-  if (!read) return false
-  // Keep the result with the conversation that requested it.
-  const sessionId = props.record.sessionId
-  const result = await read(taskId)
-  if (!shortMiss || result.ok) readingOutput.value = { sessionId, workflow, result }
-  return result.ok
-}
-
 /** Open the named resource through the existing document overlay. */
 async function openResource(resourceId: string): Promise<void> {
   // ⚑ **UI-002 · with the row it was pressed from**, where the tree or the card read one — so the
@@ -1789,31 +1314,6 @@ async function openResource(resourceId: string): Promise<void> {
   await documentOverlay.value?.open(resourceId, row)
 }
 
-async function openChildWork(
-  what: ChildWorkInput,
-  label: string,
-  shortMiss = false,
-): Promise<boolean> {
-  const read = props.onReadChildWork
-  if (!read) return false
-  // Captured before the await, exactly as above.
-  const sessionId = props.record.sessionId
-  const agentId = what.part === 'transcript' ? what.agentId : null
-  const result = await read(what)
-  if (!shortMiss || result.ok) readingChild.value = { sessionId, label, agentId, result }
-  return result.ok
-}
-
-async function openPanelRun(run: RunTarget): Promise<boolean> {
-  if (run.kind === 'agent' && props.onReadChildWork) {
-    return openChildWork({ part: 'transcript', agentId: run.id }, run.label, true)
-  }
-  if (run.kind === 'workflow' && props.onReadWorkflowOutput) {
-    return openWorkflowOutput(run.id, run.label, true)
-  }
-  return false
-}
-
 async function refreshChildWork(): Promise<void> {
   const read = props.onReadChildWork
   const open = readingChild.value
@@ -1822,39 +1322,6 @@ async function refreshChildWork(): Promise<void> {
   const still = readingChild.value
   if (!still || still.sessionId !== open.sessionId || still.agentId !== open.agentId) return
   readingChild.value = { ...still, result }
-}
-
-/**
- * ⛔ **Read the whole answer, once, and put it on screen** (462).
- *
- * ⚠️ **The session id is captured BEFORE the await**, exactly as `openWorkflowOutput` and
- * `openChildWork` do: the reader can switch conversation while the read is in flight, and stamping
- * the id afterwards would attribute one conversation's answer to whatever is on screen when it
- * lands. The `answerFor` guard is the second half of that same two-part answer.
- *
- * ⛔ **It opens even when the read answers `null`**, and that is the decision rather than an
- * oversight: `null` is a fact — this app is not holding it — and a button that silently did nothing
- * would be `106`'s control that cannot act wearing the costume of one that can.
- */
-async function openToolAnswer(toolCallId: string, name: string): Promise<void> {
-  const read = props.onReadToolAnswer
-  if (!read) return
-  const sessionId = props.record.sessionId
-  // ⚑ **685 · the short form the row kept, taken BEFORE the await** with the session id, for its
-  // reason — a top-level row's or a sub-agent card's (`receiptOf` walks both).
-  const shortForm = receiptOf(transcript.value, toolCallId)
-  readingAnswer.value = { sessionId, name, answer: await read(toolCallId), shortForm }
-}
-
-function openImage(item: { path?: string; prompt?: string }): void {
-  // No path, nothing to view. The entry already renders the "file is gone" line and its frame is
-  // not a button, so this is a guard against a future caller rather than a case that fires today.
-  if (!item.path) return
-  viewing.value = {
-    sessionId: props.record.sessionId,
-    path: item.path,
-    ...(item.prompt ? { prompt: item.prompt } : {}),
-  }
 }
 
 /**
@@ -1895,10 +1362,6 @@ function onKey(event: KeyboardEvent): void {
 onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey)
-  // ⛔ **A timer must never outlive the pane that owns it** (300) — `StallWatchdog`'s rule in the
-  // runtime, and the same one here: an interval left running holds this closure, its record and
-  // every tail it captured, and goes on asking the store about a conversation nobody is looking at.
-  stopFollowing()
 })
 </script>
 

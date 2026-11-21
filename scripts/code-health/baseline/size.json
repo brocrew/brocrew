@@ -21,7 +21,7 @@
   "apps/desktop/src/renderer/src/components/AgentCard.vue": 1814,
   "apps/desktop/src/renderer/src/components/AgentInputPopup.vue": 1095,
   "apps/desktop/src/renderer/src/components/CapabilitiesSheet.vue": 1454,
-  "apps/desktop/src/renderer/src/components/ConversationPane.vue": 2570,
+  "apps/desktop/src/renderer/src/components/ConversationPane.vue": 1848,
   "apps/desktop/src/renderer/src/components/ModelPicker.vue": 1141,
   "apps/desktop/src/renderer/src/components/NewConversation.vue": 1407,
   "apps/desktop/src/renderer/src/components/PermissionCard.vue": 1291,
