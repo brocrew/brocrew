@@ -476,7 +476,7 @@ export class PluginLifecycleController {
   async action(id: string) {
     return (await this.declarations(id))?.action
   }
-  async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
+  async status() {
     let unfinished: Unfinished | undefined
     const read = this.options.state.withWorkspaceAdmission((state) => {
       const releases = this.catalogue().entries
@@ -485,6 +485,7 @@ export class PluginLifecycleController {
       const activations = state.installations
       const names = new Set([...releases.map((one) => one.id), ...state.guardIds])
       return {
+        evidence: this.options.state.installationEvidence(),
         cards: [...names].sort().map((id) => {
           const active = activations.find((one) => one.pluginId === id),
             release = releases.find((one) => one.id === id)
@@ -583,8 +584,7 @@ export class PluginLifecycleController {
   }
   // A removal or install that failed part way is finished as the next owner's start would finish
   // it, after 5 s and then up to 60 s apart, so it needs neither a restart nor a second press.
-  // A stop that already failed is tried again before the state lock, so one that keeps failing
-  // never holds up lists, Install or another plugin's attach.
+  // Retry failed stops before the state lock so they do not hold up lists, Install or attach.
   private retryLater(unfinished: Unfinished | undefined): void {
     if (!unfinished) {
       this.retryAt = 0

@@ -98,7 +98,15 @@ export async function connectPluginSettings(options: {
     code: Refusal,
     cause: Refusal | 'integrity' | 'transport' | 'verification' | 'unknown',
   ): void | Promise<void>
-}): Promise<PluginSettingsController & { close(): Promise<void> }> {
+}): Promise<
+  PluginSettingsController & {
+    close(): Promise<void>
+    displayCatalogue?(): Promise<{
+      cards: Awaited<ReturnType<PluginSettingsController['catalogue']>>
+      evidence: { installed: string[]; pending: string | null } | null
+    }>
+  }
+> {
   if (
     options.repoCatalogueSha256 !== undefined &&
     pluginSha256(options.catalogue.bytes) !== options.repoCatalogueSha256
@@ -498,6 +506,103 @@ export async function connectPluginSettings(options: {
     }
   }
   await negotiate()
+  async function readCatalogue(display = false) {
+    // A catalogue switch refuses owner checks while it runs. A list waits for the switch and
+    // reads its outcome, so the switch is never reported as the plugin service failing.
+    for (;;) {
+      while (switching) await catalogueRefresh
+      const ticket = generation
+      let detail: PluginOwnerCheckStage = 'owner-local-state'
+      try {
+        await checkOwner((stage) => {
+          detail = stage
+        })
+        break
+      } catch (error) {
+        if (!switching && generation === ticket)
+          throw new PluginStartupError(
+            pluginStartupReason(error, 'catalogue-response'),
+            error,
+            'owner-check',
+            detail,
+          )
+      }
+    }
+    let reply: unknown
+    try {
+      reply = await channel.call({
+        kind: display
+          ? 'list-display'
+          : features.includes('plugin-actions-v1')
+            ? 'list-actions'
+            : modern
+              ? features.includes('tool-starting-v1')
+                ? 'list-tool-starting'
+                : features.includes('startup-diagnostic-v1')
+                  ? 'list-startup-diagnostic'
+                  : features.includes('tool-cause-v1')
+                    ? 'list-tool-cause'
+                    : features.includes('tool-health-v1')
+                      ? 'list-tool-health'
+                      : 'list-v2'
+              : 'list',
+      })
+    } catch (error) {
+      throw new PluginStartupError(pluginStartupReason(error, 'catalogue-response'), error, 'rpc')
+    }
+    let cards: z.infer<typeof Cards>
+    let evidence: { installed: string[]; pending: string | null } | null = null
+    try {
+      if (display) {
+        const snapshot = z
+          .strictObject({
+            cards: Cards,
+            evidence: z.strictObject({
+              installed: z.array(Cards.element.shape.id).max(200),
+              pending: Cards.element.shape.id.nullable(),
+            }),
+          })
+          .parse(reply)
+        cards = snapshot.cards
+        evidence = snapshot.evidence
+      } else cards = Cards.parse(reply)
+    } catch (error) {
+      throw new PluginStartupError(
+        pluginStartupReason(error, 'catalogue-response'),
+        error,
+        'schema',
+      )
+    }
+    const shown = await Promise.all(
+      cards.map(async (card) => {
+        let removal
+        if (!modern && card.installed) {
+          const installed = Installation.parse(
+            await channel.call({ kind: 'screen', pluginId: card.id }),
+          )
+          const checked = await vault.load({
+            id: card.id,
+            version: installed.release.version,
+            manifestSha256: installed.release.manifestSha256,
+            archive: { sha256: installed.release.archiveSha256 },
+          })
+          removal = checked.manifest.removal
+        }
+        return {
+          ...card,
+          ...(!modern && card.installed
+            ? {
+                uninstallDeletesData: removal?.data === 'delete',
+                ...(removal ? { uninstallNote: removal.note } : {}),
+              }
+            : {}),
+          ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
+          ...(blocked ? { mutationBlocked: blocked } : {}),
+        }
+      }),
+    )
+    return { cards: shown, evidence }
+  }
   return {
     features: () => features,
     mutationStatus: () => blocked,
@@ -633,86 +738,11 @@ export async function connectPluginSettings(options: {
       }
     },
     async catalogue() {
-      // A catalogue switch refuses owner checks while it runs. A list waits for the switch and
-      // reads its outcome, so the switch is never reported as the plugin service failing.
-      for (;;) {
-        while (switching) await catalogueRefresh
-        const ticket = generation
-        let detail: PluginOwnerCheckStage = 'owner-local-state'
-        try {
-          await checkOwner((stage) => {
-            detail = stage
-          })
-          break
-        } catch (error) {
-          if (!switching && generation === ticket)
-            throw new PluginStartupError(
-              pluginStartupReason(error, 'catalogue-response'),
-              error,
-              'owner-check',
-              detail,
-            )
-        }
-      }
-      let reply: unknown
-      try {
-        reply = await channel.call({
-          kind: features.includes('plugin-actions-v1')
-            ? 'list-actions'
-            : modern
-              ? features.includes('tool-starting-v1')
-                ? 'list-tool-starting'
-                : features.includes('startup-diagnostic-v1')
-                  ? 'list-startup-diagnostic'
-                  : features.includes('tool-cause-v1')
-                    ? 'list-tool-cause'
-                    : features.includes('tool-health-v1')
-                      ? 'list-tool-health'
-                      : 'list-v2'
-              : 'list',
-        })
-      } catch (error) {
-        throw new PluginStartupError(pluginStartupReason(error, 'catalogue-response'), error, 'rpc')
-      }
-      let cards: z.infer<typeof Cards>
-      try {
-        cards = Cards.parse(reply)
-      } catch (error) {
-        throw new PluginStartupError(
-          pluginStartupReason(error, 'catalogue-response'),
-          error,
-          'schema',
-        )
-      }
-      return Promise.all(
-        cards.map(async (card) => {
-          let removal
-          if (!modern && card.installed) {
-            const installed = Installation.parse(
-              await channel.call({ kind: 'screen', pluginId: card.id }),
-            )
-            const checked = await vault.load({
-              id: card.id,
-              version: installed.release.version,
-              manifestSha256: installed.release.manifestSha256,
-              archive: { sha256: installed.release.archiveSha256 },
-            })
-            removal = checked.manifest.removal
-          }
-          return {
-            ...card,
-            ...(!modern && card.installed
-              ? {
-                  uninstallDeletesData: removal?.data === 'delete',
-                  ...(removal ? { uninstallNote: removal.note } : {}),
-                }
-              : {}),
-            ...(sourceFormat === 2 || blocked ? { preparationRequired: true as const } : {}),
-            ...(blocked ? { mutationBlocked: blocked } : {}),
-          }
-        }),
-      )
+      return (await readCatalogue()).cards
     },
+    ...(features.includes('installation-evidence-v1')
+      ? { displayCatalogue: () => readCatalogue(true) }
+      : {}),
     ...(features.includes('plugin-actions-v1')
       ? {
           async action(id, actionId) {

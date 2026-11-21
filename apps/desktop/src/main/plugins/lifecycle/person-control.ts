@@ -27,6 +27,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-tool-starting') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('list-actions') }),
+  z.strictObject({ kind: z.literal('list-display') }),
   z.strictObject({ kind: z.literal('plugin-action'), pluginId: id, actionId: z.string() }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
   z.strictObject({ kind: z.literal('mutation-status'), catalogueDigest: Hex }),
@@ -279,6 +280,7 @@ export async function servePersonPluginControl(options: {
                 'startup-diagnostic-v1',
                 'download-progress-v1',
                 'removal-results-v1',
+                'installation-evidence-v1',
                 ...(options.restartPlugin ? ['plugin-actions-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -343,17 +345,23 @@ export async function servePersonPluginControl(options: {
               })
           case 'list-tool-starting':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
-          case 'list-actions':
-            return Promise.all(
-              (await options.controller.status()).cards
+          case 'list-display':
+          case 'list-actions': {
+            const status = await options.controller.status()
+            const cards = await Promise.all(
+              status.cards
                 .filter((card) => visible(card.id))
                 .map(async (card) => ({
                   ...card,
-                  ...(card.installed && (card.toolsUnavailable || card.state === 'Unavailable')
+                  ...(options.restartPlugin &&
+                  card.installed &&
+                  (card.toolsUnavailable || card.state === 'Unavailable')
                     ? { action: await options.controller.action(card.id) }
                     : {}),
                 })),
             )
+            return request.kind === 'list-display' ? { cards, evidence: status.evidence } : cards
+          }
           case 'plugin-action': {
             const action = await options.controller.action(request.pluginId)
             if (

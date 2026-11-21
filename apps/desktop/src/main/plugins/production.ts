@@ -97,8 +97,8 @@ export function productionPluginController() {
   > | null = () => null
   const unavailableCards = (
     listed: readonly { id: string; name?: string }[] = entries ?? [],
+    evidence = observeInstallations(),
   ): PluginCard[] => {
-    const evidence = observeInstallations()
     const conditionalWindowAdvice =
       acceptingBusy &&
       acceptingBusy.automaticFailures >= 6 &&
@@ -235,12 +235,18 @@ export function productionPluginController() {
     ready = next
     return next
   }
-  const update = async () => {
+  const update = async (personRequested = false) => {
     if (!connected || ended || cleanupUncertain) return fail()
     const connection = connected
     let stage: 'rpc' | 'composition' = 'rpc'
     try {
-      const admittedCards = await connection.catalogue()
+      const display = connection.displayCatalogue
+        ? await connection.displayCatalogue()
+        : {
+            cards: await connection.catalogue(),
+            evidence: personRequested ? observeInstallations() : null,
+          }
+      const admittedCards = display.cards
       stage = 'composition'
       if (ended || connected !== connection) return fail()
       if (!catalogueEntries)
@@ -262,7 +268,7 @@ export function productionPluginController() {
                 (card) => card.installed && !releases.some((release) => release.id === card.id),
               ),
             ]
-      const pendingPlugin = observeInstallations()?.pending
+      const pendingPlugin = display.evidence?.pending
       const cards: PluginCard[] = offered.map((entry) => {
         const card = admittedCards.find((one) => one.id === entry.id)
         if (card && (card.state !== 'Unavailable' || card.installed === true)) {
@@ -281,7 +287,7 @@ export function productionPluginController() {
             ...(updateVersion && release?.version === updateVersion ? { updateVersion } : {}),
           }
         }
-        hints ??= unavailableCards(offered)
+        hints ??= unavailableCards(offered, display.evidence)
         const hint = hints.find((one) => one.id === entry.id)!
         return {
           ...hint,
@@ -382,7 +388,7 @@ export function productionPluginController() {
           }
         }
       }
-      const cards = (await update())!
+      const cards = (await update(true))!
       if (
         refreshList &&
         reuseStartup &&
@@ -465,7 +471,7 @@ export function productionPluginController() {
       const connection = current()
       if (!connection.action) return fail()
       await connection.action(id, actionId)
-      await update()
+      await update(true)
     },
     async update(id, consent) {
       const connection = current()
@@ -475,7 +481,7 @@ export function productionPluginController() {
       if (!connection.update || !catalogueEntries?.releases.some((release) => release.id === id))
         return fail()
       await (consent ? connection.update(id, consent) : connection.update(id))
-      await update()
+      await update(true)
     },
     async install(id, consent) {
       const connection = current()
@@ -484,11 +490,11 @@ export function productionPluginController() {
       } else if (consent) return fail()
       if (!catalogueEntries?.releases.some((release) => release.id === id)) return fail()
       await (consent ? connection.install(id, consent) : connection.install(id))
-      await update()
+      await update(true)
     },
     async uninstall(id) {
       const outcome = await current().uninstall(id)
-      await update()
+      await update(true)
       return outcome
     },
     screen(id) {

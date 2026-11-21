@@ -154,6 +154,14 @@ export class GlobalPluginState {
   committedActivation(): Readonly<ActivationSnapshot> {
     return frozen(this.committed(this.disk.load()))
   }
+  /** Display evidence from this owner's current state, without reopening the journal. */
+  installationEvidence() {
+    const state = this.disk.loadForAdmission()
+    return {
+      installed: [...state.admitted.keys()],
+      pending: state.pending?.request.consent.pluginId ?? null,
+    }
+  }
   /** One state snapshot for a synchronous workspace admission decision. Never retain it. */
   readWorkspaceAdmission() {
     return this.withWorkspaceAdmission((read) => read)
