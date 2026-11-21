@@ -376,9 +376,9 @@ const CORE_TEXT = [
   'Same job, same conversation; new job, new conversation. Before starting one, search for the ' +
     "job's conversation (search_work); read before you ask. Before you say you have no record of " +
     'something, search what was said (search_past_work, or read_transcript with search for one ' +
-    'conversation) and search_work, and read any conversation it points to. Before giving more ' +
-    'related work to a ' +
-    "conversation about 70% full that doesn't need its exact history, compact it first with " +
+    'conversation) and search_work, and read any conversation it points to. If a search says it ' +
+    'stopped early, continue it before you say you have no record. Before giving more related ' +
+    "work to a conversation about 70% full that doesn't need its exact history, compact it first with " +
     'compact_agent, saying why and what comes next.',
   'Ask with ask_question and tell with message_agent. You owe whoever asks you an answer: ' +
     "find it however you need and answer in your own words, or say you can't and who might. " +

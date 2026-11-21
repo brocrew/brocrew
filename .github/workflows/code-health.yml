@@ -77,6 +77,30 @@ jobs:
           } | tee "$RUNNER_TEMP/code-health/reference.txt"
           printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
 
+      - name: Check built-in skill version
+        env:
+          BASE: ${{ steps.clone-reference.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack=apps/desktop/resources/built-in-skills
+          changed=$(git diff --name-only "$BASE" HEAD -- "$pack/")
+          if [ -z "$changed" ]; then
+            echo 'Built-in skill pack unchanged.'
+            exit 0
+          fi
+          skill_version() {
+            git show "$1:$pack/manifest.json" | jq -er '.version | strings'
+          }
+          before=$(skill_version "$BASE")
+          after=$(skill_version HEAD)
+          if ! printf '%s\n' "$before" "$after" | sort -V -C -u; then
+            echo "Built-in skill pack changed without a manifest version bump ($before → $after)." >&2
+            printf '%s\n' "$changed" >&2
+            exit 1
+          fi
+          echo "Built-in skill pack version bumped ($before → $after)."
+
       - name: Install pnpm
         uses: pnpm/action-setup@v6
 
