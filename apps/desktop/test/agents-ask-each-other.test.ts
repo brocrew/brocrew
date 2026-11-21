@@ -228,6 +228,32 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
   }
 
   describe('§1 · the door, the answer, and the way back', () => {
+    it('records plain question words and sends the file instructions to the receiving model', async () => {
+      const { ada, bo } = await adaAndBo()
+      const draft = 'draft.md'
+      writeFileSync(join(root, draft), '# Draft')
+      const question = 'Which draft should we use?'
+      const id = await askBo(ada, bo, { question, resources: [draft] })
+      const saved = ledger(ada.id).find((event) => event.type === 'question_asked')
+      expect(saved).toMatchObject({
+        requestId: id,
+        prompt: question,
+        questions: [{ prompt: question }],
+      })
+      const stored = store.questionsRaisedIn(ada.id).get(id)
+      const file = stored?.files?.[0]
+      if (file === undefined || !('resource' in file)) throw new Error('missing kept question file')
+      expect(saved).toMatchObject({ files: [{ resource: file.resource, name: draft }] })
+      const instruction = `Read ${draft} with read_document using ${file.resource}.`
+      await waitFor(
+        () => toldIn(bo.id).some((text) => text.includes(instruction)),
+        'the file instruction to reach Bo',
+      )
+      expect(
+        host.questionsWaitingOn(bo.id).find((row) => row.request.requestId === id)?.words,
+      ).toContain(instruction)
+    })
+
     it('🔴 F012 · an agent asks another by name, needing no task — and the answer comes back to it', async () => {
       const { ada, bo } = await adaAndBo()
       // ⛔ **THE BEFORE**: Ada holds no work given to her, and is waiting on nothing.

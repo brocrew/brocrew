@@ -488,6 +488,17 @@ export async function openWorkReports(m: Pick<Mounted, 'all'>): Promise<void> {
   await nextTick()
 }
 
+export function brobotToolInventory(...names: string[]): TranscriptEvent {
+  const tools = names.map((name) => ({ name, description: '', parameters: [] }))
+  return {
+    type: 'tool_inventory',
+    source: 'fictional declared tools',
+    naming: { prefix: 'mcp__', separator: '__' },
+    declared: { server: 'brobot', tools },
+    published: null,
+  }
+}
+
 export function record(events: TranscriptEvent[], sessionId = 'sess_1'): SessionRecord {
   const r = createSessionRecord(sessionId)
   r.meta = META

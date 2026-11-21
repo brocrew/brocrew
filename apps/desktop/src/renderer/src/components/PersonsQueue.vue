@@ -607,13 +607,13 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           :data-kind="row.kind"
           :data-cy="`persons-queue-row-${row.key}`"
         >
-          <!-- 🔴 **UI-009 · a question this app asked is its card** — see `PersonsQueueRow.question`.
-               ⚑ The press's outcome is the queue's, so both copies draw it. -->
           <QuestionCard
             v-if="row.question"
             :reading="questionOnTheQueue(row, row.question, queue.presses.get(row.key))"
             :path-session-id="row.sessionId"
+            can-open-document
             fold
+            @open-document="queue.openFile"
             @answer="(response) => answer(row, response)"
             @move="(decision) => queue.move(row, decision)"
           />

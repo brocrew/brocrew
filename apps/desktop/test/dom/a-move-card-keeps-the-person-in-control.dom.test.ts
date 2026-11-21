@@ -27,7 +27,7 @@ import { MOVE_SEND_UNCONFIRMED } from '../../src/shared/move-request'
 import { conversationLink } from '../../src/shared/links'
 import { moveReceiptLine } from '../../src/shared/move-request'
 import type { LinkResolution } from '../../src/shared/runtime-ipc'
-import { mount, paneProps, record, unmountAll, visible } from './harness'
+import { brobotToolInventory, mount, paneProps, record, unmountAll, visible } from './harness'
 
 const MOVE: MoveOffer = {
   destination: 'target',
@@ -284,16 +284,7 @@ describe('the person decides on the move card', () => {
 
   it('the complete conversation forwards the move press without replacing the answer text', async () => {
     const events: TranscriptEvent[] = [
-      {
-        type: 'tool_inventory',
-        source: 'fictional declared tools',
-        naming: { prefix: 'mcp__', separator: '__' },
-        declared: {
-          server: 'brobot',
-          tools: [{ name: 'ask_question', description: '', parameters: [] }],
-        },
-        published: null,
-      },
+      brobotToolInventory('ask_question'),
       { type: 'user_turn', text: 'Where does this fictional release belong?' },
       { type: 'assistant_message', text: 'The release is planned for tomorrow.' },
       {

@@ -11,6 +11,7 @@ import type {
   EscalationLink,
   LedgerWalkKind,
   OfferedAnswer,
+  QuestionFiles,
   QuestionRecipient,
   RaisedQuestion,
   RequestOnlyAPersonCanSettle,
@@ -160,6 +161,17 @@ export function aWellFormedRouting(event: RequestRoutedEvent): boolean {
   const parent = routing['parent']
   if (routing['to'] === 'a-person') return parent === undefined || parent === null || aName(parent)
   return (routing['to'] === 'the-parent' || routing['to'] === 'an-agent') && aName(parent)
+}
+
+export function questionFilesOf(value: unknown): QuestionFiles | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value.filter((file): file is QuestionFiles[number] => {
+    if (file === null || typeof file !== 'object') return false
+    const { resource, path, name } = file as Record<string, unknown>
+    return typeof path === 'string'
+      ? name === undefined || typeof name === 'string'
+      : typeof resource === 'string' && typeof name === 'string'
+  })
 }
 
 /** Whether a stored value is an {@link ActionAsked}, every file named in full. */

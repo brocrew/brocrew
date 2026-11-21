@@ -347,10 +347,21 @@ async function takeItBack(piece: string): Promise<void> {
       :draft="draft"
       :paths="props.paths"
       :without-recipient="questionFolds"
+      :without-files="questionFolds"
+      :can-open-document="props.canOpenDocument"
+      @open-document="emit('openDocument', $event)"
       @answer="answer"
       @move="(decision) => asking !== null && emit('move', asking, decision)"
       @open-conversation="(sessionId) => emit('openConversation', sessionId)"
     />
+    <template v-if="questionFolds" #after>
+      <FileRows
+        :files="question.files ?? []"
+        :can-open="props.canOpenDocument ?? false"
+        :paths="props.paths"
+        @open-document="emit('openDocument', $event)"
+      />
+    </template>
   </OutsideCard>
   <OutsideCard
     v-else-if="card"

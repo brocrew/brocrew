@@ -1,3 +1,4 @@
+import type { SendReceipt } from './tool-outcome'
 import type { MoveOffer } from './move-contracts'
 import type { ChannelRefusal, RuntimeEvent, UserInputQuestion } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -233,7 +234,10 @@ export interface ActionAsked {
   readonly files: readonly ActionFile[]
 }
 
+export type QuestionFiles = SendReceipt['attachments']
+
 export interface RaisedQuestion {
+  readonly files?: QuestionFiles
   readonly move?: MoveOffer
   /** It asks a person to do something, with these files (`request_action`). */
   readonly action?: ActionAsked
@@ -542,6 +546,7 @@ export interface PersonsQuestion {
  * as the asker wrote them.
  */
 export interface AskedQuestion {
+  readonly files?: QuestionFiles
   readonly move?: MoveOffer
   /** ⚑ Its words, whole, as the row recorded them. */
   readonly prompt: string
@@ -941,6 +946,7 @@ export interface RequestRoutedEvent {
  * which is the third state a repair has to leave room for.
  */
 export interface QuestionAskedEvent {
+  files?: QuestionFiles
   move?: MoveOffer
   /** It asks a person to do something rather than answer (`request_action`), with these files. */
   action?: ActionAsked

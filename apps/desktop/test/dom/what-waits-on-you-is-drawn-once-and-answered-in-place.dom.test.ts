@@ -234,7 +234,11 @@ describe('a to-do an agent asked of a person', () => {
     }
     expect(read(m.q('waiting-todo-done-req_board'))).toBe('Done')
     expect(read(m.q('waiting-todo-cant-req_board'))).toBe("Can't do it")
-    m.q('waiting-todo-file-req_board-res_italian').click()
+    const file = m
+      .q('waiting-todo-req_board')
+      .querySelector<HTMLButtonElement>('button[data-cy="file-row"]')!
+    expect(file.textContent?.trim()).toBe(TODO.files[0]?.name)
+    file.click()
     expect(doors.files).toEqual(['res_italian'])
     // Owed by a person, so the page does not call itself quiet over it.
     expect(read(m.q('waiting-stat'))).not.toBe('All clear')
