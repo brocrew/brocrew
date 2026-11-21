@@ -515,10 +515,12 @@ export class ProfilePastWorkSearch {
           ? {
               scanned: scanned.size - (typeof nextPage === 'object' && nextPage !== null ? 1 : 0),
               total: (
-                db.prepare(
-                  `SELECT count(*) AS total FROM provider_session
+                db
+                  .prepare(
+                    `SELECT count(*) AS total FROM provider_session
                    ${profile === null ? '' : 'WHERE agent_identity_id = @profile'}`,
-                ).get({ profile }) as { total: number }
+                  )
+                  .get({ profile }) as { total: number }
               ).total,
             }
           : undefined
