@@ -97,7 +97,6 @@ import { sessionRefSchema, type SessionRef } from '../session-ref'
 import { AsyncQueue } from '../internal/async-queue'
 import { AuthUnavailableError } from '../internal/auth'
 import {
-  whyNoClaudeLogin,
   type ClaudeApiKeyProviderAsync,
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
@@ -2619,7 +2618,7 @@ export class ClaudeRuntime implements AgentRuntime {
     apiKeyProvider?: ClaudeApiKeyProviderAsync,
     platform: NodeJS.Platform = process.platform,
 
-    _whyNoLogin: () => string = () => whyNoClaudeLogin({ platform }),
+    _whyNoLogin?: () => string,
     program?: string,
     launchTokenProvider?: ClaudeAuthTokenProviderAsync,
     private readonly managedProviderHomesRoot?: string,

@@ -136,17 +136,12 @@ describe('provider homes', () => {
     expect(statSync(home).isDirectory()).toBe(true)
   })
 
-  it('fails closed when the Claude machine login is unavailable', async () => {
-    await expect(
-      prepareProviderHome(userData, identity, {
-        claudeAuthHealth: () => ({ ok: false, reason: 'expired' }),
-      }),
-    ).rejects.toThrow(AuthUnavailableError)
-    await expect(
-      prepareProviderHome(userData, identity, {
-        claudeAuthHealth: () => ({ ok: false, reason: 'expired' }),
-      }),
-    ).rejects.toThrow('expired')
+  it('prepares the same home without a local sign-in health veto', async () => {
+    const health = vi.fn(() => ({ ok: false, reason: 'expired' }))
+    const home = await prepareProviderHome(userData, identity, { claudeAuthHealth: health })
+    expect(home).toBe(deriveProviderHome(userData, identity))
+    expect(statSync(home).isDirectory()).toBe(true)
+    expect(health).not.toHaveBeenCalled()
   })
 
   it('copies the Codex credential into the home it just provisioned', async () => {
