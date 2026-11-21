@@ -383,7 +383,6 @@ export const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
     'wait for the person to decide the request already waiting for a server by that name, so nothing new was asked. The conversation that made it is told when they decide.',
   'too-many-server-requests':
     'wait until one is decided: as many server requests as may wait are already waiting on the person, so nothing was asked.',
-  // Said with the piece's label in place of “that piece” ({@link aMessageAboutAQueuedPiece}).
   'that-piece-is-still-queued':
     'Not sent: that piece is still queued. Change its brief with update_work.',
 }

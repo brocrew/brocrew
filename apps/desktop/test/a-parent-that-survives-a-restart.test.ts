@@ -432,11 +432,9 @@ describe('373 · a parent that survives a restart', () => {
       )
     })
 
-    it('⚑ …and the paired negative, in the same breath: a conversation it did not spawn is refused', async () => {
+    it('records a note for another giver’s task after a restart', async () => {
       const first = await aPmAndItsWorker('pm', 'worker')
-      // A second PM with a child of its own — the sharpest negative available, because it is the
-      // same shape reached the same way, and the only thing that differs is which conversation
-      // asked for it.
+      // Use a second giver so the note and follow-up exercise different recorded relationships.
       const second = await aPmAndItsWorker('pm2', 'worker2')
       await restart()
 
@@ -445,26 +443,20 @@ describe('373 · a parent that survives a restart', () => {
       const { toolset } = await reopen(first.pm, window)
 
       expect(
-        (
-          await callOn(toolset, 'message_agent', {
-            kind: 'follow-up',
-            piece: first.piece,
-            agent: first.worker,
-            text: 'mine',
-          })
-        ).outcome,
-      ).toBe('ok')
-      // ⛔ **Its own child, yes. The other PM's child, no.** ⚑ **D-016** — work is followed up only
-      // by its giver: the piece the other child holds is not one this caller gave, so the same
-      // call, aimed one conversation over, is refused by that relationship.
-      const refused = await callOn(toolset, 'message_agent', {
+        await callOn(toolset, 'message_agent', {
+          kind: 'follow-up',
+          piece: first.piece,
+          agent: first.worker,
+          text: 'mine',
+        }),
+      ).toMatchObject({ outcome: 'ok', kind: 'follow-up' })
+      const note = await callOn(toolset, 'message_agent', {
         kind: 'follow-up',
         piece: second.piece,
         agent: second.worker,
         text: 'not mine',
       })
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('no-piece-by-that-name')
+      expect(note).toMatchObject({ outcome: 'ok', kind: 'note', agent: second.worker })
     })
 
     it('⚠️ the same pair BEFORE the restart gives the same two answers — so the restart is the only variable', async () => {
@@ -474,25 +466,21 @@ describe('373 · a parent that survives a restart', () => {
       const first = await aPmAndItsWorker('pm', 'worker')
       const second = await aPmAndItsWorker('pm2', 'worker2')
       expect(
-        (
-          await callOn(first.pmTools, 'message_agent', {
-            kind: 'follow-up',
-            piece: first.piece,
-            agent: first.worker,
-            text: 'mine',
-          })
-        ).outcome,
-      ).toBe('ok')
+        await callOn(first.pmTools, 'message_agent', {
+          kind: 'follow-up',
+          piece: first.piece,
+          agent: first.worker,
+          text: 'mine',
+        }),
+      ).toMatchObject({ outcome: 'ok', kind: 'follow-up' })
       expect(
-        (
-          await callOn(first.pmTools, 'message_agent', {
-            kind: 'follow-up',
-            piece: second.piece,
-            agent: second.worker,
-            text: 'not mine',
-          })
-        ).rail,
-      ).toBe('no-piece-by-that-name')
+        await callOn(first.pmTools, 'message_agent', {
+          kind: 'follow-up',
+          piece: second.piece,
+          agent: second.worker,
+          text: 'not mine',
+        }),
+      ).toMatchObject({ outcome: 'ok', kind: 'note', agent: second.worker })
     })
 
     /**

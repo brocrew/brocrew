@@ -39,7 +39,7 @@ describe('tool refusals name their limits and fields without keeping caller text
     agentToolsFor(host, worker).tools.find((one) => one.name === name)!
   const refusals = () => world.ledger(worker).filter((event) => event.type === 'tool_refused')
 
-  it('publishes reply overflow and the question and combined-choice limits', () => {
+  it('publishes overflow help for replies, questions, actions and choices', () => {
     expect(z.globalRegistry.get(tool('reply_to_parent').input.summary!)?.description).toBe(
       'What the conversation that gave you this needs to read. Anything over 2,000 characters arrives as a file the reader is pointed to.',
     )
@@ -50,7 +50,7 @@ describe('tool refusals name their limits and fields without keeping caller text
       'What the person should do, in plain words. Anything over 2,000 characters arrives as a file the reader is pointed to. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.options!)?.description).toBe(
-      'The choices you are offering, at most 2,000 characters in total. Leave it out for a free answer.',
+      'The choices you are offering. Long lists are attached with numbered choices. Leave it out for a free answer.',
     )
   })
 
@@ -164,11 +164,6 @@ describe('tool refusals name their limits and fields without keeping caller text
       name: 'nontext choice',
       args: { options: [{ PRIVATE_CHOICE: 'hidden' }] },
       expected: 'options: expected a list of text choices',
-    },
-    {
-      name: 'long choices together',
-      args: { options: ['x'.repeat(1000), '🟩'.repeat(500), 'y'] },
-      expected: 'options: at most 2,000 characters in total; got 2,001',
     },
     {
       name: 'empty move target',

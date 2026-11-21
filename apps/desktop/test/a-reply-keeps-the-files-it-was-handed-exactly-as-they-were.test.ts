@@ -33,7 +33,7 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
+import { RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
 import {
   RecordingSink,
@@ -41,34 +41,6 @@ import {
   fixtureProviderConfig,
   neutralHostDeps,
 } from './lib/host-fixture'
-
-/**
- * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
- * them refuse what this app never writes.
- *
- * ## What this file pins, and why it is a file of its own
- *
- * `a-reply-and-its-absence` §4 proves that a reply names its resource and that the bytes read
- * back, with ASCII text where a character is a byte and a file with LF endings only. Every one of
- * those fixtures survives a writer that rewrites what it keeps, a size column that counts
- * characters, a role column that says the wrong thing, or a check that admits one more than its
- * bound. This file is the measurement those fixtures cannot make:
- *
- *  - the bytes: a BOM, CRLF endings, multi-byte UTF-8 and bytes that are not UTF-8 at all are kept
- *    byte for byte, and the row's hash and size are those of the SOURCE bytes, hashed here with an
- *    independent implementation (never the app's own `sha256Hex`);
- *  - the role: a reply's file is `made`, an input is `input`, and the reader prints the row's;
- *  - the cap: ten files and not eleven, and the eleventh keeps nothing;
- *  - the order: every file is read before any is kept, so a reply refused on its last file keeps
- *    nothing of the files before it; a file that cannot be kept refuses the reply naming it;
- *  - the writer's own guard: only a lowercase sha-256 and a one-segment name are ever written;
- *
- * Every refusal is paired with the identical call one fact over that lands, so a test that stops
- * reaching its rule goes red rather than green.
- *
- * Real host, real SQLite, real migrations, real tools, real filesystem. The only double is the
- * provider.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -1245,42 +1217,28 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · what a reply may hand in, and what a refusal leaves behind', () => {
-    it('a reply may hand in ten files and not eleven, and the eleventh keeps nothing', async () => {
-      // The literal is asserted, so the expectation below cannot move with the constant unseen.
-      expect(MAX_RESOURCES_PER_REPLY).toBe(10)
-      const { worker, task } = await workWasGiven()
-      const paths = Array.from({ length: MAX_RESOURCES_PER_REPLY + 1 }, (_, index) =>
-        wrote(`f${String(index + 1).padStart(2, '0')}.md`, `file number ${String(index + 1)}\n`),
+    it('keeps all eleven files in the reply receipt and durable report', async () => {
+      const { pm, worker, task } = await workWasGiven()
+      const paths = Array.from({ length: 11 }, (_, index) =>
+        wrote(`f${index + 1}.md`, `file number ${index + 1}\n`),
       )
-
-      const refused = await reply(worker, {
-        piece: task,
-        outcome: 'done',
-        summary: 'one file too many',
-        resource_paths: paths,
-      })
-      expect(refused.outcome).toBe('refused')
-      expect(refused.rail).toBe('malformed-request')
-      const said = JSON.stringify(refused.detail)
-      expect(said).toContain(`at most ${String(MAX_RESOURCES_PER_REPLY)}`)
-      expect(said).toContain(`got ${String(MAX_RESOURCES_PER_REPLY + 1)}`)
-      // Nothing was kept, nothing was recorded, and the piece is still open.
-      expect(keptHashes()).toEqual([])
-      expect(store.resourcesOf(task)).toEqual([])
-      expect(taskOf(worker, task)?.state).toBe('working')
-      expect(ledger(worker).some((event) => event.type === 'work_replied')).toBe(false)
-
-      // One fact over: the same call with only the first ten paths.
       const landed = await reply(worker, {
         piece: task,
         outcome: 'done',
-        summary: 'ten files',
-        resource_paths: paths.slice(0, MAX_RESOURCES_PER_REPLY),
+        summary: 'eleven files',
+        resource_paths: paths,
       })
       expect(landed.outcome, JSON.stringify(landed)).toBe('ok')
-      expect((landed.resources as string[]).length).toBe(MAX_RESOURCES_PER_REPLY)
-      expect(keptHashes()).toHaveLength(MAX_RESOURCES_PER_REPLY)
-      expect(store.resourcesOf(task)).toHaveLength(MAX_RESOURCES_PER_REPLY)
+      expect(landed.resources).toHaveLength(11)
+      expect(keptHashes()).toHaveLength(11)
+      expect(store.resourcesOf(task)).toHaveLength(11)
+      const recorded = ledger(worker).find((event) => event.type === 'work_replied')
+      expect(recorded?.resources).toEqual(landed.resources)
+      expect(ledger(pm)).toContainEqual(
+        expect.objectContaining({
+          work: expect.objectContaining({ piece: task, resources: landed.resources }),
+        }),
+      )
       expect(taskOf(worker, task)?.state).toBe('answered')
     })
 

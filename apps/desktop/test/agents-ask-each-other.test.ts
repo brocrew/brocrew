@@ -450,22 +450,21 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
       expect(questionOf(ada.id, id)?.state).toBe('open')
     })
 
-    it('⛔ only an agent the asker may name, and never itself', async () => {
+    it('accepts a self Ask and retains missing conversation and parent task refusals', async () => {
       const { ada } = await adaAndBo()
-      for (const agent of ['sess_nobody', ada.id]) {
-        const asked = await callOn(ada.tools, 'ask_question', {
-          who_answers: 'an-agent',
-          agent,
-          question: 'anyone?',
-        })
-        expect([agent, asked.rail]).toEqual([
-          agent,
-          agent === ada.id ? 'that-agent-is-you' : 'no-agent-you-can-ask-by-that-name',
-        ])
-      }
-      // ⛔ The parent and a person are still about work — a piece the asker holds. ⚑ **D-016** — Ada's
-      // own root counts, and is inferred when she names none, so the refusal is a piece she does
-      // not hold.
+      const missing = await callOn(ada.tools, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: 'sess_nobody',
+        question: 'Anyone?',
+      })
+      expect(missing).toMatchObject({ rail: 'no-agent-you-can-ask-by-that-name' })
+      const self = await callOn(ada.tools, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: ada.id,
+        question: 'Can I follow up?',
+      })
+      expect(self).toMatchObject({ outcome: 'ok', agent: ada.id, question: expect.any(String) })
+      expect(questionOf(ada.id, self.question as string)?.state).toBe('open')
       const toParent = await callOn(ada.tools, 'ask_question', {
         who_answers: 'the-parent',
         piece: 'W99',

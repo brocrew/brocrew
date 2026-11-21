@@ -830,7 +830,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     expect(host.nameByItsWork(brobot)).toBe('conversation W1 · Build the pages')
   })
 
-  describe('a self-address names the helpers under the caller’s piece', () => {
+  describe('addressing a conversation by its recorded labels', () => {
     const settledFamily = async (): Promise<Family> => {
       const family = await aFamily()
       await waitFor(
@@ -876,65 +876,36 @@ describe('a label names the conversation that owns the piece, and no more', () =
       },
     )
 
+    it.each(['ongoing', 'ended'])(
+      'records a self Ask by root label without involving an %s helper',
+      async (life) => {
+        const { brobot, brobotTools, ada } = await settledFamily()
+        if (life === 'ended') {
+          expect(
+            await callOn(brobotTools, 'update_work', { piece: 'W1.1', close: true }),
+          ).toMatchObject({ outcome: 'ok' })
+        }
+        const before = acts(ledger(ada))
+        const result = await fullCall(brobotTools, 'ask_question', {
+          agent: 'W1',
+          who_answers: 'an-agent',
+          question: 'What should I check next?',
+        })
+        expect(result.structured).toMatchObject({
+          outcome: 'ok',
+          agent: brobot,
+          question: expect.any(String),
+        })
+        expect(acts(ledger(ada))).toEqual(before)
+      },
+    )
+
     for (const tool of ['ask_question', 'interrupt_agent'] as const) {
       const argsFor = (agent: string): Record<string, unknown> =>
         tool === 'ask_question'
           ? { agent, who_answers: 'an-agent', question: 'Which helper owns this?' }
           : { agent, reason: 'Stop the unfinished draft.' }
 
-      const helperStates = tool === 'interrupt_agent' ? [] : [false, true]
-      for (const ended of helperStates) {
-        it(`${tool} lists the visible ${ended ? 'ended' : 'ongoing'} helper without sending or asking it`, async () => {
-          const { brobot, brobotTools, ada } = await settledFamily()
-          if (ended) {
-            expect(
-              await callOn(brobotTools, 'update_work', { piece: 'W1.1', close: true }),
-            ).toMatchObject({ outcome: 'ok' })
-          }
-          const before = acts(ledger(ada))
-          const beforeCaller = ledger(brobot).filter((row) => row.type === 'tool_refused').length
-          const queued = vi.spyOn(host, 'queueMessage')
-          const asked = vi.spyOn(host, 'raiseAQuestion')
-          const stopped = vi.spyOn(host, 'interruptAgent')
-          const refusalWritten = vi.spyOn(host, 'noteRefusal')
-          const said = await fullCall(brobotTools, tool, argsFor('W1'))
-          expect(said.structured).toMatchObject({ outcome: 'refused', rail: 'that-agent-is-you' })
-          expect(said.text).toContain('W1 is your own piece.')
-          expect(said.text).toContain('Ada (worker) on W1.1')
-          if (ended) expect(said.text).toContain('(ended: closed)')
-          else expect(said.text).not.toContain('(ended:')
-          expect(said.text).toContain('message_agent or ask_question')
-          expect(said.text).toContain('give_work')
-          expect(acts(ledger(ada))).toEqual(before)
-          expect(queued).not.toHaveBeenCalled()
-          expect(asked).not.toHaveBeenCalled()
-          expect(stopped).not.toHaveBeenCalled()
-          const told = `${said.structured.reason} This exact call can never succeed.`
-          expect(said.text).toBe(
-            tool === 'ask_question' ? told : `refused (that-agent-is-you): ${told}`,
-          )
-          expect(refusalWritten).toHaveBeenCalledTimes(1)
-          expect(refusalWritten).toHaveBeenCalledWith(brobot, tool, {
-            rail: 'that-agent-is-you',
-            permanence: 'permanent',
-            retryable: false,
-            remedy: null,
-            told: { text: told, dropped: 0 },
-          })
-          const refusals = ledger(brobot).filter((event) => event.type === 'tool_refused')
-          expect(refusals.slice(beforeCaller)).toEqual([
-            {
-              type: 'tool_refused',
-              tool,
-              rail: 'that-agent-is-you',
-              permanence: 'permanent',
-              retryable: false,
-              remedy: null,
-              told: { text: told, dropped: 0 },
-            },
-          ])
-        })
-      }
       it(`${tool} does not disclose the caller's helpers when addressing a stranger`, async () => {
         const { brobotTools, stranger } = await settledFamily()
         const said = await fullCall(brobotTools, tool, argsFor('W2'))
@@ -948,16 +919,16 @@ describe('a label names the conversation that owns the piece, and no more', () =
       })
     }
 
-    it('the caller’s non-root piece lists its own child and not the parent’s helper', async () => {
+    it('a self Ask by a non-root label reaches its owner without listing helpers', async () => {
       const { ada } = await settledFamily()
       const said = await fullCall(agentToolsFor(host, ada), 'ask_question', {
         agent: 'W1.1',
         who_answers: 'an-agent',
         question: 'Which helper owns this?',
       })
-      expect(said.text).toContain('W1.1 is your own piece.')
-      expect(said.text).toContain('Ali (tester) on W1.1.1')
-      expect(said.text).not.toContain('Ada (worker) on')
+      expect(said.structured).toMatchObject({ outcome: 'ok', agent: ada })
+      expect(said.text).toContain('conversation W1.1')
+      expect(said.text).not.toContain('W1.1.1')
     })
 
     it('an ended helper remains listed and its ended label still accepts a note and question', async () => {
@@ -993,7 +964,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       )
     })
 
-    it('does not describe the caller’s own taken-on work as a helper', async () => {
+    it('a self Ask stays with the conversation after taking on work for a person', async () => {
       const me = await personOpens(DEFAULT_PROFILE_ID)
       const tools = agentToolsFor(host, me)
       await host.setApprovalMode(me, 'ask', window)
@@ -1010,7 +981,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
         who_answers: 'an-agent',
         question: 'Which helper owns this?',
       })
-      expect(said.text).toContain('W1 is your own piece, with no helpers recorded under it.')
+      expect(said.structured).toMatchObject({ outcome: 'ok', agent: me })
       expect(said.text).not.toContain('Its helpers:')
     })
 
@@ -1046,9 +1017,8 @@ describe('a label names the conversation that owns the piece, and no more', () =
           who_answers: 'an-agent',
           question: 'Which helper owns this?',
         })
-        expect(said.text).toContain('Its helpers: W1.1 (working).')
-        expect(said.text).not.toContain('None of its helpers')
-        expect(said.text).not.toContain('For new work')
+        expect(said.structured).toMatchObject({ outcome: 'ok', agent: brobot })
+        expect(said.text).not.toContain('W1.1')
         const record = await fullCall(brobotTools, 'list_tasks', { piece: 'W1' })
         expect(record.structured).toMatchObject({
           children: [expect.objectContaining({ label: 'W1.1', owner: ada })],
@@ -1062,7 +1032,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     })
 
     it('does not reveal a helper identity outside the same card reach', async () => {
-      const { brobotTools, ada } = await settledFamily()
+      const { brobot, brobotTools, ada } = await settledFamily()
       const read = host.agentCard.bind(host)
       const spy = vi
         .spyOn(host, 'agentCard')
@@ -1073,7 +1043,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
           who_answers: 'an-agent',
           question: 'Which helper owns this?',
         })
-        expect(said.text).toContain('None of its helpers is in your messaging reach.')
+        expect(said.structured).toMatchObject({ outcome: 'ok', agent: brobot })
         expect(said.text).not.toContain('Ada')
         expect(said.text).not.toContain('worker')
         const record = await fullCall(brobotTools, 'list_tasks', { piece: 'W1' })

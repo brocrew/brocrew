@@ -17,7 +17,7 @@ import { type Caller } from '../conversation-caller'
 import { DONE, doneWithThePiece, keptResources, tookOnForPerson } from '../agent-tool-answer-words'
 import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
 import { sendOverflowSaid } from '../send-overflow'
-import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
+import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
 import type { ToolName } from './catalog'
@@ -363,7 +363,7 @@ export function createUpdateWorkTool(
         .array(z.string())
         .optional()
         .describe(
-          `Files to keep for the piece, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed: as inputs when you add files to work you gave, and as evidence when closing. Other files are kept with the task.`,
+          `Files to keep for the piece — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed: as inputs when you add files to work you gave, and as evidence when closing. Other files are kept with the task.`,
         ),
     } satisfies Readonly<Record<keyof UpdateWorkArguments, z.ZodType>>,
     call: (args) =>
@@ -433,10 +433,6 @@ export function createUpdateWorkTool(
             !paths.every((one) => typeof one === 'string' && one.length > 0))
         ) {
           problems.push(`${UPDATE_RESOURCES_ARGUMENT} must be a list of paths, or absent`)
-        } else if (Array.isArray(paths) && paths.length > MAX_RESOURCES_PER_REPLY) {
-          problems.push(
-            `${UPDATE_RESOURCES_ARGUMENT} may name at most ${String(MAX_RESOURCES_PER_REPLY)} files, and it named ${String(paths.length)}`,
-          )
         }
         const closes = close === true
         const keeps = Array.isArray(paths) && paths.length > 0

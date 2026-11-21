@@ -155,14 +155,21 @@ export interface EndedPieceDetail {
  *    piece of the sender's whose opening row its record cannot read: its row names the sender, and
  *    its open pieces do not list it;
  *  - **`its-root`** — the sender's own root, the work a person gave it;
- *  - **`none`** — no piece by that name, or none of the sender's: one answer, so a name is no oracle.
+ *  - **`known`** — an existing piece unrelated to the sender.
+ *  - **`none`** — no piece by that name.
  */
 export type WhatAPieceIsToIt =
   | {
       readonly is:
-        'given-to-it' | 'queued-there' | 'given-to-another' | 'held' | 'held-and-ended' | 'its-root'
+        'given-to-it' | 'given-to-another' | 'held' | 'held-and-ended' | 'its-root' | 'known'
       readonly piece: string
       readonly label: string
+    }
+  | {
+      readonly is: 'queued-there'
+      readonly piece: string
+      readonly label: string
+      readonly title: string | null
     }
   | { readonly is: 'none' }
 

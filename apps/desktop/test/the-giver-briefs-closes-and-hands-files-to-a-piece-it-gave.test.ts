@@ -23,7 +23,6 @@ import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourceBytes, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { MAX_RESOURCES_PER_REPLY } from '../src/shared/documents'
 import { stillHeld } from '../src/shared/mailbox'
 import { pieceLine } from '../src/shared/piece-called'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
@@ -666,7 +665,6 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         return (refused.detail?.problems ?? []).join(' | ')
       }
       const a = wrote('a.md', 'alpha\n')
-      const tooMany = Array.from({ length: MAX_RESOURCES_PER_REPLY + 1 }, (_, i) => `f${i}.md`)
       const cases: { args: Record<string, unknown>; says: string }[] = [
         {
           args: { piece: label, close: true, brief: 'x' },
@@ -681,10 +679,6 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         { args: { piece: label, brief: '   ' }, says: 'must say something' },
         { args: { piece: label, close: 'yes' }, says: 'must be true or false, or absent' },
         { args: { piece: label, resources: 'a.md' }, says: 'must be a list of paths' },
-        {
-          args: { piece: label, resources: tooMany },
-          says: `may name at most ${MAX_RESOURCES_PER_REPLY} files, and it named ${MAX_RESOURCES_PER_REPLY + 1}`,
-        },
         {
           args: { piece: label },
           says: 'say title, status, brief, definition_of_done, close, resources, or several',

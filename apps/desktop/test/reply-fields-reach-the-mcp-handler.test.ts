@@ -563,11 +563,6 @@ describe('reply field failures travel through the real MCP server', () => {
         lines: ['resource_paths: expected a list of non-empty text paths, or absent'],
       },
       {
-        title: 'too many paths',
-        args: { resource_paths: Array(11).fill('/fictional/file.md') },
-        lines: ['resource_paths: at most 10 files; got 11'],
-      },
-      {
         title: 'wrong action flag type',
         args: { needs_user_action: 'PRIVATE_VALUE' },
         lines: ['needs_user_action: expected true or false, or absent'],

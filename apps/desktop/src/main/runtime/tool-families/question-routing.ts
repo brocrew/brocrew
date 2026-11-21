@@ -1,5 +1,4 @@
 import { toolFieldProblems } from './field-problems'
-import { A_CONVERSATION_CANNOT_ASK_ITSELF } from './launch-failures'
 import { DONE } from '../agent-tool-answer-words'
 import {
   type AgentToolAnswer,
@@ -20,10 +19,8 @@ import {
 } from './catalog'
 import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
 import { THE_ANSWER_ARRIVES_AS_A_MESSAGE } from '../send-receipt'
-import { INLINE_TEXT_LIMIT } from '../send-overflow'
 import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { carryQuestionRefusal, refuseTool } from './refusals'
-import { type conversationAddressing } from './addressing'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
 import {
@@ -36,10 +33,8 @@ import {
 } from './question-arguments'
 
 export function createAskQuestionTool(
-  host: Pick<AgentToolHost, 'raiseAQuestion' | 'tookItsPlace' | 'questionDestination'>,
+  host: Pick<AgentToolHost, 'raiseAQuestion' | 'questionDestination'>,
   by: Caller,
-  me: string,
-  selfRefusal: ReturnType<typeof conversationAddressing>['selfRefusal'],
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
   return {
@@ -47,7 +42,7 @@ export function createAskQuestionTool(
     handlerOwnsMissingInput: true,
 
     description:
-      'Ask a question and get the answer back. who_answers: the-parent (the conversation that gave you this task), a-person, or an-agent (any existing conversation, named in agent by any of its labels or its id; a service may also be named by its profile). Ask whoever is likeliest to know, usually your giver. Ask the person only for what only they can give: an approval, a sign-in, an account switch, publishing, a yes on something they can see, a preference, a money or time commitment, or a fact only they know. Check their open questions first (list_questions) so nothing is asked twice, and name the job by its title. To ask the person to approve something for another agent, quote or attach that agent’s exact proposal. Name the task the question is about, or leave it out when you hold only one. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. Asking an archived conversation leaves it archived. This call does not wait: it says what was recorded (the question id) and whether the one asked started, is queued, or can’t run, and the answer reaches you later as a message. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked can’t answer, you are told why. withdraw_question takes a question back; withdraw your open questions about a task when it ends. Carry on from here.',
+      'Ask a question and get the answer back. who_answers: the-parent (the conversation that gave you this task), a-person, or an-agent (any existing conversation, named in agent by any of its labels or its id; a service may also be named by its profile). Ask whoever is likeliest to know, usually your giver. Ask the person only for what only they can give: an approval, a sign-in, an account switch, publishing, a yes on something they can see, a preference, a money or time commitment, or a fact only they know. Check their open questions first (list_questions) so nothing is asked twice, and name the job by its title. To ask the person to approve something for another agent, quote or attach that agent’s exact proposal. For an-agent, name any known task or omit it. For a-person, omit the task to ask about your conversation’s own work. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. Asking an archived conversation leaves it archived. This call does not wait: it says what was recorded (the question id) and whether the one asked started, is queued, or can’t run, and the answer reaches you later as a message. An answer can ask the turn you are in to stop, so that you read it at once. Stopping the turn may end a command it started. Your other questions stay open. If the one you asked can’t answer, you are told why. withdraw_question takes a question back; withdraw your open questions about a task when it ends. Carry on from here.',
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — see
      * {@link AskQuestionArguments}, including which addressee it does and does not take.
@@ -75,7 +70,7 @@ export function createAskQuestionTool(
           .string()
           .optional()
           .describe(
-            'The task this question is about, by its label (W1.2) or id. The message that gave it to you names it, and list_tasks lists what you hold. Leave it out when you hold only one task — one whose brief has not reached you yet does not count; with an-agent, leave it out when the question is about none of your work.',
+            'The task label or id. With an-agent, name any known task or leave it out. With a-person, leaving it out uses your conversation’s own work. With the-parent, name your task or leave it out when one received task identifies the giver.',
           ),
         agent: z
           .string()
@@ -98,7 +93,7 @@ export function createAskQuestionTool(
           .array(z.string())
           .optional()
           .describe(
-            `The choices you are offering, at most 2,000 characters in total. Leave it out for a free answer.`,
+            `The choices you are offering. Long lists are attached with numbered choices. Leave it out for a free answer.`,
           ),
       } satisfies Readonly<Record<keyof AskQuestionArguments, z.ZodType>>).map(
         ([field, schema]) => [field, agentToolHandlerInput(schema)],
@@ -192,13 +187,6 @@ export function createAskQuestionTool(
             options.push(...(offered as string[]))
           }
         }
-        const offeredLength = options.reduce((total, one) => total + one.length, 0)
-        if (offeredLength > INLINE_TEXT_LIMIT) {
-          problem(
-            ASK_OPTIONS_ARGUMENT,
-            `at most ${INLINE_TEXT_LIMIT.toLocaleString('en-US')} characters in total; got ${offeredLength.toLocaleString('en-US')}`,
-          )
-        }
         if (!resources.success || problems.length > 0) {
           const fields = [
             ASK_PIECE_ARGUMENT,
@@ -227,12 +215,6 @@ export function createAskQuestionTool(
           who === 'an-agent' && typeof agent === 'string'
             ? (host.questionDestination(agent) ?? agent)
             : null
-        if (addressed !== null && (addressed === me || host.tookItsPlace(addressed) === me)) {
-          return selfRefusal(agent as string, addressed, {
-            ...refuseTool('that-agent-is-you', { agent: addressed }),
-            reason: A_CONVERSATION_CANNOT_ASK_ITSELF,
-          })
-        }
         // The host checks the work and records the question.
         const asked = await host.raiseAQuestion(
           {

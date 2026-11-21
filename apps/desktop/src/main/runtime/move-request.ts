@@ -1,7 +1,7 @@
-import type { MoveOffer, MoveReceipt } from '../../shared/move-contracts'
+import type { MoveOffer, MoveReceipt, MoveRequestAck } from '../../shared/move-contracts'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
-import type { QueuedMessageEvent } from '../../shared/conversation-events'
+import type { QueuedMessageEvent, UserDecisionEvent } from '../../shared/conversation-events'
 import type { ActedBy } from '../../shared/who-did-it'
 import type { SessionStore, PersistedEvent } from '../db/session-store'
 import { REQUEST_IS_OPEN, aPersonsSince } from '../../shared/questions'
@@ -38,6 +38,74 @@ export function originalMoveRequest(
   return row as PersistedEvent & { event: UserTurnEvent }
 }
 
+function moveOffersForTurn(store: SessionStore, source: string, offered: MoveOffer): string[] {
+  const original = originalMoveRequest(store, source, offered.sourceTurnId ?? offered.sourceOrdinal)
+  if (original === null) return []
+  const offers: string[] = []
+  for (const [id, question] of store.questionsRaisedIn(source)) {
+    const move = question.move
+    if (move === undefined) continue
+    const sameTurn =
+      move.sourceTurnId !== undefined && offered.sourceTurnId !== undefined
+        ? move.sourceTurnId === offered.sourceTurnId
+        : (move.sourceOrdinal ?? originalMoveRequest(store, source, move.sourceTurnId)?.ordinal) ===
+          original.ordinal
+    if (sameTurn) offers.push(id)
+  }
+  return offers
+}
+
+type MoveDecision = Exclude<MoveRequestAck, { outcome: 'refused' }>
+
+export function previousMoveDecision(
+  store: SessionStore,
+  source: string,
+  offer: MoveOffer,
+): MoveDecision | null {
+  for (const id of moveOffersForTurn(store, source, offer)) {
+    const decision = store.theDecisionOn(source, id)
+    if (decision?.by?.who !== 'a-person') continue
+    if (decision.movedTo !== undefined) return { outcome: 'moved', ...decision.movedTo }
+    if (decision.outcome === 'answered') return { outcome: 'here' }
+  }
+  return null
+}
+
+export function moveOfferDecisions(
+  store: SessionStore,
+  source: string,
+  requestId: string,
+  offer: MoveOffer,
+  by: ActedBy,
+  movedTo?: MoveReceipt,
+): UserDecisionEvent[] {
+  const decisions: UserDecisionEvent[] = [
+    {
+      type: 'user_decision',
+      requestId,
+      outcome: 'answered',
+      by,
+      ...(movedTo === undefined ? {} : { movedTo }),
+    },
+  ]
+  const siblings = new Set(moveOffersForTurn(store, source, offer))
+  for (const request of store.routedRequestsOf(source)) {
+    if (
+      request.requestId !== requestId &&
+      siblings.has(request.requestId) &&
+      REQUEST_IS_OPEN[request.state]
+    ) {
+      decisions.push({
+        type: 'user_decision',
+        requestId: request.requestId,
+        outcome: 'rejected',
+        by,
+      })
+    }
+  }
+  return decisions
+}
+
 /** Accept the target queue entry and source decision together, before dispatch. */
 export function recordMovedRequest(
   store: SessionStore,
@@ -50,7 +118,7 @@ export function recordMovedRequest(
   at: number,
   forNextStart = true,
   destinationTitle = offer.destinationName,
-): { receipt: MoveReceipt; entries: RuntimeEventMessage[]; queued: QueuedMessageEvent | null } {
+): { decision: MoveDecision; entries: RuntimeEventMessage[]; queued: QueuedMessageEvent | null } {
   return store.atomically(() => {
     if (by.who !== 'a-person') throw new Error(MOVE_WORDS.personOnly)
     const bound = store.questionsRaisedIn(source).get(requestId)?.move
@@ -62,10 +130,10 @@ export function recordMovedRequest(
       source === offer.destination
     )
       throw new Error(MOVE_WORDS.ended)
-    const decision = store.theDecisionOn(source, requestId)
-    if (decision?.by?.who === 'a-person' && decision.movedTo !== undefined)
-      return { receipt: decision.movedTo, entries: [], queued: null }
-    const question = store.routedRequestsOf(source).find((one) => one.requestId === requestId)
+    const previous = previousMoveDecision(store, source, offer)
+    if (previous !== null) return { decision: previous, entries: [], queued: null }
+    const requests = store.routedRequestsOf(source)
+    const question = requests.find((one) => one.requestId === requestId)
     if (
       question === undefined ||
       !REQUEST_IS_OPEN[question.state] ||
@@ -91,6 +159,7 @@ export function recordMovedRequest(
       movedFrom: { sessionId: source, name: sourceName, ordinal: original.ordinal, requestId },
       ...(forNextStart ? { forItsNextStart: true as const } : {}),
     }
+    const ordinal = store.nextOrdinal(source)
     const entries: RuntimeEventMessage[] = [
       {
         sessionId: offer.destination,
@@ -98,14 +167,14 @@ export function recordMovedRequest(
         at,
         event: queued,
       },
-      {
+      ...moveOfferDecisions(store, source, requestId, offer, by, receipt).map((event, index) => ({
         sessionId: source,
-        ordinal: store.nextOrdinal(source),
+        ordinal: ordinal + index,
         at,
-        event: { type: 'user_decision', requestId, outcome: 'answered', by, movedTo: receipt },
-      },
+        event,
+      })),
     ]
     for (const entry of entries) store.append(entry.sessionId, entry.ordinal, entry.event, at)
-    return { receipt, entries, queued }
+    return { decision: { outcome: 'moved', ...receipt }, entries, queued }
   })
 }

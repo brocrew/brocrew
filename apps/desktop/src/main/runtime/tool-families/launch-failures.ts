@@ -278,9 +278,6 @@ export const A_PROVIDER_REFUSED_THE_START =
 export const A_WAKE_ITS_PROVIDER_REFUSED =
   'that conversation could not be started again, so nothing was sent. Sending again will not help until a person has looked: its provider refused to start it, and the detail gives its reason when it gave one. Meanwhile, reach another agent or do it yourself.'
 
-export const A_CONVERSATION_CANNOT_ASK_ITSELF =
-  'That is this conversation; it cannot ask itself, so nothing was asked.'
-
 /** **716 · R66 — a wake refused for a FOLDER, said as one.** */
 export const A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE =
   'that conversation could not be started again, so nothing was sent. Sending again will not help until a person has looked: BroCrew could not make or write a folder it needs \u2014 the disk refused it, is read-only or full, or a file is in the way. The detail names the error.'

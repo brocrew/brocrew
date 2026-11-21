@@ -16,7 +16,7 @@ import {
   createdAndNamed,
 } from '../agent-tool-answer-words'
 import { type Caller } from '../conversation-caller'
-import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
+import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import {
   type NewAgent,
   PATH_SEGMENT_RULE,
@@ -245,7 +245,7 @@ export function createGiveWorkTool(
           .array(z.string())
           .optional()
           .describe(
-            `Files to hand over with the work, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed and kept as one of the piece\u2019s inputs, and the brief names each by its id; one that cannot be kept refuses the whole give, and nothing is given.`,
+            `Files to hand over with the work — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed and kept as one of the piece\u2019s inputs, and the brief names each by its id; one that cannot be kept refuses the whole give, and nothing is given.`,
           ),
         model: z
           .string()

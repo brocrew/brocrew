@@ -10,7 +10,6 @@ import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
 import { NAVIGATION_TOOL_NAMES, withNavigationLinks } from './tool-navigation-links'
 import { aLaunchRefused, aLaunchThatDidNotStart } from './tool-families/launch-failures'
 import { answerInWords } from './agent-tool-answer-words'
-import { conversationAddressing } from './tool-families/addressing'
 import { createAnswerQuestionTool, createListQuestionsTool } from './tool-families/questions'
 import { createCreateAgentTool, createGiveWorkTool } from './tool-families/launch'
 import {
@@ -65,7 +64,6 @@ export { TOOL_PERMANENCE } from './tool-families/refusals'
 export { toolRemedyOf } from './tool-families/refusals'
 export { type PublishedRefusal } from './tool-families/refusals'
 export { anEndedPieceSaid } from './tool-families/delivery'
-export { aMessageAboutAQueuedPiece } from './tool-families/delivery'
 export { refuseTool } from './tool-families/refusals'
 export { aLaunchThatDidNotStart } from './tool-families/launch-failures'
 export { aWakeThatDidNotHappen } from './tool-families/launch-failures'
@@ -74,7 +72,6 @@ export { A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN } from './tool-families/launch-failu
 export { A_WAKE_WHOSE_FOLDER_IS_GONE } from './tool-families/launch-failures'
 export { A_PROVIDER_REFUSED_THE_START } from './tool-families/launch-failures'
 export { A_WAKE_ITS_PROVIDER_REFUSED } from './tool-families/launch-failures'
-export { A_CONVERSATION_CANNOT_ASK_ITSELF } from './tool-families/launch-failures'
 export { A_WAKE_WHOSE_FOLDER_COULD_NOT_BE_MADE } from './tool-families/launch-failures'
 export { A_REFUSED_ROW_SHOWS } from './tool-families/launch-failures'
 export { aStartItsLoginOrSettingsRefused } from './tool-families/launch-failures'
@@ -95,8 +92,6 @@ export function agentToolsFor(
   const me = sessionId
   const theModels = theModelsSaid(lists)
   const theEfforts = theEffortsSaid(lists)
-
-  const { selfRefusal } = conversationAddressing(host, by, me)
 
   const guarded = async (run: () => Promise<AgentToolAnswer>): Promise<AgentToolAnswer> => run()
   /**
@@ -153,7 +148,7 @@ export function agentToolsFor(
     createListQuestionsTool(host, me, readerInputs, readerFieldRefusal, guarded),
     createCreateAgentTool(host, by, me, theModels, theEfforts, guarded),
     createWithdrawTaskTool(host, by, guarded),
-    createAskQuestionTool(host, by, me, selfRefusal, guarded),
+    createAskQuestionTool(host, by, guarded),
     createListProfilesTool(host, by, me, guarded),
     createProposeAgentRulesTool(host, by, me, guarded),
     createWithdrawQuestionTool(host, by, guarded),

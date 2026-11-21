@@ -1,10 +1,11 @@
 import type { MoveOffer } from '../src/shared/move-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { writeFileSync, unlinkSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import type { AServiceWorld } from './helpers/a-service-world'
+import { aMoveRequestFixture, offerMoveRequest, ORIGINAL } from './helpers/move-request-world'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { originalMoveRequest, recordMovedRequest } from '../src/main/runtime/move-request'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
@@ -21,42 +22,25 @@ import { RecordingSink } from './helpers/a-service-world'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 
-const ORIGINAL = 'Please check the fictional release notes.'
 const PERSON = { who: 'a-person' as const }
 
 describe('a person moves the stored request', () => {
+  const move = aMoveRequestFixture()
   let world: AServiceWorld
   let host: RuntimeHost
   let source: string
   let target: string
-  beforeEach(async () => {
-    world = aServiceWorld()
-    world.anAgent('source', 'normal')
-    world.anAgent('target', 'normal')
-    host = world.aHost()
-    source = await world.aPersonOpens(host, 'source')
-    target = await world.aPersonOpens(host, 'target')
-    await host.send(source, ORIGINAL, world.window)
+
+  beforeEach(() => {
+    const fixture = move()
+    world = fixture.world
+    host = fixture.host
+    source = fixture.source
+    target = fixture.target
   })
-  afterEach(async () => world.cleanUp())
 
   const byAgent = () => ({ ownerId: agentCallerId(source) })
-  const offer = async () => {
-    const result = await host.raiseAQuestion(
-      {
-        piece: null,
-        question: 'The target owns this subject.',
-        options: [],
-        who: 'a-person',
-        agent: null,
-        moveTo: target,
-      },
-      byAgent(),
-    )
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error(result.refusal.reason)
-    return result.question
-  }
+  const offer = () => offerMoveRequest(host, source, target)
   const sourceWords = () => world.ledger(source).filter((one) => one.type === 'user_turn')
   const targetWords = () => world.ledger(target).filter((one) => one.type === 'user_turn')
   const row = (id: string, event: TranscriptEvent) =>
@@ -232,30 +216,6 @@ describe('a person moves the stored request', () => {
       expect(targetWords()).toHaveLength(0)
     },
   )
-
-  it('refuses self, unknown target and a second outstanding offer', async () => {
-    for (const moveTo of [source, 'unknown-conversation']) {
-      const result = await host.raiseAQuestion(
-        { piece: null, question: 'Move?', options: [], who: 'a-person', agent: null, moveTo },
-        byAgent(),
-      )
-      expect(result.ok).toBe(false)
-    }
-    await offer()
-    const second = await host.raiseAQuestion(
-      {
-        piece: null,
-        question: 'Another move?',
-        options: [],
-        who: 'a-person',
-        agent: null,
-        moveTo: target,
-      },
-      byAgent(),
-    )
-    expect(second.ok).toBe(false)
-    if (!second.ok) expect(second.refusal.permanence).toBe('permanent')
-  })
 
   it('missing attachments refuse without closing the card or queuing a partial request', async () => {
     const file = join(realpathSync(world.folder), 'fictional-missing.md')
@@ -853,14 +813,12 @@ describe('a person moves the stored request', () => {
     expect(targetWords()).toHaveLength(0)
   }
 
-  it.each(['permanent', 'person-change', 'held'] as const)(
+  it.each(['permanent', 'held'] as const)(
     'the final %s refusal preserves every policy fact and app-only sentence',
     async (kind) => {
       let release: (() => void) | undefined
       let delivery: Promise<void> | undefined
       try {
-        if (kind === 'person-change')
-          expect((await host.archiveConversation(target)).done).toBe(true)
         if (kind === 'held') {
           await endFakeTurn(source)
           world.sendFinishesWait = new Promise<void>((resolve) => {
@@ -870,16 +828,8 @@ describe('a person moves the stored request', () => {
           await expect.poll(() => world.sent.filter((one) => one.as === 'source').length).toBe(2)
         }
         await expectMoveRail(
-          kind === 'permanent'
-            ? 'move-offer-not-available'
-            : kind === 'held'
-              ? 'move-offer-is-held'
-              : 'move-offer-needs-a-person',
-          kind === 'permanent'
-            ? 'permanent'
-            : kind === 'held'
-              ? 'while-this-holds'
-              : 'until-a-person-changes-it',
+          kind === 'permanent' ? 'move-offer-not-available' : 'move-offer-is-held',
+          kind === 'permanent' ? 'permanent' : 'while-this-holds',
           kind === 'held',
           kind === 'held' ? 'make-the-same-call-when-this-settles' : null,
           kind === 'permanent' ? source : target,

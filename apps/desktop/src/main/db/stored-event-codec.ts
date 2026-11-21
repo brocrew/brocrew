@@ -38,7 +38,6 @@ import {
 import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 import { isAWorkReport } from '../../shared/tasks'
 import { pieceNumbersOf } from '../../shared/piece-called'
-import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 export function toPersistedEvents(
@@ -459,9 +458,7 @@ function boundedWorkReport(report: WorkReport): WorkReport | null {
   ) {
     return null
   }
-  const resources = Array.isArray(report.resources)
-    ? report.resources.filter(isAStoredId).slice(0, MAX_RESOURCES_PER_REPLY)
-    : []
+  const resources = Array.isArray(report.resources) ? report.resources.filter(isAStoredId) : []
   return {
     piece: report.piece,
     label: report.label,

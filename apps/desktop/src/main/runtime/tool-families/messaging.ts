@@ -1,3 +1,4 @@
+import { pieceLine } from '../../../shared/piece-called'
 import { ASKED_TO_STOP } from '../../../shared/how-work-stopped'
 import {
   type AgentToolAnswer,
@@ -9,12 +10,7 @@ import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { ToolName } from './catalog'
-import {
-  aMessageAboutAQueuedPiece,
-  theRuleOfAStopForWords,
-  whatADeliveryMet,
-  whatBecameOfTheStop,
-} from './delivery'
+import { theRuleOfAStopForWords, whatADeliveryMet, whatBecameOfTheStop } from './delivery'
 import { agentStateWords } from '../../../shared/agent-state'
 import { answer, refusalAnswer, sendAnswer } from './answers'
 import { carryInterruptRefusal, refuseTool } from './refusals'
@@ -275,24 +271,11 @@ export function createMessageAgentTool(
         if (!resources.success || problems.length > 0) return malformed()
         const destination = host.messageDestination(spelled)
         const agent = destination ?? spelled
-        // A piece the caller gave that waits, queued, at a service has reached nobody: nothing is
-        // sent about it, whether the message names it or is addressed by its label. Asked before
-        // reach, which a caller whose piece is only queued does not have.
         const aboutPiece = typeof named === 'string' ? named : spelled
         const it = host.whatAPieceIsTo(me, agent, aboutPiece)
-        if (it.is === 'queued-there') {
-          return refusalAnswer({
-            ...refuseTool('that-piece-is-still-queued', {
-              agent,
-              piece: it.piece,
-              label: it.label,
-            }),
-            reason: aMessageAboutAQueuedPiece(it.label),
-          })
-        }
         if (destination === null) return refusalAnswer(refuseTool('no-such-agent', { agent }))
         let about: { readonly piece: string; readonly label: string } | null = null
-        if (typeof named === 'string') {
+        if (typeof named === 'string' || it.is === 'queued-there') {
           if (it.is === 'none') {
             return refusalAnswer(refuseTool('no-piece-by-that-name', { piece: named }))
           }
@@ -311,10 +294,12 @@ export function createMessageAgentTool(
           prepared.overflow === undefined
             ? kept.files
             : [...kept.files, sendOverflowAttachment(prepared.overflow)]
-        const outgoingText = prepared.text + sendFilesSaid(kept.files)
+        const context =
+          it.is === 'queued-there' ? `About ${pieceLine(it.label, it.title)}.\n\n` : ''
+        const outgoingText = context + prepared.text + sendFilesSaid(kept.files)
         const messageAct = `message_act_${randomUUID()}`
         const facts = {
-          ...(about === null ? {} : { aboutPiece: about }),
+          ...(about === null || it.is === 'queued-there' ? {} : { aboutPiece: about }),
           addressedAs: spelled,
           messageAct,
         }

@@ -300,32 +300,60 @@ describe('a service is reached through the piece it is on', () => {
       expect(JSON.stringify(listed.structured)).toContain(service)
     })
 
-    it('lets a message to it ask its turn to stop only from the caller whose piece it is on', async () => {
-      const { host, caller, other, service, one, two, releaseTheTurn } =
-        await aServiceOnTheFirstPiece({ turnHeld: true })
-      const theirs = await call(host, other, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: two.label,
-        interrupt: true,
-        text: 'stop and read this',
+    it('records a Message to a queued service task before asking the turn to stop', async () => {
+      const { host, other, service, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
+        turnHeld: true,
       })
-      expect(theirs.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-piece-is-still-queued',
+      try {
+        const sent = await call(host, other, 'message_agent', {
+          agent: service,
+          piece: two.label,
+          interrupt: true,
+          text: 'stop and read this',
+        })
+        expect(sent.structured).toMatchObject({
+          outcome: 'ok',
+          agent: service,
+          label: two.label,
+          receipt: { recorded: { kind: 'message', id: expect.any(String) } },
+        })
+        expect(world.stopsAsked).toEqual(['browser-driver'])
+      } finally {
+        releaseTheTurn()
+      }
+    })
+
+    it('delivers a Message with queued task context after that task is withdrawn', async () => {
+      const { host, stranger, service, two, releaseTheTurn } = await aServiceOnTheFirstPiece({
+        turnHeld: true,
       })
-      expect(world.stopsAsked).toEqual([])
-      const own = await call(host, caller, 'message_agent', {
-        agent: service,
-        kind: 'follow-up',
-        piece: one.label,
-        interrupt: true,
-        text: 'stop and read this',
-      })
-      expect(own.structured).toMatchObject({ outcome: 'ok' })
-      expect(world.stopsAsked).toEqual(['browser-driver'])
-      expect(world.explicitStops).toEqual([])
-      releaseTheTurn()
+      const words = 'Please keep this reference.'
+      try {
+        const sent = await call(host, stranger, 'message_agent', { agent: two.label, text: words })
+        expect(sent.structured).toMatchObject({
+          outcome: 'ok',
+          delivery: 'queued',
+          label: two.label,
+        })
+        const messageId = (sent.structured.receipt as SendReceipt).recorded.id
+        expect(world.store.messagesWaitingIn(service)).toContainEqual(
+          expect.objectContaining({ messageId, text: expect.stringContaining(words) }),
+        )
+        expect(await host.takeBackForAPerson(two.label, world.window)).toMatchObject({ ok: true })
+        expect(stateOf(service, two.piece)).toBe('withdrawn')
+        releaseTheTurn()
+        await vi.waitFor(() => {
+          const delivered = deliveredParts(service).filter((part) => part.text.includes(words))
+          expect(delivered).toHaveLength(1)
+          expect(delivered[0]!.text).toContain(two.label)
+          expect(delivered[0]!.text).toContain('Two')
+          expect(world.ledger(service)).toContainEqual(
+            expect.objectContaining({ type: 'message_unqueued', messageId, reason: 'sent' }),
+          )
+        })
+      } finally {
+        releaseTheTurn()
+      }
     })
 
     it.each(['id', 'label'])('lets a queued caller stop the active service by %s', async (key) => {
@@ -360,12 +388,11 @@ describe('a service is reached through the piece it is on', () => {
           text: 'also order coffee',
         })
         expect(sent.structured).toMatchObject({
-          outcome: 'refused',
-          rail: 'that-piece-is-still-queued',
+          outcome: 'ok',
+          agent: service,
+          label: two.label,
+          receipt: { recorded: { kind: 'message', id: expect.any(String) } },
         })
-        expect(sent.text).toContain(
-          `Not sent: ${two.label} is still queued. Change its brief with update_work.`,
-        )
       }
       const note = await call(host, other, 'message_agent', {
         agent: service,

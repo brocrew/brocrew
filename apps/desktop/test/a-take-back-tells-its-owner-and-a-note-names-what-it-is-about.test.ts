@@ -471,31 +471,37 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(sentBy(pm)).toHaveLength(receiptsBefore + 3)
   })
 
-  it('a message names the piece it is about in its answer and on its receipt, and a name nothing answers to for that sender is refused', async () => {
+  it('a message names the piece it is about in its answer and on its receipt, and an unknown task is refused', async () => {
     const { pm, worker, pmTools, piece, label } = await aPmAndItsWorker('the piece')
     const stranger = await personOpens('stranger')
-    const strangerRoot = store.rootOf(stranger)?.label
-    // The premise: the stranger holds a real root that the pm neither gave nor holds.
-    expect(typeof strangerRoot).toBe('string')
-    if (strangerRoot === undefined) throw new Error('the stranger has no root')
+    const strangerRoot = store.rootOf(stranger)
+    if (strangerRoot === null) throw new Error('the stranger has no root')
 
     const wordsBefore = wordsIn(worker).length
     const receiptsBefore = sentBy(pm).length
-    for (const spelled of ['W99.99', strangerRoot]) {
-      const refused = await callOn(pmTools, 'message_agent', {
-        agent: worker,
-        text: 'fyi',
-        piece: spelled,
-      })
-      expect(refused.outcome, `${spelled}: ${JSON.stringify(refused)}`).toBe('refused')
-      expect(refused.rail, spelled).toBe('no-piece-by-that-name')
-      expect(refused.permanence, spelled).toBe('permanent')
-      expect(refused.remedy, spelled).toBeNull()
-      expect(refused.detail, spelled).toMatchObject({ piece: spelled })
-    }
-    // Nothing was sent by either refusal.
+    const refused = await callOn(pmTools, 'message_agent', {
+      agent: worker,
+      text: 'fyi',
+      piece: 'W99.99',
+    })
+    expect(refused).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-piece-by-that-name',
+      permanence: 'permanent',
+      remedy: null,
+      detail: { piece: 'W99.99' },
+    })
     expect(wordsIn(worker)).toHaveLength(wordsBefore)
     expect(sentBy(pm)).toHaveLength(receiptsBefore)
+
+    const task = { piece: strangerRoot.piece, label: strangerRoot.label }
+    const note = await callOn(pmTools, 'message_agent', {
+      agent: worker,
+      text: 'about the stranger’s task',
+      piece: task.label,
+    })
+    expect(note).toMatchObject({ outcome: 'ok', kind: 'note', ...task })
+    expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'note', ...task })
 
     // The message about work the pm gave keeps the same piece in both records.
     const admitted = await callOn(pmTools, 'message_agent', {
@@ -509,13 +515,13 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(admitted.piece).toBe(piece)
     expect(admitted.label).toBe(label)
     const receipt = sentBy(pm).at(-1) as { kind?: string; piece?: string; label?: string }
-    expect(sentBy(pm)).toHaveLength(receiptsBefore + 1)
+    expect(sentBy(pm)).toHaveLength(receiptsBefore + 2)
     expect(receipt.kind).toBe('follow-up')
     expect(receipt.piece).toBe(piece)
     expect(receipt.label).toBe(label)
   })
 
-  it('🔴 a message names held or given work that ended and refuses inaccessible work', async () => {
+  it('🔴 a message names recorded work that ended and refuses unknown work', async () => {
     const { pm, worker, pmTools, workerTools, piece, label } = await aPmAndItsWorker('the piece')
     /** A message from `tools` to `to`, naming `named`. */
     const aMessage = (tools: AgentToolset, to: string, named: string, text: string) =>
@@ -571,7 +577,7 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
       'follow-up',
     )
 
-    // ⛔ Neither held nor given, and ended: a piece the pm gave another conversation, answered there.
+    // Another conversation’s answered task remains addressable.
     await bringIdentityIntoBeing('helper')
     const other = await aGive(pmTools, 'helper', 'the other piece', 'new')
     expect(other.agent).not.toBe(worker)
@@ -582,16 +588,19 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     })
     expect(otherReplied.outcome, JSON.stringify(otherReplied)).toBe('ok')
     const receiptsBefore = sentBy(worker).length
-    for (const spelled of [other.label, 'W99.99']) {
-      const refused = await aMessage(workerTools, pm, spelled, 'about somebody else’s piece')
-      expect(refused, spelled).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-piece-by-that-name',
-        permanence: 'permanent',
-        detail: { piece: spelled },
-      })
-    }
-    expect(sentBy(worker)).toHaveLength(receiptsBefore)
+    const task = { piece: other.piece, label: other.label }
+    const noted = await aMessage(workerTools, pm, task.label, 'about somebody else’s piece')
+    expect(noted).toMatchObject({ outcome: 'ok', kind: 'note', ...task })
+    expect(sentBy(worker).at(-1)).toMatchObject({ kind: 'note', ...task })
+
+    const refused = await aMessage(workerTools, pm, 'W99.99', 'about an unknown piece')
+    expect(refused).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-piece-by-that-name',
+      permanence: 'permanent',
+      detail: { piece: 'W99.99' },
+    })
+    expect(sentBy(worker)).toHaveLength(receiptsBefore + 1)
   })
 
   it('🔴 a note names work its sender took on for a person once that work is answered', async () => {
@@ -628,21 +637,18 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(store.piecesOwnedBy(pm).find((one) => one.piece === piece)?.state).toBe('answered')
   })
 
-  it('⛔ a conversation standing in another’s place does not name the pieces that one held', async () => {
+  it('a replacement can name a prior task without becoming its holder', async () => {
     const { pm, worker, piece, label } = await aPmAndItsWorker('the piece')
     const { next, tools } = await followHistoricalWorker(worker, pm, label)
     // ⛔ The piece is the replaced worker's, and stays its own: the one in its place holds none of it.
     expect(store.piecesOwnedBy(next)).toEqual([])
-    const refused = await callOn(agentToolsFor(host, next), 'message_agent', {
+    const note = await callOn(agentToolsFor(host, next), 'message_agent', {
       agent: pm,
       text: 'about the piece the conversation before me held',
       piece: label,
     })
-    expect(refused).toMatchObject({
-      outcome: 'refused',
-      rail: 'no-piece-by-that-name',
-      detail: { piece: label },
-    })
+    expect(note).toMatchObject({ outcome: 'ok', kind: 'note', piece, label })
+    expect(store.piecesOwnedBy(next)).toEqual([])
     // ⚑ The control: its giver names it to the one in its place — a piece it gave.
     const given = await callOn(tools, 'message_agent', {
       agent: next,
@@ -680,24 +686,27 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     })
     expect(sentBy(pm).at(-1)).toMatchObject({ kind: 'follow-up', to: other.agent, ...task })
 
-    for (const [tools, from, to, spelled] of [
-      [pmTools, pm, worker, 'W99.99'],
-      [workerTools, worker, pm, other.label],
-    ] as const) {
-      const receiptsBefore = sentBy(from).length
-      const unplaced = await callOn(tools, 'message_agent', {
-        agent: to,
-        text: 'about a name',
-        piece: spelled,
-      })
-      expect(unplaced, spelled).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-piece-by-that-name',
-        detail: { piece: spelled },
-      })
-      expect(wordsIn(to).some((word) => word.text.includes('about a name'))).toBe(false)
-      expect(sentBy(from)).toHaveLength(receiptsBefore)
-    }
+    const receiptsBefore = sentBy(pm).length
+    const unplaced = await callOn(pmTools, 'message_agent', {
+      agent: worker,
+      text: 'about a name',
+      piece: 'W99.99',
+    })
+    expect(unplaced).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-piece-by-that-name',
+      detail: { piece: 'W99.99' },
+    })
+    expect(wordsIn(worker).some((word) => word.text.includes('about a name'))).toBe(false)
+    expect(sentBy(pm)).toHaveLength(receiptsBefore)
+
+    const fromWorker = await callOn(workerTools, 'message_agent', {
+      agent: pm,
+      text: 'about the helper’s work',
+      piece: other.label,
+    })
+    expect(fromWorker).toMatchObject({ outcome: 'ok', kind: 'note', ...task })
+    expect(sentBy(worker).at(-1)).toMatchObject({ kind: 'note', to: pm, ...task })
   })
 
   it('names the answered task in a follow-up header and omits the task from a plain note', async () => {

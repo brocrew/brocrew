@@ -429,20 +429,15 @@ describe('629 · a stop reaches down the whole chain', () => {
       if (allowed.ok) expect(store.parentOf(allowed.owner)).toBe(ali)
     })
 
-    // ⚑ **Landing D-014 · `1014 M4`**: interrupt reaches the whole chain, but work goes only
-    // to a conversation the caller STARTED. The chain is not a relationship that admits work.
-    // ⚑ **D-016** — work is followed up only by the one that gave it: naming the grandchild's piece
-    // is refused to the grandparent, which did not give it.
-    it('⛔ REFUSED · the chain grants no WORK — a grandparent may not give its grandchild work', async () => {
+    it('the grandparent can send a task note and its giver sends a follow-up', async () => {
       const { ali, aliLabel, brobotTools, adaTools } = await aChainOfThree()
-      const refused = await callOn(brobotTools, 'message_agent', {
+      const note = await callOn(brobotTools, 'message_agent', {
         agent: ali,
         kind: 'follow-up',
         piece: aliLabel,
         text: 'build the settings page too',
       })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('no-piece-by-that-name')
+      expect(note).toMatchObject({ outcome: 'ok', kind: 'note', label: aliLabel })
 
       // ⚑ **THE PAIR one fact over** — the same work from the conversation that started Ali.
       const given = await callOn(adaTools, 'message_agent', {
@@ -451,7 +446,7 @@ describe('629 · a stop reaches down the whole chain', () => {
         piece: aliLabel,
         text: 'build the settings page too',
       })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
+      expect(given).toMatchObject({ outcome: 'ok', kind: 'follow-up', label: aliLabel })
     })
   })
 

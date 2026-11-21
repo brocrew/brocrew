@@ -2,7 +2,7 @@ import { AGENT_TOOL_SERVER, TOOL_INPUT_ENUMS, type ToolName, documentedToolEnum 
 import { type AgentToolAnswer, type AgentToolDefinition } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
-import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
+import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import {
   MAX_EXTERNAL_MCP_GRANTS,
   externalMcpNameRefusal,
@@ -192,7 +192,7 @@ export function createRequestActionTool(
   return {
     name: 'request_action',
     description:
-      'Ask the person to do something only they can do — a click, a check, a sign-in, a file to look at — as a to-do under Waiting on you, about a piece you hold. Say what to do, and hand them files with resources. Name the piece, or leave it out when you hold only one. This does not wait: the person answers Done or Can’t do it, with a note if they like, and the answer reaches you as a message. To mark the piece as waiting on it, call update_work with on: {person: "<the question id this returns>"}. A request in your reply is not a to-do, and shows nowhere. Only the person answers questions and actions addressed to them. If you asked and no longer need it, withdraw your request; withdrawal does not answer it. Use withdraw_question with the request id.',
+      'Ask the person to do something only they can do — a click, a check, a sign-in, a file to look at — as a to-do under Waiting on you, about a piece you hold. Say what to do, and hand them files with resources. Name the piece, or leave it out to use your conversation’s own work. This does not wait: the person answers Done or Can’t do it, with a note if they like, and the answer reaches you as a message. To mark the piece as waiting on it, call update_work with on: {person: "<the question id this returns>"}. A request in your reply is not a to-do, and shows nowhere. Only the person answers questions and actions addressed to them. If you asked and no longer need it, withdraw your request; withdrawal does not answer it. Use withdraw_question with the request id.',
     /** It writes a request and hands nobody work: only the person's answer reaches the caller. */
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
@@ -200,7 +200,7 @@ export function createRequestActionTool(
         .string()
         .optional()
         .describe(
-          'Which piece the to-do is for, by its label (W1.2) or id. Leave it out when you hold only one.',
+          'Which piece the to-do is for, by its label (W1.2) or id. Leave it out to use your conversation’s own work.',
         ),
       action: z
         .string()
@@ -211,7 +211,7 @@ export function createRequestActionTool(
         .array(z.string())
         .optional()
         .describe(
-          `Files to hand the person, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is kept for the piece.`,
+          `Files to hand the person — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is kept for the piece.`,
         ),
     },
     call: (args) =>
@@ -231,10 +231,6 @@ export function createRequestActionTool(
             !paths.every((one) => typeof one === 'string' && one.length > 0))
         ) {
           problems.push('resources must be a list of paths, or absent')
-        } else if (Array.isArray(paths) && paths.length > MAX_RESOURCES_PER_REPLY) {
-          problems.push(
-            `resources may name at most ${String(MAX_RESOURCES_PER_REPLY)} files, and it named ${String(paths.length)}`,
-          )
         }
         if (problems.length > 0) {
           return refusalAnswer(refuseTool('malformed-request', { problems }))

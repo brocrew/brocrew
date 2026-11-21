@@ -314,7 +314,12 @@ import type { WorkerBindingReading } from '../../shared/worker-reading'
 import type { StartAttemptLine, StartAttemptOutcome } from '../start-attempt-line'
 import type { NormalWorkerAssignment, WorkerBorn } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
-import { originalMoveRequest, recordMovedRequest } from './move-request'
+import {
+  moveOfferDecisions,
+  originalMoveRequest,
+  previousMoveDecision,
+  recordMovedRequest,
+} from './move-request'
 import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine } from '../../shared/move-request'
 import type {
   MoveOffer,
@@ -1208,7 +1213,6 @@ import {
   A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION,
   NOT_A_PERSONS_TO_ANSWER_HERE,
   NO_SUCH_QUESTION_TO_ANSWER,
-  admitAsk,
   answerText,
   aToDoAnsweredText,
   A_TO_DO_DONE,
@@ -14121,17 +14125,7 @@ export class RuntimeHost implements LiveHost {
   private prepareMoveOffer(
     session: HostedSession,
     moveTo: string,
-    by: Caller,
   ): { ok: true; move: MoveOffer } | { ok: false; refusal: ReturnType<typeof refuseQuestion> } {
-    const previous = this.deps.store.latestMoveOffer?.(session.id)
-    if (
-      previous !== null &&
-      previous !== undefined &&
-      this.deps.store
-        .routedRequestsOf(session.id)
-        .some((one) => one.requestId === previous.requestId && REQUEST_IS_OPEN[one.state])
-    )
-      return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
     if (session.moveRequestTurn === null && session.moveRequestRowPending) {
       return { ok: false, refusal: refuseQuestion('move-offer-is-held') }
     }
@@ -14141,7 +14135,8 @@ export class RuntimeHost implements LiveHost {
       const message = originalMoveRequest(this.deps.store, session.id, current.id)
       return message === null ? null : { message, id: current.id }
     })
-    const destination = this.theConversationAddressed(moveTo, by, session.id, 'messaging')
+    const named = this.questionDestination(moveTo)
+    const destination = named === null ? moveTo : this.theOneInItsPlace(named)
     if (original === null || destination === session.id) {
       return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
     }
@@ -14150,12 +14145,6 @@ export class RuntimeHost implements LiveHost {
       this.theOneInItsPlace(destination) !== destination
     ) {
       return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
-    }
-    if (this.archived.has(destination) || !this.withinMessagingReach(destination, by, session.id)) {
-      return { ok: false, refusal: refuseQuestion('move-offer-needs-a-person') }
-    }
-    if (this.settingAside.has(destination)) {
-      return { ok: false, refusal: refuseQuestion('move-offer-needs-a-person') }
     }
     return {
       ok: true,
@@ -14289,49 +14278,41 @@ export class RuntimeHost implements LiveHost {
     if (speaking === null) {
       return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
     }
-    // A named question goes to an existing conversation, or the one that took its place.
+    // A named question goes to an existing conversation or its replacement.
     const named = input.agent ?? ''
     const agent = named === '' ? '' : this.theOneInItsPlace(named)
     if (
       input.who === 'an-agent' &&
-      (agent === '' ||
-        agent === speaking ||
-        (!this.slots.has(agent) && this.deps.store.recordedOne(agent) === null))
+      (agent === '' || (!this.slots.has(agent) && this.deps.store.recordedOne(agent) === null))
     ) {
       return {
         ok: false,
         refusal: refuseQuestion('no-agent-you-can-ask-by-that-name', { agent: named }),
       }
     }
-    // ⚑ **D-016 · the piece — among what the asker HOLDS**: its root, which counts as held work,
-    // then its open pieces. ⛔ The lookup is the entitlement: a name another conversation holds
-    // resolves to nothing here, and is refused as one that does not exist. ⚑ For the two ends about
-    // work, an unnamed piece is the asker's one, when it holds exactly one
-    // 🔴 **D-022 · R4 — …of those whose brief has reached it**: one still held in its mailbox is one
-    // it cannot mean, so the unnamed piece and the refusal's list count only these; a name still
-    // resolves among all it holds. ⛔ No turn-drive tiebreak: a question landing on the wrong one of
-    // several known pieces is worse than a refusal that names them.
-    const held = this.heldBy(speaking)
-    const received = held.filter((one) => one.received)
-    const aboutWork = input.who !== 'an-agent' && input.moveTo === undefined
-    const piece =
-      input.piece !== null
-        ? (held.find((one) => one.piece === input.piece || one.label === input.piece) ?? null)
-        : aboutWork && received.length === 1
-          ? (received[0] ?? null)
-          : null
-    // ⛔ A service names only the piece that reached it: a queued one's caller is not its to ask.
-    if (piece !== null && !piece.received && this.itIsAService(speaking)) {
-      const said = received.map((one) => one.label)
-      return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', said) }
+    const session = this.slots.get(speaking)?.session ?? null
+    if (session === null) {
+      return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
     }
-    if (input.piece !== null || aboutWork) {
-      const refusal = admitAsk(
-        piece,
-        input.piece ?? '',
-        received.map((one) => one.label),
-      )
-      if (refusal !== null) return { ok: false, refusal }
+    const aboutWork = input.who !== 'an-agent' && input.moveTo === undefined
+    const known =
+      input.who === 'an-agent' && input.piece !== null ? this.pieceNamed(input.piece) : null
+    const piece =
+      input.who === 'an-agent'
+        ? known === null
+          ? null
+          : { piece: known.piece, label: known.label, giver: null, root: false }
+        : aboutWork || input.piece !== null
+          ? this.pieceForPersonOrParentAsk(speaking, input.piece, input.who)
+          : null
+    if ((input.piece !== null || aboutWork) && piece === null) {
+      const held =
+        input.who === 'the-parent' && input.piece === null
+          ? this.heldBy(speaking)
+              .filter((one) => one.received)
+              .map((one) => one.label)
+          : []
+      return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', held) }
     }
     const went = input.who
     let answerer: string | null = null
@@ -14344,17 +14325,11 @@ export class RuntimeHost implements LiveHost {
     } else if (went === 'an-agent') {
       answerer = agent
     }
-    const session = this.slots.get(speaking)?.session ?? null
-    // ⚠️ **A worker with no live session cannot be mid-tool-call**, so this is unreachable from the
-    // tool and is a bug guard for a caller inside this process — the same shape the line above is.
-    if (session === null) {
-      return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
-    }
     let move: MoveOffer | undefined
     if (input.moveTo !== undefined) {
       if (input.who !== 'a-person' || input.agent !== null)
         return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
-      const prepared = this.prepareMoveOffer(session, input.moveTo, by)
+      const prepared = this.prepareMoveOffer(session, input.moveTo)
       if (!prepared.ok) return prepared
       move = prepared.move
     }
@@ -14365,11 +14340,30 @@ export class RuntimeHost implements LiveHost {
         ? this.prepareTextForSend(speaking, 'question', input.question, piece?.piece)
         : { ok: true, text: input.question }
     if (!prepared.ok) return { ok: false, refusal: prepared.refusal, resourceFailure: true }
-    const attachments =
-      prepared.overflow === undefined
-        ? files.files
-        : [...files.files, sendOverflowAttachment(prepared.overflow)]
-    const prompt = prepared.preview ?? prepared.text
+    const overflowOptions =
+      move === undefined &&
+      input.options.reduce((total, option) => total + option.length, 0) > INLINE_TEXT_LIMIT
+    const options = move === undefined ? input.options : [MOVE_IT, DO_IT_HERE]
+    const offered = overflowOptions
+      ? this.prepareTextForSend(
+          speaking,
+          'options',
+          options.map((choice, index) => `Option ${index + 1}: ${choice}`).join('\n\n'),
+          piece?.piece,
+        )
+      : null
+    if (offered !== null && !offered.ok)
+      return { ok: false, refusal: offered.refusal, resourceFailure: true }
+    const optionFiles =
+      offered?.overflow === undefined ? [] : [sendOverflowAttachment(offered.overflow)]
+    const attachments = [
+      ...files.files,
+      ...(prepared.overflow === undefined ? [] : [sendOverflowAttachment(prepared.overflow)]),
+      ...optionFiles,
+    ]
+    const prompt =
+      (prepared.preview ?? prepared.text) +
+      (optionFiles.length === 0 ? '' : '\n\nRead the full choices before answering.')
     const requestId = newAskedQuestionId()
     // ⛔ **One part, built here rather than taken from the caller** (437). ⚑ The shape is
     // `answer_question`'s per-part payload. ⚠️ **`allowOther` is set only where there is a list to be other THAN**: with no
@@ -14379,8 +14373,8 @@ export class RuntimeHost implements LiveHost {
       {
         id: 'answer',
         prompt,
-        options: (move === undefined ? input.options : [MOVE_IT, DO_IT_HERE]).map((label) => ({
-          label,
+        options: options.map((label, index) => ({
+          label: overflowOptions ? `Option ${index + 1}` : label,
         })),
         ...(move === undefined && input.options.length > 0 ? { allowOther: true } : {}),
       },
@@ -14444,9 +14438,32 @@ export class RuntimeHost implements LiveHost {
       ...(delivery === undefined ? {} : { delivery }),
       attachments: input.action?.files ?? attachments,
       overflowSaid:
-        input.actionOverflowSaid ??
-        (prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow)),
+        (input.actionOverflowSaid ??
+          (prepared.overflow === undefined ? '' : outboundOverflowSaid(prepared.overflow))) +
+        (optionFiles.length === 0 ? '' : ' The full choices are kept in the options file.'),
     }
+  }
+
+  private pieceForPersonOrParentAsk(
+    conversation: string,
+    named: string | null,
+    who: QuestionRecipient,
+  ): Pick<HeldPiece, 'piece' | 'label' | 'giver' | 'root'> | null {
+    if (named === null && who === 'a-person') {
+      const root =
+        this.deps.store.rootOf(conversation) ??
+        this.deps.store.ensurePersonalRoot(conversation, this.now())
+      return { piece: root.piece, label: root.label, giver: null, root: true }
+    }
+    const held = this.heldBy(conversation)
+    if (named !== null) {
+      const piece = held.find((one) => one.piece === named || one.label === named)
+      return piece === undefined || (!piece.received && this.itIsAService(conversation))
+        ? null
+        : piece
+    }
+    const received = held.filter((one) => one.received)
+    return received.length === 1 ? (received[0] ?? null) : null
   }
 
   /**
@@ -14464,25 +14481,12 @@ export class RuntimeHost implements LiveHost {
     by: Caller,
   ): Promise<AskOutcome> {
     const speaking = sessionSpeakingAs(by)
-    if (speaking === null) {
+    if (speaking === null || this.slots.get(speaking)?.session == null) {
       return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
     }
-    const held = this.heldBy(speaking)
-    const received = held.filter((one) => one.received)
-    const spelled = input.piece
-    const piece =
-      spelled === null
-        ? received.length === 1
-          ? (received[0] ?? null)
-          : null
-        : (held.find((one) => [one.piece, one.label].includes(spelled)) ?? null)
-    const refusal = admitAsk(
-      piece,
-      input.piece ?? '',
-      received.map((one) => one.label),
-    )
-    if (refusal !== null || piece === null) {
-      return { ok: false, refusal: refusal ?? noPieceToAskAbout(input.piece ?? '', []) }
+    const piece = this.pieceForPersonOrParentAsk(speaking, input.piece, 'a-person')
+    if (piece === null) {
+      return { ok: false, refusal: noPieceToAskAbout(input.piece ?? '', []) }
     }
     const kept = this.keepFilesForSend(speaking, input.files)
     if (!kept.ok) return { ok: false, refusal: kept.refusal, resourceFailure: true }
@@ -24883,17 +24887,12 @@ export class RuntimeHost implements LiveHost {
   whatAPieceIsTo(sender: string, agent: string, spelled: string): WhatAPieceIsToIt {
     const row = this.pieceNamed(spelled)
     if (row === null) return { is: 'none' }
+    const there = this.theOneInItsPlace(row.owner) === this.theOneInItsPlace(agent)
+    if (there && this.itWaitsQueuedThere(row)) {
+      return { is: 'queued-there', piece: row.piece, label: row.label, title: row.title }
+    }
     if (row.givenBy !== null && this.theIdsItStandsFor(sender).includes(row.givenBy)) {
-      return {
-        is:
-          this.theOneInItsPlace(row.owner) === this.theOneInItsPlace(agent)
-            ? this.itWaitsQueuedThere(row)
-              ? 'queued-there'
-              : 'given-to-it'
-            : 'given-to-another',
-        piece: row.piece,
-        label: row.label,
-      }
+      return { is: there ? 'given-to-it' : 'given-to-another', piece: row.piece, label: row.label }
     }
     if (this.heldBy(sender).some((one) => one.piece === row.piece)) {
       return { is: row.parent === null ? 'its-root' : 'held', piece: row.piece, label: row.label }
@@ -24904,7 +24903,7 @@ export class RuntimeHost implements LiveHost {
     if (row.owner === sender) {
       return { is: 'held-and-ended', piece: row.piece, label: row.label }
     }
-    return { is: 'none' }
+    return { is: 'known', piece: row.piece, label: row.label }
   }
 
   /**
@@ -28811,9 +28810,8 @@ export class RuntimeHost implements LiveHost {
       .find((one) => one.requestId === input.requestId)
     if (request === undefined || aPersonsSince(request) === null)
       return { outcome: 'refused', reason: MOVE_WORDS.personOnly }
-    const previous = this.deps.store.theDecisionOn(input.sessionId, input.requestId)
-    if (previous?.by?.who === 'a-person' && previous.movedTo !== undefined)
-      return { outcome: 'moved', ...previous.movedTo }
+    const previous = previousMoveDecision(this.deps.store, input.sessionId, asked.move)
+    if (previous !== null) return previous
     if (!REQUEST_IS_OPEN[request.state]) return { outcome: 'refused', reason: MOVE_WORDS.ended }
     if (input.decision === 'here') {
       const response = await this.respondUserInput(
@@ -28822,22 +28820,19 @@ export class RuntimeHost implements LiveHost {
         { kind: 'answer', answers: { answer: DO_IT_HERE } },
         by,
       )
-      return response.outcome === 'taken'
-        ? { outcome: 'here' }
-        : { outcome: 'refused', reason: 'reason' in response ? response.reason : MOVE_WORDS.ended }
+      if (response.outcome === 'taken') return { outcome: 'here' }
+      return (
+        previousMoveDecision(this.deps.store, input.sessionId, asked.move) ?? {
+          outcome: 'refused',
+          reason: 'reason' in response ? response.reason : MOVE_WORDS.ended,
+        }
+      )
     }
     if (input.decision !== 'move') return { outcome: 'refused', reason: MOVE_WORDS.ended }
     const offer = asked.move
     if (offer.destination === input.sessionId)
       return { outcome: 'refused', reason: MOVE_WORDS.hereAlready }
-    if (
-      !this.moveDestinationAvailable(offer.destination) ||
-      !this.withinMessagingReach(
-        offer.destination,
-        { ownerId: agentCallerId(input.sessionId) },
-        input.sessionId,
-      )
-    )
+    if (!this.moveDestinationAvailable(offer.destination))
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     const original = originalMoveRequest(
       this.deps.store,
@@ -28862,14 +28857,7 @@ export class RuntimeHost implements LiveHost {
     const target = this.deps.store.recordedOne(offer.destination)!
     const handed = await recheckHandedPaths(original.event.attachments ?? [], target.cwd)
     if ('refusal' in handed) return { outcome: 'refused', reason: handed.refusal }
-    if (
-      !this.moveDestinationAvailable(offer.destination) ||
-      !this.withinMessagingReach(
-        offer.destination,
-        { ownerId: agentCallerId(input.sessionId) },
-        input.sessionId,
-      )
-    )
+    if (!this.moveDestinationAvailable(offer.destination))
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     if (this.runsNow(offer.destination)) {
       try {
@@ -28939,7 +28927,7 @@ export class RuntimeHost implements LiveHost {
       }
     }
     this.theWorldMoved('work')
-    return { outcome: 'moved', ...recorded.receipt }
+    return recorded.decision
   }
 
   async respondUserInput(
@@ -29050,13 +29038,17 @@ export class RuntimeHost implements LiveHost {
         stillOpen: true,
       }
     }
-    await this.decideAQuestionThisAppAsked(
+    const decided = await this.decideAQuestionThisAppAsked(
       askedBy,
       requestId,
       response.kind === 'answer' ? 'answered' : 'rejected',
       // 🔴 **477** — the escalation chain's last step, and now the ledger says a person took it.
       by,
+      asked.move,
     )
+    if (!decided) {
+      return { outcome: 'refused', reason: MOVE_WORDS.ended, stillOpen: false }
+    }
     // 🔴 **619 · a STRING is one answer, never its characters** — `UserInputResponse.answers` is
     // `Record<string, string | string[]>`, and a single-select card sends the string.
     const said =
@@ -29087,7 +29079,8 @@ export class RuntimeHost implements LiveHost {
     requestId: string,
     outcome: 'answered' | 'rejected',
     by: Caller,
-  ): Promise<void> {
+    move?: MoveOffer,
+  ): Promise<boolean> {
     const key = aQuestionKey(askedBy, requestId)
     this.answeredInThisRun.set(key, outcome)
     try {
@@ -29095,15 +29088,26 @@ export class RuntimeHost implements LiveHost {
       if (slot !== undefined && slot.session === null) {
         await withDeadline(slot.arrived, this.deliveryWaitMs, 'the asking conversation starting')
       }
-      const show = this.writeRecord(askedBy, 'events', () =>
-        this.appendInTheTransaction(askedBy, {
-          type: 'user_decision',
-          requestId,
-          outcome,
-          by: whoDidIt(by),
-        }),
-      )
-      show()
+      const actor = whoDidIt(by)
+      const shows = this.writeRecord(askedBy, 'events', () => {
+        if (move !== undefined) {
+          if (previousMoveDecision(this.deps.store, askedBy, move) !== null) return null
+          return moveOfferDecisions(this.deps.store, askedBy, requestId, move, actor).map((event) =>
+            this.appendInTheTransaction(askedBy, event),
+          )
+        }
+        return [
+          this.appendInTheTransaction(askedBy, {
+            type: 'user_decision',
+            requestId,
+            outcome,
+            by: actor,
+          }),
+        ]
+      })
+      if (shows === null) return false
+      for (const show of shows) show()
+      return true
     } finally {
       this.answeredInThisRun.delete(key)
     }

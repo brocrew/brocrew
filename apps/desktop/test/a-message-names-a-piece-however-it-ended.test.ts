@@ -331,42 +331,35 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
   }
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · F086 · a piece the receiver holds is not the sender's to name
+  // §2 · F086 · a note can name a recorded task
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  it("⛔ §2 · a note naming a piece its RECEIVER holds, which the sender neither holds nor gave, is refused, open and ended; the receiver's giver names it", async () => {
+  it('a note can name a task its receiver holds, both open and ended', async () => {
     const { pmTools, workerTools, helper, helperTools, worker, piece, label, other } =
       await aPmAWorkerAndAHelper()
 
     const fromTheWorker = async (when: string): Promise<void> => {
       const before = sentBy(worker).length
-      const refused = await callOn(workerTools, 'message_agent', {
-        kind: 'note',
+      const sent = await callOn(workerTools, 'message_agent', {
         agent: helper,
         text: `about your piece, ${when}`,
         piece: other.label,
       })
-      expect(refused, `${when}: ${JSON.stringify(refused)}`).toMatchObject({
-        outcome: 'refused',
-        rail: 'no-piece-by-that-name',
-        permanence: 'permanent',
-        detail: { piece: other.label },
+      expect(sent).toMatchObject({
+        outcome: 'ok',
+        kind: 'note',
+        piece: other.piece,
+        label: other.label,
       })
-      expect(sentBy(worker), when).toHaveLength(before)
+      expect(sentBy(worker), when).toHaveLength(before + 1)
     }
 
-    // ⛔ Open: the helper holds it; the worker neither holds nor gave it.
-    const inaccessible = await callOn(workerTools, 'message_agent', {
-      agent: helper,
-      piece: other.label,
-      text: 'Please look at the named task.',
-    })
+    await fromTheWorker('while open')
     const invented = await callOn(workerTools, 'message_agent', {
       agent: helper,
       piece: 'W99999.99999',
       text: 'Please look at the named task.',
     })
-    expect(inaccessible.reason).toBe(invented.reason)
     expect(invented).toMatchObject({ outcome: 'refused', rail: 'no-piece-by-that-name' })
     // ⚑ The twin, one fact over: the worker's note to the helper naming the piece the WORKER holds.
     const own = await callOn(workerTools, 'message_agent', {
@@ -377,7 +370,7 @@ describe('F086 · F087 · F088 · a message names a piece however it ended', () 
     })
     expect(own, JSON.stringify(own)).toMatchObject({ outcome: 'ok', piece, label })
 
-    // The helper answers it: ended, and still not the worker's to name.
+    // The helper answers it and the recorded task remains addressable.
     const replied = await callOn(helperTools, 'reply_to_parent', {
       piece: other.label,
       outcome: 'done',

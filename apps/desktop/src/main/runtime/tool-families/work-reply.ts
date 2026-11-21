@@ -10,7 +10,7 @@ import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { keptResources } from '../agent-tool-answer-words'
 import { SAVED_METHOD_CHARS } from '../../../shared/work-fields'
-import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
+import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import { TASK_OUTCOMES, type TaskOutcome } from '../../../shared/task-contracts'
 import { refuseReply } from '../reply-rails'
 import { outboundOverflowSaid } from '../send-overflow'
@@ -113,11 +113,6 @@ export function createReplyToParentTool(
             !paths.every((one) => typeof one === 'string' && one.length > 0))
         ) {
           problem('resource_paths', 'expected a list of non-empty text paths, or absent')
-        } else if (Array.isArray(paths) && paths.length > MAX_RESOURCES_PER_REPLY) {
-          problem(
-            'resource_paths',
-            `at most ${String(MAX_RESOURCES_PER_REPLY)} files; got ${String(paths.length)}`,
-          )
         }
         if (args.needs_user_action !== undefined && typeof args.needs_user_action !== 'boolean') {
           problem('needs_user_action', 'expected true or false, or absent')
@@ -252,13 +247,10 @@ export function replyFields() {
       .describe(
         'What you saved to your Saved methods from this work: its file name, or none and why, in a few words. Save before you hand back.',
       ),
-    resource_paths: z
-      .array(z.string())
-      .optional()
-      .describe(
-        // 736 · `733` F-4 — the kinds rendered from the store's own list, not asserted.
-        `Files to hand back with the reply, at most ${String(MAX_RESOURCES_PER_REPLY)} — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed and kept as a resource, and the reply carries its id instead of its contents.`,
-      ),
+    resource_paths: z.array(z.string()).optional().describe(
+      // 736 · `733` F-4 — the kinds rendered from the store's own list, not asserted.
+      `Files to hand back with the reply — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed and kept as a resource, and the reply carries its id instead of its contents.`,
+    ),
     result_document: z
       .string()
       .optional()

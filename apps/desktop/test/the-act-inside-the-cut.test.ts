@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { TOOL_SUMMARY_MAX } from '../../../packages/runtime/src/claude/normalize'
 import {
-  A_CONVERSATION_CANNOT_ASK_ITSELF,
   A_FOLDER_COULD_NOT_BE_MADE,
   A_PROVIDER_REFUSED_THE_START,
   A_WAKE_ITS_PROVIDER_REFUSED,
@@ -12,7 +11,6 @@ import {
   A_WAKE_WHOSE_FOLDER_IS_GONE,
   A_WAKE_WHOSE_PROGRAM_COULD_NOT_RUN,
   TOOL_REFUSALS,
-  aMessageAboutAQueuedPiece,
   aStartItsLoginOrSettingsRefused,
   anEndedPieceSaid,
   refuseTool,
@@ -524,13 +522,6 @@ const OVERRIDES: readonly {
       9,
     ),
   },
-  // ⚑ A message about a piece still queued at a service, said with its label.
-  {
-    key: 'TOOL_REFUSALS|that-piece-is-still-queued/its-label',
-    rail: 'that-piece-is-still-queued',
-    spreadAs: 'aMessageAboutAQueuedPiece',
-    sentence: aMessageAboutAQueuedPiece('W3.4.1.2.1.1'),
-  },
   // A take-back or a close that cannot end the copies passed up of the piece's questions, said with
   // its label. Planted with a deep label.
   {
@@ -544,20 +535,6 @@ const OVERRIDES: readonly {
     rail: 'its-questions-could-not-all-be-read',
     spreadAs: 'aPieceNotEndedItsQuestionsUnread',
     sentence: aPieceNotEndedItsQuestionsUnread('W3.4.1.2.1.1', 'work-withdrawn'),
-  },
-  {
-    key: 'TOOL_REFUSALS|that-agent-is-you/an-ask',
-    rail: 'that-agent-is-you',
-    spreadAs: 'A_CONVERSATION_CANNOT_ASK_ITSELF',
-    sentence: A_CONVERSATION_CANNOT_ASK_ITSELF,
-  },
-  {
-    key: 'TOOL_REFUSALS|that-agent-is-you/with-helper-guidance',
-    rail: 'that-agent-is-you',
-    spreadAs: 'aSelfAddressSaid',
-    sentence:
-      refuseTool('that-agent-is-you', { agent: 'sess_self' }).reason +
-      ' W1.2 is your own piece, with no helpers recorded under it. list_agents names conversations; message_agent answers whether one can take your message.',
   },
   ...Object.entries({
     'its-own':
@@ -635,8 +612,6 @@ const ACT: Readonly<Record<string, string>> = {
   'REPLY_RAILS|a-conversation-with-its-questions-is-starting': 'Try again in a moment',
   'REPLY_RAILS|its-questions-could-not-all-be-read': 'Check that record, then retry this call',
   'TOOL_REFUSALS|that-agent-is-you': 'do it yourself — or send it to another agent',
-  'TOOL_REFUSALS|that-agent-is-you/with-helper-guidance':
-    'do it yourself — or send it to another agent',
   // ⚑ **D-016 · commit 3** — `agent-already-has-work-open` went with the one-open-task rail; the
   // stall rule (`SPAWN_RAILS|its-work-has-stalled`) replaced it until a give came to
   // name a stall instead of refusing.
@@ -661,7 +636,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|agent-name-taken': 'Choose a different name, or use the agent that exists',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
   'TOOL_REFUSALS|that-piece-is-still-queued': 'Change its brief with update_work',
-  'TOOL_REFUSALS|that-piece-is-still-queued/its-label': 'Change its brief with update_work',
   'TOOL_REFUSALS|that-piece-was-already-answered':
     'Read the reply first; for genuinely new work, give it with give_work',
   'TOOL_REFUSALS|no-piece-by-that-name': 'Check its label or id with search_work or list_tasks',
@@ -865,8 +839,6 @@ const NO_ACT: Readonly<Record<string, string>> = {
     'restoring availability belongs to a person; this sentence gives the caller no act',
   'TOOL_REFUSALS|theme-invalid':
     'the remedy is in separate problem lines, not an act in this sentence',
-  'TOOL_REFUSALS|that-agent-is-you/an-ask':
-    'a conversation cannot ask itself; no question was recorded',
   'TOOL_REFUSALS|that-piece-was-already-taken-back':
     'what the caller asked for already holds — there is nothing left to do',
   // ⚑ **D-016 · commit 5** — its twin, for a piece the caller closed with `update_work`.

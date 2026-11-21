@@ -26,7 +26,7 @@ import {
 } from './lib/host-fixture'
 
 const PASSED_UP =
-  'It had passed your question up, and a person answered it there. Its answer below is in its own words: it may quote that answer, or say it differently.'
+  'A person answered earlier in this question’s history. The answer below is in the answering conversation’s own words.'
 const INSTEAD = 'instead of that person'
 const CANNOT_TELL = 'This app cannot tell you whether it asked them first.'
 const ROOT_ANSWERER = 'BroBot (the owner of W2)'
@@ -357,14 +357,14 @@ describe('an answer an agent passes down says when a person decided it', () => {
   })
 
   describe('§2 · person answers and historical routes with an agent answerer', () => {
-    it('the asker reads that the agent answered instead of that person, and that this app cannot tell whether it asked them first', async () => {
+    it('identifies the actual answerer on a historical person route', async () => {
       const { pm, worker, piece } = await aPmWithAWorkerOnATask()
       const id = recordHistoricalPersonAsk(worker, piece, pm.id, 'which colour?')
       await answerDown(pm.tools, id, worker, 'blue')
 
       const text = await theAnswerTo(worker, id)
       expect(text).toContain(
-        `${ROOT_ANSWERER} answered the question you asked a person about ${piece}, instead of that person, quoting ${id}. ${CANNOT_TELL}\n\nYou asked: which colour?`,
+        `${ROOT_ANSWERER} answered the question you asked about ${piece}, quoting ${id}.\n\nYou asked: which colour?`,
       )
       expect(text).not.toContain('It had passed your question up')
     })

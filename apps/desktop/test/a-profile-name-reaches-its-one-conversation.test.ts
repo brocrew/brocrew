@@ -296,7 +296,7 @@ describe('a profile name reaches its one conversation', () => {
     })
   })
 
-  it('uses the same refusal for a task outside the sender’s work and an invented task', async () => {
+  it('names a known task outside the sender’s work and refuses an invented task', async () => {
     const { worker, caller, callerTools } = await aWorld()
     const namedMessage = (piece: string) =>
       fullCall(callerTools, 'message_agent', {
@@ -305,14 +305,24 @@ describe('a profile name reaches its one conversation', () => {
         text: 'Always end with one question that checks understanding.',
       })
 
-    const refused = await namedMessage('W1.1')
+    const named = await namedMessage('W1.1')
+    expect(named.structured, named.text).toMatchObject({
+      outcome: 'ok',
+      agent: worker,
+      kind: 'note',
+      label: 'W1.1',
+    })
+    const sent = ledger(caller).filter((event) => event.type === 'message_sent')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({ to: worker, kind: 'note', label: 'W1.1' })
+
+    const refused = await namedMessage('W9.9')
     expect(refused.structured, refused.text).toMatchObject({
       outcome: 'refused',
       rail: 'no-piece-by-that-name',
     })
     expect(refused.text).toMatch(/^Not sent: /)
-    expect((await namedMessage('W9.9')).text).toBe(refused.text)
-    expect(ledger(caller).filter((event) => event.type === 'message_sent')).toEqual([])
+    expect(ledger(caller).filter((event) => event.type === 'message_sent')).toEqual(sent)
 
     const note = await callOn(callerTools, 'message_agent', aNote('W1.1'))
     expect(note, JSON.stringify(note)).toMatchObject({ outcome: 'ok', agent: worker })

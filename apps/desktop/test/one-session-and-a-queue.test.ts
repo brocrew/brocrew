@@ -199,18 +199,16 @@ describe('one session, and the callers who wait', () => {
   const titlesOpenOn = (worker: string): string[] => openPiecesOf(worker).map((one) => one.title)
 
   describe('the second caller', () => {
-    it('a second caller that did not start the worker is told no, by name', async () => {
+    it('a second caller sends a note and starts a separate conversation when giving work', async () => {
       const { worker, firstPiece, secondTools } = await oneWorkerAndTwoCallers()
 
-      const refused = await callOn(secondTools, 'message_agent', {
+      const note = await callOn(secondTools, 'message_agent', {
         kind: 'follow-up',
         agent: worker,
         piece: firstPiece,
         text: 'and mine',
       })
-      expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
-      expect(refused.rail).toBe('no-piece-by-that-name')
-      expect(refused.retryable).toBe(false)
+      expect(note).toMatchObject({ outcome: 'ok', kind: 'note', agent: worker, label: firstPiece })
 
       // Its own give starts a conversation of its own.
       const its = await callOn(secondTools, 'give_work', {

@@ -17,7 +17,6 @@ import {
 import type { ItsProvider, StartedOn } from '../../shared/agent-roster'
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
 import { aConversationTitle } from '../../shared/conversation-title'
-import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
 
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 import { undrivenSentence } from '../../shared/tasks'
@@ -554,7 +553,7 @@ export const giveRequestSchema = z
      * 🔴 **D-016 · files handed over with the work, kept as the piece's inputs** — read from the
      * giver's folder, and kept before anything is written or sent (`RuntimeHost.giveWork`).
      */
-    inputs: z.array(z.string().min(1)).max(MAX_RESOURCES_PER_REPLY).optional(),
+    inputs: z.array(z.string().min(1)).optional(),
     /**
      * 🔴 **D-042 · R4 — the model that conversation runs on, from this piece on** — one in the list
      * a person keeps for its provider. ⚑ The provider never changes.

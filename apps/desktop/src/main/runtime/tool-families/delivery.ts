@@ -93,11 +93,6 @@ export function aTaskChoiceSaid(names: readonly string[], count: number): string
   return `Name the task in piece. You hold ${String(count)}: ${names.join(', ')}${more}. Nothing was changed.`
 }
 
-/** `that-piece-is-still-queued`'s sentence, naming the piece by its label. */
-export function aMessageAboutAQueuedPiece(label: string): string {
-  return `Not sent: ${label} is still queued. Change its brief with update_work.`
-}
-
 /**
  * **The facts a take-back refusal states, per rail** (429).
  *

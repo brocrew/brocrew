@@ -826,29 +826,6 @@ export type AnswerOutcome =
   | { readonly ok: false; readonly refusal: QuestionRefusal | ResourceRefusal }
 
 /**
- * 🔴 **The whole ask door, as a pure function of what the caller HOLDS** (437, criterion 29) —
- * {@link admitAnswer}'s shape pointed the other way.
- *
- * ⛔ **`piece` is `null` when this conversation holds no open piece by that name — never when the
- * piece belongs to somebody else.** The host resolves it among the caller's own holdings — its root,
- * then its open pieces — so the lookup is the entitlement and it has already happened by the time
- * this is called; a caller cannot spell a name that reaches another conversation's work.
- *
- * ⚠️ **{@link noPieceToAskAbout} is the whole door.** Everything else a question could fail on is
- * either not a failure — a parent that is not running still gets a durable routing row and can
- * answer from `list_questions` later, which is `394`'s ruling — or is the tool's own shape check.
- */
-export function admitAsk(
-  piece: { readonly piece: string } | null,
-  /** ⚑ What the caller spelled — `''` when it named none. */
-  named: string,
-  /** ⚑ The labels of the pieces it holds that have reached it (D-022 · R4). */
-  held: readonly string[],
-): QuestionRefusal | null {
-  return piece === null ? noPieceToAskAbout(named, held) : null
-}
-
-/**
  * ⚑ **D-016 · why an ask found no piece, in the word that fits what it SPELLED**: a name it does not
  * hold is `no-open-work-by-that-name`; no name, and several that have reached it (D-022 · R4), is
  * `name-the-piece-you-ask-about` with their labels; no name, and none, is `no-piece-to-ask-about`.
@@ -974,7 +951,7 @@ export function questionText(
   // would be the reworded question this app refuses to let anybody write — so the words above are
   // the asker's, unedited, and everything a hop added is below this line and labelled.
   if (request.context !== undefined && request.context !== null && request.context !== '') {
-    lines.push(`Context added by the conversation that passed it on: ${request.context}`)
+    lines.push(`Additional context recorded with the question: ${request.context}`)
   }
   lines.push(
     ...questionPartWords(request.questions, request.raisedBy === 'this-app'),
@@ -1064,15 +1041,11 @@ export function answerText(
       ? [
           `${who} declined to answer the question you asked${about}, ${quotingTheQuestion(question.id)}`,
         ]
-      : origin === 'asked-of-a-person'
-        ? [
-            `${who} answered the question you asked a person${about}, instead of that person, ${quotingTheQuestion(question.id)} This app cannot tell you whether it asked them first.`,
-          ]
-        : [`${who} answered the question you asked${about}, ${quotingTheQuestion(question.id)}`]
+      : [`${who} answered the question you asked${about}, ${quotingTheQuestion(question.id)}`]
   if (answers === null && said !== null) lines.push(`It said: ${said}`)
   if (answers !== null && origin === 'a-person-answered-it-where-it-was-passed-up') {
     lines.push(
-      'It had passed your question up, and a person answered it there. Its answer below is in its own words: it may quote that answer, or say it differently.',
+      'A person answered earlier in this question’s history. The answer below is in the answering conversation’s own words.',
     )
   }
   lines.push(`You asked: ${question.prompt}`)

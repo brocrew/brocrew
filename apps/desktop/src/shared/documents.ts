@@ -25,19 +25,7 @@
 export const RESOURCE_ROLES = ['input', 'made'] as const
 export type ResourceRole = (typeof RESOURCE_ROLES)[number]
 
-/**
- * ⚑ **D-016 · the most files one call may hand in** — a reply's `resource_paths`, a give's `inputs`
- * and `update_work`'s `resources` — and so the most resource ids a reply's stored report can
- * honestly name, which is how the store bounds one.
- */
-export const MAX_RESOURCES_PER_REPLY = 10
-
-/**
- * 🔴 **D-024 · R3 — the most files `list_tasks` lists of what a profile made.** ⚑ One reply's worth,
- * the same number as {@link MAX_RESOURCES_PER_REPLY}, and a constant of its own because it bounds
- * something else: how many rows a model reads in one answer before a list stops being one. ⛔ The
- * rest are counted, never dropped in silence, and a piece's own record lists all of its resources.
- */
+/** The most files a single list_tasks answer shows. The rest are counted. */
 export const MADE_FILES_LISTED = 10
 
 /**

@@ -24,7 +24,7 @@ import {
   unreadQuestionRowsSentence,
   whenSkipped,
 } from './listings'
-import { theRuleOfAStopForWords, whatBecameOfTheStop } from './delivery'
+import { whatBecameOfTheStop } from './delivery'
 import { type readerFields } from './reader-inputs'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
@@ -170,7 +170,7 @@ export function createAnswerQuestionTool(
     description:
       // **679 · *the id and the asker*** — what the question's own words hand the caller since
       // `679` (`questionText`); *"the id to quote"* was the whole of it while an id named one question.
-      `Answer a question addressed to your conversation, or say you can't, with cannot_answer: why, and who might know. Find the answer however you need — yourself, by asking others, by reading transcripts or by giving work — and answer in your own words. Only the person answers questions and actions addressed to them. If you asked and no longer need it, withdraw your request; withdrawal does not answer it. The app sends you the question, the id to quote and the asked_by beside it. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
+      `Answer a question addressed to your conversation, or say you can't, with cannot_answer: why, and who might know. Find the answer however you need — yourself, by asking others, by reading transcripts or by giving work — and answer in your own words. Only the person answers questions and actions addressed to them. If you asked and no longer need it, withdraw your request; withdrawal does not answer it. The app sends you the question, the id to quote and the asked_by beside it. Hand files with resources. Anything over 2,000 characters arrives as a file the reader is pointed to. By default the asker reads your answer as soon as its turn can stop for it. A turn waiting on an answer or started by the person finishes first. Give interrupt: false to let the current turn finish. Its other questions stay open.`,
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -221,7 +221,7 @@ export function createAnswerQuestionTool(
           .boolean()
           .optional()
           .describe(
-            `false lets the asker finish the turn it is running before it reads your answer — for an answer it can use later; a turn can run for hours. Left out, or true: an asker you started, or one started under it, has its running turn ${ASKED_TO_STOP} so that it reads your answer now, unless that turn waits on someone's answer or a person's own words started it. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. Any other asker reads your answer when its running turn ends, whatever this says.`,
+            `When false, the asker reads your answer after its current turn. Otherwise an eligible turn is asked to stop. Its other questions stay open.`,
           ),
         // **477 · `satisfies` is the rail here, not a tidy-up** — see
         // {@link AnswerQuestionArguments}. An argument through which a model could name who

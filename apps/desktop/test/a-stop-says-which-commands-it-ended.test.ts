@@ -686,8 +686,7 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
   describe('§4 · what each description says a stop ends, per provider', () => {
     const FOR_WORDS =
       'On Claude, the command that turn is waiting on ends with it, and work it sent to the background keeps running; on Codex, the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running.'
-    const FOR_YOUR_ANSWER =
-      'On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running.'
+    const FOR_YOUR_ANSWER = 'Stopping the turn may end a command it started.'
     const EXPLICIT =
       'on Codex, every command that turn started, even one it left running. A command an earlier turn left running keeps running.'
 
@@ -697,7 +696,9 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
       const described = (name: ToolName): string =>
         tools.find((one) => one.name === name)?.description ?? `(no ${name})`
       expect(described('message_agent')).toContain(FOR_WORDS)
-      expect(described('answer_question')).toContain(FOR_WORDS)
+      expect(described('answer_question')).toContain('as soon as its turn can stop for it')
+      expect(described('answer_question')).toContain('Give interrupt: false')
+      expect(described('answer_question')).toContain('Its other questions stay open.')
       expect(described('ask_question')).toContain(FOR_YOUR_ANSWER)
       expect(described('interrupt_agent')).toContain(EXPLICIT)
       // ⛔ …and never the other way round: a stop for words does not end every command.

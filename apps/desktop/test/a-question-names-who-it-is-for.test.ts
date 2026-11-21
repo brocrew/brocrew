@@ -703,7 +703,7 @@ describe('611 · a question names who it is for', () => {
       const asker = { called: host.nameByItsWork(pm), address: host.addressOf(pm) }
       const rendered = questionText(asker, { ...raised!, id: forwarded })
       expect(rendered).toContain('Which cities does he want on the trip?')
-      expect(rendered).toContain('Context added by the conversation that passed it on')
+      expect(rendered).toContain('Additional context recorded with the question')
       expect(rendered).toContain('he has not said, and I cannot guess it')
       // ⛔ **The two are separate paragraphs**, which is what keeps *added* and *asked* tellable
       // apart three hops down.
