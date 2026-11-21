@@ -34,9 +34,7 @@ describe('the person decides an agent’s MCP server request', () => {
     if (result.structured?.outcome === 'refused') {
       const facts = result.structured
       const rail = facts.rail as string
-      const permanence = ['server-already-asked-for', 'too-many-server-requests'].includes(rail)
-        ? 'until-a-person-changes-it'
-        : 'permanent'
+      const permanence = 'permanent'
       expect(facts).toMatchObject({
         outcome: 'refused',
         permanence,
@@ -376,62 +374,46 @@ describe('the person decides an agent’s MCP server request', () => {
     expect(world.store.mcpServerRequestsWaiting()).toEqual([])
   })
 
-  it('refuses duplicate requests with distinct own and other-conversation words', async () => {
-    const url = 'http://127.0.0.1:8765/mcp'
-    const id = await ask(url)
-    const own = await call(args(url))
-    expect(own.structured).toMatchObject({
-      rail: 'server-already-asked-for',
-      detail: { request: id, yours: true },
-    })
-    expect(own.text).toContain(
-      `wait for the person to decide request ${id}, which you made: it is the request already waiting on them to register “fictional-notes”, so nothing new was asked. You will be told when they decide.`,
-    )
+  it('records same-name proposals independently for the person to decide', async () => {
+    const server = await world.server()
+    const first = await ask(server.url)
+    const second = await ask(server.url, { name: 'Fictional-Notes' })
     const other = await world.open(host, 'editor')
-    const theirs = await call(args(url), other)
-    expect(theirs.structured).toMatchObject({
-      rail: 'server-already-asked-for',
-      detail: { request: id, yours: false },
-    })
-    expect(theirs.text).toContain(
-      `wait for the person to decide request ${id}, which another conversation made: it is the request already waiting on them to register “fictional-notes”, so nothing new was asked. If they approve it and you do not get it, ask them with ask_question (a-person) to grant it to your profile.`,
-    )
-    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(1)
+    const third = await ask(server.url, {}, other)
+    expect(new Set([first, second, third]).size).toBe(3)
+    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(3)
+    expect(server.connections).toBe(0)
+    noRegistration()
+
+    expect(await decide(first, false)).toMatchObject({ outcome: 'taken' })
+    await expect.poll(() => ending(first)).toMatchObject({ ending: 'refused' })
+    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(2)
+    noRegistration()
+
+    expect(await decide(second)).toMatchObject({ outcome: 'taken' })
+    await expect.poll(() => ending(second)).toMatchObject({ ending: 'approved' })
+    const registered = world.store.externalMcpServers()
+    expect(registered).toHaveLength(1)
+    expect(await decide(third)).toMatchObject({ outcome: 'refused', stillOpen: false })
+    expect(world.store.externalMcpServers()).toEqual(registered)
   })
 
-  it('admits three from one conversation then refuses the fourth, and releases room when decided', async () => {
-    const ids: string[] = []
-    for (let n = 0; n < 3; n++)
-      ids.push(await ask(`http://127.0.0.1:8765/${n}`, { name: `notes-${n}` }))
-    const denied = await call(args('http://127.0.0.1:8765/more', 'more-notes'))
-    expect(denied.structured).toMatchObject({
-      rail: 'too-many-server-requests',
-      detail: { waiting: 3, from: 'this-conversation' },
-    })
-    expect(denied.text).toContain(
-      'wait until one is decided: 3 server requests from this conversation are already waiting on the person, so nothing was asked.',
-    )
-    await decide(ids[0]!, false)
-    await ask('http://127.0.0.1:8765/more', { name: 'more-notes' })
-    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(3)
+  it('records a fourth proposal while three from the same conversation are pending', async () => {
+    for (let n = 0; n < 4; n++) {
+      await ask(`http://127.0.0.1:8765/${n}`, { name: `notes-${n}` })
+    }
+    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(4)
     noRegistration()
   })
 
-  it('admits twenty globally then refuses one from a conversation below its own cap', async () => {
+  it('records a proposal from a fresh conversation while twenty others are pending', async () => {
     for (let n = 0; n < 20; n++) {
       const session = n < 3 ? asker : await world.open(host, `writer-${n}`)
       await ask(`http://127.0.0.1:8765/${n}`, { name: `notes-${n}` }, session)
     }
     const fresh = await world.open(host, 'fresh-writer')
-    const denied = await call(args('http://127.0.0.1:8765/more', 'more-notes'), fresh)
-    expect(denied.structured).toMatchObject({
-      rail: 'too-many-server-requests',
-      detail: { waiting: 20, from: 'every-conversation' },
-    })
-    expect(denied.text).toContain(
-      'wait until some are decided, then ask again: 20 server requests from agents are already waiting on the person, so nothing was asked.',
-    )
-    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(20)
+    await ask('http://127.0.0.1:8765/more', { name: 'more-notes' }, fresh)
+    expect(world.store.mcpServerRequestsWaiting()).toHaveLength(21)
     noRegistration()
   })
 

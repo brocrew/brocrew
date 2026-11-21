@@ -53,19 +53,6 @@ function aServerRequestRefusal(
           : `a server called “${name}” is already registered`
       return `ask the person with ask_question (a-person) to grant “${name}” to your profile if you need it and do not have it: ${already}, and a request cannot change a registered server, so nothing was asked.`
     }
-    case 'server-already-asked-for': {
-      if (name === null || typeof detail.request !== 'string') return null
-      const asked = `the request already waiting on them to register “${name}”, so nothing new was asked.`
-      return detail.yours === true
-        ? `wait for the person to decide request ${detail.request}, which you made: it is ${asked} You will be told when they decide.`
-        : `wait for the person to decide request ${detail.request}, which another conversation made: it is ${asked} If they approve it and you do not get it, ask them with ask_question (a-person) to grant it to your profile.`
-    }
-    case 'too-many-server-requests': {
-      if (typeof detail.waiting !== 'number') return null
-      return detail.from === 'this-conversation'
-        ? `wait until one is decided: ${String(detail.waiting)} server requests from this conversation are already waiting on the person, so nothing was asked.`
-        : `wait until some are decided, then ask again: ${String(detail.waiting)} server requests from agents are already waiting on the person, so nothing was asked.`
-    }
     case 'no-agent-by-that-name': {
       const agents = Array.isArray(detail.agents) ? detail.agents.map(String) : []
       if (agents.length === 0) return null

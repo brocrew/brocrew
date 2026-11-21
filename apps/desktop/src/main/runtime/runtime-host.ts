@@ -1233,8 +1233,6 @@ import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../..
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
 import { newAskedQuestionId, newMcpServerRequestId, newWorkId } from '../db/ids'
 import {
-  MCP_SERVER_REQUESTS_IN_ALL,
-  MCP_SERVER_REQUESTS_PER_CONVERSATION,
   MCP_SERVER_REQUEST_TOLD,
   theToolsItOffered,
   type McpServerRequestEnding,
@@ -34274,9 +34272,7 @@ export class RuntimeHost implements LiveHost {
    *
    * Refused when a server of that name, or at that address, is registered (a request cannot change
    * one, and a second name for a registered address could reach agents its own registration does
-   * not), when a request for that name already waits, when this conversation already has
-   * {@link MCP_SERVER_REQUESTS_PER_CONVERSATION} waiting or every conversation together
-   * {@link MCP_SERVER_REQUESTS_IN_ALL}, and when an agent it names does not exist.
+   * not), or when an agent it names does not exist.
    */
   requestMcpServer(me: string, said: McpServerAsked): McpServerRequestOutcome {
     const no = (
@@ -34300,22 +34296,6 @@ export class RuntimeHost implements LiveHost {
         name: registered.name,
         ...(registered.name === name ? {} : { address: url }),
       })
-    }
-    const waiting = this.deps.store.mcpServerRequestsWaiting()
-    const sameName = waiting.find((one) => one.requested.name === name)
-    if (sameName !== undefined) {
-      return no('server-already-asked-for', {
-        name,
-        request: sameName.requested.requestId,
-        yours: sameName.conversation === me,
-      })
-    }
-    const fromHere = waiting.filter((one) => one.conversation === me).length
-    if (fromHere >= MCP_SERVER_REQUESTS_PER_CONVERSATION) {
-      return no('too-many-server-requests', { waiting: fromHere, from: 'this-conversation' })
-    }
-    if (waiting.length >= MCP_SERVER_REQUESTS_IN_ALL) {
-      return no('too-many-server-requests', { waiting: waiting.length, from: 'every-conversation' })
     }
     const agents = [...new Set(said.agents.map((one) => foldProfileName(one)))]
     const unknown = agents.filter((one) => this.deps.store.agentIdentityOf(one) === null)

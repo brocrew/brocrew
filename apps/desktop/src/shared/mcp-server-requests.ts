@@ -31,12 +31,6 @@ export const MCP_SERVER_REQUEST_ENDINGS = [
 /** One of {@link MCP_SERVER_REQUEST_ENDINGS}. */
 export type McpServerRequestEnding = (typeof MCP_SERVER_REQUEST_ENDINGS)[number]
 
-/** How many requests one conversation may have waiting on the person at once. */
-export const MCP_SERVER_REQUESTS_PER_CONVERSATION = 3
-
-/** How many requests may wait on the person at once, from every conversation together. */
-export const MCP_SERVER_REQUESTS_IN_ALL = 20
-
 /** The longest address a request may carry, in characters. */
 export const MCP_SERVER_URL_CHARS = 2_048
 
