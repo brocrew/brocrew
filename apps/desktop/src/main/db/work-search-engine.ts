@@ -587,7 +587,10 @@ export class WorkSearchEngine {
         ? undefined
         : store.conversationTitle(id, query.grouped === true ? unread : undefined)
     const { address, title, line, profileFallback } = describeConversationForRead(
-      store, id, service, savedTitle,
+      store,
+      id,
+      service,
+      savedTitle,
     )
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')
