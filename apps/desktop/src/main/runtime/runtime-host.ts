@@ -493,7 +493,7 @@ import {
   labelsSaid,
   takeOnWorkRequestSchema,
   workRequestRefused,
-  doneConditionSchema,
+  doneConditionText,
   workBriefText,
 } from './spawn-rails'
 import type { ListsAsLastRead, ModelRefusal, TheListAsked } from '../connections/model-rails'
@@ -24570,7 +24570,13 @@ export class RuntimeHost implements LiveHost {
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
     const brief = keepSendOverflow(this.deps.resourcesRoot?.(), 'brief', asked.brief)
     if (!brief.ok) return { ok: false, resourceRefusal: brief.refusal }
-    const overflow = brief.overflow
+    const done = keepSendOverflow(
+      this.deps.resourcesRoot?.(),
+      'definition_of_done',
+      asked.definition_of_done,
+    )
+    if (!done.ok) return { ok: false, resourceRefusal: done.refusal }
+    const overflow = [brief.overflow, done.overflow].filter((one) => one !== null)
     const queued = this.itIsAService(session.id)
     const recorded = this.deps.store.atomically(() => {
       parent ??= this.deps.store.ensurePersonalRoot(session.id, this.now())
@@ -24582,11 +24588,11 @@ export class RuntimeHost implements LiveHost {
         label: `${parent.label}.${String(number)}`,
         giver: null,
         title: asked.title,
-        brief: textWithOverflowResource(brief.inline, overflow?.file.resource),
-        definitionOfDone: asked.definition_of_done,
+        brief: textWithOverflowResource(brief.inline, brief.overflow?.file.resource),
+        definitionOfDone: done.inline,
         folder: null,
         givenFolder: null,
-        inputs: inputsWithOverflow(kept.files, overflow === null ? [] : [overflow]),
+        inputs: inputsWithOverflow(kept.files, overflow),
       }
       const messageId = queued ? newQueuedMessageId() : null
       const event: WorkGivenEvent = {
@@ -24650,7 +24656,7 @@ export class RuntimeHost implements LiveHost {
       root: parent!.label,
       notice,
       queued,
-      ...(overflow === null ? {} : { overflow }),
+      ...(overflow.length === 0 ? {} : { overflow }),
     }
   }
 
@@ -25024,7 +25030,7 @@ export class RuntimeHost implements LiveHost {
       if (!read.success) return invalid(read.error.issues.map((issue) => issue.message))
     }
     if (input.definitionOfDone != null) {
-      const read = doneConditionSchema.safeParse(input.definitionOfDone)
+      const read = doneConditionText.safeParse(input.definitionOfDone)
       if (!read.success) return invalid(read.error.issues.map((issue) => issue.message))
     }
     if (input.close && (input.brief !== null || input.definitionOfDone != null))
@@ -25175,7 +25181,19 @@ export class RuntimeHost implements LiveHost {
         ? null
         : keepSendOverflow(this.deps.resourcesRoot?.(), 'brief', input.brief)
     if (brief !== null && !brief.ok) return { ok: false, resourceRefusal: brief.refusal }
+    const done =
+      input.definitionOfDone == null
+        ? null
+        : keepSendOverflow(
+            this.deps.resourcesRoot?.(),
+            'definition_of_done',
+            input.definitionOfDone,
+          )
+    if (done !== null && !done.ok) return { ok: false, resourceRefusal: done.refusal }
     const overflow = brief?.overflow ?? null
+    const doneOverflow = done?.overflow ?? null
+    // A long done condition keeps its first part on the row and its whole text as the kept file.
+    const newCondition = done === null ? null : done.inline
 
     if (input.title !== null) {
       this.writeIntoItsLedger(row.owner, {
@@ -25200,8 +25218,8 @@ export class RuntimeHost implements LiveHost {
     const role: ResourceRole = itsGiver ? 'input' : 'made'
     const at = this.now()
     const written =
-      kept.files.length === 0 && overflow === null
-        ? { rows: [], overflowRow: null }
+      kept.files.length === 0 && overflow === null && doneOverflow === null
+        ? { rows: [], overflowRow: null, doneOverflowRow: null }
         : this.deps.store.atomically(() => ({
             rows: kept.files.map((file) =>
               this.deps.store.addResource(
@@ -25222,6 +25240,10 @@ export class RuntimeHost implements LiveHost {
               overflow === null
                 ? null
                 : this.recordOverflow(named.piece, overflow, caller, at, 'input'),
+            doneOverflowRow:
+              doneOverflow === null
+                ? null
+                : this.recordOverflow(named.piece, doneOverflow, caller, at, 'input'),
           }))
     const rows = written.rows
     // The holder reads the brief's start with a pointer; the whole text is the kept file.
@@ -25232,7 +25254,7 @@ export class RuntimeHost implements LiveHost {
         type: 'work_rebriefed',
         piece: row.piece,
         ...(newBrief === null ? {} : { brief: newBrief }),
-        ...(condition === null ? {} : { definitionOfDone: condition }),
+        ...(newCondition === null ? {} : { definitionOfDone: newCondition }),
         by: caller,
         // ⚑ **D-022 · R1 — the held give it rides**, said once, as the row is written.
         ...(withItsGive && folded?.messageId != null ? { messageId: folded.messageId } : {}),
@@ -25273,7 +25295,7 @@ export class RuntimeHost implements LiveHost {
       const rebriefed = {
         ...folded,
         title: input.title ?? folded.title,
-        ...(condition === null ? {} : { definitionOfDone: condition }),
+        ...(newCondition === null ? {} : { definitionOfDone: newCondition }),
       }
       // 🔴 **D-047 · its giver keeps the brief it gave, whole, in its own ledger** — before the
       // words go, so the row is down before this call answers.
@@ -25312,16 +25334,12 @@ export class RuntimeHost implements LiveHost {
       title: input.title,
       status: newStatus,
       rebriefed: input.brief !== null,
-      definitionOfDone: condition,
+      definitionOfDone: newCondition,
       kept: rows.map((one) => ({ resource: one.resource, name: one.name, role })),
-      ...(overflow === null || written.overflowRow === null
-        ? {}
-        : {
-            overflow: {
-              ...overflow,
-              file: { ...overflow.file, resource: written.overflowRow.resource },
-            },
-          }),
+      ...overflowsKept([
+        [overflow, written.overflowRow],
+        [doneOverflow, written.doneOverflowRow],
+      ]),
       closed,
       // ⚑ At a service, its close notice asks the turn working on it to stop, as a take-back's does.
       askedItsTurnToStop:
@@ -41697,6 +41715,16 @@ function personsCoverage(
             }
   }
   return covers
+}
+
+/** Each long field's kept file, under the resource id its row was given. */
+function overflowsKept(kept: readonly (readonly [SendOverflow | null, ResourceRow | null])[]): {
+  readonly overflow?: readonly SendOverflow[]
+} {
+  const overflow = kept.flatMap(([one, row]) =>
+    one === null || row === null ? [] : [{ ...one, file: { ...one.file, resource: row.resource } }],
+  )
+  return overflow.length === 0 ? {} : { overflow }
 }
 
 function everyRowWasRead(value: unknown): boolean {

@@ -15,7 +15,7 @@ import {
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
 import { DONE, doneWithThePiece, keptResources, tookOnForPerson } from '../agent-tool-answer-words'
-import { DONE_CONDITION_CHARS, WORK_FIELD_WORDS } from '../../../shared/work-fields'
+import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
 import { sendOverflowSaid } from '../send-overflow'
 import { HELD_FORMS_WITH_EXTENSIONS_SAID, MAX_RESOURCES_PER_REPLY } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
@@ -345,7 +345,7 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          'The new done condition, at most 512 characters. The giver may change it, or the holder of person-given work. Omit it to keep the current condition.',
+          'The new done condition. Anything over 2,000 characters arrives as a file the reader is pointed to. The giver may change it, or the holder of person-given work. Omit it to keep the current condition.',
         ),
       brief: z
         .string()
@@ -400,8 +400,6 @@ export function createUpdateWorkTool(
         if (condition !== undefined) {
           if (typeof condition !== 'string' || condition.trim() === '')
             problems.push(WORK_FIELD_WORDS.blank)
-          else if (condition.length > DONE_CONDITION_CHARS)
-            problems.push(WORK_FIELD_WORDS.conditionLimit)
         }
         if (close !== undefined && typeof close !== 'boolean') {
           problems.push(`${UPDATE_CLOSE_ARGUMENT} must be true or false, or absent`)
@@ -550,7 +548,7 @@ export function createUpdateWorkTool(
           ...(updated.kept.length === 0
             ? []
             : [keptResources(updated.kept.map((one) => one.resource))]),
-          ...(updated.overflow === undefined ? [] : [sendOverflowSaid(updated.overflow).trim()]),
+          ...(updated.overflow ?? []).map((one) => sendOverflowSaid(one).trim()),
           ...(updated.closed === null
             ? []
             : [
@@ -688,7 +686,7 @@ export function createTakeOnWorkTool(
                       : 'The giver could not be told.',
                 ]),
             ...(taken.queued ? ['The work is queued.'] : []),
-            ...(taken.overflow === undefined ? [] : [sendOverflowSaid(taken.overflow).trim()]),
+            ...(taken.overflow ?? []).map((one) => sendOverflowSaid(one).trim()),
           ].join(' '),
         )
       }),

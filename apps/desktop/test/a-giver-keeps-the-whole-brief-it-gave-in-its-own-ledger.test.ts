@@ -319,6 +319,37 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       )
     })
 
+    it('keeps a 2,001-character done condition whole as an input and records its first 2,000', async () => {
+      const conversation = await personOpens('pm')
+      await host.send(conversation, 'Please take on this fictional request.', window)
+      const condition = 'f'.repeat(2000) + '!'
+      const tool = agentToolsFor(host, conversation).tools.find(
+        (one) => one.name === 'take_on_work',
+      )!
+
+      const taken = await tool.call({
+        definition_of_done: condition,
+        title: 'Check the long condition',
+        brief: 'Check the fictional plan.',
+      })
+
+      const structured = taken.structured as Record<string, unknown>
+      expect(structured).toMatchObject({ outcome: 'ok' })
+      const piece = structured.piece as string
+      const files = store.resourcesOf(piece).filter((one) => one.name === 'definition-of-done.txt')
+      expect(files).toHaveLength(1)
+      const read = host.readResource(files[0]!.resource)
+      if (!read.ok || read.content.as !== 'file')
+        throw new Error('the kept condition is not readable')
+      expect(readFileSync(read.content.path, 'utf8')).toBe(condition)
+      expect(
+        store.piecesOwnedBy(conversation).find((one) => one.piece === piece)?.definitionOfDone,
+      ).toBe('f'.repeat(2000))
+      expect(taken.text).toContain(
+        `Your definition_of_done was 2,001 characters, so the full text is attached as definition-of-done.txt (${files[0]!.resource}).`,
+      )
+    })
+
     it('refuses when the whole brief cannot be kept, and takes nothing on', async () => {
       const conversation = await personOpens('pm')
       const before = store.piecesOwnedBy(conversation)
@@ -335,6 +366,71 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
       expect(store.piecesOwnedBy(conversation)).toEqual(before)
       expect(events(conversation).filter((event) => event.type === 'work_given')).toEqual([])
     })
+  })
+
+  it.each([513, 2000])(
+    'records a %i-character new done condition whole, with no file',
+    async (length) => {
+      const pm = await aPm()
+      const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
+      const condition = 'c'.repeat(length - 1) + '.'
+
+      const updated = await callOn(pm, 'update_work', {
+        piece: label,
+        definition_of_done: condition,
+      })
+
+      expect(updated).toMatchObject({ outcome: 'ok', label })
+      expect(rowsOf(worker, 'work_rebriefed').at(-1)?.definitionOfDone).toBe(condition)
+      expect(store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.definitionOfDone).toBe(
+        condition,
+      )
+      expect(store.resourcesOf(piece)).toEqual([])
+    },
+  )
+
+  it('keeps a 2,001-character new done condition whole as an input and records its first 2,000', async () => {
+    const pm = await aPm()
+    const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
+    const condition = 'd'.repeat(2000) + '!'
+
+    const updated = await callTimed(pm, 'update_work', {
+      piece: label,
+      definition_of_done: condition,
+    })
+
+    expect(updated.structured).toMatchObject({ outcome: 'ok', label })
+    const files = store.resourcesOf(piece).filter((one) => one.name === 'definition-of-done.txt')
+    expect(files).toHaveLength(1)
+    expect(files[0]!.role).toBe('input')
+    const read = host.readResource(files[0]!.resource)
+    if (!read.ok || read.content.as !== 'file')
+      throw new Error('the kept condition is not readable')
+    expect(readFileSync(read.content.path, 'utf8')).toBe(condition)
+    expect(rowsOf(worker, 'work_rebriefed').at(-1)?.definitionOfDone).toBe('d'.repeat(2000))
+    expect(store.piecesOwnedBy(worker).find((one) => one.piece === piece)?.definitionOfDone).toBe(
+      'd'.repeat(2000),
+    )
+    expect(updated.text).toContain(
+      `Your definition_of_done was 2,001 characters, so the full text is attached as definition-of-done.txt (${files[0]!.resource}).`,
+    )
+  })
+
+  it('refuses a long new done condition whose file cannot be kept, and records nothing of it', async () => {
+    const pm = await aPm()
+    const { worker, piece, label } = await aGive(pm, TITLE, LONG_BRIEF)
+    rmSync(resourcesRoot(userData), { recursive: true, force: true })
+    writeFileSync(resourcesRoot(userData), 'not a folder\n')
+    const rebriefsBefore = rowsOf(worker, 'work_rebriefed')
+
+    const refused = await callOn(pm, 'update_work', {
+      piece: label,
+      definition_of_done: 'e'.repeat(2001),
+    })
+
+    expect(refused).toMatchObject({ outcome: 'refused', rail: 'resource-could-not-be-kept' })
+    expect(rowsOf(worker, 'work_rebriefed')).toEqual(rebriefsBefore)
+    expect(store.resourcesOf(piece)).toEqual([])
   })
 
   it('reads historical over-limit gives and rebriefs whole without applying the new-write cap', () => {

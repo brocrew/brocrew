@@ -55,12 +55,16 @@ describe('work has an explicit bounded done condition', () => {
       expect(schema.safeParse({ ...fields, ...request, brief: 'x'.repeat(2000) }).success).toBe(
         true,
       )
-      const acceptsOverflow = schema === giveRequestSchema
-      for (const condition of ['x'.repeat(513), '😀'.repeat(257)]) {
+      // Both doors keep a long done condition whole as a file instead of refusing it.
+      for (const condition of [
+        'x'.repeat(513),
+        'x'.repeat(2000),
+        'x'.repeat(2001),
+        '😀'.repeat(257),
+      ])
         expect(
           schema.safeParse({ ...fields, ...request, definition_of_done: condition }).success,
-        ).toBe(acceptsOverflow)
-      }
+        ).toBe(true)
       // Both doors keep a long brief whole as a file instead of refusing it.
       expect(schema.safeParse({ ...fields, ...request, brief: 'x'.repeat(2001) }).success).toBe(
         true,
@@ -214,6 +218,84 @@ describe('done conditions replay without changing old work or its state', () => 
     expect(store.rootDoneCondition(root.piece)).toBe(CONDITION)
     expect(store.workThatNames(root.owner)?.definitionOfDone).toBe(CONDITION)
   })
+  /** Reopen the same database with a fresh store, as an app restart reads it. */
+  const reopen = () => {
+    db.close()
+    db = openDatabase(join(folder, 'test.sqlite'))
+    store = createSessionStore(db)
+  }
+  /** Copy a conversation's rows into a new generation and make it the one read, as a rebuild does. */
+  const rebuild = (conversation: string) => {
+    const rows = store.events(conversation)
+    const generation = store.beginGeneration(conversation)
+    store.appendGeneration(
+      conversation,
+      generation,
+      rows.map(({ ordinal, event, at }) => ({ ordinal, event, at })),
+    )
+    const through = Math.max(...rows.map((row) => row.at))
+    expect(
+      store.promoteGeneration(conversation, generation, {
+        normalizerVersion: 1,
+        derivedThrough: through,
+      }),
+    ).toBe(true)
+  }
+
+  it.each([512, 513, 2000])(
+    'reads a %i-character revised condition of a root and of a piece after reopen and rebuild',
+    (length) => {
+      const condition = 'r'.repeat(length - 1) + '.'
+      const root = store.rootOf('fictional-parent')!
+      const { piece } = give(CONDITION)
+      store.append(
+        root.owner,
+        store.nextOrdinal(root.owner),
+        { type: 'work_rebriefed', piece: root.piece, definitionOfDone: condition, by: root.owner },
+        2,
+      )
+      store.append(
+        'fictional-worker',
+        store.nextOrdinal('fictional-worker'),
+        { type: 'work_rebriefed', piece, definitionOfDone: condition, by: 'fictional-parent' },
+        3,
+      )
+      const readsIt = () => {
+        expect(store.rootDoneCondition(root.piece)).toBe(condition)
+        expect(store.workThatNames(root.owner)?.definitionOfDone).toBe(condition)
+        expect(
+          store.piecesOwnedBy('fictional-worker').find((row) => row.piece === piece)
+            ?.definitionOfDone,
+        ).toBe(condition)
+      }
+      readsIt()
+      reopen()
+      readsIt()
+      rebuild(root.owner)
+      rebuild('fictional-worker')
+      readsIt()
+    },
+  )
+
+  it('refuses to write a revised condition over 2,000 characters, and keeps the one before', () => {
+    const root = store.rootOf('fictional-parent')!
+    expect(() =>
+      store.append(
+        root.owner,
+        store.nextOrdinal(root.owner),
+        {
+          type: 'work_rebriefed',
+          piece: root.piece,
+          definitionOfDone: 'x'.repeat(2001),
+          by: root.owner,
+        },
+        2,
+      ),
+    ).toThrow('unread done condition')
+    expect(store.rootDoneCondition(root.piece)).toBeNull()
+    expect(store.workThatNames(root.owner)?.definitionOfDone ?? null).toBeNull()
+  })
+
   it('searches the condition through the bounded real engine and keeps title/result matching', () => {
     const { piece } = give('Only the condition contains ambercheck.')
     const engine = new WorkSearchEngine(join(folder, 'test.sqlite'), () => 10)

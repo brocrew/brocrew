@@ -292,6 +292,7 @@ import {
 } from '../../shared/mcp-server-requests'
 import { formOfName, type ResourceRole } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
+import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 type SpawnedConversation = Omit<SpawnEdge, 'running'>
 
@@ -3647,7 +3648,7 @@ export function createSessionStore(
       payload?.type !== 'work_rebriefed' ||
       payload.piece !== root.id ||
       typeof payload.definitionOfDone !== 'string' ||
-      payload.definitionOfDone.length > 512 ||
+      payload.definitionOfDone.length > WORK_BRIEF_CHARS ||
       payload.definitionOfDone.trim() === ''
     )
       throw new Error('unread done condition')

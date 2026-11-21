@@ -1,7 +1,7 @@
 import type { SendRecipientState, ToolOutcome } from '../../shared/tool-outcome'
 import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
 import type { TaskStallCause } from '../../shared/task-contracts'
-import { DONE_CONDITION_CHARS, WORK_FIELD_WORDS } from '../../shared/work-fields'
+import { WORK_FIELD_WORDS } from '../../shared/work-fields'
 import { refusalReason } from '../../shared/refusals'
 import { isAbsolute, join } from 'node:path'
 import type { GivenFolder } from '../../shared/work-folders'
@@ -416,16 +416,11 @@ export function refuse(rail: SpawnRail, detail: SpawnRefusalDetail = {}): SpawnR
  * one conversation with it runs on, judged at `model-rails.ts`' seam — the list, then the model's
  * efforts.
  */
-const doneConditionText = z
+export const doneConditionText = z
   .string({ error: WORK_FIELD_WORDS.required })
   .refine((value) => value.trim() !== '', WORK_FIELD_WORDS.blank)
 
 export const workBriefText = z.string().refine((value) => value.trim() !== '', 'must say something')
-
-export const doneConditionSchema = doneConditionText.max(
-  DONE_CONDITION_CHARS,
-  WORK_FIELD_WORDS.conditionLimit,
-)
 
 /** What a value sent for a field is, in a word or two. */
 function aValueOf(value: unknown): string {
@@ -582,7 +577,7 @@ export const takeOnWorkRequestSchema = giveRequestSchema
   .pick({ title: true, inputs: true })
   .extend({
     brief: workBriefText,
-    definition_of_done: doneConditionSchema,
+    definition_of_done: doneConditionText,
     piece: z.string().min(1).max(200).optional(),
   })
   .strict()

@@ -159,8 +159,8 @@ export type UpdateWorkOutcome =
         readonly role: ResourceRole
       }[]
 
-      /** The new brief was longer than the inline limit; its whole text is this kept input. */
-      readonly overflow?: SendOverflow
+      /** Fields longer than the inline limit; each one's whole text is a kept input. */
+      readonly overflow?: readonly SendOverflow[]
 
       /** Actual close facts, or null when this call did not close the piece. */
       readonly closed: {
@@ -207,8 +207,8 @@ export type TakeOnWorkOutcome =
       readonly root: string
       readonly notice: 'sent' | 'held' | 'not-delivered' | null
       readonly queued: boolean
-      /** The brief was longer than the inline limit; its whole text is this kept input. */
-      readonly overflow?: SendOverflow
+      /** Fields longer than the inline limit; each one's whole text is a kept input. */
+      readonly overflow?: readonly SendOverflow[]
     }
   | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }
   | {

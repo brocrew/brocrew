@@ -39,7 +39,7 @@ import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 import { isAWorkReport } from '../../shared/tasks'
 import { pieceNumbersOf } from '../../shared/piece-called'
 import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
-import { DONE_CONDITION_CHARS, WORK_BRIEF_CHARS } from '../../shared/work-fields'
+import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 export function toPersistedEvents(
   rows: EventRow[],
@@ -307,8 +307,7 @@ function boundStoredPayloads(event: TranscriptEvent): TranscriptEvent {
     (event.type === 'work_given' || event.type === 'work_rebriefed') &&
     event.definitionOfDone !== undefined &&
     (typeof event.definitionOfDone !== 'string' ||
-      event.definitionOfDone.length >
-        (event.type === 'work_given' ? WORK_BRIEF_CHARS : DONE_CONDITION_CHARS) ||
+      event.definitionOfDone.length > WORK_BRIEF_CHARS ||
       event.definitionOfDone.trim() === '')
   )
     throw new Error('unread done condition')
