@@ -4920,6 +4920,8 @@ export class RuntimeHost implements LiveHost {
         readonly stamp: WindowWriterStamp
         readonly read: Promise<WindowReadResult>
         readonly floor?: ListingReadFloor
+        /** Whether the worker was asked to reuse folds it kept from an earlier snapshot. */
+        readonly reused: boolean
       }
     | undefined
   private windowRoutesKept:
@@ -4934,6 +4936,8 @@ export class RuntimeHost implements LiveHost {
         readonly stamp: WindowWriterStamp
         readonly read: Promise<WindowReadResult>
         readonly floor?: ListingReadFloor
+        /** Whether the worker was asked to reuse folds it kept from an earlier snapshot. */
+        readonly reused: boolean
       }
     | undefined
   private windowListingKept:
@@ -4948,6 +4952,8 @@ export class RuntimeHost implements LiveHost {
         readonly stamp: WindowWriterStamp
         readonly read: Promise<WindowReadResult>
         readonly floor?: ListingReadFloor
+        /** Whether the worker was asked to reuse folds it kept from an earlier snapshot. */
+        readonly reused: boolean
       }
     | undefined
   /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
@@ -15601,6 +15607,7 @@ export class RuntimeHost implements LiveHost {
       let pending: Promise<WindowReadResult>
       let origin = before
       let floor: ListingReadFloor | undefined
+      let reused: boolean
       if (reusable) {
         const key =
           query.kind === 'incidents'
@@ -15619,7 +15626,8 @@ export class RuntimeHost implements LiveHost {
                   read: ++this.windowListingRead,
                 }
               : undefined
-          shared = { stamp: before, floor, read: reader.read(requested()) }
+          const asked = requested()
+          shared = { stamp: before, floor, read: reader.read(asked), reused: 'reuse' in asked }
           this[key] = shared
           const owned = shared
           // Settled before any caller's wait resumes, so they all find the failure remembered.
@@ -15636,7 +15644,12 @@ export class RuntimeHost implements LiveHost {
         pending = shared.read
         origin = shared.stamp
         floor = shared.floor
-      } else pending = reader.read(requested(), signal)
+        reused = shared.reused
+      } else {
+        const asked = requested()
+        reused = 'reuse' in asked
+        pending = reader.read(asked, signal)
+      }
       let result: WindowReadResult
       try {
         result = await this.waitForWindowRead(pending, signal)
@@ -15671,7 +15684,17 @@ export class RuntimeHost implements LiveHost {
         Number.isFinite(after.at) &&
         origin.at <= before.at &&
         before.at <= after.at
+      // A worker that reused its kept folds answers an owner rewritten after `origin` from them, so
+      // its overtaken snapshot is composed only when the writer appended and rewrote no owner.
+      const changedOwners = this.deps.windowWriterStamp?.changedOwners
+      const rewritten =
+        reused &&
+        after !== null &&
+        changedOwners !== undefined &&
+        !sameWindowWriter(origin, after) &&
+        changedOwners(origin, after)?.length !== 0
       if (query.kind === 'listing' && oneWriter) {
+        if (rewritten) continue
         this.windowListingKept = { stamp: origin, result, floor }
         return compose(result, floor, !sameWindowWriter(origin, after))
       }
@@ -15679,7 +15702,10 @@ export class RuntimeHost implements LiveHost {
       // A writer that moves during every read still gets the last snapshot, kept under its origin
       // so the next read asks again; a refused publication would ask again at once. Leads alone
       // stay refused: a thread reopened from them must not miss a row, and reopens without them.
-      if (current || (query.kind !== 'leads' && oneWriter && attempt === (joinOnly ? 0 : 1))) {
+      if (
+        current ||
+        (query.kind !== 'leads' && oneWriter && !rewritten && attempt === (joinOnly ? 0 : 1))
+      ) {
         const stamp = current ? after! : origin
         if (query.kind === 'routes') this.windowRoutesKept = { stamp, result }
         if (query.kind === 'incidents') {

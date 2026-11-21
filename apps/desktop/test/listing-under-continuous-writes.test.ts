@@ -59,10 +59,8 @@ it('shows the conversation list while a writer moves after every consistent snap
     expect(read).toHaveBeenCalledTimes(4)
     await host.listConversations()
     expect(read).toHaveBeenCalledTimes(4)
-    expect(read.mock.calls[3]![0]).toMatchObject({
-      kind: 'listing',
-      reuse: { changed: ['fictional-root'] },
-    })
+    // The writer only appended, so the worker carries its kept folds forward: no owner is named.
+    expect(read.mock.calls[3]![0]).toMatchObject({ kind: 'listing', reuse: { changed: [] } })
 
     read.mockImplementation(async (query) => {
       const result = engine.read(query)

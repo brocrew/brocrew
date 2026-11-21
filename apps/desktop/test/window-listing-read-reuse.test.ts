@@ -127,9 +127,10 @@ it('carries the last worker fold token across listing and routing reads', async 
         expect.objectContaining({ sessionId: 'beta' }),
       ]),
     )
+    // An appended retitle is carried forward from the kept fold, so it names no owner.
     expect(read.mock.calls.at(-1)![0]).toEqual({
       kind: 'listing',
-      reuse: { token: routingToken, changed: ['alpha'] },
+      reuse: { token: routingToken, changed: [] },
     })
     const listingToken = tokens.at(-1)!
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
@@ -169,7 +170,7 @@ it('passes the fold token of a read a writer overtook on to the next read', asyn
     expect(read).toHaveBeenCalledTimes(2)
     expect(read.mock.calls[1]![0]).toEqual({
       kind: 'routes',
-      reuse: { token: expect.any(String), changed: ['alpha'] },
+      reuse: { token: expect.any(String), changed: [] },
     })
   } finally {
     await host.closeAll()

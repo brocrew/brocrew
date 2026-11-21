@@ -128,10 +128,16 @@ export function readWindowWork(
   listingOnly = false,
   projected: ReadonlyMap<string, WindowPieces> = new Map(),
 ): WindowWorkReading {
+  // The ledgers are found one index step each, not by walking every row of every ledger.
   const ids = db
     .prepare(
-      `SELECT id FROM provider_session
-    UNION SELECT DISTINCT session_id AS id FROM events
+      `WITH RECURSIVE ledger(id) AS (
+      SELECT (SELECT min(session_id) FROM events)
+      UNION ALL SELECT (SELECT min(session_id) FROM events WHERE session_id > ledger.id)
+        FROM ledger WHERE ledger.id IS NOT NULL
+    )
+    SELECT id FROM provider_session
+    UNION SELECT id FROM ledger WHERE id IS NOT NULL
     UNION SELECT owner_session_id AS id FROM work
     UNION SELECT given_by_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL`,
     )

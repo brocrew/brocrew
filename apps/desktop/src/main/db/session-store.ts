@@ -2614,7 +2614,8 @@ export function createSessionStore(
                FROM events
         INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ?
-        AND type IN ('user_input_request', 'question_asked'))
+        AND type IN ('user_input_request', 'question_asked')
+        AND ordinal > ?)
       ORDER BY ordinal`,
   )
   // Whether a question row was written after a kept fold of the questions.
@@ -2834,6 +2835,13 @@ export function createSessionStore(
       ORDER BY ordinal LIMIT ?`,
   )
   theFoldIndexHolds(selectMessagesWaitingIn)
+  const selectMessagesMoved = db.prepare(
+    `SELECT 1 FROM events INDEXED BY events_kind_owner_idx
+      WHERE ${FOLD_TERM} AND session_id = @session AND generation = @generation
+        AND type IN ('message_queued', 'message_unqueued') AND ordinal > @after
+      LIMIT 1`,
+  )
+  theFoldIndexHolds(selectMessagesMoved)
   const queueEndingStillApplies = (
     endedAt: number | undefined,
     queuedAt: number,
@@ -3380,12 +3388,216 @@ export function createSessionStore(
   const routedRequestsAtHand = (sessionId: string) =>
     routedRequestsKeptOnly(sessionId)?.answer ?? null
   const questionsRaisedAtHand = theKeptOnly(foldQuestionsRaisedInSession)
+  const questionState = ({ piece, raisedBy }: RaisedQuestion) => ({ piece, raisedBy })
   const questionStatesInSession = keptUntilItsLedgerGrows(
-    (sessionId, noteSkip) =>
-      readRaisedQuestions(sessionId, noteSkip, ({ piece, raisedBy }) => ({ piece, raisedBy })),
-    undefined,
+    (sessionId, noteSkip) => readRaisedQuestions(sessionId, noteSkip, questionState),
+    // The newest row of a question names its state: appended rows are read on top of the kept map.
+    (sessionId, generation, after, held) => {
+      let readable = true
+      const rows = selectQuestionsRaised.iterate(sessionId, generation, after)
+      const added = wordsIn(
+        sessionId,
+        rows as Iterable<RaisedQuestionRow>,
+        () => {
+          readable = false
+        },
+        questionState,
+      )
+      if (!readable) return null
+      return added.size === 0 ? held : new Map([...held, ...added])
+    },
     'question-states',
   )
+
+  // Every conversation's messages are read for each window incident read: a window snapshot keeps
+  // them until the ledger grows.
+  const messagesWaitingKept = keptUntilItsLedgerGrows(
+    (sessionId, noteSkip) => foldMessagesWaitingIn(sessionId, noteSkip),
+    // A ledger that grew by rows other than messages leaves what is waiting as it was.
+    (session, generation, after, held) =>
+      selectMessagesMoved.get({ session, generation, after }) === undefined ? held : null,
+    'messages',
+  )
+
+  type ReconciliationReading = ReturnType<SessionStore['reconciliationPieces']>
+  type ReconciliationCutRead = number | null | undefined | 'unread'
+  /**
+   * One conversation's incident pieces, with the turn and cut they were read at and the pieces at
+   * that cut (`null` when unread there); what drove the turn is read from them on each use.
+   */
+  interface ReconciliationKept {
+    readonly pieces: readonly PieceRow[]
+    readonly newestTurn: string | null
+    readonly before: ReconciliationCutRead
+    readonly atTheCut: readonly PieceRow[] | null
+  }
+
+  function reconciliationCutOrUnread(owner: string, turn: string): ReconciliationCutRead {
+    try {
+      return reconciliationCut(owner, turn)
+    } catch {
+      return 'unread'
+    }
+  }
+
+  function foldReconciliationPieces(owner: string, noteSkip?: SkipNote): ReconciliationKept {
+    const newestTurn = theNewestTurn(owner)
+    const before = newestTurn === null ? null : reconciliationCutOrUnread(owner, newestTurn)
+    if (before === null || before === 'unread')
+      return { pieces: piecesOfSession(owner, noteSkip), newestTurn, before, atTheCut: null }
+    let complete = true
+    const skipped: SkipNote = (ordinal, cause) => {
+      complete = false
+      noteSkip?.(ordinal, cause)
+    }
+    let atTheCut: readonly PieceRow[] | null = null
+    const pieces =
+      before === undefined
+        ? piecesOfSession(owner, skipped)
+        : foldPiecesOfSession(owner, skipped, false, undefined, undefined, {
+            before,
+            read: (cut) => {
+              atTheCut = cut
+            },
+          })
+    if (before === undefined && complete) atTheCut = pieces
+    return { pieces, newestTurn, before, atTheCut }
+  }
+
+  function reconciliationReading(owner: string, kept: ReconciliationKept): ReconciliationReading {
+    const { pieces, newestTurn, before, atTheCut } = kept
+    if (newestTurn === null || before === null) return { pieces, newestTurn, driven: [] }
+    if (before === 'unread' || atTheCut === null) return { pieces, newestTurn, driven: null }
+    try {
+      return {
+        pieces,
+        newestTurn,
+        driven: piecesThatDrove(owner, atTheCut, recordedTurnOpeningOf(owner, newestTurn)),
+      }
+    } catch {
+      // The current pieces remain usable when the separate historical fact is unread.
+      return { pieces, newestTurn, driven: null }
+    }
+  }
+
+  /**
+   * Rows appended after the turn's cut leave the pieces at that cut as they were: while the newest
+   * turn and its cut stay, only the current pieces are read again, from their own kept fold.
+   */
+  function carryTheReconciliationForward(
+    owner: string,
+    _generation: number,
+    _after: number,
+    held: ReconciliationKept,
+  ): ReconciliationKept | null {
+    const newestTurn = theNewestTurn(owner)
+    const before = newestTurn === null ? null : reconciliationCutOrUnread(owner, newestTurn)
+    if (newestTurn !== held.newestTurn || before !== held.before) return null
+    let complete = true
+    const pieces = piecesOfSession(owner, () => {
+      complete = false
+    })
+    if (!complete) return null
+    return { ...held, pieces, atTheCut: before === undefined ? pieces : held.atTheCut }
+  }
+
+  // Each window incident read folds every conversation that ever held work: a window snapshot keeps
+  // it until the ledger grows, used only while its newest turn and cut are still the ones it read.
+  const reconciliationPiecesKept = keptUntilItsLedgerGrows(
+    foldReconciliationPieces,
+    carryTheReconciliationForward,
+    'reconciliation',
+  )
+
+  function recordedTurnOpeningOf(sessionId: string, turnId: string): UserTurnEvent | null {
+    const generation = activeGeneration(sessionId)
+    const owned = (selectTurnOwned ??= db.prepare(
+      'SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?',
+    )).get(turnId, sessionId, generation)
+    if (owned === undefined) return null
+    const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as ExchangeRow | undefined
+    if (row === undefined || row.payload === null) return null
+    const event = aStoredObject(row.payload)
+    if (event?.type !== 'user_turn' || typeof event.text !== 'string')
+      throw new Error('unread turn opening')
+    return event as unknown as UserTurnEvent
+  }
+
+  function foldMessagesWaitingIn(
+    sessionId: string,
+    noteSkip: SkipNote | undefined,
+    maximumRows?: number,
+  ): ReturnType<SessionStore['messagesWaitingIn']> {
+    const bound = maximumRows === undefined ? Number.MAX_SAFE_INTEGER : maximumRows + 1
+    const read = selectMessagesWaitingIn.all(sessionId, sessionId, bound) as {
+      type: string
+      ordinal: number
+      created_at: number
+      valid: number
+      message_id: unknown
+      payload: string | null
+    }[]
+    if (maximumRows !== undefined && read.length > maximumRows) {
+      noteSkip?.(THE_WHOLE_LEDGER)
+      return []
+    }
+    for (const row of read) {
+      if (row.valid !== 1 || !isAStoredId(row.message_id)) {
+        noteSkip?.(row.ordinal)
+      }
+    }
+    const ended = new Map<unknown, number>()
+    let lastTornEnding = -Infinity
+    for (const row of read) {
+      if (row.type !== 'message_unqueued') continue
+      if (row.valid === 1) ended.set(row.message_id, row.ordinal)
+      else lastTornEnding = Math.max(lastTornEnding, row.ordinal)
+    }
+    const rows = read.filter(
+      (row): row is typeof row & { payload: string } =>
+        row.type === 'message_queued' &&
+        row.valid === 1 &&
+        row.message_id !== null &&
+        row.payload !== null &&
+        lastTornEnding <= row.ordinal,
+    )
+    return rows.flatMap((row) => {
+      const stored = aStoredObject(row.payload)
+      const messageId = stored?.messageId
+      if (stored === null || typeof messageId !== 'string') return []
+      if (queueEndingStillApplies(ended.get(messageId), row.ordinal, stored)) return []
+      const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
+      const piece = isAStoredId(stored.piece) ? stored.piece : null
+      const label =
+        piece !== null && typeof stored.label === 'string' && pieceNumbersOf(stored.label) !== null
+          ? stored.label
+          : null
+      const holder = providerFailureHolderStoredOn(
+        stored.kind,
+        stored.appNotice,
+        stored.providerFailureHolder,
+      )
+      return [
+        {
+          messageId,
+          kind: isMailboxKind(stored.kind) ? stored.kind : 'work',
+          text: typeof stored.text === 'string' ? stored.text : '',
+          attachments: attachmentsStoredOn(row.payload).attachments ?? [],
+          authorship: authorshipStoredOn(row.payload),
+          at: row.created_at,
+          ...(piece === null ? {} : { piece }),
+          ...(label === null ? {} : { label }),
+          ...(piece !== null && stored.rebrief === true ? { rebrief: true as const } : {}),
+          ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
+          ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
+          ...(holder === undefined ? {} : { providerFailureHolder: holder }),
+          ...(theQuestionItAsks(stored.asks) ?? {}),
+          ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
+          ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
+        },
+      ]
+    })
+  }
 
   /** One ledger's pieces, and where their fold stood after its last row, to carry it forward. */
   interface PiecesKept {
@@ -3519,21 +3731,24 @@ export function createSessionStore(
 
   const pieceFoldFloors = new Map<string, { readonly generation: number; readonly floor: number }>()
 
+  // Prepared on first use, once per store: a window read asks for every conversation's cut.
+  let selectTurnEnding: AppStatement | undefined
+  let selectTurnOwned: AppStatement | undefined
+  let selectNewestRecovery: AppStatement | undefined
+
   /** `null` is a foreign/old turn; `undefined` is a current turn with no terminal yet. */
   function reconciliationCut(owner: string, turn: string): number | null | undefined {
     const current = activeGeneration(owner)
-    const ending = db
-      .prepare(
-        `SELECT e.ordinal FROM events e JOIN turn t ON t.id = e.turn_id
+    const ending = (selectTurnEnding ??= db.prepare(
+      `SELECT e.ordinal FROM events e JOIN turn t ON t.id = e.turn_id
         WHERE t.session_id = ? AND t.id = ? AND t.generation = ?
           AND (e.type = 'turn' OR (e.type = 'status' AND json_valid(e.payload)
             AND json_extract(e.payload, '$.state') IN ('idle', 'ended', 'errored')))
         ORDER BY e.ordinal LIMIT 1`,
-      )
-      .get(owner, turn, current) as { ordinal: number } | undefined
-    const known = db
-      .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
-      .get(turn, owner, current)
+    )).get(owner, turn, current) as { ordinal: number } | undefined
+    const known = (selectTurnOwned ??= db.prepare(
+      'SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?',
+    )).get(turn, owner, current)
     return known === undefined ? null : ending?.ordinal
   }
 
@@ -3855,6 +4070,7 @@ export function createSessionStore(
     const rows = selectQuestionsRaised.all(
       sessionId,
       activeGeneration(sessionId),
+      Number.NEGATIVE_INFINITY,
     ) as RaisedQuestionRow[]
     return readOrSkip(sessionId, noteSkip, new Map<string, RaisedQuestion>(), () =>
       wordsIn(sessionId, rows, noteSkip, (question) => question),
@@ -3872,6 +4088,7 @@ export function createSessionStore(
         selectQuestionsRaised.iterate(
           sessionId,
           activeGeneration(sessionId),
+          Number.NEGATIVE_INFINITY,
         ) as Iterable<RaisedQuestionRow>,
         noteSkip,
         project,
@@ -4288,14 +4505,16 @@ export function createSessionStore(
     if (row === undefined || (source !== undefined && row.type !== source)) return null
     const asked = readOrSkip(sessionId, noteSkip, null, () => actorOfTheAsk(row))
     if (asked === null) return null
-    const closed = selectLastClosedTurn.get(sessionId, generation) as ClosedTurnRow | undefined
-    const open = selectOpenTurn.get(sessionId, generation) as OpenTurnRow | undefined
+    // Each turn is read only when the answer turns on it: the open one can be a long walk.
+    const closed = () =>
+      selectLastClosedTurn.get(sessionId, generation) as ClosedTurnRow | undefined
+    const open = () => selectOpenTurn.get(sessionId, generation) as OpenTurnRow | undefined
     const turn: WhereAnAskLanded =
       row.turn_id === null
         ? 'no-turn-was-running'
-        : row.turn_id === closed?.id
+        : row.turn_id === closed()?.id
           ? 'the-turn-that-ended-last'
-          : row.turn_id === open?.id
+          : row.turn_id === open()?.id
             ? 'a-turn-that-is-running-now'
             : 'a-turn-that-ended-earlier'
     return { ...asked, at: row.created_at, turn }
@@ -4964,11 +5183,25 @@ export function createSessionStore(
     }
   }
 
+  // One snapshot's work rows never change, so a window read walks each chain once.
+  const chainsWalked = oneSnapshot ? new Map<string, readonly WorkDbRow[]>() : undefined
+  // …and names each piece a conversation holds once, however many pieces below it ask.
+  const namesRead = oneSnapshot
+    ? new Map<string, { readonly label: string; readonly title: string | null }>()
+    : undefined
   const chainUp = (row: WorkDbRow): readonly WorkDbRow[] => {
+    const walked = chainsWalked?.get(row.id)
+    if (walked !== undefined) return walked
     const chain = [row]
     const seen = new Set([row.id])
     let parent = row.parent_id
     while (parent !== null) {
+      // A parent walked before ended in a root, so the rows above it are its chain.
+      const above = chainsWalked?.get(parent)
+      if (above !== undefined) {
+        chain.push(...above)
+        break
+      }
       if (seen.has(parent)) throw new Error(`the pieces above ${row.id} do not end in a root`)
       seen.add(parent)
       const up = workSql().byId.get(parent) as WorkDbRow | undefined
@@ -4976,6 +5209,7 @@ export function createSessionStore(
       chain.push(up)
       parent = up.parent_id
     }
+    chainsWalked?.set(row.id, chain)
     return chain
   }
 
@@ -5969,18 +6203,7 @@ export function createSessionStore(
     },
 
     recordedTurnOpening(sessionId, turnId) {
-      const generation = activeGeneration(sessionId)
-      const owned = db
-        .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
-        .get(turnId, sessionId, generation)
-      if (owned === undefined) return null
-      const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as
-        ExchangeRow | undefined
-      if (row === undefined || row.payload === null) return null
-      const event = aStoredObject(row.payload)
-      if (event?.type !== 'user_turn' || typeof event.text !== 'string')
-        throw new Error('unread turn opening')
-      return event as unknown as UserTurnEvent
+      return recordedTurnOpeningOf(sessionId, turnId)
     },
 
     ensurePersonalRoot(sessionId, at) {
@@ -6138,77 +6361,9 @@ export function createSessionStore(
     providerLimitsSeen,
     readAheadProviderWalls,
     messagesWaitingIn(sessionId, unread, maximumRows) {
-      const bound = maximumRows === undefined ? Number.MAX_SAFE_INTEGER : maximumRows + 1
-      const read = selectMessagesWaitingIn.all(sessionId, sessionId, bound) as {
-        type: string
-        ordinal: number
-        created_at: number
-        valid: number
-        message_id: unknown
-        payload: string | null
-      }[]
-      if (maximumRows !== undefined && read.length > maximumRows) {
-        unread?.in(sessionId)(THE_WHOLE_LEDGER)
-        return []
-      }
-      for (const row of read) {
-        if (row.valid !== 1 || !isAStoredId(row.message_id)) {
-          unread?.in(sessionId)(row.ordinal)
-        }
-      }
-      const ended = new Map<unknown, number>()
-      let lastTornEnding = -Infinity
-      for (const row of read) {
-        if (row.type !== 'message_unqueued') continue
-        if (row.valid === 1) ended.set(row.message_id, row.ordinal)
-        else lastTornEnding = Math.max(lastTornEnding, row.ordinal)
-      }
-      const rows = read.filter(
-        (row): row is typeof row & { payload: string } =>
-          row.type === 'message_queued' &&
-          row.valid === 1 &&
-          row.message_id !== null &&
-          row.payload !== null &&
-          lastTornEnding <= row.ordinal,
-      )
-      return rows.flatMap((row) => {
-        const stored = aStoredObject(row.payload)
-        const messageId = stored?.messageId
-        if (stored === null || typeof messageId !== 'string') return []
-        if (queueEndingStillApplies(ended.get(messageId), row.ordinal, stored)) return []
-        const unansweredQuestion = theQuestionItAsks(stored.unansweredQuestion)?.asks
-        const piece = isAStoredId(stored.piece) ? stored.piece : null
-        const label =
-          piece !== null &&
-          typeof stored.label === 'string' &&
-          pieceNumbersOf(stored.label) !== null
-            ? stored.label
-            : null
-        const holder = providerFailureHolderStoredOn(
-          stored.kind,
-          stored.appNotice,
-          stored.providerFailureHolder,
-        )
-        return [
-          {
-            messageId,
-            kind: isMailboxKind(stored.kind) ? stored.kind : 'work',
-            text: typeof stored.text === 'string' ? stored.text : '',
-            attachments: attachmentsStoredOn(row.payload).attachments ?? [],
-            authorship: authorshipStoredOn(row.payload),
-            at: row.created_at,
-            ...(piece === null ? {} : { piece }),
-            ...(label === null ? {} : { label }),
-            ...(piece !== null && stored.rebrief === true ? { rebrief: true as const } : {}),
-            ...(isAStoredId(stored.drives) ? { drives: stored.drives } : {}),
-            ...(isAStoredId(stored.about) ? { about: stored.about } : {}),
-            ...(holder === undefined ? {} : { providerFailureHolder: holder }),
-            ...(theQuestionItAsks(stored.asks) ?? {}),
-            ...(unansweredQuestion === undefined ? {} : { unansweredQuestion }),
-            ...(isAStoredId(stored.messageAct) ? { messageAct: stored.messageAct } : {}),
-          },
-        ]
-      })
+      return oneSnapshot && maximumRows === undefined
+        ? messagesWaitingKept(sessionId, unread?.in(sessionId))
+        : foldMessagesWaitingIn(sessionId, unread?.in(sessionId), maximumRows)
     },
 
     startupRepairOwners(phase) {
@@ -6340,12 +6495,10 @@ export function createSessionStore(
       })
     },
     reconciliationRecovery(owner) {
-      const row = db
-        .prepare(
-          `SELECT payload FROM events WHERE session_id = ? AND type = 'work_recovery'
+      const row = (selectNewestRecovery ??= db.prepare(
+        `SELECT payload FROM events WHERE session_id = ? AND type = 'work_recovery'
         ORDER BY generation DESC, ordinal DESC LIMIT 1`,
-        )
-        .get(owner) as { payload: string } | undefined
+      )).get(owner) as { payload: string } | undefined
       if (row === undefined) return null
       const read = workRecoveryEvent(JSON.parse(row.payload))
       if (read === null) throw new Error('a recovery receipt could not be read')
@@ -6364,43 +6517,18 @@ export function createSessionStore(
       return piecesThatDrove(owner, folded, this.recordedTurnOpening(owner, turn))
     },
     reconciliationPieces(owner, unread) {
-      const newestTurn = this.theNewestTurn(owner)
-      if (newestTurn === null)
-        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: [] }
-      let before: number | null | undefined
-      try {
-        before = reconciliationCut(owner, newestTurn)
-      } catch {
-        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: null }
-      }
-      if (before === null)
-        return { pieces: piecesOfSession(owner, unread?.in(owner)), newestTurn, driven: [] }
-      let complete = true
-      const skipped: SkipNote = (ordinal, cause) => {
-        complete = false
-        unread?.in(owner)(ordinal, cause)
-      }
-      let atTheCut: readonly PieceRow[] | null = null
-      const pieces =
-        before === undefined
-          ? piecesOfSession(owner, skipped)
-          : foldPiecesOfSession(owner, skipped, false, undefined, undefined, {
-              before,
-              read: (cut) => {
-                atTheCut = cut
-              },
-            })
-      if (before === undefined && complete) atTheCut = pieces
-      let driven: readonly string[] | null = null
-      if (atTheCut !== null) {
-        try {
-          driven = piecesThatDrove(owner, atTheCut, this.recordedTurnOpening(owner, newestTurn))
-        } catch {
-          // The current pieces remain usable when the separate historical fact is unread.
-        }
-      }
-      return { pieces, newestTurn, driven }
+      if (!oneSnapshot)
+        return reconciliationReading(owner, foldReconciliationPieces(owner, unread?.in(owner)))
+      const newestTurn = theNewestTurn(owner)
+      const before = newestTurn === null ? null : reconciliationCutOrUnread(owner, newestTurn)
+      const kept = reconciliationPiecesKept(owner, unread?.in(owner))
+      if (kept.newestTurn === newestTurn && kept.before === before)
+        return reconciliationReading(owner, kept)
+      // A turn moved without a fold row: what was kept is read again, and kept in its place.
+      reconciliationPiecesKept.forget(owner)
+      return reconciliationReading(owner, reconciliationPiecesKept(owner, unread?.in(owner)))
     },
+
     reconciliationReceipts(owner, piece) {
       if (selectUnreadReconciliationReceipt.get(owner) !== undefined)
         throw new Error('an incident receipt could not be read')
@@ -6630,7 +6758,11 @@ export function createSessionStore(
       if (mine === undefined) {
         return theWorkThatNamesItAmong(piecesForAName(conversation, generation, unread))
       }
-      return { label: workRowWalked(mine).label, title: titleNow(mine, generation) }
+      const read = namesRead?.get(mine.id)
+      if (read !== undefined) return read
+      const named = { label: workRowWalked(mine).label, title: titleNow(mine, generation) }
+      namesRead?.set(mine.id, named)
+      return named
     },
 
     childrenOf(piece, after = 0, limit = -1) {
@@ -7118,7 +7250,13 @@ export function createSessionStore(
     },
 
     workReportedTo(sessionId) {
-      return stallsToldToSession(sessionId)
+      if (!oneSnapshot) return stallsToldToSession(sessionId)
+      // Read with a note so a complete fold is kept; a ledger with an unread row is read as before.
+      let unread = false
+      const told = stallsToldToSession(sessionId, () => {
+        unread = true
+      })
+      return unread ? stallsToldToSession(sessionId) : told
     },
     legacyOrdinaryStallWasReported(owner, piece, giver) {
       const cut = selectLegacyStallCut.get(owner) as

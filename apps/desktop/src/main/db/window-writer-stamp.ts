@@ -29,11 +29,9 @@ const generationTriggers = operations.map((operation) => `window_read_generation
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
 const streamTypes = ['assistant_delta', 'thinking', 'text']
-// Kept folds read only fold rows, generations and providers; a write to these marks its owner.
-const foldOwners: Readonly<Record<string, string>> = {
-  provider_session: 'id',
-  work: 'owner_session_id',
-}
+// Kept folds read fold rows, generations and, of a conversation's own row, only its provider. A new
+// row has no ledger yet, so only a changed provider or a deleted row marks its conversation.
+const PROVIDER_ROW_READ = ['id', 'provider']
 const integer = (value: unknown): value is bigint => typeof value === 'bigint' && value >= 0n
 const watchers = new WeakMap<
   Database.Database,
@@ -171,6 +169,15 @@ export function windowWriterSampler(
             WHERE (id = 0 AND (${rows.map(candidate).join(' OR ')}))
                OR (${rows.map((row) => `session = ${row}.session_id`).join(' OR ')});
         END;`)
+      // A fold row appended after every other fold row of its ledger is carried forward from the
+      // kept fold, as the main thread's folds are; any other fold write is the whole fold's again.
+      const rewritten =
+        operation === 'INSERT'
+          ? `WHERE EXISTS (SELECT 1 FROM main.events
+              WHERE session_id = NEW.session_id AND generation = NEW.generation
+                AND ordinal >= NEW.ordinal AND rowid <> NEW.rowid AND type IN (${FOLD_TYPE_LIST}))`
+          : // An upsert from a SELECT needs a WHERE, or SQLite reads ON CONFLICT as a join.
+            'WHERE true'
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_fold_${operation}
         AFTER ${operation} ON main.events
         WHEN ${rows.map((row) => `${row}.type IN (${FOLD_TYPE_LIST})`).join(' OR ')}
@@ -179,7 +186,8 @@ export function windowWriterSampler(
           ${rows
             .map(
               (row) => `INSERT INTO window_read_fold_owners(session, revision)
-            VALUES (${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1))
+            SELECT ${row}.session_id, (SELECT revision FROM window_read_revision WHERE id = -1)
+            ${rewritten}
             ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
             )
             .join('\n')}
@@ -206,16 +214,20 @@ export function windowWriterSampler(
           operation === 'UPDATE'
             ? `WHEN ${columns.map((column) => `OLD.${quote(column)} IS NOT NEW.${quote(column)}`).join(' OR ')}`
             : ''
-        const ownerColumn = foldOwners[name]
+        const read =
+          operation === 'UPDATE'
+            ? `WHERE ${PROVIDER_ROW_READ.map((column) => `OLD.${column} IS NOT NEW.${column}`).join(' OR ')}`
+            : 'WHERE true'
         const owners =
-          ownerColumn === undefined
+          name !== 'provider_session' || operation === 'INSERT'
             ? ''
             : `
           UPDATE window_read_revision SET revision = revision + 1 WHERE id = -1;
           ${rows
             .map(
               (row) => `INSERT INTO window_read_fold_owners(session, revision)
-            VALUES (${row}.${ownerColumn}, (SELECT revision FROM window_read_revision WHERE id = -1))
+            SELECT ${row}.id, (SELECT revision FROM window_read_revision WHERE id = -1)
+            ${read}
             ON CONFLICT(session) DO UPDATE SET revision = excluded.revision;`,
             )
             .join('\n')}`

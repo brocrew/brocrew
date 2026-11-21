@@ -51,7 +51,7 @@ describe('F071 · the ledger folds read through their own index', () => {
     )
     expect(reads.filter(isOwnerSchedule)).toHaveLength(1)
     // Include the failed turn's sent-message read, and the two Stop reads that seek their own kinds.
-    expect([...reads.filter((sql) => !isOwnerSchedule(sql)), ...stopSeeks()]).toHaveLength(24)
+    expect([...reads.filter((sql) => !isOwnerSchedule(sql)), ...stopSeeks()]).toHaveLength(25)
     return reads
   }
 
@@ -70,15 +70,16 @@ describe('F071 · the ledger folds read through their own index', () => {
     it('⛔ every statement that names the index carries the same list', () => {
       const reads = throughTheIndex()
       const kindReads = reads.filter((sql) => sql.includes('events_kind_owner_idx'))
-      // The keyed schedule read joins the thirteen existing type-index reads.
+      // The keyed schedule read joins the fourteen existing type-index reads.
       expect(kindReads.filter(isOwnerSchedule)).toHaveLength(1)
-      expect(kindReads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(13)
+      expect(kindReads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(14)
       expect(
         kindReads.filter((sql) => sql.includes("json_remove(payload, '$.sent', '$.given')")),
       ).toHaveLength(2)
+      // The waiting messages, and whether a window's kept messages moved.
       expect(
         kindReads.filter((sql) => sql.includes("type IN ('message_queued', 'message_unqueued')")),
-      ).toHaveLength(1)
+      ).toHaveLength(2)
       const workers = reads.filter((sql) => sql.includes('substr(payload, 1, 4097)'))
       expect(workers).toHaveLength(1)
       expect(workers[0]).toContain("type = 'replaced_by'")

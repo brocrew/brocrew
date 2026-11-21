@@ -145,7 +145,7 @@ export function createLedgerFoldState(
     fold: (sessionId: string, noteSkip?: SkipNote) => T,
     carriedForward?: CarriedForward<T>,
     snapshotKey?: string,
-  ): (sessionId: string, noteSkip?: SkipNote) => T {
+  ): ((sessionId: string, noteSkip?: SkipNote) => T) & { forget(sessionId: string): void } {
     const folded = ((snapshotKey === undefined ? undefined : snapshotAnswers?.get(snapshotKey)) ??
       new Map()) as Map<string, KeptFold<T>>
     if (snapshotKey !== undefined) snapshotAnswers?.set(snapshotKey, folded)
@@ -168,7 +168,7 @@ export function createLedgerFoldState(
         ? { answer: held.answer }
         : null
     })
-    return (sessionId, noteSkip) => {
+    const read = (sessionId: string, noteSkip?: SkipNote): T => {
       if (!theFoldsMayBeKept()) return fold(sessionId, noteSkip)
       const { generation, newest } = foldHead(sessionId)
       const held = folded.get(sessionId)
@@ -178,7 +178,13 @@ export function createLedgerFoldState(
           return held.answer
         }
         if (carriedForward !== undefined && newest !== null && newest > (held.newest ?? -1)) {
-          const answer = carriedForward(sessionId, generation, held.newest ?? -1, held.answer)
+          let answer: T | null
+          try {
+            answer = carriedForward(sessionId, generation, held.newest ?? -1, held.answer)
+          } catch {
+            // A carry that failed is the whole fold's, read and counted as it would have been.
+            answer = null
+          }
           if (answer !== null) {
             keep(sessionId, { generation, newest, answer })
             return answer
@@ -196,6 +202,8 @@ export function createLedgerFoldState(
         keep(sessionId, { generation, newest, answer })
       return answer
     }
+    // Drops one conversation's kept answer, so the next read folds and keeps it again.
+    return Object.assign(read, { forget: (sessionId: string) => void folded.delete(sessionId) })
   }
 
   const keptFolds: Map<string, KeptFold<unknown>>[] = []

@@ -434,6 +434,49 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(answer.rows).toHaveLength(0)
   })
 
+  it('never composes an overtaken snapshot whose kept fold an in-place rewrite left stale', async () => {
+    const rewrites = [
+      () => db.prepare("UPDATE events SET payload = '{}' WHERE session_id = 'gamma'").run(),
+      () =>
+        db
+          .prepare(
+            `UPDATE events SET created_at = 4242 WHERE session_id = 'alpha'
+            AND type = 'request_routed' AND payload LIKE '%second%'`,
+          )
+          .run(),
+    ]
+    let rewrite: (() => unknown) | undefined
+    let last: Awaited<ReturnType<typeof engine.read>> | undefined
+    const read = async (query: WindowReadQuery) => (rewrite?.(), (last = engine.read(query)))
+    const { host } = hostWith({ read, close: async () => {} }, true)
+    const open = (id: string) =>
+      store.create({ id, provider: 'codex', cwd: directory, approvalMode: 'ask', profileId: 'x' })
+    open('gamma')
+    row('gamma', 'status', { type: 'status', state: 'idle' })
+    anotherQuestion()
+    // What the composed snapshot says of alpha's second question.
+    const at = () =>
+      host.readForWindow(() =>
+        last?.kind === 'routes'
+          ? last.routes
+              .find((one) => one.sessionId === 'alpha')
+              ?.requests.find((one) => one.requestId === 'second')?.at
+          : undefined,
+      )
+    // A conversation opened during each attempt names no folds the worker kept: it is composed.
+    const opened = ['delta', 'epsilon']
+    rewrite = () => opened.length > 0 && open(opened.shift()!)
+    expect(await at()).toBe(1005)
+    // Each attempt is overtaken by an in-place rewrite that lands after the host's stamp.
+    rewrite = () => rewrites.shift()?.()
+    row('gamma', 'status', { type: 'status', state: 'idle' })
+    const composed = await at().catch(() => null)
+    if (composed !== null) expect(composed).toBe(4242)
+    rewrite = undefined
+    row('gamma', 'status', { type: 'status', state: 'idle' })
+    expect(await at()).toBe(4242)
+  })
+
   it('ordinary writes after the snapshot do not retry or fall back to the writer', async () => {
     const read = vi.fn(async (input: WindowReadQuery) => {
       const answer = engine.read(input)

@@ -183,9 +183,25 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(before, sample(routes))).toBe(true)
     expect(sameWindowWriter(activity, sample({ kind: 'activity', from: 0, to: 1000 }))).toBe(false)
     db.prepare("UPDATE provider_session SET status = 'working' WHERE id = 'alpha'").run()
-    const changed = sample(routes)!
-    expect(sameWindowWriter(before, changed)).toBe(false)
-    expect(sample.changedOwners!(before, changed)).toEqual(['alpha'])
+    const working = sample(routes)!
+    expect(sameWindowWriter(before, working)).toBe(false)
+    expect(sample.changedOwners!(before, working)).toEqual([])
+    db.prepare("UPDATE provider_session SET provider = 'claude' WHERE id = 'alpha'").run()
+    expect(sample.changedOwners!(working, sample(routes)!)).toEqual(['alpha'])
+  })
+
+  it('names a ledger whose fold rows were rewritten, not one they were appended to', () => {
+    const before = sample(routes)!
+    row('status', '{"type":"status","state":"idle"}')
+    const appended = sample(routes)!
+    expect(sameWindowWriter(before, appended)).toBe(false)
+    expect(sample.changedOwners!(before, appended)).toEqual([])
+    row('status', '{"type":"status","state":"idle"}', 'alpha', -1)
+    const below = sample(routes)!
+    expect(sample.changedOwners!(appended, below)).toEqual(['alpha'])
+    row('text', '{"type":"text","text":"fictional"}', 'beta', 100)
+    row('status', '{"type":"status","state":"idle"}', 'beta', 50)
+    expect(sample.changedOwners!(below, sample(routes)!)).toEqual([])
   })
 
   it('tracks a new metadata table after a schema change and rolls its writes back', () => {

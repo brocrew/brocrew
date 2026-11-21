@@ -48,8 +48,12 @@ function retainedBytes(value: unknown, limit: number): number {
   return bytes
 }
 
-/** One shared retained-byte budget; dropping an answer leaves its canonical fold available. */
-export function windowFoldCache(limit = 48 * 1024 * 1024): SnapshotFoldAnswers {
+/**
+ * One shared retained-byte budget; dropping an answer leaves its canonical fold available. A read
+ * walks every conversation in the same order, so a budget below the working set drops each fold
+ * before the next read needs it: a 10 GB workspace estimates about 90 MiB.
+ */
+export function windowFoldCache(limit = 192 * 1024 * 1024): SnapshotFoldAnswers {
   type Answer = KeptFold<unknown>
   type Slot = { owner: string; fold: Answers; bytes: number }
   const oldest = new Map<Slot, true>()
