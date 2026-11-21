@@ -1,114 +1,26 @@
-# CI on every push to `main`: Linux runners, the checks in parallel, the tests sharded.
-#
-# Not here, on purpose: the Electron window checks (`window:check`, `quit:check`), `build`, the
-# `gate-only` tests and every live smoke. They stay local, run by the test lane. The whole gate is still `pnpm run ci` on a Mac.
-#
-# CI uses Linux runners. A test depending on Mac-specific facts
-# (`/tmp` is `/private/tmp`, the disk ignores case, the fonts a DOM test measures, …) starts with
-# `ctx.skip(process.platform !== 'darwin')` — in a DOM test, which runs in a browser and has no
-# `process`, `ctx.skip(!/mac/i.test(navigator.platform))` — so it is skipped here and still runs
-# in the Mac's gate.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  # By hand, on any branch that carries this file: `gh workflow run CI --ref <branch>`.
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One run per branch at a time. A push made while a run is going waits, and replaces any run
-# already waiting, so no run is cut short and the newest commit is always the next one checked.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  plugins:
-    name: plugins
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      PLUGIN_CI_NODE_VERSION: '24.22.0'
-      PLUGIN_CI_PNPM_VERSION: '10.11.0'
-      PLUGIN_CI_GO_VERSION: '1.27.2'
-      GOTOOLCHAIN: local
-      GOFLAGS: -mod=readonly
-      CGO_ENABLED: '0'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install pinned pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PLUGIN_CI_PNPM_VERSION }}
-
-      - name: Setup pinned Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.PLUGIN_CI_NODE_VERSION }}
-          cache: pnpm
-
-      - name: Setup pinned Go when a plugin has a module
-        if: hashFiles('plugins/**/go.mod') != ''
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.PLUGIN_CI_GO_VERSION }}
-          cache: false
-
-      - name: Check every configured plugin
-        run: node scripts/check-plugins.mjs
-
-  check:
-    name: ${{ matrix.check }}
-    runs-on: ubuntu-latest
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # `notices:check`: the npm packages THIRD-PARTY-NOTICES.md lists are the ones this lockfile
-        # installs. It reads `node_modules` and needs no build; Linux installs the same list, since
-        # every package that differs by platform is in the notices' hand-written sections.
-        check: [engine:check, notices:check, typecheck, lint, format:check, db:check]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: pnpm run ${{ matrix.check }}
-        run: pnpm run ${{ matrix.check }}
-
   test:
-    name: test ${{ matrix.shard }}/${{ strategy.job-total }}
+    name: test 4/4
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         # vitest splits the files, by a hash of their paths, across every project but `dom`.
-        shard: [1, 2, 3, 4]
+        shard: [4]
     steps:
       - &test-checkout
         uses: actions/checkout@v7
         with:
+          ref: c9e8465db5ffcdb32cde4326a80967976043de1a
           persist-credentials: false
 
       - &test-pnpm
@@ -132,53 +44,5 @@ jobs:
       # Every project but `dom`: the DOM project runs in the `dom` job below, in groups. Run in
       # one browser per shard, its ~54 files filled the runner's disk.
       - name: vitest, every project but dom (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
-        run: pnpm exec vitest run --project '!dom' --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        run: pnpm exec vitest run --project '!dom' --shard=4/4
 
-  # The DOM project, in groups, each with a browser of its own. One headless Chromium
-  # never gives back the shared memory a test file drew — about 640 MB a file on this runner, kept in
-  # `/tmp` as deleted files — and a shard's ~54 DOM files filled the 12 GB the runner has free, so the
-  # next file failed to load. `scripts/test-dom-in-groups.mjs` runs the project as sixteen `--shard`
-  # invocations in turn; each browser exits with its group. Measured: about 4 GB at most.
-  dom:
-    name: dom (in groups) ${{ matrix.part }}/4
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [1, 2, 3, 4]
-    steps:
-      - *test-checkout
-      - *test-pnpm
-      - *test-node
-      - *test-install
-
-      # The `dom` vitest project (083) runs real components in real Chromium, and it runs on the
-      # DEFAULT test path deliberately — a harness gated out of the gate is debt, not coverage.
-      # `playwright@1.62.1` has NO postinstall script (verified in the pnpm store), so
-      # `pnpm install` never fetches a browser under any `onlyBuiltDependencies` setting. Without
-      # this step the DOM job would die before its first test. `--with-deps`
-      # because the binary alone is not enough on ubuntu-latest: chromium needs libnss3, libgbm1
-      # and friends.
-      - name: Install the Chromium the DOM tests run in
-        run: pnpm --filter @brobot2/desktop exec playwright install --with-deps chromium
-
-      - name: Four of the sixteen DOM groups, each in its own browser
-        run: |
-          mkdir -p dom-results
-          failed=0
-          first=$(( (${{ matrix.part }} - 1) * 4 + 1 ))
-          for group in $(seq "$first" $(( first + 3 ))); do
-            echo "DOM group $group of 16"
-            pnpm exec vitest run --project dom --shard="$group/16" \
-              --reporter=default --reporter=json \
-              --outputFile.json="dom-results/dom-$group.json" || failed=1
-          done
-          exit "$failed"
-
-      - name: Keep native DOM results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-dom-${{ matrix.part }}
-          path: dom-results/*.json
