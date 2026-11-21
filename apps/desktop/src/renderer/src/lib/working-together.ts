@@ -18,97 +18,17 @@ import { unreadSays } from './rows-unread'
 import { A_PERSON_ADDRESSED } from './outgoing-card'
 
 /**
- * 🔴 **The first picture of who called whom** (547) — `540` §7 slice 1's renderer half, over
- * `543`'s {@link WhoCalledWhom}.
- *
- * ## Show caller relationships and provide navigation
- *
- * > ⚑ *"when an Agent spawns another agent, I need to see the agent avatars too in that panel and
- * > the current state. BroBot conversation → I see big BroBot avatar, I also need to see the
- * > project manager (+ all tasks/conversations as clickable to go to that conversation)."*
- *
- * > 🔴 *"this is very important for me to see who's calling who and to navigate between them."*
- *
- * ⛔ **What he got before this file existed**, at the moment BroBot had spawned a project manager
- * and was waiting on it: **one avatar, one state word, `Nothing is waiting`, and a sentence
- * pointing at another tab.** ⛑ **`Nothing is waiting` is quoted as history** — `577` replaced that
- * heading with one that names what the pane counted. ⚠️ `543` built the read an hour earlier and
- * nothing drew it — *a read with no reader is a read whose shape nobody has tested against a
- * person*.
- *
- * ## ⛔ Two relations, and one may never be derived from the other
- *
- * ⚠️ **A spawn and a handoff are independent**, which `540` §5 measured: a conversation may give
- * work to one it never spawned. ⚑ **553 · this said *work is admitted by `can_message` and not by
- * descent*, and HO-060 §2 made it false** — the gate is `can_assign_work`, and since D-014 work
- * goes only to a conversation the giver started. ⚑ What keeps the two lists independent is the
- * ledger: work given under the wider rules before that stays recorded against conversations its
- * giver never spawned. ⛔ So {@link WorkingTogetherView.children} is the SPAWN list and
- * {@link WorkingTogetherView.others} is every conversation this one gave work to that the spawn
- * list does not name — v2.8's *other conversations given work*, which is a real product case and
- * not authored decoration. 🔴 **Nothing here ever says a recipient outside the child list *was
- * never spawned***: this read is one conversation's own edges and knows nothing about who else
- * spawned whom.
- *
- * ## 🔴 Every list carries its own completeness, and none of them may say `0 spawned`
- *
- * ⛔ **{@link ListCoverage} per list, because `543` §4 gave each walk its own** — *"an absent
- * relationship read and an incomplete list have different words, and neither may ever produce
- * `0 spawned`"* (`452` §5.1's forbidden sentence, one noun over). ⚑ {@link ListCoverage.count} is
- * the enforcement rather than a convention: it is `null` unless the walk answered, spelled a word
- * this build knows, was the walk that actually looks, and read every row — so a template that draws
- * a count cannot draw one over a partial read.
- *
- * ## ⚠️ What this fold refuses to say, and why each refusal is somebody's measurement
- *
- *  - ⛔ **No liveness, of any shape** (`509`'s ruled field). `live | silent` may only go on a reader
- *    whose cadence is shorter than the silence window, and this one re-reads on a push, never on a
- *    clock (W4.74). ⚑ A card that says what a conversation IS without claiming whether it
- *    is still alive is a complete card.
- *  - ⚑ **No navigation state** — D-017b: a conversation opens in its full view whatever it is
- *    doing, so there is nothing for a card to guess at.
- *  - ⛔ **No two-valued work status.** v2.8 folds task state to `open | answered`; this app has
- *    several states and three of them are closed — {@link TASK_IS_OPEN} — so that fold prints
- *    *answered* over work a parent took back or closed. ⚑ {@link CastWork.open} is the boolean and
- *    {@link CastWork.reading} carries `WORK_STATE_WORD`'s own sentence beside it, which is `169`
- *    §1: one vocabulary, already drawn by the transcript's work-report row and by the Work tab.
- *
- * ## ⚠️ Which way it fails
- *
- * **Toward saying too little, and toward saying it late.** A child that changed state moments ago
- * reads as it was at the last read until the next move of the work is pushed — and
- * {@link WorkingTogetherView.asOf} says how old a reading kept after a refused read is. A read that did not
- * answer keeps the last good cards and marks them. ⛔ **None of those is a false promise**: the
- * failure available here is a card that is stale or a list that is short by a number it states,
- * never a list claiming nobody was spawned.
+ * Keep spawn and work relationships independent: older ledgers can name recipients the giver
+ * did not spawn. These lists only describe the current conversation’s relationships.
  */
 
 /** ⛔ **The ONE empty that is about the conversation**, rather than about a read or about this app. */
 export const NO_SPAWNED_CONVERSATIONS = 'No conversations started'
 
-/**
- * ⛔ **The sentence this band no longer says** — kept as a constant, and the keeping is deliberate.
- *
- * ⚑ It was the parent's absence said once: `SessionStore.spawnProvenance` (`parentOf` since D-016)
- * answered `null` only when the triple was not all there, so it covered *nothing in this app spawned
- * it* and *it was recorded before the columns existed* together — the pair
- * {@link WhoCalledWhom.parent}'s own docblock named — and it was withheld under any doubt about the
- * lineage read.
- *
- * Nothing produces this retired sentence; {@link parentCardOf} returns no empty-parent wording. Keep the constant shared by tests that assert it is never displayed, as `visible-copy.ts` does, instead of duplicating the forbidden string in each test.
- */
+/** Shared with tests that verify the retired empty-parent wording stays off screen. */
 export const NOBODY_IN_THIS_APP_SPAWNED_IT = 'Nothing in this app spawned this conversation'
 
-/**
- * 🔴 **Why a list may not be what is in the database** — or `null`, no reason at all.
- *
- * ⛔ **`WorkDoubt`'s two members and a third, and the third is this shape's own.** A walk that read
- * NOTHING is not a walk that answered with an empty list: `no-such-conversation` is *this app holds
- * no conversation by that id* and `no-ledger` is *this app has no ledger open*, and either of them
- * drawn as an empty child list would be the forbidden sentence. ⚠️ A boolean would have made *the
- * read did not answer* the only thing a band could say, and two of these three are reads that
- * answered perfectly well.
- */
+/** A missing conversation or ledger cannot establish that a relationship list is empty. */
 export type ListDoubt =
   /** 🔴 The read answered with a walk word this build cannot spell — `467` F7, the preload CASTS. */
   | 'a-word-this-app-cannot-spell'
@@ -128,20 +48,7 @@ export const LIST_DOUBT_WORDS: Readonly<Record<ListDoubt, string>> = {
     'Nothing was read for this, so there is nothing here to count. It is not an empty list and it is not a statement that nobody was spawned or that no work passed.',
 }
 
-/**
- * 🔴 **The read did not answer — said ONCE, at the moment it is about** (v2.8 §06, `547` §3.3).
- *
- * ⛔ **Not a {@link ListDoubt}, and it was one until a mutation said so.** `answered` is one boolean
- * over one round trip, so every list is in doubt together — and a band that carried it per list drew
- * three near-identical blocks for one fact. ⚑ **The anchor is the read's own footer**, beside the
- * moment it kept: *"a failed refresh preserves old data and its old timestamp, with a quiet error at
- * the same anchor"*.
- *
- * ⚠️ **The row that found it survived.** With the refusal competing with a walk WORD for one slot,
- * the two orderings of that decision agree on every input a suite can reach — which is
- * `a-comparison-tested-where-both-sides-agree-measures-nothing`, and the fix is the shape rather
- * than one more assertion.
- */
+/** A refused refresh keeps the previous cards and timestamp. Show the refusal once for the whole read. */
 export const THE_READ_DID_NOT_ANSWER =
   'This did not answer just now, so the cards above and the moment below them are the last answer this window had. It is not a conversation that spawned nobody, and it is not a statement that nothing has changed since.'
 
@@ -160,15 +67,7 @@ export interface ListCoverage {
   readonly short: number
   /** ⚑ **D-017 · R8** — how many records the walk skipped whole; this list is short by them too. */
   readonly skipped: number
-  /**
-   * 🔴 **How many rows there are — ONLY when the list is complete**, and `null` otherwise.
-   *
-   * ⛔ **v2.8 §05, enforced here instead of in a template**: *"Direct-child and open-task counts
-   * appear only when the relevant list and completeness flag are supplied."* ⚑ Four conditions have
-   * to hold — the read answered, the word is one this build spells, it is the word that actually
-   * looks, and no row went unread — and a surface that draws `count` cannot be drawing it over a
-   * partial read.
-   */
+  /** Expose counts only after a successful walk of the expected kind with no unread rows or skipped ledgers. */
   readonly count: number | null
 }
 
@@ -195,14 +94,7 @@ export interface CastWork {
    * draw, so three surfaces cannot describe one fold differently (`169` §1, `222` §4).
    */
   readonly reading: WorkReading
-  /**
-   * 🔴 **Still somebody's to finish** — {@link TASK_IS_OPEN}, read and never re-derived.
-   *
-   * ⛔ **`Object.hasOwn` rather than `??`**, which is `406`'s review finding one file over: that
-   * table is an object literal, so a state naming `constructor` or `toString` indexes to a FUNCTION,
-   * which is truthy. ⚑ **Unknown counts as CLOSED** — the fail-quiet direction, since an open bit
-   * is a claim that something is still owed.
-   */
+  /** Read openness from TASK_IS_OPEN. Require an own property so unknown states count as closed. */
   readonly open: boolean
   /**
    * ⛔ **631 · the raw state, kept.** `workOf` folded it to {@link CastWork.open} and dropped it,
@@ -225,15 +117,7 @@ export interface CastWork {
   readonly given: string
 }
 
-/**
- * 🔴 **One conversation beside this one** — a spawned child, or a conversation this one gave work
- * to that the spawn list does not name.
- *
- * ⛔ **A card is a CONVERSATION, not an identity and not a task** (v2.8 §01). ⚠️ A task-first flat
- * list duplicates the avatar and loses direction; a role-first list MERGES distinct conversations
- * made from one identity — which is the exact case `543` §0 plants and `WorkGivenOut` cannot tell
- * apart.
- */
+/** Key cards by conversation so tasks share a card and distinct sessions of one identity stay separate. */
 export interface CastCard {
   /** The conversation's own id — what every door on this wire calls `sessionId`. */
   readonly conversation: string
@@ -242,30 +126,8 @@ export interface CastCard {
   /** ⚠️ The identity's slug, BESIDE the name. `null` is *this app records no identity for it*. */
   readonly identity: string | null
   /**
-   * 🔴 **The plate** — the SAME {@link sessionFacets} the roster's rows call, with the inputs this
-   * read actually carries.
-   *
-   * ## ⛔ What `547` F1 refused, and it was right to
-   *
-   * ⚠️ **`status` was not one of them, and that was the finding rather than a shortcut.**
-   * {@link SpawnEdge} carries `running` and not `status`, and those answer different questions —
-   * `ResumableSessionInfo.running`'s own docblock: *"a row can be `idle` in the database and
-   * `not-running` here"*. ⛔ So a child this app was RUNNING drew `doing: 'unknown'` — `081`'s
-   * faceless plate — because nothing on that read said whether a turn was being driven.
-   *
-   * ## ⚑ 632 · what changed is the READ, not the rule
-   *
-   * 🔴 **`575` and `593` built the missing fact and `547` F1 could not have known it** — it was
-   * written three weeks later. ⛔ {@link ConversationAtWork} carries the status, the activity and
-   * the streaming flag off the live event stream, `whatAPlateCanDraw` is the one door out of it,
-   * and `team-roster.ts` has drawn plates from it since `593`. ⚑ **This band is another caller of
-   * that door and composes nothing of its own.**
-   *
-   * ⚠️ **The faceless plate is still reachable and is still the honest answer**, by two roads
-   * rather than one: a child this app is not running is in no {@link WhatIsBeingDone} at all, and a
-   * child that has said nothing has its recorded status WITHHELD by `whatAPlateCanDraw`. ⛔ Neither
-   * may read as `idle`, which is `an-unenumerated-state-counts-as-success` and the rule `HO-095`
-   * §5.1 and `EXT-014` §5 were both broken by.
+   * Share the roster’s facet derivation. When live status is missing, use idle only if the host reports
+   * no live session. Otherwise show unknown activity.
    */
   readonly facets: AgentFacets
   /**
@@ -278,17 +140,8 @@ export interface CastCard {
 }
 
 /**
- * 🔴 **The band, before any card.**
- *
- * ⚑ **The parent is not here**: the panel draws it, through {@link parentCardOf}, and the band
- * reads it only to put a plate on the work the parent gave.
- *
- * ⛔ **The work this conversation gave out has no LINES here** (PM ruling, 2026-10-01): no surface
- * drew them since the card's given list went (4f5d9d7a), and the Graph tab draws each piece on its
- * holder's card. `654`'s tint went with them — it could fire only on a given-out line, a taken
- * line's subject being its giver. ⚑ **The given-out walk still feeds two things**: the
- * {@link others} on the strip, and {@link gaveOutShort} — a torn row in that walk can drop an
- * *other* from the strip, and the spawn list's own count does not see it.
+ * Draw the parent separately. The given-out walk supplies other recipients and has its own coverage,
+ * since an unread work row may hide a recipient even when the spawn list is complete.
  */
 export interface WorkingTogetherView {
   /** ⚑ **What it started** — the DIRECT children, in the order the walk gave them. */
@@ -319,29 +172,11 @@ export interface WorkingTogetherView {
   readonly taken: readonly CastTask[]
   /** 🔴 **678 · F-R18a — the same sentence for the taken-in walk**, under *Current task*. See {@link gaveOutShort}. */
   readonly tookInShort: string | null
-  /**
-   * 🔴 **How old this reading is, in a person's words** — `agoWords(read.readAt, now)`.
-   *
-   * ⛔ **`null` while the newest read answered** (W4.74, D-033): the band is read again on every
-   * move of the work it draws, so an answered reading is the current one whatever its age, and an
-   * age under it would say *stale* about a band that is not. ⚑ Said for a reading KEPT after a read
-   * that did not answer — the one that may be behind.
-   *
-   * ⚠️ **Measured from {@link WhoCalledWhom.readAt}, which `543` stamps LAST over one synchronous
-   * aggregate** — so it is one completion point over all three lists rather than three clocks a band
-   * would have to reconcile (`540` MI-19, and the condition it named).
-   */
+  /** Show age only for a reading kept after a failed refresh. Use the aggregate’s completion time. */
   readonly asOf: string | null
 }
 
-/**
- * 🔴 **One answer, and the conversation it is ABOUT.**
- *
- * ⛔ **The conversation is on the reading and is never assumed from the surface.** A person can open
- * conversation A and then B inside one round trip; without this the kept-last-good band would draw
- * A's children under B's drawer, which is the strongest false claim this band could make. ⚑
- * `WorkGivenOutReading`'s guard exactly, one question over.
- */
+/** Bind the reading to its conversation so a late refresh cannot show its cards in another drawer. */
 export interface CastReading {
   readonly conversation: string
   readonly read: WhoCalledWhom
@@ -365,29 +200,13 @@ export interface WorkingTogetherInput {
   readonly now: number
 }
 
-/**
- * ⛔ **`632`'s keying, in ONE expression** (631) — the reading's rows, keyed by CONVERSATION.
- *
- * ⚠️ **Extracted because it had been written twice**: `parentCardOf` needs the same map the view
- * needs, and the second copy made `632 M9`'s anchor ambiguous — a row that matches two lines
- * protects neither. ⛔ **A card is a CONVERSATION and not an identity**, which is this file's own
- * rule and exactly what that row plants against.
- */
 function atWorkOf(reading: CastReading): ReadonlyMap<string, ConversationAtWork> | null {
   return reading.atWork === null ? null : byConversation(reading.atWork)
 }
 
 /**
- * 🔴 **The conversation that spawned this one, as a card** (631) — ONE implementation, two callers.
- *
- * `SessionPanel` draws parent navigation above the avatar while `WorkingTogether` draws the rest of the band. Share the parent fold so those components cannot derive conflicting descriptions.
- *
- * ⚑ **So this is the shape `recordFacets` already has in this app** — *"THE SAME FUNCTION THE PANE
- * CALLS, ON THE SAME NUMBERS"*. The panel calls it for the way up it draws; {@link
- * workingTogetherView} calls it for the plate the work the parent gave wears. ⛔ Neither computes a
- * parent of its own.
- *
- * A null parent draws nothing, whether nobody spawned this conversation or the parent could not be looked up. The removed {@link NOBODY_IN_THIS_APP_SPAWNED_IT} sentence no longer distinguishes those states on screen; do not infer confirmed root status from the absence of a parent row.
+ * Share the parent card between navigation and the work the parent gave. A missing card may mean
+ * either no recorded parent or an unread parent, so it cannot establish root status.
  */
 export function parentCardOf(input: WorkingTogetherInput): CastCard | null {
   const reading = input.reading
@@ -473,14 +292,7 @@ export function workingTogetherView(input: WorkingTogetherInput): WorkingTogethe
   }
 }
 
-/**
- * ⛔ **What is known about one walk**, with the four conditions {@link ListCoverage.count} needs.
- *
- * ⚠️ **Order matters and the first arm wins**: a read that did not answer is a fact about THIS
- * poll, while a word is a fact about the answer it gave. A refused read leaves the previous
- * answer's word standing, so asking the word first would report the older problem
- * (`work-given-out.ts`' own ordering, and its reason).
- */
+/** The walk describes the last answer. A refused refresh carries that older walk and suppresses its count. */
 function coverageOf(
   walk: LedgerWalk<unknown>,
   looks: LedgerWalkKind,
@@ -524,14 +336,7 @@ function cardOf(
   }
 }
 
-/**
- * ⛔ **A card built from a WORK edge alone** — no session row was read for it, so it carries a name
- * and no state at all.
- *
- * ⚑ **It is not a lesser child card; it is a different fact.** The spawn walk reads
- * `provider_session`; a work row names a `session_id` that walk never looked at, and inventing a
- * `running` for it would be this band answering a question the read did not ask.
- */
+/** A work edge supplies a name but has no session reading from which to infer activity. */
 function recipientCard(row: WorkEdge, input: WorkingTogetherInput): CastCard {
   return {
     conversation: row.to,
@@ -547,28 +352,8 @@ function recipientCard(row: WorkEdge, input: WorkingTogetherInput): CastCard {
 }
 
 /**
- * ⛔ **The plate** (547 F1, reopened by 632).
- *
- * ⚑ **D-017b · a conversation this app is not running is doing nothing here** — `idle`, the one
- * state's plate, and never a ring of its own: whether a process runs is not the plate's to say.
- *
- * ## 🔴 632 · the three fields `547` F1 had to leave empty, and where they come from
- *
- * ⛔ **`547` F1 read: *"Everything else is absent rather than guessed: no phase, no status, no
- * activity, no stream."*** ⚑ **`status`, `activity` and `streaming` are now on a read that did not
- * exist then** — {@link ConversationAtWork}, from `575` and `593` — and this takes them through
- * `whatAPlateCanDraw`, which is the only door out of that module and which composes no word of its
- * own. ⚠️ **`phase` and `liveness` stay absent and that is still a limit of the shape**: a phase is
- * a window's record of a launch it performed, and liveness moves on a timer with nothing to
- * announce from (`509`). ⛔ `sessionFacets` draws LESS rather than something else for both.
- *
- * ## ⛔ `atWork === null` is TWO states and both draw the faceless ring
- *
- * ⚑ **This app is not running it** — it is in no {@link WhatIsBeingDone}, because that read's
- * population is the running one. ⚑ **Or this window has no reading at all** — a cold band, or a
- * refusal that dropped it. ⚠️ **Neither may be drawn as `idle`**, and neither is: the recorded
- * status stays `null`, so `sessionDoing` answers `unknown` and `081`'s faceless plate is what a
- * person sees. 🔴 **That is the whole of `an-unenumerated-state-counts-as-success` at this band.**
+ * With no usable status, show idle when the host reports no live session and a faceless plate otherwise.
+ * Launch phase and timed liveness are unavailable in this relationship read.
  */
 function plateOf(nothingRunsIt: boolean, atWork: ConversationAtWork | null): AgentFacets {
   // ⚠️ **The status is WITHHELD, never replaced, and the decision is `whatAPlateCanDraw`'s and not
@@ -586,14 +371,8 @@ function plateOf(nothingRunsIt: boolean, atWork: ConversationAtWork | null): Age
 }
 
 /**
- * 🔴 **UI-008 · F051 — the work a PERSON gave this conversation**, for its card's *Current task*:
- * the root it owns, out of the work that names it (`ResumableSessionInfo.named`), or `null`.
- *
- * The band's {@link WhoCalledWhom.workTakenIn} walk excludes a root. Include the person's root separately so the card does not show No current task over that work. A root label has one number; held-work labels have two or more.
- *
- * ⚠️ What its line can say is what the name carries: its label and its title. Its state is its
- * conversation's (R1), which the plate above it says; a root never ends, so it is always open; and
- * no conversation gave it, so its line is never a press (`TaskList`'s `pressable`).
+ * The taken-work walk excludes the person-given root. Find it by its one-part label and show it
+ * as open without giver navigation. The plate carries its conversation state.
  */
 export function theWorkAPersonGave(
   named: WorkThatNamesIt | null | undefined,
@@ -632,12 +411,8 @@ export function taskGivenToThisOne(
 }
 
 /**
- * 🔴 **F094 · the strip draws a stand-in in its predecessor's place** — D-034's rule on the Graph,
- * for the right panel's *Sub agents*. ⚑ A card whose conversation was replaced (the forest's
- * `inItsPlace`, which names the end of a chain) is not drawn beside its stand-in: the stand-in takes
- * the predecessor's position, once. ⚑ A stand-in this strip does not hold leaves the predecessor
- * drawn, saying it was replaced and by whom — never *idle*. ⛔ No forest read yet: the cards as they
- * are.
+ * Show a held stand-in once at its predecessor’s position. If it is absent, show the predecessor
+ * as replaced. Preserve the original cards until the forest has been read.
  */
 export function inTheirPlace(
   cards: readonly CastCard[],
