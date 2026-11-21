@@ -921,8 +921,9 @@ it('continues a recent-first transcript preview through the real worker', async 
   ])
   const instructions = pastWorkSearchInWords(preview, false, false, { words, ...dates })
   expect(instructions).toContain('Continue with cursor: "work:0:work-next"')
-  expect(instructions).toContain(
-    `Transcript search is incomplete. Continue with search_past_work(${JSON.stringify({
+  expect(preview.preview_counts).toEqual({ scanned: 8, total: 8 })
+  expect(instructions.split('\n')[0]).toBe(
+    `Stopped after 8 of 8 conversations; continue with search_past_work(${JSON.stringify({
       words,
       ...dates,
       in: 'transcripts',
@@ -974,6 +975,7 @@ it('retries a conversation whose preview stopped during indexing', () => {
     ok: true,
     hits: [],
     complete: false,
+    preview_counts: { scanned: 0, total: 2 },
     next_cursor: expect.stringMatching(/^recent:/u),
   })
   const full = searchPastWork(w.db, w.store, caller, 'previewquartz', {

@@ -105,6 +105,9 @@ export class WorkSearch {
         next_cursor:
           page?.next_cursor == null ? null : `work:${workUnread ? 1 : 0}:${page.next_cursor}`,
         ...(transcriptCursor === null ? {} : { transcript_next_cursor: transcriptCursor }),
+        ...(recorded.ok && recorded.preview_counts !== undefined
+          ? { preview_counts: recorded.preview_counts }
+          : {}),
         ...(recorded.ok ? {} : { transcript_unread: true as const }),
         ...(workUnread ? { work_unread: true as const } : {}),
         hits: [...workHits, ...(recorded.ok ? recorded.hits : [])],

@@ -510,11 +510,24 @@ export class ProfilePastWorkSearch {
         const excerpt = snippetFor.get(match, rowid) as { snippet: string }
         return { ...hit, snippet: excerpt.snippet.slice(0, 320) }
       })
+      const previewCounts =
+        recent?.preview === true && moreRecent
+          ? {
+              scanned: scanned.size - (typeof nextPage === 'object' && nextPage !== null ? 1 : 0),
+              total: (
+                db.prepare(
+                  `SELECT count(*) AS total FROM provider_session
+                   ${profile === null ? '' : 'WHERE agent_identity_id = @profile'}`,
+                ).get({ profile }) as { total: number }
+              ).total,
+            }
+          : undefined
       db.exec('COMMIT')
       index.versions = next
       return {
         ok: true,
         hits: withExcerpts,
+        ...(previewCounts === undefined ? {} : { preview_counts: previewCounts }),
         complete: recent === undefined ? nextPage === null : !moreRecent,
         next_cursor:
           recent === undefined
