@@ -533,6 +533,7 @@ export class ClaudeRuntime implements AgentRuntime {
     handle.noteAlwaysRulesFile()
     const auth = await this.authForALaunch()
     assertNotCancelled(opts.signal, 'claude start')
+    opts.startPhases?.('credentials-read')
 
     const kept = await keptRulesForALaunch(
       opts.providerHome,
@@ -540,6 +541,7 @@ export class ClaudeRuntime implements AgentRuntime {
       opts.signal,
     )
     assertNotCancelled(opts.signal, 'claude start')
+    opts.startPhases?.('rules-read')
     const options = this.optionsFor(
       handle,
       confinementFor(opts.cwd, opts),
@@ -581,6 +583,7 @@ export class ClaudeRuntime implements AgentRuntime {
       if (refusedAfterItsPipes !== null) throw refusedAfterItsPipes
 
       assertNotCancelled(opts.signal, 'claude start')
+      if (child.pid !== undefined) opts.startPhases?.('spawned')
     } catch (error) {
       if (query !== null) {
         try {
@@ -695,9 +698,11 @@ export class ClaudeRuntime implements AgentRuntime {
       if (!(await this.sessionExists(ref.sessionId, ref.cwd, options.providerHome))) {
         throw new ResumeError(ref, `session not found: ${ref.sessionId}`, { noSuchSession: true })
       }
+      options.startPhases?.('transcript-found')
       const auth = await this.authForALaunch()
 
       assertNotCancelled(options.signal, 'claude resume')
+      options.startPhases?.('credentials-read')
 
       const stillPlanning = options.planMode === true && options.planModeEnded !== true
       input = new AsyncQueue<SDKUserMessage>()
@@ -727,6 +732,7 @@ export class ClaudeRuntime implements AgentRuntime {
         options.signal,
       )
       assertNotCancelled(options.signal, 'claude resume')
+      options.startPhases?.('rules-read')
 
       const built = this.optionsFor(
         handle,
@@ -764,6 +770,7 @@ export class ClaudeRuntime implements AgentRuntime {
       if (spawnFailed !== null) throw spawnFailed
 
       assertNotCancelled(options.signal, 'claude resume')
+      if (child.pid !== undefined) options.startPhases?.('spawned')
       handle.attachQuery(query, child)
       handle.begin('resumed')
       return handle

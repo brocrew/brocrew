@@ -10274,6 +10274,9 @@ export class RuntimeHost implements LiveHost {
     // These are stages of this launch, not activity elsewhere in the provider. Replayed stages
     // cannot keep a stuck launch alive; only forward stages or a growing thread answer can.
     const phases: readonly StartPhase[] = [
+      'transcript-found',
+      'credentials-read',
+      'rules-read',
       'boot-gate-entered',
       'boot-gate-passed',
       'spawned',
