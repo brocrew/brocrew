@@ -4756,35 +4756,48 @@ export function createSessionStore(
     },
   )
 
+  type PendingProposalLedgerRow = {
+    conversation: string
+    at: number
+    ordinal: number
+    readable: number
+    payload: string
+  }
+
+  function decodeProposalRows<Event extends object>(
+    rows: readonly PendingProposalLedgerRow[],
+    id: keyof Event,
+    missingId: string,
+    unread: RowsUnread | undefined,
+  ): { conversation: string; at: number; event: Event }[] {
+    return rows.flatMap((row) => {
+      if (row.readable === 0) {
+        noteUnreadRow(row.conversation, row.ordinal, unread?.in(row.conversation))
+        return []
+      }
+      try {
+        const event = JSON.parse(row.payload) as Event | null
+        if (event === null || typeof event[id] !== 'string') throw new Error(missingId)
+        return [{ conversation: row.conversation, at: row.at, event }]
+      } catch (error) {
+        console.warn(
+          `session ledger: ${row.conversation} ordinal ${String(row.ordinal)} could not be read ` +
+            `and was skipped (${error instanceof Error ? error.message : String(error)})`,
+        )
+        unread?.in(row.conversation)(row.ordinal)
+        return []
+      }
+    })
+  }
+
   const instructionAsksWaiting = (unread?: RowsUnread): readonly InstructionAskWaiting[] =>
     waitingOnAPerson(
-      (
-        selectInstructionAsks.all() as {
-          conversation: string
-          at: number
-          ordinal: number
-          readable: number
-          payload: string
-        }[]
-      ).flatMap((row) => {
-        if (row.readable === 0) {
-          noteUnreadRow(row.conversation, row.ordinal, unread?.in(row.conversation))
-          return []
-        }
-        try {
-          const event = JSON.parse(row.payload) as
-            InstructionProposedEvent | InstructionSettledEvent | null
-          if (typeof event?.askId !== 'string') throw new Error('an instruction row with no ask id')
-          return [{ conversation: row.conversation, at: row.at, event }]
-        } catch (error) {
-          console.warn(
-            `session ledger: ${row.conversation} ordinal ${String(row.ordinal)} could not be read ` +
-              `and was skipped (${error instanceof Error ? error.message : String(error)})`,
-          )
-          unread?.in(row.conversation)(row.ordinal)
-          return []
-        }
-      }),
+      decodeProposalRows<InstructionProposedEvent | InstructionSettledEvent>(
+        selectInstructionAsks.all() as PendingProposalLedgerRow[],
+        'askId',
+        'an instruction row with no ask id',
+        unread,
+      ),
     )
 
   const settleInstructionAskTx = db.transaction(
@@ -4809,35 +4822,12 @@ export function createSessionStore(
   /** Every MCP server request still waiting: {@link instructionAsksWaiting}'s read, for requests. */
   const mcpServerRequestsWaitingNow = (unread?: RowsUnread): readonly McpServerRequestWaiting[] =>
     mcpServerRequestsWaiting(
-      (
-        selectMcpServerRequests.all() as {
-          conversation: string
-          at: number
-          ordinal: number
-          readable: number
-          payload: string
-        }[]
-      ).flatMap((row) => {
-        if (row.readable === 0) {
-          noteUnreadRow(row.conversation, row.ordinal, unread?.in(row.conversation))
-          return []
-        }
-        try {
-          const event = JSON.parse(row.payload) as
-            McpServerRequestedEvent | McpServerRequestSettledEvent | null
-          if (typeof event?.requestId !== 'string') {
-            throw new Error('an MCP server request row with no request id')
-          }
-          return [{ conversation: row.conversation, at: row.at, event }]
-        } catch (error) {
-          console.warn(
-            `session ledger: ${row.conversation} ordinal ${String(row.ordinal)} could not be read ` +
-              `and was skipped (${error instanceof Error ? error.message : String(error)})`,
-          )
-          unread?.in(row.conversation)(row.ordinal)
-          return []
-        }
-      }),
+      decodeProposalRows<McpServerRequestedEvent | McpServerRequestSettledEvent>(
+        selectMcpServerRequests.all() as PendingProposalLedgerRow[],
+        'requestId',
+        'an MCP server request row with no request id',
+        unread,
+      ),
     )
 
   /** Whether any readable row is the request by this id, waiting or settled. */
