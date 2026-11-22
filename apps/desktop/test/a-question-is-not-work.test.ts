@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { permissionCardOn } from './helpers/permission-card-on'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -291,19 +292,7 @@ describe('415 · a question is not work', () => {
     }
   }
 
-  const cardOn = async (sessionId: string): Promise<string> => {
-    await waitFor(
-      () => ledger(sessionId).some((event) => event.type === 'permission_request'),
-      'the card the turn parks on',
-    )
-    const asked = ledger(sessionId)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1)
-    if (asked === undefined || asked.type !== 'permission_request') {
-      throw new Error('no permission request on the ledger')
-    }
-    return asked.id
-  }
+  const cardOn = permissionCardOn(ledger)
 
   const letTheTurnFinish = async (sessionId: string): Promise<void> => {
     const id = await cardOn(sessionId)

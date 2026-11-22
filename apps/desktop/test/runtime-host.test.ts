@@ -666,7 +666,9 @@ describe('RuntimeHost liveness', () => {
     const created = await host.createSession({ provider: 'claude' }, sink)
 
     expect(sink.liveness.at(-1)?.canStopBackgroundWork, 'the gate the button reads').toBe(true)
-    await expect(host.stopBackgroundWork(created.sessionId, 'b6uoyo82k', sink)).resolves.toBe(true)
+    await expect(
+      host.stopBackgroundWork(created.sessionId, 'b6uoyo82k', { ownerId: 'agent:sess_peer' }),
+    ).resolves.toBe(true)
     // ⚠️ The PROVIDER's own key, unmodified — `247` refused a neutral surrogate because *"a neutral
     // identifier nobody could act on"* is what one would be.
     expect(runtime.stopped).toEqual(['b6uoyo82k'])
@@ -895,7 +897,7 @@ describe('RuntimeHost.sendInterrupting — send anyway, mid-turn (074)', () => {
     }
     await host.cancelQueuedMessage(created.sessionId, held.messageId, sink)
 
-    await host.sendInterrupting(created.sessionId, 'second', sink)
+    await host.sendInterrupting(created.sessionId, 'second', { ownerId: 'agent:sess_peer' })
 
     // The first turn ended as interrupted, and the second turn really started.
     //

@@ -1872,7 +1872,7 @@ describe('a service is reached through the piece it is on', () => {
       const { host, caller, service, one } = await aServiceOnTheFirstPiece({ ask: true })
       const [card] = rows(service, 'permission_request')
       if (card?.type !== 'permission_request') throw new Error('no card')
-      expect(routed(service).get(card.id)).toMatchObject({ to: 'a-person' })
+      expect(routed(service).get(card.id)).toMatchObject({ to: 'a-person', parent: caller })
       // The caller may not stop it there, nor answer the card.
       expect(
         (await call(host, caller, 'interrupt_agent', { agent: service, reason: 'not needed now' }))

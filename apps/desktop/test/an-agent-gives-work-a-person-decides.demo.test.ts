@@ -284,9 +284,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     expect(windowC.received).toEqual([])
   })
 
-  it('⛔ …and the agent may not end it, nor reconfigure it into never asking again', async () => {
-    // ⚠️ The two gestures that would each give an agent the authority by a different route: closing
-    // somebody else's conversation, and switching it to `auto` so no card is ever raised to refuse.
+  it('an unrelated agent can close the conversation while approval settings stay person-controlled', async () => {
     const spawned = await host.createSession(
       { provider: 'claude', cwd: userData, approvalMode: 'ask' },
       null,
@@ -299,27 +297,22 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
       { provider: 'claude', cwd: userData, approvalMode: 'ask' },
       null,
     )
-    // ⚠️ **421 · all three read the unowned sentence now, because all three sessions are unowned.**
-    // A spawn takes no sink, so `ownerId` is `null` — and the sentence these refusals used to give
-    // an agent was *"switch to that window"*, about a conversation that has no window.
     expect(
       await refusalOf(() => agent.send({ sessionId: unnamed.sessionId, text: 'not mine' })),
     ).toBe(HELD_BY_NOBODY)
 
-    expect(await refusalOf(() => agent.close({ sessionId: spawned.sessionId }))).toBe(
-      HELD_BY_NOBODY,
-    )
     expect(
       await refusalOf(() => agent.setApprovalMode({ sessionId: spawned.sessionId, mode: 'auto' })),
     ).toBe(HELD_BY_NOBODY)
 
-    // ⚑ …and the session is still there and still asks, which is what those two refusals bought.
     expect(host.sessionIds).toContain(spawned.sessionId)
     await agent.send({ sessionId: spawned.sessionId, text: 'still asking' })
     await waitFor(
       () => recorded(spawned.sessionId).some((event) => event.type === 'permission_request'),
       'the card the approval mode would have removed',
     )
+    await outsider.close({ sessionId: spawned.sessionId })
+    expect(host.sessionIds).not.toContain(spawned.sessionId)
   })
 
   // ── 349 · the one move 340 could not stop, on the same wire ────────────────────

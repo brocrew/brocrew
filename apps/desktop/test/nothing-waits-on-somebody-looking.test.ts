@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { permissionCardOn } from './helpers/permission-card-on'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { waitFor } from './lib/f093-host'
@@ -142,12 +143,15 @@ describe('396 · nothing waits on somebody looking', () => {
     return last?.type === 'status' && last.state === 'idle'
   }
 
-  const aPmAndItsWorker = async (): Promise<{
+  const aPmAndItsWorker = async (
+    keepPieceOpen = false,
+  ): Promise<{
     pm: string
     pmProfile: string
     worker: string
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
+    aboutPiece: { piece: string; label: string }
   }> => {
     const nth = ++pairs
     const pmProfile = `pm-${String(nth)}`
@@ -168,41 +172,31 @@ describe('396 · nothing waits on somebody looking', () => {
     const worker = given.agent as string
     const workerHandle = latestHandle()
     await waitFor(() => quiet(worker), 'the brief’s turn to end')
-    const replied = await callOn(agentToolsFor(host, worker), 'reply_to_parent', {
-      piece: given.label,
-      outcome: 'done',
-      summary: 'the work is done',
-    })
-    expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
-    await waitFor(
-      () =>
-        ledger(pm).some(
-          (event) => event.type === 'user_turn' && event.text.includes('the work is done'),
-        ) && quiet(pm),
-      'the answer to reach the pm, and its turn to end',
-    )
+    const { piece, label } = store.workByLabel(given.label as string)!
+    if (!keepPieceOpen) {
+      const replied = await callOn(agentToolsFor(host, worker), 'reply_to_parent', {
+        piece: label,
+        outcome: 'done',
+        summary: 'the work is done',
+      })
+      expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
+      await waitFor(
+        () =>
+          ledger(pm).some(
+            (event) => event.type === 'user_turn' && event.text.includes('the work is done'),
+          ) && quiet(pm),
+        'the answer to reach the pm, and its turn to end',
+      )
+      expect(store.openPiecesOf(worker)).toEqual([])
+    }
     await host.setApprovalMode(pm, 'ask', window)
     await host.setApprovalMode(worker, 'ask', THE_APP_ITSELF)
-    // ⚑ **The premise, asserted**: nothing open, nothing routed, and nobody has claimed the child.
-    expect(store.openPiecesOf(worker)).toEqual([])
     expect(store.routedRequestsOf(worker)).toEqual([])
     expect(claimed.has(worker)).toBe(false)
-    return { pm, pmProfile, worker, pmTools, workerHandle }
+    return { pm, pmProfile, worker, pmTools, workerHandle, aboutPiece: { piece, label } }
   }
 
-  const cardOn = async (sessionId: string): Promise<string> => {
-    await waitFor(
-      () => ledger(sessionId).some((event) => event.type === 'permission_request'),
-      'the card the turn parks on',
-    )
-    const asked = ledger(sessionId)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1)
-    if (asked === undefined || asked.type !== 'permission_request') {
-      throw new Error('no permission request on the ledger')
-    }
-    return asked.id
-  }
+  const cardOn = permissionCardOn(ledger)
 
   /** Answer the open card so the turn runs to its own terminal (`379`'s helper). */
   const letTheTurnFinish = async (sessionId: string): Promise<void> => {
@@ -525,34 +519,24 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(listed?.words).toContain(`quoting ${liveAsked.id} with asked_by ${address}.`)
     })
 
-    it('🔴 a PERMISSION lists and carries NO words — and the `because` narrowing is what does it', async () => {
-      // 🔴 **ONE thing stands between a parent and a permission's text, and this is it.**
-      //
-      // ⛔ **A secret is a `user_input_request` WITH a prompt and parts** that the channel refuses —
-      // the same shape a Codex `item/permissions/requestApproval` arrives in, told apart by a field
-      // rather than by a type. ⚑ `questionsRaisedIn` hands its words back happily, which the second
-      // assertion below states rather than leaves implied; the `because` gate is what does not.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
+    it('lists a secret request for the task giver without its words and refuses an answer', async () => {
+      const { pm, worker, workerHandle, aboutPiece } = await aPmAndItsWorker(true)
+      await host.send(worker, 'continue this piece', asPm(pm), [], { aboutPiece })
+      await cardOn(worker)
       const secret = await nativeQuestion(worker, workerHandle, 'the token?', [], { secret: true })
       const rows = (await callOn(agentToolsFor(host, pm), 'list_questions')).questions as Record<
         string,
         unknown
       >[]
       const row = rows.find((one) => one.question === secret.id)
-      // ⛔ **It LISTS**, which is `394` §2 unchanged: a reader that dropped it would make the
-      // refusal below unreachable and the census permanently blind.
       expect(row).toMatchObject({
         state: 'open',
         answerable_by_you: false,
         because: 'a-secret-only-a-person-can-type',
         words: null,
       })
-      // ⛔ **And the store DID have the words** — the premise that makes `words: null` a gate rather
-      // than an absence. ⚠️ Without this line the assertion above would pass just as well if the
-      // reader had simply failed to find the request.
+      // The ledger has the words, so the null in the listing exercises the person-only route.
       expect(store.questionsRaisedIn(worker).get(secret.id)?.prompt).toBe('the token?')
-      // ⚑ **And it is still refused BY NAME**, so the caller is told what it named rather than that
-      // there is nothing there.
       expect(
         await callOn(agentToolsFor(host, pm), 'answer_question', {
           question: secret.id,
@@ -561,22 +545,31 @@ describe('396 · nothing waits on somebody looking', () => {
       ).toMatchObject({ outcome: 'refused', rail: 'a-person-answers-this-one' })
     })
 
-    it('⛔ …and a permission CARD has no words to leak — the shape, which is NOT a second gate', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
-      await host.send(worker, 'a long piece of work', asPm(pm))
-      await cardOn(worker)
-      await waitFor(
-        () => store.routedRequestsOf(worker).length > 0,
-        'the permission card to be routed',
-      )
-      const rows = (await callOn(agentToolsFor(host, pm), 'list_questions')).questions as Record<
-        string,
-        unknown
-      >[]
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ because: 'a-permission-decision', words: null })
-      expect(store.questionsRaisedIn(worker).size).toBe(0)
-    })
+    it.each([true, false])(
+      'keeps the permission card with the person and lists it for the giver only on a named task (%s)',
+      async (namedTask) => {
+        const { pm, worker, aboutPiece } = await aPmAndItsWorker(namedTask)
+        await host.send(worker, 'continue', asPm(pm), [], namedTask ? { aboutPiece } : {})
+        const card = await cardOn(worker)
+        await waitFor(
+          () => host.decisionsForAPerson().rows.some((row) => row.request.requestId === card),
+          'the permission card to reach the person',
+        )
+        const rows = (await callOn(agentToolsFor(host, pm), 'list_questions')).questions
+        expect(rows).toEqual(
+          namedTask
+            ? [
+                expect.objectContaining({
+                  question: card,
+                  because: 'a-permission-decision',
+                  words: null,
+                }),
+              ]
+            : [],
+        )
+        expect(store.questionsRaisedIn(worker).size).toBe(0)
+      },
+    )
 
     it('⛔ a caller sees only its OWN family — the entitlement is the lookup, and it takes no argument', async () => {
       // ⚑ **Structural rather than checked** (`394`'s rule): `me` is minted by the toolset from the

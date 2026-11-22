@@ -300,24 +300,13 @@ describe('403 · a decision only a person can make', () => {
   const idsIn = (rows: readonly { request: { requestId: string } }[]): string[] =>
     rows.map((one) => one.request.requestId)
 
-  /**
-   * ⛔ **A request id is the PROVIDER's and is only unique inside one conversation** — measured
-   * here rather than assumed: the Fake mints `turn_1_perm` per handle, so two workers parked on
-   * their first card carry the same id. ⚠️ Every identity assertion in this file therefore reads
-   * `askedBy:requestId`, which is also the key the renderer's rows are drawn on.
-   */
+  /** Provider request IDs are only unique within a conversation. */
   const keysIn = (rows: readonly { request: { askedBy: string; requestId: string } }[]): string[] =>
     rows.map((one) => `${one.request.askedBy}:${one.request.requestId}`)
 
   const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
 
-  /**
-   * ⛔ **One declaration's body, with every comment stripped** —
-   * `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ The first version of §4's census
-   * sliced the raw source, so this very file's own comments were inside the text it asserted
-   * `not.toContain` over: a future doc line naming a refusal would have turned it red with no
-   * behaviour change at all.
-   */
+  /** Ignore comments when checking which calls a declaration contains. */
   const bodyIn = (source: string, from: string, to: string): string => {
     const start = source.indexOf(from)
     expect(start, `${from} is not in this file`).toBeGreaterThan(-1)
@@ -428,6 +417,88 @@ describe('403 · a decision only a person can make', () => {
       // about the payload rather than about a string nothing could have carried.
       expect(JSON.stringify(ledger(worker))).toContain('do the thing')
     })
+
+    it.each([true, false])(
+      'shows a notice only for the task the waiting turn drives (named task: %s)',
+      async (namedTask) => {
+        const pm = await personOpens('parent')
+        const worker = 'sess_notice_worker'
+        store.create({
+          id: worker,
+          provider: 'claude',
+          cwd: root,
+          approvalMode: 'ask',
+          profileId: 'worker',
+          parentSessionId: pm,
+        })
+
+        const other = await personOpens('other-giver')
+        const giverRoot = store.rootOf(other)!
+        const number = store.numberUnder(giverRoot.piece)
+        const piece = 'work_from_another_conversation'
+        const label = `${giverRoot.label}.${number}`
+        const title = 'Work given by the other conversation'
+        // Plant the existing record shape because this test exercises routing, not Give.
+        store.recordGive(
+          {
+            piece,
+            parent: giverRoot.piece,
+            number,
+            owner: worker,
+            givenBy: other,
+            title,
+            brief: title,
+            folder: null,
+            inputs: [],
+          },
+          store.nextOrdinal(worker),
+          {
+            type: 'work_given',
+            piece,
+            label,
+            parent: giverRoot.piece,
+            givenBy: other,
+            title,
+            brief: title,
+          },
+          tick(),
+        )
+        expect(store.parentOf(worker)).toBe(pm)
+        await host.send(
+          worker,
+          'touch a file',
+          window,
+          [],
+          namedTask ? { aboutPiece: { piece, label } } : {},
+        )
+        const requestId = await aChildParksOnAPermission(worker)
+        const route = ledger(worker).find(
+          (event) => event.type === 'request_routed' && event.requestId === requestId,
+        )
+        const turn = ledger(worker)
+          .filter((event) => event.type === 'user_turn')
+          .at(-1)
+        expect(turn, JSON.stringify(turn)).toMatchObject({ text: 'touch a file' })
+        expect(route, JSON.stringify({ route, turn })).toMatchObject({
+          to: 'a-person',
+          because: 'a-permission-decision',
+        })
+        expect(route?.type === 'request_routed' ? (route.parent ?? null) : null).toBe(
+          namedTask ? other : null,
+        )
+        await expect(
+          host.respondPermission(
+            worker,
+            requestId,
+            { outcome: 'allow' },
+            { ownerId: `agent:${other}` },
+          ),
+        ).rejects.toThrow()
+        await expect(
+          host.respondPermission(worker, requestId, { outcome: 'allow' }, window),
+        ).resolves.toMatchObject({ outcome: 'taken' })
+      },
+    )
 
     it('🔴 the child really has no window, which is why no other surface can see it', async () => {
       const { worker } = await aPmAndItsWorker()

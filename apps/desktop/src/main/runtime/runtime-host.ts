@@ -10953,13 +10953,16 @@ export class RuntimeHost implements LiveHost {
     const owner = resolveConversationAddress(address, this.deps.store)
     if (owner === address) return address
     const row = this.deps.store.workByLabel(address)!
+    // A stop still addresses the service piece itself, whether it is queued or active.
+    if (reach === 'interrupting') {
+      return this.itGaveItToAService(row, by) || this.mayInterrupt(this.theOneInItsPlace(owner))
+        ? owner
+        : address
+    }
     const admitted =
       reach === 'answering' ||
       this.withinMessagingReach(this.theOneInItsPlace(owner), by, me) ||
-      // ⚑ A piece the caller gave a service names that service, so a message or a stop about it is
-      // answered for what that piece is, queued or on.
-      ((reach === 'messaging' || reach === 'interrupting') && this.itGaveItToAService(row, by)) ||
-      (reach === 'interrupting' && this.mayInterrupt(this.theOneInItsPlace(owner))) ||
+      (reach === 'messaging' && this.itGaveItToAService(row, by)) ||
       reach === 'reading'
     return admitted ? owner : address
   }
@@ -13398,9 +13401,8 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚑ **The row is written whatever is watching** ({@link RequestRoutedEvent}), so the host's reads
    * over every conversation (`questionsForAPerson`, `decisionsForAPerson`) list it whichever window
-   * is open, or none. Its `because` names a shape no agent may answer; a request with one also names
-   * the conversation shown it ({@link whoIsShownItsRequests}), whose `answer_question` is then
-   * refused by name.
+   * is open, or none. Its `because` names a shape no agent may answer. If the turn is working on a
+   * given piece, the route also records the conversation that gave it as the notice recipient.
    *
    * ⚠️ **The ADAPTER's event, not the wire's**: zod strips a key no adapter declares, and
    * `a-shape-this-app-has-not-been-taught` is a fact about that key. ⚠️ A degraded event
@@ -13423,14 +13425,17 @@ export class RuntimeHost implements LiveHost {
         to: 'a-person',
       })
     }
-    // ⚑ **D-017 · R10** — a parent that could never be reopened is the one in its place.
-    const parent = this.whoIsShownItsRequests(session.id)
+    const piece =
+      session.turnOpened && session.itsTurnDrives !== null
+        ? this.deps.store.workById(session.itsTurnDrives)
+        : null
+    const giver = piece?.owner === session.id ? piece.givenBy : null
     return this.recordOurs(session, {
       type: 'request_routed',
       requestId: verdict.id,
       to: 'a-person',
       because: verdict.because,
-      ...(parent === null ? {} : { parent }),
+      ...(giver === null ? {} : { parent: this.theOneInItsPlace(giver) }),
     })
   }
 
@@ -23479,7 +23484,7 @@ export class RuntimeHost implements LiveHost {
     if (!this.runsNow(sessionId) && theSurfaceAsking(by) !== null) {
       return this.send(sessionId, text, by, attachments)
     }
-    const session = this.requireToCommand(sessionId, by)
+    const session = this.requireToMessage(sessionId, by)
     // ⚠️ **The queue is held back for the whole of this, and without it the queued message JUMPS
     // THE INTERRUPT** (found in review). `interrupt()` terminalizes the running turn, which emits
     // `status: idle` — the exact signal {@link flushQueued} waits for. That event is delivered on a
@@ -25557,17 +25562,6 @@ export class RuntimeHost implements LiveHost {
   private theParentInItsPlace(sessionId: string): string | null {
     const parent = this.deps.store.parentOf(sessionId)
     return parent === null ? null : this.theOneInItsPlace(parent)
-  }
-
-  /**
-   * The conversation shown a request only the person may answer: its parent, or for a service the
-   * giver of the piece it is on. It may ask about the request, and is told it is the person's.
-   */
-  private whoIsShownItsRequests(sessionId: string): string | null {
-    if (!this.itIsAService(sessionId)) return this.theParentInItsPlace(sessionId)
-    const on = this.thePieceItIsOn(sessionId)
-    if (on === null || on.giver === null) return null
-    return this.theOneInItsPlace(on.giver)
   }
 
   /**
@@ -29306,7 +29300,7 @@ export class RuntimeHost implements LiveHost {
    * press that JOINS an ask still unanswered** (`723`, R83), which writes only the breadcrumb.
    */
   async interrupt(sessionId: string, by: Caller): Promise<void> {
-    const session = this.requireToCommand(sessionId, by)
+    const session = this.sessionFor(sessionId, () => {})
     // 🔴 **723 · R83 — a second press joins the first ask**: *"a second press does not queue a second
     // ask behind the first."* ⛔ **Measured on `main`** (`a-stop-codex-does-not-answer-is-said`):
     // each press sent Codex another `turn/interrupt` behind the one it had not answered, and wrote
@@ -29318,7 +29312,7 @@ export class RuntimeHost implements LiveHost {
     // ask beside it — which is how a surface can tell one.
     // ⛔ **Except while a card is up** (review): the turn raised a request after the ask, so Codex is
     // answering, and the press is what settles that card (`askTheWorkToStop` → `settleRequests`) — a
-    // new ask, as on `main`. ⚠️ Below the two gates, so a caller refused there is refused as before.
+    // new ask, as on `main`.
     const stillAsked = session.stopStillAsked
     if (stillAsked !== null && session.handle.status() !== 'waiting_permission') {
       // ⚑ **F084 · a person's Stop is an explicit one**, and it widens an ask that only made way for
@@ -29893,11 +29887,12 @@ export class RuntimeHost implements LiveHost {
    * never left the process, which is this boolean's own wire contract broken by the only code that
    * writes it.
    */
-  async stopBackgroundWork(sessionId: string, id: string, by: Caller): Promise<boolean> {
+  async stopBackgroundWork(sessionId: string, id: string, _by: Caller): Promise<boolean> {
+    void _by
     // ⚠️ Called THROUGH the handle rather than through a extracted reference: `ClaudeSessionHandle`
     // reads `this.machine` and `this.query`, so a `const stop = handle.stopBackgroundWork` would
     // typecheck, ship, and throw on the first press.
-    const { handle } = this.require(sessionId, by)
+    const { handle } = this.sessionFor(sessionId, () => {})
     if (handle.stopBackgroundWork === undefined) return false
     return await handle.stopBackgroundWork(id)
   }
@@ -31568,22 +31563,12 @@ export class RuntimeHost implements LiveHost {
    * Every caller therefore joins one teardown. Not `async`: an async wrapper would
    * hand each caller a fresh promise and defeat the barrier.
    *
-   * ⛔ **The owner check is its own line here rather than {@link require}'s, because this method
-   * deliberately does not go through it** (203): a close is honoured for a session that is still
-   * STARTING, which `require` refuses, and that is the whole of 062's closing phase. So the slot is
-   * looked up once and asked the same question by the same predicate.
-   *
-   * ⚠️ **Tolerance and refusal are different answers and the order keeps them apart.** An unknown id
-   * stays a silent no-op — that is what makes a reopen of a conversation that already stopped
-   * safe — but a KNOWN session belonging to somebody else is refused rather than quietly reported
-   * as closed. Answering
-   * "done" to a close that did not happen would be the more dangerous of the two lies.
+   * Look up the slot directly so a close can also join a launch that is still starting.
    */
   close(sessionId: string, by: Caller): Promise<void> {
     const slot = this.slots.get(sessionId)
     // ⚠️ The tolerant no-op for an id nothing is running: there is nothing to stop.
     if (!slot) return Promise.resolve()
-    this.assertMayControl(slot, by)
     // ⚑ A person closing it ends a cut turn's wait for its limit's reset: they stopped it.
     if (aPersonIsAsking(by)) this.aPersonEndedItsWait(sessionId)
     if (slot.session === null) {

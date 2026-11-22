@@ -32,32 +32,9 @@ import {
 } from './lib/host-fixture'
 
 /**
- * 🔴 **373 · a parent that survives a restart.**
- *
- * ⛔ **The question this file answers is 340's own, deferred by 340 in as many words.** Its §0
- * measured that a process restart ends a commanding relationship and then declined to rule: *"That
- * is a fact to state, not a thing I fixed… What it costs is that an in-flight delegation has to be
- * made again — which is the tools dispatch's problem if it turns out to be one, and is a **schema
- * question**, not a predicate question."* ⚑ `341` wrote the schema half in the very next dispatch —
- * `parent_session_id`, `spawned_at`, `spawn_reason`, one transaction — and nobody came back.
- *
- * ⚑ **What lands here is a DERIVATION and not a restoration.** Nothing about a commanding
- * relationship is persisted, and `commandedBy` still dies with the process. What survives is the
- * provenance row, the only commander a row can NAME is the conversation that asked for this one, and
- * a resume computes the identity that conversation's own toolset presents. ⛔ So 340's safety
- * sentence holds verbatim through the change: *"a restart can never hand command of a session to an
- * agent that did not ask for it."*
- *
- * ⚠️ **§1 is written at the state where the two readings DISAGREE** — a COLD RESUME with a live
- * parent. A test that restarts nothing passes under both readings and measures neither, which is
- * what `341` paid for three times over; so §1.3 stands the same pair up before the restart, where
- * both readings agree, precisely to show the restart is the only variable.
- *
- * ⚑ **Real host, real SQLite ledger, real migrations, real rails.** The only double is the provider,
- * and it is subclassed to keep the toolsets the HOST handed each session — so §1 drives the parent
- * through the toolset this app built for it rather than through an identity the test invented.
+ * A real host and ledger with a fake provider. Reopen reconstructs provenance from the ledger.
+ * The provider fixture retains the toolset the host hands each conversation.
  */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -70,6 +47,8 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * presents it — so §1 calls the object `reopenSession` passed to `resume`, and nothing else.
  */
 class ToolWatchingRuntime extends FakeRuntime {
+  stopBackground?: (id: string) => Promise<boolean>
+
   constructor(
     private readonly runningProvider: Provider,
     private readonly handed: AgentToolset[],
@@ -123,6 +102,9 @@ class ToolWatchingRuntime extends FakeRuntime {
     options: ResumeOptions,
   ): ReturnType<FakeRuntime['resume']> {
     const handle = this.watchCredential(await super.resume(ref, options))
+    if (this.stopBackground !== undefined) {
+      Object.defineProperty(handle, 'stopBackgroundWork', { value: this.stopBackground })
+    }
     this.launches.push({ kind: 'resume', keys: Object.keys(options) })
     if (options.agentTools) this.handed.push(options.agentTools)
     return handle
@@ -150,6 +132,7 @@ describe('373 · a parent that survives a restart', () => {
   let clock: number
   let window: RecordingSink
   let secondWindow: RecordingSink
+  let stopBackground: ToolWatchingRuntime['stopBackground']
   const tick = (): number => clock++
 
   const buildHost = (): RuntimeHost => {
@@ -157,7 +140,10 @@ describe('373 · a parent that survives a restart', () => {
       store,
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
-        new ToolWatchingRuntime(provider, handed, launches, issued, () => credentialGeneration),
+        Object.assign(
+          new ToolWatchingRuntime(provider, handed, launches, issued, () => credentialGeneration),
+          { stopBackground },
+        ),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -183,6 +169,7 @@ describe('373 · a parent that survives a restart', () => {
     launches = []
     issued = new FakeProviderSessions()
     credentialGeneration = 0
+    stopBackground = undefined
     host = buildHost()
     window = new RecordingSink('webContents:1')
     secondWindow = new RecordingSink('webContents:2')
@@ -719,26 +706,62 @@ describe('373 · a parent that survives a restart', () => {
       await host.respondPermission(worker, asked.id, { outcome: 'allow' }, secondWindow)
     })
 
-    it('⛔ …and may not close it, nor change what it is allowed to do', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
+    it('a peer can stop, close and queue compaction after a restart', async () => {
+      const { pm, worker, piece } = await aPmAndItsWorker()
+      const peer = await personOpens('peer')
+      const stopped: string[] = []
+      stopBackground = async (id) => {
+        if (id !== 'background-command') return false
+        stopped.push(id)
+        return true
+      }
       await restart()
       await reopen(worker, secondWindow)
       await reopen(pm, window)
+      const { toolset } = await reopen(peer, window)
+      const caller: CallerIdentity = { ownerId: agentCallerId(peer) }
       const parent: CallerIdentity = { ownerId: agentCallerId(pm) }
 
-      // ⚠️ `setApprovalMode` is the one worth naming: a commander that could set a session to
-      // `auto` would have answered every card it will ever raise, in advance.
+      expect(store.parentOf(worker)).toBe(pm)
       await expect(host.setApprovalMode(worker, 'auto', parent)).rejects.toThrow(/another window/i)
-      // ⚠️ **Refused in a different SHAPE, and asserted in that shape.** `close` is not `async` —
-      // it looks the slot up and asks {@link mayControl} synchronously, so its refusal THROWS where
-      // `setApprovalMode`'s rejects. One entitlement, two failure shapes; a `.rejects` here would
-      // fail with the very error it was written to expect.
-      expect(() => host.close(worker, parent)).toThrow(/another window/i)
-      expect(host.sessionIds).toContain(worker)
-      // ⚑ …and the window that owns it may do both, which is what makes the two lines above about
-      // the caller rather than about the session.
+      await expect(host.setApprovalMode(worker, 'auto', caller)).rejects.toThrow(/another window/i)
       await host.setApprovalMode(worker, 'auto', secondWindow)
-      await host.close(worker, secondWindow)
+      const before = ledger(worker).filter((event) => event.type === 'work_interrupted')
+      await expect(host.stopBackgroundWork(worker, 'missing', caller)).resolves.toBe(false)
+      await expect(host.stopBackgroundWork(worker, 'background-command', caller)).resolves.toBe(
+        true,
+      )
+      expect(stopped).toEqual(['background-command'])
+      expect(ledger(worker).filter((event) => event.type === 'work_interrupted')).toEqual(before)
+      expect(await callOn(toolset, 'interrupt_agent', { agent: piece })).toMatchObject({
+        outcome: 'ok',
+        agent: worker,
+      })
+      const addressed = host.theConversationAddressed(piece, caller, peer, 'interrupting')
+      expect(addressed).toBe(worker)
+      await expect(host.sendInterrupting(addressed, ' ', caller)).rejects.toThrow(
+        /nothing to send/i,
+      )
+      expect(ledger(worker).filter((event) => event.type === 'work_interrupted')).toEqual(before)
+      await host.setApprovalMode(worker, 'ask', secondWindow)
+      await host.sendInterrupting(addressed, 'continue the report', caller)
+      await waitFor(
+        () =>
+          ledger(worker).some(
+            (event) => event.type === 'user_turn' && event.text === 'continue the report',
+          ),
+        'the peer’s replacement words',
+      )
+      const compacted = await callOn(toolset, 'compact_agent', { agent: piece })
+      expect(compacted, JSON.stringify(compacted)).toMatchObject({
+        outcome: 'ok',
+        agent: worker,
+        requested: true,
+        queued: true,
+      })
+      await host.interrupt(worker, caller)
+      await host.close(worker, caller)
+      expect(host.sessionIds).not.toContain(worker)
     })
   })
 

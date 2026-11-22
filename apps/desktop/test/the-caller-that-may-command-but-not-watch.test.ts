@@ -286,8 +286,8 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(ledger(sessionId).map((event) => event.type)).not.toContain('user_turn')
     })
 
-    it('🔴 all five spellings of “give it work”, and only those five', async () => {
-      // ⛔ **One gesture with five spellings, and splitting them would make *"may this agent drive
+    it('🔴 the four ways to send or take back words', async () => {
+      // ⛔ **One gesture with four spellings, and splitting them would make *"may this agent drive
       // this session"* depend on whether it happened to be busy when it was asked.** Every verb is
       // pressed by the commander and by a stranger in the same breath, so each line is a statement
       // about the identity rather than about the verb working at all.
@@ -320,18 +320,11 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(await refusalOf(() => host.sendInterrupting(sessionId, 'two', STRANGER))).toBe(
         HELD_BY_NOBODY,
       )
-
-      await host.interrupt(sessionId, PLANNER)
-      expect(await refusalOf(() => host.interrupt(sessionId, STRANGER))).toBe(HELD_BY_NOBODY)
     })
 
-    it('⛔ …and every OTHER verb is still the owner’s alone', async () => {
-      // ⚑ The other half of the same claim: the widening is a list, not a direction. A commander
-      // cannot end this conversation, cannot change what it may do, cannot reconfigure it, and
-      // cannot speak to its children.
+    it('ownership still controls settings and child reads', async () => {
       const sessionId = await spawn({ commandedBy: PLANNER, approvalMode: 'auto' })
 
-      expect(await refusalOf(() => host.close(sessionId, PLANNER))).toBe(HELD_BY_NOBODY)
       expect(await refusalOf(() => host.setApprovalMode(sessionId, 'auto', PLANNER))).toBe(
         HELD_BY_NOBODY,
       )
@@ -341,15 +334,13 @@ describe('340 · a session an agent may drive and may not decide for', () => {
         ),
       ).toBe(HELD_BY_NOBODY)
       expect(await refusalOf(() => host.refreshConfig(sessionId, PLANNER))).toBe(HELD_BY_NOBODY)
-      expect(await refusalOf(() => host.stopBackgroundWork(sessionId, 'x', PLANNER))).toBe(
-        HELD_BY_NOBODY,
-      )
+      await expect(host.stopBackgroundWork(sessionId, 'x', PLANNER)).resolves.toBe(false)
       expect(await refusalOf(() => host.readChildState(sessionId, 'agent', PLANNER))).toBe(
         HELD_BY_NOBODY,
       )
 
-      // ⚑ …and the owner of a session really can do all of that, so the six refusals above are
-      // about the caller and not about six verbs that refuse everybody.
+      // ⚑ …and the owner of a session really can do all of that, so the four refusals above are
+      // about the caller and not about four verbs that refuse everybody.
       const owned = await spawn({ sink: one, approvalMode: 'auto' })
       await host.setApprovalMode(owned, 'auto', one)
       await host.setSessionSetting(owned, { kind: 'planMode', on: true }, one)
@@ -397,10 +388,17 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(host.sessionIds).not.toContain(owned)
     })
 
-    it('⛔ …nor may it close one on purpose', async () => {
+    it('an unrelated caller can stop and close it explicitly', async () => {
       const sessionId = await spawn({ commandedBy: PLANNER })
-      expect(await refusalOf(() => host.close(sessionId, PLANNER))).toBe(HELD_BY_NOBODY)
+      await parkOnAQuestion(sessionId, PLANNER)
+      await host.interrupt(sessionId, STRANGER)
+      await waitFor(
+        () => ledger(sessionId).some((event) => event.type === 'work_interrupted'),
+        'the recorded stop',
+      )
       expect(host.sessionIds).toEqual([sessionId])
+      await host.close(sessionId, STRANGER)
+      expect(host.sessionIds).not.toContain(sessionId)
     })
   })
 
