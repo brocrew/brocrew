@@ -9,8 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { AuthUnavailableError } from '@brobot2/runtime'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_PROFILE_ID,
   HOME_FOLDER,
@@ -136,17 +135,12 @@ describe('provider homes', () => {
     expect(statSync(home).isDirectory()).toBe(true)
   })
 
-  it('fails closed when the Claude machine login is unavailable', async () => {
-    await expect(
-      prepareProviderHome(userData, identity, {
-        claudeAuthHealth: () => ({ ok: false, reason: 'expired' }),
-      }),
-    ).rejects.toThrow(AuthUnavailableError)
-    await expect(
-      prepareProviderHome(userData, identity, {
-        claudeAuthHealth: () => ({ ok: false, reason: 'expired' }),
-      }),
-    ).rejects.toThrow('expired')
+  it('prepares the same home without a local sign-in health veto', async () => {
+    const health = vi.fn(() => ({ ok: false, reason: 'expired' }))
+    const home = await prepareProviderHome(userData, identity, { claudeAuthHealth: health })
+    expect(home).toBe(deriveProviderHome(userData, identity))
+    expect(statSync(home).isDirectory()).toBe(true)
+    expect(health).not.toHaveBeenCalled()
   })
 
   it('copies the Codex credential into the home it just provisioned', async () => {

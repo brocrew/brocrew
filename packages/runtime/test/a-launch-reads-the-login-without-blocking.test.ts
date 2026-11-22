@@ -106,10 +106,12 @@ describe('a launch reads the login the launch’s way', () => {
     })
   }
 
-  it('⛔ no login: the launch is refused as having nothing to run on, before any spawn', async () => {
+  it('no local login: native Claude is asked with its managed home', async () => {
     const { env, error } = await launch('start', { blocking: NEVER, forALaunch: async () => null })
-    expect(error).toBeInstanceOf(AuthUnavailableError)
-    expect(env).toBeNull()
+    expect((error as Error).message).toContain('stopped at the spawn')
+    expect(env?.['CLAUDE_CODE_OAUTH_TOKEN']).toBeUndefined()
+    expect(env?.['CLAUDE_SECURESTORAGE_CONFIG_DIR']).toBe('')
+    expect(env?.['CLAUDE_CONFIG_DIR']).toBe(homes.at(-1))
   })
 
   it('⛔ a machine that ran short throws as it came, never as no login — a resume carrying it as its cause', async () => {

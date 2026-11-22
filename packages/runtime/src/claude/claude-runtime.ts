@@ -43,7 +43,6 @@ import type { SessionRef } from '../session-ref'
 import { AsyncQueue } from '../internal/async-queue'
 import { AuthUnavailableError } from '../internal/auth'
 import {
-  whyNoClaudeLogin,
   type ClaudeApiKeyProviderAsync,
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
@@ -467,7 +466,7 @@ export class ClaudeRuntime implements AgentRuntime {
     apiKeyProvider?: ClaudeApiKeyProviderAsync,
     platform: NodeJS.Platform = process.platform,
 
-    whyNoLogin: () => string = () => whyNoClaudeLogin({ platform }),
+    _whyNoLogin?: () => string,
     program?: string,
     launchTokenProvider?: ClaudeAuthTokenProviderAsync,
     private readonly managedProviderHomesRoot?: string,
@@ -479,7 +478,6 @@ export class ClaudeRuntime implements AgentRuntime {
     this.spawnChild = spawnChild
     this.apiKeyProvider = apiKeyProvider
     this.platform = platform
-    this.whyNoLogin = whyNoLogin
     this.program = program
     this.launchTokenProvider = launchTokenProvider
   }
@@ -489,8 +487,6 @@ export class ClaudeRuntime implements AgentRuntime {
     if (key !== null && key !== '') return { key }
     return { key: null, login: await this.launchTokenProvider?.() }
   }
-
-  private readonly whyNoLogin: () => string
 
   private queryOrWhyNot(params: Parameters<QueryFactory>[0]): ClaudeQuery {
     const program = this.program
@@ -916,11 +912,11 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const token = auth?.login !== undefined ? auth.login : this.authTokenProvider?.()
     if (token !== undefined) {
-      if (!token) {
-        throw new AuthUnavailableError('claude', this.whyNoLogin())
+      if (token) additions.CLAUDE_CODE_OAUTH_TOKEN = token
+      else {
+        additions.CLAUDE_SECURESTORAGE_CONFIG_DIR = ''
+        console.warn('Claude launch is using native authentication without a local token')
       }
-
-      additions.CLAUDE_CODE_OAUTH_TOKEN = token
     }
     return { additions, onAKey: false }
   }
