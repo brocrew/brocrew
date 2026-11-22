@@ -1,9 +1,13 @@
 import type { MemoryNoteEvent, MemoryNoteSeen } from '../../shared/conversation-events'
-import { lstatSync, statSync } from 'node:fs'
+import { lstatSync, promises as fsAsync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
 import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../../shared/runtime-ipc'
-import { newestMemoryNotes as adHocNotes, readInstructionFile } from '../providers/instruction-io'
+import {
+  memoryNoteNames,
+  newestMemoryNotes as adHocNotes,
+  readInstructionFile,
+} from '../providers/instruction-io'
 import { providerKnowledge } from '../providers/index'
 
 /**
@@ -98,6 +102,21 @@ export function noteNamesIn(dir: string | null): ReadonlySet<string> | null {
   const listed = adHocNotes(dir)
   if (listed.refused !== null) return null
   return new Set(listed.names)
+}
+
+export async function noteNamesInAsync(dir: string | null): Promise<ReadonlySet<string> | null> {
+  if (dir === null) return new Set()
+  try {
+    const entries = await fsAsync.readdir(dir, { withFileTypes: true })
+    return new Set(memoryNoteNames(entries).reverse())
+  } catch {
+    try {
+      await fsAsync.lstat(dir)
+    } catch {
+      return new Set()
+    }
+    return null
+  }
 }
 
 /**

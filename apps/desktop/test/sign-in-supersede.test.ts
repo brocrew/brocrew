@@ -1,20 +1,27 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { neutralHostDeps, LivenessRecordingSink as RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, type SessionHandle } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { NULL_SESSION_STORE, createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { deferred } from './helpers/quit-open-list-cases'
+
+const notePreparation = vi.hoisted(() => ({ before: async (): Promise<void> => {} }))
+vi.mock('../src/main/runtime/memory-notes', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/main/runtime/memory-notes')>()
+  return {
+    ...original,
+    noteNamesInAsync: async (...args: Parameters<typeof original.noteNamesInAsync>) => {
+      await notePreparation.before()
+      return original.noteNamesInAsync(...args)
+    },
+  }
+})
 
 /**
  * 147 · A session that follows the machine account — the host half.
@@ -29,32 +36,6 @@ import type {
  * refusal lands at the turn boundary and *only* at the turn boundary — nothing is interrupted,
  * nothing is closed, and nothing is thrown away.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-
-  types(): string[] {
-    return this.events().map((event) => event.type)
-  }
-}
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -149,8 +130,11 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
   let host: RuntimeHost
   let sink: RecordingSink
   let watch: Watch
+  let releaseNotes: (() => void) | undefined
 
   beforeEach(() => {
+    notePreparation.before = async () => {}
+    releaseNotes = undefined
     userData = mkdtempSync(join(tmpdir(), 'brobot2-signin-'))
     watch = new Watch()
     const sessions = new FakeProviderSessions()
@@ -181,6 +165,8 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
   })
 
   afterEach(async () => {
+    releaseNotes?.()
+    notePreparation.before = async () => {}
     await host.closeAll()
     db.close()
     rmSync(userData, { recursive: true, force: true })
@@ -482,6 +468,45 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
     expect(handedBack(id, sink)?.planNeedsGoAhead).toBe(true)
     expect(sink.types()).not.toContain('user_turn')
   })
+
+  it.each([false, true])(
+    'checks the sign-in again after plan note preparation (moved: %s)',
+    async (moved) => {
+      const { sessionId } = await host.createSession({ provider: 'claude', planMode: true }, sink)
+      const entered = deferred()
+      const held = deferred()
+      releaseNotes = () => held.resolve()
+      notePreparation.before = async () => {
+        entered.resolve()
+        await held.promise
+      }
+
+      const sending = host.endPlanMode(sessionId, sink, 'go on then')
+      const outcome = sending.then(
+        () => null,
+        (error: unknown) => error,
+      )
+      await entered.promise
+      try {
+        expect(handedBack(sessionId, sink)?.planNeedsGoAhead).toBe(false)
+        expect(userTurns()).toBe(0)
+        watch.moved = moved
+      } finally {
+        held.resolve()
+      }
+
+      if (moved) {
+        expect(await outcome).toBeInstanceOf(Error)
+        expect(String(await outcome)).toMatch(/holding the Claude sign-in it started with/)
+        expect(userTurns()).toBe(0)
+        expect(handedBack(sessionId, sink)?.liveness.signInSuperseded).toBe(true)
+      } else {
+        expect(await outcome).toBeNull()
+        expect(userTurns()).toBe(1)
+      }
+      expect(handedBack(sessionId, sink)?.planNeedsGoAhead).toBe(false)
+    },
+  )
 
   it('…and LEAVING planning is not refused — it sends nothing (085 asymmetry, kept)', async () => {
     const created = await host.createSession({ provider: 'claude', planMode: true }, sink)

@@ -426,7 +426,7 @@ import {
   type TheBuildRunning,
   type OtherConversations,
 } from './factory-text'
-import { memoryNoteDir, noteNamesIn, notesThatAppeared } from './memory-notes'
+import { memoryNoteDir, noteNamesInAsync, notesThatAppeared } from './memory-notes'
 import { readWorkflowOutput } from '../workflow-output'
 import { readConfigFile } from '../config-file'
 import { readInstructionSource } from '../instruction-source'
@@ -2062,6 +2062,12 @@ function reasonSaid(reason: string | undefined): string {
 function aReasonGiven(reason: string | undefined): string | null {
   const trimmed = reason?.trim()
   return trimmed === undefined || trimmed === '' ? null : trimmed
+}
+
+interface PreparedMemoryNoteBaseline {
+  readonly names: ReadonlySet<string> | null
+  readonly handover: number
+  readonly ending: number
 }
 
 interface HostedSession {
@@ -20858,13 +20864,18 @@ export class RuntimeHost implements LiveHost {
     const ultracode = input.ultracode
     // One toolset for the launch and its record, so the record names what was handed.
     const agentTools = this.agentToolsForSession(id)
+    const memoryNotes = await noteNamesInAsync(memoryNoteDir(input.provider, providerHome))
     // Bounded since 102 — see {@link awaitLaunch}. The wait starts HERE and not at the reservation:
     // provisioning the home and resolving the cwd happen above and can legitimately be slow on a
     // first run, and a bound that covered them would be a bound on the wrong thing.
+    if (this.whyNotOurs(slot) !== null)
+      throw new SessionUnavailable('lost-its-place', `session ${id} lost its place`)
     const handle = await this.awaitLaunch(
       slot,
       { provider: input.provider, kind: 'fresh' },
       (startPhases) => {
+        if (slot.launch.signal.aborted || this.whyNotOurs(slot) !== null)
+          throw new SessionUnavailable('lost-its-place', `session ${id} lost its place`)
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
         const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
         return runtime.start({
@@ -20943,6 +20954,7 @@ export class RuntimeHost implements LiveHost {
       providerHome,
       profileId,
       launchGave,
+      memoryNotes,
       createdApprovalMode: approvalMode,
       handle,
       sink,
@@ -21506,7 +21518,8 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **708 · `from: null`, the app's** — the go-ahead is BroBot's own sentence (see the send
     // below), so it is never a person's command whatever it says.
     let copyWait: ItsSignInMovedOn | undefined
-    if (text !== undefined) {
+    const checkGoAhead = async (): Promise<void> => {
+      if (text === undefined) return
       try {
         await this.assertCanTakeTurn(session, 'send', { text, attached: 0, from: null })
       } catch (error) {
@@ -21518,6 +21531,7 @@ export class RuntimeHost implements LiveHost {
         copyWait = error
       }
     }
+    if (text !== undefined) await checkGoAhead()
     // Throws where the gesture does not apply — a session that never planned, one already
     // released, or a provider whose plan mode ends through its own approval card. The handle owns
     // that judgement; a second copy of it here would be free to disagree with the button the
@@ -21547,9 +21561,17 @@ export class RuntimeHost implements LiveHost {
       this.reopenForWhatWaits(session)
       return
     }
-    const moveHandoff = this.beginMoveHandoff(session, false)
+    let moveHandoff: object | undefined
+    let memoryNotes: PreparedMemoryNoteBaseline
     try {
       if (copyWait !== undefined) throw copyWait
+      do {
+        memoryNotes = await this.prepareMemoryNoteBaseline(session)
+        await checkGoAhead()
+        if (copyWait !== undefined) throw copyWait
+        this.assertAcceptsMessages(session, 'send')
+      } while (!this.memoryNoteBaselineIsCurrent(session, memoryNotes))
+      moveHandoff = this.beginMoveHandoff(session, false)
       // 🔴 **The fourth door, and the ONLY one that must never carry a frame** (414). ⛔ It
       // reaches no {@link handToProvider} here — a go-ahead has no attachments and hands over no
       // task — and, more to the point, **these are not the caller's words.** ⚠️ **670 · a held
@@ -21628,10 +21650,10 @@ export class RuntimeHost implements LiveHost {
     // composer calls `send`), so there is no case where this mark would be put on something a
     // person typed. The endgame's MCP caller would be another machine, not a person, and the mark
     // stays true for it.
-    this.publishOurs(
+    this.publishUserTurn(
       session,
       { type: 'user_turn', text, attribution: 'app_authored' },
-      undefined,
+      memoryNotes.names,
       moveHandoff,
     )
   }
@@ -22660,13 +22682,17 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
+    let memoryNotes: PreparedMemoryNoteBaseline
     try {
-      await this.assertCanTakeTurn(session, 'send', {
-        text,
-        attached: attachments.length,
-        from: this.originOf(by),
-      })
-      handed = await recheckHandedPaths(attachments, session.cwd)
+      do {
+        memoryNotes = await this.prepareMemoryNoteBaseline(session)
+        await this.assertCanTakeTurn(session, 'send', {
+          text,
+          attached: attachments.length,
+          from: this.originOf(by),
+        })
+        handed = await recheckHandedPaths(attachments, session.cwd)
+      } while (!this.memoryNoteBaselineIsCurrent(session, memoryNotes))
     } catch (error) {
       if (
         how.onAStop === 'start-it-again' &&
@@ -22813,7 +22839,7 @@ export class RuntimeHost implements LiveHost {
     // A turn is where a queued mode change is adopted (034), so this is where the header can stop
     // saying "from your next message" and start saying what the session is now doing.
     this.publishStateIfChanged(session)
-    this.publishOurs(session, turn, undefined, moveHandoff, personalHandover)
+    this.publishUserTurn(session, turn, memoryNotes.names, moveHandoff, personalHandover)
     handover.noteInputRecorded?.()
   }
 
@@ -22974,6 +23000,35 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
+  private async prepareMemoryNoteBaseline(
+    session: HostedSession,
+  ): Promise<PreparedMemoryNoteBaseline> {
+    const handover = session.personalHandover
+    const ending = session.turnsEnded
+    const names = await noteNamesInAsync(session.memoryNoteDir)
+    return { names, handover, ending }
+  }
+
+  private memoryNoteBaselineIsCurrent(
+    session: HostedSession,
+    prepared: PreparedMemoryNoteBaseline,
+  ): boolean {
+    // A different input or terminal boundary makes the earlier directory look stale.
+    return prepared.handover === session.personalHandover && prepared.ending === session.turnsEnded
+  }
+
+  private publishUserTurn(
+    session: HostedSession,
+    event: UserTurnEvent,
+    memoryNotes: ReadonlySet<string> | null,
+    moveHandoff?: object,
+    personalHandover?: number,
+  ): void {
+    // Only the accepted input consumes its prepared baseline; a lost race leaves it alone.
+    session.memoryNotes = memoryNotes ?? session.memoryNotes
+    this.publishOurs(session, event, undefined, moveHandoff, personalHandover)
+  }
+
   /**
    * Put what we just did into the stream, so the transcript holds both halves of the
    * conversation — what was said to the agent, and which buttons were pressed.
@@ -23073,19 +23128,9 @@ export class RuntimeHost implements LiveHost {
     moveHandoff?: object,
     personalHandover?: number,
   ): void {
-    // ⛔ **The turn's opening snapshot, taken HERE and not at each caller** (318). `user_turn` is
-    // what opens a turn — `opensTurn` says so in the renderer and `appendTx` says so in the
-    // database, from this one event and no other — so this is the single place all four senders
-    // (`send`, `sendInterrupting`, the queue flush and an app-authored continuation) pass through.
-    // ⚠️ Before the ordinal is taken, so a note written by the very first tool of the turn is still
-    // measured against a store listed before the turn began.
     if (event.type === 'user_turn') {
       // ⚑ A turn went in this life: a continuation of a cut turn is never sent after it.
       this.aTurnWentIn.add(session)
-      // ⛔ **A store we could not list leaves the snapshot ALONE** (review). `noteNamesIn` answers
-      // `null` for a refusal, and taking that as an empty store is how one transient `EMFILE` at a
-      // turn boundary would publish a profile's whole memory as this turn's news.
-      session.memoryNotes = noteNamesIn(session.memoryNoteDir) ?? session.memoryNotes
       // ⚑ From here a turn of OURS is open, so an ending is a turn's ending and the row's sentence
       // — "between the start and the end of this turn" — is true of the window it names.
       session.turnOpened = true
@@ -23632,13 +23677,19 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **708 · the same `this.originOf(by)` as the handover below** — see {@link sendAs}.
     // 🔴 **713 · and the first gate's `decided`**, so what this asks again is the credential and the
     // session, never which command these words are (`708` H-4).
+    let memoryNotes: PreparedMemoryNoteBaseline
+    let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
     try {
-      await this.assertCanTakeTurn(session, 'send', {
-        text,
-        attached: attachments.length,
-        from: this.originOf(by),
-        decided,
-      })
+      do {
+        memoryNotes = await this.prepareMemoryNoteBaseline(session)
+        await this.assertCanTakeTurn(session, 'send', {
+          text,
+          attached: attachments.length,
+          from: this.originOf(by),
+          decided,
+        })
+        handed = await recheckHandedPaths(attachments, session.cwd)
+      } while (!this.memoryNoteBaselineIsCurrent(session, memoryNotes))
     } catch (error) {
       // ⚑ …and one that moved while the stop waited holds them the same way.
       if (!aPersonIsAsking(by) || !this.aReopenCarriesIt(error, by, session)) throw error
@@ -23654,11 +23705,6 @@ export class RuntimeHost implements LiveHost {
       )
       return
     }
-    // ⚠️ Asked a second time, for the same reason the gate above it is: `waitForIdle` is up to five
-    // seconds, and a file can go away inside that window too. `sendInterrupting` asks first so the
-    // interrupt never happens for a message that was never going to send; this one is the honest
-    // answer about what is on disk NOW.
-    const handed = await recheckHandedPaths(attachments, session.cwd)
     if ('refusal' in handed) throw new Error(handed.refusal)
     // ⛔ **No piece, and it is not an omission** (412). This path is reached from
     // `sendInterrupting`, which is a person's gesture in the composer — and only `give_work` gives a
@@ -23743,7 +23789,7 @@ export class RuntimeHost implements LiveHost {
     // routed a busy `send` here. What was unreachable was the INTERACTIVE path — the composer
     // refused to send while a turn ran — so no user could reach it, and nobody noticed.
     this.publishStateIfChanged(session)
-    this.publishOurs(session, turn, undefined, moveHandoff, personalHandover)
+    this.publishUserTurn(session, turn, memoryNotes.names, moveHandoff, personalHandover)
     handover.noteInputRecorded?.()
   }
 
@@ -27904,6 +27950,7 @@ export class RuntimeHost implements LiveHost {
     let personalHandover: number | undefined
     let moveHandoff: object | undefined
     let handover: ProviderHandover
+    let memoryNotes: PreparedMemoryNoteBaseline
     try {
       // ⚠️ **The one turn that starts without anybody pressing anything, and therefore the one that
       // most needs the gate** (147). A message queued before the machine credential moved would
@@ -27920,11 +27967,14 @@ export class RuntimeHost implements LiveHost {
       // turn of several**: none of them is a person's command ({@link theTurnItTakes} takes each of
       // those alone), so the gate asks only its questions about the conversation.
       const [only] = going
-      await this.assertCanTakeTurn(session, 'send', {
-        text: going.map(({ queued }) => queued.text).join('\n\n'),
-        attached: going.reduce((all, { handed }) => all + handed.paths.length, 0),
-        from: going.length === 1 && only !== undefined ? (only.queued.origin ?? null) : null,
-      })
+      do {
+        memoryNotes = await this.prepareMemoryNoteBaseline(session)
+        await this.assertCanTakeTurn(session, 'send', {
+          text: going.map(({ queued }) => queued.text).join('\n\n'),
+          attached: going.reduce((all, { handed }) => all + handed.paths.length, 0),
+          from: going.length === 1 && only !== undefined ? (only.queued.origin ?? null) : null,
+        })
+      } while (!this.memoryNoteBaselineIsCurrent(session, memoryNotes))
       // ⛔ **Two of three** (234 §1). The gate reads the Keychain, so this suspends too — and a
       // teardown landing inside it would otherwise be followed by handing the provider a message the
       // ledger had already called `abandoned`, starting a turn on a session that is going away.
@@ -28147,7 +28197,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ Of the turn, never of a part: whether its words asked for the turn before to be stopped.
     const askedForTheStop = went.some((one) => one.queued.interrupting !== undefined)
     if (went.length > 1) {
-      this.publishOurs(
+      this.publishUserTurn(
         session,
         {
           type: 'user_turn',
@@ -28169,7 +28219,7 @@ export class RuntimeHost implements LiveHost {
           })),
           ...(askedForTheStop ? { askedForTheStop } : {}),
         },
-        undefined,
+        memoryNotes.names,
         moveHandoff,
         personalHandover,
       )
@@ -28177,7 +28227,7 @@ export class RuntimeHost implements LiveHost {
       return false
     }
     const { queued, words, handed } = alone
-    this.publishOurs(
+    this.publishUserTurn(
       session,
       {
         type: 'user_turn',
@@ -28212,7 +28262,7 @@ export class RuntimeHost implements LiveHost {
         // ⚑ And whether they asked for the turn before to be stopped ({@link UserTurnEvent.askedForTheStop}).
         ...(askedForTheStop ? { askedForTheStop } : {}),
       },
-      undefined,
+      memoryNotes.names,
       moveHandoff,
       personalHandover,
     )
@@ -37738,6 +37788,7 @@ export class RuntimeHost implements LiveHost {
     )
     // One toolset for the launch and its record, as at a start.
     const agentTools = this.agentToolsForSession(sessionId)
+    const memoryNotes = await noteNamesInAsync(memoryNoteDir(row.provider, providerHome))
     // …and bounded as in `startSession` (102). Same bound for both: a reopen that never settles is
     // the same wedged slot as a launch that never settles, reached through the other button.
     // What a reopened Codex thread already holds is read alongside the resume, never before it: on
@@ -37847,6 +37898,7 @@ export class RuntimeHost implements LiveHost {
       providerHome,
       profileId,
       launchGave,
+      memoryNotes,
       createdApprovalMode: approvalMode,
       handle,
       sink,
@@ -38890,6 +38942,7 @@ export class RuntimeHost implements LiveHost {
       handle: SessionHandle
       sink: RuntimeEventSink
       startingOrdinal: number
+      memoryNotes: ReadonlySet<string> | null
       /**
        * 🔴 **Whether this registration CONTINUES a recorded conversation** (653) — a reopen, as
        * opposed to a conversation's first launch.
@@ -38993,14 +39046,9 @@ export class RuntimeHost implements LiveHost {
       wordsJustHandedOver: null,
       wordsItWasHandedFor: [],
       latestContext: null,
-      // ⛔ **Seeded here, before the pump starts.** A store that already holds fifty notes must not
-      // report fifty of them the first time this session ends a turn — every one of those was
-      // written before this conversation existed. The empty set is what a fresh profile has, and it
-      // is also what an unreadable store reads as (`noteNamesIn`).
+      // Prepared before registration, so the pump starts with the existing names already seeded.
       memoryNoteDir: noteDir,
-      // A store that cannot be listed at registration seeds EMPTY and publishes nothing, because
-      // `turnOpened` is false until this session sends a turn — see `recordMemoryNotes`.
-      memoryNotes: noteNamesIn(noteDir) ?? new Set<string>(),
+      memoryNotes: options.memoryNotes ?? new Set<string>(),
       turnOpened: false,
       itsTurnDrives: null,
       itsTurnIs: { aPersons: false, names: [] },
@@ -40248,9 +40296,13 @@ export class RuntimeHost implements LiveHost {
     }
     const before = itMay()
     if (before === null) return
+    let memoryNotes: PreparedMemoryNoteBaseline
     try {
-      this.assertAcceptsMessages(before, 'send')
-      await this.assertSignInCurrent(before, 'send')
+      do {
+        memoryNotes = await this.prepareMemoryNoteBaseline(before)
+        this.assertAcceptsMessages(before, 'send')
+        await this.assertSignInCurrent(before, 'send')
+      } while (!this.memoryNoteBaselineIsCurrent(before, memoryNotes))
     } catch (error) {
       console.warn(`runtime host did not carry ${sessionId} on: ${errorMessage(error)}`)
       return
@@ -40289,7 +40341,7 @@ export class RuntimeHost implements LiveHost {
       return
     }
     this.publishStateIfChanged(session)
-    this.publishOurs(session, turn)
+    this.publishUserTurn(session, turn, memoryNotes.names)
   }
 
   private async doReopenOnARenewedSignIn(session: HostedSession): Promise<void> {

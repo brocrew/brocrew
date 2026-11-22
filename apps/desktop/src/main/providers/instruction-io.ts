@@ -10,6 +10,7 @@ import {
   readlinkSync,
   realpathSync,
   statSync,
+  type Dirent,
   type Stats,
 } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
@@ -234,6 +235,13 @@ export function sizeOnDisk(path: string): number {
   return Math.min(INSTRUCTION_FILE_CAP, safeStat(path)?.size ?? 0)
 }
 
+export function memoryNoteNames(entries: readonly Dirent[]): string[] {
+  return entries
+    .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.md'))
+    .map((entry) => entry.name)
+    .sort()
+}
+
 export function memoryDirNames(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
@@ -253,11 +261,7 @@ export function memoryDirNames(dir: string): {
     return { names: [], refused: { path: dir, reason: 'not-a-regular-file' } }
   }
   try {
-    const names = readdirSync(dir, { withFileTypes: true })
-      // A subdirectory named `*.md` is not a memory file.
-      .filter((entry) => !entry.isDirectory() && entry.name.endsWith('.md'))
-      .map((entry) => entry.name)
-      .sort()
+    const names = memoryNoteNames(readdirSync(dir, { withFileTypes: true }))
     return { names, refused: null }
   } catch {
     return { names: [], refused: { path: dir, reason: 'unreadable' } }

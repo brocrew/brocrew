@@ -24,7 +24,13 @@ import type {
   RuntimeHost,
   RuntimeHostDeps,
 } from '../../src/main/runtime/runtime-host'
-import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import type {
+  ProviderConfigInfo,
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 
 export class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -34,7 +40,29 @@ export class RecordingSink implements RuntimeEventSink {
   send(message: RuntimeEventMessage): void {
     this.messages.push(message)
   }
-  sendLiveness(): void {}
+  sendLiveness(_message: SessionLivenessMessage): void {
+    void _message
+  }
+}
+
+export class LivenessRecordingSink extends RecordingSink {
+  readonly liveness: SessionLiveness[] = []
+
+  constructor(ownerId = 'owner:1') {
+    super(ownerId)
+  }
+
+  override sendLiveness(message: SessionLivenessMessage): void {
+    this.liveness.push(message.liveness)
+  }
+
+  events(): TranscriptEvent[] {
+    return this.messages.map((message) => message.event)
+  }
+
+  types(): string[] {
+    return this.events().map((event) => event.type)
+  }
 }
 
 export const syntheticProviderHome =
