@@ -41,11 +41,11 @@ const row = (
 
 const waiting = [
   row('recent-approval', 'reviewer', 2, { is: 'needs-you' }),
-  row('older-approval', 'brobot', 7, { is: 'needs-you' }),
+  row('older-approval', 'recipe-worker', 7, { is: 'needs-you' }),
 ]
 const recent = [
   row('oldest', 'reviewer', 12),
-  row('latest', 'brobot', 1),
+  row('latest', 'recipe-worker', 1),
   row('middle', 'developer', 3),
 ]
 const all = [...recent, ...waiting]
@@ -143,7 +143,9 @@ it('opens a recent conversation before its state arrives and then shows the full
 
 it('puts Needs you first, then one Recent list across the existing profiles', async () => {
   const m = await rail(all, {
-    agents: { identities: [{ id: 'aid:brobot', slug: 'brobot', displayName: 'Jarvis' }] },
+    agents: {
+      identities: [{ id: 'aid:recipe-worker', slug: 'recipe-worker', displayName: 'Jarvis' }],
+    },
   })
   expect(
     [...m.host.querySelectorAll('[data-cy^="rail-section-"]')].map((el) =>
@@ -245,7 +247,7 @@ it('keeps canonical rows to title, standing and address for open and answered ta
 
 it('pages eligible Recent at fifteen, keeps older rows, and counts the live/listed overlap once', async () => {
   const older = Array.from({ length: 18 }, (_item, index) =>
-    row(`older-${index}`, 'brobot', index + 2),
+    row(`older-${index}`, 'recipe-worker', index + 2),
   )
   const m = await rail([...waiting, ...older].reverse(), {
     open: [record([], 'older-1')],
@@ -268,7 +270,7 @@ it('pages eligible Recent at fifteen, keeps older rows, and counts the live/list
 })
 
 it('joins identities only for visible rows in bounded raw-ID batches and discards folded replies', async () => {
-  const older = Array.from({ length: 18 }, (_, i) => row(`story-${i}`, 'brobot', i + 3))
+  const older = Array.from({ length: 18 }, (_, i) => row(`story-${i}`, 'recipe-worker', i + 3))
   const identity = (
     conversation: string,
     title = 'Resolved ' + conversation,
@@ -408,8 +410,8 @@ it.each([251.68, 266.2])(
   '%spx · person openings distinguish canonical roots without a fourth preview',
   async (width) => {
     const roots = [
-      row('person-waiting', 'brobot', 1, { is: 'needs-you' }),
-      row('person-recent', 'brobot', 2),
+      row('person-waiting', 'recipe-worker', 1, { is: 'needs-you' }),
+      row('person-recent', 'recipe-worker', 2),
     ]
     const openings = ['Plan the garden for spring', 'Review the bicycle repair options']
     const opened = roots.map(({ sessionId }, index) => {

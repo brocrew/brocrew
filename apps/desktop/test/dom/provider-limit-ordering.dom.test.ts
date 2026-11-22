@@ -72,7 +72,7 @@ function listed(facts: ProviderBlockFacts): ResumableSessionInfo {
     state: { is: 'idle' },
     named: null,
     running: 'not-running',
-    profileId: META.profileId,
+    profileId: 'recipe-worker',
     reasoningEffort: null,
     model: null,
     planMode: null,
@@ -87,7 +87,7 @@ function listed(facts: ProviderBlockFacts): ResumableSessionInfo {
     ...facts,
   }
 }
-const slug = META.profileId!
+const slug = 'recipe-worker'
 const agents: AgentIdentities = {
   identities: [
     {

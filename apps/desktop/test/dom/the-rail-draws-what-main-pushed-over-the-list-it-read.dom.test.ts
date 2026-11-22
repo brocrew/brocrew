@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
-import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
+import { openableRow, stubbed, type RailApi } from './ordinary-rail-rows.fixture'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -44,34 +44,7 @@ const NOW = Date.now()
 
 const CWD = '/Users/alex/dev/brobot-2'
 
-const resumableBase = {
-  provider: 'claude' as const,
-  cwd: CWD,
-  status: 'idle' as const,
-  state: { is: 'idle' as const },
-  // It holds no piece, so a row is titled by its agent.
-  named: null,
-  approvalMode: 'ask' as const,
-  // ⚑ Every row is BroBot's, so the badge and the count this file reads are BroBot's section's.
-  profileId: DEFAULT_PROFILE_ID,
-  reasoningEffort: null,
-  model: null,
-  planMode: null,
-  adoptedAt: null,
-  hasTranscript: true,
-  child: null,
-  lastEnding: 'completed' as const,
-  updatedAt: NOW - 240_000,
-}
-
-/** An ordinary conversation nothing runs: the host lists it, idle. */
-const OPENABLE: ResumableSessionInfo = {
-  ...resumableBase,
-  running: 'not-running',
-  sessionId: 'sess_openable',
-  ref: { provider: 'claude', sessionId: 'thread-1', cwd: CWD, rotation: 0 },
-  resumeRefusal: null,
-}
+const OPENABLE: ResumableSessionInfo = openableRow(CWD, NOW - 240_000)
 
 /**
  * A host row in a given state.
@@ -98,15 +71,6 @@ const CBackground = hostRow(
 )
 
 /* ------------------------------------------------------------------ mounting */
-
-type RailApi = {
-  runtime: {
-    listResumable: () => Promise<ResumableSessionInfo[]>
-    listUnresumable: () => Promise<UnresumableSessionInfo[]>
-  }
-}
-
-const stubbed = (): { api?: RailApi } => window as unknown as { api?: RailApi }
 
 /** The host answers at once with these rows. */
 const answering = (resumable: ResumableSessionInfo[]): RailApi => ({

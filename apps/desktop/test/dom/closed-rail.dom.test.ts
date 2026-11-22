@@ -19,7 +19,7 @@ import {
   visible,
   type Mounted,
 } from './harness'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../../src/shared/runtime-ipc'
+import { heldRecord, ordinaryRowBase, stubbed } from './ordinary-rail-rows.fixture'
 
 /**
  * **151 · a closed conversation, shown the way an open one is** — and since D-017b, simply ONE list.
@@ -50,24 +50,8 @@ import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../../src/shared/runt
 const NOW = Date.now()
 
 const resumableBase = {
-  provider: 'claude' as const,
+  ...ordinaryRowBase,
   cwd: '/Users/alex/dev/brobot-2',
-  status: 'idle' as const,
-  // ⚑ **D-017b · the one state the host derives** — what a row the host lists says and draws.
-  state: { is: 'idle' as const },
-  // ⚑ **D-016 · commit 7 · R2 — it holds no piece**, so a row is titled by its agent, as it was.
-  named: null,
-  approvalMode: 'ask' as const,
-  profileId: DEFAULT_PROFILE_ID,
-  reasoningEffort: null,
-  model: null,
-  planMode: null,
-  adoptedAt: null,
-  hasTranscript: true,
-  child: null,
-  // 222 — the ordinary base row FINISHED, so every negative in this file about the rail's
-  // `<small>` is about a row that has an ending rather than about one that has none.
-  lastEnding: 'completed' as const,
   updatedAt: NOW - 240_000,
 }
 
@@ -152,7 +136,7 @@ const LOST_REF: UnresumableSessionInfo = {
   ...USER_HOME,
   sessionId: 'sess_lostref',
   cwd: '/Users/alex/dev/other/thing',
-  profileId: DEFAULT_PROFILE_ID,
+  profileId: 'recipe-worker',
   adoptedAt: null,
   foundInUserHome: false,
   restoredFromBundle: false,
@@ -165,7 +149,7 @@ const NEVER_STARTED: UnresumableSessionInfo = {
   sessionId: 'sess_refless',
   cwd: '/Users/alex/dev/other/empty',
   status: 'idle',
-  profileId: DEFAULT_PROFILE_ID,
+  profileId: 'recipe-worker',
   adoptedAt: null,
   hasTranscript: false,
   foundInUserHome: false,
@@ -173,32 +157,8 @@ const NEVER_STARTED: UnresumableSessionInfo = {
   reason: 'no turn was ever taken in this one, so there is nothing to reopen',
 }
 
-/** A conversation this window holds — its row is drawn from its record. */
-const heldRecord = (sessionId: string, cwd: string, profileId = DEFAULT_PROFILE_ID): unknown => {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'claude',
-    cwd,
-    profileId,
-    ref: { provider: 'claude', sessionId: 'live', cwd, rotation: 0 },
-    approvalMode: 'ask',
-    planNeedsGoAhead: false,
-    liveness: { state: 'live', since: NOW },
-  } as never
-  return record
-}
-
-/* ------------------------------------------------------------------ mounting */
-
-type RailApi = {
-  runtime: {
-    listResumable: () => Promise<ResumableSessionInfo[]>
-    listUnresumable: () => Promise<UnresumableSessionInfo[]>
-  }
-}
-
-const stubbed = (): { api?: RailApi } => window as unknown as { api?: RailApi }
+const heldHere = (sessionId: string, cwd: string, profileId?: string): unknown =>
+  heldRecord(sessionId, cwd, NOW, profileId)
 
 /**
  * The rail over a stubbed pair of host lists, with every press it raises counted.
@@ -269,7 +229,7 @@ describe('a row the host lists is made of what a row this window holds is made o
   it('⛔ draws the plate, the label and ONE small — the same three the held row has', async () => {
     const m = await rail(
       { resumable: [OPENABLE] },
-      { open: [heldRecord('sess_live', '/Users/alex/dev/live-one')] },
+      { open: [heldHere('sess_live', '/Users/alex/dev/live-one')] },
     )
 
     const held = row(m, 'sess_live')
@@ -285,7 +245,7 @@ describe('a row the host lists is made of what a row this window holds is made o
     )
     // The label identifies the agent’s role. A shared `brobot-workspace` directory name
     // cannot distinguish conversations started in the same workspace.
-    expect(listed.querySelector('strong')!.textContent).toBe(DEFAULT_PROFILE_LABEL)
+    expect(listed.querySelector('strong')!.textContent).toBe('recipe-worker')
     // 3 · exactly one `<small>` of facts, never a second line. ⚑ **449 kept this**: the folder
     //     moved INTO that one line rather than taking a second one.
     expect(listed.querySelectorAll('small')).toHaveLength(1)
@@ -380,7 +340,7 @@ describe('a row the host lists is made of what a row this window holds is made o
   it('⛔ with no directory to name, the row says WHO and simply stops', async () => {
     const m = await rail({ resumable: [{ ...OPENABLE, cwd: '' }] })
     const only = row(m, 'sess_openable')
-    expect(only.querySelector('strong')!.textContent).toBe(DEFAULT_PROFILE_LABEL)
+    expect(only.querySelector('strong')!.textContent).toBe('recipe-worker')
     const line = only.querySelector('small')!
     const activity = line.querySelector('time')!
     expect(line.textContent?.trim()).toBe(`claude · idle · ${activity.textContent}`)
@@ -434,7 +394,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
   it('⛔ a conversation this window holds is drawn ONCE, from its record — never twice', async () => {
     const m = await rail(
       { resumable: [OPENABLE, READABLE], unresumable: [LOST_REF] },
-      { open: [heldRecord('sess_openable', '/Users/alex/dev/held-here')] },
+      { open: [heldHere('sess_openable', '/Users/alex/dev/held-here')] },
     )
     expect(m.all('open-session-sess_openable')).toHaveLength(1)
     // ⚑ …and it is the RECORD's row: the folder its record names, not the host row's.
@@ -448,7 +408,7 @@ describe('one row per conversation, and the count is the rows (090, D-017b)', ()
   it('⚠️ …and it reaches the UNRESUMABLE half too', async () => {
     const m = await rail(
       { unresumable: [LOST_REF, NEVER_STARTED] },
-      { open: [heldRecord('sess_lostref', '/Users/alex/dev/held-here')] },
+      { open: [heldHere('sess_lostref', '/Users/alex/dev/held-here')] },
     )
     expect(m.all('open-session-sess_lostref')).toHaveLength(1)
     expect(m.all('open-session-sess_refless')).toHaveLength(1)
@@ -789,7 +749,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(visible(section)).toBe(true)
     const said = section.textContent ?? ''
     expect(said).toContain('Recent')
-    expect(ours.q('open-session-sess_lostref').textContent).toContain('BroBot')
+    expect(ours.q('open-session-sess_lostref').textContent).toContain('recipe-worker')
     expect(ours.q('rail-count-recent').textContent).toBe('1 shown')
     // Keep adopted conversations visible only in the Sessions UI. The rail adds no hint,
     // badge, count, or other reference to the excluded rows.

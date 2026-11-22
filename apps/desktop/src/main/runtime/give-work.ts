@@ -44,7 +44,6 @@ export interface GiveWorkHost {
   readonly runningAs: (sessionId: string) => GivingConversation | null
   readonly heldBy: (conversation: string) => readonly HeldPiece[]
   readonly theTurnDrives: (conversation: string) => string | null
-  readonly isAHelper: (conversation: string) => boolean
   readonly theServiceAtAGive: (giver: string, profile: string) => ServiceAtAGive
   readonly theServiceStartAGiveMeets: (input: unknown) => Promise<void> | null
   readonly itsProvider: (profileSlug: string) => ItsProvider
@@ -453,7 +452,6 @@ export class GiveWork {
       giver: () => giving,
       held: (giver) => h.heldBy(giver),
       drivenByTheTurn: () => h.theTurnDrives(giving.sessionId),
-      isAHelper: () => h.isAHelper(giving.sessionId),
       agentExists: (profileSlug) => h.store().agentIdentityOf(profileSlug) !== null,
       conversationAt: (address) => this.conversationAt(address),
       recentWith: (profileSlug) => {

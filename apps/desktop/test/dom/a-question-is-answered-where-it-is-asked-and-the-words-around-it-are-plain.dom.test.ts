@@ -43,7 +43,7 @@ import {
   chainSentence,
   escalationChain,
 } from '../../src/shared/questions'
-import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+// Ordinary rows here run as a non-BroBot agent.
 import type {
   ResumableSessionInfo,
   UnresumableSessionInfo,
@@ -171,7 +171,7 @@ const hostRow = (
   resumeRefusal: null,
 })
 
-const BRO_NEW = hostRow('sess_bro_new', DEFAULT_PROFILE_ID, 1)
+const BRO_NEW = hostRow('sess_bro_new', 'recipe-worker', 1)
 const BRO_TYPED = hostRow('sess_bro_typed', 'BroBot', 3, { is: 'needs-you' })
 const REVIEWER = hostRow('sess_rev', 'reviewer', 2, { is: 'needs-you' })
 

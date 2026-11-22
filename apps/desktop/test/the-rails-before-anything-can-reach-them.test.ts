@@ -224,7 +224,6 @@ describe('341 · the rails, before anything can reach them', () => {
         }),
         held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
         drivenByTheTurn: () => null,
-        isAHelper: () => false,
         agentExists: () => true,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
         conversationAt: () => null,

@@ -5055,7 +5055,6 @@ export class RuntimeHost implements LiveHost {
         const session = this.slots.get(conversation)?.session ?? null
         return session !== null && session.turnOpened ? session.itsTurnDrives : null
       },
-      isAHelper: (conversation) => this.theParentInItsPlace(conversation) !== null,
       theServiceAtAGive: (giver, profile) => this.theServiceAtAGive(giver, profile),
       theServiceStartAGiveMeets: (input) => this.theServiceStartAGiveMeets(input),
       itsProvider: (profileSlug) => this.itsProvider(profileSlug),
@@ -10556,12 +10555,12 @@ export class RuntimeHost implements LiveHost {
         profileId: spawn.profileId,
         cwd,
         approvalMode: spawn.approvalMode,
-        parentSessionId: spawn.parentSessionId,
+        ...(spawn.parentSessionId === null ? {} : { parentSessionId: spawn.parentSessionId }),
         ...(input.model === undefined ? {} : { model: input.model }),
         ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
       }
       const queued = this.briefForTheNextStart(firstGive, {
-        ownerId: agentCallerId(spawn.parentSessionId),
+        ownerId: agentCallerId(spawn.giverSessionId),
       })
       this.recordTheGive(id, firstGive, queued.messageId, null, { conversation, queued })
       input = { ...input, cwd }
@@ -17551,9 +17550,8 @@ export class RuntimeHost implements LiveHost {
       .filter((row) => !this.archived.has(row.sessionId))
       .sort((one, other) => other.updatedAt - one.updatedAt)
       .slice(0, RECENT_CONVERSATION_PAGE_SIZE)
-      .map(({ sessionId, personStarted, profileId, provider, cwd, updatedAt }) => ({
+      .map(({ sessionId, profileId, provider, cwd, updatedAt }) => ({
         sessionId,
-        ...(personStarted === undefined ? {} : { personStarted }),
         profileId,
         provider,
         cwd,
@@ -20989,7 +20987,7 @@ export class RuntimeHost implements LiveHost {
               // a key the store does not read would compile here and write nothing. ⚑ **D-016 · and its
               // absence is what gives a conversation a person started its ROOT**, in that same
               // transaction (`NewSessionRecord.parentSessionId`).
-              ...(spawn === null ? {} : { parentSessionId: spawn.parentSessionId }),
+              ...(spawn?.parentSessionId == null ? {} : { parentSessionId: spawn.parentSessionId }),
               // 🔴 **727 · R87 — the id this launch asked for, recorded with the row** — before this
               // host sends anything, so before the CLI can write a transcript under it. ⛔ A kill,
               // an error before init or a timed-out close can no longer leave one no row names.
@@ -24563,10 +24561,9 @@ export class RuntimeHost implements LiveHost {
         if (active.length > 1)
           return malformed(['Your current work is unclear. Name the parent in piece.'])
         parent = active.length === 1 ? this.deps.store.workById(active[0]!.piece) : root
-      } else if (root !== null && this.theParentInItsPlace(session.id) === null) parent = root
-      else {
-        // A helper's request from a person hangs under the work it was given, while it holds some;
-        // its own root takes only what it is asked while it holds none.
+      } else {
+        // A request from a person hangs under the work its turn drives, else the one piece it was
+        // given, else its own root.
         const personParts = theMessagesOf(opening).filter((part) =>
           TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )

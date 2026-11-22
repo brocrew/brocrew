@@ -39,7 +39,6 @@ function person(number: number, waiting = false): ResumableSessionInfo {
     sessionId: `person-${number}`,
     profileId: 'brobot',
     provider: 'claude',
-    personStarted: true,
     worker: undefined,
     state: { is: waiting ? 'needs-you' : 'idle' },
     named: { label: `W${number}`, title: `Conversation ${number}` },
@@ -114,18 +113,15 @@ async function draw(
   return { ...m, selected, reads }
 }
 
-it('shows every BroBot above newer helpers, keeping other attention and recent rows disjoint', async () => {
+it('shows every BroBot, whoever started it, above newer helpers of other agents, keeping other attention and recent rows disjoint', async () => {
   const people = Array.from({ length: 23 }, (_, index) => person(index + 1, index === 2))
   const helpers = workerRows(35).map((row, index) => ({
     ...row,
-    profileId: 'brobot',
-    personStarted: false,
     updatedAt: NOW + 100000 + index,
     state: { is: index === 0 ? 'needs-you' : 'idle' } as const,
   }))
   const otherPerson = { ...person(90), profileId: 'reviewer' }
-  const unknown = { ...person(91), personStarted: undefined }
-  const m = await draw([...helpers, ...people.reverse(), otherPerson, unknown], 'person-23')
+  const m = await draw([...helpers, ...people.reverse(), otherPerson], 'person-23')
   expect(
     [...m.host.querySelectorAll('[data-cy^="rail-section-"]')].map((el) =>
       el.getAttribute('data-cy'),

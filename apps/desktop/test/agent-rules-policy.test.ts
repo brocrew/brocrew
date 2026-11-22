@@ -392,7 +392,10 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       await vi.waitFor(() =>
         expect(policy().readAgentRules(helper, 'lark', caller(helper)).ok).toBe(true),
       )
-      expect(store.parentOf(helper)).toBe(giver)
+      // A new conversation of the default profile stands at the top level; its task names the giver.
+      expect(store.parentOf(helper)).toBeNull()
+      expect(store.rootOf(helper)).not.toBeNull()
+      expect(store.workById(given.piece)?.givenBy).toBe(giver)
       expect(store.recordedOne(helper)?.provider).toBe(provider)
       const helperNames = handed.at(-1)!.tools.map((one) => one.name)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
