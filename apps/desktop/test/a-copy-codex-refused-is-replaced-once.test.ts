@@ -1,3 +1,4 @@
+import * as refusedCopy from './lib/refused-copy-recovery'
 import { addressedGive, newConversationGive } from './lib/give-fixture'
 import { StandInCodex, digestOf, signInAt, type TurnMode } from './lib/refused-codex-stand-in'
 import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
@@ -505,44 +506,41 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       accept(THE_COMPUTERS)
     }
 
-    it('waits for the refused server to exit before replacing its cached sign-in', async () => {
-      await runningOnACopyThatDiesInATurn()
-      let exited!: () => void
-      const exit = new Promise<void>((resolve) => {
-        exited = resolve
+    const copyFixture = () => ({
+      codex,
+      starts,
+      held,
+      writer,
+      oldDigest: digestOf(DEAD),
+      freshDigest: digestOf(THE_COMPUTERS),
+    })
+
+    it('waits for the refused server to exit before replacing its cached sign-in', () =>
+      refusedCopy.waitsForRefusedExit(copyFixture(), runningOnACopyThatDiesInATurn))
+
+    it('a real refusal copies after a working sibling finishes its turn', async () => {
+      aHelperHolding(DEAD)
+      accept(DEAD)
+      await refusedCopy.copiesAfterWorkingSibling({
+        ...copyFixture(),
+        host,
+        start,
+        sink: () => watching,
+        newer: () => {
+          writeFileSync(machine, THE_COMPUTERS)
+          accepted.clear()
+          accept(THE_COMPUTERS)
+        },
       })
-      const handle = codex.handles[0]!
-      handle.awaitProcessExit = () => exit
-      const closing = vi.spyOn(handle, 'close')
-      try {
-        await handle.runTurnRefusedOnItsLogin()
-        await vi.waitFor(() => expect(closing).toHaveBeenCalled())
-        expect(handle.status()).toBe('ended')
-        expect(held()).toBe(digestOf(DEAD))
-        expect(writer.reached).toBe(0)
-      } finally {
-        exited()
-      }
-      await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
-      expect(held()).toBe(digestOf(THE_COMPUTERS))
     })
 
-    it('🔴 Codex refuses the copy in a turn: it is replaced, and the conversation reopened on the fresh one', async () => {
-      await runningOnACopyThatDiesInATurn()
-      await codex.handles[0]!.runTurnRefusedOnItsLogin()
-      await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
-      expect(held()).toBe(digestOf(THE_COMPUTERS))
-    })
+    it('🔴 Codex refuses the copy in a turn: it is replaced, and the conversation reopened on the fresh one', () =>
+      refusedCopy.copiesARefusedTurn(copyFixture(), runningOnACopyThatDiesInATurn))
 
-    it('⛔ once: the fresh copy refused at the reopen, nothing more is copied and the refusal stands', async () => {
-      await runningOnACopyThatDiesInATurn()
-      accepted.clear()
-      await codex.handles[0]!.runTurnRefusedOnItsLogin()
-      await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
-      await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(starts).toEqual(digests(DEAD, THE_COMPUTERS))
-      expect(held()).toBe(digestOf(THE_COMPUTERS))
-    })
+    it('⛔ once: the fresh copy refused at the reopen, nothing more is copied and the refusal stands', () =>
+      refusedCopy.copiesARefusedTurn(copyFixture(), runningOnACopyThatDiesInATurn, () =>
+        accepted.clear(),
+      ))
 
     function theCheckHeldBack(): { asked: () => boolean; answer: () => void } {
       let answer: (() => void) | null = null
@@ -810,7 +808,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(handedOver()).toEqual([MESSAGE])
     })
 
-    it('uses a newer Mac account for the first send in an older conversation', async () => {
+    it('uses a newer Mac account before sending when the current sign-in is superseded', async () => {
       aHelperHolding(DEAD)
       accept(DEAD)
       const { sessionId: id } = await start()
@@ -818,6 +816,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       writeFileSync(machine, other)
       accepted.clear()
       accept(other)
+      codex.checksItsSignIn = async () => held() !== digestOf(other)
       codex.asItResumes = () => {
         expect(codex.sent).toEqual([])
         expect(held()).toBe(digestOf(other))
