@@ -25,6 +25,9 @@ export interface BuiltInSkillsContext {
 
 /** Launch progress names carry timing and byte counts without exposing provider payloads. */
 export type StartPhase =
+  | 'transcript-found'
+  | 'credentials-read'
+  | 'rules-read'
   | 'boot-gate-entered'
   | 'boot-gate-passed'
   | 'spawned'
