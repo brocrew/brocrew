@@ -10,7 +10,6 @@ export function giveFactsForTest(
     giver: () => giver,
     held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
     drivenByTheTurn: () => null,
-    isAHelper: () => false,
     agentExists: () => true,
     conversationAt: () => null,
     recentWith: () => ({ rows: [], more: false }),

@@ -225,7 +225,6 @@ const SPAWN_DETAILS: Partial<Record<(typeof SPAWN_RAILS)[number], readonly Spawn
     ],
     'no-such-profile': [{ profileId: LONG_SLUG }],
     // ⚑ The act comes before the name, so a name at its longest leaves it inside the cut.
-    'its-record-cannot-be-read': [{ profileId: LONG_SLUG }],
     // ⚑ An agent with no provider saved whose conversations ran on both, at its longest counts.
     'its-provider-is-not-chosen': [
       { profileId: LONG_SLUG, startedOn: { claude: 9999, codex: 9999 } },
@@ -269,7 +268,6 @@ const MODEL_DETAILS: Partial<Record<(typeof MODEL_RAILS)[number], readonly Model
       { door: 'give', provider: 'codex', model: LONG_MODEL },
       { door: 'give', provider: 'codex', effort: 'xhigh' },
     ],
-    'name-the-model-too': [{ door: 'create' }],
     'the-provider-moved-meanwhile': [{ door: 'give', provider: 'claude' }],
   }
 /** ⚑ **D-042** — the model details' fields that are LISTS, each member rendered verbatim. */
@@ -704,16 +702,11 @@ const ACT: Readonly<Record<string, string>> = {
   'SPAWN_RAILS|not-that-agents-conversation': 'is a conversation of',
   'SPAWN_RAILS|its-provider-is-fixed': 'give with to: "new"',
   'SPAWN_RAILS|conversation-title-needed': 'a new conversation needs conversation_title',
-  'SPAWN_RAILS|a-service-has-one-conversation': 'leave to out',
+  'SPAWN_RAILS|a-service-has-one-conversation': 'Use its address or omit to',
   'SPAWN_RAILS|service-provider-is-fixed': 'Give it work on that provider',
   'SPAWN_RAILS|service-queue-not-owned':
     'Ask the person with request_action to close any other BroCrew instance',
   'SPAWN_RAILS|its-kind-is-unknown': 'Give the work to another agent, or ask a person',
-  'SPAWN_RAILS|that-is-this-conversation': 'Do this part within the piece you are working on',
-  'SPAWN_RAILS|it-would-wait-on-itself': 'Finish or take back that work, then give this again',
-  'SPAWN_RAILS|its-waits-cannot-all-be-checked':
-    'Give the work to another agent, or give it again once some of the work',
-  'SPAWN_RAILS|its-record-cannot-be-read': 'Give the work to another agent',
   'SPAWN_RAILS|no-such-profile': 'list_profiles names them; create_agent makes one',
   'SPAWN_RAILS|folder-unusable': 'only a person can make it right',
   'REPLY_RAILS|no-piece-by-that-name': 'list_tasks names the pieces you hold',
@@ -815,7 +808,6 @@ const ACT: Readonly<Record<string, string>> = {
   'MODEL_RAILS|models-unavailable/3': 'Ask a person to check Claude',
   'MODEL_RAILS|models-not-read-in-time/1': 'Give again in a moment',
   'MODEL_RAILS|models-not-read-in-time/2': 'Give again in a moment',
-  'MODEL_RAILS|name-the-model-too': 'Name the model too',
   'MODEL_RAILS|the-provider-moved-meanwhile': 'Give again',
   'TOOL_REFUSALS|theme-is-built-in': 'Save it under a new id',
   'TOOL_REFUSALS|theme-exists': 'Set replace to true to replace it',

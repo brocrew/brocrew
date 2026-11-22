@@ -503,6 +503,8 @@ export function describeEvent(event: TranscriptEvent): string {
     // changes — which questions outlive a stop — is the question fold's answer.
     case 'worker_registered':
       return 'Worker registered (ours)'
+    case 'service_registered':
+      return ''
 
     case 'launched':
       return 'this app launched this conversation (ours)'

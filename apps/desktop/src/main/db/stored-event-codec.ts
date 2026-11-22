@@ -39,6 +39,7 @@ import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 import { isAWorkReport } from '../../shared/tasks'
 import { pieceNumbersOf } from '../../shared/piece-called'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
+import { serviceRegistrationOf } from '../service-registration'
 
 export function toPersistedEvents(
   rows: EventRow[],
@@ -84,6 +85,11 @@ export function noteUnreadRow(
 }
 
 export function boundStoredEvent(event: TranscriptEvent): TranscriptEvent {
+  if (event.type === 'service_registered') {
+    const fact = serviceRegistrationOf(event)
+    if (fact === null) throw new Error('a stored service registration could not be read')
+    return fact
+  }
   return boundTheParts(boundOneRow(event))
 }
 

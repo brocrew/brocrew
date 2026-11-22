@@ -1,5 +1,4 @@
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
-import type { SessionStore } from '../src/main/db/session-store'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -94,7 +93,7 @@ describe('Service lifecycle', () => {
       const caller = await world.aPersonOpens(host, 'caller')
       const byAPerson = host.createAgent({
         slug: 'browser-driver',
-        displayName: null,
+        displayName: 'Browser Driver',
         provider: 'claude',
         asAService: true,
       })
@@ -103,7 +102,9 @@ describe('Service lifecycle', () => {
       expect(personConversation).toBeTypeOf('string')
       expect(world.store.recordedOne(personConversation!)?.provider).toBe('claude')
       expect(world.store.parentOf(personConversation!)).toBeNull()
-      expect(world.store.rootOf(personConversation!)).toBeNull()
+      const personRoot = world.store.rootOf(personConversation!)
+      expect(personRoot).toMatchObject({ title: 'Browser Driver (standing)' })
+      expect(host.addressOf(personConversation!)).toBe(personRoot?.label)
       expect(world.store.piecesOwnedBy(personConversation!)).toEqual([])
       expect(host.agentCard(personConversation!, world.window, null)?.agent).toBe(
         personConversation,
@@ -120,24 +121,32 @@ describe('Service lifecycle', () => {
       expect(world.kept(fetcher.id)).toMatchObject({ kind: 'service' })
       const toolConversation = world.kept(fetcher.id)?.serviceConversation
       expect(toolConversation).toBeTypeOf('string')
-      expect(made.structured['conversation']).toBe(toolConversation)
+      const root = world.store.rootOf(toolConversation!)
+      const address = host.addressOf(toolConversation!)
+      expect(address).toMatch(/^W[0-9]+$/)
+      expect(made.structured['conversation']).toBe(address)
+      expect(root).toMatchObject({
+        label: address,
+        title: `${host.whatToCallTheConversation(toolConversation!)} (standing)`,
+      })
       expect(world.store.recordedOne(toolConversation!)?.provider).toBe('claude')
       expect(world.store.findLive(toolConversation!)).toMatchObject({
         model: 'fake-claude-a',
         reasoningEffort: 'high',
       })
-      expect(made.text).toContain(toolConversation!)
+      expect(made.text).toContain(`conversation ${address}`)
       expect(world.store.parentOf(toolConversation!)).toBeNull()
-      expect(world.store.rootOf(toolConversation!)).toBeNull()
       expect(world.startedAs).toEqual(['caller'])
       const before = world.conversationsRecorded()
       const given = await call(host, caller, 'give_work', {
         profile: 'fetcher',
+        to: address,
         title: 'Book the room',
         brief: 'Book the meeting room for Tuesday.',
         definition_of_done: 'The room is booked and the confirmation is recorded.',
       })
       expect(given.structured).toMatchObject({ outcome: 'ok', agent: toolConversation })
+      expect(host.addressOf(toolConversation!)).toBe(address)
       expect(world.conversationsRecorded()).toBe(before)
       // A normal agent made beside them is not one.
       const normal = await call(host, caller, 'create_agent', { profile_slug: 'writer' })
@@ -155,6 +164,19 @@ describe('Service lifecycle', () => {
   })
 
   describe('recording the service before any request', () => {
+    const rootedFetcher = () => {
+      const host = world.aHost()
+      const created = host.createAgent({
+        slug: 'fetcher',
+        displayName: null,
+        provider: 'claude',
+        asAService: true,
+      })
+      const conversation = world.kept(created.id)?.serviceConversation
+      if (conversation === undefined) throw new Error('missing service conversation')
+      return { host, created, conversation }
+    }
+
     it.each(['address', 'profile'] as const)(
       'answers an Ask by %s before its first Give',
       async (by) => {
@@ -173,7 +195,7 @@ describe('Service lifecycle', () => {
         const before = world.conversationsRecorded()
         const asked = await call(host, caller, 'ask_question', {
           who_answers: 'an-agent',
-          agent: by === 'address' ? service : 'fetcher',
+          agent: by === 'address' ? host.addressOf(service) : 'fetcher',
           question: 'which floor?',
         })
         expect(asked.structured).toMatchObject({ outcome: 'ok', agent: service })
@@ -202,7 +224,7 @@ describe('Service lifecycle', () => {
         expect(world.conversationsRecorded()).toBe(before)
         expect(world.store.piecesOwnedBy(service)).toEqual([])
         expect(world.store.parentOf(service)).toBeNull()
-        expect(world.store.rootOf(service)).toBeNull()
+        expect(world.store.rootOf(service)?.label).toMatch(/^W[0-9]+$/)
         expect(world.startedAs).toEqual(['caller', 'fetcher'])
         expect(host.questionDestination('caller')).toBeNull()
         expect(host.messageDestination('fetcher')).toBeNull()
@@ -261,7 +283,9 @@ describe('Service lifecycle', () => {
         model: 'fake-claude-a',
         effort: 'high',
       })
-      const service = String(made.structured.conversation)
+      const address = String(made.structured.conversation)
+      const service = world.store.workByLabel(address)?.owner
+      if (service === undefined) throw new Error('service address did not resolve')
       expect(
         world.store.setModelChoice('fetcher', {
           provider: 'claude',
@@ -328,20 +352,13 @@ describe('Service lifecycle', () => {
       expect(world.startedAs).toEqual([])
     })
 
-    it('removes the identity after its service conversation row fails to record', () => {
-      const store = new Proxy(world.store, {
-        get(target, key) {
-          if (key === 'create') {
-            return (record: Parameters<SessionStore['create']>[0]) => {
-              if (record.service === true) throw new Error('service row failed')
-              return target.create(record)
-            }
-          }
-          const value: unknown = Reflect.get(target, key)
-          return typeof value === 'function' ? value.bind(target) : value
-        },
-      })
-      const host = world.aHost({ store })
+    it('rolls back the conversation and standing root if the birth cannot be recorded', () => {
+      world.db.exec(`
+        CREATE TEMP TRIGGER fail_service_birth BEFORE INSERT ON events
+        WHEN NEW.type = 'service_registered'
+        BEGIN SELECT RAISE(ABORT, 'service birth failed'); END
+      `)
+      const host = world.aHost()
       expect(() =>
         host.createAgent({
           slug: 'fetcher',
@@ -349,10 +366,70 @@ describe('Service lifecycle', () => {
           provider: 'claude',
           asAService: true,
         }),
-      ).toThrow('service row failed')
-      expect(world.store.agentIdentities().some((one) => one.slug === 'fetcher')).toBe(false)
+      ).toThrow('service birth failed')
+      expect(world.store.agentIdentityOf('fetcher')).toBeNull()
       expect(world.conversationsRecorded()).toBe(0)
+      expect(world.db.prepare('SELECT count(*) AS total FROM work').get()).toEqual({ total: 0 })
       expect(world.startedAs).toEqual([])
+    })
+
+    it.each(['missing', 'malformed', 'mismatched'] as const)(
+      'keeps a rooted service unknown after restart with %s evidence',
+      async (failure) => {
+        const { host, created, conversation } = rootedFetcher()
+        const address = host.addressOf(conversation)
+        expect(world.store.recorded().find((row) => row.sessionId === conversation)).toMatchObject({
+          personStarted: false,
+          hasTranscript: false,
+          neverStarted: true,
+        })
+        await host.closeAll()
+        if (failure === 'missing') {
+          world.db.prepare('DELETE FROM profile_execution WHERE identity_id = ?').run(created.id)
+        } else {
+          const payload = JSON.stringify({
+            type: 'service_registered',
+            identity: created.id,
+            identityCreatedAt: failure === 'malformed' ? -1 : created.createdAt + 1,
+          })
+          world.db
+            .prepare(
+              "UPDATE events SET payload = ? WHERE session_id = ? AND type = 'service_registered'",
+            )
+            .run(payload, conversation)
+        }
+        const next = world.aHost()
+        expect(next.profileKindOf('fetcher')).toBe('unknown')
+        expect(next.addressOf(conversation)).toBe(address)
+        expect(world.store.serviceBorn(conversation)).toBe(true)
+        expect(world.store.recordedOne(conversation)?.hasTranscript).toBe(false)
+        if (failure === 'malformed') expect(world.ledger(conversation)).toEqual([])
+        if (failure === 'missing') expect(world.kept(created.id)).toBeUndefined()
+        expect(world.startedAs).toEqual([])
+      },
+    )
+
+    it('retains the birth when its first ledger generation is discarded', () => {
+      const { created, conversation } = rootedFetcher()
+      expect(world.ledger(conversation)).toEqual([
+        { type: 'service_registered', identity: created.id, identityCreatedAt: created.createdAt },
+      ])
+      world.store.append(conversation, 1, { type: 'user_turn', text: 'Ready.' }, world.clock++)
+      expect(world.store.recordedOne(conversation)?.hasTranscript).toBe(true)
+      const generation = world.store.beginGeneration(conversation)
+      world.store.promoteGeneration(conversation, generation, {
+        normalizerVersion: 1,
+        derivedThrough: 0,
+      })
+      expect(world.store.recordedOne(conversation)?.hasTranscript).toBe(false)
+      expect(world.store.discardGeneration(conversation, 0, 100)).toBe(1)
+      expect(world.store.discardGeneration(conversation, 0, 100)).toBe(1)
+      expect(world.store.discardGeneration(conversation, 0, 100)).toBe(0)
+      expect(world.store.servicesBorn()).toContainEqual({
+        conversation,
+        identity: created.id,
+        identityCreatedAt: created.createdAt,
+      })
     })
 
     it('recovers the same recorded conversation after the final binding write fails', async () => {

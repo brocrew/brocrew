@@ -601,7 +601,7 @@ export class WorkSearchEngine {
   ): ConversationMatch | null {
     const { id } = candidate
     const root = store.rootOf(id)
-    const service = isRecordedServiceConversation(store, id, root)
+    const service = isRecordedServiceConversation(store, id)
     const savedTitle =
       candidate.provider === null
         ? undefined

@@ -562,6 +562,11 @@ const APP_EVENTS: Record<
     giver: 'sess_giver',
     number: 1,
   },
+  service_registered: {
+    type: 'service_registered',
+    identity: 'aid:reader',
+    identityCreatedAt: 123,
+  },
   user_turn: { type: 'user_turn', text: 'go' },
   user_decision: { type: 'user_decision', requestId: 'r', outcome: 'answered' },
   message_queued: { type: 'message_queued', text: 'later' },

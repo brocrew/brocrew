@@ -188,7 +188,7 @@ export function createGiveWorkTool(
   return {
     name: 'give_work',
     handlerOwnsMissingInput: true,
-    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. A service has one conversation: name its profile and leave to out. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with inputs; the brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
+    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. For a service, use its conversation address or give by profile alone. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with inputs; the brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
     /**
      * **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
      *
@@ -222,7 +222,7 @@ export function createGiveWorkTool(
           .string()
           .optional()
           .describe(
-            'Where the task goes: "new" for a new conversation of that profile, or a conversation by any of its task labels (W4.1621). Required, except for a service. A label names that task’s conversation: the work becomes a new task there, and the labelled task keeps its outcome.',
+            'Where the task goes: "new" for a new conversation of that profile, or a conversation by any of its task labels (W4.1621). For a service, you can omit to and name its profile alone. A label names that task’s conversation: the work becomes a new task there, and the labelled task keeps its outcome.',
           ),
         conversation_title: z
           .string()
@@ -355,7 +355,7 @@ export function createGiveWorkTool(
 }
 
 export function createCreateAgentTool(
-  host: Pick<AgentToolHost, 'createAgentFor' | 'judgeTheDefaultItNames'>,
+  host: Pick<AgentToolHost, 'createAgentFor' | 'judgeTheDefaultItNames' | 'addressOf'>,
   by: Caller,
   me: string,
   theModels: string,
@@ -370,7 +370,7 @@ export function createCreateAgentTool(
     name: 'create_agent',
 
     description:
-      "Profiles are distinct, continuing roles, not one task, provider variant, or work slice. Before creating one, check list_profiles. If an existing profile fits, reuse it with give_work; choose Claude or Codex for that conversation as needed. A one-off probe or work slice belongs with an existing profile. Create a profile only for distinct recurring expertise no existing profile covers. This is guidance, not a guarantee. Bring a new agent into existence with a name and optionally its standing rules. A normal agent's conversations are started by give_work. A service's one top-level conversation, shared by the whole workspace, is recorded now and its address is returned. Neither kind starts running or receives work from this call. Give the job in a task with give_work; rules are what this agent is in every conversation it runs. This app gives the new agent its human name and tells you what it chose. Returns the agent that now exists, or a refusal naming what prevented creation. Name model and effort to give it defaults for starting work.",
+      "Profiles are distinct, continuing roles, not one task, provider variant, or work slice. Before creating one, check list_profiles. If an existing profile fits, reuse it with give_work; choose Claude or Codex for that conversation as needed. A one-off probe or work slice belongs with an existing profile. Create a profile only for distinct recurring expertise no existing profile covers. This is guidance, not a guarantee. Bring a new agent into existence with a name and optionally its standing rules. A normal agent's conversations are started by give_work. A service's one top-level conversation, shared by the whole workspace, is recorded now and its address is returned. Neither kind starts running or receives work from this call. Give the job in a task with give_work; rules are what this agent is in every conversation it runs. This app gives the new agent its human name and tells you what it chose. Returns the agent that now exists, or a refusal naming what prevented creation. You can name a model and effort, or choose an effort for the default model.",
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — `415`'s
      * device, and the `satisfies` below fails to compile if this shape and
@@ -417,7 +417,7 @@ export function createCreateAgentTool(
         .string()
         .optional()
         .describe(
-          'The reasoning effort its new conversations start at, one that model offers.' +
+          'The reasoning effort its new conversations start at. Use an effort the named or default model offers.' +
             theEfforts,
         ),
       kind: documentedToolEnum(
@@ -516,6 +516,10 @@ export function createCreateAgentTool(
         )
         if (!outcome.ok) return notCreated(refuseTool(outcome.rail, outcome.detail))
         const named = outcome.identity.displayName
+        const serviceAddress =
+          outcome.serviceConversation === undefined
+            ? undefined
+            : host.addressOf(outcome.serviceConversation)
         // **618 · what the RULES did, computed from the outcome and said in both halves**
         // (`a-report-must-be-computed-from-the-outcome`, and `489`/HO-031 §2.6's one
         // composition).
@@ -536,16 +540,14 @@ export function createCreateAgentTool(
             ...(named === null ? {} : { display_name: named }),
             rules: wrote === null ? 'none-given' : 'written',
             ...(outcome.defaultModel === null ? {} : { default_model: outcome.defaultModel }),
-            ...(outcome.serviceConversation === undefined
-              ? {}
-              : { conversation: outcome.serviceConversation }),
+            ...(serviceAddress === undefined ? {} : { conversation: serviceAddress }),
           },
           // Read off the outcome, never echoing the call: the name this app chose, that nothing
           // was started, its default, and whether its rules are saved.
           `${named === null ? CREATED_UNDER_ITS_PROFILE_NAME : createdAndNamed(named)}${
-            outcome.serviceConversation === undefined
+            serviceAddress === undefined
               ? ' It is not running and has been sent nothing.'
-              : ` Its shared conversation is recorded: ${conversationLine(outcome.serviceConversation, named ?? profileLabel(outcome.identity.slug))}. It is not running. No work was sent.`
+              : ` Its shared conversation is recorded: ${conversationLine(serviceAddress, named ?? profileLabel(outcome.identity.slug))}. It is not running. No work was sent.`
           }${
             // **D-042 · R2 — the default it now has, read back**.
             outcome.defaultModel === null

@@ -3,15 +3,6 @@ import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-/**
- * A helper's work stays in the tree it was given in.
- *
- * A helper gets a root of its own only when a person asks it for new work while it holds nothing
- * anyone gave it. Once it has one, neither a give nor a person's request that names no piece hangs
- * under that root while the helper holds a piece someone gave it: it goes under that piece, or the
- * call is refused, naming the pieces to choose from.
- */
-
 const request = {
   title: 'Fictional request',
   brief: 'Read the fictional input.',
@@ -95,7 +86,7 @@ describe('a helper’s work stays in the tree it was given in', () => {
   }
 
   describe('give_work', () => {
-    it('never hangs under the helper’s own root while it holds a piece someone gave it', async () => {
+    it('uses the helper’s root while its other brief is still held', async () => {
       const { giver, helper } = await aHelperWithItsOwnRoot()
       // ⚑ The helper is still in its turn, so the new brief waits for it.
       const second = await world.gives(host, giver, 'helper', { title: 'Second piece', to: 'W1.1' })
@@ -107,17 +98,12 @@ describe('a helper’s work stays in the tree it was given in', () => {
         to: 'new',
         conversation_title: request.title,
       })
-      expect(given.structured).toMatchObject({
-        outcome: 'refused',
-        rail: 'name-the-piece-you-give-from',
-        reason:
-          'Not sent: Say which of your pieces this is for (W1.2): give again naming it as under.',
-        detail: { held: ['W1.2'] },
+      expect(given.structured).toMatchObject({ outcome: 'ok', label: 'W2.2' })
+      expect(world.store.workByLabel('W2.2')).toMatchObject({
+        parent: world.store.rootOf(helper)?.piece,
+        givenBy: helper,
       })
       expect(labelsOf(helper)).toEqual(before)
-      expect(world.store.piecesOwnedBy(helper).some((one) => one.label.startsWith('W2.2'))).toBe(
-        false,
-      )
     })
 
     it('still hangs under its own root while it holds nothing', async () => {

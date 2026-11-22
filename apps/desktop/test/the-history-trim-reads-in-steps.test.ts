@@ -136,6 +136,7 @@ function aWorkspace(file: string) {
     // Its active generation is 1, so 1 ranks first, then 2 and 0, newest first in each.
     rebuilt: [
       [
+        ...rows('service_registered', 1, { identity: 'aid:example', identityCreatedAt: OLD }),
         ...rows('thinking', 500, {}, 9),
         ...rows('thinking', 20, '{bad'),
         ...rows('thinking', 10, { type: 'activity' }),
@@ -236,6 +237,7 @@ it('reads each conversation in steps and selects exactly the rows the one query 
       NOW,
     )
     expect(selected.sort()).toEqual(expected)
+    expect(selected.map(typeOf)).not.toContain('service_registered')
     // The newest well-formed command list and inventory, and the newest non-resume inventory, stay.
     expect(expected.filter((id) => id.startsWith('anchors-'))).toEqual([
       'anchors-0-0',

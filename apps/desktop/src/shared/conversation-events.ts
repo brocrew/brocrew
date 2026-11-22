@@ -1302,6 +1302,13 @@ export interface WorkerRegisteredEvent {
   number: number
 }
 
+/** The durable identity of a service, recorded with its standing root. */
+export interface ServiceRegisteredEvent {
+  type: 'service_registered'
+  identity: string
+  identityCreatedAt: number
+}
+
 /** A direct change names its author and durable history version without duplicating the text. */
 export interface InstructionChangedEvent {
   type: 'instruction_changed'
@@ -1325,6 +1332,7 @@ export type TranscriptEvent =
   | ProviderFailureReconciliationEvent
   | WorkRecoveryEvent
   | WorkerRegisteredEvent
+  | ServiceRegisteredEvent
   | RuntimeEvent
   | UserTurnEvent
   | UserDecisionEvent

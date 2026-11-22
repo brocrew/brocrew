@@ -453,12 +453,6 @@ describe('425 · a refusal carries its remedy', () => {
           'TOOL_REFUSALS · theme-exists',
           'TOOL_REFUSALS · theme-unknown',
           'TOOL_REFUSALS · theme-too-large',
-          // ⚑ **The eighteenth**: a give to a service that already waits on its caller; the same
-          // give once that work has ended.
-          'SPAWN_RAILS · it-would-wait-on-itself',
-          // ⚑ **The nineteenth**: a give to a service whose waits reach too far to check; the same
-          // give once some of that work has ended.
-          'SPAWN_RAILS · its-waits-cannot-all-be-checked',
           // ⚑ **The twenty-first**: a message about a piece still queued at a service; the same
           // message once it is handed over.
           'TOOL_REFUSALS · that-piece-is-still-queued',
@@ -472,7 +466,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(28)
+      expect(carrying).toHaveLength(26)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -566,7 +560,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(28)
+      expect(retryable).toHaveLength(26)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -733,11 +727,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **+1**, `until-a-person-changes-it` and so `null`: `SPAWN_RAILS`' `its-provider-is-not-chosen`
       // (an agent with no provider saved whose conversations ran on both) — its sentence names a
       // person's choice on its sheet, or another agent.
-      // ⚑ **+3**, a give to a service: `service-queue-not-owned` and `its-kind-is-unknown`
-      // (`until-a-person-changes-it`) and `that-is-this-conversation` (`permanent`) — each sentence
-      // names another agent, or doing it here.
-      // ⚑ **+1**, `permanent` and so `null`: `its-record-cannot-be-read`, a give to a service whose
-      // waits can't be read — its sentence names another agent.
       // ⚑ **+3**, `request_mcp_server`'s: `server-already-registered` (`permanent`), and
       // `server-already-asked-for` and `too-many-server-requests` (`until-a-person-changes-it`: the
       // person deciding what waits clears them) — each sentence says what to do instead.
@@ -745,7 +734,7 @@ describe('425 · a refusal carries its remedy', () => {
       // R03 removes the permanent ancestry-only read refusal; a known conversation is readable.
       // Two provider choices cannot be cleared by retrying: a fixed service and a full pool.
       // `the-conversation-that-asked-has-gone` left with the forced question route.
-      expect(quiet).toHaveLength(73)
+      expect(quiet).toHaveLength(71)
       for (const [rail, permanence] of [
         ['service-provider-is-fixed', 'permanent'],
         ['its-provider-is-fixed', 'permanent'],
@@ -830,10 +819,6 @@ describe('425 · a refusal carries its remedy', () => {
           'TOOL_REFUSALS · work-record-unavailable',
           // ⚑ **D-016** — a give held behind a start that did not happen: the same give, once it has.
           'TOOL_REFUSALS · the-start-it-waited-on-did-not-happen',
-          // A give to a service that waits on its caller: the same give, once that work has ended.
-          'SPAWN_RAILS · it-would-wait-on-itself',
-          // A give to a service whose waits can't all be checked: the same give, once some has ended.
-          'SPAWN_RAILS · its-waits-cannot-all-be-checked',
           // A message about a piece queued at a service: the same message, once it is handed over.
           'TOOL_REFUSALS · that-piece-is-still-queued',
           // A piece that cannot end with the copies passed up of its questions, at a take-back, a
@@ -957,9 +942,6 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ **Eighty-one** — `answer-too-long`, an answer over the bound.
       // ⚑ **Eighty-three** — F009's `no-agent-by-that-name`, the same word as `quiet` above.
       // ⚑ **Eighty-four** — `its-provider-is-not-chosen`, the same word as `quiet` above.
-      // ⚑ **Ninety-three** — a give to a service's six: the four `quiet` gained, and
-      // `it-would-wait-on-itself` and `its-waits-cannot-all-be-checked`, which the same give clears
-      // once that work has ended.
       // ⚑ One more — a message about a piece still queued at a service.
       // ⚑ **Three more** came with Move and work search, and one went: the stall rule is out, so
       // a give is no longer refused over a stall.
@@ -969,7 +951,7 @@ describe('425 · a refusal carries its remedy', () => {
       // The walk also includes the fixed service provider and a pool with no matching provider.
       // R03 removes the ancestry-only read refusal from the canonical vocabulary.
       // `the-conversation-that-asked-has-gone` left with the forced question route.
-      expect(walked).toHaveLength(101)
+      expect(walked).toHaveLength(97)
       expect(everyRail().some((one) => one.rail === 'not-a-conversation-below-you')).toBe(false)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })

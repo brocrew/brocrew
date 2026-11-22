@@ -51,8 +51,6 @@ export const MODEL_RAILS = [
    * matches. `while-this-holds`: nothing has to change before the same call, which asks again.
    */
   'models-not-read-in-time',
-  /** ⛔ **`create_agent` named an effort with no model**: a default is a model and its effort. */
-  'name-the-model-too',
   /**
    * ⚠️ **The provider the give would start on moved while its list was read** — a person changed
    * that agent's provider in that moment. ⚑ `while-this-holds`: the same give again reads the list
@@ -68,7 +66,6 @@ const PERMANENCE: Readonly<Record<ModelRail, RailPermanence>> = {
   'effort-not-offered': 'permanent',
   'models-unavailable': 'until-a-person-changes-it',
   'models-not-read-in-time': 'while-this-holds',
-  'name-the-model-too': 'permanent',
   'the-provider-moved-meanwhile': 'while-this-holds',
 }
 
@@ -82,7 +79,6 @@ const REMEDY: Readonly<Record<ModelRail, RefusalRemedy | null>> = {
   'effort-not-offered': null,
   'models-unavailable': null,
   'models-not-read-in-time': 'make-the-same-call-when-this-settles',
-  'name-the-model-too': null,
   'the-provider-moved-meanwhile': 'make-the-same-call-when-this-settles',
 }
 
@@ -171,8 +167,6 @@ function describeModelRail(rail: ModelRail, detail: ModelRefusalDetail): string 
         `${unchecked} and ${nothing}. Nobody has to change anything first.`
       )
     }
-    case 'name-the-model-too':
-      return `Name the model too: a default is a model and the effort it runs at, so ${nothing}.`
     case 'the-provider-moved-meanwhile':
       return (
         `Give again: that agent’s conversations now start on ${on}, which changed while this was ` +
@@ -305,9 +299,6 @@ export function judgeAnAgentsChoice(
   | { readonly ok: false; readonly refusal: ModelRefusal } {
   const no = (rail: ModelRail, detail: Omit<ModelRefusalDetail, 'door' | 'provider'> = {}) =>
     ({ ok: false, refusal: refuseModel(rail, { door, provider, ...detail }) }) as const
-  if (asked.model === undefined && asked.effort !== undefined && door === 'create') {
-    return no('name-the-model-too')
-  }
   const ladder = theEffortLadder(list.rows)
   const why = whyNotAsked(list.notAsked)
   // A list the provider was only too slow to give is asked again by the same call.

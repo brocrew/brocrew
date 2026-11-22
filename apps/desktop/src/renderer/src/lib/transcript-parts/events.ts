@@ -731,7 +731,8 @@ export function foldEvent(
 
     /** ⚑ **Never reaches a window**: the host takes the reading before the ledger sees it. */
     case 'worker_registered':
-      // Worker membership is read independently of the conversation text.
+    case 'service_registered':
+      // Membership is read independently of the conversation text.
       return
 
     case 'provider_usage':

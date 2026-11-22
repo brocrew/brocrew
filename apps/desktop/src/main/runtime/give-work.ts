@@ -44,8 +44,7 @@ export interface GiveWorkHost {
   readonly runningAs: (sessionId: string) => GivingConversation | null
   readonly heldBy: (conversation: string) => readonly HeldPiece[]
   readonly theTurnDrives: (conversation: string) => string | null
-  readonly isAHelper: (conversation: string) => boolean
-  readonly theServiceAtAGive: (giver: string, profile: string) => ServiceAtAGive
+  readonly theServiceAtAGive: (profile: string) => ServiceAtAGive
   readonly theServiceStartAGiveMeets: (input: unknown) => Promise<void> | null
   readonly itsProvider: (profileSlug: string) => ItsProvider
   readonly checkCwd: (path: string) => CwdVerdict
@@ -381,7 +380,7 @@ export class GiveWork {
     const parsed = giveRequestSchema.safeParse(input)
     if (giving === null || !parsed.success) return null
     const asked = parsed.data
-    const service = h.theServiceAtAGive(speaking, asked.profile)
+    const service = h.theServiceAtAGive(asked.profile)
     const fixed = service.is === 'service' ? service.provider : null
     const serviceConflict =
       asked.provider !== undefined && fixed !== null && asked.provider !== fixed
@@ -453,7 +452,6 @@ export class GiveWork {
       giver: () => giving,
       held: (giver) => h.heldBy(giver),
       drivenByTheTurn: () => h.theTurnDrives(giving.sessionId),
-      isAHelper: () => h.isAHelper(giving.sessionId),
       agentExists: (profileSlug) => h.store().agentIdentityOf(profileSlug) !== null,
       conversationAt: (address) => this.conversationAt(address),
       recentWith: (profileSlug) => {
@@ -468,7 +466,7 @@ export class GiveWork {
           more: recent.more,
         }
       },
-      serviceAt: (giver, profileSlug) => h.theServiceAtAGive(giver, profileSlug),
+      serviceAt: h.theServiceAtAGive,
       itsProvider: (profileSlug) => h.itsProvider(profileSlug),
       theNamedModelsProvider: () => theNamedModels,
       serviceModels: () => models.map(({ id }) => id),

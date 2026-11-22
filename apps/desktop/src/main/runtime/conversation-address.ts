@@ -89,22 +89,14 @@ export function conversationLine(address: string, title: string): string {
 }
 
 interface RecordedServiceReads {
-  recordedOne(conversation: string): object | null
-  parentOf(conversation: string): string | null
-  rootOf(conversation: string): object | null
+  serviceBorn(conversation: string): boolean
 }
 
 export function isRecordedServiceConversation(
   reads: RecordedServiceReads,
   conversation: string,
-  root?: object | null,
 ): boolean {
-  return (
-    root == null &&
-    reads.recordedOne(conversation) !== null &&
-    reads.parentOf(conversation) === null &&
-    (root === null || reads.rootOf(conversation) === null)
-  )
+  return reads.serviceBorn(conversation)
 }
 
 export function describeConversationForRead(

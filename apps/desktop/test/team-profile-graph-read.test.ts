@@ -206,6 +206,19 @@ it('classifies only stable simple kind proofs and never repairs what is kept', (
   expect(complete(f).nodes[0]?.kind).toBe('service')
   f.root('service')
   expect(complete(f).nodes[0]?.kindQuality).toBe('unknown-conflict')
+  f.event(
+    'service',
+    'service_registered',
+    JSON.stringify({
+      type: 'service_registered',
+      identity: 'aid:service',
+      identityCreatedAt: graphCutoff - 20 * 86_400_000,
+    }),
+    0,
+    graphCutoff - 1,
+    0,
+  )
+  expect(complete(f).nodes[0]).toMatchObject({ kind: 'service', kindQuality: 'stable-record' })
   f.forgetKinds()
   expect(complete(f).nodes[0]?.kindQuality).toBe('unknown-file')
 })

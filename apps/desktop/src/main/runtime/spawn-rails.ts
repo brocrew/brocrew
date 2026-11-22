@@ -109,14 +109,6 @@ export const SPAWN_RAILS = [
   'conversation-title-needed',
   /** A service has one conversation, so a give to it names no other. */
   'a-service-has-one-conversation',
-  /** The agent is a service, and the giver is that service's one conversation. */
-  'that-is-this-conversation',
-  /** The service already waits, through work it gave, on the giver: the piece would never be reached. */
-  'it-would-wait-on-itself',
-  /** Whether the service waits on the giver can't all be checked: it reaches too much open work. */
-  'its-waits-cannot-all-be-checked',
-  /** Whether the service waits on the giver can't be checked: a record it reaches can't be read. */
-  'its-record-cannot-be-read',
   /**
    * No agent by that name. ⛔ A typo is not a new agent; the sentence names `list_profiles` and
    * `create_agent`.
@@ -170,12 +162,6 @@ const PERMANENCE: Readonly<Record<SpawnRail, RailPermanence>> = {
   'its-provider-is-fixed': 'permanent',
   'conversation-title-needed': 'permanent',
   'a-service-has-one-conversation': 'permanent',
-  'that-is-this-conversation': 'permanent',
-  'it-would-wait-on-itself': 'while-this-holds',
-  'its-waits-cannot-all-be-checked': 'while-this-holds',
-  // ⚑ **`permanent`**: a row that can't be read stays so, and the ledgers the check reads include
-  // those of work that has ended, so no give to that service can clear it.
-  'its-record-cannot-be-read': 'permanent',
   'no-such-profile': 'permanent',
   'its-provider-is-not-chosen': 'until-a-person-changes-it',
   'folder-unusable': 'until-a-person-changes-it',
@@ -215,10 +201,6 @@ const REMEDY: Readonly<Record<SpawnRail, RefusalRemedy | null>> = {
   'its-provider-is-fixed': null,
   'conversation-title-needed': null,
   'a-service-has-one-conversation': null,
-  'that-is-this-conversation': null,
-  'it-would-wait-on-itself': 'make-the-same-call-when-this-settles',
-  'its-waits-cannot-all-be-checked': 'make-the-same-call-when-this-settles',
-  'its-record-cannot-be-read': null,
   'no-such-profile': null,
   'its-provider-is-not-chosen': null,
   'folder-unusable': null,
@@ -355,15 +337,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'conversation-title-needed':
       return 'Not sent: a new conversation needs conversation_title, naming the job.'
     case 'a-service-has-one-conversation':
-      return `Not sent: ${detail.profileId ?? '?'} is a service with one conversation; leave to out.`
-    case 'that-is-this-conversation':
-      return 'Not sent: that agent is you. Do this part within the piece you are working on.'
-    case 'it-would-wait-on-itself':
-      return 'Not sent: that service is waiting on work you hold, so it would never reach this. Finish or take back that work, then give this again.'
-    case 'its-waits-cannot-all-be-checked':
-      return `Not sent: its waits can’t all be checked. Give the work to another agent, or give it again once some of the work “${detail.profileId ?? '?'}” waits on has ended.`
-    case 'its-record-cannot-be-read':
-      return `Not sent: part of this app’s record of what “${detail.profileId ?? '?'}” gave can’t be read. Give the work to another agent.`
+      return `Not sent: ${detail.profileId ?? '?'} has one service conversation. Use its address or omit to.`
     case 'no-such-profile':
       return `Not sent: no agent is called ${detail.profileId ?? '?'}. list_profiles names them; create_agent makes one.`
     case 'service-provider-is-fixed':
@@ -696,7 +670,6 @@ export interface GiveFacts {
    * Whether the caller is a helper: a conversation another one started, whose own root holds only
    * what a person asked it directly.
    */
-  readonly isAHelper: () => boolean
   readonly agentExists: (profileSlug: string) => boolean
   /** The conversation an address names, its agent and the provider it runs on; `null` if none. */
   readonly conversationAt: (address: string) => AddressedConversation | null
@@ -706,7 +679,7 @@ export interface GiveFacts {
     readonly more: boolean
   }
   /** Whether a give to `profileSlug` reaches a service, and how ({@link ServiceAtAGive}). */
-  readonly serviceAt: (giver: string, profileSlug: string) => ServiceAtAGive
+  readonly serviceAt: (profileSlug: string) => ServiceAtAGive
   /** The provider the TARGET agent runs on, and what says so (`theProviderOfAnAgent`). */
   readonly itsProvider: (profileSlug: string) => ItsProvider
   /**
@@ -738,20 +711,13 @@ interface RecentConversation {
 /**
  * A give's target: `normal` for an agent that is not a service, `queue-not-owned` when this app
  * does not own the service queue, `unknown` if its kind can't be told; else its one
- * conversation (`null` before its first give), whether that is the giver itself, whether it already
- * waits on the giver through work it gave, and the provider its first give records it on.
+ * conversation and its fixed provider, or the provider on which a first conversation is recorded.
  */
 export type ServiceAtAGive =
   | { readonly is: 'normal' | 'queue-not-owned' | 'unknown'; readonly why?: string }
   | {
       readonly is: 'service'
       readonly conversation: string | null
-      readonly isTheGiver: boolean
-      /**
-       * Whether it already waits on the giver: `unknown` where the work it reaches is too much to
-       * check, `unread` where a record of it can't be read.
-       */
-      readonly waitsOnTheGiver: 'yes' | 'no' | 'unknown' | 'unread'
       readonly provider: Provider | null
     }
 
@@ -945,32 +911,24 @@ export function admitGive(
     // 🔴 **D-022 · R4 — only a piece whose brief has reached it counts**: the ONE such piece; of
     // several, the one the turn it is in drives; with none, its root (commit 6 · R2); else
     // ambiguous, naming them. ⚑ A root owner that took work on hangs what it gives under that work.
-    // ⛔ A helper never uses its own root while it holds a piece someone gave it, whose brief may
-    // still be on its way: that work belongs in the tree it was given in.
     const received = held.filter((one) => !one.root && one.received)
-    const givenToIt = held.filter((one) => !one.root && one.giver !== null)
-    const notItsRoot = received.length === 0 && givenToIt.length > 0 && facts.isAHelper()
     const drives = received.length > 1 ? facts.drivenByTheTurn() : null
     const inferred =
       received.length === 1
         ? received[0]
         : received.length > 1
           ? received.find((one) => one.piece === drives)
-          : notItsRoot
-            ? undefined
-            : held.find((one) => one.root)
+          : held.find((one) => one.root)
     if (inferred === undefined) {
-      if (notItsRoot) {
-        return no('name-the-piece-you-give-from', { held: givenToIt.map((one) => one.label) })
-      }
-      return received.length > 1
-        ? no('name-the-piece-you-give-from', { held: received.map((one) => one.label) })
-        : no('no-piece-to-give-from')
+      const choices = received.length > 1 ? received : held
+      return choices.length === 0
+        ? no('no-piece-to-give-from')
+        : no('name-the-piece-you-give-from', { held: choices.map((one) => one.label) })
     }
     under = inferred
   }
 
-  const service = facts.serviceAt(giving.sessionId, asked.profile)
+  const service = facts.serviceAt(asked.profile)
   if (service?.is === 'queue-not-owned')
     return no('service-queue-not-owned', { profileId: asked.profile })
   if (service?.is === 'unknown')
@@ -991,17 +949,13 @@ export function admitGive(
         choices: facts.serviceModels?.() ?? [],
       })
     }
-    if (asked.to !== undefined)
+    if (
+      asked.to !== undefined &&
+      (asked.to === 'new' ||
+        service.conversation === null ||
+        facts.conversationAt(asked.to)?.conversation !== service.conversation)
+    ) {
       return no('a-service-has-one-conversation', { profileId: asked.profile })
-    if (service.isTheGiver) return no('that-is-this-conversation', { profileId: asked.profile })
-    if (service.waitsOnTheGiver === 'yes') {
-      return no('it-would-wait-on-itself', { profileId: asked.profile })
-    }
-    if (service.waitsOnTheGiver === 'unknown') {
-      return no('its-waits-cannot-all-be-checked', { profileId: asked.profile })
-    }
-    if (service.waitsOnTheGiver === 'unread') {
-      return no('its-record-cannot-be-read', { profileId: asked.profile })
     }
     if (service.conversation === null && service.provider === null) {
       const its = facts.itsProvider(asked.profile)

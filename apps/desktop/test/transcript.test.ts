@@ -611,6 +611,10 @@ describe('transcript fold', () => {
         },
         adds: 0,
       },
+      {
+        event: { type: 'service_registered', identity: 'aid:reader', identityCreatedAt: 123 },
+        adds: 0,
+      },
       { event: { type: 'user_turn', text: 'hello' }, adds: 1 },
       { event: { type: 'user_decision', requestId: 'p1', outcome: 'allow' }, adds: 0 },
       { event: { type: 'message_queued', text: 'later' }, adds: 1 },
@@ -957,6 +961,7 @@ describe('transcript fold', () => {
     // a new app-authored event is named, and the assertion then holds the list above to it.
     const roster: Record<Exclude<TranscriptEvent, RuntimeEvent>['type'], true> = {
       worker_registered: true,
+      service_registered: true,
       instruction_proposed: true,
       instruction_changed: true,
       instruction_settled: true,
@@ -1020,7 +1025,8 @@ describe('transcript fold', () => {
       const state = createTranscript()
       expect(() => applyEvent(state, event)).not.toThrow()
       expect(state.items.length, event.type).toBe(adds)
-      if (event.type === 'pending_compaction') expect(describeEvent(event)).toBe('')
+      if (event.type === 'pending_compaction' || event.type === 'service_registered')
+        expect(describeEvent(event), event.type).toBe('')
       else expect(describeEvent(event), event.type).not.toBe('')
     }
   })

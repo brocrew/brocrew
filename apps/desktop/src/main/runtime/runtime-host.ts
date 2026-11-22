@@ -3622,9 +3622,6 @@ const NOT_THE_ONLY_APP = 'Not changed: the app may be open twice.'
 /** A start refused: the agent is a service, whose one conversation no other start may replace. */
 const NOT_STARTED_A_SERVICE = 'Not started: it’s a service.'
 
-/** The most conversations a give's wait-cycle check walks; past it, the give is refused. */
-export const MAX_WAITS_WALKED = 256
-
 /** Why a service is not told of a change to a queued piece, after "‹it› could not be told. ". */
 const QUEUED_NEVER_TOLD = 'The piece was queued and had not reached it, so nothing was sent.'
 
@@ -5066,8 +5063,7 @@ export class RuntimeHost implements LiveHost {
         const session = this.slots.get(conversation)?.session ?? null
         return session !== null && session.turnOpened ? session.itsTurnDrives : null
       },
-      isAHelper: (conversation) => this.theParentInItsPlace(conversation) !== null,
-      theServiceAtAGive: (giver, profile) => this.theServiceAtAGive(giver, profile),
+      theServiceAtAGive: (profile) => this.theServiceAtAGive(profile),
       theServiceStartAGiveMeets: (input) => this.theServiceStartAGiveMeets(input),
       itsProvider: (profileSlug) => this.itsProvider(profileSlug),
       checkCwd: (path) => this.checkCwd(path),
@@ -5091,7 +5087,7 @@ export class RuntimeHost implements LiveHost {
         let service: string
         if (conversation !== null) service = conversation
         else if (provider === null) throw new Error(`${profileId} has no provider`)
-        else service = this.recordTheServiceConversation(profileId, provider)
+        else service = this.recordTheServiceConversation(profileId, provider, null, false)
         return this.startupRepairs.has(service)
           ? this.settleBeforeUse(service).then(() => service)
           : service
@@ -8209,8 +8205,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * The service whose one conversation `conversation` is, made or reserved, by its identity id;
-   * `null` for any other conversation. ⛔ A conversation with no parent and no root, which only a
-   * service's birth makes, is a service's even where what is kept cannot name it: `'unknown'`.
+   * `null` for any other conversation. Independent birth evidence without a sound binding
+   * still identifies a service, with kind information reported as unknown.
    */
   private theServiceOf(
     conversation: string,
@@ -8220,13 +8216,13 @@ export class RuntimeHost implements LiveHost {
     if (read.readable) {
       for (const [identity, entry] of Object.entries(read.kept.profiles)) {
         if (entry.serviceConversation === conversation || entry.reserved === conversation) {
-          return identity
+          return this.profileExecutionConflicts.includes(identity) ? 'unknown' : identity
         }
       }
     }
     const { store } = this.deps
-    const rootless = rootlessReading?.() ?? isRecordedServiceConversation(store, conversation)
-    return rootless ? 'unknown' : null
+    const born = rootlessReading?.() ?? isRecordedServiceConversation(store, conversation)
+    return born ? 'unknown' : null
   }
 
   /**
@@ -8292,20 +8288,17 @@ export class RuntimeHost implements LiveHost {
     return this.theServiceAgent(profile).is !== 'normal'
   }
 
-  /** A give from `giver` to `profile`, as a service ({@link ServiceAtAGive}). */
-  private theServiceAtAGive(giver: string, profile: string): ServiceAtAGive {
+  /** A give to `profile`, as a service ({@link ServiceAtAGive}). */
+  private theServiceAtAGive(profile: string): ServiceAtAGive {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service') return agent
     if (this.deps.profileExecution?.owned !== true) {
       return { is: 'queue-not-owned' }
     }
     const { conversation } = agent
-    const givers = this.theIdsItStandsFor(giver)
     return {
       is: 'service',
       conversation,
-      isTheGiver: conversation !== null && givers.includes(conversation),
-      waitsOnTheGiver: conversation === null ? 'no' : this.itWaitsOn(conversation, givers),
       provider:
         conversation === null
           ? (this.itsProvider(profile).provider ??
@@ -8316,50 +8309,15 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Whether `conversation` already waits on one of `givers` through work it gave: an open piece it
-   * gave, to a conversation that gave one on, and so on, reaching them. A service that waits on its
-   * caller would never reach that caller's piece. ⛔ `unknown` when a conversation it reaches is left
-   * unread because the walk's budget is spent, since nothing bounds how far open work reaches.
-   * ⛔ `unread`, short of a wait it found, when a row or a whole ledger it read couldn't be read,
-   * since that row may be the give that closes one; at either exit, as no ending clears it.
-   */
-  private itWaitsOn(
-    conversation: string,
-    givers: readonly string[],
-  ): 'yes' | 'no' | 'unknown' | 'unread' {
-    const unread = rowsUnreadOnce()
-    const orUnread = <Answer>(answer: Answer): Answer | 'unread' =>
-      unread.count > 0 || unread.ledgersSkipped > 0 ? 'unread' : answer
-    const seen = new Set<string>()
-    const next = [conversation]
-    while (next.length > 0) {
-      const one = next.pop() as string
-      if (seen.has(one)) continue
-      if (seen.size >= MAX_WAITS_WALKED) return orUnread('unknown')
-      seen.add(one)
-      const gave = this.theIdsItStandsFor(one).flatMap((id) =>
-        this.deps.store.piecesGivenBy(id, unread),
-      )
-      for (const piece of gave) {
-        if (!TASK_IS_OPEN[piece.state]) continue
-        const holder = this.theOneInItsPlace(piece.owner)
-        if (givers.includes(holder) || givers.includes(piece.owner)) return 'yes'
-        next.push(holder)
-      }
-    }
-    return orUnread('no')
-  }
-
-  /**
-   * Record `profile`'s one conversation as a service's, nothing launched: no parent and no root,
-   * since every piece it holds is given to it under a caller's work. Reserved in the file first,
-   * written, then kept as the service's; the next start settles a crash between any two
+   * Record the service's one conversation and standing root without starting the provider.
+   * Reserve the conversation, commit its birth, then bind it. Startup settles an interrupted write
    * (`reconcileProfileExecution`).
    */
   private recordTheServiceConversation(
     profile: string,
     provider: Provider,
     asked: AgentModelChoice | null = null,
+    withStandingRoot = true,
   ): string {
     const agent = this.theServiceAgent(profile)
     if (agent.is !== 'service' || agent.conversation !== null) {
@@ -8373,6 +8331,9 @@ export class RuntimeHost implements LiveHost {
     // Read before the reservation, so nothing between it and the row can leave it standing.
     const pair = asked ?? this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
     const cwd = this.deps.resolveCwd(id, undefined)
+    const title = withStandingRoot
+      ? `${agentName(itsName, this.deps.store.agentIdentities())} (standing)`
+      : undefined
     this.keepTheProfileEntry(agent.identity, { ...entry, reserved: id }, true)
     try {
       this.deps.store.create({
@@ -8384,6 +8345,7 @@ export class RuntimeHost implements LiveHost {
         ...(pair === null ? {} : { model: pair.model }),
         ...(pair?.effort == null ? {} : { reasoningEffort: pair.effort }),
         service: true,
+        ...(title === undefined ? {} : { serviceStandingTitle: title }),
       })
     } catch (error) {
       this.keepTheProfileEntry(agent.identity, entry, false)
@@ -19196,7 +19158,11 @@ export class RuntimeHost implements LiveHost {
     conversation: string,
     piece: string | null,
   ): WorkThatNamesIt | null {
-    if (piece !== null && this.itIsAService(conversation)) return null
+    if (
+      piece !== null &&
+      this.theServiceOf(conversation, () => this.windowRoutingReads.rootless(conversation)) !== null
+    )
+      return null
     return piece === null
       ? this.workThatNames(conversation)
       : this.deps.store.workThatNamesUnder(conversation, piece)
@@ -22673,23 +22639,15 @@ export class RuntimeHost implements LiveHost {
     },
   ): Promise<void> {
     const { facts } = how
-    // 🔴 **`requireToMessage`, the same gate {@link queueMessage} asks, and the SET is the rule**
-    // (431 · criterion 6). ⛔ **These two are the only verbs whose single capability question is
-    // `'message'`** — the line below, which was already the same at both — and they are the two
-    // spellings of one act: put these words into that conversation, now or when it is free. ⚠️ The
-    // entitlement in front of them was the only half that disagreed, and `queueMessage` delegates
-    // HERE on the idle path, so a caller its own gate admitted met a stricter one two lines later.
-    //
-    // ⛔ **`sendInterrupting` is deliberately NOT on this gate even though it asks `'message'`
-    // too**: it asks `'interrupt'` as well, and *"cut into a conversation in another project"* is
-    // the act HO-006 §4.3 made a separate capability and `430` named as the thing this widening
-    // must not become.
-    //
+    // A message uses the same reach check as queueAs. Give already resolved its recipient.
     // 🔴 **708 · the turn gate is handed the SAME `this.originOf(by)` as the handover further down**
     // — it refuses the command {@link handToProvider} would send bare, so both ask about one sender.
     // ⚠️ Spelled at both call sites rather than hoisted, because `the-origin-a-model-is-told.test.ts`
     // §6 reads the HANDOVER's origin off its call; the gate's is spelled the same for symmetry.
-    const session = this.requireToMessage(sessionId, by, facts.messageAct)
+    const session =
+      facts.giving === undefined
+        ? this.requireToMessage(sessionId, by, facts.messageAct)
+        : this.sessionFor(sessionId, () => {})
     // ⚑ **D-017 · R1** — a stop that lands in the gate's awaits is waited out and the words go after
     // the start ({@link aDeliveryAStopCaught}), never refused *still closing*.
     let handed: Awaited<ReturnType<typeof recheckHandedPaths>>
@@ -24761,7 +24719,6 @@ export class RuntimeHost implements LiveHost {
     deliver: (to: string, onAStop?: (to: string) => Promise<QueueOutcome>) => Promise<QueueOutcome>,
   ): Promise<QueueOutcome> {
     const recordAndStart = async (to: string): Promise<QueueOutcome> => {
-      await this.refuseBeforeAStart(to, giving.brief, by, [])
       const live = this.slots.get(to)?.session ?? null
       if (live !== null && !this.itStoppedUnder(live)) return deliver(to)
       const queued = this.briefForTheNextStart(giving, by)
@@ -26032,12 +25989,11 @@ export class RuntimeHost implements LiveHost {
       facts.giving === undefined
         ? this.deliverWhenItRuns(sessionId, text, by, attachments, says, again, facts.messageAct)
         : again(sessionId)
-    // 🔴 **`requireToMessage`, and the word IS the widening** (431 · criterion 6). ⛔ `send` asks
-    // the same gate — see its own note for why the pair is the rule — and the three siblings left
-    // on {@link requireToCommand} are `sendInterrupting`, `cancelQueuedMessage` and `interrupt`.
-    // What this verb asks is {@link withinMessagingReach}, which admits everything `mayCommand` does
-    // and any other conversation that is not a service's.
-    const session = this.requireToMessage(sessionId, by, facts.messageAct)
+    // Messages share the reach check with sendAs. Give already resolved its recipient.
+    const session =
+      facts.giving === undefined
+        ? this.requireToMessage(sessionId, by, facts.messageAct)
+        : this.sessionFor(sessionId, () => {})
     // ⚑ **708 · the same `this.originOf(by)` the held branch records below** — the gate refuses a
     // person's command that carries attachments at the QUEUE, while the composer still holds them.
     // 🔴 **A sign-in that moved on HOLDS the words a reopen carries** ({@link aReopenCarriesIt}): an

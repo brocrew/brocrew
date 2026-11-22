@@ -270,13 +270,13 @@ describe('five more tools answer field failures through Claude MCP', () => {
       }
       return titleOf(id)
     })
-    const parentOf = world.store.parentOf.bind(world.store)
-    const serviceRead = vi.spyOn(world.store, 'parentOf').mockImplementation((id) => {
+    const serviceBorn = world.store.serviceBorn.bind(world.store)
+    const serviceRead = vi.spyOn(world.store, 'serviceBorn').mockImplementation((id) => {
       if (rendering && id === worker && failureAt === 'service') {
         failedDescriptions += 1
         throw failure
       }
-      return parentOf(id)
+      return serviceBorn(id)
     })
     const append = world.store.append.bind(world.store)
     const senderWrites = vi.spyOn(world.store, 'append').mockImplementation((...args) => {

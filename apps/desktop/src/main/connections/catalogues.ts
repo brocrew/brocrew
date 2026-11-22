@@ -341,7 +341,13 @@ export class ModelCatalogues {
     // ⛔ **Unreachable while a tool call is made**: the caller is mid-call, so it runs.
     if (provider === null) throw new Error(`create_agent: ${me} runs on no provider`)
     const list = await this.theListFor(provider, STAND_IN_PROFILE)
-    const verdict = judgeAnAgentsChoice(asked, provider, list, null, 'create')
+    const defaultModel =
+      asked.model === undefined && asked.effort !== undefined
+        ? (this.theSelectedPairIfNamed(provider, null)?.model ??
+          list.rows.find((one) => one.isDefault === true && one.addedBy === 'the-provider')?.id)
+        : undefined
+    const choice = defaultModel === undefined ? asked : { ...asked, model: defaultModel }
+    const verdict = judgeAnAgentsChoice(choice, provider, list, null, 'create')
     return verdict.ok ? { ok: true, chosen: { provider, ...verdict.chosen } } : verdict
   }
 

@@ -18,7 +18,6 @@ import {
   describeRail,
   giveRequestSchema,
   permanenceOf,
-  remedyOf,
   retryableOf,
   type AdmittedSpawn,
   type GiveFacts,
@@ -224,7 +223,6 @@ describe('341 · the rails, before anything can reach them', () => {
         }),
         held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
         drivenByTheTurn: () => null,
-        isAHelper: () => false,
         agentExists: () => true,
         // ⚑ **Nothing found**, so the answer is a START — the only answer that carries a token.
         conversationAt: () => null,
@@ -719,27 +717,10 @@ describe('341 · the rails, before anything can reach them', () => {
         expect(['permanent', 'until-a-person-changes-it', 'while-this-holds']).toContain(permanence)
         expect(retryableOf(rail)).toBe(permanence === 'while-this-holds')
       }
-      // ⚠️ **A positive that differs from the default**: the vocabulary is genuinely used, so a
-      // table that answered one value for everything would not pass this.
-      //
-      // 🔴 **All three words again since D-016** (HO-023 §2.1). ⛔ `424` left no spawn rail
-      // retryable — nothing a caller could legitimately do made any of them clear. ⚑ **A service's
-      // waits are what do**: the same give answers once the work it waits on has ended. ⚑ The stall
-      // rule used to refuse, and refuses nothing now.
       expect(new Set(SPAWN_RAILS.map(permanenceOf))).toEqual(
-        new Set(['permanent', 'until-a-person-changes-it', 'while-this-holds']),
+        new Set(['permanent', 'until-a-person-changes-it']),
       )
-      // ⛔ **The derivation is measured where the two answers DIFFER**, inside this one vocabulary.
-      expect(SPAWN_RAILS.filter(retryableOf)).toEqual([
-        'it-would-wait-on-itself',
-        'its-waits-cannot-all-be-checked',
-      ])
-      // ⚑ A service waiting on its caller clears when that work ends: the same give then answers.
-      expect(remedyOf('it-would-wait-on-itself')).toBe('make-the-same-call-when-this-settles')
-      // ⚑ …and one whose waits reach too far to check clears as that work ends.
-      expect(remedyOf('its-waits-cannot-all-be-checked')).toBe(
-        'make-the-same-call-when-this-settles',
-      )
+      expect(SPAWN_RAILS.filter(retryableOf)).toEqual([])
     })
 
     it('🔴 no two rails answer with the same sentence — 340’s finding, applied to this vocabulary', () => {

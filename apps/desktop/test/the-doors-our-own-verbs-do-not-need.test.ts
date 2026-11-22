@@ -333,14 +333,8 @@ describe('486 · the doors our own verbs do not need', () => {
       // `until-a-person-changes-it`.
       expect(permanenceOf('folder-unusable')).toBe('until-a-person-changes-it')
       expect(retryableOf('folder-unusable')).toBe(false)
-      // ⚠️ …and the vocabulary is still partitioned rather than collapsed: the spawn table uses
-      // every word it has reasons for — ⚑ D-016 · the stall rule's `while-this-holds` among them.
       const words = new Set(SPAWN_RAILS.map((rail) => permanenceOf(rail)))
-      expect([...words].sort()).toEqual([
-        'permanent',
-        'until-a-person-changes-it',
-        'while-this-holds',
-      ])
+      expect([...words].sort()).toEqual(['permanent', 'until-a-person-changes-it'])
     })
   })
 })

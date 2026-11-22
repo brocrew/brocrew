@@ -43,7 +43,8 @@ it('uses worker structural facts for listing service classification with canonic
   const normal = world.anAgent('normal', 'normal')
   const born = world.anAgent('born', 'service')
   const reserved = world.anAgent('reserved', 'service')
-  for (const id of ['normal', 'child', 'unknown', 'born', 'reserved'])
+  world.anAgent('rooted', 'nothing kept')
+  for (const id of ['normal', 'child', 'unknown', 'born', 'reserved', 'rooted'])
     world.store.create({
       id,
       provider: 'codex',
@@ -51,9 +52,13 @@ it('uses worker structural facts for listing service classification with canonic
       cwd: world.folder,
       approvalMode: 'ask',
       ...(id === 'child' ? { parentSessionId: 'normal' } : {}),
-      ...(id === 'unknown' || id === 'born' ? { service: true as const } : {}),
+      ...(id === 'unknown' || id === 'born' || id === 'rooted' ? { service: true as const } : {}),
+      ...(id === 'rooted' ? { serviceStandingTitle: 'Rooted (standing)' } : {}),
     })
   const root = world.store.rootOf('normal')!
+  const rooted = world.store.rootOf('rooted')!
+  expect(rooted.title).toBe('Rooted (standing)')
+  expect(world.store.serviceBorn('rooted')).toBe(true)
   for (const id of ['child', 'unknown', 'born'])
     world.store.append(
       id,
@@ -85,6 +90,8 @@ it('uses worker structural facts for listing service classification with canonic
     },
   })
   const canonical = world.aHost()
+  expect(canonical.profileKindOf('rooted')).toBe('unknown')
+  expect(canonical.addressOf('rooted')).toBe(rooted.label)
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
   const host = world.aHost({
     windowReader: { read: async (query) => engine.read(query), close: async () => {} },
@@ -115,7 +122,7 @@ it('uses worker structural facts for listing service classification with canonic
       expect(expected.find((row) => row.sessionId === 'unknown')?.named?.label ?? null).toBe(
         unknownLabel,
       )
-      for (const id of ['born', 'reserved'])
+      for (const id of ['born', 'reserved', 'rooted'])
         expect(expected.find((row) => row.sessionId === id)?.named).toBeNull()
     }
     await read('cold')

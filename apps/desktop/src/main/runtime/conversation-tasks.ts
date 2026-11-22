@@ -82,6 +82,7 @@ export function listConversationTasks(
     | 'agentIdentityNameById'
     | 'recordedOne'
     | 'parentOf'
+    | 'serviceBorn'
   >,
   itIsAService?: (conversation: string) => boolean,
 ): ConversationTasksResult {

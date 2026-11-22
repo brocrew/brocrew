@@ -132,6 +132,8 @@ import {
 
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
+import { serviceRegistrationOf } from '../service-registration'
+import type { ServiceBorn } from '../profile-execution-file'
 import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../shared/move-request'
 import {
   capabilitiesFor,
@@ -387,6 +389,8 @@ export interface NewSessionRecord {
   planMode?: boolean
   parentSessionId?: string
   service?: true
+  /** New services record this root and their independent birth together. */
+  serviceStandingTitle?: string
   launchedAs?: string
 }
 
@@ -1033,7 +1037,8 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   defaultConversationTitle(conversation: string, includeOpening?: boolean): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
-  servicesBorn(): readonly { readonly conversation: string; readonly identity: string | null }[]
+  serviceBorn(conversation: string): boolean
+  servicesBorn(): readonly ServiceBorn[]
   /** Bounded indexed birth evidence; malformed or oversized evidence throws. */
   workersBorn(): readonly WorkerBorn[]
   /** Complete, bounded replacement evidence for the giver of a worker binding. */
@@ -1399,6 +1404,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   firstTaskOf: () => null,
   defaultConversationTitle: () => null,
   rootOf: () => null,
+  serviceBorn: () => false,
   servicesBorn: () => [],
   workersBorn: () => [],
   workerGiverContains: () => false,
@@ -2127,7 +2133,8 @@ export function createSessionStore(
   const SESSION_COLUMNS = `provider_session.id AS id, provider, external_ref, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, plan_ended_at, model_or_effort_set_by_a_person_at, reported_model, reported_effort, adopted_at, restored_at, child_descent, provider_session.created_at AS created_at, provider_session.updated_at AS updated_at`
   const HAS_EVENTS_COLUMN = `EXISTS (SELECT 1 FROM events
                                        WHERE events.session_id = provider_session.id
-                                         AND events.generation = coalesce(g.active, 0)) AS has_events`
+                                         AND events.generation = coalesce(g.active, 0)
+                                         AND events.type <> 'service_registered') AS has_events`
   const GENERATION_COLUMNS = `${HAS_EVENTS_COLUMN},
             g.normalizer_version AS normalizer_version,
             g.building AS building,
@@ -2138,11 +2145,16 @@ export function createSessionStore(
                                   AND t.generation = coalesce(g.active, 0)
                                   AND t.closed_at IS NOT NULL
                                 ORDER BY t.ordinal DESC LIMIT 1) AS last_end_reason`
+  const serviceBirth = (owner: string, readPayload = false): string =>
+    `SELECT ${readPayload ? "CASE WHEN length(payload) <= 2048 THEN payload ELSE '{}' END" : '1'}
+       FROM events INDEXED BY events_kind_owner_idx
+       WHERE type = 'service_registered' AND session_id = ${owner} AND generation = 0 AND ordinal = 0`
   const selectAll = db.prepare(
     `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN},
         (provider_session.adopted_at IS NULL AND provider_session.parent_session_id IS NULL
          AND EXISTS (SELECT 1 FROM work INDEXED BY work_owner_idx
-                     WHERE owner_session_id = provider_session.id AND parent_id IS NULL)) AS person_started
+                     WHERE owner_session_id = provider_session.id AND parent_id IS NULL)
+         AND NOT EXISTS (${serviceBirth('provider_session.id')})) AS person_started
        FROM provider_session ${GENERATION_JOIN}
       ORDER BY provider_session.updated_at DESC`,
   )
@@ -3119,7 +3131,8 @@ export function createSessionStore(
   )
   const deleteEventGeneration = db.prepare(
     `DELETE FROM events WHERE rowid IN
-       (SELECT rowid FROM events WHERE session_id = ? AND generation = ? LIMIT ?)`,
+       (SELECT rowid FROM events WHERE session_id = ? AND generation = ?
+         AND type <> 'service_registered' LIMIT ?)`,
   )
   const generationHoldsRowsReadInEvery = db.prepare(
     `SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?
@@ -4602,20 +4615,22 @@ export function createSessionStore(
   const selectOwnersOfGivenPieces = db.prepare(
     `SELECT DISTINCT owner_session_id AS id FROM work WHERE parent_id IS NOT NULL`,
   )
-  /** Every conversation with no parent that owns no root: only a service's birth makes one. */
+  // A first-life birth remains evidence even when its payload cannot be read.
+  const legacyService = `s.parent_session_id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
+    )`
   const selectServicesBorn = db.prepare(
-    `SELECT s.id AS id, s.agent_identity_id AS identity FROM provider_session AS s
-      WHERE s.parent_session_id IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
-        )`,
+    `SELECT s.id, s.agent_identity_id AS identity, i.created_at AS incarnation,
+            s.parent_session_id AS parent, s.created_at AS created,
+            (${serviceBirth('s.id', true)}) AS birth
+       FROM provider_session AS s
+       LEFT JOIN agent_identity AS i ON i.id = s.agent_identity_id
+       WHERE (${legacyService}) OR EXISTS (${serviceBirth('s.id')})`,
   )
   const selectServiceBorn = db.prepare(
     `SELECT 1 AS yes FROM provider_session AS s
-      WHERE s.id = ? AND s.parent_session_id IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
-        )`,
+      WHERE s.id = ? AND ((${legacyService}) OR EXISTS (${serviceBirth('s.id')}))`,
   )
   const selectHoldsAGivenPiece = db.prepare(
     `SELECT 1 AS yes FROM work WHERE owner_session_id = ? AND parent_id IS NOT NULL LIMIT 1`,
@@ -5180,14 +5195,14 @@ export function createSessionStore(
     return (workSql().last.get(scope) as { last: number }).last
   }
 
-  const openRoot = (owner: string, at: number): void => {
+  const openRoot = (owner: string, at: number, title: string | null = null): void => {
     workSql().insert.run(
       newWorkId(),
       null,
       bumpSequence(ROOTS_SCOPE),
       owner,
       null,
-      null,
+      title,
       null,
       null,
       at,
@@ -5608,6 +5623,24 @@ export function createSessionStore(
     if (record.parentSessionId !== undefined) {
       if (record.service === true) throw new Error('a service is started by no conversation')
       spawnSql().writeParent.run(record.parentSessionId, record.id)
+    } else if (record.serviceStandingTitle !== undefined) {
+      const identity = spawnSql().identityBySlug.get(foldProfileName(record.profileId)) as
+        { created_at: number } | undefined
+      if (record.service !== true || identity === undefined)
+        throw new Error('service registration does not match the new conversation')
+      openRoot(record.id, at, record.serviceStandingTitle)
+      appendTx(
+        record.id,
+        0,
+        {
+          type: 'service_registered',
+          identity: identityId,
+          identityCreatedAt: identity.created_at,
+        },
+        at,
+        0,
+        true,
+      )
     } else if (record.service !== true) {
       openRoot(record.id, at)
     }
@@ -6654,10 +6687,38 @@ export function createSessionStore(
     workerInItsPlace,
     workerLineage: workerReplacementChain,
 
+    serviceBorn(conversation) {
+      return selectServiceBorn.get(conversation) !== undefined
+    },
+
     servicesBorn() {
-      return (selectServicesBorn.all() as { id: string; identity: string | null }[]).map(
-        ({ id, identity }) => ({ conversation: id, identity }),
-      )
+      const rows = selectServicesBorn.all() as {
+        id: string
+        identity: string | null
+        incarnation: number | null
+        parent: string | null
+        created: number
+        birth: string | null
+      }[]
+      return rows.map(({ id, identity, incarnation, parent, created, birth }) => {
+        const registration = birth === null ? null : serviceRegistrationOf(aStoredObject(birth))
+        const conflicted =
+          birth !== null &&
+          (registration === null ||
+            registration.identity !== identity ||
+            registration.identityCreatedAt !== incarnation ||
+            registration.identityCreatedAt > created ||
+            parent !== null)
+        return {
+          conversation: id,
+          identity,
+          ...(conflicted
+            ? { conflicted: true as const }
+            : registration === null
+              ? {}
+              : { identityCreatedAt: registration.identityCreatedAt }),
+        }
+      })
     },
 
     rootDoneCondition(root) {

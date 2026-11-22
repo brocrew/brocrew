@@ -666,12 +666,6 @@ describe('nothing said twice, and nothing the caller sent said back', () => {
     expect(after.text.split('“sonnet”').length - 1).toBe(1)
   })
 
-  it('adds nothing but permanence where the reason says every fact', () => {
-    expect(added(answered(refuse('it-would-wait-on-itself', { profileId: 'helper' })))).toBe(
-      ` ${WHILE}`,
-    )
-  })
-
   it('never dumps the detail, and never says back what the caller sent', () => {
     const every = [
       answered(refuseTool('no-such-agent', { agent: 'sess_typed' })),

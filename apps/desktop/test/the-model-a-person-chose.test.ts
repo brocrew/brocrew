@@ -98,7 +98,6 @@ function facts(
     giver: () => GIVER,
     held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
     drivenByTheTurn: () => null,
-    isAHelper: () => false,
     agentExists: (slug) => slug === 'pm' || slug === 'worker',
     conversationAt: () => null,
     recentWith: () => ({ rows: [], more: false }),

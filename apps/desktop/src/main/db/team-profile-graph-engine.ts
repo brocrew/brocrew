@@ -27,6 +27,8 @@ import { readIdentityCreator, agentIdentityRowId } from './identity'
 import { readProfileExecution } from '../profile-execution-file'
 import { graphKindOf, type GraphKindEvidence } from './team-profile-graph-kind'
 import { graphLineage } from './team-profile-graph-lineage'
+import { aStoredObject } from './stored-event-codec'
+import { serviceRegistrationOf } from '../service-registration'
 
 type Row = Record<string, string | number | null>
 type Session = {
@@ -591,11 +593,34 @@ export class TeamProfileGraphEngine {
       () => this.check(),
     )
     this.phase = 'kind'
+    for (const row of this.pages(
+      `SELECT rowid AS position, session_id,
+              CASE WHEN length(payload) <= 2048 THEN payload ELSE '{}' END AS payload
+         FROM events INDEXED BY events_kind_owner_idx
+         WHERE type = 'service_registered' AND generation = 0 AND ordinal = 0 AND rowid > ?
+         ORDER BY rowid LIMIT ?`,
+    )) {
+      const session = sessions.get(key(row.session_id))
+      const node = session?.identity == null ? undefined : byId.get(session.identity)
+      if (session === undefined || node === undefined) continue
+      const facts = evidence.get(node.id)!
+      const birth = serviceRegistrationOf(
+        aStoredObject(typeof row.payload === 'string' ? row.payload : null),
+      )
+      if (birth === null || birth.identity !== node.id || session.parent !== null) {
+        facts.complete = false
+        continue
+      }
+      this.reserve(64 + textBytes(session.id) * 2)
+      ;(facts.serviceBirths as string[]).push(session.id)
+      facts.earlierBirths ||=
+        birth.identityCreatedAt !== node.createdAt || session.created < node.createdAt
+    }
     for (const s of sessions.values()) {
       const node = s.identity === null ? undefined : byId.get(s.identity)
       if (!node) continue
       const facts = evidence.get(node.id)!
-      if (s.parent === null && !roots.has(s.id)) {
+      if (s.parent === null && !roots.has(s.id) && !facts.serviceBirths.includes(s.id)) {
         this.reserve(64 + textBytes(s.id) * 2)
         ;(facts.serviceBirths as string[]).push(s.id)
         facts.earlierBirths ||= s.created < node.createdAt

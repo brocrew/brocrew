@@ -49,7 +49,7 @@ describe('give_work goes to the conversation the giver names', () => {
   let store: SessionStore
   let counter: number
   let clock: number
-  let beforeProviderStart: (() => void) | null
+  let beforeProviderRuns: (() => void) | null
   let providerSessionFileMissing: boolean
   const window = new PersonSink('webContents:1')
 
@@ -61,7 +61,7 @@ describe('give_work goes to the conversation the giver names', () => {
     clock = 3_000_000
     store = createSessionStore(db, () => clock++)
     counter = 0
-    beforeProviderStart = null
+    beforeProviderRuns = null
     providerSessionFileMissing = false
     const sessions = new FakeProviderSessions()
     host = new RuntimeHost({
@@ -72,11 +72,12 @@ describe('give_work goes to the conversation the giver names', () => {
         const runtime = new FakeRuntime(provider, { sessions })
         const start = runtime.start.bind(runtime)
         vi.spyOn(runtime, 'start').mockImplementation(async (options) => {
-          beforeProviderStart?.()
+          beforeProviderRuns?.()
           return start(options)
         })
         const resume = runtime.resume.bind(runtime)
         vi.spyOn(runtime, 'resume').mockImplementation(async (ref, options) => {
+          beforeProviderRuns?.()
           if (providerSessionFileMissing) {
             throw new ResumeError(ref, 'the fictional session file is gone', {
               noSuchSession: true,
@@ -164,6 +165,39 @@ describe('give_work goes to the conversation the giver names', () => {
     expect(third.owner).toBe(first.owner)
     expect(second.runsOn.how).not.toBe('started')
     expect(store.workById(second.piece)?.owner).toBe(first.owner)
+  })
+
+  it('records live and stopped Gives to a conversation from another caller', async () => {
+    const lead = await personOpens('lead', 'auto')
+    const target = await personOpens('pm', 'auto')
+    const address = host.addressOf(target)
+    const live = await host.giveWork({ ...task('Live'), to: address }, speakingAs(lead))
+    expect(live).toMatchObject({ ok: true, owner: target })
+    if (!live.ok) throw new Error(live.refusal.reason)
+    expect(store.workById(live.piece)).toMatchObject({ givenBy: lead, owner: target })
+    await host.close(target, window)
+
+    const recordedAtResume = vi.fn(() =>
+      store.piecesGivenBy(lead).find((piece) => piece.title === 'Stopped'),
+    )
+    beforeProviderRuns = recordedAtResume
+    const stopped = await host.giveWork({ ...task('Stopped'), to: address }, speakingAs(lead))
+    expect(stopped).toMatchObject({ ok: true, owner: target })
+    if (!stopped.ok) throw new Error(stopped.refusal.reason)
+    expect(recordedAtResume).toHaveReturnedWith(
+      expect.objectContaining({ piece: stopped.piece, owner: target }),
+    )
+  })
+
+  it('records a Give to its own conversation', async () => {
+    const me = await personOpens('pm', 'auto')
+    const result = await host.giveWork(
+      { ...task('For myself'), to: host.addressOf(me) },
+      speakingAs(me),
+    )
+    expect(result).toMatchObject({ ok: true, owner: me })
+    if (!result.ok) throw new Error(result.refusal.reason)
+    expect(store.workById(result.piece)).toMatchObject({ givenBy: me, owner: me })
   })
 
   it('keeps the first task title when an existing conversation with an untitled root gets a Give', async () => {
@@ -612,7 +646,7 @@ describe('give_work goes to the conversation the giver names', () => {
     const before = new Set(store.recorded().map((one) => one.sessionId))
     const opening = `sess_${counter + 1}`
     const start = vi.fn()
-    beforeProviderStart = start
+    beforeProviderRuns = start
     db.exec(`
       CREATE TEMP TRIGGER reject_first_task_after_title BEFORE INSERT ON events
       WHEN NEW.type = 'work_given' AND EXISTS (
@@ -661,7 +695,7 @@ describe('give_work goes to the conversation the giver names', () => {
       owner: store.piecesGivenBy(lead)[0]?.owner,
       title: store.conversationTitle(opening)?.title,
     }))
-    beforeProviderStart = () => {
+    beforeProviderRuns = () => {
       seenAtStart()
       throw new Error('fixture provider could not start')
     }
@@ -699,7 +733,7 @@ describe('give_work goes to the conversation the giver names', () => {
     )
 
     const retry = vi.fn()
-    beforeProviderStart = retry
+    beforeProviderRuns = retry
     const sent = await message.call({
       agent: recorded.owner,
       kind: 'note',
@@ -794,6 +828,33 @@ describe('give_work goes to the conversation the giver names', () => {
     } finally {
       await closeHostFixture(hosts, world.db, world.folder)
     }
+  })
+
+  it('records an addressed Give even when an imported conversation cannot reopen', async () => {
+    const lead = await personOpens('lead', 'auto')
+    const target = await personOpens('pm', 'auto')
+    const address = host.addressOf(target)
+    await host.close(target, window)
+    db.prepare('UPDATE provider_session SET restored_at = ? WHERE id = ?').run(clock++, target)
+    expect(store.recordedOne(target)).toMatchObject({
+      restoredFromBundle: true,
+      unresumableReason: expect.stringContaining('restored from a bundle'),
+    })
+
+    const result = await answerOn(agentToolsFor(host, lead), 'give_work', {
+      ...task('Follow up on the imported work'),
+      to: address,
+    })
+    const [recorded] = store.piecesGivenBy(lead)
+    expect(recorded?.owner).toBe(target)
+    expect(result.structured).toMatchObject({
+      outcome: 'ok',
+      receipt: {
+        recorded: { kind: 'task', id: recorded?.piece, taskLabel: recorded?.label },
+        recipient: { id: target, address, state: { kind: 'cannot-run' } },
+      },
+    })
+    expect(result.text).not.toContain('Not sent:')
   })
 
   it('keeps a Give on the addressed conversation when its provider session file is gone', async () => {

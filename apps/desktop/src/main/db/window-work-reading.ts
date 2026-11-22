@@ -99,7 +99,7 @@ export function projectWindowPieces(
     skipped: folded.skipped,
     owner: {
       id,
-      rootless: root === null && store.recordedOne(id) !== null && store.parentOf(id) === null,
+      rootless: store.serviceBorn(id),
       openWork: fact([...(root === null ? [] : [{ label: root.label }]), ...openWorkOf(open)]),
       waitsOnWhoWrote: fact(open.filter(waitsOnWhoWrote).map(stateWork)),
       naming: fact({

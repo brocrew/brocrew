@@ -11,7 +11,6 @@ const facts: GiveFacts = {
   }),
   held: () => [{ piece: 'root', label: 'W1', root: true, giver: null, received: true }],
   drivenByTheTurn: () => null,
-  isAHelper: () => false,
   agentExists: (profile) => profile === 'reader',
   conversationAt: (address) =>
     address === 'W1.4'
@@ -105,23 +104,28 @@ describe('give_work names where the work goes', () => {
     })
   })
 
-  it('names a service by its profile, with no to', () => {
+  it('takes a service’s matching address or its profile alone', () => {
     const service: GiveFacts = {
       ...facts,
-      conversationAt: () => ({
-        conversation: 'sess_service',
-        profileId: task.profile,
-        provider: 'claude',
-      }),
+      conversationAt: (address) =>
+        address === 'W2'
+          ? {
+              conversation: 'sess_service',
+              profileId: task.profile,
+              provider: 'claude',
+            }
+          : facts.conversationAt(address),
       serviceAt: () => ({
         is: 'service',
         conversation: 'sess_service',
-        isTheGiver: false,
-        waitsOnTheGiver: 'no',
         provider: 'claude',
       }),
     }
     expect(give({}, service)).toMatchObject({
+      ok: true,
+      goes: { to: 'a-service', conversation: 'sess_service' },
+    })
+    expect(give({ to: 'W2' }, service)).toMatchObject({
       ok: true,
       goes: { to: 'a-service', conversation: 'sess_service' },
     })
@@ -144,6 +148,30 @@ describe('give_work names where the work goes', () => {
     expect(give({ to: 'W1.4', under: 'W1.3' }, held)).toMatchObject({
       ok: true,
       under: { piece: 'work_a' },
+    })
+  })
+
+  it('uses the giver’s root when its other brief has not arrived', () => {
+    const held: GiveFacts = {
+      ...facts,
+      held: () => [
+        { piece: 'root', label: 'W1', root: true, giver: null, received: true },
+        { piece: 'work_a', label: 'W2.1', root: false, giver: 'sess_boss', received: false },
+      ],
+    }
+    expect(give({ to: 'W1.4' }, held)).toMatchObject({ ok: true, under: { piece: 'root' } })
+    expect(give({ to: 'W1.4', under: 'W2.1' }, held)).toMatchObject({
+      ok: true,
+      under: { piece: 'work_a' },
+    })
+    expect(
+      give(
+        { to: 'W1.4' },
+        { ...held, held: (giver) => held.held(giver).filter((one) => !one.root) },
+      ),
+    ).toMatchObject({
+      ok: false,
+      refusal: { rail: 'name-the-piece-you-give-from', detail: { held: ['W2.1'] } },
     })
   })
 

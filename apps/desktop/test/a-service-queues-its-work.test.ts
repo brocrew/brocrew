@@ -10,7 +10,6 @@ import { type RowsUnread } from '../src/main/db/rows-unread'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { admitGive, type GiveFacts, type ServiceAtAGive } from '../src/main/runtime/spawn-rails'
 import {
-  MAX_WAITS_WALKED,
   THE_APP_ITSELF,
   type GiveOutcome,
   type RuntimeHost,
@@ -206,7 +205,7 @@ describe('a service queues the work it is given', () => {
       warned.mockRestore()
     })
 
-    it('that would close a wait: the service already waits on the caller through work it gave', async () => {
+    it('records a Give even when work links lead back to its caller', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       const { owner: service } = accepted(await world.gives(host, first, 'browser-driver'))
       // The service gave a piece to a helper, which gave one to the caller.
@@ -288,12 +287,12 @@ describe('a service queues the work it is given', () => {
       )
       const next = world.aHost()
       const caller = await next.resumeSession(first, world.window, null)
-      expect(refusedAs(await giveLateServiceTask(next, caller.sessionId, root.label))).toBe(
-        'it-would-wait-on-itself',
+      expect(accepted(await giveLateServiceTask(next, caller.sessionId, root.label)).owner).toBe(
+        service,
       )
     })
 
-    it('that would close a wait through a conversation that took another’s place', async () => {
+    it('records a Give when those work links pass through a replacement', async () => {
       const { host, first } = await aServiceAndTwoCallers()
       const { owner: service } = accepted(await world.gives(host, first, 'browser-driver'))
       const servicePiece = world.store.piecesOwnedBy(service)[0]
@@ -349,18 +348,16 @@ describe('a service queues the work it is given', () => {
       const caller = await next.resumeSession(first, world.window, null)
       const root = world.store.rootOf(first)
       if (root === null) throw new Error('the caller owns no root')
-      expect(refusedAs(await giveLateServiceTask(next, caller.sessionId, root.label))).toBe(
-        'it-would-wait-on-itself',
+      expect(accepted(await giveLateServiceTask(next, caller.sessionId, root.label)).owner).toBe(
+        service,
       )
     })
 
-    describe('where the service’s open work reaches more conversations than the check reads', () => {
+    describe('where work reaches 256 downstream conversations', () => {
       /**
        * The service gives `helpers` conversations an open piece each; with `closing`, the first of
-       * them gives the caller one, so the service waits on it. The walk reads the service first,
-       * then the helpers from the newest, so the first is read last. With `torn`, a status line in
-       * the first helper's ledger can't be read: the walk reads it with the service, before its
-       * budget is spent.
+       * them gives the caller one. With `torn`, a status line in the first helper's ledger is
+       * unreadable.
        */
       const aServiceThatGaveTo = async (
         helpers: number,
@@ -448,29 +445,28 @@ describe('a service queues the work it is given', () => {
           { ownerId: agentCallerId(at.caller) },
         )
 
-      it('refuses a give that closes a wait past what the check reads', async () => {
-        const at = await aServiceThatGaveTo(MAX_WAITS_WALKED, true)
-        expect(refusedAs(await giveFrom(at))).toBe('its-waits-cannot-all-be-checked')
+      it('records a Give despite a long work chain back to the giver', async () => {
+        const at = await aServiceThatGaveTo(256, true)
+        expect(accepted(await giveFrom(at)).queuedBehind).toBe(1)
       })
 
-      it('refuses a give past what the check reads even where no wait would close', async () => {
-        const at = await aServiceThatGaveTo(MAX_WAITS_WALKED, false)
-        expect(refusedAs(await giveFrom(at))).toBe('its-waits-cannot-all-be-checked')
+      it('records a Give even with many downstream conversations', async () => {
+        const at = await aServiceThatGaveTo(256, false)
+        expect(accepted(await giveFrom(at)).queuedBehind).toBe(1)
       })
 
-      it('refuses a give past what the check reads as unreadable where a row it read can’t be read', async () => {
+      it('records a Give despite an unrelated unread row in a long work chain', async () => {
         const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
         try {
-          const at = await aServiceThatGaveTo(MAX_WAITS_WALKED, false, true)
-          expect(refusedAs(await giveFrom(at))).toBe('its-record-cannot-be-read')
+          const at = await aServiceThatGaveTo(256, false, true)
+          expect(accepted(await giveFrom(at)).queuedBehind).toBe(1)
         } finally {
           warned.mockRestore()
         }
       })
 
-      it('gives where the check reads every conversation, at exactly its limit', async () => {
-        // The service and its helpers: exactly the conversations the check may read.
-        const at = await aServiceThatGaveTo(MAX_WAITS_WALKED - 1, false)
+      it('preserves queue position with one fewer downstream conversation', async () => {
+        const at = await aServiceThatGaveTo(256 - 1, false)
         expect(accepted(await giveFrom(at)).queuedBehind).toBe(1)
       })
     })
@@ -602,28 +598,28 @@ describe('a service queues the work it is given', () => {
         }
       }
 
-      it('refuses a give where a row of the work it gave can’t be read: that row may close a wait', async () => {
-        expect(refusedAs(await aGiveAfterTheServiceGaveAHelper(true, 'its-row'))).toBe(
-          'its-record-cannot-be-read',
+      it('records a Give when a downstream row cannot be read', async () => {
+        expect(accepted(await aGiveAfterTheServiceGaveAHelper(true, 'its-row')).queuedBehind).toBe(
+          1,
         )
       })
 
-      it('refuses a give where a ledger of the work it gave is skipped whole', async () => {
-        expect(refusedAs(await aGiveAfterTheServiceGaveAHelper(true, 'its-ledger'))).toBe(
-          'its-record-cannot-be-read',
+      it('records a Give when an unrelated downstream ledger cannot be read', async () => {
+        expect(
+          accepted(await aGiveAfterTheServiceGaveAHelper(true, 'its-ledger')).queuedBehind,
+        ).toBe(1)
+      })
+
+      it('records a Give when the complete downstream ledger links back to the giver', async () => {
+        expect(accepted(await aGiveAfterTheServiceGaveAHelper(true, 'nothing')).queuedBehind).toBe(
+          1,
         )
       })
 
-      it('…while the same wait, read whole, is refused as one', async () => {
-        expect(refusedAs(await aGiveAfterTheServiceGaveAHelper(true, 'nothing'))).toBe(
-          'it-would-wait-on-itself',
-        )
-      })
-
-      it('refuses a wait it found as one, though another row can’t be read', async () => {
-        expect(refusedAs(await aGiveAfterTheServiceGaveAHelper(true, 'another-row'))).toBe(
-          'it-would-wait-on-itself',
-        )
+      it('records a Give with a work link back and a separate unread row', async () => {
+        expect(
+          accepted(await aGiveAfterTheServiceGaveAHelper(true, 'another-row')).queuedBehind,
+        ).toBe(1)
       })
 
       it('gives where every row is read and no wait would close', async () => {
@@ -632,13 +628,9 @@ describe('a service queues the work it is given', () => {
         )
       })
 
-      it('refuses a give where a row of work that has ended can’t be read, and says it can’t be read', async () => {
-        const refused = await aGiveAfterTheServiceGaveAHelper(false, 'an-ended-row')
-        expect(refusedAs(refused)).toBe('its-record-cannot-be-read')
-        expect(refused.ok ? '' : refused.refusal.reason).toBe(
-          'Not sent: part of this app’s record of what “browser-driver” gave can’t be read. ' +
-            'Give the work to another agent.',
-        )
+      it('records a Give where an ended downstream row is unreadable', async () => {
+        const result = accepted(await aGiveAfterTheServiceGaveAHelper(false, 'an-ended-row'))
+        expect(result.queuedBehind).toBe(1)
       })
 
       it('…and gives where that work, ended, is read whole', async () => {
@@ -762,7 +754,6 @@ describe('a service queues the work it is given', () => {
       }),
       held: () => [{ piece: 'work_root', label: 'W1', root: true, giver: null, received: true }],
       drivenByTheTurn: () => null,
-      isAHelper: () => false,
       agentExists: () => true,
       conversationAt: () => null,
       recentWith: () => ({ rows: [], more: false }),
@@ -789,32 +780,12 @@ describe('a service queues the work it is given', () => {
     const aService = {
       is: 'service',
       conversation: 'sess_service',
-      isTheGiver: false,
-      waitsOnTheGiver: 'no',
       provider: null,
     } as const
 
     it('a service goes to its one conversation, recorded first when it has none', () => {
       expect(admitted(aService)).toBe('a-service')
       expect(admitted({ ...aService, conversation: null, provider: 'claude' })).toBe('a-service')
-    })
-
-    it('refuses the service’s own conversation giving to it', () => {
-      expect(admitted({ ...aService, isTheGiver: true })).toBe('that-is-this-conversation')
-    })
-
-    it('refuses a give the service already waits on', () => {
-      expect(admitted({ ...aService, waitsOnTheGiver: 'yes' })).toBe('it-would-wait-on-itself')
-    })
-
-    it('refuses a give whose waits can’t all be checked', () => {
-      expect(admitted({ ...aService, waitsOnTheGiver: 'unknown' })).toBe(
-        'its-waits-cannot-all-be-checked',
-      )
-    })
-
-    it('refuses a give whose waits can’t be read', () => {
-      expect(admitted({ ...aService, waitsOnTheGiver: 'unread' })).toBe('its-record-cannot-be-read')
     })
 
     it('refuses if this app does not own the service queue, and where the kind can’t be told', () => {
@@ -1000,23 +971,27 @@ describe('a service queues the work it is given', () => {
       return { host, one, two }
     }
 
-    it('refuses a service giving work to itself, end to end', async () => {
+    it('records a service giving work to itself on that conversation', async () => {
       const { host, one } = await twoRunningServices()
-      expect(refusedAs(await world.gives(host, one, 'svc-one', { to: undefined }))).toBe(
-        'that-is-this-conversation',
-      )
+      const result = accepted(await world.gives(host, one, 'svc-one', { to: undefined }))
+      expect(result.owner).toBe(one)
+      expect(world.store.workById(result.piece)).toMatchObject({ owner: one, givenBy: one })
     })
 
-    it('two services giving each other work at the same moment: one is given, the other closes no wait', async () => {
+    it('two simultaneous reciprocal Gives both reach their respective service queues', async () => {
       const { host, one, two } = await twoRunningServices()
       const [toTwo, toOne] = await Promise.all([
         world.gives(host, one, 'svc-two', { title: 'To two', to: undefined }),
         world.gives(host, two, 'svc-one', { title: 'To one', to: undefined }),
       ])
-      const outcomes = [toTwo, toOne].map((outcome) =>
-        outcome.ok ? 'given' : outcome.refusal.rail,
-      )
-      expect(outcomes.sort()).toEqual(['given', 'it-would-wait-on-itself'])
+      expect(world.store.workById(accepted(toTwo).piece)).toMatchObject({
+        owner: two,
+        givenBy: one,
+      })
+      expect(world.store.workById(accepted(toOne).piece)).toMatchObject({
+        owner: one,
+        givenBy: two,
+      })
     })
 
     it('keeps its place in the queue across a restart, read off the order the pieces were given', async () => {

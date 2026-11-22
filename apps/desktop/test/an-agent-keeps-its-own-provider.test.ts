@@ -461,6 +461,32 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(store.providerOf('fresh')).toBe('claude')
     })
 
+    it('uses the actual default model for an effort-only create_agent', async () => {
+      const creator = await aGiverOn('codex')
+      const byProvider = await callOn(creator, 'create_agent', {
+        profile_slug: 'provider-default',
+        effort: 'high',
+      })
+      expect(byProvider).toMatchObject({ outcome: 'ok' })
+      expect(store.modelChoiceOf('provider-default')).toEqual({
+        provider: 'codex',
+        model: 'fake-codex-a',
+        effort: 'high',
+      })
+
+      store.aPersonPicked('codex', { model: 'fake-codex-b', effort: null }, tick())
+      const refused = await callOn(creator, 'create_agent', {
+        profile_slug: 'last-picked',
+        effort: 'high',
+      })
+      expect(refused).toMatchObject({
+        outcome: 'refused',
+        rail: 'effort-not-offered',
+        detail: { model: 'fake-codex-b' },
+      })
+      expect(store.agentIdentityOf('last-picked')).toBeNull()
+    })
+
     it('create_agent keeps the provider it names, else its model’s, else its creator’s', async () => {
       const creator = await aGiverOn('codex')
       await callOn(creator, 'create_agent', { profile_slug: 'named', provider: 'claude' })

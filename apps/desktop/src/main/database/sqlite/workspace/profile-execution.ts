@@ -171,11 +171,13 @@ export function importProfileExecutionFile(database: Database.Database, userData
   })
 }
 
-/** A conversation only a service's start makes: no parent, and no root. */
+/** Independent service birth evidence, including the legacy parentless rootless record. */
 export interface ServiceBorn {
   readonly conversation: string
   /** The identity it runs as, by id. */
   readonly identity: string | null
+  readonly identityCreatedAt?: number
+  readonly conflicted?: true
 }
 
 /** The exact registration fact committed with a normal worker's conversation. */
@@ -367,6 +369,20 @@ export function reconcileProfileExecution(
   const profiles: Record<string, ProfileExecution> = {}
   const conflicts: string[] = []
   const serviceIdentities = new Set(database.servicesBorn.map(({ identity }) => identity))
+  const birthsByConversation = new Map(
+    database.servicesBorn.map((birth) => [birth.conversation, birth]),
+  )
+  const invalidIdentities = new Set(
+    database.servicesBorn.filter((birth) => birth.conflicted).map(({ identity }) => identity),
+  )
+  const contradictsBirth = (conversation: string | undefined, identity: string): boolean => {
+    const birth = conversation === undefined ? undefined : birthsByConversation.get(conversation)
+    return (
+      birth !== undefined &&
+      (birth.conflicted === true ||
+        (birth.identityCreatedAt !== undefined && birth.identity !== identity))
+    )
+  }
   const workersByIdentity = new Map<string, WorkerBorn[]>()
   const factsByConversation = new Map<string, WorkerBorn[]>()
   for (const fact of database.workersBorn ?? []) {
@@ -384,7 +400,14 @@ export function reconcileProfileExecution(
       changed = true
       continue
     }
-    if (entry.retired === true) {
+    if (
+      entry.retired === true ||
+      invalidIdentities.has(identity) ||
+      (entry.kind === 'service' &&
+        [entry.serviceConversation, entry.reserved, entry.removing].some((id) =>
+          contradictsBirth(id, identity),
+        ))
+    ) {
       conflicts.push(identity)
       profiles[identity] = entry
       continue

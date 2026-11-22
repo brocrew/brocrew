@@ -19,6 +19,7 @@ interface RenameConversationDependencies {
     | 'conversationTitle'
     | 'recordedOne'
     | 'parentOf'
+    | 'serviceBorn'
     | 'rootOf'
   >
   readonly itIsAService: (conversation: string) => boolean
