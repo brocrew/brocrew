@@ -91,7 +91,7 @@ import {
   createSpawnTransportFactory,
   probeCodexAuthInHome,
 } from '@brobot2/runtime/codex'
-import { ClaudeRuntime } from '@brobot2/runtime/claude'
+import { ClaudeRuntime, claudeKeychainTokenProviderForALaunch } from '@brobot2/runtime/claude'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -267,7 +267,36 @@ describe('710 · R52 — a person whose machine ran short', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⚑ A person's New Conversation — the launcher's door, answered as the launcher reads it. */
+  /** The provider's launch read, with a fake native query that refuses the login. */
+  const claudeLaunchOnItsLogin = async (how: 'start' | 'models' = 'start'): Promise<Error> => {
+    const runtime = new ClaudeRuntime(
+      () => {
+        throw new Error('native Claude refused this login')
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      '/fictional/claude',
+      claudeKeychainTokenProviderForALaunch(),
+    )
+    const options = {
+      cwd: root,
+      providerHome: join(root, 'claude-launch'),
+      approvalMode: 'auto' as const,
+    }
+    const launched = how === 'start' ? runtime.start(options) : runtime.listModels(options)
+    const failure = await launched.then(
+      () => new Error('the fake native query unexpectedly started'),
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(Error)
+    return failure as Error
+  }
+
   const aPersonStarts = async (provider: Provider = 'claude'): Promise<string> => {
     const refused = await executeRuntimeCommand(host, window, {
       kind: 'createSession',
@@ -414,6 +443,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
+      const failure = await claudeLaunchOnItsLogin()
+      gate.startFails = () => failure
       const said = await aPersonStarts('claude')
       // ⛔ Measured on `main`: *"Your machine Claude login is missing or its token has expired…"*
       expect(said).toBe(THE_SENTENCE)
@@ -421,12 +452,14 @@ describe('710 · R52 — a person whose machine ran short', () => {
       expect(armed.keychainAsked).toBeGreaterThan(0)
     })
 
-    it('⚑ control: a Keychain with no login still says the login — that one IS a person’s to fix', async () => {
+    it('a missing local login reaches native Claude and keeps its refusal', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       theRealHome = true
       theKeychainAnswers(aKeychainWithNoLogin)
+      const failure = await claudeLaunchOnItsLogin()
+      gate.startFails = () => failure
       const said = await aPersonStarts('claude')
-      expect(said).toContain('Claude login is missing or its token has expired')
+      expect(said).toContain('native Claude refused this login')
       expect(armed.keychainAsked).toBeGreaterThan(0)
     })
 
@@ -501,6 +534,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
+      const failure = await claudeLaunchOnItsLogin()
+      gate.startFails = () => failure
       const result = await callOn(pm, 'give_work', newConversationGive('worker', 'x', 'x'))
       const kept = expectRecordedCannotRun(result, 'task', 'ran short of open files', false)
       expectTaskKept(store, kept)
@@ -633,6 +668,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
+      const failure = await claudeLaunchOnItsLogin('models')
+      probeFails = () => failure
       const said = await host.providerModels('worker', 'claude')
       // ⛔ On `main`: the login sentence, about a login that was fine; on `710`'s first cut: the errno
       expect(said).toEqual({

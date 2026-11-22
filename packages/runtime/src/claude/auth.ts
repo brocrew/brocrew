@@ -126,6 +126,12 @@ export async function defaultKeychainReaderForALaunch(): Promise<string | null> 
   if (process.platform !== 'darwin') return defaultKeychainReader()
   return new Promise((resolve, reject) => {
     const settle = (error: unknown): void => {
+      const failure = error as { code?: string | number; signal?: string; killed?: boolean }
+      console.warn('Claude launch Keychain read failed', {
+        code: failure.code ?? null,
+        signal: failure.signal ?? null,
+        killed: failure.killed === true,
+      })
       if (transientSetupFailureOf(error) !== null) reject(error)
       else resolve(null)
     }

@@ -15,7 +15,6 @@ import {
   type AuthState,
 } from '@brobot2/runtime'
 import {
-  claudeAuthHealthAsync,
   whyNoClaudeLogin,
   claudeKeychainTokenProvider,
   claudeKeychainTokenProviderForALaunch,
@@ -67,23 +66,6 @@ function claudeCommandFor(seams: { readonly programFound?: () => string | null }
   return () => claudeCommandIn(seams.programFound?.() ?? null, process.platform)
 }
 
-async function claudeHealth(
-  apiKey: (() => string | null | Promise<string | null>) | undefined,
-  command: () => string,
-  login = claudeKeychainTokenProviderForALaunch(),
-): Promise<AuthHealth> {
-  try {
-    return await claudeAuthHealthAsync(
-      login,
-      apiKey === undefined ? undefined : () => apiKey(),
-      command,
-    )
-  } catch (error) {
-    if (error instanceof ApiKeyUnreadableError) return { ok: false, reason: error.message }
-    throw error
-  }
-}
-
 export async function prepareOnTheLogin(
   prepare: () => string | Promise<string>,
   renew: () => Promise<ClaudeLoginRenewal>,
@@ -131,14 +113,7 @@ export async function prepareClaudeHome(
   profileId: string,
   seams: ClaudeHomeSeams,
 ): Promise<string> {
-  const home = await prepareStateHome(paths, profileId, seams.provisionHome)
-
-  const key = seams.key
-  const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
-  if (!health.ok) {
-    throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
-  }
-  return home
+  return prepareStateHome(paths, profileId, seams.provisionHome)
 }
 
 export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): HomeAuthOperations {
@@ -277,9 +252,6 @@ export function createClaudeModule(
       const home = await prepareClaudeHome(paths, profileId, {
         ...seams.home,
         key: selectedKey,
-        health:
-          seams.home.health ??
-          (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
       })
       return {
         home,
