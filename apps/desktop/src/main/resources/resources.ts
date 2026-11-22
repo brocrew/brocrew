@@ -357,12 +357,8 @@ function closeQuietly(fd: number): void {
 /** What was at a path this app itself wrote. */
 type OwnFileRead = { readonly ok: true; readonly bytes: Buffer } | { readonly ok: false }
 
-/**
- * Read a file this app put there. Every "no" is the same answer — absent, a
- * symlink, a directory, a FIFO, unreadable, or bigger than any resource may be — and the caller
- * decides what it means; the same three flags as {@link readOfferedResource}, for its reasons.
- */
-function readOwnFile(path: string): OwnFileRead {
+/** Read the app's own regular file, up to the reader's or writer's expected size. */
+function readOwnFile(path: string, maxBytes = MOST_BYTES_OF_ANY_FORM): OwnFileRead {
   let fd: number
   try {
     fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
@@ -371,7 +367,7 @@ function readOwnFile(path: string): OwnFileRead {
   }
   try {
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.size > MOST_BYTES_OF_ANY_FORM) return { ok: false }
+    if (!stat.isFile() || stat.size > maxBytes) return { ok: false }
     const read = readBounded(fd, stat.size)
     return { ok: true, bytes: read }
   } catch {
@@ -416,30 +412,36 @@ export type KeepProblem = 'write-failed' | 'something-else-is-at-that-name'
 export function keepResource(
   root: string,
   offered: { readonly bytes: Buffer; readonly sha256: string; readonly name: string },
-): { readonly ok: true } | { readonly ok: false; readonly problem: KeepProblem } {
+  subdir?: 'sent',
+):
+  | { readonly ok: true }
+  | { readonly ok: false; readonly problem: KeepProblem; readonly cause?: string } {
   if (!SHA256_HEX.test(offered.sha256) || !isOneSegment(offered.name)) {
     return { ok: false, problem: 'write-failed' }
   }
-  const folder = join(root, offered.sha256)
+  const folder = join(root, subdir ?? '', offered.sha256)
   const kept = join(folder, offered.name)
   try {
     mkdirSync(root, { recursive: true, mode: 0o700 })
-    try {
-      mkdirSync(folder, { mode: 0o700 })
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    for (const directory of subdir === undefined ? [folder] : [join(root, subdir), folder]) {
+      try {
+        mkdirSync(directory, { mode: 0o700 })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      }
+      if (!lstatSync(directory).isDirectory()) {
+        return { ok: false, problem: 'something-else-is-at-that-name' }
+      }
     }
-    const standing = lstatSync(folder)
-    if (!standing.isDirectory() || standing.isSymbolicLink()) {
-      return { ok: false, problem: 'something-else-is-at-that-name' }
-    }
-    const already = readOwnFile(kept)
-    if (already.ok && sha256Hex(already.bytes) === offered.sha256) return { ok: true }
+    const already = readOwnFile(kept, offered.bytes.length)
+    if (already.ok && already.bytes.equals(offered.bytes)) return { ok: true }
     if (somethingStandsAt(kept)) return { ok: false, problem: 'something-else-is-at-that-name' }
     writeAtomicallySync(kept, offered.bytes)
     return { ok: true }
-  } catch {
-    return { ok: false, problem: 'write-failed' }
+  } catch (error) {
+    if (subdir === undefined) return { ok: false, problem: 'write-failed' }
+    const cause = error instanceof Error ? error.message : String(error)
+    return { ok: false, problem: 'write-failed', cause }
   }
 }
 
