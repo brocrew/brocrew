@@ -1,3 +1,4 @@
+import { noPositiveSays } from '../../src/renderer/src/lib/permission-offer'
 import type {
   AboutWork,
   LedgerWalk,
@@ -37,6 +38,9 @@ import {
   unmountAll,
   visible,
   type Mounted,
+  permission as permissionEvent,
+  permissionButtons,
+  permissionOnQueue,
 } from './harness'
 
 /**
@@ -206,43 +210,36 @@ function walked<Row>(
  * ⚠️ **Only the fields this surface reads are meaningful**; the rest are the projection's own
  * shape, filled so the object is the real type and not a cast.
  */
-function live(key: string, over: Partial<AttentionRequest> = {}): AttentionRequest {
+function live(
+  key: string,
+  over: {
+    sent?: boolean
+    refused?: string
+    withhold?: boolean
+  } = {},
+): AttentionRequest {
   const [sessionId = '', requestId = ''] = key.split(':')
-  return {
-    key,
+  const event = permissionEvent(requestId)
+  return permissionOnQueue(
     sessionId,
-    requestId,
-    itemId: `item_${requestId}`,
-    kind: 'permission',
-    where: 'worker-7',
-    hasACommander: false,
-    provider: 'claude',
-    profileId: null,
-    who: null,
-    standing: 'waiting: permission',
-    asked: 'run a command',
-    scope: [],
-    underDisclosed: false,
-    detailOmitted: null,
-    // ⚑ **487 · overridable like every other field here** — null is a request that can be allowed.
-    noPositive: null,
-    at: NOW,
-    decisions: [
-      { kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } },
-      { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-    ],
-    limit: null,
-    sent: false,
-    /** ⚑ **468 · nothing has bounced** — a test that wants the refusal overrides it. */
-    refused: null,
-    ...over,
-  }
+    over.withhold
+      ? {
+          ...event,
+          scope: {
+            ...event.scope,
+            availableDecisions: ['deny', 'cancel'],
+            noPositiveBecause: 'could-not-describe-the-grant',
+          },
+        }
+      : event,
+    { sent: over.sent ?? false, refused: over.refused ?? null },
+  )
 }
 
 /** ⚑ **The map `RuntimeScreen` builds from `needsYou`**, for one key. */
 function answerable(
   key: string,
-  over: Partial<AttentionRequest> = {},
+  over: Parameters<typeof live>[1] = {},
 ): Map<string, AttentionRequest> {
   return new Map([[key, live(key, over)]])
 }
@@ -1211,33 +1208,29 @@ describe('§10 · the answers are reachable in the corner, and they change nothi
       answerable: answerable(decisionKey),
     })
     const m = await overlay(1180)
-    const buttons = [...m.q('persons-queue').querySelectorAll<HTMLElement>('.pq-answer')]
+    const buttons = permissionButtons(m.q('persons-queue'))
     expect(buttons.map((one) => one.querySelector('strong')?.textContent?.trim())).toEqual([
-      'Allow',
+      'Approve',
       'Deny',
     ])
     // ⛔ **`390`'s own question, asked of the new controls**: is the thing I am pointing at the
     // thing that gets the click. A button that renders and is covered is `390` with the subject
     // changed again.
     for (const button of buttons) expect(reachable(button)).toBe(true)
-    // ⛔ **Criterion 20's third clause, on the control it is about** — the immediate effect is the
-    // button's description, said in full under the row's more options.
-    const described = (button: HTMLElement): string =>
-      (
-        document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? ''
-      ).trim()
-    expect(described(buttons[0]!)).toContain('Allow: the agent may do this once')
-    expect(described(buttons[1]!)).toContain('refused this one thing')
-    await openMore(m, decisionKey)
-    expect(m.q(`persons-queue-more-${decisionKey}`).innerText).toContain(described(buttons[0]!))
-    // ⛔ …and the gap, once per row, because it is the same unknown for every answer.
-    expect(m.q(`persons-queue-after-${decisionKey}`).innerText).toContain('does not predict')
+    expect(buttons[0]!.querySelector('small')?.textContent).toContain('the agent may do this once')
+    expect(buttons[1]!.querySelector('small')?.textContent).toContain('refused this one thing')
+    const detail = m.q('permission-after').closest('details')!
+    expect(detail.open).toBe(false)
+    detail.querySelector('summary')!.click()
+    await nextTick()
+    expect(visible(m.q('permission-after'))).toBe(true)
+    expect(m.q('permission-after').innerText).toContain('does not predict')
   })
 
   it('🔴 pressing one settles THAT row with THAT decision — and does not travel or close', async () => {
     supply(ONE, { held: new Set(['sess_worker-7']), answerable: answerable(KEY) })
     const m = await overlay(1180)
-    const buttons = [...m.q('persons-queue').querySelectorAll<HTMLElement>('.pq-answer')]
+    const buttons = permissionButtons(m.q('persons-queue'))
     buttons[1]!.click()
     await nextTick()
     expect(settled).toHaveLength(1)
@@ -1297,7 +1290,7 @@ describe('§10 · the answers are reachable in the corner, and they change nothi
     expect(m.q('persons-queue').getBoundingClientRect().top).toBeGreaterThanOrEqual(0)
     // ⛔ **The answers stayed INSIDE the 200px column**, rather than overflowing it sideways into
     // the sheet — which a row of side-by-side buttons would have done at this width.
-    const drawn = [...m.q('persons-queue').querySelectorAll<HTMLElement>('.pq-answer')]
+    const drawn = permissionButtons(m.q('persons-queue'))
     // ⚑ **Non-vacuity: there really are answers to measure** — the loop below passes over nothing.
     expect(drawn).toHaveLength(12)
     for (const button of drawn) {
@@ -1398,10 +1391,7 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
     const m = await overlay(1180)
     // ⛔ **`207` M2's rule, read as a person reads it** — the buttons are gone and the reason is
     // where they were. This is the first assertion in this repository that reads it as text.
-    // ⚠️ **The row's own handle and not `.pq-answer`.** `Mounted.all` takes a `data-cy`; a CSS
-    // selector handed to it matches nothing and answers `[]`, so the first draft of this line
-    // passed against a surface drawing four live buttons.
-    expect(m.all(`persons-queue-answer-${KEY}`)).toHaveLength(0)
+    expect(permissionButtons(m.q(`persons-queue-row-${KEY}`))).toHaveLength(0)
     const said = m.q(`persons-queue-no-answer-${KEY}`)
     expect(visible(said)).toBe(true)
     expect(said.innerText.trim()).toBe(
@@ -1412,7 +1402,7 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
   it('⛔ …and the control: an unpressed row draws buttons and no sentence at all', async () => {
     supply(ONE, { held: HELD, answerable: answerable(KEY) })
     const m = await overlay(1180)
-    expect(m.all(`persons-queue-answer-${KEY}`)).toHaveLength(2)
+    expect(permissionButtons(m.q(`persons-queue-row-${KEY}`))).toHaveLength(2)
     expect(m.all(`persons-queue-no-answer-${KEY}`)).toHaveLength(0)
   })
 
@@ -1447,8 +1437,8 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
     const m = await overlay(1180)
     // ⛔ **Answerable again** — `noteAnswer` puts the request back on the table, so a person can
     // press again; what they could not do before 468 is learn why they had to.
-    expect(m.all(`persons-queue-answer-${KEY}`)).toHaveLength(2)
-    const why = m.q(`persons-queue-refused-${KEY}`)
+    expect(permissionButtons(m.q(`persons-queue-row-${KEY}`))).toHaveLength(2)
+    const why = m.q('permission-refused')
     expect(visible(why)).toBe(true)
     expect(why.innerText.trim()).toBe('that answer was not usable')
   })
@@ -1456,7 +1446,7 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
   it('⛔ …and the control: nothing bounced, nothing is drawn', async () => {
     supply(ONE, { held: HELD, answerable: answerable(KEY) })
     const m = await overlay(1180)
-    expect(m.all(`persons-queue-refused-${KEY}`)).toHaveLength(0)
+    expect(m.all('permission-refused')).toHaveLength(0)
   })
 
   /**
@@ -1470,31 +1460,23 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
   it('🔴 a withheld-positive row says so, and keeps both refusals (487)', async () => {
     supply(ONE, {
       held: HELD,
-      answerable: answerable(KEY, {
-        decisions: [
-          { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-          { kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } },
-        ],
-        noPositive: 'BroBot is offering no way to allow this — and refusing still works.',
-      }),
+      answerable: answerable(KEY, { withhold: true }),
     })
     const m = await overlay(1180)
-    const said = m.q(`persons-queue-cannot-allow-${KEY}`)
+    const said = m.q('permission-cannot-allow')
     expect(visible(said)).toBe(true)
-    expect(said.innerText.trim()).toBe(
-      'BroBot is offering no way to allow this — and refusing still works.',
-    )
+    expect(said.innerText.trim()).toBe(noPositiveSays('could-not-describe-the-grant'))
     // ⛔ **Beside the answers, not instead of them** — a sentence that replaced the buttons would
     // be `nothing-on-offer` again, about a row that has two.
-    expect(m.all(`persons-queue-answer-${KEY}`)).toHaveLength(2)
+    expect(permissionButtons(m.q(`persons-queue-row-${KEY}`))).toHaveLength(2)
     expect(m.all(`persons-queue-no-answer-${KEY}`)).toHaveLength(0)
   })
 
   it('⛔ …and the control: a row that can be allowed says nothing about it (487)', async () => {
     supply(ONE, { held: HELD, answerable: answerable(KEY) })
     const m = await overlay(1180)
-    expect(m.all(`persons-queue-cannot-allow-${KEY}`)).toHaveLength(0)
-    expect(m.all(`persons-queue-answer-${KEY}`)).toHaveLength(2)
+    expect(m.all('permission-cannot-allow')).toHaveLength(0)
+    expect(permissionButtons(m.q(`persons-queue-row-${KEY}`))).toHaveLength(2)
   })
 
   /**
@@ -1515,7 +1497,7 @@ describe('§12 · 468 · the sentence in the gap, and the refusal that used to b
       answerable: answerable(decisionKey, { sent: false, refused: 'that answer was not usable' }),
     })
     const m = await overlay(1180)
-    const why = m.q(`persons-queue-refused-${decisionKey}`)
+    const why = m.q('permission-refused')
     const work = m.q(`persons-queue-work-${decisionKey}`)
     // The two are the same weight, and `pq-work` is the file's own quiet-secondary precedent.
     expect(getComputedStyle(why).color).toBe(getComputedStyle(work).color)

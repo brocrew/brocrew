@@ -1,4 +1,6 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { PermissionRequestEvent } from '../../src/renderer/src/lib/transcript-tool-contracts'
+import { attentionToACardNobodyHolds } from '../../src/renderer/src/lib/attention'
 import { createApp, nextTick, type Component } from 'vue'
 import { expect } from 'vitest'
 import { page } from 'vitest/browser'
@@ -412,15 +414,34 @@ const SCOPE = {
   underDisclosed: false,
 }
 
-export const permission = (id: string): TranscriptEvent =>
-  ({
-    type: 'permission_request',
-    id,
-    kind: 'command',
-    action: 'Bash',
-    detail: 'run: ls',
-    scope: SCOPE,
-  }) as never
+export const permission = (id: string): PermissionRequestEvent => ({
+  type: 'permission_request',
+  id,
+  kind: 'command',
+  action: 'Bash',
+  detail: 'run: ls',
+  scope: SCOPE,
+})
+
+/** Fold a permission fixture through the same projection that supplies the queues. */
+export function permissionOnQueue(
+  sessionId: string,
+  event: PermissionRequestEvent,
+  press: { sent: boolean; refused: string | null } = { sent: false, refused: null },
+) {
+  const row = attentionToACardNobodyHolds(
+    sessionId,
+    { asked: event, provider: 'claude', profileId: 'default' },
+    press,
+    (name) => name,
+  )
+  if (!row) throw new Error('fixture did not produce a permission card')
+  return row
+}
+
+export function permissionButtons(row: Element): HTMLElement[] {
+  return [...row.querySelectorAll<HTMLElement>('[data-permission-decision]')]
+}
 
 export const META: CreatedSession = {
   sessionId: 'sess_1',

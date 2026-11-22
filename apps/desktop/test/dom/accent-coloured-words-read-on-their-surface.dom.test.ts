@@ -185,7 +185,7 @@ describe('accent-coloured words read on their surface', () => {
     expect(press?.disabled, 'compacting is offered').toBe(false)
     press!.click()
     await settle()
-    const tag = window_.host.querySelector<HTMLElement>('.file-tile-tag')
+    const tag = window_.host.querySelector<HTMLElement>('.file-tag')
     const door = window_.host.querySelector<HTMLElement>('.door-compact')
     expect(tag, 'a file’s tag is drawn').not.toBeNull()
     expect(door, 'the compact door is open').not.toBeNull()
@@ -220,7 +220,7 @@ describe('accent-coloured words read on their surface', () => {
     applyTheme(resolveTheme(own as never, BASE))
     const m = mount(windowStage({ titleBar: true }), {}, { width: 1180, height: 800 })
     await settle()
-    const tag = m.host.querySelector<HTMLElement>('.file-tile-tag')
+    const tag = m.host.querySelector<HTMLElement>('.file-tag')
     expect(tag, 'a file’s tag is drawn').not.toBeNull()
     const card = shownUnder(tag!.closest('.card-section')!)
     expect(card).toEqual({ r: 0x11, g: 0x11, b: 0x11, a: 1 })
@@ -289,7 +289,7 @@ describe('accent-coloured words read on their surface', () => {
         m.host.querySelector(`.session-drawer.fit-${fit}`),
         `the panel is ${fit}`,
       ).not.toBeNull()
-      const tag = m.host.querySelector<HTMLElement>('.file-tile-tag')
+      const tag = m.host.querySelector<HTMLElement>('.file-tag')
       expect(tag, 'a file’s tag is drawn').not.toBeNull()
       tag!.scrollIntoView({ block: 'center' })
       const reading = await readsAt(tag!)

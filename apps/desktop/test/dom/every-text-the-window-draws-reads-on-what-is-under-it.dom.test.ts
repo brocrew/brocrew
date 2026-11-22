@@ -216,7 +216,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       ])
       const answer = m.host.querySelector<HTMLElement>('[data-cy="user-input-answer"]')
       answer?.scrollIntoView({ block: 'center' })
-      m.host.querySelector<HTMLElement>('.choice')?.click()
+      await mustPress(m.host, '[data-cy="user-input-choice-q0"][data-option="The bold one"]')
       await pause(200)
       // The answer button, ready now, under the pointer.
       if (answer) await userEvent.hover(answer)
@@ -309,7 +309,9 @@ const STATES: readonly [string, () => Promise<Element>][] = [
       await page.viewport(1200, 900)
       const m = await aWaitingPageWithEveryCard(1180, 900)
       // A closed disclosure draws nothing to read, so each request's details are open.
-      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>(
+        'details.pq-more, details.permission-details',
+      ))
         more.open = true
       await pause()
       return m.host
@@ -391,8 +393,8 @@ const PROOF: Record<string, Proof> = {
     read: [
       '[data-cy="question-words"] strong',
       '[data-cy="question-context"] code',
-      '.pq-asked-part strong',
-      '.pq-request-line code',
+      '[data-cy="persons-queue-asked-part"] .md-chat strong',
+      '[data-cy="permission-detail"]',
     ],
   },
   'Waiting on you, markdown to-dos': {
@@ -401,6 +403,7 @@ const PROOF: Record<string, Proof> = {
   'Waiting on you, with usage, stopped work and requests, each request’s details open': {
     read: [
       'details.pq-more[open] .pq-more-body',
+      'details.permission-details[open] [data-cy="permission-after"]',
       '[data-cy="persons-queue-wall-says-claude"]',
       '[data-cy="persons-queue-stall"] .pq-stall-says',
       '[data-cy="persons-queue-stopped-says-work_41"]',

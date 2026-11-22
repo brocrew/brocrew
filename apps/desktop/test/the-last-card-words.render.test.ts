@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -185,28 +186,6 @@ const words = (markup: string): string =>
     .trim()
 
 /** ⚑ Each button in a markup slice: its word, the warning in it (if any) and the line under it. */
-const buttonsIn = (
-  markup: string,
-  cy: string,
-): { word: string; warns: string | null; says: string }[] =>
-  [
-    ...shown(markup).matchAll(
-      new RegExp(`<button[^>]*data-cy="${escapeRegExp(cy)}"[^>]*>([\\s\\S]*?)</button>`, 'g'),
-    ),
-  ].map((one) => {
-    const inside = one[1]!
-    const tell = (re: RegExp): string | null => {
-      const found = re.exec(inside)?.[1]
-      return found === undefined ? null : decode(found.trim()).replace(/\s+/g, ' ')
-    }
-    return {
-      word: tell(/<strong[^>]*>([\s\S]*?)<\/strong>/) ?? '',
-      warns: tell(/<span[^>]*class="[^"]*warns[^"]*"[^>]*>([\s\S]*?)<\/span>/),
-      says: tell(/<small[^>]*>([\s\S]*?)<\/small>/) ?? '',
-    }
-  })
-
-/** ⚑ The card's own warning over its wholesale grant, and its own line under that button. */
 async function theCardsOwn(): Promise<{ warning: string; does: string; label: string }> {
   const html = await card(cardItem(makeBuild()))
   const [warning] = warningOn(html)
@@ -250,12 +229,15 @@ describe('§1 · `739` F-1, ruled — Home offers the conversation’s grant whe
     expect(wide.label).toBe(own.label)
     expect(whatThisAnswerDoes(wide)).toBe(own.does)
     const html = await render(AttentionQueue, { requests: [row], now: AT + 60_000 })
-    const buttons = buttonsIn(html, 'attention-decide-sess_make')
-    expect(buttons.map((one) => one.word)).toEqual(row.decisions.map((one) => one.label))
-    expect(buttons.at(-1)).toEqual({ word: own.label, warns: own.warning, says: own.does })
+    const buttons = permissionAnswers(html)
+    expect(buttons.map((one) => one.outcome)).toEqual([
+      ...MAKE_BUILD_OFFER.filter((one) => one !== 'allow_all_for_session'),
+      'allow_all_for_session',
+    ])
+    expect(buttons.at(-1)).toMatchObject({ word: own.label, warns: own.warning, says: own.does })
     expect(own.warning).toBe(THE_WARNING)
     // ⚑ …and the warning is drawn once, inside that button — on no other.
-    expect(textsOf(html, 'attention-wide-warning')).toEqual([THE_WARNING])
+    expect(buttons.filter((answer) => answer.warns !== null)).toHaveLength(1)
     expect(buttons.slice(0, -1).map((one) => one.warns)).toEqual([null, null, null, null, null])
     // ⛔ The sentence that said it was not offered here is gone with the reason for it.
     expect(words(html)).not.toContain('is not offered here')
@@ -271,8 +253,8 @@ describe('§1 · `739` F-1, ruled — Home offers the conversation’s grant whe
       'Cancel',
     ])
     const html = await render(AttentionQueue, { requests: [row], now: AT + 60_000 })
-    expect(textsOf(html, 'attention-decide-word')).toEqual(row.decisions.map((one) => one.label))
-    expect(html).not.toContain('attention-wide-warning')
+    expect(permissionAnswers(html).map((one) => one.outcome)).toEqual(NO_WIDE)
+    expect(html).not.toContain('permission-wide-warning')
     expect(words(html)).not.toContain('Covers any')
   })
 })
@@ -347,21 +329,11 @@ describe('§2 · `739` F-1, ruled — the person’s queue offers it too, copied
     const live = homeRow(makeBuild())
     const row = supply(live)
     const html = await render(PersonsQueue, {})
-    const buttons = buttonsIn(html, `persons-queue-answer-${live.key}`)
-    // ⛔ What `main` draws: the five answers of the row, and no wholesale grant anywhere. The
-    // request's own two come first; the broader choices follow under more options, in the card's
-    // order.
-    expect(buttons.map((one) => one.word)).toEqual([
-      'Allow',
-      'Deny',
-      'Allow for this conversation',
-      'Always allow',
-      'Cancel',
-      'Allow every Bash call for this conversation',
-    ])
+    const buttons = permissionAnswers(html)
+    expect(buttons.map((one) => one.outcome)).toEqual([...NO_WIDE, 'allow_all_for_session'])
     const own = await theCardsOwn()
-    expect(buttons.at(-1)).toEqual({ word: own.label, warns: own.warning, says: own.does })
-    expect(textsOf(html, `persons-queue-wide-warning-${live.key}`)).toEqual([THE_WARNING])
+    expect(buttons.at(-1)).toMatchObject({ word: own.label, warns: own.warning, says: own.does })
+    expect(buttons.filter((answer) => answer.warns !== null)).toHaveLength(1)
     // ⚑ Copied off the live row, never composed here: the same decision, the same payload.
     expect(row.answers.at(-1)).toEqual(live.decisions.at(-1))
     expect(answerFor(row.answers.at(-1)!)).toEqual({
@@ -373,14 +345,8 @@ describe('§2 · `739` F-1, ruled — the person’s queue offers it too, copied
     const live = homeRow(makeBuild(NO_WIDE))
     supply(live)
     const html = await render(PersonsQueue, {})
-    expect(buttonsIn(html, `persons-queue-answer-${live.key}`).map((one) => one.word)).toEqual([
-      'Allow',
-      'Deny',
-      'Allow for this conversation',
-      'Always allow',
-      'Cancel',
-    ])
-    expect(html).not.toContain('persons-queue-wide-warning')
+    expect(permissionAnswers(html).map((one) => one.outcome)).toEqual(NO_WIDE)
+    expect(html).not.toContain('permission-wide-warning')
   })
 })
 

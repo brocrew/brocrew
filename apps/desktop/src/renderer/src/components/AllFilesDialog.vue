@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import ListDialogShell from './ListDialogShell.vue'
 import { computed, ref } from 'vue'
-import { clockTime } from '../../../shared/clock'
 import type { KeptFile } from '../../../shared/runtime-ipc'
-import { fullTime } from '../lib/clock'
-import { fileKindOf, fileTitleSays, ROLE_WORD } from '../lib/files-kept'
+import { fileKindOf } from '../lib/files-kept'
+import FileRows from './FileRows.vue'
 
 /**
  * View all opens a popup for every file the agent added, sorted newest first or by name. Search name, title and work; filter by kind and show the match count. Opening a row uses the shared viewer.
@@ -51,9 +50,8 @@ const shown = computed(() => {
     : [...kept].sort((a, b) => b.keptAt - a.keptAt)
 })
 
-function open(file: KeptFile): void {
-  if (!props.canOpen) return
-  emit('openDocument', file.resourceId)
+function open(resourceId: string): void {
+  emit('openDocument', resourceId)
   emit('close')
 }
 </script>
@@ -95,133 +93,22 @@ function open(file: KeptFile): void {
       </p>
     </template>
     <template #results>
-      <ul v-if="shown.length > 0" class="file-rows">
-        <li v-for="file in shown" :key="file.resourceId">
-          <component
-            :is="props.canOpen ? 'button' : 'div'"
-            v-bind="props.canOpen ? { type: 'button' } : {}"
-            class="file-row"
-            :class="{ flat: !props.canOpen }"
-            data-cy="card-file"
-            :data-document="file.resourceId"
-            :data-role="file.role"
-            :title="fileTitleSays(file)"
-            @click="open(file)"
-          >
-            <span class="file-glyph" :data-kind="fileKindOf(file)" aria-hidden="true">
-              <svg class="icon">
-                <use :href="isImage(file) ? '#i-image' : '#i-file'" />
-              </svg>
-            </span>
-            <span class="file-copy">
-              <span class="file-title">{{ file.title }}</span>
-              <span class="file-meta" :title="fullTime(file.keptAt)"
-                ><span class="file-tag" :title="file.pieceTitle ?? file.label">{{
-                  file.label
-                }}</span>
-                {{ ROLE_WORD[file.role] }} · {{ clockTime(file.keptAt) }}</span
-              >
-            </span>
-          </component>
-        </li>
-      </ul>
+      <FileRows
+        v-if="shown.length > 0"
+        class="all-files-rows"
+        :files="shown"
+        :can-open="props.canOpen"
+        collection="card"
+        @open-document="open"
+      />
       <p v-else class="list-empty" data-cy="all-files-empty">No file matches this view.</p>
     </template>
   </ListDialogShell>
 </template>
 
 <style scoped>
-.file-rows {
-  display: grid;
+.all-files-rows {
+  max-width: none;
   margin: 0;
-  padding: 0;
-  gap: var(--space-2);
-  list-style: none;
-}
-
-.file-row {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  padding: var(--space-3) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  gap: var(--space-4);
-  text-align: left;
-}
-
-.file-row:not(.flat) {
-  cursor: pointer;
-}
-
-.file-row:not(.flat):hover {
-  border-color: var(--accent-border);
-  background: var(--accent-mix-5);
-}
-
-.file-glyph {
-  display: grid;
-  width: 30px;
-  height: 32px;
-  flex: none;
-  border-radius: var(--radius-md);
-  background: color-mix(
-    in srgb,
-    var(--_tint, var(--accent)) 12%,
-    var(--panel)
-  ); /* raw: mixes the tint this element sets for itself */
-  color: var(--_tint, var(--accent));
-  place-items: center;
-}
-
-.file-glyph[data-kind='image'] {
-  --_tint: var(--success);
-}
-
-.file-glyph[data-kind='pdf'] {
-  --_tint: var(--danger);
-}
-
-.file-glyph[data-kind='svg'] {
-  --_tint: var(--waiting);
-}
-
-.file-glyph .icon {
-  width: 18px;
-  height: 18px;
-}
-
-.file-copy {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-}
-
-.file-title {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--type-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-}
-
-.file-tag {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--accent-mix-12);
-  color: var(--accent-text);
-  font-weight: var(--fw-semibold);
 }
 </style>

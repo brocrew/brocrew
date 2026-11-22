@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { fullTime } from '../lib/clock'
-import { localFormat } from '../../../shared/local-time'
 import {
   useFilesLibrary,
   libraryFailureSays,
@@ -9,7 +8,7 @@ import {
 } from '../composables/useFilesLibrary'
 import { useModalDepth } from './OverlayHost.vue'
 import FilesTaskPicker from './FilesTaskPicker.vue'
-import type { LibraryKeep } from '../../../shared/files-library'
+import FileRows from './FileRows.vue'
 
 const props = withDefaults(
   defineProps<{ controller?: FilesLibraryController; canOpen?: boolean; active?: boolean }>(),
@@ -19,15 +18,15 @@ const library = props.controller ?? useFilesLibrary()
 const picker = ref(false),
   scroller = ref<HTMLElement | null>(null)
 const modalDepth = useModalDepth()
-const shortTime = localFormat({
-  day: 'numeric',
-  month: 'short',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-})
-const accessible = (file: LibraryKeep): string =>
-  `${file.title}. ${file.name}. ${file.label}${file.pieceTitle ? ` · ${file.pieceTitle}` : ''}. Kept by ${file.addedBy?.name ?? 'a person'}, ${fullTime(file.keptAt)}. ${file.role}. ${file.sha256}${file.clipped ? '. Some display details are shortened' : ''}`
+const groups = computed(() => library?.page.value?.files ?? [])
+const files = computed(() => groups.value.map((group) => group.file))
+const matchingKeeps = computed(
+  () => new Map(groups.value.map((group) => [group.file.resourceId, group.matchingKeeps])),
+)
+function openFile(resourceId: string, opener: HTMLElement): void {
+  const file = files.value.find((one) => one.resourceId === resourceId)
+  if (file) library?.open(file, opener)
+}
 const kinds = [
   ['all', 'All kinds'],
   ['documents', 'Documents'],
@@ -278,60 +277,16 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         </p>
       </div>
       <div ref="scroller" class="results" data-cy="files-results" @scroll="onScroll">
-        <ul
-          v-if="library.page.value && library.page.value.files.length > 0"
+        <FileRows
+          v-if="files.length"
           class="file-items"
-          :class="`view-${library.state.view}`"
-          data-cy="files-items"
-        >
-          <li
-            v-for="group in library.page.value.files"
-            :key="group.file.sha256"
-            :data-hash="group.file.sha256"
-          >
-            <component
-              :is="props.canOpen ? 'button' : 'div'"
-              v-bind="props.canOpen ? { type: 'button' } : {}"
-              class="file-item"
-              :title="accessible(group.file)"
-              :aria-label="accessible(group.file)"
-              :data-document="group.file.resourceId"
-              data-cy="library-file"
-              @click="
-                props.canOpen && library.open(group.file, $event.currentTarget as HTMLElement)
-              "
-            >
-              <span class="glyph" :data-kind="group.file.form ?? 'unknown'" aria-hidden="true"
-                ><svg class="icon">
-                  <use :href="group.file.form === 'image' ? '#i-image' : '#i-file'" /></svg
-                ><span>{{
-                  group.file.form === 'image'
-                    ? 'IMG'
-                    : group.file.form === null
-                      ? '?'
-                      : group.file.form === 'markdown'
-                        ? 'MD'
-                        : group.file.form.toUpperCase()
-                }}</span></span
-              >
-              <span class="file-copy"
-                ><span class="file-title">{{ group.file.title }}</span
-                ><span class="file-meta"
-                  ><span>{{ group.file.label }}</span> ·
-                  <span>{{ group.file.addedBy?.name ?? 'Person' }}</span></span
-                ><time
-                  class="kept-time"
-                  :datetime="new Date(group.file.keptAt).toISOString()"
-                  :title="`Kept ${fullTime(group.file.keptAt)}`"
-                  >{{ shortTime(group.file.keptAt) }}</time
-                ><span v-if="library.state.view === 'list'" class="extra"
-                  >{{ group.file.name }} · {{ group.file.role === 'made' ? 'Made' : 'Input' }} ·
-                  {{ group.matchingKeeps }} {{ group.matchingKeeps === 1 ? 'keep' : 'keeps' }}</span
-                ></span
-              >
-            </component>
-          </li>
-        </ul>
+          :class="{ 'view-icons': library.state.view === 'icons' }"
+          collection="library"
+          :files="files"
+          :matching-keeps="library.state.view === 'list' ? matchingKeeps : undefined"
+          :can-open="props.canOpen"
+          @open-document="openFile"
+        />
         <div
           v-else-if="
             library.page.value && library.page.value.complete !== false && !library.busy.value
@@ -545,126 +500,14 @@ button:hover:not(:disabled) {
   scrollbar-gutter: stable;
 }
 .file-items {
-  list-style: none;
+  max-width: none;
   margin: 0;
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-}
-.file-items li {
-  min-width: 0;
+  padding: var(--space-5);
 }
 .view-icons {
-  grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   align-content: start;
-}
-.file-item {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  border-radius: var(--radius-sm);
-  text-align: center;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.view-icons .file-item {
-  min-height: 148px;
-}
-.file-copy {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  width: 100%;
-}
-.file-title {
-  color: var(--text);
-  font-size: var(--type-body);
-  line-height: var(--leading-snug);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: anywhere;
-  font-weight: var(--fw-semibold);
-}
-.file-meta,
-.kept-time,
-.extra {
-  font-size: var(--type-small);
-  line-height: var(--leading-normal);
-  color: var(--muted);
-  overflow-wrap: anywhere;
-  max-width: 100%;
-}
-.file-meta {
-  color: var(--text-soft);
-}
-.glyph {
-  position: relative;
-  display: flex;
-  width: 48px;
-  height: 55px;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  flex: none;
-}
-.glyph .icon {
-  width: 42px;
-  height: 48px;
-}
-.glyph > span {
-  position: absolute;
-  font-size: calc(var(--type-caption) * 5 / 6);
-  font-weight: var(--fw-heavy);
-  bottom: 9px;
-  left: 5px;
-  right: 5px;
-  text-align: center;
-  background: var(--panel);
-}
-.glyph[data-kind='image'] {
-  color: var(--accent-text);
-}
-.view-list {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-}
-.view-list .file-item {
-  flex-direction: row;
-  text-align: start;
-  gap: 12px;
-  min-height: 76px;
-}
-.view-list .file-copy {
-  align-items: flex-start;
-  gap: 2px;
-}
-.view-list .file-title {
-  display: block;
-  white-space: normal;
-}
-.view-list .glyph {
-  width: 34px;
-  height: 42px;
-}
-.view-list .glyph .icon {
-  width: 30px;
-  height: 38px;
-}
-.view-list .glyph > span {
-  font-size: calc(var(--type-caption) * 2 / 3);
-  bottom: 6px;
-}
-.view-list .file-meta {
-  display: inline;
 }
 .empty {
   padding: 28px;

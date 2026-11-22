@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import {
   markAnswerRefused,
@@ -82,7 +82,7 @@ describe('a not-usable refusal leaves the card answerable (146 §1)', () => {
   it('an ordinary click on a whitespace-only label produces an answer the adapter refuses', async () => {
     const seen: UserInputResponse[] = []
     const m = mount(
-      UserInputCard,
+      QuestionCard,
       { item: item(), onRespond: (_id: string, r: UserInputResponse) => seen.push(r) },
       { width: 900 },
     )
@@ -138,7 +138,7 @@ describe('a not-usable refusal leaves the card answerable (146 §1)', () => {
     // is the projection, and `composerState` reads `panel.waiting > 0`.
     expect(sessionPanel(r.transcript).waiting).toBe(1)
 
-    const m = mount(UserInputCard, { item: item({ refused: NOT_USABLE }) }, { width: 900 })
+    const m = mount(QuestionCard, { item: item({ refused: NOT_USABLE }) }, { width: 900 })
     // The two controls the defect removed, still there and still pressable.
     const answer = m.q('user-input-answer') as HTMLButtonElement
     const reject = m.q('user-input-reject') as HTMLButtonElement
@@ -170,7 +170,7 @@ describe('a not-usable refusal leaves the card answerable (146 §1)', () => {
     expect(card?.kind === 'userInput' && card.refused).toBeNull()
     expect(sessionPanel(r.transcript).waiting).toBe(0)
 
-    const m = mount(UserInputCard, { item: item({ note: NOT_PENDING }) }, { width: 900 })
+    const m = mount(QuestionCard, { item: item({ note: NOT_PENDING }) }, { width: 900 })
     expect(m.all('user-input-answer')).toHaveLength(0)
     expect(m.all('user-input-reject')).toHaveLength(0)
     expect(m.all('user-input-refused')).toHaveLength(0)

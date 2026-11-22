@@ -25,3 +25,29 @@ export function decode(text: string): string {
 export function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/** Permission controls from the shared card, in their rendered order. */
+export function permissionAnswers(markup: string) {
+  const html = shown(markup)
+  const words = (fragment: string): string =>
+    decode(fragment.replace(/<[^>]+>/g, ''))
+      .replace(/\s+/g, ' ')
+      .trim()
+  return [
+    ...html.matchAll(
+      /<button\b([^>]*data-permission-decision="([^"]+)"[^>]*)>([\s\S]*?)<\/button>/g,
+    ),
+  ].map(([, attributes, outcome, body]) => {
+    const describedBy = /aria-describedby="([^"]+)"/.exec(attributes!)?.[1]
+    const warning =
+      describedBy &&
+      new RegExp(`<p[^>]*id="${escapeRegExp(describedBy)}"[^>]*>([\\s\\S]*?)</p>`).exec(html)?.[1]
+    return {
+      outcome: outcome!,
+      word: words(/<strong[^>]*>([\s\S]*?)<\/strong>/.exec(body!)![1]!),
+      says: words(/<small[^>]*>([\s\S]*?)<\/small>/.exec(body!)![1]!),
+      warns: warning ? words(warning) : null,
+      attributes: attributes!,
+    }
+  })
+}

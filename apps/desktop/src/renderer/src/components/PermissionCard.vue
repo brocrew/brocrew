@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, reactive, ref, watchEffect } from 'vue'
+import { computed, onScopeDispose, reactive, ref, useId, watchEffect } from 'vue'
 import type { PermissionDecision, Provider } from '../../../shared/runtime-ipc'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
@@ -45,6 +45,7 @@ import type { PermissionItem, PermissionOutcome, TranscriptItem } from '../lib/t
 import { escaped } from '../lib/named-in-a-reply'
 import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
 import PathsInText from './PathsInText.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * The agent is frozen until this is answered. The card may only offer the decisions the provider
@@ -54,6 +55,10 @@ import PathsInText from './PathsInText.vue'
  */
 const props = defineProps<{
   item: PermissionItem & Pick<TranscriptItem, 'at'>
+  compact?: boolean
+  stackAnswers?: boolean
+  queueSent?: boolean
+  queueOutcomes?: readonly PermissionOutcome[]
   /**
    * Where this card's state lives (064, 061 finding 8).
    *
@@ -121,12 +126,10 @@ const LABELS: Record<PermissionOutcome, string> = {
 
 const scope = computed(() => props.item.request.scope)
 
-/** The card's own words that may name a path: what it asks, the command, and its scope. */
 const paths = usePathsIn(
   () => props.paths,
   () =>
     [
-      props.item.request.action,
       props.item.request.summary ?? '',
       props.item.request.detail,
       scope.value.cwd ?? '',
@@ -210,7 +213,12 @@ const offer = computed(() =>
  * ⚠️ `allow_all_for_session` is deliberately NOT here (058). It is not another button in the row —
  * it is rendered below, apart, under its own warning. See {@link wide}.
  */
-const offered = computed(() => offer.value.row)
+const offeredHere = (outcome: PermissionOutcome): boolean =>
+  props.queueOutcomes?.includes(outcome) ?? true
+const offered = computed(() => offer.value.row.filter(offeredHere))
+const showOffer = computed(
+  () => props.stackAnswers || props.queueOutcomes === undefined || props.queueOutcomes.length > 0,
+)
 
 /**
  * 🔴 695 · R36 — the provider's two marks, as sentences, from the function *Waiting on you*'s row reads too —
@@ -337,7 +345,9 @@ const persistenceSaid = computed(() =>
  * lost to a remount; in the store alone, absent for any surface that renders a card without wiring
  * a draft owner — which a review found is exactly what the fallback below is.
  */
-const sent = computed(() => draft.value.sent)
+const sent = computed(() =>
+  props.queueOutcomes === undefined ? draft.value.sent : props.queueSent,
+)
 
 /**
  * Whether the settled card is showing its whole self (034). Answered cards COLLAPSE, because the
@@ -366,7 +376,8 @@ const open = computed(() => draft.value.open)
  * required half of the pair, and the one screen readers announce the disclosure with — is always
  * bound.
  */
-const bodyId = computed(() => `permission-body-${props.item.request.id}`)
+const bodyId = `permission-body-${useId()}`
+const wideWarningId = `${bodyId}-wide-warning`
 
 /** What was decided, in the user's words. `null` outcome with a note is a card that stopped being
  *  actionable without ever being answered (teardown) — which is neither an approval nor a refusal
@@ -550,8 +561,8 @@ function saysOf(outcome: PermissionOutcome): string {
 }
 
 function decide(outcome: PermissionOutcome): void {
-  if (sent.value) return
-  draft.value.sent = true
+  if (sent.value || !offeredHere(outcome)) return
+  if (props.queueOutcomes === undefined) draft.value.sent = true
   // ⛔ **The neutral decision object is built by `permissionDecisionFor`** (473) — `deny` is the
   // graceful refusal, `cancel` is the provider's own cancel (it ends the turn on a command or file
   // approval and on Claude; on a card marked `cancelStopsNothing` the turn runs on — `736`, R97), and
@@ -571,7 +582,7 @@ function decide(outcome: PermissionOutcome): void {
        fold is the `v-if` on the body, and it is announced by `aria-expanded`, not by an attribute. -->
   <article
     class="permission-card"
-    :class="{ settled: answered }"
+    :class="{ settled: answered, compact, 'stack-answers': stackAnswers }"
     data-cy="permission-card"
     :data-request-id="item.request.id"
     :data-outcome="answered ? tone : null"
@@ -601,7 +612,7 @@ function decide(outcome: PermissionOutcome): void {
       <svg class="icon chevron" :class="{ open }"><use href="#i-chevron" /></svg>
     </button>
 
-    <div v-if="!answered" class="permission-top">
+    <div v-if="!answered && !compact" class="permission-top">
       <span class="frozen-pulse"></span>
       <strong>Frozen until you answer</strong>
       <!-- 🔴 **737 · `730` F-9** — a server's own card is the server asking (`MCP server`), never
@@ -611,14 +622,19 @@ function decide(outcome: PermissionOutcome): void {
       <span class="time" :title="fullTime(item.at)">{{ waiting ?? clockTime(item.at) }}</span>
     </div>
 
-    <div v-if="!answered || open" :id="bodyId" class="permission-body" @click="paths.clicked">
-      <p data-cy="permission-action">
-        <PathsInText :text="item.request.action" :found="paths" />
-      </p>
+    <div v-if="!answered || open" :id="bodyId" class="permission-body">
+      <div data-cy="permission-action">
+        <MarkdownWords :text="item.request.action" :paths="props.paths" />
+      </div>
       <!-- The provider's own sentence, when it sends one (071). ABOVE the disclosure and never
            instead of it: "Claude wants to read foo.txt" is a readable summary of a request, and what
            Allow authorizes is the block below. -->
-      <p v-if="item.request.summary" class="request-summary" data-cy="permission-summary">
+      <p
+        v-if="item.request.summary"
+        class="request-summary"
+        data-cy="permission-summary"
+        @click="paths.clicked"
+      >
         <PathsInText :text="item.request.summary" :found="paths" />
       </p>
       <!-- 🔴 725 · R44 — what the model wrote about this command, under its agent's name: beside
@@ -628,7 +644,7 @@ function decide(outcome: PermissionOutcome): void {
       </p>
       <!-- ⚑ The server's link, copied in one press: open it in your browser, then answer here. -->
       <p
-        v-if="serverLink && !answered"
+        v-if="serverLink && !answered && offeredHere('allow')"
         class="request-summary server-link"
         data-cy="permission-server-link"
       >
@@ -683,7 +699,12 @@ function decide(outcome: PermissionOutcome): void {
            padded to the boundary and `; curl … | sh` after it. It scrolls rather than truncates, and
            a request past the transport ceiling says so on the line below, in the card's own chrome,
            where a model cannot forge the marker into its own command text. -->
-      <div class="command-block" data-cy="permission-detail">
+      <div
+        class="command-block"
+        data-cy="permission-detail"
+        :tabindex="compact ? 0 : undefined"
+        @click="paths.clicked"
+      >
         <PathsInText :text="item.request.detail" :found="paths" />
       </div>
       <p
@@ -705,7 +726,7 @@ function decide(outcome: PermissionOutcome): void {
 
       <!-- The whole scope, as the provider stated it. A card that showed only the command would be
            hiding what approving it actually grants. -->
-      <dl class="scope">
+      <dl class="scope" @click="paths.clicked">
         <template v-if="scope.cwd">
           <dt>cwd</dt>
           <dd><PathsInText :text="scope.cwd" :found="paths" /></dd>
@@ -786,12 +807,9 @@ function decide(outcome: PermissionOutcome): void {
       <p v-if="scope.underDisclosed" class="warn" data-cy="permission-under-disclosed">
         ⚠ This request's full effect could not be represented — treat its scope as broader than
         shown.
+        <template v-if="compact && !cannotAllow">Open it before you allow it.</template>
       </p>
 
-      <!-- ⛔ **A refusal the request SURVIVED** (146) — see `UserInputCard.vue` for the whole
-           argument. Rendered here too because one function writes it for both card kinds, and a
-           field the store can set on this item that this card cannot show would be a silence
-           exactly where the sentence is needed. -->
       <p v-if="!answered && item.refused" class="refused" data-cy="permission-refused">
         {{ item.refused }}
       </p>
@@ -830,7 +848,24 @@ function decide(outcome: PermissionOutcome): void {
           </span>
         </button>
       </div>
-      <div v-else-if="!answered" class="permission-actions">
+      <div
+        v-else-if="!answered && showOffer"
+        class="permission-actions"
+        :class="{ stacked: stackAnswers }"
+      >
+        <!-- 🔴 **695 · R36 — the provider's own marks, said where the missing button would be.**
+             The offer already obeys them; these explain an order and an absence. -->
+        <p v-if="marksSay.grantWithheld" class="after" data-cy="permission-grant-withheld">
+          {{ marksSay.grantWithheld }}
+        </p>
+        <p v-if="marksSay.defaultIsNo" class="after" data-cy="permission-default-no">
+          {{ marksSay.defaultIsNo }}
+        </p>
+        <!-- 🔴 **700 · `695` F-f — and the provider's own words**, quoted after the lines that say
+             what the marks did: its reason for a mark, or (725, R73) its rule. -->
+        <p v-if="marksSay.providerReason" class="after" data-cy="permission-provider-reason">
+          {{ marksSay.providerReason }}
+        </p>
         <button
           v-for="outcome in offered"
           :key="outcome"
@@ -840,9 +875,11 @@ function decide(outcome: PermissionOutcome): void {
             'approve-quiet':
               outcomeAllows(outcome) && (offer.primary === 'refuses' || keptBeyond(outcome)),
             deny: !outcomeAllows(outcome),
+            'refuse-first': !outcomeAllows(outcome) && offer.primary === 'refuses',
           }"
           type="button"
           :disabled="sent"
+          :data-permission-decision="outcome"
           :data-cy="`permission-${outcome}`"
           @click="decide(outcome)"
         >
@@ -864,24 +901,16 @@ function decide(outcome: PermissionOutcome): void {
         >
           {{ cannotAllow.says }}
         </span>
-        <!-- 🔴 **695 · R36 — the provider's own marks, said where the missing button would be.**
-             The offer already obeys them; these explain an order and an absence. -->
-        <p v-if="marksSay.grantWithheld" class="after" data-cy="permission-grant-withheld">
-          {{ marksSay.grantWithheld }}
-        </p>
-        <p v-if="marksSay.defaultIsNo" class="after" data-cy="permission-default-no">
-          {{ marksSay.defaultIsNo }}
-        </p>
-        <!-- 🔴 **700 · `695` F-f — and the provider's own words**, quoted after the lines that say
-             what the marks did: its reason for a mark, or (725, R73) its rule. -->
-        <p v-if="marksSay.providerReason" class="after" data-cy="permission-provider-reason">
-          {{ marksSay.providerReason }}
-        </p>
         <!-- 🔴 **The gap, once for the row** (434, HO-024 §5.3) — the same sentence in the same
              place `PersonsQueue` draws it. -->
-        <p v-if="offered.length > 0" class="after" data-cy="permission-after">
-          {{ WHAT_COMES_AFTER_IS_NOT_OURS }}
-        </p>
+        <component
+          v-if="offered.length > 0"
+          :is="compact ? 'details' : 'div'"
+          class="permission-details"
+        >
+          <summary v-if="compact">Details</summary>
+          <p class="after" data-cy="permission-after">{{ WHAT_COMES_AFTER_IS_NOT_OURS }}</p>
+        </component>
       </div>
 
       <!-- The WHOLESALE grant (058), below the row and never in it.
@@ -894,16 +923,20 @@ function decide(outcome: PermissionOutcome): void {
            explains itself before you can press it.
            Set apart deliberately — its own block, its own warning, and NOT the filled primary
            style the approve buttons carry, so nothing about it reads as the expected next click. -->
-      <div v-if="!answered && !answeredElsewhere && wide" class="wide-grant">
+      <div
+        v-if="!answered && !answeredElsewhere && wide && offeredHere(wide.outcome)"
+        class="wide-grant"
+        :class="{ 'answer-sent': sent }"
+      >
         <!-- 🔴 730 · R80 — Codex's MCP grant covers the tool, whatever it is given, and ends with
              the conversation (measured, `723`). -->
-        <p v-if="mcpCall" class="warn" data-cy="permission-wide-warning">
+        <p v-if="mcpCall" :id="wideWarningId" class="warn" data-cy="permission-wide-warning">
           {{ mcpToolGrantCovers(mcpCall, provider ?? null) }}
         </p>
         <!-- 🔴 743 · `739` F-8 — the words on its button, in the parts of the sentence *Waiting on you* and
              the person's queue draw whole (its reach in bold, 058). ⚠️ A template comment is rendered:
              the old words are not quoted here. -->
-        <p v-else class="warn" data-cy="permission-wide-warning">
+        <p v-else :id="wideWarningId" class="warn" data-cy="permission-wide-warning">
           {{ warningParts.lead }}<strong>{{ warningParts.reach }}</strong
           >{{ warningParts.rest }}
         </p>
@@ -911,6 +944,8 @@ function decide(outcome: PermissionOutcome): void {
           class="btn wide"
           type="button"
           :disabled="sent"
+          :aria-describedby="wideWarningId"
+          :data-permission-decision="wide.outcome"
           :data-cy="`permission-${wide.outcome}`"
           @click="decide(wide.outcome)"
         >
@@ -928,364 +963,4 @@ function decide(outcome: PermissionOutcome): void {
   </article>
 </template>
 
-<style scoped>
-.server-link {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.permission-card {
-  max-width: var(--measure-message);
-  margin: 0 auto var(--space-10);
-  border: var(--border-width) solid var(--waiting-card-border);
-  border-radius: var(--radius-card);
-  background: var(--panel);
-  box-shadow: inset var(--border-edge-width) 0 0 var(--waiting);
-  overflow: hidden;
-}
-
-.permission-card.settled {
-  margin-bottom: var(--space-6);
-  border-color: var(--line-strong);
-  background: var(--wash-1);
-  box-shadow: inset var(--border-edge-width) 0 0 var(--line-strong);
-}
-
-.permission-card[data-outcome='approved'] {
-  box-shadow: inset var(--border-edge-width) 0 0 var(--success);
-}
-
-.permission-card[data-outcome='refused'] {
-  box-shadow: inset var(--border-edge-width) 0 0 var(--danger);
-}
-
-.settled-line {
-  display: flex;
-  width: 100%;
-  min-height: 34px;
-  align-items: center;
-  padding: var(--space-3) var(--space-6);
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-  text-align: left;
-}
-
-.settled-line:hover {
-  background: var(--wash-2);
-}
-
-.verdict {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
-
-[data-outcome='approved'] .verdict {
-  color: var(--success);
-}
-
-[data-outcome='refused'] .verdict {
-  color: var(--danger-text);
-}
-
-.what {
-  overflow: hidden;
-  min-width: 0;
-  flex: 1;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settled-line .who {
-  min-width: 0;
-  flex: 0 1 auto;
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.settled-line .time {
-  color: var(--faint);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-}
-
-.settled-line .chevron {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  color: var(--faint);
-  transition: transform var(--dur-fast) ease;
-}
-
-.settled-line .chevron.open {
-  transform: rotate(90deg);
-}
-
-.settled .permission-body {
-  border-top: var(--border-width) solid var(--line);
-}
-
-.permission-top {
-  display: flex;
-  min-height: 39px;
-  align-items: center;
-  padding: var(--space-4) var(--space-8);
-  border-bottom: var(--border-width) solid var(--waiting-card-line);
-  gap: var(--space-4);
-}
-
-.permission-top strong {
-  color: var(--waiting-text);
-  font-size: var(--type-small);
-  font-weight: var(--fw-bold);
-}
-
-.kind {
-  color: var(--waiting-text-weak);
-  font: var(--type-caption) / 1 var(--font-mono);
-}
-
-.frozen-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  animation: pulse 1.6s ease-in-out infinite;
-  background: var(--waiting);
-  box-shadow: var(--waiting-glow-wide);
-}
-
-.frozen-pulse.still {
-  animation: none;
-  background: var(--muted);
-  box-shadow: none;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.permission-top .time {
-  margin-left: auto;
-  color: var(--waiting-text-weak);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-}
-
-.permission-body {
-  padding: var(--space-6) var(--space-8);
-}
-
-.permission-body p {
-  margin: 0;
-  color: var(--waiting-text-soft);
-  font-size: var(--type-small);
-  line-height: var(--leading-normal);
-}
-
-.permission-body .request-summary {
-  margin-top: var(--space-3);
-  color: var(--waiting-text);
-}
-
-.command-block {
-  margin: var(--space-5) 0;
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--code-bg);
-  color: var(--code-text);
-  font: var(--type-caption) / 1.45 var(--font-mono);
-  max-height: 40vh;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.permission-body .detail-omitted {
-  margin-bottom: var(--space-5);
-  color: var(--danger-text-notice);
-  font-size: var(--type-caption);
-}
-
-.mcp-facts {
-  display: grid;
-  max-height: 30vh;
-  margin: 0 0 var(--space-5);
-  color: var(--text-soft);
-  font: var(--type-caption) / 1.5 var(--font-mono);
-  gap: var(--space-1) var(--space-5);
-  grid-template-columns: auto 1fr;
-  overflow: auto;
-}
-
-.mcp-facts dt {
-  color: var(--faint);
-}
-
-.mcp-facts dd {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.scope {
-  display: grid;
-  margin: 0 0 var(--space-5);
-  color: var(--muted);
-  font: var(--type-caption) / 1.5 var(--font-mono);
-  gap: var(--space-1) var(--space-5);
-  grid-template-columns: auto 1fr;
-}
-
-.scope dt {
-  color: var(--faint);
-}
-
-.scope dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.warn {
-  margin: 0 0 var(--space-5);
-  color: var(--waiting);
-  font-size: var(--type-caption);
-}
-
-.permission-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-}
-
-.btn {
-  display: inline-flex;
-  min-height: var(--control-h);
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: var(--space-2) var(--space-6);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  font-weight: var(--fw-semibold);
-  gap: var(--space-1);
-  text-align: left;
-}
-
-.btn-word {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-  white-space: nowrap;
-}
-
-.btn small {
-  font-size: var(--type-caption);
-  font-weight: var(--fw-normal);
-  line-height: var(--leading-tight);
-  opacity: 0.85;
-  white-space: normal;
-}
-
-.after {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-}
-
-.btn:hover:not(:disabled) {
-  background: var(--wash-5);
-}
-
-.btn:disabled {
-  opacity: 0.6;
-}
-
-.btn .icon {
-  width: 14px;
-  height: 14px;
-}
-
-.btn.approve {
-  border-color: var(--waiting);
-  background: var(--waiting);
-  color: var(--waiting-ink);
-}
-
-.btn.approve:hover:not(:disabled) {
-  border-color: var(--waiting-fill-hover);
-  background: var(--waiting-fill-hover);
-}
-
-.btn.deny {
-  border-color: var(--danger-border);
-  background: var(--danger-bg);
-  color: var(--danger-text-soft);
-}
-
-.btn.approve-quiet {
-  border-color: var(--waiting);
-  background: transparent;
-}
-
-.wide-grant {
-  margin-top: var(--space-6);
-  padding-top: var(--space-5);
-  border-top: var(--border-width) solid var(--line);
-}
-
-.wide-grant .warn {
-  margin-bottom: var(--space-4);
-}
-
-.btn.wide {
-  border-color: var(--danger-border);
-  background: transparent;
-  color: var(--danger-text-soft);
-  font-weight: var(--fw-semibold);
-}
-
-.btn.wide:hover:not(:disabled) {
-  background: var(--danger-bg);
-}
-
-.btn.deny:hover:not(:disabled) {
-  background: var(--danger-fill-hover);
-}
-
-.settled-line .note {
-  flex: 0 1 auto;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.refused {
-  margin: 0 0 var(--space-4);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-</style>
+<style scoped src="./PermissionCard.css"></style>

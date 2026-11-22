@@ -160,8 +160,9 @@ describe('700 · Home’s row says the same thing', () => {
   it('🔴 the row carries the card’s own sentence after the mark’s, and draws both', async () => {
     const row = homeRow({ providerReason: THE_CLIS_OWN })
     expect(row.marksSay).toEqual([GRANT_WITHHELD, inTheProvidersWords(THE_CLIS_OWN)])
-    expect(textsOf(await renderHome(row), 'attention-mark')).toEqual([
-      GRANT_WITHHELD,
+    const html = await renderHome(row)
+    expect(textsOf(html, 'permission-grant-withheld')).toEqual([GRANT_WITHHELD])
+    expect(textsOf(html, 'permission-provider-reason')).toEqual([
       'The provider’s reason: “This command uses the `&amp;` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.”',
     ])
   })
@@ -175,7 +176,8 @@ describe('700 · Home’s row says the same thing', () => {
     const row = homeRow({})
     expect(row.marksSay).toEqual([GRANT_WITHHELD])
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-mark')).toEqual([GRANT_WITHHELD])
+    expect(textsOf(html, 'permission-grant-withheld')).toEqual([GRANT_WITHHELD])
+    expect(textsOf(html, 'permission-provider-reason')).toEqual([])
     expect(html).not.toContain('The provider’s reason')
   })
 })

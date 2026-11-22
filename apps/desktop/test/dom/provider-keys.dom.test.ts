@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { reactive } from 'vue'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import { createSessionRecord, requestDraft } from '../../src/renderer/src/lib/session-record'
 import { mount, unmountAll, visible } from './harness'
@@ -52,7 +52,7 @@ const request = (id: string): UserInputItem['request'] => ({
 const card = (id: string): { m: ReturnType<typeof mount>; sent: () => UserInputResponse[] } => {
   const seen: UserInputResponse[] = []
   const m = mount(
-    UserInputCard,
+    QuestionCard,
     {
       item: {
         kind: 'userInput',
@@ -142,7 +142,7 @@ describe('a REQUEST id from the prototype chain, around the card (150, from 148 
 
       const seen: UserInputResponse[] = []
       const m = mount(
-        UserInputCard,
+        QuestionCard,
         {
           item: {
             kind: 'userInput',

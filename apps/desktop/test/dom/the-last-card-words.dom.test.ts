@@ -156,65 +156,62 @@ const THE_WARNING =
   '⚠ Covers any Bash command for this conversation — not just this one. ' +
   'Nothing will ask again, whatever it runs.'
 
-describe('§1 · `739` F-1, ruled — Home offers the conversation’s grant, under its warning', () => {
-  it('🔴 the wholesale grant is Home’s last button, its warning drawn whole inside it', async () => {
+describe('Home uses the conversation permission card', () => {
+  const actions = (m: Mounted): HTMLElement[] => [
+    ...m.host.querySelectorAll<HTMLElement>('[data-permission-decision]'),
+  ]
+
+  it('draws the wholesale grant last, with its scope and effect', async () => {
     const row = homeRow(makeBuild())
     const m = await home(row)
-    const buttons = m.all('attention-decide-sess_make')
-    const wordsOn = buttons.map((one) => text(one.querySelector('strong')!))
-    // ⛔ What `main` draws: five buttons, and a sentence saying the grant is not offered here.
-    expect(wordsOn).toEqual([
-      'Allow',
+    expect(actions(m).map((one) => text(one.querySelector('strong')!))).toEqual([
+      'Approve',
       'Allow for this conversation',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel turn',
       'Allow every Bash call for this conversation',
     ])
-    const wide = buttons.at(-1)!
-    const warning = m.q('attention-wide-warning')
-    expect(warning.closest('button')).toBe(wide)
+    const wide = actions(m).at(-1)!
+    const warning = m.q('permission-wide-warning')
+    expect(wide.getAttribute('aria-describedby')).toBe(warning.id)
+    expect(warning.nextElementSibling).toBe(wide)
     expect(text(warning)).toBe(THE_WARNING)
-    expect(text(wide.querySelector('[data-cy="attention-effect"]')!)).toBe(
-      'the agent may do anything of this kind for this conversation',
-    )
-    // ⚑ Its word, then its warning, then the line under it — in the order a person reads them.
-    const parts = [...wide.children].map((one) => one.getAttribute('data-cy'))
-    expect(parts).toEqual(['attention-decide-word', 'attention-wide-warning', 'attention-effect'])
+    const effect = m.q('permission-does-allow_all_for_session')
+    expect(text(effect)).toBe('the agent may do anything of this kind for this conversation')
     for (const el of [wide, warning]) {
       expect(visible(el)).toBe(true)
       assertDrawn(el, 'the conversation’s wholesale grant on Home', m.host)
     }
-    // ⚑ Drawn as a WARNING — the colour of the row's other warning — never as the quiet line under it.
     const ink = (el: Element): string => getComputedStyle(el).color
-    expect(ink(warning)).toBe(ink(m.q('attention-under-disclosed')))
-    expect(ink(warning)).not.toBe(ink(wide.querySelector('[data-cy="attention-effect"]')!))
-    expect(m.all('attention-wide-warning')).toHaveLength(1)
+    expect(ink(warning)).toBe(ink(m.q('permission-under-disclosed')))
+    expect(ink(warning)).not.toBe(ink(effect))
+    expect(m.all('permission-wide-warning')).toHaveLength(1)
     expect(text(m.host)).not.toContain('is not offered here')
     expect(answerFor(row.decisions.at(-1)!)).toEqual({
       permission: { outcome: 'allow_all_for_session' },
     })
   })
 
-  it('🔴 pressed, the grant’s warning dims with the rest of its button', async () => {
+  it('dims the grant and its warning while the answer is on its way', async () => {
     const m = await home({ ...homeRow(makeBuild()), sent: true })
-    const wide = m.all('attention-decide-sess_make').at(-1)!
-    expect((wide as HTMLButtonElement).disabled).toBe(true)
-    const ink = (el: Element): string => getComputedStyle(el).color
-    // ⚑ The same faint ink as the button's own word — a dead control never paints a live warning.
-    expect(ink(m.q('attention-wide-warning'))).toBe(ink(wide.querySelector('strong')!))
+    const wide = actions(m).at(-1)! as HTMLButtonElement
+    expect(wide.disabled).toBe(true)
+    const warning = m.q('permission-wide-warning')
+    expect(getComputedStyle(warning).opacity).toBe(getComputedStyle(wide).opacity)
+    expect(Number(getComputedStyle(warning).opacity)).toBeLessThan(1)
   })
 
-  it('⚑ THE CONTROL — a card with no wholesale grant draws five buttons on Home, and no warning', async () => {
+  it('omits the wholesale grant and its warning when the request does not offer it', async () => {
     const m = await home(homeRow(makeBuild(NO_WIDE)))
-    expect(m.all('attention-decide-word').map(text)).toEqual([
-      'Allow',
+    expect(actions(m).map((one) => text(one.querySelector('strong')!))).toEqual([
+      'Approve',
       'Allow for this conversation',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel turn',
     ])
-    expect(m.all('attention-wide-warning')).toEqual([])
+    expect(m.all('permission-wide-warning')).toEqual([])
   })
 })
 

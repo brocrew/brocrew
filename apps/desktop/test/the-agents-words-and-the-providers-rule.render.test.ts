@@ -1,15 +1,14 @@
+import { decode, escapeRegExp, render, shown } from './helpers/rendered-markup'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
-import { renderToString } from 'vue/server-renderer'
 import type { PermissionOutcome, RuntimeEvent } from '@brobot2/runtime'
 import { toWireEvent } from '../src/main/runtime/event-wire'
 import AttentionQueue from '../src/renderer/src/components/AttentionQueue.vue'
 import PermissionCard from '../src/renderer/src/components/PermissionCard.vue'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
-import UserInputCard from '../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../src/renderer/src/components/QuestionCard.vue'
 import { attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import {
   GRANT_WITHHELD,
@@ -199,35 +198,23 @@ function userInputItem(event: UserInputRequest): UserInputItem {
   return item
 }
 
-const render = (component: unknown, props: Record<string, unknown>): Promise<string> =>
-  renderToString(createSSRApp({ render: () => h(component as never, props) }))
-
-/** ⚑ What a person reads — the templates carry their reasoning inline, as comments. */
-const shown = (markup: string): string => markup.replace(/<!--[\s\S]*?-->/g, '')
-
-const decode = (text: string): string =>
-  text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /** ⚑ Every text a `data-cy` element holds, decoded, in document order — the element's own text only. */
 const textsOf = (markup: string, cy: string): string[] =>
   [
     ...shown(markup).matchAll(new RegExp(`data-cy="${escapeRegExp(cy)}"[^>]*>([\\s\\S]*?)</`, 'g')),
   ].map((one) => decode(one[1]!.trim()))
 
-/** The prompt's complete rendered paragraph, including the shared renderer's block boundary. */
-const promptMarkup = (markup: string): string[] =>
-  [
-    ...shown(markup).matchAll(
-      /data-cy="user-input-prompt"[^>]*><div class="md-chat"[^>]*>([\s\S]*?)<\/div>/g,
-    ),
-  ].map((one) => decode(one[1]!.trim()))
+/** The card's leading Markdown paragraph, read before any scope or reason. */
+const leadParagraph = (markup: string, cy: string): string | undefined => {
+  const html = shown(markup)
+  const start = html.indexOf(`data-cy="${cy}"`)
+  if (start === -1) return undefined
+  const hit =
+    /^[^>]*>\s*<div class="markdown-words"[^>]*>\s*<div class="md-chat"[^>]*>\s*<p>([\s\S]*?)<\/p>/.exec(
+      html.slice(start),
+    )
+  return hit?.[1] === undefined ? undefined : decode(hit[1])
+}
 
 /** ⚑ Where an element starts in the markup, or `-1` — for asking what is drawn before what. */
 const at = (markup: string, cy: string): number => shown(markup).indexOf(`data-cy="${cy}"`)
@@ -274,7 +261,7 @@ describe('§1 · R44 — a command card draws the model’s words as its agent�
     expect(at(html, 'permission-agent-reason')).toBe(-1)
     expect(decode(shown(html))).not.toContain(' says: “')
     // ⚑ …and it is a card that drew its body — the negative sits beside what the markup does hold.
-    expect(textsOf(html, 'permission-action')).toEqual([COMMAND])
+    expect(leadParagraph(html, 'permission-action')).toBe(COMMAND)
     expect(textsOf(html, 'permission-detail')).toEqual([COMMAND])
   })
 
@@ -322,11 +309,13 @@ describe('§1 · R44 — a command card draws the model’s words as its agent�
 
 describe('§2 · R44 — a grant card draws the model’s words as its agent’s, outside what the grant authorizes', () => {
   const card = (request: UserInputRequest, over: Record<string, unknown> = {}): Promise<string> =>
-    render(UserInputCard, { item: userInputItem(request), ...over })
+    render(QuestionCard, { item: userInputItem(request), ...over })
 
   /** ⚑ The grant block's first line — the one a legacy row fills with the model's words. */
   const firstGrantLine = (html: string): string | undefined =>
-    /data-cy="user-input-permission"[^>]*>\s*<div[^>]*>([^<]*)<\/div>/.exec(shown(html))?.[1]
+    /data-cy="user-input-permission"[^>]*>\s*<div[^>]*>([\s\S]*?)<\/div>/
+      .exec(shown(html))?.[1]
+      ?.replace(/<[^>]+>/g, '')
 
   it('🔴 `permission.agentReason` is drawn by the agent’s name, under this app’s headline and BEFORE the grant block', async () => {
     const html = await card(aGrant(), { ownAgent: 'Ada' })
@@ -337,7 +326,7 @@ describe('§2 · R44 — a grant card draws the model’s words as its agent’s
       inTheAgentsWords('Ada', THE_MODELS_WORDS),
     ])
     // ⚑ The headline stays this app's own sentence.
-    expect(promptMarkup(html)).toEqual([`<p>${THE_AGENT_ASKS_FOR_ACCESS}</p>`])
+    expect(leadParagraph(html, 'user-input-prompt')).toBe(THE_AGENT_ASKS_FOR_ACCESS)
     // ⛔ **Never a scope line** (`permission.ts`): read once, and that once is above the block.
     expect(times(html, THE_MODELS_WORDS)).toBe(1)
     expect(at(html, 'user-input-prompt')).toBeLessThan(at(html, 'user-input-agent-reason'))
@@ -349,7 +338,7 @@ describe('§2 · R44 — a grant card draws the model’s words as its agent’s
     const html = await card(aLegacyGrant(), { ownAgent: 'Ada' })
     expect(at(html, 'user-input-agent-reason')).toBe(-1)
     expect(decode(shown(html))).not.toContain(' says: “')
-    expect(promptMarkup(html)).toEqual([`<p>${THE_MODELS_WORDS}</p>`])
+    expect(leadParagraph(html, 'user-input-prompt')).toBe(THE_MODELS_WORDS)
     expect(firstGrantLine(html)).toBe(THE_MODELS_WORDS)
     expect(times(html, THE_MODELS_WORDS)).toBe(2)
   })
@@ -411,9 +400,9 @@ describe('§3 · R44 — Home’s row says the agent’s words by its name, and 
     // ⛔ Never a scope line — the scope is still what Allow runs.
     expect(row.scope).toEqual([COMMAND, 'in /work'])
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-agent-reason')).toEqual([row.agentSays])
-    expect(at(html, 'attention-asked')).toBeLessThan(at(html, 'attention-agent-reason'))
-    expect(at(html, 'attention-agent-reason')).toBeLessThan(at(html, 'attention-scope'))
+    expect(textsOf(html, 'permission-agent-reason')).toEqual([row.agentSays])
+    expect(at(html, 'permission-action')).toBeLessThan(at(html, 'permission-agent-reason'))
+    expect(at(html, 'permission-agent-reason')).toBeLessThan(at(html, 'permission-detail'))
     expect(times(html, THE_MODELS_WORDS)).toBe(1)
   })
 
@@ -423,8 +412,8 @@ describe('§3 · R44 — Home’s row says the agent’s words by its name, and 
     expect('agentSays' in row).toBe(false)
     expect(row.scope).toEqual([COMMAND, 'in /work'])
     const html = await renderHome(row)
-    expect(at(html, 'attention-agent-reason')).toBe(-1)
-    expect(textsOf(html, 'attention-asked')).toEqual([COMMAND])
+    expect(at(html, 'permission-agent-reason')).toBe(-1)
+    expect(textsOf(html, 'permission-detail')).toEqual([COMMAND])
   })
 
   it('🔴 a grant row carries it too — off `permission.agentReason`, and its scope is only what the grant authorizes', async () => {
@@ -439,10 +428,10 @@ describe('§3 · R44 — Home’s row says the agent’s words by its name, and 
       'network: access requested, without naming a host',
     ])
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-agent-reason')).toEqual([
+    expect(textsOf(html, 'user-input-agent-reason')).toEqual([
       'Ada says: “Do you want me to clean the build folder?”',
     ])
-    expect(at(html, 'attention-agent-reason')).toBeLessThan(at(html, 'attention-scope'))
+    expect(at(html, 'user-input-agent-reason')).toBeLessThan(at(html, 'user-input-permission'))
   })
 
   it('⚑ THE CONTROL — a LEGACY grant keeps its `reason` as the first scope line, as it was, and carries no `agentSays`', async () => {
@@ -456,7 +445,7 @@ describe('§3 · R44 — Home’s row says the agent’s words by its name, and 
       'network: access requested, without naming a host',
     ])
     const html = await renderHome(row)
-    expect(at(html, 'attention-agent-reason')).toBe(-1)
+    expect(at(html, 'user-input-agent-reason')).toBe(-1)
     expect(decode(shown(html))).not.toContain(' says: “')
   })
 
@@ -533,7 +522,7 @@ describe('§4 · R73 — a policy’s words are labelled as the provider’s RUL
     expect(row.marksSay).toHaveLength(1)
     expect(row.marksSay).not.toEqual([inTheProvidersWords(THE_POLICYS_WORDS)])
     expect(row.marksSay).toEqual([inItsRulesWords(THE_POLICYS_WORDS, 'codex')])
-    expect(textsOf(await renderHome(row), 'attention-mark')).toEqual([
+    expect(textsOf(await renderHome(row), 'permission-provider-reason')).toEqual([
       `${providerName('codex')}’s rule: “${THE_POLICYS_WORDS}”`,
     ])
     // ⚑ …and a policy row carries no agent's words.
@@ -545,8 +534,9 @@ describe('§4 · R73 — a policy’s words are labelled as the provider’s RUL
     expect(unlabelled.marksSay).toEqual([inTheProvidersWords(THE_POLICYS_WORDS)])
     const claude = homeRow(markedAsk(), { provider: 'claude', profileId: 'ada' })
     expect(claude.marksSay).toEqual([GRANT_WITHHELD, inTheProvidersWords(THE_CLIS_OWN)])
-    expect(textsOf(await renderHome(claude), 'attention-mark')).toEqual([
-      GRANT_WITHHELD,
+    const html = await renderHome(claude)
+    expect(textsOf(html, 'permission-grant-withheld')).toEqual([GRANT_WITHHELD])
+    expect(textsOf(html, 'permission-provider-reason')).toEqual([
       `The provider’s reason: “${THE_CLIS_OWN}”`,
     ])
   })
@@ -627,7 +617,7 @@ describe('§4b · R73 — the person’s queue copies the live row’s sentence'
     if (row === undefined) throw new Error('the person’s queue drew no row')
     expect(row.marksSay).toEqual([`Codex’s rule: “${THE_POLICYS_WORDS}”`])
     const markup = await render(PersonsQueue, {})
-    expect(textsOf(markup, `persons-queue-mark-${live.key}`)).toEqual([
+    expect(textsOf(markup, 'permission-provider-reason')).toEqual([
       inItsRulesWords(THE_POLICYS_WORDS, 'codex'),
     ])
   })
@@ -636,7 +626,7 @@ describe('§4b · R73 — the person’s queue copies the live row’s sentence'
     const live = homeRow(stoppedByPolicy(false), ADA)
     supply([live])
     const markup = await render(PersonsQueue, {})
-    expect(textsOf(markup, `persons-queue-mark-${live.key}`)).toEqual([
+    expect(textsOf(markup, 'permission-provider-reason')).toEqual([
       inTheProvidersWords(THE_POLICYS_WORDS),
     ])
   })

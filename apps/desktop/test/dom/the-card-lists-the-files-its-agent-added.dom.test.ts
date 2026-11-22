@@ -122,18 +122,18 @@ describe('the agent card lists the files its agent added', () => {
     // ⚑ The box folds, so its heading wears the fold's chevron where the icon was.
     expect(box.querySelector('.head use')!.getAttribute('href')).toBe('#i-chevron')
 
-    // Draw the four newest files as tiles, each with its piece’s label and title.
+    // Draw the newest shared file rows, each with its piece’s label and title.
     const tiles = m.all('card-file')
     expect(tiles.map((tile) => tile.dataset.document)).toEqual([
       'res_results',
       'res_input',
       'res_draft',
     ])
-    expect(read(tiles[0]!.querySelector('.file-tile-name')!)).toBe(
+    expect(read(tiles[0]!.querySelector('.file-title')!)).toBe(
       'Testing the tree after the reset (W1.3): results',
     )
-    expect(read(tiles[0]!.querySelector('.file-tile-tag')!)).toBe('W1.3')
-    expect(tiles[0]!.querySelector('.file-tile-tag')!.getAttribute('title')).toBe(
+    expect(read(tiles[0]!.querySelector('.file-tag')!)).toBe('W1.3')
+    expect(tiles[0]!.querySelector('.file-tag')!.getAttribute('title')).toBe(
       'Test the tree after the reset',
     )
     for (const tile of tiles) assertDrawn(tile, tile.dataset.document ?? 'a tile', m.host)
@@ -155,7 +155,7 @@ describe('the agent card lists the files its agent added', () => {
     ])
     expect(read(dialog.querySelector('[data-cy="all-files-count"]')!)).toBe('3 files')
     expect(read(rows[0]!.querySelector('.file-meta')!)).toBe(
-      `W1.3 made · ${clockTime(T0 + 14 * MIN)}`,
+      `W1.3 · Ali · ${clockTime(T0 + 14 * MIN)}`,
     )
     // ⚑ The day is on the time's own title, as every other clock time in the window carries it.
     expect(rows[0]!.querySelector('.file-meta')!.getAttribute('title')).toBe(
@@ -195,7 +195,7 @@ describe('the agent card lists the files its agent added', () => {
     ])
     for (const one of words) expect(one.tagName).toBe('DIV')
     // ⚑ …and they are still WORDS: a plain tile draws its title.
-    expect(read(words[1]!.querySelector('.file-tile-name')!)).toBe('Input for test 2 and 5 (W1.3)')
+    expect(read(words[1]!.querySelector('.file-title')!)).toBe('Input for test 2 and 5 (W1.3)')
     words[0]!.click()
     expect(plain.opened).toEqual([])
   })
@@ -229,7 +229,7 @@ describe('the agent card lists the files its agent added', () => {
       'A'.repeat(4) + ' very long title that no row of the agent card could ever hold on one line'
     const { m } = show([file({ resourceId: 'res_long', title: long, name: 'long.md' })])
     await drawnReady()
-    const title = m.q('card-file').querySelector<HTMLElement>('.file-tile-name')!
+    const title = m.q('card-file').querySelector<HTMLElement>('.file-title')!
     assertClippedButTold(title, 'the long title', m.host)
     expect(m.q('card-file').getAttribute('title')).toBe(`${long} — long.md`)
   })
@@ -286,7 +286,7 @@ describe('the agent card lists the files its agent added', () => {
       'res_draft',
     ])
     for (const row of rows) expect(row.tagName).toBe('DIV')
-    expect(read(rows[0]!.querySelector('.file-tile-name')!)).toBe(
+    expect(read(rows[0]!.querySelector('.file-title')!)).toBe(
       'Testing the tree after the reset (W1.3): results',
     )
   })

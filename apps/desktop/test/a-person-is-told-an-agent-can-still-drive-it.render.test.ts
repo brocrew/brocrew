@@ -13,7 +13,10 @@ import {
   ANOTHER_CALLER_MAY_REACH_IN,
   NOT_ASKED_AGAIN,
 } from '../src/renderer/src/lib/standing-grants'
-import type { AttentionRequest } from '../src/renderer/src/lib/attention'
+import {
+  attentionToACardNobodyHolds,
+  type AttentionRequest,
+} from '../src/renderer/src/lib/attention'
 
 /**
  * 🔴 **349 §3b · HO-006 §4.5 — the disclosure, on the two surfaces that already exist.**
@@ -150,30 +153,32 @@ const info = (session: CreatedSession): Promise<string> =>
   )
 
 /** One waiting permission, as `attentionQueue` projects one. */
-const REQUEST: AttentionRequest = {
-  key: 'sess_1:perm_1',
-  sessionId: 'sess_1',
-  requestId: 'perm_1',
-  itemId: 'item_1',
-  kind: 'permission',
-  where: 'work',
-  hasACommander: false,
-  provider: 'claude',
-  profileId: 'default',
-  who: 'default',
-  standing: 'waiting: permission',
-  asked: 'run: touch a file',
-  scope: ['write /work/out.txt'],
-  underDisclosed: false,
-  detailOmitted: null,
-  // ⚑ **487 · this fixture's request CAN be allowed**, so there is no sentence about why not.
-  noPositive: null,
-  decisions: [{ kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } }],
-  limit: null,
-  at: 1_700_000_000_000,
-  sent: false,
-  refused: null,
-}
+const REQUEST = attentionToACardNobodyHolds(
+  'sess_1',
+  {
+    provider: 'claude',
+    profileId: 'default',
+    asked: {
+      type: 'permission_request',
+      id: 'perm_1',
+      kind: 'command',
+      action: 'run: touch a file',
+      detail: 'touch /work/out.txt',
+      scope: {
+        cwd: '/work',
+        paths: ['write /work/out.txt'],
+        networkHosts: [],
+        persistence: 'once',
+        amendments: [],
+        availableDecisions: ['allow'],
+        underDisclosed: false,
+      },
+    },
+  },
+  { sent: false, refused: null },
+  (name) => name,
+)
+if (!REQUEST) throw new Error('fixture is missing a permission card')
 
 const queue = (over: Partial<AttentionRequest> = {}): Promise<string> =>
   renderToString(
@@ -280,8 +285,8 @@ describe('349 §3b · a person taking a conversation over is told an agent can s
     // ⛔ **The pairing**: the same row, one field over, still draws its card and its decision — so
     // the negative is about this line and not about a queue that rendered nothing.
     const ordinary = await queue()
-    expect(ordinary).toContain('data-cy="attention-asked"')
-    expect(ordinary).toContain('data-cy="attention-decide-sess_1"')
+    expect(ordinary).toContain('data-cy="permission-action"')
+    expect(ordinary).toContain('data-cy="permission-allow"')
     expect(ordinary).not.toContain('data-cy="attention-has-a-commander"')
   })
 

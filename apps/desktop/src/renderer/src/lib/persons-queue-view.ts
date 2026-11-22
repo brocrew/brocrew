@@ -10,10 +10,9 @@ import type {
   WorkInHand,
 } from '../../../shared/question-contracts'
 import { NOTHING_NAMED_THE_WORK, WALK_COVERS } from '../../../shared/questions'
-import type { AttentionDecision, AttentionRequest } from './attention'
+import type { AttentionRequest } from './attention'
 import { agoWords } from './clock'
 import { OPEN_THE_CONVERSATION } from './taking-over'
-import type { PermissionDecision } from '../../../shared/runtime-ipc'
 // ⚑ **UI-009 · a question this app asked is drawn and answered as `QuestionCard`** — see
 // {@link PersonsQueueRow.question}.
 import { wordsAsked, type AppQuestion, type QuestionWords } from './question-card'
@@ -345,42 +344,6 @@ function disclosedBy(card: AttentionRequest): DisclosedRequest {
 }
 
 /**
- * The scope lines about this one action, which the closed card draws: the complete command or
- * file first. Every line, where the card does not say which are about a broader grant.
- */
-export function actionLinesOf(disclosed: DisclosedRequest): readonly string[] {
-  return disclosed.actionLines === undefined
-    ? disclosed.scope
-    : disclosed.scope.slice(0, disclosed.actionLines)
-}
-
-/** The scope lines about what a broader answer would install, drawn only under more options. */
-export function broaderLinesOf(disclosed: DisclosedRequest): readonly string[] {
-  return disclosed.actionLines === undefined ? [] : disclosed.scope.slice(disclosed.actionLines)
-}
-
-/**
- * Whether a permission answer settles this one request and nothing more. A standing grant, and a
- * Cancel that asks the whole turn to stop, are broader choices.
- */
-const SETTLES_ONLY_THIS_REQUEST: Readonly<Record<PermissionDecision['outcome'], boolean>> = {
-  allow: true,
-  deny: true,
-  allow_for_session: false,
-  allow_all_for_session: false,
-  allow_always: false,
-  cancel: false,
-}
-
-/**
- * Whether an answer is one of the request's own primary answers, drawn side by side on the card.
- * An answer to a question settles only that question, so every one of them is.
- */
-export function isAPrimaryAnswer(decision: AttentionDecision): boolean {
-  return decision.kind !== 'permission' || SETTLES_ONLY_THIS_REQUEST[decision.decision.outcome]
-}
-
-/**
  * 🔴 **The one derivation of this queue's rows and its words** — pure, so both surfaces and a test
  * ask it the same question without a component around it.
  *
@@ -532,6 +495,7 @@ export function personsQueueView(
       key,
       sessionId: request.askedBy,
       requestId: request.requestId,
+      ...(live?.card ? { liveCard: live.card, cardProvider: live.provider } : {}),
       chain: chainOf(hops, RAISED_IT[kind]),
       unfollowable,
       sentence,

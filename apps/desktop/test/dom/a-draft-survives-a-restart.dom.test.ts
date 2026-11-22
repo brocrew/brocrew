@@ -84,9 +84,7 @@ describe('a draft restored at launch (744 · R100)', () => {
     expect(missing[0]!.textContent?.trim()).toBe('missing')
     // ⚑ …and on hover it says the WHOLE message waits on it, which is what the send does
     expect(missing[0]!.getAttribute('title')).toBe(MISSING_ON_RESTORE)
-    expect(MISSING_ON_RESTORE).toContain(
-      'the message will not send until it is back or you remove it',
-    )
+    expect(MISSING_ON_RESTORE).toBe('File missing. Remove it to send.')
     // ⚑ on the gone path's chip, beside its name — never instead of it
     expect(missing[0]!.closest('li')?.textContent).toContain('moved-away.md')
     expect(missing[0]!.closest('li')?.querySelector('[data-cy="detach-file"]')).not.toBeNull()

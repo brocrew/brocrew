@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import type {
   AskedQuestion,
   HowItWasRaised,
@@ -9,7 +10,11 @@ import type {
 import { afterEach, describe, expect, it } from 'vitest'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
-import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
+import {
+  attentionToACardNobodyHolds,
+  type AttentionDecision,
+  type AttentionRequest,
+} from '../../src/renderer/src/lib/attention'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
 import {
   NOTHING_NAMED_THE_WORK,
@@ -85,32 +90,29 @@ function asked(raisedBy: HowItWasRaised, words: AskedQuestion | null): PersonsQu
 
 /** ⚑ The live card a held conversation shows — `persons-queue.dom.test.ts`' `live`, cut down. */
 function live(): AttentionRequest {
-  return {
-    key: KEY,
-    sessionId: SESSION,
-    requestId: 'req_1',
-    itemId: 'item_req_1',
-    kind: 'permission',
-    where: 'trip-planning',
-    hasACommander: false,
-    provider: 'claude',
-    profileId: null,
-    who: null,
-    standing: 'waiting: permission',
-    asked: 'run a command',
-    scope: [],
-    underDisclosed: false,
-    detailOmitted: null,
-    noPositive: null,
-    at: NOW,
-    decisions: [
-      { kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } },
-      { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-    ],
-    limit: null,
-    sent: false,
-    refused: null,
-  }
+  const question = attentionToACardNobodyHolds(
+    SESSION,
+    {
+      asked: {
+        type: 'user_input_request',
+        id: 'req_1',
+        prompt: ASKED.prompt,
+        questions: [
+          {
+            id: 'q1',
+            prompt: ASKED.prompt,
+            options: [{ label: 'eu-central' }, { label: 'us-east' }],
+          },
+        ],
+      },
+      provider: 'claude',
+      profileId: 'default',
+    },
+    { sent: false, refused: null },
+    NAME,
+  )
+  if (!question) throw new Error('fixture did not produce a question card')
+  return question
 }
 
 const walk = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({
@@ -160,14 +162,16 @@ afterEach(() => {
 })
 
 describe('§1 · its words are on the row', () => {
-  it('🔴 the words, what was added, each part’s header, wording, choices and what it takes', () => {
+  it('🔴 the words, what was added, each part’s header, wording, choices and what it takes', async () => {
     const m = draw(asked('the-provider', ASKED))
     const block = m.q(`persons-queue-asked-${KEY}`)
-    const said = block.innerText
+    block.querySelector<HTMLButtonElement>('[data-cy="question-more"]')!.click()
+    await nextTick()
+    const said = block.innerText.replace(/\s+/g, ' ')
     expect(said).toContain('Which region should the bucket live in?')
     expect(said).toContain('Added: The customer is in Germany.')
     expect(m.all('persons-queue-asked-part')).toHaveLength(2)
-    expect(said).toContain('Region')
+    expect(block.querySelector('.header')?.textContent).toBe('Region')
     expect(said).toContain('Pick the regions to replicate to')
     expect(said).toContain('eu-central')
     expect(said).toContain('Frankfurt')
@@ -227,13 +231,19 @@ describe('§2 · for reading only', () => {
 describe('§3 · the choices are not drawn twice', () => {
   it('🔴 where the row’s own answers are pressable, its choices are not listed again beside them', () => {
     const m = draw(asked('the-provider', ASKED), { answerable: true })
-    // ⚑ The premise: the held card's own answers are on the row.
-    expect(m.q(`persons-queue-row-${KEY}`).querySelectorAll('.pq-answer').length).toBeGreaterThan(0)
-    const block = m.q(`persons-queue-asked-${KEY}`)
-    // ⚑ Its words still show…
-    expect(block.innerText).toContain('Which region should the bucket live in?')
-    // ⛔ …and its choice list does not.
-    expect(block.querySelectorAll('ul')).toHaveLength(0)
+    const row = m.q(`persons-queue-row-${KEY}`)
+    const choices = [...row.querySelectorAll<HTMLButtonElement>('button[data-option]')]
+    expect(choices.map((button) => button.dataset.option)).toEqual(['eu-central', 'us-east'])
+    expect(choices.every((button) => !button.disabled)).toBe(true)
+    expect(row.innerText).toContain(ASKED.prompt)
+    expect(row.querySelectorAll('li[data-option]')).toHaveLength(0)
+    choices[0]!.click()
+    expect(settled).toHaveLength(1)
+    expect(settled[0]!.decision).toMatchObject({
+      kind: 'answer',
+      questionId: 'q1',
+      option: 'eu-central',
+    })
   })
 
   it('⚑ …and with none pressable here, the list is drawn — its labels, in order', () => {

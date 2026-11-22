@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
 import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
 import type { QuestionCardReading, QuestionPart } from '../../src/renderer/src/lib/question-card'
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import { mount, unmountAll, type Mounted } from './harness'
@@ -210,7 +209,7 @@ const userInput = (
 describe('the provider question card names each free-answer field by its question', () => {
   it('a question with no options is named by its prompt', () => {
     const m = mount(
-      UserInputCard,
+      QuestionCard,
       { item: userInput([{ id: 'q1', prompt: 'What is the branch called?', options: [] }]) },
       { width: 900 },
     )
@@ -230,14 +229,14 @@ describe('the provider question card names each free-answer field by its questio
       },
       { id: 'q2', prompt: 'What else?', options: [] },
     ])
-    const m = mount(UserInputCard, { item }, { width: 900 })
+    const m = mount(QuestionCard, { item }, { width: 900 })
     expect(nameOf(m.q('user-input-other-q1'))).toContain('Which database?')
     expect(nameOf(m.q('user-input-answer-q2'))).toBe('What else?')
   })
 
   it('a question with no words falls back to the card prompt', () => {
     const m = mount(
-      UserInputCard,
+      QuestionCard,
       { item: userInput([{ id: 'q1', prompt: '', options: [] }], 'Name the release') },
       { width: 900 },
     )
@@ -246,8 +245,8 @@ describe('the provider question card names each free-answer field by its questio
 
   it('two cards in one page never share a label id', () => {
     const both = defineComponent(() => () => [
-      h(UserInputCard, { item: userInput([{ id: 'q1', prompt: 'First?', options: [] }]) }),
-      h(UserInputCard, { item: userInput([{ id: 'q1', prompt: 'Second?', options: [] }]) }),
+      h(QuestionCard, { item: userInput([{ id: 'q1', prompt: 'First?', options: [] }]) }),
+      h(QuestionCard, { item: userInput([{ id: 'q1', prompt: 'Second?', options: [] }]) }),
     ])
     const m = mount(both, {}, { width: 900 })
     const [a, b] = m.all('user-input-answer-q1')
