@@ -6,12 +6,17 @@ import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { ProfilePastWorkSearch, searchPastWork } from '../src/main/db/past-work-search'
+import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { createSessionStore } from '../src/main/db/session-store'
 import {
+  pastWorkRecentStart,
   pastWorkSearchInWords,
   pastWorkSearchQuery,
+  pastWorkSearchResult,
   pastWorkStart,
   type PastWorkHit,
+  type PastWorkSource,
 } from '../src/shared/past-work-search'
 import { WORK_SEARCH_BOUNDS } from '../src/shared/work-search'
 import { PastWorkSearchReader } from '../src/main/db/past-work-search-reader'
@@ -19,6 +24,8 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { WorkSearch } from '../src/main/runtime/work-search'
+import type { WorkSearchPage } from '../src/shared/work-search'
 import { FakeRuntime } from '@brobot2/runtime'
 import { archivedInMemory } from '../src/main/archived-file'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -74,6 +81,86 @@ it('requires all words to occur in one message in both search modes', () => {
     ok: true,
     hits: [],
   })
+})
+
+it('returns partial hits and resumes inside one conversation when document capacity is exhausted', () => {
+  const w = world()
+  const caller = 'capacity-caller'
+  const target = 'capacity-target'
+  w.create(caller)
+  w.create(target)
+  for (const suffix of ['first', 'second', 'third']) {
+    w.append(target, { type: 'assistant_message', text: 'capacityword ' + suffix })
+  }
+  const search = new ProfilePastWorkSearch(w.db, 1)
+  cleanups.push(() => search.close())
+  const words = 'capacityword'
+  const transcripts = { from: '2027-01-15', to: '2027-01-15' }
+  for (const scope of [undefined, transcripts]) {
+    let cursor: string | undefined
+    for (const ordinal of [0, 1, 2]) {
+      const result = search.read(w.store, caller, words, undefined, undefined, cursor, scope)
+      expect(result).toMatchObject({
+        ok: true,
+        complete: ordinal === 2,
+        hits: [{ conversation: target, turn: { ordinal } }],
+      })
+      if (!result.ok) throw new Error('no partial result')
+      expect(result.next_cursor).not.toBe(cursor)
+      cursor = result.next_cursor ?? undefined
+    }
+    expect(cursor).toBeUndefined()
+  }
+
+  let after = null as ReturnType<typeof pastWorkRecentStart>
+  for (const ordinal of [0, 1, 2]) {
+    const source = search.sourceRevision(caller, undefined, null, { after: after ?? null })!
+    const result = search.read(w.store, caller, words, { ...source, transcript: transcripts })
+    expect(result).toMatchObject({
+      ok: true,
+      complete: ordinal === 2,
+      hits: [{ conversation: target, turn: { ordinal } }],
+    })
+    if (!result.ok) throw new Error('no partial recent result')
+    after =
+      result.next_cursor === null
+        ? null
+        : pastWorkRecentStart(result.next_cursor, words, null, transcripts)
+    if (ordinal < 2) expect(after).toMatchObject({ id: target, position: { ordinal: ordinal + 1 } })
+  }
+})
+
+it('continues at the exact next message part and made-file row', () => {
+  const w = world()
+  const caller = 'capacity-caller'
+  const root = w.create(caller)
+  w.append(caller, {
+    type: 'user_turn',
+    text: 'capacityjoined',
+    parts: [{ text: 'capacityword first' }, { text: 'capacityword second' }],
+  })
+  w.db
+    .prepare(
+      `INSERT INTO work_resource(id, work_id, role, name, sha256, bytes, added_by_session_id, created_at)
+       VALUES (?, ?, 'made', 'capacityword.md', ?, 10, ?, 1800000000000)`,
+    )
+    .run('capacity-resource', root.piece, 'a'.repeat(64), caller)
+  const search = new ProfilePastWorkSearch(w.db, 1)
+  cleanups.push(() => search.close())
+  const words = 'capacityword'
+
+  let cursor: string | undefined
+  for (const suffix of ['first', 'second', '.md']) {
+    const result = search.read(w.store, caller, words, undefined, undefined, cursor)
+    expect(result).toMatchObject({
+      ok: true,
+      complete: suffix === '.md',
+      hits: [{ snippet: expect.stringContaining(suffix) }],
+    })
+    if (!result.ok) throw new Error('no partial result')
+    cursor = result.next_cursor ?? undefined
+  }
+  expect(cursor).toBeUndefined()
 })
 
 it('finds matching recorded transcript positions inside the requested profile and dates', () => {
@@ -292,7 +379,7 @@ it('continues an empty bounded page into a workspace with more than ten thousand
     next_cursor: null,
     hits: [expect.objectContaining({ conversation: target })],
   })
-  expect(pastWorkSearchInWords(page, true)).toContain('End of the requested search scope.')
+  expect(pastWorkSearchInWords(page, true)).toContain('End of this search.')
   const firstSource = w.store.pastWorkSearchSource(caller)!
   expect(firstSource).toMatchObject({ next: expect.any(String) })
   const after = pastWorkStart(query, null, lastCursor)
@@ -526,9 +613,15 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   )
   const archived = archivedInMemory()
   archived.add(['fictional-target'], 1_800_000_000_000)
+  const engine = new WorkSearchEngine(w.file)
+  cleanups.push(() => engine.close())
   const host = new RuntimeHost({
     store: w.store,
     archived,
+    workSearchReader: {
+      read: async (caller, query) => engine.read(caller, query),
+      close: async () => {},
+    },
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: () => '/fictional/provider-home',
     providerHomePath: () => '/fictional/provider-home',
@@ -567,7 +660,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     hits: [expect.objectContaining({ archived: true })],
   })
   expect(answer.text).toContain('archived')
-  expect(answer.text).toContain('brocrew://piece/')
+  expect(answer.text).toContain('brocrew://conversation/')
   expect(answer.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
   expect(answer.text).not.toContain('last active')
   const transcript = await tool.call({ words: 'archivequartz', in: 'transcripts' })
@@ -582,6 +675,13 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     ],
   })
   expect(transcript.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
+  const dated = await tool.call({ words: 'archivequartz', from: '2027-01-15', to: '2027-01-15' })
+  expect(dated.structured).toMatchObject({
+    outcome: 'ok',
+    hits: [{ conversation: 'fictional-target', turn: { ordinal: 0 } }],
+  })
+  const outside = await tool.call({ words: 'archivequartz', from: '2027-01-16' })
+  expect(outside.structured).toMatchObject({ outcome: 'ok', hits: [] })
   const narrowed = await tool.call({ words: 'archivequartz', profile: 'fictional-reader' })
   expect(narrowed.structured).toMatchObject({ outcome: 'ok', hits: [] })
   archived.remove(['fictional-target'])
@@ -594,6 +694,8 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     'fictional-caller',
     'archivequartz',
     'fictional-other-profile',
+    undefined,
+    {},
   )
   w.db
     .prepare(
@@ -608,7 +710,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     { words: 'x'.repeat(201) },
     { words: 'x '.repeat(21) },
     { words: 'archivequartz', scope: 'all' },
-    { words: 'archivequartz', from: '2027-01-15' },
+    { words: 'archivequartz', from: '2027-02-30' },
     { words: 'archivequartz', in: 'transcripts', from: '2027-02-30' },
   ]) {
     expect(pastWorkSearchQuery.safeParse(input).success).toBe(false)
@@ -620,5 +722,269 @@ it('exposes the real tool with archived results and rejects widened scope or mal
   expect(w.store.searchPastWork('fictional-unrecorded', 'archivequartz')).toEqual({
     ok: false,
     reason: 'unavailable',
+  })
+})
+
+it('returns work titles and briefs alongside a bounded transcript read', async () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  const target = 'fictional-target'
+  w.create(caller)
+  const root = w.create(target)
+  const piece = 'fictional-piece'
+  const title = 'titlequartz'
+  const brief = 'briefquartz'
+  const label = `${root.label}.1`
+  w.store.recordGive(
+    {
+      piece,
+      parent: root.piece,
+      number: 1,
+      owner: target,
+      givenBy: null,
+      title,
+      brief,
+      folder: null,
+      inputs: [],
+    },
+    0,
+    { type: 'work_given', piece, label, parent: root.piece, givenBy: null, title, brief },
+    1_800_000_000_000,
+  )
+  w.store.append(
+    target,
+    1,
+    { type: 'work_status_set', piece, line: 'statusquartz', by: target },
+    1_800_000_000_001,
+  )
+  w.append(caller, { type: 'assistant_message', text: 'I said titlequartz in this turn.' })
+  const engine = new WorkSearchEngine(w.file)
+  cleanups.push(() => engine.close())
+  const fallback = vi.fn(async (source: PastWorkSource, as: string, words: string) =>
+    searchPastWork(w.db, w.store, as, words, source),
+  )
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: { read: async (as, query) => engine.read(as, query) },
+      pastWorkSearchReader: { read: fallback },
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  for (const phrase of [title, brief]) {
+    const page = await search.searchPastWork(caller, phrase)
+    expect(pastWorkSearchResult.safeParse(page).success).toBe(true)
+    expect(page).toMatchObject({
+      ok: true,
+      hits: [
+        { conversation: target, piece, matched_field: 'work title or brief' },
+        ...(phrase === title ? [{ conversation: caller, matched_field: 'agent reply' }] : []),
+      ],
+    })
+  }
+  expect(fallback).toHaveBeenCalledTimes(2)
+  expect(fallback).toHaveBeenLastCalledWith(
+    expect.objectContaining({ transcript: {}, recent: { after: null, preview: true } }),
+    caller,
+    brief,
+  )
+  expect(await search.searchWork(caller, { words: 'statusquartz' })).toMatchObject({
+    ok: true,
+    page: { hits: [{ conversation: target }] },
+  })
+  expect(await search.searchPastWork(caller, 'statusquartz')).toMatchObject({
+    ok: true,
+    hits: [],
+  })
+  expect(fallback).toHaveBeenCalledTimes(3)
+  expect(await search.searchPastWork(caller, title, undefined, undefined, {})).toMatchObject({
+    ok: true,
+    hits: [{ conversation: caller, matched_field: 'agent reply' }],
+  })
+  expect(fallback).toHaveBeenLastCalledWith(
+    expect.objectContaining({ transcript: {} }),
+    caller,
+    title,
+  )
+})
+
+it.each([0, 1])('previews transcripts even when work is incomplete (%i)', async (skipped) => {
+  const w = world()
+  const caller = 'fictional-caller'
+  w.create(caller)
+  const page: WorkSearchPage = {
+    hits: [],
+    searched: 10,
+    rows_unread: 0,
+    ledgers_skipped: 0,
+    complete: true,
+    next_cursor: null,
+  }
+  const metadata = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      page: { ...page, ledgers_skipped: skipped, complete: false, next_cursor: 'next' },
+    })
+    .mockResolvedValueOnce({ ok: true, page })
+  const fallback = vi.fn(async () => ({
+    ok: true as const,
+    hits: [],
+    complete: true,
+    next_cursor: null,
+  }))
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: { read: metadata },
+      pastWorkSearchReader: { read: fallback },
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  const first = await search.searchPastWork(caller, 'missingquartz', 'fictional-reader')
+  expect(first).toMatchObject({ ok: true, hits: [], complete: false })
+  expect(fallback).toHaveBeenCalledTimes(1)
+  if (!first.ok || first.next_cursor === null) throw new Error('expected a work cursor')
+  const final = await search.searchPastWork(
+    caller,
+    'missingquartz',
+    'fictional-reader',
+    first.next_cursor,
+  )
+  expect(metadata).toHaveBeenLastCalledWith(
+    caller,
+    expect.objectContaining({
+      cursor: 'next',
+      profile: 'fictional-reader',
+      titlesAndBriefs: true,
+    }),
+  )
+  expect(final).toMatchObject({ ok: true, hits: [], next_cursor: null, complete: skipped === 0 })
+  if (skipped > 0) expect(final).toHaveProperty('work_unread', true)
+  expect(fallback).toHaveBeenCalledTimes(1)
+})
+
+it('continues a recent-first transcript preview through the real worker', async () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  w.create(caller)
+  for (let i = 0; i < 7; i++) {
+    const id = `fictional-${i}`
+    w.create(id)
+    w.append(id, { type: 'assistant_message', text: 'previewquartz' }, 1_800_000_000_000 + i)
+    w.db
+      .prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?')
+      .run(1_800_000_000_000 + i, id)
+  }
+  const entry = await bundleAWorker(
+    'src/main/past-work-search.worker.ts',
+    w.directory,
+    'preview.cjs',
+  )
+  const reader = new PastWorkSearchReader((file) => new Worker(entry, { workerData: { file } }))
+  cleanups.push(() => reader.close())
+  const search = new WorkSearch(
+    {
+      store: w.store,
+      workSearchReader: {
+        read: async (_caller, query) => ({
+          ok: true,
+          page: {
+            hits: [],
+            searched: 8,
+            rows_unread: 0,
+            ledgers_skipped: 0,
+            complete: query.cursor !== undefined,
+            next_cursor: query.cursor === undefined ? 'work-next' : null,
+          },
+        }),
+      },
+      pastWorkSearchReader: reader,
+    },
+    { closed: false },
+    archivedInMemory(),
+  )
+  const words = 'previewquartz'
+  const dates = { from: '2027-01-15', to: '2027-01-15' }
+  const both = { ...dates, includeWork: true as const }
+  const preview = await search.searchPastWork(caller, words, undefined, undefined, both)
+  if (!preview.ok || preview.transcript_next_cursor === undefined)
+    throw new Error('missing continuation')
+  expect(preview.hits.map((hit) => hit.conversation)).toEqual([
+    'fictional-6',
+    'fictional-5',
+    'fictional-4',
+    'fictional-3',
+    'fictional-2',
+  ])
+  const instructions = pastWorkSearchInWords(preview, false, false, { words, ...dates })
+  expect(instructions).toContain('Continue with cursor: "work:0:work-next"')
+  expect(preview.preview_counts).toEqual({ scanned: 8, total: 8 })
+  expect(instructions.split('\n')[0]).toBe(
+    `Stopped after 8 of 8 conversations; continue with search_past_work(${JSON.stringify({
+      words,
+      ...dates,
+      in: 'transcripts',
+      cursor: preview.transcript_next_cursor,
+    })}).`,
+  )
+  const work = await search.searchPastWork(caller, words, undefined, preview.next_cursor!, both)
+  expect(work).toEqual({ ok: true, complete: true, next_cursor: null, hits: [] })
+  const cursor = preview.transcript_next_cursor
+  expect(await search.searchPastWork(caller, 'differentquartz', undefined, cursor, dates)).toEqual({
+    ok: false,
+    reason: 'invalid',
+  })
+  expect(await search.searchPastWork(caller, words, undefined, cursor, {})).toEqual({
+    ok: false,
+    reason: 'invalid',
+  })
+  const next = await search.searchPastWork(caller, words, undefined, cursor, dates)
+  if (!next.ok) throw new Error(next.reason)
+  expect(next.hits.map((hit) => hit.conversation)).toEqual(['fictional-1', 'fictional-0'])
+  expect(next.complete).toBe(true)
+})
+
+it('retries a conversation whose preview stopped during indexing', () => {
+  const w = world()
+  const caller = 'fictional-caller'
+  const target = 'fictional-newest'
+  w.create(caller)
+  w.create(target)
+  for (const text of ['previewquartz first', 'previewquartz second']) {
+    w.append(target, { type: 'assistant_message', text })
+  }
+  w.db
+    .prepare('UPDATE provider_session SET updated_at = ? WHERE id = ?')
+    .run(1_900_000_000_000, target)
+  const previewSource = {
+    ...w.store.pastWorkSearchSource(caller, undefined, undefined, { after: null, preview: true })!,
+    transcript: {},
+  }
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(5_000)
+  clock.mockReturnValueOnce(0).mockReturnValueOnce(0).mockReturnValueOnce(0)
+  let result
+  try {
+    result = searchPastWork(w.db, w.store, caller, 'previewquartz', previewSource)
+  } finally {
+    clock.mockRestore()
+  }
+  expect(result).toMatchObject({
+    ok: true,
+    hits: [],
+    complete: false,
+    preview_counts: { scanned: 0, total: 2 },
+    next_cursor: expect.stringMatching(/^recent:/u),
+  })
+  const full = searchPastWork(w.db, w.store, caller, 'previewquartz', {
+    ...previewSource,
+    recent: { after: null },
+  })
+  expect(full).toMatchObject({
+    ok: true,
+    hits: [{ conversation: target, turn: { ordinal: 1 } }],
+    complete: true,
   })
 })
