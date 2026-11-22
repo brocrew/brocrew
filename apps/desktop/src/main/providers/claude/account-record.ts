@@ -26,30 +26,26 @@ export interface KeptAccounts {
   readonly claudeAccounts?: readonly KnownAccount[]
 }
 
+function uniqueAccounts(accounts: KnownAccount[]): KnownAccount[] {
+  return accounts.filter(
+    (one, index, rows) =>
+      rows.findIndex(
+        (other) =>
+          other.id === one.id &&
+          other.email === one.email &&
+          other.organization === one.organization,
+      ) === index,
+  )
+}
+
 /** The persisted one-account format has a fixed native field; keep its bytes across providers. */
 export const legacyAccountRecordFormat = {
   accountIn: (record: KeptAccounts): KnownAccount | null => record.claude ?? null,
   accountsIn: (record: KeptAccounts): readonly KnownAccount[] =>
-    [...(record.claudeAccounts ?? []), ...(record.claude ? [record.claude] : [])].filter(
-      (one, index, rows) =>
-        rows.findIndex(
-          (other) =>
-            other.id === one.id &&
-            other.email === one.email &&
-            other.organization === one.organization,
-        ) === index,
-    ),
+    uniqueAccounts([...(record.claudeAccounts ?? []), ...(record.claude ? [record.claude] : [])]),
   forAccount: (account: KnownAccount, previous: readonly KnownAccount[] = []): KeptAccounts => ({
     claude: account,
-    claudeAccounts: [...previous, account].filter(
-      (one, index, rows) =>
-        rows.findIndex(
-          (other) =>
-            other.id === one.id &&
-            other.email === one.email &&
-            other.organization === one.organization,
-        ) === index,
-    ),
+    claudeAccounts: uniqueAccounts([...previous, account]),
   }),
 }
 
