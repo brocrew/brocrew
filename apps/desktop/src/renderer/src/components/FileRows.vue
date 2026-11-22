@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { QuestionFiles } from '../../../shared/question-contracts'
 import type { PathsHere } from '../composables/useMessagePaths'
 import { clockTime } from '../../../shared/clock'
+import { localFormat } from '../../../shared/local-time'
 import type { KeptFile } from '../../../shared/runtime-ipc'
 import { fullTime } from '../lib/clock'
 import { addedBySays, fileTitleSays, ROLE_WORD, sizeWords } from '../lib/files-kept'
@@ -22,12 +23,14 @@ type FileRow = KeptFile | QuestionFiles[number]
 const props = defineProps<{
   files: readonly FileRow[]
   paths?: PathsHere | null
+  collection?: 'card' | 'library'
+  matchingKeeps?: ReadonlyMap<string, number>
   /** ⚑ `true` where a reader can open a file, so each row is a press. */
   canOpen: boolean
 }>()
 
 const emit = defineEmits<{
-  openDocument: [resourceId: string]
+  openDocument: [resourceId: string, opener: HTMLElement]
 }>()
 
 const failure = ref<string | null>(null)
@@ -41,43 +44,109 @@ const nameOf = (file: FileRow): string =>
       : file.name
 const canOpen = (file: FileRow): boolean => ('path' in file ? props.paths != null : props.canOpen)
 
-async function open(file: FileRow): Promise<void> {
+async function open(file: FileRow, event: MouseEvent): Promise<void> {
   if (!canOpen(file)) return
   failure.value = null
   if ('path' in file) failure.value = (await props.paths?.press(file.path, 'file')) ?? null
-  else emit('openDocument', keyOf(file))
+  else emit('openDocument', keyOf(file), event.currentTarget as HTMLElement)
 }
 
 /** ⚑ The row's second line — its name, size, who and when; its title adds the day. */
 const metaSays = (file: KeptFile): string =>
   `${file.name} · ${sizeWords(file.bytes)} · ${addedBySays(file)} · ${clockTime(file.keptAt)}`
+
+const shortTime = localFormat({
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+function formatOf(file: KeptFile): string {
+  if (props.collection === 'library') {
+    if (file.form === 'image') return 'IMG'
+    if (file.form === 'markdown') return 'MD'
+    return file.form?.toUpperCase() ?? '?'
+  }
+  const dot = file.name.lastIndexOf('.')
+  return dot > 0 ? file.name.slice(dot + 1).toUpperCase() : ''
+}
+
+const itemHook = computed(() => {
+  if (props.collection === 'library') return 'library-file'
+  return props.collection === 'card' ? 'card-file' : 'file-row'
+})
 </script>
 
 <template>
-  <ul v-if="props.files.length" class="file-rows" data-cy="file-rows">
-    <li v-for="file in props.files" :key="keyOf(file)">
+  <ul
+    v-if="props.files.length"
+    class="file-rows"
+    :class="[collection, { 'list-view': matchingKeeps }]"
+    data-cy="file-rows"
+  >
+    <li
+      v-for="file in props.files"
+      :key="keyOf(file)"
+      :data-hash="collection === 'library' && 'sha256' in file ? file.sha256 : undefined"
+    >
       <component
         :is="canOpen(file) ? 'button' : 'div'"
         v-bind="canOpen(file) ? { type: 'button' } : {}"
         class="file-row"
         :class="{ flat: !canOpen(file) }"
-        data-cy="file-row"
+        :data-cy="itemHook"
         :data-document="'path' in file ? undefined : keyOf(file)"
         :data-role="'role' in file ? file.role : undefined"
         :title="'resourceId' in file ? fileTitleSays(file) : nameOf(file)"
-        @click="open(file)"
+        :aria-label="
+          collection === 'library' && 'resourceId' in file
+            ? `${fileTitleSays(file)} · ${file.label} · ${addedBySays(file)} · ${fullTime(file.keptAt)} · ${sizeWords(file.bytes)}`
+            : undefined
+        "
+        @click="open(file, $event)"
       >
         <span class="line">
-          <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>
-          <span class="title">{{ nameOf(file) }}</span>
-          <span v-if="'role' in file" class="role">{{ ROLE_WORD[file.role] }}</span>
+          <span
+            class="glyph"
+            :data-kind="'form' in file ? (file.form ?? 'unknown') : undefined"
+            aria-hidden="true"
+          >
+            <svg class="icon">
+              <use :href="'form' in file && file.form === 'image' ? '#i-image' : '#i-file'" />
+            </svg>
+            <span v-if="collection && 'form' in file">{{ formatOf(file) }}</span>
+          </span>
+          <span class="title file-title">{{ nameOf(file) }}</span>
+          <span v-if="'role' in file && collection !== 'library'" class="role">{{
+            ROLE_WORD[file.role]
+          }}</span>
         </span>
         <span
-          v-if="'resourceId' in file"
+          v-if="collection && 'resourceId' in file"
+          class="meta file-meta"
+          :title="fullTime(file.keptAt)"
+        >
+          <span class="file-tag" :title="file.pieceTitle ?? file.label">{{ file.label }}</span>
+          · {{ addedBySays(file) }} ·
+          <time
+            class="kept-time"
+            :datetime="new Date(file.keptAt).toISOString()"
+            :title="fullTime(file.keptAt)"
+            >{{ collection === 'library' ? shortTime(file.keptAt) : clockTime(file.keptAt) }}</time
+          >
+        </span>
+        <span
+          v-else-if="'resourceId' in file"
           class="meta"
           :title="`${metaSays(file)} (${fullTime(file.keptAt)})`"
           >{{ metaSays(file) }}</span
         >
+        <span v-if="matchingKeeps && 'resourceId' in file" class="extra">
+          {{ file.name }} · {{ ROLE_WORD[file.role] }} · {{ matchingKeeps.get(file.resourceId) }}
+          {{ matchingKeeps.get(file.resourceId) === 1 ? 'keep' : 'keeps' }}
+        </span>
       </component>
     </li>
     <li v-if="failure" class="message-path-failure" role="status">{{ failure }}</li>
@@ -134,6 +203,15 @@ const metaSays = (file: KeptFile): string =>
   color: var(--muted);
 }
 
+.glyph {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
+
 .title {
   overflow: hidden;
   min-width: 0;
@@ -157,5 +235,46 @@ const metaSays = (file: KeptFile): string =>
   font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.library .file-title,
+.library .file-meta,
+.library .extra {
+  font-size: var(--type-small);
+}
+
+.library .file-meta,
+.extra {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.library .file-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.library.list-view .file-title {
+  display: block;
+  overflow: visible;
+}
+
+.extra {
+  color: var(--muted);
+}
+
+.card .file-tag {
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-mix-12);
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+}
+
+.card .file-row {
+  background: var(--accent-mix-5);
 }
 </style>

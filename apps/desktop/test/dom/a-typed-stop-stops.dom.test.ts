@@ -15,7 +15,7 @@ import {
 } from '../../src/renderer/src/lib/session-record'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { drawnReady } from './drawn'
-import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
+import { META, mount, paneProps, visible, windowCleanup, type Mounted } from './harness'
 
 /**
  * A person who types "stop" while an agent works means stop, not "queue this word". While a turn
@@ -24,12 +24,7 @@ import { META, mount, paneProps, unmountAll, visible, type Mounted } from './har
  * stop word offers Stop now on its row, which asks the host to take the word back and stop the turn.
  */
 
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(async () => {
-  unmountAll()
-  await page.viewport(ORIGINAL.width, ORIGINAL.height)
-})
+afterEach(windowCleanup())
 
 const AT = 1_700_000_000_000
 const SEND_KEY = sendKeyLabel(navigator.platform)

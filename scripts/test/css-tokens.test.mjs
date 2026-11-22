@@ -325,14 +325,14 @@ describe('raw style values outside the token file', () => {
 
   /**
    * The literals kept on purpose, counted, so a new exception is a decision someone sees rather
-   * than a comment that slipped in: seven glyph strokes, two separating rings, two mixes of an
-   * element's own tint, and the name of the bundled face.
+   * than a comment that slipped in: seven glyph strokes, two separating rings, and the name of the
+   * bundled face.
    */
-  it('the literals marked raw are the twelve known ones', () => {
+  it('the literals marked raw are the ten known ones', () => {
     const marks = [...tree].flatMap(([file, text]) =>
       [...text.matchAll(/\/\*\s*raw:\s*([^*]*?)\s*\*\//g)].map((m) => `${file}: ${m[1]}`),
     )
-    expect(marks).toHaveLength(12)
+    expect(marks).toHaveLength(10)
   })
 
   it('⛔ a literal border width put back into a real component is caught', () => {

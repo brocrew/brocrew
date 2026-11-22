@@ -3,6 +3,9 @@ import { computed, ref } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
 import MarkdownWords from './MarkdownWords.vue'
+import QuestionCard from './QuestionCard.vue'
+import type { UserInputResponse } from '../../../shared/runtime-ipc'
+import type { QuestionCardReading } from '../lib/question-card'
 import {
   answerFor,
   questionsWithChoices,
@@ -49,6 +52,64 @@ function choose(question: AskedWithoutWaiting, option: string): void {
   emit('answer', text)
 }
 
+const displayedQuestions = computed(() =>
+  questionsWithoutProse.value.length > 0
+    ? questionsWithoutProse.value
+    : props.canAnswer === true
+      ? choices.value
+      : [],
+)
+const showChoices = computed(() => props.canAnswer === true && choices.value.length > 0)
+
+function choicesReading(question: AskedWithoutWaiting): QuestionCardReading {
+  const choices = showChoices.value ? (question.options ?? []) : []
+  return {
+    requestId: null,
+    asker: props.who ?? '',
+    verb: 'asked',
+    askedOf: '',
+    piece: null,
+    via: null,
+    at: null,
+    atTitle: null,
+    words:
+      questionsWithoutProse.value.length > 0 || displayedQuestions.value.length > 1
+        ? question.title
+        : null,
+    wordsAreCut: false,
+    wordsMissing: false,
+    context: null,
+    parts:
+      choices.length === 0
+        ? []
+        : [
+            {
+              id: 'choice',
+              header: null,
+              prompt: null,
+              multiSelect: false,
+              typed: false,
+              secret: false,
+              options: choices.map((label) => ({ label, description: null })),
+            },
+          ],
+    state: pressed.value === null ? 'open' : 'answered',
+    answeredBy: null,
+    answerable: showChoices.value && pressed.value === null,
+    refused: null,
+    note: null,
+    receipt: null,
+    where: null,
+  }
+}
+
+function answer(question: AskedWithoutWaiting, response: UserInputResponse): void {
+  if (response.kind !== 'answer') return
+  const value = response.answers.choice
+  const first = Array.isArray(value) ? value[0] : value
+  if (typeof first === 'string') choose(question, first)
+}
+
 /** Distinct per message, so each choice group names the note that explains it. */
 const noteId = computed(() => `asked-note-${props.item.id}`)
 </script>
@@ -93,45 +154,24 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
         />
       </div>
       <div
-        v-if="questionsWithoutProse.length > 0"
-        class="msg-body"
-        data-cy="structured-question-text"
-      >
-        <p v-for="(question, index) in questionsWithoutProse" :key="index">{{ question.title }}</p>
-      </div>
-      <!-- The message lists the choices; these controls send the chosen words. -->
-      <div
-        v-if="props.canAnswer === true && choices.length > 0"
+        v-if="displayedQuestions.length > 0"
         class="asked"
-        data-cy="asked-without-waiting"
+        :data-cy="showChoices ? 'asked-without-waiting' : undefined"
       >
-        <p :id="noteId" class="asked-note" data-cy="asked-note">{{ SENT_AS_A_MESSAGE }}</p>
-        <div
-          v-for="(question, at) in choices"
-          :key="at"
-          class="asked-question"
-          role="group"
+        <p v-if="showChoices" :id="noteId" class="asked-note" data-cy="asked-note">
+          {{ SENT_AS_A_MESSAGE }}
+        </p>
+        <QuestionCard
+          v-for="(question, index) in displayedQuestions"
+          :key="index"
+          :reading="choicesReading(question)"
           :aria-label="question.title"
-          :aria-describedby="noteId"
-        >
-          <span
-            v-if="choices.length > 1 && questionsWithoutProse.length === 0"
-            class="asked-title"
-            >{{ question.title }}</span
-          >
-          <button
-            v-for="(option, index) in question.options"
-            :key="index"
-            type="button"
-            class="asked-choice"
-            data-cy="asked-choice"
-            title="Sends this as a message"
-            :disabled="pressed !== null"
-            @click="choose(question, option)"
-          >
-            {{ option }}
-          </button>
-        </div>
+          :aria-describedby="showChoices ? noteId : undefined"
+          role="group"
+          compact
+          choices-only
+          @answer="(response) => answer(question, response)"
+        />
         <p v-if="pressed !== null" class="asked-sent" data-cy="asked-pressed" aria-live="polite">
           {{ goesAsAMessage(pressed) }}
         </p>
@@ -167,36 +207,6 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
   color: var(--muted);
   font-size: var(--type-caption);
 }
-.asked-question {
-  display: flex;
-  flex-wrap: wrap;
-  margin-top: var(--space-5);
-  gap: var(--space-5);
-  align-items: center;
-}
-.asked-title {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-}
-.asked-choice {
-  padding: var(--space-1) var(--space-5);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: var(--type-small);
-  cursor: pointer;
-}
-.asked-choice:hover:not(:disabled),
-.asked-choice:focus-visible {
-  border-color: var(--accent);
-}
-.asked-choice:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
 .live-tag {
   display: inline-flex;
   align-items: center;

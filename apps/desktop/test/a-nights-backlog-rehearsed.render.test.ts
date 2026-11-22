@@ -1,4 +1,5 @@
 import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-which-database'
+import { shown } from './helpers/rendered-markup'
 import { callNewConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -1321,6 +1322,7 @@ describe("463 · a night's backlog, rehearsed", () => {
       expect(transcripts.get(id)?.html).toContain('data-cy="transcript-empty"')
     }
     const decisionTranscript = transcripts.get('sess_waiting_decisions')
+    const decisionWords = shown(decisionTranscript!.html).replace(/<[^>]+>/g, ' ')
     expect(
       decisionTranscript?.history.entries.filter(
         ({ event }) => event.type === 'request_routed' && event.to === 'a-person',
@@ -1333,7 +1335,7 @@ describe("463 · a night's backlog, rehearsed", () => {
             event.type === 'request_routed' && event.to === 'a-person' && event.because === because,
         ),
       ).toBe(true)
-      expect(decisionTranscript?.html).not.toContain(because)
+      expect(decisionWords).not.toContain(because)
     }
     // ⛔ **The summary is what this app KEEPS, and the item is where it is kept** (587). The tool
     // row's receipt used to be in the rendered HTML with `display: none` over it; a collapsed run

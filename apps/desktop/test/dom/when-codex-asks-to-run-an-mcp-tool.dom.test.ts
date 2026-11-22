@@ -31,49 +31,21 @@ import { whatThisAnswerDoes } from '../../src/renderer/src/lib/user-input-offer'
 import * as said730 from '../../src/renderer/src/lib/user-input-offer'
 import type { CreatedSession, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { assertDrawn, clipsOf, describeClip, drawnReady, lineCount } from './drawn'
-import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
+import {
+  META,
+  mount,
+  paneProps,
+  visible,
+  type Mounted,
+  permissionButtons,
+  windowCleanup,
+} from './harness'
 
 /**
- * # 🔴 730 · Draws 1 and 2, DRAWN — when Codex asks to run an MCP tool, and a Cancel that stops nothing
- *
- * ⚑ **R80** — *"When Codex asks to run an MCP tool, a person sees it. A card naming the server, the
- * tool and the parameters, with Allow once, Allow for this conversation (when Codex offers
- * `session`) and Deny. ⛔ Never *always*."* ⚑ **R81** — *"A card whose press cannot stop the turn
- * does not say it will. Its line says only what the press does: the request is cancelled; the turn
- * is not asked to stop."*
- *
- * | § | surface | 🔴 subject | ⚑ control, one fact over |
- * |---|---|---|---|
- * | 1 | the R80 card, at the transcript's measure (760 px) | who asks, the server, the tool and every parameter drawn whole — a long value WRAPS, never cut; *Allow once* · *Always allow* (R95, drawn since `739`) · *Deny* · *Cancel request* (`736`, R97) in the row, *Allow for this conversation* below it under its warning; *always* said on the card only by R95's own button and the offer's persistence (which summarises it) — never by the conversation's grant | the same card without `mcpToolCall` draws *Approve* and the tool's wholesale grant (`wideGrantLabel` — since `739`'s review *Allow every … call for this conversation*) |
- * | 2 | a Codex conversation | the card names Codex as the one asking — the provider travels `record.meta` → `TranscriptView` → the card | — |
- * | 3 | the R81 card | *Cancel request*, and R81's line drawn under it — since `736` (R97) on the card from a frame that named its turn too | the named-turn card WITHOUT the marker (a row written before `736`): *Cancel turn* and the whole-turn line |
- * | 4 | Home | the MCP row offers *Allow once* · *Always allow* · *Deny* · *Cancel* and — since `743` (`739` F-1, ruled) — *Allow for this conversation* under the card's warning, in R80's words; *always* only on R95's button; the R81 row's Cancel says R81's line | a plain command row: *Allow* where the MCP row says *Allow once*, and the plain sentence |
- *
- * ⚑ **The cards are built by the adapter's own exported composers** — `aToolApprovalCard`'s
- * assembly, which is private. ⚠️ A browser cannot run the host, so
- * `when-codex-asks-to-run-an-mcp-tool.render.test.ts` §0 pins exactly this assembly to the card
- * main's REAL host sends for the same frame: a double that drifted from the adapter goes red there.
- * ⚠️ The adapter folds whitespace in a displayed value (`wordsForACard`), so a multi-line value
- * reaches the card as one long line — that is the value drawn here, with an unbroken link in it.
- *
- * 🔴 **739 re-aimed three pins, in place** (`736` F-1: *"*Always allow* is offered by the runtime
- * and drawn by no surface"*): the card's row and Home's two rows draw R95's *Always allow* now, and
- * R80's *"never always"* is aimed at everything but that button (and the offer's persistence,
- * which summarises it). ⚠️ `codexToolCard()` carries no `scope.grants`, so its *Always allow* line is
- * the one for a card that names no rule — the line WITH the rule and the file is drawn and measured
- * in `always-allow-on-every-surface.dom.test.ts`.
- *
- * ⚠️ **The new exports are read through the modules' namespaces** (`since730`, `said730`): the
- * browser runner links native modules, and a named import of an export `main` does not have would
- * fail the whole file there — controls included. ⚑ So they are called only inside subjects.
+ * Draw the same tool and server requests in the conversation and in Waiting on you.
+ * The companion render tests compare the browser fixtures to the adapter output.
  */
-
-const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
-
-afterEach(async () => {
-  unmountAll()
-  await page.viewport(ORIGINAL.width, ORIGINAL.height)
-})
+afterEach(windowCleanup())
 
 const AT = 1_700_000_000_000
 /** ⚑ The window: the rail (208) beside a conversation pane (972). */
@@ -305,8 +277,6 @@ const textWithoutR95 = (el: Element): string => {
     '[data-cy="permission-allow_always"], [data-cy="permission-persistence"]',
   ))
     r95.remove()
-  for (const word of copy.querySelectorAll('[data-cy="attention-decide-word"]'))
-    if (text(word) === 'Always allow') word.closest('button')?.remove()
   return text(copy)
 }
 
@@ -499,7 +469,9 @@ describe('§4 · Home — the same requests, in the same words', () => {
   it('🔴 the MCP row offers *Allow once*, and the grant — the tool, the server — under the card’s warning', async () => {
     const event = codexToolCard()
     const m = await home(homeRow(event))
-    const words = m.all('attention-decide-word')
+    const words = permissionButtons(m.q('attention-request-sess_home')).map((button) =>
+      button.querySelector<HTMLElement>('strong')!,
+    )
     // ⛔ What `main` draws: *Allow once* · *Always allow* · *Deny* · *Cancel*, and a sentence saying
     // the conversation's grant is not offered here.
     expect(words.map(text)).not.toContain('Allow')
@@ -507,19 +479,19 @@ describe('§4 · Home — the same requests, in the same words', () => {
       'Allow once',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
     for (const word of words) expect(visible(word), text(word)).toBe(true)
-    const warning = m.q('attention-wide-warning')
+    const warning = m.q('permission-wide-warning')
     expect(text(warning)).toBe(since730.mcpToolGrantCovers({ server: SERVER, tool: TOOL }, 'codex'))
     expect(text(warning)).toContain(`every call to ${TOOL} on ${SERVER}`)
     expect(visible(warning)).toBe(true)
     assertDrawn(warning, 'the conversation’s grant, warned of', m.host)
-    // ⚑ Inside the grant's own button, between its word and the line under it.
-    const button = warning.closest('button')!
+    const button = m.q('permission-allow_all_for_session')
+    expect(button.getAttribute('aria-describedby')).toBe(warning.id)
     expect(text(button.querySelector('strong')!)).toBe('Allow for this conversation')
-    expect(text(button.querySelector('[data-cy="attention-effect"]')!)).toBe(
+    expect(text(button.querySelector('small')!)).toBe(
       `the agent may call ${TOOL} on ${SERVER}, whatever it is given, for this conversation`,
     )
     // 🔴 739 · re-aimed — R95's own button says *always*; nothing else on the row does (R80).
@@ -535,15 +507,27 @@ describe('§4 · Home — the same requests, in the same words', () => {
     // in the plain card's words (R80's are the MCP card's alone).
     const asPlain = homeRow(codexToolCard()).decisions.map((one) =>
       one.label === 'Allow once'
-        ? 'Allow'
+        ? 'Approve'
         : one.label === 'Allow for this conversation'
           ? wideGrantLabel(TOOL)
-          : one.label,
+          : one.label === 'Cancel'
+            ? 'Cancel request'
+            : one.label,
     )
-    expect(m.all('attention-decide-word').map(text)).toEqual(asPlain)
-    expect(text(m.all('attention-decide-word')[0]!)).toBe('Allow')
+    expect(
+      permissionButtons(m.q('attention-request-sess_home'))
+        .map((button) => button.querySelector<HTMLElement>('strong')!)
+        .map(text),
+    ).toEqual(asPlain)
+    expect(
+      text(
+        permissionButtons(m.q('attention-request-sess_home')).map((button) =>
+          button.querySelector<HTMLElement>('strong')!,
+        )[0]!,
+      ),
+    ).toBe('Approve')
     // 🔴 743 · re-aimed — the plain grant's warning, not the MCP one (it pinned the old sentence).
-    expect(text(m.q('attention-wide-warning'))).toBe(
+    expect(text(m.q('permission-wide-warning'))).toBe(
       `⚠ Covers any ${TOOL} command for this conversation — not just this one. ` +
         `Nothing will ask again, whatever it runs.`,
     )
@@ -551,9 +535,12 @@ describe('§4 · Home — the same requests, in the same words', () => {
 
   it('🔴 the R81 row’s Cancel says only what the press does — drawn under it, whole', async () => {
     const m = await home(homeRow(serverCard(true)))
-    const buttons = m.all('attention-decide-sess_home')
-    expect(buttons.map((one) => text(one.querySelector('strong')!))).toEqual(['Deny', 'Cancel'])
-    const line = buttons[1]!.querySelector<HTMLElement>('[data-cy="attention-effect"]')!
+    const buttons = permissionButtons(m.q('attention-request-sess_home'))
+    expect(buttons.map((one) => text(one.querySelector('strong')!))).toEqual([
+      'Deny',
+      'Cancel request',
+    ])
+    const line = buttons[1]!.querySelector<HTMLElement>('small')!
     // ⛔ What `main` draws: the whole-turn line.
     expect(text(line)).not.toBe(plainCancel())
     expect(text(line)).toBe(said730.CANCEL_STOPS_NOTHING)
@@ -566,8 +553,8 @@ describe('§4 · Home — the same requests, in the same words', () => {
   it('⚑ 736 · R97 — the row for the card that named its turn says R81’s line too', async () => {
     // ⛔ On `main` (`720`, R74): the whole-turn line.
     const m = await home(homeRow(serverCard(false)))
-    const buttons = m.all('attention-decide-sess_home')
-    const line = buttons[1]!.querySelector<HTMLElement>('[data-cy="attention-effect"]')!
+    const buttons = permissionButtons(m.q('attention-request-sess_home'))
+    const line = buttons[1]!.querySelector<HTMLElement>('small')!
     expect(text(line)).toBe(said730.CANCEL_STOPS_NOTHING)
     expect(visible(line)).toBe(true)
   })

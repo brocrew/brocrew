@@ -5,7 +5,7 @@ import type { MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import type { PathsHere } from '../../src/renderer/src/composables/useMessagePaths'
 import MarkdownWords from '../../src/renderer/src/components/MarkdownWords.vue'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { wearTheme } from '../../look/fixtures/themes'
@@ -149,7 +149,13 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
           type: 'user_input_request',
           id: 'req_provider',
           prompt: QUESTION_MARKDOWN,
-          questions: [{ id: 'draft', prompt: QUESTION_MARKDOWN, options: [{ label: 'Short' }] }],
+          questions: [
+            {
+              id: 'draft',
+              prompt: QUESTION_MARKDOWN + '\n\nChoose one option.',
+              options: [{ label: 'Short' }],
+            },
+          ],
           permission: {
             cwd: '/work/**literal**',
             paths: ['/work/`literal`'],
@@ -158,7 +164,7 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
           },
         },
       }
-      const m = mount(UserInputCard, { item, paths })
+      const m = mount(QuestionCard, { item, paths })
       for (const words of [
         m.q('user-input-prompt'),
         m.q('user-input-question-draft').querySelector('.ask')!,

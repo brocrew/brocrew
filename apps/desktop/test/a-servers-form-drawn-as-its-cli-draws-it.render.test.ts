@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -452,24 +453,8 @@ function queueOver(row: AttentionRequest, sent: PermissionRequest): PersonsQueue
  * ⚑ Each answer button on the queue's row: its word and what it does — the line inside a broader
  * answer's button, or the line a primary answer's button is described by (*"Allow: …"*).
  */
-const answersOn = (markup: string, key: string): { word: string; says: string }[] => {
-  const html = shown(markup)
-  return [
-    ...html.matchAll(
-      new RegExp(
-        `<button([^>]*)data-cy="persons-queue-answer-${escapeRegExp(key)}"([^>]*)>([\\s\\S]*?)</button>`,
-        'g',
-      ),
-    ),
-  ].map((one) => {
-    const word = decode(/<strong[^>]*>([\s\S]*?)<\/strong>/.exec(one[3]!)![1]!.trim())
-    const inside = /<small[^>]*>([\s\S]*?)<\/small>/.exec(one[3]!)
-    if (inside !== null) return { word, says: decode(inside[1]!.trim()) }
-    const id = /aria-describedby="([^"]*)"/.exec(`${one[1]!} ${one[2]!}`)![1]!
-    const line = new RegExp(`<p[^>]*id="${escapeRegExp(id)}"[^>]*>([\\s\\S]*?)</p>`).exec(html)!
-    return { word, says: decode(line[1]!.trim()).slice(`${word}: `.length) }
-  })
-}
+const answersOn = (markup: string): { word: string; says: string }[] =>
+  permissionAnswers(markup).map(({ word, says }) => ({ word, says }))
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // §0 · the wire
@@ -653,23 +638,39 @@ describe('§2 · Home — the row already said the CLI’s answers', () => {
     const row = homeRow(recordOf(captured.zeroNoTurn))
     expect(row.decisions.map((one) => one.label)).toEqual(['Allow', 'Deny', 'Cancel'])
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-decide-word')).toEqual(['Allow', 'Deny', 'Cancel'])
-    expect(textsOf(html, 'attention-effect')).toEqual([TOLD_YES, TOLD_NO, CANCEL_STOPS_NOTHING])
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
+      'Allow',
+      'Deny',
+      'Cancel request',
+    ])
+    expect(permissionAnswers(html).map((one) => one.says)).toEqual([
+      TOLD_YES,
+      TOLD_NO,
+      CANCEL_STOPS_NOTHING,
+    ])
     // ⚑ The server's own words are on the row a person answers from.
     expect(words(html)).toContain(`${SERVER} says: ${SAYS}`)
   })
 
   it('⚑ the named-turn row says the same answers — its Cancel `736`’s line (R97); the url row’s Allow is *I opened it*', async () => {
     const named = await renderHome(homeRow(recordOf(captured.zeroItsTurn)))
-    expect(textsOf(named, 'attention-decide-word')).toEqual(['Allow', 'Deny', 'Cancel'])
-    expect(textsOf(named, 'attention-effect')).toEqual([
+    expect(permissionAnswers(named).map((one) => one.word)).toEqual([
+      'Allow',
+      'Deny',
+      'Cancel request',
+    ])
+    expect(permissionAnswers(named).map((one) => one.says)).toEqual([
       TOLD_YES,
       TOLD_NO,
       whatThisAnswerDoes(decisionOn('cancel', { stopsNothing: true })),
     ])
     const url = await renderHome(homeRow(recordOf(captured.urlNoTurn)))
-    expect(textsOf(url, 'attention-decide-word')).toEqual(['I opened it', 'Deny', 'Cancel'])
-    expect(textsOf(url, 'attention-cannot-allow')).toHaveLength(0)
+    expect(permissionAnswers(url).map((one) => one.word)).toEqual([
+      'I opened it',
+      'Deny',
+      'Cancel request',
+    ])
+    expect(textsOf(url, 'permission-cannot-allow')).toHaveLength(0)
   })
 })
 
@@ -687,10 +688,10 @@ describe('§3 · the person’s queue — a spawned child’s server form, answe
     const row = queueOver(live, captured.zeroNoTurn.card)
     expect(row.answers.map((one) => one.label)).toEqual(['Allow', 'Deny', 'Cancel'])
     const html = await render(PersonsQueue, {})
-    expect(answersOn(html, live.key)).toEqual([
+    expect(answersOn(html)).toEqual([
       { word: 'Allow', says: TOLD_YES },
       { word: 'Deny', says: TOLD_NO },
-      { word: 'Cancel', says: CANCEL_STOPS_NOTHING },
+      { word: 'Cancel request', says: CANCEL_STOPS_NOTHING },
     ])
     // ⚑ Verbatim once — `728`'s member of the vocabulary, which the host draws as the row's `says`.
     expect(textsOf(html, `persons-queue-says-${live.key}`)).toEqual([
@@ -714,17 +715,21 @@ describe('§4 · the conversation, Home and the person’s queue — one set of 
     const live = homeRow(recordOf(one))
     const onHome = await renderHome(live)
     queueOver(live, one.card)
-    const onTheQueue = answersOn(await render(PersonsQueue, {}), live.key)
+    const onTheQueue = answersOn(await render(PersonsQueue, {}))
     // ⚑ Home and the queue, as they drew before `737` — the positive the card is held to.
-    expect(textsOf(onHome, 'attention-decide-word')[0]).toBe('Allow')
+    expect(permissionAnswers(onHome).map((one) => one.word)[0]).toBe('Allow')
     expect(onTheQueue[0]?.word).toBe('Allow')
     // ⛔ What `main` draws on the card: *Approve*.
-    expect(wordOn(onTheCard, 'allow')).toBe(textsOf(onHome, 'attention-decide-word')[0])
+    expect(wordOn(onTheCard, 'allow')).toBe(permissionAnswers(onHome).map((one) => one.word)[0])
     expect(wordOn(onTheCard, 'allow')).toBe(onTheQueue[0]?.word)
     expect(wordOn(onTheCard, 'allow')).toBe(since737.ALLOW)
     // ⚑ The lines under Allow and Deny are one sentence each on all three.
     expect(textsOf(onTheCard, 'permission-does-allow')).toEqual([onTheQueue[0]?.says])
     expect(textsOf(onTheCard, 'permission-does-deny')).toEqual([onTheQueue[1]?.says])
-    expect(textsOf(onHome, 'attention-effect').slice(0, 2)).toEqual([TOLD_YES, TOLD_NO])
+    expect(
+      permissionAnswers(onHome)
+        .map((one) => one.says)
+        .slice(0, 2),
+    ).toEqual([TOLD_YES, TOLD_NO])
   })
 })

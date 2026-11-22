@@ -170,11 +170,13 @@ const wordOf = (button: HTMLElement): HTMLElement => {
 
 /** ⚑ Home's line under its conversation grant — the one button whose word is its word. */
 function homesGrantLine(m: Mounted): HTMLElement {
-  const buttons = m
-    .all('attention-decide-sess_home')
-    .filter((button) => text(wordOf(button)) === ALLOW_FOR_THIS_CONVERSATION)
+  const buttons = [
+    ...m
+      .q('attention-request-sess_home')
+      .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+  ].filter((button) => text(wordOf(button)) === ALLOW_FOR_THIS_CONVERSATION)
   expect(buttons, 'Home draws one conversation grant').toHaveLength(1)
-  const line = buttons[0]!.querySelector<HTMLElement>('[data-cy="attention-effect"]')
+  const line = buttons[0]!.querySelector<HTMLElement>('small')
   expect(line, 'no line under the conversation grant').not.toBeNull()
   return line!
 }
@@ -239,8 +241,7 @@ describe('§2 · Home at 972 px — the same request’s row', () => {
     expect(visible(line)).toBe(true)
     assertDrawn(line, 'Home’s line under the conversation grant', m.host)
 
-    const scope = [...m.q('attention-scope').querySelectorAll<HTMLElement>('li')]
-    const said = scope.filter((one) => text(one).startsWith('for this conversation, its grant'))
+    const said = m.all('permission-grant-covers')
     expect(said, 'Home says what the grant covers once').toHaveLength(1)
     // ⛔ `main`: *"for this conversation, its grant covers: Read(//elsewhere/**)"*.
     expect.soft(text(said[0]!)).toBe(DISCLOSED)
@@ -254,9 +255,7 @@ describe('§2 · Home at 972 px — the same request’s row', () => {
     expect(text(line)).toBe(MAINS_LINE)
     expect(visible(line)).toBe(true)
     assertDrawn(line, 'Home’s line under the conversation grant', m.host)
-    const scope = [...m.q('attention-scope').querySelectorAll<HTMLElement>('li')].map(text)
-    expect(scope.filter((one) => one.startsWith('for this conversation, its grant'))).toEqual([])
-    // ⚑ …beside the line the same list does hold: the grant lasts the conversation.
-    expect(scope).toContain('for the whole conversation, not just this action')
+    expect(m.all('permission-grant-covers')).toEqual([])
+    expect(text(m.q('permission-persistence'))).toBe('session')
   })
 })

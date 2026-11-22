@@ -7,9 +7,6 @@ import {
   DID_WORDS,
   KIND_WORDS,
   LOOK,
-  actionLinesOf,
-  broaderLinesOf,
-  isAPrimaryAnswer,
   usePersonsQueue,
   namesakeSays,
   namesakesIn,
@@ -18,44 +15,19 @@ import {
   type StalledWorkRow,
 } from '../lib/persons-queue'
 import { sinceWords } from '../lib/queue-time'
-import {
-  BROADER_THAN_SHOWN,
-  charactersNotShown,
-  OPEN_IT_BEFORE_YOU_ALLOW_IT,
-  type AttentionDecision,
-} from '../lib/attention'
-
-import {
-  LIMIT_WORDS,
-  WHAT_COMES_AFTER_IS_NOT_OURS,
-  isRefusal,
-  whatThisAnswerDoes,
-} from '../lib/user-input-offer'
+import { permissionOutcomes, permissionShortcutFor, shortcutFor } from '../lib/attention'
+import { LIMIT_WORDS } from '../lib/user-input-offer'
 import { TAKE_BACK } from '../lib/take-back'
 import { TAKE_IT_OVER_TO_ANSWER_HERE } from '../lib/taking-over'
-import { ADDED_BESIDE, questionOnTheQueue, type QuestionPart } from '../lib/question-card'
-import type { UserInputResponse } from '../../../shared/runtime-ipc'
+import { questionOnTheQueue, type QuestionCardReading } from '../lib/question-card'
+import type { PermissionDecision, UserInputResponse } from '../../../shared/runtime-ipc'
 import InstructionAsks from './InstructionAsks.vue'
 import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 import QuestionCard from './QuestionCard.vue'
-import MarkdownWords from './MarkdownWords.vue'
+import PermissionCard from './PermissionCard.vue'
 import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
-
-/** ⚑ D-046 · what a provider's question part takes, beside its choices — drawn, not answered here. */
-function partTakes(part: QuestionPart): string | null {
-  const takes = [
-    part.multiSelect ? 'takes several answers' : null,
-    part.typed
-      ? part.options.length === 0
-        ? 'takes a typed answer'
-        : 'also takes an answer of your own'
-      : null,
-    part.secret ? 'the answer is hidden' : null,
-  ].filter((one): one is string => one !== null)
-  return takes.length === 0 ? null : takes.join(' · ')
-}
 
 /**
  * 🔴 **The queue that ends at a person** (401, HO-007 criterion 11) — what has been escalated to
@@ -279,29 +251,21 @@ function workWords(row: PersonsQueueRow): string {
     : `That conversation is working on ${held} — which of it this is about is not recorded.`
 }
 
-/** Whether the row offers a choice broader than this one request, drawn under more options. */
-function hasBroaderAnswers(row: PersonsQueueRow): boolean {
-  return row.answers.some((decision) => !isAPrimaryAnswer(decision))
-}
-
-/** Whether the row's more-options disclosure has anything to hold. */
 function hasDetails(row: PersonsQueueRow): boolean {
-  if (row.question) return false
   return (
-    row.kind === 'a-decision' ||
-    row.blockedSinceIs === 'told' ||
-    row.says !== null ||
-    row.alsoOnScreen ||
-    hasBroaderAnswers(row)
+    !row.question &&
+    (row.kind === 'a-decision' ||
+      row.blockedSinceIs === 'told' ||
+      row.says !== null ||
+      row.alsoOnScreen)
   )
 }
 
-/**
- * The id of the line that says what a primary answer does, which its button is described by —
- * named by the copy too, since the page and the corner can both be on screen.
- */
-function doesId(row: PersonsQueueRow, index: number): string {
-  return `pq-does-${props.floating ? 'overlay' : 'in-flow'}-${row.key}-${String(index)}`
+function recordedQuestion(row: PersonsQueueRow): QuestionCardReading {
+  return {
+    ...questionOnTheQueue(row, { words: row.words, offered: null, sent: false }, undefined),
+    answerable: false,
+  }
 }
 
 function go(row: PersonsQueueRow): void {
@@ -311,13 +275,14 @@ function go(row: PersonsQueueRow): void {
   queue.take(row)
 }
 
-/**
- * ⛔ **Settle it here, and do NOT leave** (434) — which is the whole of *clearing it there*. ⚠️ The
- * overlay copy stays open on purpose: a person clearing three things should not have the layer
- * close under them after the first.
- */
-function settle(row: PersonsQueueRow, decision: AttentionDecision): void {
-  queue.settle(row, decision)
+function settlePermission(row: PersonsQueueRow, response: PermissionDecision): void {
+  const offered = permissionShortcutFor(row.answers, response.outcome)
+  if (offered) queue.settle(row, offered)
+}
+
+function settleQuestion(row: PersonsQueueRow, response: UserInputResponse): void {
+  const offered = shortcutFor(row.answers, response)
+  if (offered) queue.settle(row, offered)
 }
 
 /** ⛔ **Take it over without going to it**, so the answers appear on this row. */
@@ -604,6 +569,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           v-for="row in rows"
           :key="row.key"
           class="pq-row"
+          :class="{ 'with-live-card': row.liveCard !== undefined }"
           :data-kind="row.kind"
           :data-cy="`persons-queue-row-${row.key}`"
         >
@@ -618,17 +584,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             @move="(decision) => queue.move(row, decision)"
           />
 
-          <!-- ⛔ **The chain, drawn from the hops the host NAMED** (401) — one name per
-               participant, in order, the last of them `you` WHEN THE WALK ENDED; a stopped one
-               ends at a conversation and says so in the `pq-gap` below. ⚑ The prose line HO-007
-               asked for is the same walk joined, and it is the accessible name of this list
-               rather than a second visible copy of it.
-
-               ⚠️ **A decision's chain is one hop and that is not a shortened walk** (403): the
-               request never travelled, so there is no parent to draw — see `decisionReading`.
-
-               🔴 **It is also criterion 20's *who asked*** (434): the first hop is the
-               conversation that raised the card, named the way a person reads it. -->
           <ol
             v-if="!row.question"
             class="pq-chain"
@@ -679,86 +634,40 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             {{ namesakeSays(namesakes.get(row.key)!) }}
           </p>
 
-          <!-- 🔴 **D-046 · a provider's question, as it was asked — for reading only.** Its card in
-               its asker's conversation answers it; the row's own answers and its press below are
-               unchanged. -->
-          <div v-if="row.words" class="pq-asked" :data-cy="`persons-queue-asked-${row.key}`">
-            <MarkdownWords
-              v-if="row.words.prompt.trim() !== ''"
-              class="pq-asked-words"
-              :text="row.words.prompt"
-              :session-id="row.sessionId"
-            />
-            <MarkdownWords
-              v-if="row.words.context"
-              class="pq-asked-context"
-              :text="row.words.context"
-              :lead="ADDED_BESIDE"
-            />
-            <div
-              v-for="(part, index) in row.words.parts"
-              :key="part.id || index"
-              class="pq-asked-part"
-              data-cy="persons-queue-asked-part"
-            >
-              <p v-if="part.header" class="pq-asked-prompt">
-                <strong>{{ part.header }}</strong>
-              </p>
-              <MarkdownWords
-                v-if="part.prompt"
-                class="pq-asked-prompt"
-                :text="part.prompt"
-                :session-id="row.sessionId"
-              />
-              <!-- ⚑ Not where the row's own answers draw the same labels as presses below. -->
-              <ul
-                v-if="part.options.length > 0 && row.answers.length === 0"
-                class="pq-asked-options"
-              >
-                <li v-for="(option, at) in part.options" :key="`${at}:${option.label}`">
-                  {{ option.label
-                  }}<span v-if="option.description" class="pq-asked-note">
-                    — {{ option.description }}</span
-                  >
-                </li>
-              </ul>
-              <p v-if="partTakes(part)" class="pq-asked-note">{{ partTakes(part) }}</p>
-            </div>
-          </div>
+          <QuestionCard
+            v-if="!row.question && row.liveCard?.kind === 'userInput'"
+            :item="row.liveCard"
+            :added-context="row.words?.context"
+            :own-agent="row.chain[0]?.name ?? null"
+            :path-session-id="row.sessionId"
+            :queue-sent="row.noAnswerHere === 'answer-sent'"
+            :queue-offers="row.answers"
+            :hide-choice-effects="row.kind !== 'a-decision'"
+            inline-queue-choices
+            compact
+            fold
+            @respond="(_, response) => settleQuestion(row, response)"
+          />
+          <PermissionCard
+            v-else-if="!row.question && row.liveCard?.kind === 'permission'"
+            :item="row.liveCard"
+            :own-agent="row.chain[0]?.name ?? null"
+            :provider="row.cardProvider ?? null"
+            :queue-sent="row.noAnswerHere === 'answer-sent'"
+            :queue-outcomes="permissionOutcomes(row.answers)"
+            compact
+            @decide="(_, decision) => settlePermission(row, decision)"
+          />
+          <QuestionCard
+            v-else-if="row.words"
+            :reading="recordedQuestion(row)"
+            :path-session-id="row.sessionId"
+            :data-cy="`persons-queue-asked-${row.key}`"
+            compact
+            fold
+            read-only
+          />
 
-          <!-- What the request asks, as its card discloses it, on a row that offers answers: its
-               words, then this action's own scope on code lines. A long line scrolls and is never
-               shortened; what a broader answer would install is drawn under more options. -->
-          <div v-if="row.disclosed" class="pq-asked" :data-cy="`persons-queue-request-${row.key}`">
-            <div class="pq-request-what">
-              <MarkdownWords class="pq-asked-words" :text="row.disclosed.asked" />
-              <div
-                v-if="actionLinesOf(row.disclosed).length > 0"
-                class="pq-request-line"
-                tabindex="0"
-                role="group"
-                aria-label="The request in full"
-                :data-cy="`persons-queue-in-full-${row.key}`"
-              >
-                <code v-for="(line, index) in actionLinesOf(row.disclosed)" :key="index">{{
-                  line
-                }}</code>
-              </div>
-            </div>
-            <p v-if="row.disclosed.agentSays" class="pq-asked-context">
-              {{ row.disclosed.agentSays }}
-            </p>
-            <p v-if="row.disclosed.underDisclosed" class="pq-refused">
-              {{ BROADER_THAN_SHOWN }}
-              <template v-if="row.noPositive === null">{{ OPEN_IT_BEFORE_YOU_ALLOW_IT }}</template>
-            </p>
-            <p v-if="row.disclosed.detailOmitted !== null" class="pq-refused">
-              {{ charactersNotShown(row.disclosed.detailOmitted) }}
-            </p>
-          </div>
-
-          <!-- Since when: after the request in reading order, and on the card's top line beside
-               who asked on the page. -->
           <p v-if="!row.question" class="pq-meta">
             <span :data-cy="`persons-queue-since-${row.key}`">{{ sinceWords(row) }}</span>
           </p>
@@ -776,54 +685,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             here has been identified as the one to answer.
           </p>
 
-          <!-- 🔴 **What came back from the LAST press, on a row that is still answerable** (468).
-               ⛔ **Above the buttons, which is where `PermissionCard` puts the same sentence**, and
-               it is the same sentence: the host's own words, off the transcript item, drawn here
-               rather than derived a second time. ⚠️ Before this the buttons vanished and came back
-               with nothing said, because `noteAnswer` puts the request back on the table for
-               exactly the refusals that leave a card answerable. -->
-          <p v-if="row.refused" class="pq-refused" :data-cy="`persons-queue-refused-${row.key}`">
-            {{ row.refused }}
-          </p>
-
-          <!-- 🔴 **Why nothing here can ALLOW it, on a row that can still refuse it** (487).
-               ⛔ **The card's own sentence, from the one function that makes it**, because HO-030
-               §2 rules that a sentence true on one surface and absent on another *"trains the
-               reader out of looking"* — and this is the surface a person reaches a spawned child's
-               card from. ⚠️ **Above the buttons, beside the refusal**, which is where this
-               component already puts what bounds an answer rather than what an answer does. -->
-          <p
-            v-if="row.noPositive"
-            class="pq-refused"
-            :data-cy="`persons-queue-cannot-allow-${row.key}`"
-          >
-            {{ row.noPositive }}
-          </p>
-
-          <!-- 🔴 **701 · the provider's marks, beside what else bounds an answer** (`700` §5 GAP 1) —
-               the lines *Waiting on you* and the card draw, from the one function that makes them, in its
-               order. ⛔ Nothing here quotes them: a comment is rendered into the markup. -->
-          <p
-            v-for="line in row.marksSay"
-            :key="line"
-            class="pq-refused"
-            :data-cy="`persons-queue-mark-${row.key}`"
-          >
-            {{ line }}
-          </p>
-
-          <!-- 🔴 **The answers, HERE** (434, criterion 17's *clearing it there clears it
-               everywhere*). ⛔ They go through `respondPermission` / `respondUserInput` — the door
-               a person has always answered through — so the request fold closes the row and every
-               projection refolds off the ledger. ⚠️ **Nothing in this window records that a row
-               was cleared**; a dismissed-list here would be a second opinion about what is closed.
-
-               ⛔ **Dead the instant one is pressed** (`207` M2), through
-               `PersonsQueueRow.noAnswerHere === 'answer-sent'`, which replaces the buttons with
-               the reason rather than leaving four live controls over a request that has gone.
-
-               The request's own answers stand side by side, each in the words its card supplies;
-               every broader choice is under more options, with what it does and covers. -->
           <p
             v-if="row.answers.length > 0 && row.limit"
             class="pq-limit"
@@ -843,34 +704,12 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           </p>
 
           <div class="pq-actions" :data-cy="`persons-queue-actions-${row.key}`">
-            <template v-for="(decision, index) in row.answers" :key="index">
-              <button
-                v-if="isAPrimaryAnswer(decision)"
-                class="pq-answer"
-                :class="{ deny: isRefusal(decision) && !row.refusesFirst }"
-                type="button"
-                :aria-describedby="row.kind === 'a-decision' ? doesId(row, index) : undefined"
-                :data-cy="`persons-queue-answer-${row.key}`"
-                @click="settle(row, decision)"
-              >
-                <strong>{{ decision.label }}</strong>
-                <span
-                  v-if="decision.kind === 'permission' && decision.warns"
-                  class="pq-warns"
-                  :data-cy="`persons-queue-wide-warning-${row.key}`"
-                  >{{ decision.warns }}</span
-                >
-              </button>
-            </template>
-
             <details
               v-if="hasDetails(row)"
               class="pq-more"
               :data-cy="`persons-queue-more-${row.key}`"
             >
-              <summary>
-                {{ hasBroaderAnswers(row) ? 'More options and details' : 'Details' }}
-              </summary>
+              <summary>Details</summary>
               <div class="pq-more-body">
                 <!-- ⛔ **Which population** — see `KIND_WORDS`: drawn for every decision and every
                      question that was escalated, and not on a question asked of you directly,
@@ -905,58 +744,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                 >
                   Its card is open in this window too.
                 </p>
-                <!-- ⚑ The gap, said once per row: the model's next step is the same unknown for
-                     every answer. -->
-                <p
-                  v-if="row.kind === 'a-decision' && row.answers.length > 0"
-                  class="pq-after"
-                  :data-cy="`persons-queue-after-${row.key}`"
-                >
-                  {{ WHAT_COMES_AFTER_IS_NOT_OURS }}
-                </p>
-                <ul
-                  v-if="row.disclosed && broaderLinesOf(row.disclosed).length > 0"
-                  class="pq-request-scope"
-                  :data-cy="`persons-queue-scope-${row.key}`"
-                >
-                  <li v-for="(line, index) in broaderLinesOf(row.disclosed)" :key="index">
-                    {{ line }}
-                  </li>
-                </ul>
-                <!-- Every answer in the card's own order: what each primary one does, and each
-                     broader choice as its own button, its warning and effect inside it. -->
-                <template v-for="(decision, index) in row.answers" :key="index">
-                  <p
-                    v-if="isAPrimaryAnswer(decision) && row.kind === 'a-decision'"
-                    :id="doesId(row, index)"
-                    class="pq-does"
-                  >
-                    {{ decision.label }}: {{ whatThisAnswerDoes(decision) }}
-                  </p>
-                  <button
-                    v-else-if="!isAPrimaryAnswer(decision)"
-                    class="pq-answer"
-                    :class="{ deny: isRefusal(decision) && !row.refusesFirst }"
-                    type="button"
-                    :data-cy="`persons-queue-answer-${row.key}`"
-                    @click="settle(row, decision)"
-                  >
-                    <strong>{{ decision.label }}</strong>
-                    <!-- 🔴 **743 · `739` F-1, ruled — the wholesale grant, one click here too,
-                         under its own warning** (058): copied off the live row, never composed
-                         here. -->
-                    <span
-                      v-if="decision.kind === 'permission' && decision.warns"
-                      class="pq-warns"
-                      :data-cy="`persons-queue-wide-warning-${row.key}`"
-                      >{{ decision.warns }}</span
-                    >
-                    <!-- ⛔ The IMMEDIATE effect, on the control it is about; a decision's only. -->
-                    <small v-if="row.kind === 'a-decision'">{{
-                      whatThisAnswerDoes(decision)
-                    }}</small>
-                  </button>
-                </template>
               </div>
             </details>
 
@@ -1181,6 +968,10 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.pq-row.with-live-card {
+  gap: var(--space-2);
+}
+
 .pq-row > * {
   min-width: 0;
   grid-column: 1 / -1;
@@ -1205,6 +996,10 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 .persons-queue.floating .pq-row > .pq-meta {
   grid-column: 1;
   grid-row: auto;
+}
+
+.persons-queue.floating .with-live-card > .pq-meta {
+  grid-row: 2;
 }
 
 /* The chain itself. ⚑ The arrow is a pseudo-element, so no separator is ever read back as text.
@@ -1332,101 +1127,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   line-height: var(--leading-tight);
 }
 
-/* ⛔ **Amber, and it is the second half of the licence this surface spends** (403). The status
-   grammar says a question and a permission may summon attention; this line is the permission
-   saying which kind of permission it is. ⚠️ Through the pill token and never `var(--waiting)`,
-   for the reason at the top of this file: in the host's light scope that resolves to a near-black
-   that reads as ink. */
-.pq-asked {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.pq-asked p,
-.pq-asked ul {
-  margin: 0;
-}
-
-.pq-asked-words {
-  color: var(--text);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.pq-asked-context,
-.pq-asked-prompt,
-.pq-asked-options {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.pq-asked-options {
-  padding-left: var(--space-6);
-}
-
-.pq-request-scope {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--code-bg);
-  color: var(--code-text);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-  gap: var(--space-1);
-  list-style: none;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.pq-asked-note {
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-/* What it asks, then the action itself: beside each other where there is room. */
-.pq-request-what {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-4);
-}
-
-.pq-request-what > .pq-asked-words {
-  flex: 0 1 auto;
-}
-
-/* The complete command or file, never shortened: a line wider than the card scrolls, and the box
-   takes focus so a keyboard can scroll it too. */
-.pq-request-line {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 16em;
-  flex-direction: column;
-  padding: var(--space-3) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-  overflow-x: auto;
-}
-
-.pq-request-line code {
-  width: max-content;
-  font: inherit;
-  white-space: pre;
-}
-
 .pq-says {
   color: var(--waiting-text-label);
   font-size: var(--type-caption);
@@ -1434,6 +1134,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 }
 
 .pq-meta {
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   color: var(--faint);
@@ -1454,6 +1155,20 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   background: var(--panel);
   font-size: var(--type-caption);
   gap: var(--space-2);
+}
+
+.with-live-card .pq-go {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-decoration: underline dotted;
+}
+.with-live-card .pq-go .icon {
+  display: none;
+}
+.with-live-card .pq-more > summary {
+  min-height: 22px;
+  padding: 0;
 }
 
 .pq-go .icon {
@@ -1478,15 +1193,13 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   gap: var(--space-3);
 }
 
-.pq-actions > .pq-answer {
-  min-width: 72px;
-  min-height: 32px;
-  align-items: center;
-  justify-content: center;
-}
-
 .pq-actions > .pq-controls {
   margin-left: auto;
+}
+
+.persons-queue.floating :deep(.permission-actions) {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 /* ⛔ **A column in the corner and not a row of buttons**: `.overlay-corner` is 200px wide, and
@@ -1498,6 +1211,11 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 
 .persons-queue.floating .pq-actions > .pq-controls {
   margin-left: 0;
+}
+
+.persons-queue.floating .with-live-card .pq-actions {
+  flex-flow: row wrap;
+  align-items: baseline;
 }
 
 .pq-more {
@@ -1546,65 +1264,8 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   margin: 0;
 }
 
-.pq-does {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-}
-
-.pq-answer {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: var(--space-2) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  font-size: var(--type-caption);
-  gap: 1px;
-  text-align: left;
-}
-
-.pq-answer strong {
-  color: var(--text);
-  font-weight: var(--fw-medium);
-}
-
-/* ⚠️ **The consequence is quiet and the word is not.** A person scans the labels; the sentence is
-   there for the press they are not sure about. */
-.pq-answer small {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-}
-
-/* 🔴 743 · the wholesale grant's warning, inside its button — `AttentionQueue`'s `.request-warns`. */
-.pq-answer .pq-warns {
-  color: var(--waiting);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-}
-
-/* ⛔ **A refusal is never the loud button** — `AttentionQueue`'s rule, and the same predicate
-   (`isRefusal`) decides it on both surfaces. */
-.pq-answer.deny strong {
-  color: var(--muted);
-}
-
 .pq-limit,
-.pq-after,
 .pq-no-answer {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-}
-
-/* ⚑ **468 · the card's own weight for the same sentence.** `PermissionCard`'s `.refused` is
-   `var(--muted)`, and a refusal drawn louder here than on the card it came from would make the
-   quieter surface look like the less important one. ⛔ Its own rule rather than another selector on
-   the group above: those are *why nothing can be pressed*, and this one is drawn beside buttons
-   that CAN be. */
-.pq-refused {
   color: var(--muted);
   font-size: var(--type-caption);
   line-height: var(--leading-tight);

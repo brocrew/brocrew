@@ -326,7 +326,7 @@ describe('§2 · one sentence, on all three surfaces', () => {
       expect(request.noPositive).toBe(said)
       const home = await renderHome([request])
       expect(home).toContain(said)
-      expect(home).toContain('data-cy="attention-cannot-allow"')
+      expect(home).toContain('data-cy="permission-cannot-allow"')
 
       // ⛔ **The person's queue**, off the same `AttentionRequest` the window holds.
       expect(personsRowFor(request).noPositive).toBe(said)
@@ -339,7 +339,7 @@ describe('§2 · one sentence, on all three surfaces', () => {
     const withheld = rowFor(publishedOffer([]), 'could-not-describe-the-grant')
     expect(withheld.underDisclosed).toBe(true)
     return renderHome([withheld]).then((home) => {
-      expect(home).toContain('cannot fully represent')
+      expect(home).toContain('full effect could not be represented')
       expect(home).not.toContain('Open it before you allow it')
     })
   })
@@ -351,7 +351,7 @@ describe('§2 · one sentence, on all three surfaces', () => {
     expect(ordinary.noPositive).toBeNull()
     const home = await renderHome([ordinary])
     expect(home).toContain('Open it before you allow it')
-    expect(home).not.toContain('data-cy="attention-cannot-allow"')
+    expect(home).not.toContain('data-cy="permission-cannot-allow"')
     expect(personsRowFor(ordinary).noPositive).toBeNull()
   })
 })

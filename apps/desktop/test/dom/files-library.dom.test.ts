@@ -3,6 +3,7 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import FilesLibrary from '../../src/renderer/src/components/FilesLibrary.vue'
 import FilesLibraryPreview from '../../src/renderer/src/components/FilesLibraryPreview.vue'
+import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
 import {
   createFilesLibrary,
@@ -10,16 +11,18 @@ import {
   type LibraryApi,
 } from '../../src/renderer/src/composables/useFilesLibrary'
 import { filesLibraryReplies } from '../fixtures/files-library-replies'
+import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { libraryUnavailable, type LibraryKeep } from '../../src/shared/files-library'
 import type { ResourceReading } from '../../src/shared/runtime-ipc'
 import { readLocalTimeFrom, type LocalZone } from '../../src/shared/local-time'
-import { mount, unmountAll } from './harness'
+import { META, expandAgentCards, mount, paneProps, record, unmountAll } from './harness'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 
 // Every negative below is paired with a reading of the same surface.
 afterEach(() => {
   unmountAll()
   readLocalTimeFrom(() => null)
+  screenFacts().update({ treeFiles: null, cardFiles: null })
 })
 function stage(dense = false, over?: LibraryApi) {
   const fixture = filesLibraryReplies(dense)
@@ -79,6 +82,51 @@ async function ready(dense = false, width = 1180, height = 880, over?: LibraryAp
   await drawnReady()
   return { s, m }
 }
+
+it('uses the same kept-file row in the transcript, panel, popup and both library layouts', async () => {
+  const { s, m: library } = await ready()
+  const file = s.library.page.value!.files[0]!.file
+  const kept = { conversation: META.sessionId, files: [file], answered: true }
+  screenFacts().update({ treeFiles: kept, cardFiles: kept })
+  const pane = mount(
+    ConversationPane,
+    paneProps({
+      drawerOpen: true,
+      onReadResource: s.readResource,
+      record: record([
+        {
+          type: 'user_turn',
+          attribution: 'app_authored',
+          text: 'The report is ready.',
+          work: {
+            piece: file.piece,
+            label: file.label,
+            owner: META.sessionId,
+            state: 'answered',
+            outcome: 'done',
+            resources: [file.resourceId],
+          },
+        },
+      ]),
+    }),
+  )
+  await drawnReady()
+  await expandAgentCards(pane)
+  const key = CSS.escape(file.resourceId)
+  const row = `[data-cy="file-rows"] [data-document="${key}"]`
+  expect(pane.host.querySelectorAll(`${row}[data-cy="file-row"]`)).toHaveLength(1)
+  expect(pane.host.querySelectorAll(`${row}[data-cy="card-file"]`)).toHaveLength(1)
+  pane.q('card-files-all').click()
+  await nextTick()
+  expect(pane.q('all-files-dialog').querySelectorAll(row)).toHaveLength(1)
+  expect(library.host.querySelectorAll(row)).toHaveLength(1)
+  library.q('files-view-list').click()
+  await nextTick()
+  expect(library.host.querySelectorAll(row)).toHaveLength(1)
+  library.host.querySelector<HTMLButtonElement>(row)!.click()
+  await vi.waitFor(() => expect(library.all('canonical-document-viewer')).toHaveLength(1))
+  expect(s.readResource).toHaveBeenCalledWith(file.resourceId)
+})
 
 it('shows compact Icons by default with visible 13px task/person/kept time, and List preserves IDs/counts/order', async () => {
   const { s, m } = await ready(true, 1440, 1080)

@@ -47,7 +47,7 @@ import {
   type WorkEntry,
   type WorkWaitsView,
 } from './work-waits'
-import type { PermissionDecision, UserInputResponse } from '../../../shared/runtime-ipc'
+import type { UserInputResponse } from '../../../shared/runtime-ipc'
 // ⚑ **UI-009 · a question this app asked is drawn and answered as `QuestionCard`** — see
 // {@link PersonsQueueRow.question}.
 import { wordsAsked, type AppQuestion, type QueuePress, type QuestionWords } from './question-card'
@@ -316,6 +316,8 @@ export type PersonsQueueKind =
 
 /** One thing a person now owes an answer or a decision to. */
 export interface PersonsQueueRow extends QueueQuestionContext {
+  readonly liveCard?: AttentionRequest['card']
+  readonly cardProvider?: AttentionRequest['provider']
   /**
    * ⛔ **Which of the two populations this is** — see {@link PersonsQueueKind}. ⚠️ The row's chain,
    * its age and its words all differ by it, and a surface reads this rather than inferring the kind
@@ -1086,7 +1088,7 @@ function chainOf(hops: readonly ChainHop[], raised: PersonsQueueDid): PersonsQue
 }
 
 /** What a request asks, as its card discloses it — the fields of {@link AttentionRequest} that say so. */
-export type DisclosedRequest = Pick<
+type DisclosedRequest = Pick<
   AttentionRequest,
   'asked' | 'scope' | 'underDisclosed' | 'detailOmitted' | 'agentSays' | 'actionLines'
 >
@@ -1100,42 +1102,6 @@ function disclosedBy(card: AttentionRequest): DisclosedRequest {
     ...(card.agentSays === undefined ? {} : { agentSays: card.agentSays }),
     ...(card.actionLines === undefined ? {} : { actionLines: card.actionLines }),
   }
-}
-
-/**
- * The scope lines about this one action, which the closed card draws: the complete command or
- * file first. Every line, where the card does not say which are about a broader grant.
- */
-export function actionLinesOf(disclosed: DisclosedRequest): readonly string[] {
-  return disclosed.actionLines === undefined
-    ? disclosed.scope
-    : disclosed.scope.slice(0, disclosed.actionLines)
-}
-
-/** The scope lines about what a broader answer would install, drawn only under more options. */
-export function broaderLinesOf(disclosed: DisclosedRequest): readonly string[] {
-  return disclosed.actionLines === undefined ? [] : disclosed.scope.slice(disclosed.actionLines)
-}
-
-/**
- * Whether a permission answer settles this one request and nothing more. A standing grant, and a
- * Cancel that asks the whole turn to stop, are broader choices.
- */
-const SETTLES_ONLY_THIS_REQUEST: Readonly<Record<PermissionDecision['outcome'], boolean>> = {
-  allow: true,
-  deny: true,
-  allow_for_session: false,
-  allow_all_for_session: false,
-  allow_always: false,
-  cancel: false,
-}
-
-/**
- * Whether an answer is one of the request's own primary answers, drawn side by side on the card.
- * An answer to a question settles only that question, so every one of them is.
- */
-export function isAPrimaryAnswer(decision: AttentionDecision): boolean {
-  return decision.kind !== 'permission' || SETTLES_ONLY_THIS_REQUEST[decision.decision.outcome]
 }
 
 /**
@@ -1344,6 +1310,7 @@ export function personsQueueView(
       key,
       sessionId: request.askedBy,
       requestId: request.requestId,
+      ...(live?.card ? { liveCard: live.card, cardProvider: live.provider } : {}),
       chain: chainOf(hops, RAISED_IT[kind]),
       unfollowable,
       sentence,

@@ -28,9 +28,6 @@ import {
  * A path a message names becomes a control once main says it is there: the main control opens it
  * (main decides whether that means opening or showing), the second always shows it, and a press
  * sends the conversation and the text as written, never a path.
- *
- * The bridge is a fake on `window.api.runtime`, behind the DOM project's wire, so every argument is
- * cloned the way the real IPC clones it.
  */
 
 const HERE = '/Users/someone/work'
@@ -355,24 +352,30 @@ describe('the path and its two icons', () => {
     }
   })
 
-  it.each([
+  it.each<[string, string, boolean?]>([
     ['./notes.md', '/Users/someone/work/notes.md'],
     ['~/notes.md', '/Users/someone/notes.md'],
     ['C:\\Work\\notes.md', 'C:\\Resolved Work\\notes.md'],
+    ['projects/x/report.md', `${HERE}/projects/x/report.md`, true],
   ])(
-    'copies main’s absolute answer for %s while Open keeps the original text',
-    async (text, absolute) => {
+    'copies the resolved path and opens the original %s once each',
+    async (text, absolute, isPermission) => {
       const main = installMain({ existing: [text], resolved: { [text]: absolute } })
       const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
       try {
-        const { view } = await transcript([typed(`Read ${text}`)])
+        const request = isPermission
+          ? { ...permission('req_1'), action: `Read **${text}**` }
+          : typed(`Read ${text}`)
+        const { view } = await transcript([request])
         expect(textFor(view, text)?.textContent).toBe(text)
         copyFor(view, text).click()
         await settle()
-        expect(written).toHaveBeenCalledWith(absolute)
         controlFor(view, text)!.click()
         await settle()
-        expect(main.opens).toEqual([{ sessionId: 'sess_1', text }])
+        expect({ copies: written.mock.calls, opens: main.opens }).toEqual({
+          copies: [[absolute]],
+          opens: [{ sessionId: 'sess_1', text }],
+        })
       } finally {
         written.mockRestore()
       }

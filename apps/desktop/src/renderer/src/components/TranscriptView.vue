@@ -47,7 +47,7 @@ import OutgoingEntry from './OutgoingEntry.vue'
 import ToolRun from './ToolRun.vue'
 import UnknownEntry from './UnknownEntry.vue'
 import SummaryEntry from './SummaryEntry.vue'
-import UserInputCard from './UserInputCard.vue'
+import QuestionCard from './QuestionCard.vue'
 import UserMessage from './UserMessage.vue'
 import QueuedMessage from './QueuedMessage.vue'
 import { filesOnScreen } from '../lib/files-kept'
@@ -960,7 +960,8 @@ defineExpose({ focusItem })
           @decide="(id, decision) => $emit('decide', id, decision)"
           @take-it-over="$emit('takeItOver')"
         />
-        <UserInputCard
+        <QuestionCard
+          compact
           v-else-if="row.item.kind === 'userInput'"
           :item="row.item"
           :draft="props.draftFor?.(row.item.request.id)"
