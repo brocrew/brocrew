@@ -308,9 +308,9 @@ describe('296 · the capability and the adapter say the same thing', () => {
     if (claude.state !== 'absent') throw new Error('claude.childInput is no longer absent')
     // `absent` REQUIRES `checkedAgainst` — this asserts it is an artefact and a version rather than
     // a shrug. 029/030 shipped a fabricated `absent`; this is the shape that stops the next one.
-    expect(claude.checkedAgainst).toContain('0.3.281')
+    expect(claude.checkedAgainst).toContain('0.3.322')
     expect(claude.checkedAgainst).toContain('getSubagentMessages')
-    expect(claude.reason.length).toBeGreaterThan(60)
+    expect(claude.reason).toContain('You can’t send messages from the sub-agent viewer')
   })
 
   it('⚑ the available arm says which of the two states a person is looking at', () => {

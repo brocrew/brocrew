@@ -65,7 +65,9 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
     reason:
       'Claude sessions run on the API key saved under “API key” on the Claude card in Providers, or, with none saved, on your machine login directly — there is no separate sign-in here to renew. Without a saved key, switching profiles on your machine is picked up the next time you start a conversation.',
     checkedAgainst:
-      'Claude Agent SDK 0.3.281 (exact-pinned): `Query` declares `accountInfo()` (sdk.d.ts:2971) and no login/authenticate verb anywhere in the declaration file; `forceLoginMethod`/`forceLoginOrgUUID` are settings the CLI reads, not methods we can call. And `claude/auth.ts` copies no Claude credential into the profile home (015), so there is none to renew.',
+      'Claude Agent SDK 0.3.322: `sdk.d.ts` declares `Query.accountInfo()` for account inspection and no SDK sign-in method. ' +
+      '`forceLoginMethod` and `forceLoginOrgUUID` are CLI settings. ' +
+      '`prepareClaudeHome` prepares the profile state without provisioning a Claude credential.',
   },
   /**
    * `absent`: there is nothing to copy into. No Claude credential is ever written to a profile home, so a
@@ -93,17 +95,10 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   },
   childInput: {
     state: 'absent',
-    reason:
-      'A Claude sub-agent is a record, not a conversation you can join. The SDK writes its ' +
-      'transcript to `subagents/agent-<id>.jsonl` as it works — BroCrew follows that file live — ' +
-      'and offers a reader keyed by agent id, `getSubagentMessages(sessionId, agentId)`. There is ' +
-      'nothing in the other direction: the parent model dispatches the child and reads its report, ' +
-      'and no one else gets a word in.',
+    reason: 'You can’t send messages from the sub-agent viewer.',
     checkedAgainst:
-      '@anthropic-ai/claude-agent-sdk 0.3.281 `sdk.d.ts` — all 70 distinct `subtype` literals on ' +
-      'the client↔CLI control channel (`api_retry` through `worker_shutting_down`), every method ' +
-      'on `Query`, and every exported function taking an agent id. Exactly one takes one: ' +
-      '`getSubagentMessages`, and it reads.',
+      'Claude Agent SDK 0.3.322: `getSubagentMessages` reads child history, and `Query.streamInput` ' +
+      'takes session messages without a sub-agent target. The Claude session handle exposes no child input method.',
   },
   agentCommands: {
     state: 'available',
@@ -124,17 +119,11 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
    */
   commandOutput: {
     state: 'absent',
-    reason:
-      'Claude does not report a command’s output until the command finishes — the whole of it ' +
-      'arrives at once, in the result.',
+    reason: 'Claude reports foreground command output when the command finishes.',
     checkedAgainst:
-      '@anthropic-ai/claude-agent-sdk 0.3.281 `sdk.d.ts` — every method on `Query` (`stopTask` and ' +
-      '`backgroundTasks` are the two that name a task; neither reads one) and every `system` ' +
-      'subtype on the control channel. Then a live turn: `probe:command-output` row C, a 12-second ' +
-      'command printing a per-process nonce, 45 frames captured with `includePartialMessages`, ' +
-      'none carrying the output before the `tool_result`. 0.3.287 adds the `get_task_output` ' +
-      'control request: the last 8 KiB of a background shell or Monitor task, on request — ' +
-      'nothing for a foreground command, which is what this entry is about.',
+      'Claude Agent SDK 0.3.322: `SDKToolProgressMessage` carries progress metadata without command output, ' +
+      '`get_task_output` reads only background shell or Monitor tasks, and `BashOutput` describes the result. ' +
+      'Earlier live evidence: `probe:command-output` row C captured 45 frames, with output first appearing in the tool result.',
   },
   /**
    * `unwired`: `get_task_output` returns the last 8 KiB of a running background shell or Monitor task. Showing it
