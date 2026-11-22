@@ -1,10 +1,15 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { isOfferedLabel, type UserInputQuestion } from '@brobot2/runtime'
 import { newResourceId } from '../db/ids'
 import type { GivenInput } from '../../shared/documents'
-import { refuseResource, type OfferedFileBytes, type ResourceRefusal } from '../resources/resources'
+import {
+  keepResource,
+  refuseResource,
+  type OfferedFileBytes,
+  type ResourceRefusal,
+} from '../resources/resources'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 import type { SendReceipt } from '../../shared/tool-outcome'
 
@@ -95,13 +100,35 @@ export type PreparedSendFiles =
   | { readonly ok: true; readonly files: SendReceipt['attachments'] }
   | { readonly ok: false; readonly refusal: ResourceRefusal }
 
+function keepSentResource(
+  root: string,
+  name: string,
+  bytes: Buffer,
+):
+  | { readonly ok: true; readonly path: string }
+  | { readonly ok: false; readonly refusal: ResourceRefusal } {
+  // Isolate sent files from task resource deletion and preserve case-only filename differences.
+  const subdir = 'sent'
+  const sha256 = createHash('sha256').update(name).update('\0').update(bytes).digest('hex')
+  const path = resolve(root, subdir, sha256, name)
+  const kept = keepResource(root, { sha256, name, bytes }, subdir)
+  if (kept.ok) return { ok: true, path }
+  return {
+    ok: false,
+    refusal: refuseResource('resource-could-not-be-kept', {
+      path,
+      problem: kept.cause ?? kept.problem,
+    }),
+  }
+}
+
 export function keepTasklessSendFiles(
-  cwd: string,
+  root: string,
   offered: readonly OfferedFileBytes[],
 ): PreparedSendFiles {
   const files: { path: string; name: string }[] = []
   for (const { name, bytes } of offered) {
-    const kept = writeTasklessFile(cwd, name, bytes)
+    const kept = keepSentResource(root, name, bytes)
     if (!kept.ok) return kept
     files.push({ path: kept.path, name })
   }
@@ -170,8 +197,12 @@ export function answerPreview(
   })
 }
 
-export function keepTasklessSendText(cwd: string, field: string, text: string): PreparedSendText {
-  const kept = writeTasklessFile(cwd, `${field.replaceAll('_', '-')}.txt`, text)
+export function keepTasklessSendText(root: string, field: string, text: string): PreparedSendText {
+  const kept = keepSentResource(
+    root,
+    `${field.replaceAll('_', '-')}.txt`,
+    Buffer.from(text, 'utf8'),
+  )
   if (!kept.ok) return kept
   const overflow = { field, characters: text.length, path: kept.path }
   return {
@@ -191,25 +222,11 @@ export function keepPlainSendFile(
   // The existing resource row and reader take a 64-hex directory name.
   const key = randomBytes(32).toString('hex')
   const folder = resolve(root, key)
-  const kept = writeSendFile(resolve(folder, name), body, folder)
-  return kept.ok ? { ok: true, key } : kept
-}
-
-function writeTasklessFile(cwd: string, name: string, body: string | Buffer) {
-  return writeSendFile(resolve(cwd, `brocrew-${randomUUID()}-${name}`), body)
-}
-
-function writeSendFile(
-  path: string,
-  body: string | Buffer,
-  folder?: string,
-):
-  | { readonly ok: true; readonly path: string }
-  | { readonly ok: false; readonly refusal: ResourceRefusal } {
+  const path = resolve(folder, name)
   try {
-    if (folder !== undefined) mkdirSync(folder, { recursive: true, mode: 0o700 })
+    mkdirSync(folder, { recursive: true, mode: 0o700 })
     writeFileSync(path, body)
-    return { ok: true, path }
+    return { ok: true, key }
   } catch (error) {
     return {
       ok: false,
