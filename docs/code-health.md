@@ -52,7 +52,7 @@ array membership on provider-named values. Parentheses, TypeScript assertions an
 do not hide these forms. Vue script blocks, template interpolations and directive expressions
 are included. The SQL scan covers provider column comparisons, literal IN lists and the
 historical JSON-provider equality. Each exception names an expression, a file and a reason,
-and matches at most once. The temporary sign-in-copy exception retires with W14.44.
+and matches at most once.
 
 This is a syntax check. It does not follow arbitrary aliases or computed provider IDs, resolve
 types or data flow, inspect embedded SQL in JavaScript strings, or parse the full SQL and Vue

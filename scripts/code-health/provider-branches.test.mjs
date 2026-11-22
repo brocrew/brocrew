@@ -25,16 +25,6 @@ const equality = new Set([
 // Each entry permits one occurrence of this expression in its named file.
 const exceptions = [
   [
-    'main/connections/catalogues.ts',
-    'provider === DEFAULT_CONVERSATION_PROVIDER',
-    'Audit 512–521: deliberate BroBot unnamed-start effort default.',
-  ],
-  [
-    'main/runtime/runtime-host.ts',
-    "provider !== 'codex'",
-    'Temporary W14.44: automatic newer sign-in copy. Remove when provider operations decide.',
-  ],
-  [
     'main/runtime/what-this-agent-was-given.ts',
     "case 'read-by-codex'",
     'Card 47: interpret the origin of a previously stored file kind.',

@@ -29,7 +29,7 @@ function aHostOffering(...efforts: string[]) {
   })
 }
 
-it('shows and starts BroBot at medium on the existing default provider in a fresh workspace', async () => {
+it('shows and starts BroBot at the provider default in a fresh workspace', async () => {
   const host = aHostOffering('low', 'medium', 'high')
   const { provider } = host.resolveProviderLaunch({
     askedProvider: null,
@@ -41,7 +41,7 @@ it('shows and starts BroBot at medium on the existing default provider in a fres
   expect(provider).toBe('codex')
   const choices = await host.providerLaunchChoices(provider)
   expect(choices).toMatchObject({
-    defaultModel: { model: 'harbour', effort: 'medium' },
+    defaultModel: { model: 'harbour', effort: 'low' },
     defaultModelToSend: null,
     list: { models: [expect.objectContaining({ id: 'harbour', defaultEffort: 'low' })] },
   })
@@ -49,11 +49,11 @@ it('shows and starts BroBot at medium on the existing default provider in a fres
   const session = await world.open(host, provider, DEFAULT_PROFILE_ID, { inTheWorkspace: true })
   expect(world.end.newest()).toMatchObject({
     provider: 'codex',
-    options: { model: 'harbour', reasoningEffort: 'medium' },
+    options: { model: 'harbour', reasoningEffort: 'low' },
   })
   expect(world.store.whatItRunsOn(session)).toMatchObject({
     model: 'harbour',
-    reasoningEffort: 'medium',
+    reasoningEffort: 'low',
   })
 })
 

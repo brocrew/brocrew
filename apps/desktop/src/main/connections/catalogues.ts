@@ -2,7 +2,7 @@ import {
   // ⚑ **D-042 · R1 — a provider's own default, by name**, where no list need be read to know it.
   theDefaultByName,
 } from '@brobot2/runtime'
-import { DEFAULT_CONVERSATION_PROVIDER, type Provider } from '@brobot2/shared'
+import type { Provider } from '@brobot2/shared'
 import {
   agentName,
   DEFAULT_PROFILE_ID,
@@ -261,7 +261,7 @@ export class ModelCatalogues {
       lastPicked: this.store.lastPicked(provider),
       startsOn:
         this.theSelectedPairIfNamed(provider, profileId) ??
-        this.theDefaultForAnUnnamedStart(list, provider, profileId),
+        this.theProvidersDefaultIn(list, provider),
     }
   }
 
@@ -508,26 +508,6 @@ export class ModelCatalogues {
       : { model: row.id, effort, from: 'the-providers-default' }
   }
 
-  private theDefaultForAnUnnamedStart(
-    list: TheListAsked,
-    provider: Provider,
-    profileSlug: string | null,
-    namedEffort?: string,
-  ): SelectedModel | null {
-    const selected = this.theProvidersDefaultIn(list, provider, namedEffort)
-    if (
-      selected !== null &&
-      namedEffort === undefined &&
-      provider === DEFAULT_CONVERSATION_PROVIDER &&
-      profileSlug !== null &&
-      foldProfileName(profileSlug) === DEFAULT_PROFILE_ID &&
-      theEffortsOf(theListedRow(list.rows, selected.model)).includes('medium')
-    ) {
-      return { ...selected, effort: 'medium' }
-    }
-    return selected
-  }
-
   /**
    * ⚑ **D-042 · R1 — the effort a model named without one runs at**: a row of the PROVIDER's runs
    * at its own default, else at the provider's default row's where it offers that one
@@ -605,7 +585,7 @@ export class ModelCatalogues {
     let selected = this.theSelectedPairIfNamed(provider, profileSlug)
     if (selected === null) {
       const list = await this.theListIn(provider)
-      selected = this.theDefaultForAnUnnamedStart(list, provider, profileSlug, named.effort)
+      selected = this.theProvidersDefaultIn(list, provider, named.effort)
       if (selected === null) throw unnamed(list, null)
     }
     if (named.effort === undefined) return selected

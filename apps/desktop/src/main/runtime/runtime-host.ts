@@ -26977,7 +26977,7 @@ export class RuntimeHost implements LiveHost {
     if (this.queueANewerHomeCopy(session.provider, session.profileId)) {
       session.itsSignInMovedOn = true
       throw new ItsSignInMovedOn(
-        'A newer Codex sign-in is being copied before this turn. Nothing has been sent.',
+        'A newer sign-in is being copied before this turn. Nothing has been sent.',
       )
     }
     // ⚑ The machine's login moved: a window drawing it asks again — once per life — and the limits
