@@ -16345,14 +16345,7 @@ export class RuntimeHost implements LiveHost {
     // (`729` F-1, R41): {@link oneNamingPerAnswer} named a conversation by its FOLDER until `734`,
     // and in the default one that is `brobot-workspace` for every agent a person has. ⚑ The row's
     // piece names both, so the agent's name alone is enough (D-016 · commit 7 · R3).
-    const called = new Map<string, string>()
-    const whatToCall = (conversation: string): string => {
-      const held = called.get(conversation)
-      if (held !== undefined) return held
-      const word = this.whatToCallTheConversation(conversation)
-      called.set(conversation, word)
-      return word
-    }
+    const whatToCall = this.oneCallingPerAnswer()
     // ⚑ **D-016 · commit 7 · R3 — the asker by the piece it owns**, memoised the same way: the row's
     // piece names its holder and its giver, and nothing on it names the asker. ⚑ **F033 · its piece
     // on the chain of the one whose turn it stopped**, once per asker and piece.
@@ -16435,14 +16428,7 @@ export class RuntimeHost implements LiveHost {
 
   private stoppedWorkForAPersonComposed(): LedgerWalk<StoppedWorkForAPerson> {
     // ⚑ Each conversation named once per answer.
-    const names = new Map<string, string>()
-    const nameOf = (conversation: string): string => {
-      const known = names.get(conversation)
-      if (known !== undefined) return known
-      const word = this.whatToCallTheConversation(conversation)
-      names.set(conversation, word)
-      return word
-    }
+    const nameOf = this.oneCallingPerAnswer()
     const unread = rowsUnreadOnce()
     const found = this.shown(
       this.windowRoutingReads.queue('stops', unread) ??
@@ -17803,14 +17789,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **The holder's IDENTITY name, once per conversation per answer** — the memo
     // {@link stalledWorkForAPerson} keeps, for its reason (`732`, R41): a holder with several pieces
     // waiting on the person is named once.
-    const holders = new Map<string, string>()
-    const theHolder = (conversation: string): string => {
-      const known = holders.get(conversation)
-      if (known !== undefined) return known
-      const word = this.whatToCallTheConversation(conversation)
-      holders.set(conversation, word)
-      return word
-    }
+    const theHolder = this.oneCallingPerAnswer()
     // 🔴 **D-017 · R8** — one set for the walk, so a record it skipped is counted once.
     const unread = rowsUnreadOnce()
     const walked = this.shown(
@@ -18928,6 +18907,22 @@ export class RuntimeHost implements LiveHost {
       if (held !== undefined) return held
       const word = this.nameForAPerson(id, identities)
       named.set(id, word)
+      return word
+    }
+  }
+
+  /**
+   * ⚑ **{@link whatToCallTheConversation}, once per conversation per answer** — for the stalled,
+   * stopped and waiting-on-who-wrote rows (card 91). ⛔ Per answer and never per host: a rename
+   * moves a name.
+   */
+  private oneCallingPerAnswer(): (conversation: string) => string {
+    const called = new Map<string, string>()
+    return (conversation: string): string => {
+      const held = called.get(conversation)
+      if (held !== undefined) return held
+      const word = this.whatToCallTheConversation(conversation)
+      called.set(conversation, word)
       return word
     }
   }
