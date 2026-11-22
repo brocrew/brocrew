@@ -476,7 +476,7 @@ describe('a drop with no usable path (218 §2, acceptance 5)', () => {
     expect(staged()).toEqual([])
     const refusal = view.q('attach-refused')
     expect(visible(refusal)).toBe(true)
-    expect(refusal.textContent).toContain('not a file on this machine')
+    expect(refusal.textContent).toContain('Not a file. Drop files or folders.')
     // ⚑ Nothing crossed the bridge: there was no path to classify.
     expect(bridge.asked).toEqual([])
   })
@@ -488,7 +488,7 @@ describe('a drop with no usable path (218 §2, acceptance 5)', () => {
     await dropOn(view, dropped('notes.md', '/work/alpha/notes.md'), pathless('image.png'))
 
     expect(staged()).toEqual([file('/work/alpha/notes.md')])
-    expect(view.q('attach-refused').textContent).toContain('not a file on this machine')
+    expect(view.q('attach-refused').textContent).toContain('Not a file. Drop files or folders.')
   })
 
   it('⛔ …and a path MAIN refuses says main’s own sentence, not a generic one', async () => {
@@ -527,7 +527,7 @@ describe('a drop with no usable path (218 §2, acceptance 5)', () => {
     installBridge()
     view = composer()
     await dropOn(view, pathless('image.png'))
-    expect(view.q('attach-refused').textContent).toContain('not a file on this machine')
+    expect(view.q('attach-refused').textContent).toContain('Not a file. Drop files or folders.')
 
     await dropOn(view, dropped('notes.md', '/work/alpha/notes.md'))
 

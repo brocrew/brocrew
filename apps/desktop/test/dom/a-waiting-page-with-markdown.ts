@@ -118,7 +118,7 @@ export async function aWaitingPageWithMarkdown(
         type: 'permission_request',
         id: 'req_command',
         kind: 'command',
-        action: 'Bash',
+        action: '**Run the preview check**',
         detail: LITERAL_COMMAND,
         scope: {
           cwd: '/work/sample',
@@ -162,15 +162,7 @@ export async function aWaitingPageWithMarkdown(
     {
       held: new Set(),
       answerable: new Map(),
-      nobodyHolds: new Map([
-        [
-          permission.key,
-          {
-            ...permission,
-            asked: '**Run the preview check**',
-          },
-        ],
-      ]),
+      nobodyHolds: new Map([[permission.key, permission]]),
       answeredFromHere: new Set(),
       now: MARKDOWN_NOW,
       lastLookAnswered: { questions: true, decisions: true },

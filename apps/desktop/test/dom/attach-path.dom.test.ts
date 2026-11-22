@@ -4,6 +4,7 @@ import { defineComponent, h, nextTick, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
 import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
+import ModelGotSwitch from '../../src/renderer/src/components/ModelGotSwitch.vue'
 import { createAttachmentBook } from '../../src/renderer/src/lib/drafts'
 import type { ChosenAttachment } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
@@ -369,22 +370,22 @@ describe('the attach control (216 §2)', () => {
   })
 })
 
-describe('what the transcript shows (216 §2, and 214 from the other end)', () => {
-  const bubble = (over: Partial<HandedPath[]> | undefined, text = 'have a look at this'): Mounted =>
-    mount(
-      UserMessage,
-      {
-        item: {
-          kind: 'user',
-          id: 'user_1',
-          text,
-          at: 1_700_000_000_000,
-          ...(over ? { attachments: over } : {}),
-        },
+const bubble = (over: Partial<HandedPath[]> | undefined, text = 'have a look at this'): Mounted =>
+  mount(
+    UserMessage,
+    {
+      item: {
+        kind: 'user',
+        id: 'user_1',
+        text,
+        at: 1_700_000_000_000,
+        ...(over ? { attachments: over } : {}),
       },
-      { width: 900 },
-    )
+    },
+    { width: 900 },
+  )
 
+describe('what the transcript shows (216 §2, and 214 from the other end)', () => {
   it('🔴 the attachment is VISIBLE and is NOT inside what the person said', () => {
     view = bubble([FILE])
 
@@ -457,13 +458,33 @@ describe('a message still WAITING to be sent (216, review)', () => {
       { width: 900 },
     )
 
+  it('draws one attachment component for the same file throughout a send', async () => {
+    const draft = composer({ attachments: [FILE] })
+    const pending = queued({ attachments: [FILE] })
+    const sent = bubble([FILE])
+    const inspected = mount(ModelGotSwitch, { words: 'Read the draft.', attached: [FILE.path] })
+    inspected.q('model-got-switch').click()
+    await nextTick()
+
+    for (const surface of [draft, pending, sent, inspected]) {
+      const components = surface.host.querySelectorAll('[data-attachment-chips]')
+      expect(components).toHaveLength(1)
+      expect(components[0]!.querySelectorAll('[data-cy="attachment-chip"]')).toHaveLength(1)
+      expect(components[0]!.textContent).toContain('notes.md')
+    }
+    expect(inspected.q('what-the-model-got-attached').textContent).toBe(FILE.path)
+    draft.q('detach-file').click()
+    await nextTick()
+    expect(draft.all('attachment-chip')).toHaveLength(0)
+  })
+
   it('🔴 shows what is about to go, in the one window where it can still be changed', () => {
     // A waiting message must show its attachments as well as its words before injection. That
     // is the moment when the person can still undo the send.
     view = queued({ attachments: [FILE, OUTSIDE] })
 
     expect(visible(view.q('queued-attachments'))).toBe(true)
-    expect(view.q('queued-attached-file').textContent).toContain(FILE.path)
+    expect(view.q('queued-attached-file').title).toBe(FILE.path)
     expect(view.q('queued-attachments').textContent).toContain('This app attached')
     expect(view.q('queued-attached-outside').textContent).toContain('outside')
     // ⚑ The same paired negative as the sent bubble, for the same reason.

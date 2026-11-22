@@ -111,7 +111,7 @@ describe('every kind of card is a card like the request cards', () => {
   it('keeps the rules an agent asked for readable, in the request card’s code box', async () => {
     const m = await aWaitingPageWithEveryCard(1180, 3200, true)
     const text = m.host.querySelector<HTMLElement>('.ask-text')!
-    const code = m.host.querySelector<HTMLElement>('.pq-request-line')!
+    const code = m.q('permission-detail')
     expect(text.textContent).toBe('Always show prices with two decimals.')
     for (const name of ['background-color', 'color', 'border-top-color'] as const)
       expect(getComputedStyle(text).getPropertyValue(name), name).toBe(

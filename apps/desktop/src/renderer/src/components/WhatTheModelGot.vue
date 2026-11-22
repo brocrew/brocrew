@@ -12,6 +12,7 @@ import {
 } from '../lib/agent-inputs'
 import { readableError } from '../lib/session-record'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
+import AttachmentChips from './AttachmentChips.vue'
 
 /**
  * 🔴 **F093 (C9 d) · what the model got with one message** — shown under a message's "Show what the
@@ -175,14 +176,7 @@ onMounted(async () => {
         <p class="part-head">The words</p>
         <pre class="words" data-cy="what-the-model-got-words">{{ props.words }}</pre>
         <p class="part-head">BroCrew’s lines around them</p>
-        <p
-          v-for="path in props.attached ?? []"
-          :key="path"
-          class="attached"
-          data-cy="what-the-model-got-attached"
-        >
-          This app attached <span class="path">{{ path }}</span>
-        </p>
+        <AttachmentChips :attachments="props.attached ?? []" presentation="delivered" />
         <p class="not-yet" data-cy="what-the-model-got-lines">
           {{ props.why ?? `${NOT_YET} ${SENT_NOT_KEPT_YET}` }}
         </p>
@@ -251,12 +245,6 @@ onMounted(async () => {
   font: var(--type-small) / var(--leading-relaxed) var(--font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.attached {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-small);
 }
 
 .path {

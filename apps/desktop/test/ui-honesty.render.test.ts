@@ -4,7 +4,7 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SubAgentEntry from '../src/renderer/src/components/SubAgentEntry.vue'
 import ToolEntry from '../src/renderer/src/components/ToolEntry.vue'
-import UserInputCard from '../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../src/renderer/src/components/QuestionCard.vue'
 import UserMessage from '../src/renderer/src/components/UserMessage.vue'
 import {
   applyEvent,
@@ -60,7 +60,7 @@ describe('§2.1 · a card cannot read "Answered" unless a human answered it', ()
     // The exact state `settlePending` leaves behind: a note, and no answer. It used to read
     // "Answered", off a computed that was true for either field — the app stating a human decision
     // that was never made.
-    const html = await render(UserInputCard, {
+    const html = await render(QuestionCard, {
       item: card({ note: 'settled when the session closed' }),
     })
     expect(html).toContain('Not answered')
@@ -73,16 +73,16 @@ describe('§2.1 · a card cannot read "Answered" unless a human answered it', ()
     // Non-vacuity. A fix that made the card never say "Answered" would pass every assertion above
     // and lose the disclosure entirely — and a refusal gets its own word, because the transcript is
     // where someone goes to find out what they agreed to.
-    expect(await render(UserInputCard, { item: card({ answered: 'answered' }) })).toContain(
+    expect(await render(QuestionCard, { item: card({ answered: 'answered' }) })).toContain(
       'Answered',
     )
-    expect(await render(UserInputCard, { item: card({ answered: 'rejected' }) })).toContain(
+    expect(await render(QuestionCard, { item: card({ answered: 'rejected' }) })).toContain(
       'Rejected',
     )
   })
 
   it('a pending card still asks, and still offers the buttons', async () => {
-    const html = await render(UserInputCard, { item: card() })
+    const html = await render(QuestionCard, { item: card() })
     expect(html).toContain('Needs your answer')
     expect(html).toContain('data-cy="user-input-answer"')
   })
@@ -91,7 +91,7 @@ describe('§2.1 · a card cannot read "Answered" unless a human answered it', ()
     // The combined predicate was never wrong for THIS — only the word was. A teardown card must
     // still refuse input, or the fix would have traded a false label for a live control that
     // silently does nothing.
-    const html = await render(UserInputCard, {
+    const html = await render(QuestionCard, {
       item: card({
         request: {
           ...REQUEST,

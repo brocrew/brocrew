@@ -32,6 +32,8 @@ import {
   isAwaitingAnswer,
   markAnswerRefused,
   type PermissionRequestEvent,
+  type PermissionOutcome,
+  type TranscriptItem,
   type TranscriptState,
 } from './transcript'
 import {
@@ -117,6 +119,7 @@ export const OPEN_REQUEST_MISSED =
  */
 
 export interface AttentionRequest {
+  card?: Extract<TranscriptItem, { kind: 'permission' | 'userInput' }>
   /** Distinct across conversations — the list renders on this. */
   key: string
   sessionId: string
@@ -343,6 +346,36 @@ export function answerFor(
   return { userInput: { kind: 'answer', answers: { [decision.questionId]: decision.option } } }
 }
 
+export function shortcutFor(
+  decisions: readonly AttentionDecision[],
+  response: UserInputResponse,
+): AttentionDecision | undefined {
+  if (response.kind === 'reject') return decisions.find((decision) => decision.kind === 'reject')
+  const entries = Object.entries(response.answers)
+  if (entries.length === 0) return decisions.find((decision) => decision.kind === 'approve')
+  if (entries.length !== 1) return undefined
+  const [id, value] = entries[0]!
+  return decisions.find(
+    (decision) =>
+      decision.kind === 'answer' && decision.questionId === id && decision.option === value,
+  )
+}
+
+export function permissionOutcomes(decisions: readonly AttentionDecision[]): PermissionOutcome[] {
+  return decisions.flatMap((decision) =>
+    decision.kind === 'permission' ? [decision.decision.outcome] : [],
+  )
+}
+
+export function permissionShortcutFor(
+  decisions: readonly AttentionDecision[],
+  outcome: PermissionOutcome,
+): AttentionDecision | undefined {
+  return decisions.find(
+    (decision) => decision.kind === 'permission' && decision.decision.outcome === outcome,
+  )
+}
+
 /**
  * ⛔ **The order, and it is a choice rather than a default** (§3).
  *
@@ -426,6 +459,7 @@ export function attentionQueue<Conversation extends ConversationWithCards>(
         sessionId: record.sessionId,
         requestId,
         itemId: item.id,
+        card: item,
         where,
         provider: record.meta?.provider ?? null,
         profileId: record.meta?.profileId ?? null,
@@ -589,18 +623,6 @@ export function attentionQueue<Conversation extends ConversationWithCards>(
     }
   }
   return queue.sort(byUrgency)
-}
-
-/** Said where a request is broader than its card can show. */
-export const BROADER_THAN_SHOWN =
-  'This request is broader than what is shown — the provider described it in a way BroCrew cannot fully represent.'
-
-/** Said after {@link BROADER_THAN_SHOWN} on a request that can be allowed. */
-export const OPEN_IT_BEFORE_YOU_ALLOW_IT = 'Open it before you allow it.'
-
-/** Said where a request's disclosure was cut at its bound. */
-export function charactersNotShown(count: number): string {
-  return `${String(count)} more characters of this are not shown here.`
 }
 
 /** What {@link attentionQueue} reads off a conversation. */

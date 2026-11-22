@@ -725,17 +725,15 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   align-content: start;
 }
 
-/* The rules an agent asked for, in the request card's own code box: its panel, line and ink. */
-.attention-list :deep(.ask-text) {
-  border: var(--border-width) solid var(--line);
-  background: var(--panel);
-  color: var(--text);
+.attention-list :deep(.pq-row.with-live-card) {
+  gap: var(--space-1);
 }
 
-.attention-list :deep(.pq-request-line code) {
-  width: auto;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+/* The rules an agent asked for, in the request card's own code box: its panel, line and ink. */
+.attention-list :deep(.ask-text) {
+  border: var(--border-width) solid var(--line-strong);
+  background: var(--code-bg);
+  color: var(--code-text);
 }
 
 .attention-list :deep(.pq-body) {
@@ -808,6 +806,14 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   font-size: var(--type-small);
   line-height: var(--leading-snug);
   gap: var(--control-gap);
+}
+
+.attention-list :deep(.with-live-card .pq-go) {
+  min-height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--type-caption);
 }
 
 .usage-door:hover,
