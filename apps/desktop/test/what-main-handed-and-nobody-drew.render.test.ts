@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -498,12 +499,26 @@ describe('the person’s queue says what the provider’s marks say', () => {
     return row
   }
 
-  /** Each answer button on one row: its label and whether it is drawn as a dimmed deny. */
-  function buttonsOf(markup: string, key: string): { label: string; deny: boolean }[] {
-    return tagged(markup, `persons-queue-answer-${key}`).map((one) => ({
-      label: /<strong[^>]*>([^<]*)<\/strong>/.exec(one.inner)?.[1]?.trim() ?? '',
-      deny: (attr(one.attrs, 'class') ?? '').split(/\s+/).includes('deny'),
-    }))
+  function rowMarkup(markup: string, key: string): string {
+    const start = markup.indexOf(`data-cy="persons-queue-row-${key}"`)
+    expect(start).toBeGreaterThanOrEqual(0)
+    const rest = markup.slice(start)
+    const next = rest.indexOf('data-cy="persons-queue-row-', 1)
+    return next === -1 ? rest : rest.slice(0, next)
+  }
+
+  const markHooks = [
+    'permission-grant-withheld',
+    'permission-default-no',
+    'permission-provider-reason',
+  ]
+  const marksOf = (markup: string) => markHooks.flatMap((hook) => tagged(markup, hook))
+
+  function buttonsOf(markup: string) {
+    return permissionAnswers(markup).map(({ attributes, word }) => {
+      const classes = (attr(attributes, 'class') ?? '').split(/\s+/)
+      return { label: word, deny: classes.includes('deny') && !classes.includes('refuse-first') }
+    })
   }
 
   it('an unmarked ask says nothing and leads with Allow; a marked ask already answered says nothing either', () => {
@@ -538,27 +553,31 @@ describe('the person’s queue says what the provider’s marks say', () => {
       createSSRApp({ render: () => h(PersonsQueue as never, {}) }),
     )
 
-    const marks = tagged(markup, `persons-queue-mark-${marked.key}`)
+    const markedMarkup = rowMarkup(markup, marked.key)
+    const marks = marksOf(markedMarkup)
     expect(marks.map((one) => one.inner)).toEqual(marked.marksSay)
-    expect(
-      marks.every((one) => attr(one.attrs, 'class')?.split(/\s+/).includes('pq-refused')),
-    ).toBe(true)
-    const firstAnswer = tagged(markup, `persons-queue-answer-${marked.key}`)[0]
-    if (firstAnswer === undefined) throw new Error('the marked row drew no answers')
-    expect(marks.at(-1)!.at).toBeLessThan(firstAnswer.at)
+    expect(marks.every((one) => attr(one.attrs, 'class')?.split(/\s+/).includes('after'))).toBe(
+      true,
+    )
+    const firstAnswer = markedMarkup
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .indexOf('data-permission-decision=')
+    expect(firstAnswer).toBeGreaterThan(0)
+    expect(marks.at(-1)!.at).toBeLessThan(firstAnswer)
 
-    const markedButtons = buttonsOf(markup, marked.key)
+    const markedButtons = buttonsOf(markedMarkup)
     // The request's own answers first, in the card's order; Cancel is under more options.
-    expect(markedButtons.map((one) => one.label)).toEqual(['Deny', 'Allow', 'Cancel'])
+    expect(markedButtons.map((one) => one.label)).toEqual(['Deny', 'Cancel turn', 'Approve'])
     expect(markedButtons.filter((one) => one.deny)).toEqual([])
 
     // Same render: the unmarked row draws no marks, and its refusals are dimmed.
-    expect(tagged(markup, `persons-queue-mark-${plain.key}`)).toEqual([])
-    const plainButtons = buttonsOf(markup, plain.key)
+    const plainMarkup = rowMarkup(markup, plain.key)
+    expect(marksOf(plainMarkup)).toEqual([])
+    const plainButtons = buttonsOf(plainMarkup)
     expect(plainButtons).toEqual([
-      { label: 'Allow', deny: false },
+      { label: 'Approve', deny: false },
       { label: 'Deny', deny: true },
-      { label: 'Cancel', deny: true },
+      { label: 'Cancel turn', deny: true },
     ])
   })
 })

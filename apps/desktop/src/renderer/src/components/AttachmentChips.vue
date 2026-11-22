@@ -1,12 +1,24 @@
+<script lang="ts">
+export const MISSING_ON_RESTORE = 'File missing. Remove it to send.'
+</script>
+
 <script setup lang="ts">
 import type { HandedPath } from '../../../shared/attachment-contracts'
 
 import { computed, onUnmounted, reactive, ref } from 'vue'
 
 import { assetUrl } from '../../../shared/asset-url'
+import { pathTail } from '../../../shared/path-tail'
+import { isPastedImage, pastedImageLabel } from '../../../shared/runtime-ipc'
 import { useClientMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 
-const props = defineProps<{ attachments: readonly HandedPath[]; paths?: PathsHere | null }>()
+const props = defineProps<{
+  attachments: readonly (HandedPath | string)[]
+  paths?: PathsHere | null
+  presentation?: 'staged' | 'queued' | 'delivered'
+  cwd?: string
+}>()
+const emit = defineEmits<{ detach: [path: string] }>()
 const fallback = useClientMessagePaths(() => props.paths?.sessionId ?? null)
 const opener = computed(() => props.paths ?? fallback.value)
 const failedImages = reactive(new Set<string>())
@@ -15,21 +27,46 @@ const copied = ref<string | null>(null)
 let reset: ReturnType<typeof setTimeout> | undefined
 onUnmounted(() => clearTimeout(reset))
 
-const name = (handed: HandedPath): string =>
-  handed.path.split(/[\\/]/).filter(Boolean).at(-1) || handed.path
-const image = (handed: HandedPath): boolean =>
-  handed.kind === 'file' && /\.(png|jpe?g|webp|gif)$/i.test(handed.path)
-const tooltip = (handed: HandedPath): string =>
-  handed.path + (handed.outsideCwd ? '\nOutside this conversation’s folder' : '')
+const entries = computed(() =>
+  props.attachments.map((value) => {
+    const path = typeof value === 'string' ? value : value.path
+    const kind = typeof value === 'string' ? null : value.kind
+    const pasted = kind === 'file' && isPastedImage(path)
+    const name = pasted
+      ? pastedImageLabel(typeof value === 'string' ? undefined : value.pasted)
+      : pathTail(path) || path
+    return {
+      path,
+      kind,
+      pasted,
+      name,
+      outsideCwd: typeof value !== 'string' && value.outsideCwd,
+      missing: typeof value !== 'string' && value.missing === true,
+      image: kind === 'file' && /\.(png|jpe?g|webp|gif)$/i.test(path),
+    }
+  }),
+)
+type Entry = (typeof entries.value)[number]
 
-async function open(handed: HandedPath): Promise<void> {
+const name = (handed: Entry): string =>
+  props.presentation === 'delivered' ? handed.path : handed.name
+const tooltip = (handed: Entry): string =>
+  handed.path + (handed.outsideCwd ? '\nOutside this conversation’s folder' : '')
+const hook = (handed: Entry): string => {
+  if (props.presentation === 'delivered') return 'what-the-model-got-attached'
+  const prefix =
+    props.presentation === 'staged' ? '' : props.presentation === 'queued' ? 'queued-' : 'user-'
+  return `${prefix}attached-${handed.kind}`
+}
+
+async function open(handed: Entry): Promise<void> {
   failure.value = null
   failure.value = opener.value
     ? await opener.value.press(handed.path, handed.kind === 'directory' ? 'folder' : 'file')
     : 'This window can’t open attachments.'
 }
 
-async function copy(handed: HandedPath): Promise<void> {
+async function copy(handed: Entry): Promise<void> {
   failure.value = null
   try {
     await navigator.clipboard.writeText(handed.path)
@@ -45,26 +82,44 @@ async function copy(handed: HandedPath): Promise<void> {
 </script>
 
 <template>
-  <div v-if="attachments.length" class="attachments" data-cy="user-attachments">
-    <span class="by">This app attached</span>
-    <ul class="chips" aria-label="Attachments">
+  <div
+    v-if="entries.length"
+    class="attachments"
+    :class="presentation"
+    data-attachment-chips
+    :data-cy="
+      presentation === 'queued'
+        ? 'queued-attachments'
+        : presentation
+          ? undefined
+          : 'user-attachments'
+    "
+  >
+    <span v-if="presentation !== 'staged'" class="by">This app attached</span>
+    <ul
+      class="chips"
+      aria-label="Attachments"
+      :data-cy="presentation === 'staged' ? 'composer-attachments' : undefined"
+    >
       <li
-        v-for="handed in attachments"
+        v-for="handed in entries"
         :key="handed.path"
         class="chip"
         data-cy="attachment-chip"
         :data-kind="handed.kind"
+        :data-pasted="String(handed.pasted)"
       >
-        <button
-          type="button"
+        <component
+          :is="presentation ? 'span' : 'button'"
+          :type="presentation ? undefined : 'button'"
           class="open"
-          data-cy="attachment-open"
+          :data-cy="presentation ? undefined : 'attachment-open'"
           :title="tooltip(handed)"
-          :aria-label="`Open ${name(handed)}`"
-          @click="open(handed)"
+          :aria-label="presentation ? undefined : `Open ${name(handed)}`"
+          @click="!presentation && open(handed)"
         >
           <img
-            v-if="image(handed) && !failedImages.has(handed.path)"
+            v-if="!presentation && handed.image && !failedImages.has(handed.path)"
             class="thumbnail"
             :src="assetUrl(handed.path)"
             alt=""
@@ -75,13 +130,49 @@ async function copy(handed: HandedPath): Promise<void> {
           <svg v-else class="icon" aria-hidden="true">
             <use
               :href="
-                handed.kind === 'directory' ? '#i-folder' : image(handed) ? '#i-image' : '#i-file'
+                handed.kind === 'directory'
+                  ? '#i-folder'
+                  : handed.pasted || (!presentation && handed.image)
+                    ? '#i-image'
+                    : '#i-file'
               "
             />
           </svg>
-          <span class="filename" :data-cy="`user-attached-${handed.kind}`">{{ name(handed) }}</span>
+          <span class="filename" :title="handed.path" :data-cy="hook(handed)">{{
+            name(handed)
+          }}</span>
+        </component>
+        <em
+          v-if="presentation === 'staged' && !cwd?.trim()"
+          class="mark"
+          data-cy="attached-no-folder"
+          >no folder yet</em
+        >
+        <em
+          v-else-if="(presentation === 'staged' || presentation === 'queued') && handed.outsideCwd"
+          class="mark"
+          :data-cy="presentation === 'staged' ? 'attached-outside' : 'queued-attached-outside'"
+          >outside</em
+        >
+        <em
+          v-if="presentation === 'staged' && handed.missing"
+          class="mark missing"
+          data-cy="attached-missing"
+          :title="MISSING_ON_RESTORE"
+          >missing</em
+        >
+        <button
+          v-if="presentation === 'staged'"
+          type="button"
+          class="copy"
+          :title="handed.pasted ? 'Don’t send the image you pasted' : `Don’t send ${handed.path}`"
+          :data-cy="`detach-${handed.kind}`"
+          @click="emit('detach', handed.path)"
+        >
+          ×
         </button>
         <button
+          v-if="!presentation"
           type="button"
           class="copy"
           data-cy="attachment-copy"
@@ -179,5 +270,63 @@ async function copy(handed: HandedPath): Promise<void> {
   object-fit: cover;
   flex: 0 0 auto;
   border-radius: var(--radius);
+}
+
+.staged,
+.queued,
+.delivered {
+  margin-top: 0;
+}
+
+.queued,
+.delivered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.attachments:is(.queued, .delivered) .by {
+  margin: 0;
+}
+
+.attachments:is(.staged, .queued, .delivered) .chip {
+  gap: 1px;
+}
+
+.staged {
+  grid-column: 1 / -1;
+}
+
+.attachments:is(.staged, .queued, .delivered) .open,
+.staged .copy {
+  padding: 0 var(--space-2);
+  line-height: 1.15;
+}
+
+.attachments:is(.staged, .queued, .delivered) .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.delivered {
+  align-items: center;
+  line-height: 1.1;
+}
+
+.delivered .filename {
+  max-width: none;
+  font-family: var(--font-mono);
+}
+
+.mark {
+  flex: none;
+  color: var(--faint);
+  font-size: var(--type-caption);
+  font-style: normal;
+}
+
+.missing {
+  color: var(--danger);
 }
 </style>

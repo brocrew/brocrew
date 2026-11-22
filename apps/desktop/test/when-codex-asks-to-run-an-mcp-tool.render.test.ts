@@ -1,4 +1,5 @@
-import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import { supplyPermissionQueue } from './helpers/queue-fixtures'
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,11 +26,7 @@ import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
 import { answerFor, attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import { permissionDecisionFor, wideGrantLabel } from '../src/renderer/src/lib/permission-offer'
 import * as since730 from '../src/renderer/src/lib/permission-offer'
-import {
-  usePersonsQueue,
-  type PersonsQueueDoors,
-  type PersonsQueueRow,
-} from '../src/renderer/src/lib/persons-queue'
+import { usePersonsQueue } from '../src/renderer/src/lib/persons-queue'
 import {
   acceptEvent,
   createSessionRecord,
@@ -47,7 +44,6 @@ import {
 } from '../src/renderer/src/lib/user-input-offer'
 import * as said730 from '../src/renderer/src/lib/user-input-offer'
 import { ASKED_TO_STOP } from '../src/shared/how-work-stopped'
-import { decisionReading, readingSentence } from '../src/shared/questions'
 import {
   providerName,
   type CreatedSession,
@@ -502,7 +498,6 @@ const withoutR95 = (markup: string): string =>
   shown(markup)
     .replace(/<button[^>]*data-cy="permission-allow_always"[\s\S]*?<\/button>/g, '')
     .replace(/<dd[^>]*data-cy="permission-persistence"[^>]*>[\s\S]*?<\/dd>/g, '')
-    .replace(/<strong[^>]*data-cy="attention-decide-word"[^>]*>Always allow<\/strong>/g, '')
 
 /** ⚑ The kind chip in the card's frozen header. */
 const kindOf = (markup: string): string | undefined =>
@@ -972,19 +967,19 @@ describe('§2 · R80 — Home’s row for the same request', () => {
       `the agent may call ${TOOL} on ${SERVER}, whatever it is given, for this conversation`,
     )
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-decide-word')).toEqual([
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
       'Allow once',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
-    expect(textsOf(html, 'attention-wide-warning')).toEqual([
-      since730.mcpToolGrantCovers({ server: SERVER, tool: TOOL }, 'codex'),
-    ])
-    expect(textsOf(html, 'attention-wide-warning')[0]).toContain(
-      `every call to ${TOOL} on ${SERVER} for the rest of this conversation`,
-    )
+    expect(
+      permissionAnswers(html).flatMap((one) => (one.warns === null ? [] : [one.warns])),
+    ).toEqual([since730.mcpToolGrantCovers({ server: SERVER, tool: TOOL }, 'codex')])
+    expect(
+      permissionAnswers(html).flatMap((one) => (one.warns === null ? [] : [one.warns]))[0],
+    ).toContain(`every call to ${TOOL} on ${SERVER} for the rest of this conversation`)
     // 🔴 739 · re-aimed — R95's own button says *always*; nothing else on the row does (R80).
     expect(words(withoutR95(html))).not.toMatch(/always/i)
     expect(words(html)).toMatch(/always/i)
@@ -1019,7 +1014,11 @@ describe('§2 · R80 — Home’s row for the same request', () => {
       'the agent may do anything of this kind for this conversation',
     )
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-decide-word')).toEqual(asPlain)
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual(
+      asPlain.map((word) =>
+        word === 'Allow' ? 'Approve' : word === 'Cancel' ? 'Cancel request' : word,
+      ),
+    )
   })
 
   it('🔴 739 review · the plain row names the wholesale grant in the card’s words — *Allow every create_issue call for this conversation*, never *always*', () => {
@@ -1127,7 +1126,7 @@ describe('§4 · R81 — Home’s row says the same line under its Cancel, and n
     const html = await renderHome(row)
     // ⚑ 728 · R93 — Home's Deny names the server too, from the same function.
     // ⚑ W4.28 — and *I opened it* first, said as what the server is told.
-    expect(textsOf(html, 'attention-effect')).toEqual([
+    expect(permissionAnswers(html).map((one) => one.says)).toEqual([
       `${A_SERVER_ASKS.serverName} is told you opened its link`,
       `${A_SERVER_ASKS.serverName} is told no`,
       R81_WORDS,
@@ -1149,7 +1148,7 @@ describe('§4 · R81 — Home’s row says the same line under its Cancel, and n
     expect('stopsNothing' in cancel).toBe(true)
     expect(whatThisAnswerDoes(cancel)).toBe(said730.CANCEL_STOPS_NOTHING)
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-effect')[2]).toBe(R81_WORDS)
+    expect(permissionAnswers(html).map((one) => one.says)[2]).toBe(R81_WORDS)
     expect(words(html)).not.toContain('whole turn')
     expect(answerFor(cancel)).toEqual({ permission: { outcome: 'cancel' } })
     // ⚑ THE CONTROL, one field over — the same card without the marker (a row written before `736`)
@@ -1164,9 +1163,10 @@ describe('§4 · R81 — Home’s row says the same line under its Cancel, and n
     expect(whatThisAnswerDoes(cancelOf(unmarked))).toBe(
       `the whole turn is ${ASKED_TO_STOP}, and this request is refused`,
     )
-    expect(textsOf(await renderHome(unmarked), 'attention-effect')[2]).toBe(
-      whatThisAnswerDoes(plain('cancel')),
-    )
+    expect(
+      permissionAnswers(await renderHome(unmarked)).find((answer) => answer.outcome === 'cancel')
+        ?.says,
+    ).toBe(whatThisAnswerDoes(plain('cancel')))
   })
 })
 
@@ -1175,92 +1175,14 @@ describe('§4b · R81 — the person’s queue copies the live row’s line', ()
     usePersonsQueue().forget()
   })
 
-  /** ⚑ The decision the host's walk hands the queue — `725`'s shape. */
-  function decision(request: AttentionRequest): PersonsDecision {
-    const reading = decisionReading(request.sessionId, (sessionId) => sessionId)
-    return {
-      request: {
-        requestId: request.requestId,
-        askedBy: request.sessionId,
-        parent: 'sess_parent',
-        went: {
-          is: 'the-person-the-channel-left-it-with',
-          to: 'a-person',
-          because: 'a-permission-decision',
-        },
-        at: AT - 1_000,
-        state: 'open',
-        endedAt: null,
-        escalatedAt: null,
-      },
-      reading,
-      sentence: readingSentence(reading),
-      says: 'something only a person can settle',
-      work: [],
-    }
-  }
-
-  const DOORS: PersonsQueueDoors = {
-    travel: () => {},
-    settle: () => {},
-    takeOver: () => {},
-    open: () => {},
-  }
-
-  function supply(requests: readonly AttentionRequest[]): readonly PersonsQueueRow[] {
-    const walked: LedgerWalk<PersonsDecision> = {
-      rows: requests.map(decision),
-      walk: 'every-conversation-that-routed',
-      ledgers: requests.length,
-      rowsUnread: 0,
-    }
-    const queue = usePersonsQueue()
-    queue.supply(
-      null,
-      walked,
-      {
-        held: new Set(requests.map((one) => one.sessionId)),
-        answerable: new Map(requests.map((one) => [one.key, one])),
-        answeredFromHere: new Set<string>(),
-        now: AT,
-        lastLookAnswered: { questions: true, decisions: true },
-      },
-      DOORS,
-    )
-    return queue.view.value?.rows ?? []
-  }
-
-  /**
-   * ⚑ Each answer button on the queue's row: its word and what it does — the line inside a broader
-   * answer's button, or the line a primary answer's button is described by (*"Deny: …"*).
-   */
-  const answersOn = (markup: string, key: string): { word: string; says: string }[] => {
-    const html = shown(markup)
-    return [
-      ...html.matchAll(
-        new RegExp(
-          `<button([^>]*)data-cy="persons-queue-answer-${escapeRegExp(key)}"([^>]*)>([\\s\\S]*?)</button>`,
-          'g',
-        ),
-      ),
-    ].map((one) => {
-      const word = decode(/<strong[^>]*>([\s\S]*?)<\/strong>/.exec(one[3]!)![1]!.trim())
-      const inside = /<small[^>]*>([\s\S]*?)<\/small>/.exec(one[3]!)
-      if (inside !== null) return { word, says: decode(inside[1]!.trim()) }
-      const id = /aria-describedby="([^"]*)"/.exec(`${one[1]!} ${one[2]!}`)![1]!
-      const line = new RegExp(`<p[^>]*id="${escapeRegExp(id)}"[^>]*>([\\s\\S]*?)</p>`).exec(html)!
-      return { word, says: decode(line[1]!.trim()).slice(`${word}: `.length) }
-    })
-  }
-
   it('🔴 the person’s queue draws R81’s line under the Cancel of a card that cannot stop the turn', async () => {
     const live = homeRow(recordOf(captured.serverNoTurn))
-    const row = supply([live]).find((one) => one.key === live.key)
+    const row = supplyPermissionQueue([live], AT).find((one) => one.key === live.key)
     if (row === undefined) throw new Error('the person’s queue drew no row')
     const html = await render(PersonsQueue, {})
-    const answers = answersOn(html, live.key)
+    const answers = permissionAnswers(html)
     // ⚑ W4.28 review — no *I opened it* on the queue: its row does not show the link.
-    expect(answers.map((one) => one.word)).toEqual(['Deny', 'Cancel'])
+    expect(answers.map((one) => one.word)).toEqual(['Deny', 'Cancel request'])
     // ⛔ What `main` draws: the whole-turn line.
     expect(answers[1]?.says).not.toContain('whole turn')
     expect(answers[1]?.says).toBe(R81_WORDS)
@@ -1274,11 +1196,11 @@ describe('§4b · R81 — the person’s queue copies the live row’s line', ()
         without(captured.serverItsTurn.card, 'cancelStopsNothing'),
       ),
     )
-    supply([live])
+    supplyPermissionQueue([live], AT)
     const html = await render(PersonsQueue, {})
-    const answers = answersOn(html, live.key)
+    const answers = permissionAnswers(html)
     // ⚑ W4.28 review — no *I opened it* on the queue: its row does not show the link.
-    expect(answers.map((one) => one.word)).toEqual(['Deny', 'Cancel'])
+    expect(answers.map((one) => one.word)).toEqual(['Deny', 'Cancel turn'])
     expect(answers[1]?.says).toBe(whatThisAnswerDoes(plain('cancel')))
   })
 })

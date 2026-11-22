@@ -132,7 +132,7 @@ export function sendKeyLabel(platform: string): string {
   return /mac/i.test(platform) ? '⌘↵' : 'Ctrl↵'
 }
 
-export { MISSING_ON_RESTORE } from './PromptComposerAttachments.vue'
+export { MISSING_ON_RESTORE } from './AttachmentChips.vue'
 </script>
 
 <script setup lang="ts">
@@ -144,7 +144,7 @@ import { isOnlyAStopWord } from '../lib/a-stop-word'
 import { useVoiceInput } from '../lib/voice-input'
 import { useClientApi } from '../client-provider/injection'
 import type { SendBlock } from '../lib/composer-notice'
-import PromptComposerAttachments from './PromptComposerAttachments.vue'
+import AttachmentChips from './AttachmentChips.vue'
 
 /** The one place a conversation is spoken to — and the place that says why you cannot speak. */
 const props = withDefaults(
@@ -1003,9 +1003,7 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 }
 
 function pathlessRefusal(count: number): string {
-  return count === 1
-    ? 'that is not a file on this machine — drop a file or a folder, not text or a picture from a web page'
-    : `${count} of those are not files on this machine — drop files or folders, not text or pictures from a web page`
+  return count === 1 ? 'Not a file. Drop files or folders.' : 'Drop files or folders.'
 }
 
 /** ⛔ §2's undo: remove one before send, by the path it names. */
@@ -1101,12 +1099,7 @@ defineExpose({
       @paste="onPaste"
     >
       <!-- Show staged attachment paths above and separate from the text field. Paths appended to the provider prompt are app-supplied context and must be visible without appearing to be text the person typed. -->
-      <PromptComposerAttachments
-        v-if="staged.length > 0"
-        :staged="staged"
-        :cwd="cwd"
-        @detach="detach"
-      />
+      <AttachmentChips :attachments="staged" presentation="staged" :cwd="cwd" @detach="detach" />
       <!-- ⛔ **The beat a Send now waits for, said out loud** (262 §1). {@link send} holds the
            message until this draft's attachments have arrived, and a press that appears to do
            nothing for a moment is `106`'s complaint whatever the reason — so the reason is on

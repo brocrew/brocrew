@@ -257,14 +257,20 @@ function answers(
 ): { word: string; effect: string; el: HTMLElement }[] {
   const row = host.querySelector(`[data-cy="attention-request-${sessionId}"]`)
   expect(row, `no row for ${sessionId}`).not.toBeNull()
-  return [...row!.querySelectorAll<HTMLElement>(`[data-cy="attention-decide-${sessionId}"]`)].map(
-    (button) => ({
-      word: button.querySelector('[data-cy="attention-decide-word"]')?.textContent?.trim() ?? '',
-      effect:
-        button.querySelector<HTMLElement>('[data-cy="attention-effect"]')?.innerText.trim() ?? '',
-      el: button,
-    }),
-  )
+  return drawnAnswers(row!)
+}
+
+function drawnAnswers(row: Element) {
+  return [
+    ...row.querySelectorAll<HTMLElement>(
+      '[data-permission-decision], [data-cy="user-input-answer"], ' +
+        '[data-cy="user-input-reject"], button[data-cy^="user-input-choice-"]',
+    ),
+  ].map((button) => ({
+    word: button.querySelector('strong, .label')?.textContent?.trim() ?? '',
+    effect: button.querySelector<HTMLElement>('small')?.innerText.trim() ?? '',
+    el: button,
+  }))
 }
 
 describe('481 · every answer on Home says what it does, in the queue’s own words', () => {
@@ -309,18 +315,18 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     // the branch, and each still carries the effect line `481` put on every answer.
     expect(answers(view.host, 'sess_empty').map((answer) => answer.word)).toEqual([
       'Deny',
-      'Cancel',
+      'Cancel turn',
     ])
     for (const answer of answers(view.host, 'sess_empty')) {
       expect(answer.effect.length).toBeGreaterThan(0)
     }
     // ⛔ **The instruction that pointed at a button that is not there is gone**, and the
     // disclosure it was part of stays.
-    const underDisclosed = view.q('attention-under-disclosed').innerText
-    expect(underDisclosed).toContain('cannot fully represent')
+    const underDisclosed = view.q('permission-under-disclosed').innerText
+    expect(underDisclosed).toContain('full effect could not be represented')
     expect(underDisclosed).not.toContain('Open it before you allow it')
     // ⚑ **And the row says why it cannot be allowed, in the card's own words.**
-    expect(view.q('attention-cannot-allow').innerText).toBe(
+    expect(view.q('permission-cannot-allow').innerText).toBe(
       noPositiveSays('could-not-describe-the-grant'),
     )
     const open = view.q('attention-open-sess_empty')
@@ -356,12 +362,12 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     await nextTick()
 
     expect(answers(view.host, 'sess_ok').map((answer) => answer.word)).toEqual([
-      'Allow',
+      'Approve',
       'Deny',
-      'Cancel',
+      'Cancel turn',
     ])
-    expect(view.q('attention-under-disclosed').innerText).toContain('Open it before you allow it')
-    expect(view.host.querySelector('[data-cy="attention-cannot-allow"]')).toBeNull()
+    expect(view.q('permission-under-disclosed').innerText).toContain('Open it before you allow it')
+    expect(view.host.querySelector('[data-cy="permission-cannot-allow"]')).toBeNull()
   })
 
   it('🔴 draws one effect line per answer, on every kind of row, from whatThisAnswerDoes', async () => {
@@ -382,7 +388,12 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
       // consequence under all of them would satisfy a `toContain` and mislead every press but one.
       expect(drawn, request.sessionId).toHaveLength(request.decisions.length)
       expect(drawn.map((answer) => answer.word)).toEqual(
-        request.decisions.map((decision) => decision.label),
+        request.decisions.map((decision) => {
+          if (decision.kind !== 'permission') return decision.label
+          if (decision.decision.outcome === 'allow') return 'Approve'
+          if (decision.decision.outcome === 'cancel') return 'Cancel turn'
+          return decision.label
+        }),
       )
       expect(drawn.map((answer) => answer.effect)).toEqual(
         request.decisions.map(whatThisAnswerDoes),
@@ -410,20 +421,8 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     const home = requests.flatMap((request) =>
       answers(view!.host, request.sessionId).map((answer) => answer.effect),
     )
-    // The queue says a primary answer's effect as its button's description, and a broader answer's
-    // inside its own button, both under the row's more options — so those are opened first.
-    for (const more of second.host.querySelectorAll<HTMLDetailsElement>('details.pq-more')) {
-      more.open = true
-    }
-    await nextTick()
-    const theirs = [...second.host.querySelectorAll<HTMLElement>('button.pq-answer')].map(
-      (button) => {
-        const describedBy = button.getAttribute('aria-describedby')
-        if (describedBy === null)
-          return button.querySelector<HTMLElement>('small')!.innerText.trim()
-        const label = button.querySelector('strong')!.textContent!.trim()
-        return document.getElementById(describedBy)!.innerText.trim().slice(`${label}: `.length)
-      },
+    const theirs = requests.flatMap((request) =>
+      drawnAnswers(second!.q(`persons-queue-row-${request.key}`)).map((answer) => answer.effect),
     )
 
     // ⛔ **The control first**: both surfaces drew something, and the same number of somethings.
@@ -440,7 +439,17 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
 
     // 🔴 **`430`'s narrowing, on the surface that just started stating effects.** ⛔ Stating an
     // immediate effect and stopping is what reads as *nothing else happens*.
-    const after = view.all('attention-after')
+    const after = [
+      ...view.host.querySelectorAll<HTMLElement>(
+        '[data-cy="permission-after"], [data-cy="user-input-after"]',
+      ),
+    ]
+    for (const line of after) {
+      const details = line.closest('details')!
+      expect(details.open).toBe(false)
+      details.querySelector('summary')!.click()
+    }
+    await nextTick()
     expect(after).toHaveLength(requests.length)
     for (const line of after) {
       expect(visible(line)).toBe(true)
@@ -537,15 +546,17 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     expect(dead.every((answer) => (answer.el as HTMLButtonElement).disabled)).toBe(true)
     expect(livePair.every((answer) => (answer.el as HTMLButtonElement).disabled)).toBe(false)
 
-    // 🔴 **`color` on the button cannot reach a child that declares its own**, and since this round
-    // both children do. ⛔ Without the two `:disabled` rules the words under a pressed row would be
-    // painted exactly as the live ones — the finding `207` M2 is about is what a person can SEE.
-    const paint = (answer: { el: HTMLElement }, cy: string): string =>
-      getComputedStyle(answer.el.querySelector(`[data-cy="${cy}"]`)!).color
-    expect(paint(dead[0]!, 'attention-decide-word')).not.toBe(
-      paint(livePair[0]!, 'attention-decide-word'),
-    )
-    expect(paint(dead[0]!, 'attention-effect')).not.toBe(paint(livePair[0]!, 'attention-effect'))
+    const unpressed = mount(AttentionQueue, { requests, now: NOW }, { width: 760, height: 1400 })
+    await nextTick()
+    const live = answers(unpressed.host, 'sess_perm')
+    expect(live).toHaveLength(dead.length)
+    expect(live.length).toBeGreaterThan(0)
+    const opacity = (answer: { el: HTMLElement }): number =>
+      Number(getComputedStyle(answer.el).opacity)
+    expect(opacity(dead[0]!)).toBeLessThan(opacity(live[0]!))
+    const effectColor = (answer: { el: HTMLElement }): string =>
+      getComputedStyle(answer.el.querySelector('small')!).color
+    expect(effectColor(dead[0]!)).not.toBe(effectColor(live[0]!))
     // ⚑ And the row still says why, rather than showing words over controls that do nothing.
     expect(view.q('attention-sent').innerText).toContain('answer sent')
   })
@@ -561,12 +572,12 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     await nextTick()
 
     const drawn = answers(view.host, 'sess_perm')
-    const allow = drawn.find((answer) => answer.word === 'Allow')!
-    const cancel = drawn.find((answer) => answer.word === 'Cancel')!
-    const paint = (answer: { el: HTMLElement }, cy: string): string =>
-      getComputedStyle(answer.el.querySelector(`[data-cy="${cy}"]`)!).color
-    expect(paint(cancel, 'attention-decide-word')).not.toBe(paint(allow, 'attention-decide-word'))
-    expect(paint(cancel, 'attention-effect')).toBe(paint(allow, 'attention-effect'))
+    const allow = drawn.find((answer) => answer.word === 'Approve')!
+    const cancel = drawn.find((answer) => answer.word === 'Cancel turn')!
+    const paint = (answer: { el: HTMLElement }, selector: string): string =>
+      getComputedStyle(answer.el.querySelector(selector)!).color
+    expect(paint(cancel, 'strong, .label')).not.toBe(paint(allow, 'strong, .label'))
+    expect(paint(cancel, 'small')).toBe(paint(allow, 'small'))
   })
 
   it('⛔ every KIND the union has, and every consent inside the third, is drawn and differs', async () => {
@@ -630,7 +641,7 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
       }
       for (const request of requests) {
         for (const answer of answers(mounted.host, request.sessionId)) {
-          const line = answer.el.querySelector<HTMLElement>('[data-cy="attention-effect"]')!
+          const line = answer.el.querySelector<HTMLElement>('small')!
           const box = answer.el.getBoundingClientRect()
           const rect = line.getBoundingClientRect()
           expect(rect.height, `${width}px ${request.sessionId}`).toBeGreaterThan(0)

@@ -378,24 +378,26 @@ describe('§2 · the press, through the conversation', () => {
 describe('§3 · Home’s row, at 972 px', () => {
   it('🔴 *Always allow* with the card’s own line, and the kept line in the scope — each drawn whole', async () => {
     const m = await home(homeRow(conversation('sess_home', codexToolCard(), waiting)))
-    const buttons = m.all('attention-decide-sess_home')
+    const buttons = [
+      ...m
+        .q('attention-request-sess_home')
+        .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+    ]
     // ⛔ What `main` draws: *Allow once* · *Deny* · *Cancel*. 🔴 743 · re-aimed — since `739` F-1 was
     // ruled, the conversation's grant follows the row here too.
     expect(buttons.map(wordOf)).toEqual([
       'Allow once',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
-    const line = buttons[1]!.querySelector<HTMLElement>('[data-cy="attention-effect"]')!
+    const line = buttons[1]!.querySelector<HTMLElement>('small')!
     expect(text(line)).toBe(THE_LINE)
     expect(visible(line)).toBe(true)
     assertDrawn(line, 'the line under Always allow on Home', m.host)
-    const kept = [...m.q('attention-scope').querySelectorAll('li')].find(
-      (li) => text(li) === THE_KEPT_ROW,
-    )
-    expect(kept, 'Home says nothing of what is kept').toBeDefined()
+    const kept = m.q('permission-always-keeps')
+    expect(text(kept)).toBe(THE_KEPT_ROW)
     expect(visible(kept!)).toBe(true)
     assertDrawn(kept!, 'the kept line on Home', m.host)
   })
@@ -403,13 +405,14 @@ describe('§3 · Home’s row, at 972 px', () => {
   it('⚑ THE CONTROL — the row for the card Codex offered no `always` keeps its three answers', async () => {
     const m = await home(homeRow(conversation('sess_home', codexToolCard(['session']), waiting)))
     // 🔴 743 · re-aimed — the conversation's grant follows the row (`739` F-1, ruled).
-    expect(m.all('attention-decide-sess_home').map(wordOf)).toEqual([
-      'Allow once',
-      'Deny',
-      'Cancel',
-      'Allow for this conversation',
-    ])
-    expect(text(m.q('attention-scope'))).not.toContain('beyond this conversation')
+    expect(
+      [
+        ...m
+          .q('attention-request-sess_home')
+          .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+      ].map(wordOf),
+    ).toEqual(['Allow once', 'Deny', 'Cancel request', 'Allow for this conversation'])
+    expect(m.all('permission-always-keeps')).toEqual([])
   })
 
   it('🔴 `736` F-6 — a failed keep’s reason is drawn whole on the row it was pressed from, above its buttons', async () => {
@@ -418,17 +421,34 @@ describe('§3 · Home’s row, at 972 px', () => {
     markAnswerRefused(record.transcript, 'number:60', NOT_KEPT_740)
     const m = await home(homeRow(record))
     // ⛔ What `main` draws: the buttons back, and nothing said.
-    const refused = m.q('attention-refused')
+    const refused = m.q('permission-refused')
     expect(text(refused)).toBe(NOT_KEPT_740)
     expect(visible(refused)).toBe(true)
     assertDrawn(refused, 'the refusal on Home', m.host)
-    expect(readBefore(refused, m.all('attention-decide-sess_home')[0]!)).toBe(true)
+    expect(
+      readBefore(
+        refused,
+        [
+          ...m
+            .q('attention-request-sess_home')
+            .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+        ][0]!,
+      ),
+    ).toBe(true)
   })
 
   it('⚑ THE CONTROL — a row nobody refused draws no reason', async () => {
     const m = await home(homeRow(conversation('sess_home', codexToolCard(), waiting)))
-    expect(m.all('attention-refused')).toEqual([])
-    expect(visible(m.all('attention-decide-sess_home')[0]!)).toBe(true)
+    expect(m.all('permission-refused')).toEqual([])
+    expect(
+      visible(
+        [
+          ...m
+            .q('attention-request-sess_home')
+            .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+        ][0]!,
+      ),
+    ).toBe(true)
   })
 })
 

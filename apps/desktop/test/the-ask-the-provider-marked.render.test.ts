@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
@@ -184,9 +185,10 @@ describe('695 · R36 — Home’s row reads the same order and says the same thi
     )
   /** Each decision button on Home, in order, with whether it wears the dimmed-refusal class. */
   const homeButtons = (html: string) =>
-    [...html.matchAll(/<button[^>]*data-cy="attention-decide-[^"]*"[^>]*>/g)].map((one) =>
-      (/class="([^"]*)"/.exec(one[0])?.[1] ?? '').split(/\s+/).includes('deny'),
-    )
+    permissionAnswers(html).map(({ attributes }) => {
+      const classes = (/class="([^"]*)"/.exec(attributes)?.[1] ?? '').split(/\s+/)
+      return classes.includes('deny') && !classes.includes('refuse-first')
+    })
 
   it('a `defaultToNo` ask leads with its refusals on Home too, undimmed, and says why', async () => {
     const row = homeRow({ defaultToNo: true })
@@ -194,7 +196,7 @@ describe('695 · R36 — Home’s row reads the same order and says the same thi
     expect(row.refusesFirst).toBe(true)
     const html = await renderHome(row)
     expect(homeButtons(html)).toEqual([false, false, false])
-    expect(html).toContain('data-cy="attention-mark"')
+    expect(html).toContain('data-cy="permission-default-no"')
     expect(html).toContain(DEFAULT_IS_NO)
   })
 
@@ -210,7 +212,7 @@ describe('695 · R36 — Home’s row reads the same order and says the same thi
     expect('marksSay' in row).toBe(false)
     const html = await renderHome(row)
     expect(homeButtons(html)).toEqual([false, true, true])
-    expect(html).not.toContain('data-cy="attention-mark"')
+    expect(html).not.toContain('data-cy="permission-default-no"')
   })
 })
 

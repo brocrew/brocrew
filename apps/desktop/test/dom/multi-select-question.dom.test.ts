@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import { contrast, mount, paintedInk, parseColor, show, unmountAll, visible } from './harness'
 
@@ -85,7 +85,7 @@ function card(
     at: 1_000,
   }
   const m = mount(
-    UserInputCard,
+    QuestionCard,
     { item, onRespond: (_id: string, response: UserInputResponse) => seen.push(response) },
     { width: 900 },
   )
@@ -150,11 +150,11 @@ describe('a multiple-choice question renders as multiple choice (139)', () => {
     // node, so the line above passes over a label nobody can see — the sensor limit 126 named and
     // 141 found this test leaning on.
     expect(visible(mode), 'the mode label is painted, not merely present').toBe(true)
-    expect(m.host.querySelectorAll('.choice .tick')).toHaveLength(0)
+    expect(m.host.querySelectorAll('.option .tick')).toHaveLength(0)
 
     chip('q0', 'Core rendering').click()
     await Promise.resolve()
-    const tick = m.host.querySelector<SVGElement>('.choice .tick')
+    const tick = m.host.querySelector<SVGElement>('.option .tick')
     expect(tick, 'a chosen multi-select chip wears a tick').not.toBeNull()
     // 089's rule: a glyph that references a symbol the sprite does not have paints NOTHING and looks
     // like a styling bug. The size proves it is laid out; the `use` proves what it points at.
@@ -207,7 +207,7 @@ describe('the single-select question beside it is untouched (139, the paired pos
     await Promise.resolve()
 
     expect(m.all('user-input-mode-q1')).toHaveLength(0)
-    expect(m.host.querySelectorAll('.choice .tick')).toHaveLength(0)
+    expect(m.host.querySelectorAll('.option .tick')).toHaveLength(0)
     expect(m.all('user-input-empty-q1')).toHaveLength(0)
   })
 
@@ -395,7 +395,7 @@ describe('the answer that is not on the list, and the words around it (143)', ()
     expect(header.textContent!.trim()).toBe('Scope')
     expect(visible(header)).toBe(true)
 
-    const described = m.host.querySelectorAll('.choice .describe')
+    const described = m.host.querySelectorAll('.option .describe')
     // ⛔ Two, not three: the third option carries no description and must draw no line at all (086).
     // A placeholder or an empty node would make "the model gave no reason" and "the model gave the
     // empty reason" indistinguishable on screen.
@@ -430,7 +430,7 @@ describe('the answer that is not on the list, and the words around it (143)', ()
     // reassembled from `sess_71a5b654` ran 105–177 characters, mean 142.7. A 28px chip cannot hold
     // one, which is what 139 and 108 both refused `description` on.
     const described = card([DESCRIBED])
-    const row = described.m.host.querySelector('.input-choices')!
+    const row = described.m.host.querySelector('.options')!
     expect(row.classList.contains('described')).toBe(true)
     expect(described.chip('q0', 'Core rendering').getBoundingClientRect().height).toBeGreaterThan(
       28,
@@ -438,9 +438,7 @@ describe('the answer that is not on the list, and the words around it (143)', ()
 
     // …and a question whose options carry none is untouched: every pre-143 ledger row is this shape.
     const plain = card([MULTI])
-    expect(plain.m.host.querySelector('.input-choices')!.classList.contains('described')).toBe(
-      false,
-    )
+    expect(plain.m.host.querySelector('.options')!.classList.contains('described')).toBe(false)
     expect(plain.chip('q0', 'Core rendering').getBoundingClientRect().height).toBe(28)
   })
 

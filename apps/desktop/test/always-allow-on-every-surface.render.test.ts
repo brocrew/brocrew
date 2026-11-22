@@ -1,4 +1,5 @@
-import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import { supplyPermissionQueue } from './helpers/queue-fixtures'
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,11 +15,7 @@ import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import { answerFor, attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import { permissionDecisionFor, type KeptGrant } from '../src/renderer/src/lib/permission-offer'
 import * as since739 from '../src/renderer/src/lib/permission-offer'
-import {
-  usePersonsQueue,
-  type PersonsQueueDoors,
-  type PersonsQueueRow,
-} from '../src/renderer/src/lib/persons-queue'
+import { usePersonsQueue } from '../src/renderer/src/lib/persons-queue'
 import {
   acceptEvent,
   createSessionRecord,
@@ -35,7 +32,6 @@ import {
   whatThisAnswerDoes,
   type AttentionDecision,
 } from '../src/renderer/src/lib/user-input-offer'
-import { decisionReading, readingSentence } from '../src/shared/questions'
 import {
   type ProviderAnswerAck,
   type CreatedSession,
@@ -926,14 +922,14 @@ describe('§2 · Home’s row offers *Always allow*, with the card’s own line'
     // ⚑ …and the kept line in the row's scope, the card's `kept grant` row's words.
     expect(row.scope).toContain(mcpKept(keptFileOf(one)))
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-decide-word')).toEqual([
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
       'Allow once',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
-    expect(textsOf(html, 'attention-effect')[1]).toBe(mcpLine(keptFileOf(one)))
+    expect(permissionAnswers(html).map((one) => one.says)[1]).toBe(mcpLine(keptFileOf(one)))
     expect(words(html)).toContain(mcpKept(keptFileOf(one)))
   })
 
@@ -948,10 +944,10 @@ describe('§2 · Home’s row offers *Always allow*, with the card’s own line'
     expect(decisionFor(row, 'allow_always')).toBeUndefined()
     expect(row.scope.join('\n')).not.toContain('beyond this conversation')
     const html = await renderHome(row)
-    expect(textsOf(html, 'attention-decide-word')).toEqual([
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
       'Allow once',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
   })
@@ -969,8 +965,12 @@ describe('§2 · Home’s row offers *Always allow*, with the card’s own line'
       `proposed for future exec: ${PREFIX.join(' ')} — only Always allow keeps a rule here, the one said above`,
     )
     const html = await renderHome(row)
-    expect(count(html, 'attention-cannot-allow')).toBe(0)
-    expect(textsOf(html, 'attention-decide-word')).toEqual(['Always allow', 'Deny', 'Cancel'])
+    expect(count(html, 'permission-cannot-allow')).toBe(0)
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
+      'Always allow',
+      'Deny',
+      'Cancel turn',
+    ])
   })
 
   it('⚑ THE CONTROL — the same command with no amendment offered keeps *Allow* and its proposal *not applied by any answer here*', () => {
@@ -1018,97 +1018,19 @@ describe('§3 · the person’s queue offers *Always allow* with the same line',
     usePersonsQueue().forget()
   })
 
-  /** ⚑ The decision the host's walk hands the queue — `725`'s shape (`730`'s suite). */
-  function decision(request: AttentionRequest): PersonsDecision {
-    const reading = decisionReading(request.sessionId, (sessionId) => sessionId)
-    return {
-      request: {
-        requestId: request.requestId,
-        askedBy: request.sessionId,
-        parent: 'sess_parent',
-        went: {
-          is: 'the-person-the-channel-left-it-with',
-          to: 'a-person',
-          because: 'a-permission-decision',
-        },
-        at: AT - 1_000,
-        state: 'open',
-        endedAt: null,
-        escalatedAt: null,
-      },
-      reading,
-      sentence: readingSentence(reading),
-      says: 'something only a person can settle',
-      work: [],
-    }
-  }
-
-  const DOORS: PersonsQueueDoors = {
-    travel: () => {},
-    settle: () => {},
-    takeOver: () => {},
-    open: () => {},
-  }
-
-  function supply(requests: readonly AttentionRequest[]): readonly PersonsQueueRow[] {
-    const walked: LedgerWalk<PersonsDecision> = {
-      rows: requests.map(decision),
-      walk: 'every-conversation-that-routed',
-      ledgers: requests.length,
-      rowsUnread: 0,
-    }
-    const queue = usePersonsQueue()
-    queue.supply(
-      null,
-      walked,
-      {
-        held: new Set(requests.map((one) => one.sessionId)),
-        answerable: new Map(requests.map((one) => [one.key, one])),
-        answeredFromHere: new Set<string>(),
-        now: AT,
-        lastLookAnswered: { questions: true, decisions: true },
-      },
-      DOORS,
-    )
-    return queue.view.value?.rows ?? []
-  }
-
-  /**
-   * ⚑ Each answer button on the queue's row: its word and what it does — the line inside a broader
-   * answer's button, or the line a primary answer's button is described by (*"Allow once: …"*).
-   */
-  const answersOn = (markup: string, key: string): { word: string; says: string }[] => {
-    const html = shown(markup)
-    return [
-      ...html.matchAll(
-        new RegExp(
-          `<button([^>]*)data-cy="persons-queue-answer-${escapeRegExp(key)}"([^>]*)>([\\s\\S]*?)</button>`,
-          'g',
-        ),
-      ),
-    ].map((one) => {
-      const word = decode(/<strong[^>]*>([\s\S]*?)<\/strong>/.exec(one[3]!)![1]!.trim())
-      const inside = /<small[^>]*>([\s\S]*?)<\/small>/.exec(one[3]!)
-      if (inside !== null) return { word, says: decode(inside[1]!.trim()) }
-      const id = /aria-describedby="([^"]*)"/.exec(`${one[1]!} ${one[2]!}`)![1]!
-      const line = new RegExp(`<p[^>]*id="${escapeRegExp(id)}"[^>]*>([\\s\\S]*?)</p>`).exec(html)!
-      return { word, says: decode(line[1]!.trim()).slice(`${word}: `.length) }
-    })
-  }
-
   it('🔴 the queue’s row for the MCP card offers *Always allow*, under the line the card and Home say', async () => {
     const one = captured.asks
     const live = homeRow(recordOf(one))
-    const row = supply([live]).find((each) => each.key === live.key)
+    const row = supplyPermissionQueue([live], AT).find((each) => each.key === live.key)
     expect(row, 'the person’s queue drew no row').toBeDefined()
-    const answers = answersOn(await render(PersonsQueue, {}), live.key)
+    const answers = permissionAnswers(await render(PersonsQueue, {}))
     // ⛔ What `main` draws: *Allow once* · *Deny* · *Cancel* — the request's own two first, then the
     // broader choices under more options, in the card's order.
     expect(answers.map((each) => each.word)).toEqual([
       'Allow once',
-      'Deny',
       'Always allow',
-      'Cancel',
+      'Deny',
+      'Cancel request',
       'Allow for this conversation',
     ])
     expect(answers.find((each) => each.word === 'Always allow')?.says).toBe(
@@ -1118,12 +1040,12 @@ describe('§3 · the person’s queue offers *Always allow* with the same line',
 
   it('⚑ THE CONTROL — the row for the card Codex offered no `always` keeps its three answers', async () => {
     const live = homeRow(recordOf(captured.asksNoAlways))
-    supply([live])
-    const answers = answersOn(await render(PersonsQueue, {}), live.key)
+    supplyPermissionQueue([live], AT)
+    const answers = permissionAnswers(await render(PersonsQueue, {}))
     expect(answers.map((each) => each.word)).toEqual([
       'Allow once',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
     expect(answers[0]?.says).toBe(whatThisAnswerDoes(plain('allow')))
@@ -1157,12 +1079,12 @@ describe('§4 · `736` F-6 — a keep that failed is said on the row it was pres
     expect(row.refused).toBe(reason)
     const html = await renderHome(row)
     // ⛔ What `main` draws: the buttons back, and nothing said.
-    expect(textsOf(html, 'attention-refused')).toEqual([reason])
-    expect(textsOf(html, 'attention-decide-word')).toEqual([
+    expect(textsOf(html, 'permission-refused')).toEqual([reason])
+    expect(permissionAnswers(html).map((one) => one.word)).toEqual([
       'Allow once',
       'Always allow',
       'Deny',
-      'Cancel',
+      'Cancel request',
       'Allow for this conversation',
     ])
   })
@@ -1176,8 +1098,8 @@ describe('§4 · `736` F-6 — a keep that failed is said on the row it was pres
     const row = homeRow(recordOf(captured.asks))
     expect(row.refused).toBeNull()
     const html = await renderHome(row)
-    expect(count(html, 'attention-refused')).toBe(0)
-    expect(textsOf(html, 'attention-decide-word')[0]).toBe('Allow once')
+    expect(count(html, 'permission-refused')).toBe(0)
+    expect(permissionAnswers(html).map((one) => one.word)[0]).toBe('Allow once')
   })
 })
 

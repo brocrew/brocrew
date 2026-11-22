@@ -1,7 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import PermissionCard from '../../src/renderer/src/components/PermissionCard.vue'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import {
   applyEvent,
   createTranscript,
@@ -130,7 +130,7 @@ describe('§2 · the question card — where the actor genuinely varies', () => 
     // `sess_the_parent`; this surface draws the kind. ⚑ This is the PO's own distinction — *the
     // project manager handled it* — made visible on the surface the escalation lands on.
     const item = questionCard({ who: 'an-agent', agent: 'sess_the_parent' })
-    const m = mount(UserInputCard, { item }, { width: 900 })
+    const m = mount(QuestionCard, { item }, { width: 900 })
     const said = m.q('user-input-answered-by')
     expect(said.textContent?.trim()).toBe('by an agent')
     expect(visible(said)).toBe(true)
@@ -141,25 +141,25 @@ describe('§2 · the question card — where the actor genuinely varies', () => 
     // ⚠️ **A comparison tested where both sides agree measures nothing.** A permission can only
     // ever have a person behind it; this card is the one whose word moves, so the pair is asserted
     // on one card kind with one outcome and only the answerer changed.
-    const m = mount(UserInputCard, { item: questionCard({ who: 'a-person' }) }, { width: 900 })
+    const m = mount(QuestionCard, { item: questionCard({ who: 'a-person' }) }, { width: 900 })
     expect(m.q('user-input-answered-by').textContent?.trim()).toBe('by a person')
   })
 
   it('⚑ a REJECTED question is attributed too, beside its own verdict word', () => {
     const item = questionCard({ who: 'a-person' }, 'rejected')
-    const m = mount(UserInputCard, { item }, { width: 900 })
+    const m = mount(QuestionCard, { item }, { width: 900 })
     expect(m.q('user-input-verdict').textContent?.trim()).toBe('Rejected')
     expect(m.q('user-input-answered-by').textContent?.trim()).toBe('by a person')
   })
 
   it('⛔ an old row draws the sentence, and a teardown draws nothing', () => {
-    const old = mount(UserInputCard, { item: questionCard(undefined) }, { width: 900 })
+    const old = mount(QuestionCard, { item: questionCard(undefined) }, { width: 900 })
     expect(old.q('user-input-answered-by').textContent?.trim()).toBe(
       'Nothing in the ledger records who answered it',
     )
 
     const item = card('userInput', [QUESTION], 'settled when this conversation was last open')
-    const torn = mount(UserInputCard, { item }, { width: 900 })
+    const torn = mount(QuestionCard, { item }, { width: 900 })
     expect(torn.q('user-input-verdict').textContent?.trim()).toBe('Not answered')
     expect(torn.all('user-input-answered-by')).toHaveLength(0)
     // ⚑ The control: the card IS settled, so the absence is the clause's own.

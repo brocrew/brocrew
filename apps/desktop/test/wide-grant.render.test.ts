@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
@@ -296,38 +297,31 @@ describe('the overview draws the same rule (299 §1)', () => {
     )
 
     const html = await renderOverview([row])
-    const actions = /<div class="request-actions"[^>]*>([\s\S]*?)<\/div>/.exec(html)?.[1] ?? ''
-    expect(actions, 'the slice found the button strip').toContain('attention-decide-sess_1')
-    // ⛔ **The three words, in order, read off the LABEL elements** (481) — the whole finding is
-    // about which one is SECOND.
-    //
-    // ⚠️ **`indexOf` over the raw markup answered that from ANY occurrence of the string**, and
-    // since criterion 20's third clause landed on this surface the strip also carries an effect
-    // sentence per button and a comment explaining where it comes from. The word *Cancel* in one
-    // of those comments put `indexOf('Cancel')` 400 characters ahead of the Cancel button and took
-    // this assertion red — `a-source-census-must-strip-prose-before-it-asserts`, inside one
-    // `expect`. ⚑ Reading the labels is the stronger form as well as the safe one: it pins the
-    // whole sequence, so a fourth button appearing in the row is red here too.
-    const words = [...actions.matchAll(/data-cy="attention-decide-word"[^>]*>([^<]*)</g)].map(
-      (match) => match[1],
-    )
-    expect(words).toEqual([
-      'Allow',
+    const buttons = permissionAnswers(html)
+    expect(buttons.map((one) => one.outcome)).toEqual([
+      'allow',
+      'deny',
+      'cancel',
+      'allow_all_for_session',
+    ])
+    expect(buttons.map((one) => one.word)).toEqual([
+      'Approve',
       'Deny',
-      'Cancel',
+      'Cancel turn',
       'Allow every Bash call for this conversation',
     ])
-    expect(actions).not.toContain('Allow all for this conversation')
   })
 
   // 🔴 743 · re-aimed — it pinned the sentence saying where the grant was (*"… Open it"*); since
   // `739` F-1 was ruled the grant is here, under the card's own warning (058, 106).
   it('⛔ …and offers the grant under the card’s own warning, because dropping it silently is 106 from the other side', async () => {
     const html = await renderOverview([overviewRow(OPAQUE)])
-    expect(html).toContain('data-cy="attention-wide-warning"')
+    expect(html).toContain('data-cy="permission-wide-warning"')
     // The card's own words for the same grant — one grant, three surfaces, one name.
     expect(html).toContain('Allow every Bash call for this conversation')
-    expect(html).toContain('⚠ Covers any Bash command for this conversation — not just this one.')
+    expect(permissionAnswers(html).at(-1)?.warns).toContain(
+      '⚠ Covers any Bash command for this conversation — not just this one.',
+    )
     expect(html).not.toContain('Open it to grant that')
   })
 
@@ -353,7 +347,7 @@ describe('the overview draws the same rule (299 §1)', () => {
     expect(row.decisions.filter((one) => one.kind === 'permission' && one.warns)).toEqual([])
     const html = await renderOverview([row])
     expect(html).toContain('Allow for this conversation')
-    expect(html).not.toContain('attention-wide-warning')
+    expect(html).not.toContain('permission-wide-warning')
   })
 
   it('⚠️ the row order is OURS, not the provider’s — a reshuffled offer draws the same row', async () => {

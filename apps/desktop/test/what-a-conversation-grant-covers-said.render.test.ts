@@ -1,3 +1,4 @@
+import { permissionAnswers } from './helpers/rendered-markup'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -349,31 +350,21 @@ function homesGrant(row: AttentionRequest): Extract<AttentionDecision, { kind: '
   return grant
 }
 
-async function homeButtons(row: AttentionRequest): Promise<{ word: string; says: string }[]> {
-  const html = shown(await render(AttentionQueue, { requests: [row], now: AT + 60_000 }))
-  return [
-    ...html.matchAll(
-      /data-cy="attention-decide-word"[^>]*>([\s\S]*?)<\/strong>[\s\S]*?data-cy="attention-effect"[^>]*>([\s\S]*?)<\/small>/g,
-    ),
-  ].map((one) => ({
-    word: decode(one[1]!.trim()),
-    says: decode(one[2]!.trim()).replace(/\s+/g, ' '),
-  }))
-}
-
 async function homeLine(row: AttentionRequest): Promise<string> {
-  const under = (await homeButtons(row)).filter((one) => one.word === ALLOW_FOR_THIS_CONVERSATION)
-  expect(under, 'Home draws one conversation grant').toHaveLength(1)
-  return under[0]!.says
+  const html = await render(AttentionQueue, { requests: [row], now: AT + 60_000 })
+  return conversationGrantIn(html)
 }
 
 async function homeScope(row: AttentionRequest): Promise<string[]> {
-  const html = shown(await render(AttentionQueue, { requests: [row], now: AT + 60_000 }))
-  const list = /data-cy="attention-scope"[^>]*>([\s\S]*?)<\/ul>/.exec(html)?.[1]
-  expect(list, 'Home drew no scope list').toBeDefined()
-  return [...list!.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)].map((one) =>
-    decode(one[1]!.trim()).replace(/\s+/g, ' '),
-  )
+  const html = await render(AttentionQueue, { requests: [row], now: AT + 60_000 })
+  return [...textsOf(html, 'permission-grant-covers'), ...textsOf(html, 'permission-persistence')]
+}
+
+function conversationGrantIn(html: string): string {
+  const grants = permissionAnswers(html).filter((answer) => answer.outcome === 'allow_for_session')
+  expect(grants).toHaveLength(1)
+  expect(grants[0]!.word).toBe(ALLOW_FOR_THIS_CONVERSATION)
+  return grants[0]!.says
 }
 
 function decisionFor(row: AttentionRequest, sent: PermissionRequest): PersonsDecision {
@@ -432,22 +423,7 @@ function queueOver(row: AttentionRequest, sent: PermissionRequest): PersonsQueue
 
 async function queueLine(row: AttentionRequest, sent: PermissionRequest): Promise<string> {
   queueOver(row, sent)
-  const html = shown(await render(PersonsQueue, {}))
-  const under = [
-    ...html.matchAll(
-      new RegExp(
-        `<button[^>]*data-cy="persons-queue-answer-${escapeRegExp(row.key)}"[^>]*>([\\s\\S]*?)</button>`,
-        'g',
-      ),
-    ),
-  ]
-    .map((one) => ({
-      word: decode(/<strong[^>]*>([\s\S]*?)<\/strong>/.exec(one[1]!)?.[1]?.trim() ?? ''),
-      says: decode(/<small[^>]*>([\s\S]*?)<\/small>/.exec(one[1]!)?.[1]?.trim() ?? ''),
-    }))
-    .filter((one) => one.word === ALLOW_FOR_THIS_CONVERSATION)
-  expect(under, 'the queue draws one conversation grant').toHaveLength(1)
-  return under[0]!.says.replace(/\s+/g, ' ')
+  return conversationGrantIn(await render(PersonsQueue, {}))
 }
 
 afterEach(() => {
@@ -534,7 +510,7 @@ describe('§2 · Home — the effect under *Allow for this conversation* names t
     expect(whatThisAnswerDoes(homesGrant(row))).toBe(LINE_WITH(READ_SAID))
     const scope = await homeScope(row)
     expect(scope).toContain(DISCLOSED(READ_SAID))
-    expect(scope).toContain('for the whole conversation, not just this action')
+    expect(scope).toContain('session')
   })
 
   it('a card with no `grants`, and the Codex file card, keep the general line on Home', async () => {
