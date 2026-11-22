@@ -116,20 +116,51 @@ describe('an interrupt Codex never answers still gives interrupt-and-send back',
     expect(server.turnsAsked()).toHaveLength(2)
   })
 
-  it('Codex never answers and never ends the turn — the verb refuses after its bounded waits, and the queue is released', async () => {
+  it('waits past five seconds for a slow turn to end, then sends once in queue order', async () => {
     const { id, server } = await aRunningTurnWithOneWaiting()
-    server.interruptAnswer = 'never'
+    server.interruptAnswer = 'answers-but-runs-on'
     const verb = host.sendInterrupting(id, 'no, do THIS', window)
-    const said = await within(8_000, verb)
-    expect(said).toEqual({
-      state: 'rejected',
-      message: 'cannot send: the session is still working after interrupting the running turn',
-    })
+    await waitFor(() => server.sent('turn/interrupt').length === 1, 'the interrupt')
+    expect(await within(5_500, verb)).toEqual({ state: 'pending' })
     expect(server.turnsAsked()).toEqual(['count to sixty'])
+
+    server.end(server.lastTurn, 'interrupted')
+    expect(await within(2_000, verb)).toEqual({ state: 'resolved' })
+    await waitFor(() => server.turnsAsked().length === 2, 'the replacement turn')
+    expect(theMessagesOfTheLastTurn(id)).toEqual(['the one that was waiting', 'no, do THIS'])
     server.end(server.lastTurn, 'completed')
-    await waitFor(() => server.turnsAsked().length === 2, 'the queued message')
-    expect(server.turnsAsked()).toEqual(['count to sixty', 'the one that was waiting'])
+    await waitFor(() => turnEndings(id).includes('completed'), 'the replacement to finish')
+    expect(server.turnsAsked()).toEqual(['count to sixty', 'no, do THIS'])
   }, 20_000)
+
+  it('sends once on a new handle when the provider exits while the turn is still running', async () => {
+    const { id, server } = await aRunningTurnWithOneWaiting()
+    const queued = ledgerOf(id).find((event) => event.type === 'message_queued')
+    if (!queued?.messageId) throw new Error('the fixture did not queue a named message')
+    await host.cancelQueuedMessage(id, queued.messageId, window)
+    server.interruptAnswer = 'answers-but-runs-on'
+    const replacement = 'no, do THIS'
+    const verb = host.sendInterrupting(id, replacement, window)
+    await waitFor(() => server.sent('turn/interrupt').length === 1, 'the interrupt')
+    expect(await within(75, verb)).toEqual({ state: 'pending' })
+
+    server.close()
+    expect(await within(2_000, verb)).toEqual({ state: 'resolved' })
+    const receivedReplacement = (one: ScriptedAppServer) => one.turnsAsked().includes(replacement)
+    await waitFor(
+      () => servers.some((one) => one !== server && receivedReplacement(one)),
+      'the replacement on a new handle',
+    )
+    const reopened = servers.find((one) => one !== server && receivedReplacement(one))
+    if (reopened === undefined) throw new Error('no handle accepted the replacement')
+    expect(server.turnsAsked()).toEqual(['count to sixty'])
+    reopened.end(reopened.lastTurn, 'completed')
+    await waitFor(() => turnEndings(id).includes('completed'), 'the replacement to finish')
+    const delivered = servers.flatMap((one) =>
+      one.turnsAsked().filter((words) => words === replacement),
+    )
+    expect(delivered).toEqual([replacement])
+  })
 
   it('Codex answers the ask and ends the turn — the verb does exactly what it always did', async () => {
     const { id, server } = await aRunningTurnWithOneWaiting()
@@ -220,7 +251,7 @@ describe('the ask’s own bound is patience too', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  it('a Codex that answers the ask and ends the turn 5.5 s later — inside the ask’s 2 s plus `waitForIdle`’s 5 — still takes the replacement', async () => {
+  it('a Codex that answers the ask and ends the turn 5.5 s later still takes the replacement', async () => {
     const { sessionId: id } = await host.createSession(
       { provider: 'codex', approvalMode: 'ask', cwd: root },
       window,

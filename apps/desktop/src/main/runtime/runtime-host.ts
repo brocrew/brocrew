@@ -23419,13 +23419,12 @@ export class RuntimeHost implements LiveHost {
    * hit the very overlap the runtime rejects.
    *
    * A plain `send` remains the right call when the session is idle — this is the "I've changed my
-   * mind, do this instead" path. ⚠️ **704 · it does not always SEND**: Claude's interrupt bounds its
-   * ack and forces its own terminal (074); Codex's awaits its `turn/interrupt` request with no bound
-   * of its own (395), so the host bounds that wait itself — {@link interruptAgent}'s bound, since
-   * `709` — and then gives {@link waitForIdle} its five seconds. A Codex turn still running at their
-   * end refuses the words, which the composer then gives back. ⚑ `704` made the common Codex case
-   * end: an interrupt asked before the turn was running used to be refused by Codex and the turn run
-   * to its end (`smoke:ui` step 48).
+   * mind, do this instead" path. Claude's interrupt bounds its ack and forces its own terminal
+   * (074); Codex's awaits its `turn/interrupt` request with no bound of its own (395), so the host
+   * bounds the acknowledgement wait using {@link interruptAgent}'s bound (709). After that,
+   * {@link waitForIdle} waits for the handle to become idle or retire. ⚑ `704` made the common
+   * Codex case end: an interrupt asked before the turn was running used to be refused by Codex and
+   * the turn run to its end (`smoke:ui` step 48).
    */
   async sendInterrupting(
     sessionId: string,
@@ -23572,10 +23571,8 @@ export class RuntimeHost implements LiveHost {
       await settledWithin(asked, this.interruptWaitMs)
       // A retired handle takes no words; carry them to its next start, after its exit.
       if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
-      // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
-      // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a
-      // Codex turn still running at the end of these five seconds refuses the send.
-      await this.waitForIdle(session.handle, undefined, () => this.itStoppedUnder(session))
+      // The interrupt acknowledgement can precede the end of the turn.
+      await this.waitForIdle(session)
       // A provider that did not answer the Stop retires: the words go to its next start.
       if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
     }
@@ -23612,9 +23609,7 @@ export class RuntimeHost implements LiveHost {
       return
     }
     // ⛔ **Asked AGAIN, immediately before the send** (149, from 148 M1). The check at the top of
-    // `sendInterrupting` was made one interrupt and up to seven seconds ago — the interrupt wait
-    // (709) plus `waitForIdle`'s own five — and this is the only send path with an await that long
-    // between deciding and doing. The
+    // `sendInterrupting` was made before the interrupt and the wait for the turn to end. The
     // machine credential can move inside that window, and a replacement turn is exactly the kind
     // that would then go out on the child the user is trying to leave behind. Cheap in the ordinary
     // case: the answer latches, so a session already refused never reads the Keychain twice.
@@ -23643,10 +23638,9 @@ export class RuntimeHost implements LiveHost {
       )
       return
     }
-    // ⚠️ Asked a second time, for the same reason the gate above it is: `waitForIdle` is up to five
-    // seconds, and a file can go away inside that window too. `sendInterrupting` asks first so the
-    // interrupt never happens for a message that was never going to send; this one is the honest
-    // answer about what is on disk NOW.
+    // ⚠️ Asked a second time because a file can go away while the turn is ending.
+    // `sendInterrupting` asks first so the interrupt never happens for a message that was never
+    // going to send; this one is the honest answer about what is on disk NOW.
     const handed = await recheckHandedPaths(attachments, session.cwd)
     if ('refusal' in handed) throw new Error(handed.refusal)
     // ⛔ **No piece, and it is not an omission** (412). This path is reached from
@@ -28512,22 +28506,10 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** Wait for the handle to leave the busy states, bounded so a wedged session still reports. */
-  private async waitForIdle(
-    handle: SessionHandle,
-    timeoutMs = 5000,
-    /** Stops the wait without a refusal: the caller has its own answer for this. */
-    orUntil: () => boolean = () => false,
-  ): Promise<void> {
-    const deadline = Date.now() + timeoutMs
-    while (handle.status() !== 'idle' && !orUntil() && Date.now() < deadline) {
+  /** Wait until the handle can take input, or let the caller send through a reopen. */
+  private async waitForIdle(session: HostedSession): Promise<void> {
+    while (session.handle.status() !== 'idle' && !this.itStoppedUnder(session)) {
       await new Promise((resolve) => setTimeout(resolve, 25))
-    }
-    if (orUntil()) return
-    if (handle.status() !== 'idle') {
-      throw new Error(
-        `cannot send: the session is still ${handle.status()} after interrupting the running turn`,
-      )
     }
   }
 
