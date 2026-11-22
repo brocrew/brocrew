@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
+import { useProviderLabel } from '../composables/useProviderLabel'
+import ConversationRow from './ConversationRow.vue'
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import type { OwnWait } from '../lib/conversation-list'
 import { computed, onScopeDispose, ref, watch } from 'vue'
@@ -28,7 +31,6 @@ import { basenameOf } from '../lib/paths'
 import { inventoryAsOf, inventorySummary, readInventory } from '../lib/tool-inventory'
 import { stillThinkingSays } from '../lib/still-thinking'
 import type { ToolRegistry } from '../lib/transcript'
-import AgentState from './AgentState.vue'
 import ConversationTitleEditor from './ConversationTitleEditor.vue'
 
 /**
@@ -313,12 +315,14 @@ const providerChip = computed(() => {
 /** No session yet — this bar is titling the launcher rather than a conversation (101 §9). */
 const unstarted = computed(() => props.session === null)
 
+const providerLabel = useProviderLabel()
 const providerDetail = computed(() => {
   if (!props.session) return 'the provider a new conversation starts on'
   const rows = props.session.liveness.agent ?? []
-  return [`provider: ${props.session.provider}`, ...rows.map((r) => `${r.label}: ${r.value}`)].join(
-    ' · ',
-  )
+  return [
+    `provider: ${providerLabel(props.session.provider)}`,
+    ...rows.map((r) => `${r.label}: ${r.value}`),
+  ].join(' · ')
 })
 
 /**
@@ -340,10 +344,9 @@ const providerDetail = computed(() => {
 /**
  * 🔴 **What yolo does on THIS provider, on the pill that announces it** (367, HO-011 §3.2).
  *
- * ⛔ **The differing half is DECLARED by the adapter and rendered blind here.** The first draft of that sentence — written on
- * this bar, when the plan pill was still here — read `props.session.provider === 'claude'` and the
- * neutrality census caught it; indexing the declared map BY the provider is not the same thing as
- * recognising one, and no provider name appears here.
+ * ⛔ **The differing half is DECLARED by the adapter and rendered blind here.** Indexing the
+ * declared map by the provider is not the same thing as recognising one, and no provider name
+ * appears here.
  *
  * ⚠️ **The pill's own words carry the half that is true of BOTH and this carries the rest.** `364`
  * measured that the two modes differ in kind — one drops an OS sandbox, the other never had one and
@@ -467,70 +470,69 @@ const panelToggleName = computed(() =>
 
 <template>
   <header class="session-header" data-cy="session-header">
-    <ConversationTitleEditor
-      :session="props.session"
-      :title="title"
-      :identity="identity"
-      :task="task"
-      :task-title="props.named?.title ?? null"
-      :open-task="props.openTask"
-      :rename="props.rename"
-    />
-
-    <!-- 🔴 **THE most consequential fact on this screen, drawn as though it were** (`578`,
-         `EXT-010` §1.4). ⛔ *"`Idle` is the only thing telling a person the turn has finished —
-         same size, same weight, same treatment as `not planning`."*
-
-         ⚑ **Three things carry the priority and each is measurable.** It is the only text on this
-         bar at `--text-md`; it is the SECOND thing read rather than the last of a run of chips;
-         and it is `flex: 0 0 auto`, so when the bar runs out of room this and the acts are the two
-         things that do not give. ⛔ **Never a box**: a state word styled as a control is the mirror
-         of `EXT-010` §2.2's control styled as a bullet, and this dispatch is fixing that rule's
-         other half.
-
-         ⚠️ **The plate came with it, and that is not a second opinion.** `AgentState` and
-         {@link standing} are drawn from ONE `facets` object (099) — the pill cannot contradict the
-         plate whatever the fold does next — so putting them in one lockup draws what was already
-         one derivation as one thing.
-
-         ⛔ **`v-if` on the launch, not on the session.** While a launch is in flight the plate is
-         gone (101 §9, one read in place of the cluster), and an empty lockup would leave a gap
-         where the loudest thing on the bar sits. -->
-    <div v-if="!(unstarted && props.starting)" class="agent-standing" data-cy="agent-standing">
-      <!-- The agent itself (082). It marks exactly the two facts the word beside it spells out —
-           what it is DOING and what it IS — plus what it needs from you, which nothing up here
-           could say before. The pills it stood among therefore lost their own dots: a dot and a
-           plate saying the same thing in the same breath is the drift 074 removed six places of,
-           and the plate says more.
-           ⚠️ `silent-seconds` is the header's OWN counter, handed over. The component does not
-           tick; if it did there would be two clocks up here that could disagree by a second. -->
-      <AgentState
-        v-if="props.plate"
-        size="compact"
-        v-bind="props.facets"
-        :label="title"
-        :silent-seconds="liveness?.state === 'silent' ? silentFor : undefined"
-      />
-
-      <!-- ⚠️ **Not on the launcher** (101 §9). `STANDING_LABEL.unstarted` is the literal word "Not
-           started", and on a page already headed "New conversation", beside a faceless plate that
-           means the same thing, it was the third of three. On a real conversation it is the app's
-           one answer about what the session is doing and it stays exactly as 099 left it —
-           including `data-status`, which three live smokes read. -->
-      <span
-        v-if="!unstarted"
-        class="standing-word"
-        :class="statusTone"
-        data-cy="session-status"
-        :title="statusDetail"
-        :aria-description="statusDetail"
-        :tabindex="statusDetail ? 0 : undefined"
-        :data-status="props.status ?? ''"
-        :data-standing="standing"
-      >
-        {{ statusLabel }}
-      </span>
-    </div>
+    <ConversationRow
+      form="compact"
+      id-prefix="header"
+      :row="{
+        id: props.session?.sessionId ?? 'new',
+        facets: props.plate && !(unstarted && props.starting) ? props.facets : null,
+        plateLabel: title,
+        head: 'plain',
+        title,
+        status: {},
+      }"
+      :silent-seconds="liveness?.state === 'silent' ? silentFor : undefined"
+    >
+      <template #title>
+        <ConversationTitleEditor
+          :session="props.session"
+          :title="title"
+          :identity="identity"
+          :task="task"
+          :task-title="props.named?.title ?? null"
+          :open-task="props.openTask"
+          :rename="props.rename"
+        />
+      </template>
+      <template #status>
+        <div v-if="!(unstarted && props.starting)" class="agent-standing" data-cy="agent-standing">
+          <span
+            v-if="!unstarted"
+            class="standing-word"
+            :class="statusTone"
+            data-cy="session-status"
+            :title="statusDetail"
+            :aria-description="statusDetail"
+            :tabindex="statusDetail ? 0 : undefined"
+            :data-status="props.status ?? ''"
+            :data-standing="standing"
+          >
+            {{ statusLabel }}
+          </span>
+        </div>
+        <!-- What the agent is doing and when it last reported, at the end of the line. It takes
+               the room left on the line and cuts the activity there, so the bar never grows a row. -->
+        <span v-if="activityText !== null || reportedAt !== ''" class="now" data-cy="shelf-now">
+          <span v-if="activityText !== null" class="now-dot"></span>
+          <span
+            v-if="activityText !== null"
+            class="now-copy"
+            data-cy="shelf-activity"
+            :data-doing="props.activity?.doing ?? ''"
+            :data-tone="props.activity?.tone ?? ''"
+            :title="activityText"
+            >{{ activityText }}</span
+          >
+          <span v-if="reportedAt !== ''" class="now-dot"></span>
+          <span v-if="reportedAt !== ''" class="now-at" data-cy="shelf-last-report"
+            >last report
+            <time :datetime="String(props.lastReportAt)" :title="reportedAtFull">{{
+              reportedAt
+            }}</time></span
+          >
+        </span>
+      </template>
+    </ConversationRow>
 
     <p
       v-if="props.providerLimit?.history"
@@ -570,7 +572,11 @@ const panelToggleName = computed(() =>
         :title="providerDetail"
         data-cy="provider-chip"
       >
-        <span class="dot"></span>{{ providerChip }}
+        <span class="dot"></span
+        ><ProviderLabel v-if="props.session" :provider="props.session.provider" /><template
+          v-else
+          >{{ providerChip }}</template
+        >
       </span>
 
       <!-- Requested, not in effect. Dashed and grey on purpose — see the computed above. -->
@@ -635,28 +641,6 @@ const panelToggleName = computed(() =>
         <span v-if="session.pendingApprovalMode" data-cy="session-approval-next">
           → {{ session.pendingApprovalMode === 'auto' ? 'Auto' : 'Ask' }} next message
         </span>
-      </span>
-
-      <!-- What the agent is doing and when it last reported, at the end of the line. It takes
-           the room left on the line and cuts the activity there, so the bar never grows a row. -->
-      <span v-if="activityText !== null || reportedAt !== ''" class="now" data-cy="shelf-now">
-        <span v-if="activityText !== null" class="now-dot"></span>
-        <span
-          v-if="activityText !== null"
-          class="now-copy"
-          data-cy="shelf-activity"
-          :data-doing="props.activity?.doing ?? ''"
-          :data-tone="props.activity?.tone ?? ''"
-          :title="activityText"
-          >{{ activityText }}</span
-        >
-        <span v-if="reportedAt !== ''" class="now-dot"></span>
-        <span v-if="reportedAt !== ''" class="now-at" data-cy="shelf-last-report"
-          >last report
-          <time :datetime="String(props.lastReportAt)" :title="reportedAtFull">{{
-            reportedAt
-          }}</time></span
-        >
       </span>
     </div>
 
@@ -780,6 +764,12 @@ const panelToggleName = computed(() =>
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+/* The conversation's row (plate, title, state word) spans the bar's first line. */
+.session-header > .conversation-row {
+  grid-column: 1 / 3;
+  grid-row: 1;
+}
+
 .header-spacer {
   flex: 1;
   display: none;
@@ -803,7 +793,7 @@ const panelToggleName = computed(() =>
   flex: 0 1 auto;
   align-items: center;
   gap: var(--space-3) var(--space-6);
-  grid-column: 2;
+  grid-column: 1 / 3;
   grid-row: 2;
   flex-wrap: wrap;
 }

@@ -416,6 +416,7 @@ describe('668 · who called whom, as generations', () => {
       expect(slug.getAttribute('title')).toBe(
         'a-very-long-identity-slug-that-a-card-this-narrow-cuts',
       )
+      // The slug leads the card's `slug · says` line and is the one part of it that is cut.
       expect(slug.scrollWidth, 'the premise: this slug IS cut').toBeGreaterThan(slug.clientWidth)
       expect(card.querySelector('[data-cy="forest-name"]')!.getAttribute('title')).toBeTruthy()
     })

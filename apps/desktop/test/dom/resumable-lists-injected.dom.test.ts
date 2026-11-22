@@ -284,7 +284,7 @@ it('names the selected provider folder while bundle and agent identity take thei
   const out = await namedPage()
   expect(out.m.all('unresumable-profile')[0]?.textContent?.trim()).toBe("from Birch's own folder")
   expect(out.m.all('unresumable-profile')[1]?.textContent?.trim()).toBe('from a bundle')
-  expect(out.m.all('unresumable-profile')[2]?.textContent?.trim()).toBe('agent: fern')
+  expect(out.m.all('unresumable-profile')[2]?.textContent?.trim()).toBe('fern')
   out.m.q('sessions-open-home').click()
   expect(out.opened).toHaveBeenCalledExactlyOnceWith('home')
   expect(out.selected.listResumable).toHaveBeenCalledTimes(1)

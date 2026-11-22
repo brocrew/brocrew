@@ -16,6 +16,7 @@ import {
   type PaletteInput,
   type PaletteOpenRow,
 } from '../src/renderer/src/lib/command-palette'
+import { suppliedName } from './lib/answered-catalogue'
 
 /** ⚑ **D-017b · one row of the rail's one list** — the same shape whatever the conversation is doing. */
 function openRow(over: Partial<PaletteOpenRow> = {}): PaletteOpenRow {
@@ -39,6 +40,8 @@ const EMPTY: PaletteInput = {
   // no agent to talk about"*, which is what every case in this file is about; the band's own cases
   // live in `agent-commands.test.ts`.
   agent: null,
+  // The palette says a provider by the name the catalogue supplies.
+  providerName: suppliedName,
 }
 
 const idsOf = (commands: readonly PaletteCommand[]): string[] => commands.map((c) => c.id)
@@ -121,7 +124,7 @@ describe('249 §2 · the rows the palette can honestly offer', () => {
     // ⚑ **The control, same call**: the band a person reads above them names the one population.
     expect(GROUP_LABEL.conversations).toBe('Conversations')
     // ⚠️ A row whose provider the host has not said yet says less, not something else.
-    expect(conversations[2]?.detail).toBe('unknown · idle')
+    expect(conversations[2]?.detail).toBe('idle')
   })
 
   it('⚠️ an open row shows its opening line when it has one, and its standing when it does not', () => {
@@ -142,7 +145,7 @@ describe('249 §2 · the rows the palette can honestly offer', () => {
       }),
       'conversations',
     )
-    expect(without?.detail).toBe('codex · working')
+    expect(without?.detail).toBe('Codex · working')
   })
 
   /**
@@ -164,7 +167,7 @@ describe('249 §2 · the rows the palette can honestly offer', () => {
       'conversations',
     )
     expect(open?.title).toBe('Project manager')
-    expect(open?.detail).toBe('codex · idle · acme')
+    expect(open?.detail).toBe('Codex · idle · acme')
     expect(open?.keywords).toContain('acme')
 
     // ⚑ **The pairing: a row with no place says one fewer thing rather than an empty one** — no
@@ -176,7 +179,7 @@ describe('249 §2 · the rows the palette can honestly offer', () => {
       }),
       'conversations',
     )
-    expect(nowhere?.detail).toBe('codex · working')
+    expect(nowhere?.detail).toBe('Codex · working')
   })
 
   it('⚠️ every band this file declares has a heading, and the panel draws them in this order', () => {

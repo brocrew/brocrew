@@ -21,7 +21,7 @@ import type {
   SessionLivenessMessage,
 } from '../../src/shared/runtime-ipc'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
-import { META, mount, unmountAll } from './harness'
+import { META, mount, unmountAll, type Mounted } from './harness'
 
 const NOW = Date.now()
 const current = {
@@ -114,6 +114,21 @@ const agents: AgentIdentities = {
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
+/**
+ * The Team shelf row's state line: its state word first, then the folder and what it says, with the
+ * row's explanation on its hover and its accessible description.
+ */
+function teamLine(m: Mounted): HTMLElement {
+  const line = m
+    .q(`team-conversation-${META.sessionId}`)
+    .querySelector<HTMLElement>(`#team-shelf-state-${META.sessionId}`)
+  expect(line, 'the Team shelf row draws its state line').not.toBeNull()
+  return line!
+}
+/** The state word the Team shelf row draws, the first part of its state line. */
+function teamWord(m: Mounted): string | undefined {
+  return teamLine(m).firstElementChild?.textContent?.trim()
+}
 interface Rail {
   hearStates(message: RuntimeStatesMessage): void
   refreshResumable(): Promise<void>
@@ -201,19 +216,12 @@ async function screens() {
   const m = mount(shell, {}, { width: 1700, height: 1100 })
   await settle()
   ;(m.q(`team-conversations-${slug}`).parentElement as HTMLDetailsElement).open = true
-  await vi.waitFor(() =>
-    expect(
-      m.q(`team-conversation-${record.sessionId}`).querySelector('.team-now')?.textContent?.trim(),
-    ).toBe('Claude limit'),
-  )
+  await vi.waitFor(() => expect(teamWord(m)).toBe('Claude limit'))
   function check(word: 'stop' | 'clear' | 'unavailable') {
     const header = m.q('session-status').textContent!.trim()
     const railLine = m.host.querySelector<HTMLElement>(`#rail-state-${record.sessionId}`)!
     const railWord = railLine.textContent!.replace(/\s+/g, ' ').trim()
-    const teamWord = m
-      .q(`team-conversation-${record.sessionId}`)
-      .querySelector('.team-now')!
-      .textContent!.trim()
+    const teamSays = teamWord(m)
     expect(header).toEqual(
       word === 'clear'
         ? 'Idle'
@@ -226,9 +234,9 @@ async function screens() {
     const activity = railLine.querySelector('time')
     expect(activity?.title).toBe(`${activity?.textContent} · ${fullTime(NOW)}`)
     expect(railWord).toBe(
-      ['claude', short, activity?.textContent, railLine.dataset.place].filter(Boolean).join(' · '),
+      ['Claude', short, activity?.textContent, railLine.dataset.place].filter(Boolean).join(' · '),
     )
-    expect(teamWord).toBe(short)
+    expect(teamSays).toBe(short)
     const list = rail.value!.theOneList
     expect(list).not.toBeNull()
     const facts = list!.find((one) => one.sessionId === record.sessionId)!
@@ -297,8 +305,7 @@ describe('Root channel ordering stays the same across pane, rail and Team', () =
       expect(lines()).toHaveLength(2)
       for (const line of lines())
         expect(line.textContent).toContain('Last known: stopped at Claude’s limit · as of ')
-      const team = () =>
-        s.page.q(`team-conversation-${s.record.sessionId}`).querySelector<HTMLElement>('.team-now')!
+      const team = () => teamLine(s.page)
       expect(team().title).toContain('Last known: stopped at Claude’s limit')
       const old = deferred<ResumableSessionInfo[]>()
       s.list(() => old.promise)

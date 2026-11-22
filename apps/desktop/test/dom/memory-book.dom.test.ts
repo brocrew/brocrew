@@ -427,7 +427,8 @@ it('names memory stores from the selected ancestor while preserving their conten
 it('keeps memory content and actions available while selected names are late, then shows their answer', async () => {
   providersBridge()
   const out = await selectedMemory('Fern', true)
-  expect(out.view.q('memory-store-claude').querySelector('h4')?.textContent).toBe('Provider')
+  // The names have not arrived yet: the heading says no name rather than make one up.
+  expect(out.view.q('memory-store-claude').querySelector('h4')?.textContent?.trim()).toBe('')
   expect(out.view.q('memory-store-claude').textContent).toContain('Original note')
   expect((out.view.q('memory-remove') as HTMLButtonElement).disabled).toBe(false)
   out.answer()

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { useProviderLabel } from '../composables/useProviderLabel'
+import ConversationRow from './ConversationRow.vue'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
-import { fullTime } from '../lib/clock'
 import { usePaletteSearch, type SearchBand, type SearchRow } from '../composables/usePaletteSearch'
 import { useClientApi } from '../client-provider/injection'
 import { chordSaid, platformHere } from '../lib/this-computer'
@@ -180,11 +181,13 @@ let opener: HTMLElement | null = null
 /** What a person can Tab to in this panel: an element that is not laid out is not a stop. */
 const focusable = (): HTMLElement[] => tabStopsIn(panel.value, TAB_STOPS, isLaidOut)
 
+const providerLabel = useProviderLabel()
 const commands = computed(() =>
   buildCommands({
     conversations: props.conversations,
     activeId: props.activeId,
     agent: props.agent,
+    providerName: providerLabel,
   }),
 )
 
@@ -663,30 +666,11 @@ defineExpose({
               "
               @mousedown.prevent="run(row)"
             >
-              <strong>
-                {{ row.title }}
-                <span
-                  v-if="row.recorded?.archived_at != null"
-                  class="palette-recorded-mark"
-                  :title="fullTime(row.recorded.archived_at)"
-                  data-cy="palette-recorded-archive"
-                  >Archived</span
-                >
-                <span
-                  v-if="row.recorded?.title_author?.kind === 'person'"
-                  class="palette-recorded-mark"
-                  data-cy="palette-recorded-title-author"
-                  >Named by you</span
-                >
-              </strong>
-              <small v-if="row.detail">{{ row.detail }}</small>
-              <small
-                v-if="row.recordedStatus"
-                :title="row.recordedStatus"
-                data-cy="palette-recorded-status"
-              >
-                Status: {{ row.recordedStatus }}
-              </small>
+              <ConversationRow v-if="row.row" form="compact" id-prefix="palette" :row="row.row" />
+              <template v-else>
+                <strong>{{ row.title }}</strong>
+                <small v-if="row.detail">{{ row.detail }}</small>
+              </template>
             </li>
           </template>
         </ul>
@@ -752,12 +736,6 @@ defineExpose({
 </template>
 
 <style scoped>
-.palette-recorded-mark {
-  margin-inline-start: var(--space-4);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-normal);
-}
 .palette-search-controls,
 .palette-more {
   align-self: start;

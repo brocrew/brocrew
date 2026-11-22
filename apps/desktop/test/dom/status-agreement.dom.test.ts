@@ -1,6 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
@@ -17,7 +18,7 @@ import { mount, paneProps, permission, record, unmountAll, type Mounted } from '
  * |---|---|
  * | the drawer plate (`SessionBot`, 090) | `working` |
  * | the top-bar pill | `Idle` |
- * | the rail row | `claude · idle` |
+ * | the rail row | `Claude · idle` |
  * | the pill above the composer | `● WAITING` |
  *
  * Two of those read `sessionDoing`, two read `record.control.status` raw, and the two derivations
@@ -38,7 +39,10 @@ import { mount, paneProps, permission, record, unmountAll, type Mounted } from '
  * `q()` throws on an element that is not there.
  */
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  delete (window as { api?: unknown }).api
+})
 
 /* ------------------------------------------------------------------ the bit */
 
@@ -448,6 +452,10 @@ describe('the four surfaces answer once (099)', () => {
     expect(r.control.background.running, 'the fold no longer holds the level').toHaveLength(1)
     expect(r.control.status).toBe('idle')
 
+    // The provider's name comes from the Client API's catalogue.
+    ;(window as { api?: unknown }).api = {
+      runtime: { providerCatalogue: async () => PROVIDER_DESCRIPTORS },
+    }
     const pane = mount(ConversationPane, paneProps({ record: r }))
     const rail = mount(SideRail, { open: [r], activeId: r.sessionId, place: null })
     await nextTick()
@@ -467,9 +475,9 @@ describe('the four surfaces answer once (099)', () => {
     // substring match would stop noticing a third fact arriving on one of them.
     // ⚑ **F023 · the PM's phrase, with what it is running** — the row's own command, as the bar
     // names it.
-    expect(railWord?.textContent?.trim()).toBe(
-      'claude · running in the background · node -e "…" · checkout',
-    )
+    await expect
+      .poll(() => railWord?.textContent?.trim())
+      .toBe('Claude · running in the background · node -e "…" · checkout')
     // 3 · …and both PLATES keep the idle face, which is 250's ruling and not an omission: the avatar
     //     is about the AGENT, and a process it detached is not the agent (042).
     expect(pane.q('agent-state').dataset.doing).toBe('idle')

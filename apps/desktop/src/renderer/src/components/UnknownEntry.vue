@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Provider } from '@brobot2/shared'
+import ProviderLabel from './ProviderLabel.vue'
 import { computed, ref } from 'vue'
 import type { UnknownItem } from '../lib/transcript'
 
@@ -50,7 +52,11 @@ const raw = computed(() => {
     <button class="unknown-head" type="button" @click="folded = !folded">
       <span class="tag">unknown</span>
       <span>Unmodeled event</span>
-      <span class="type">{{ item.provider }}{{ item.label ? ` · ${item.label}` : '' }}</span>
+      <span class="type"
+        ><ProviderLabel :provider="item.provider as Provider" />{{
+          item.label ? ` · ${item.label}` : ''
+        }}</span
+      >
       <svg class="icon chevron"><use href="#i-chevron" /></svg>
     </button>
     <pre class="unknown-body">{{ raw }}</pre>

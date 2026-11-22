@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConversationRow from './ConversationRow.vue'
 import { agoWords } from '../lib/clock'
 import type { AttentionDecision, AttentionRequest } from '../lib/attention'
 // ⛔ **The words beside and under the buttons have a SECOND surface drawing them** (434) — the
@@ -10,7 +11,6 @@ import {
   isRefusal,
   whatThisAnswerDoes,
 } from '../lib/user-input-offer'
-import AgentState from './AgentState.vue'
 
 /**
  * **Everything that needs you, in one place** (205, from 195 H3).
@@ -102,20 +102,28 @@ function age(request: AttentionRequest): string {
         <header class="request-head">
           <!-- ⚑ **D-017b · no BEING**: a plate never says whether a provider process runs (`05`
                rule 5) — the need is the fact this row is about. -->
-          <AgentState size="compact" :needing="request.kind" :label="request.where" />
-          <div class="request-who">
-            <strong data-cy="attention-where">{{ request.where }}</strong>
-            <small>
-              <span v-if="request.provider" data-cy="attention-provider">{{
-                request.provider
-              }}</span>
-              <span v-if="request.provider"> · </span>
-              <span data-cy="attention-standing">{{ request.standing }}</span>
-              <!-- 🔴 **714 · R41 — who it runs as, NAMED** (`AttentionRequest.who`); it drew the
-                   slug. -->
-              <span v-if="request.who" data-cy="attention-who"> · {{ request.who }}</span>
-            </small>
-          </div>
+          <ConversationRow
+            form="compact"
+            id-prefix="attention"
+            :row="{
+              id: request.key,
+              facets: { needing: request.kind },
+              plateLabel: request.where,
+              head: 'plain',
+              title: request.where,
+              status: {
+                provider: request.provider,
+                word: request.standing,
+                tail: request.who ? [request.who] : [],
+              },
+            }"
+            :cy="{
+              title: 'attention-where',
+              provider: 'attention-provider',
+              word: 'attention-standing',
+              tail: 'attention-who',
+            }"
+          />
           <!-- HOW LONG it has been waiting. The PM's 63 seconds is why this is on the row. -->
           <span class="request-age" data-cy="attention-age">{{ age(request) }}</span>
         </header>
@@ -326,24 +334,6 @@ function age(request: AttentionRequest): string {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-
-.request-who {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.request-who strong {
-  overflow: hidden;
-  font-size: var(--type-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.request-who small {
-  color: var(--faint);
-  font-size: var(--type-caption);
 }
 
 .request-age {

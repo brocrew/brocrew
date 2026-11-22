@@ -35,6 +35,9 @@ const PROVIDERS = SUPPORTED_PROVIDERS
 export interface UsageCell {
   readonly key: string
   readonly label: string
+  /** The provider and window a provider's cell is labelled with, drawn by `ProviderLabel`. */
+  readonly provider?: Provider
+  readonly window?: string
   /** `null` while there is no reading. */
   readonly age: string | null
   /** `null` while there is no reading. */
@@ -128,6 +131,8 @@ export function useUsageCells(
           return {
             key: `${provider}-${short}`,
             label,
+            provider,
+            window: short,
             age: null,
             value: null,
             title: null,
@@ -139,6 +144,8 @@ export function useUsageCells(
         return {
           key: `${provider}-${short}`,
           label,
+          provider,
+          window: short,
           age: `read ${agoWords(reading.at, now)}`,
           value,
           title,

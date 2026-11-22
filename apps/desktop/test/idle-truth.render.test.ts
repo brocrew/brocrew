@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { answerTheCatalogue } from './dom/answered-catalogue'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
@@ -12,6 +13,9 @@ import {
   DEFAULT_PROFILE_LABEL,
   type CreatedSession,
 } from '../src/shared/runtime-ipc'
+
+// The window names providers as the catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * # 250 · ⛔ **The two WORD surfaces, in markup**
@@ -248,16 +252,16 @@ describe('250 · the header pill', () => {
 })
 
 describe('250 · the rail row', () => {
-  it('🔴 says "claude · running in the background", not "claude · idle"', async () => {
+  it('🔴 says "Claude · running in the background", not "Claude · idle"', async () => {
     const html = await rail(TURN_OVER)
     // ⚑ **F023 · the PM's phrase**, and the rail appends what it is running when the row names it.
-    expect(html).toContain('claude · running in the background')
+    expect(html).toContain('Claude · running in the background')
     expect(html).toContain('data-standing="background"')
   })
 
-  it('…and goes back to "claude · idle" when the level empties', async () => {
+  it('…and goes back to "Claude · idle" when the level empties', async () => {
     const html = await rail(TURN_OVER_QUIET)
-    expect(html).toContain('claude · idle')
+    expect(html).toContain('Claude · idle')
     expect(html).toContain('data-standing="idle"')
     // The paired negative: the same render really did produce a row, and the new word is not in it.
     expect(html).not.toContain('still running')
@@ -346,7 +350,7 @@ describe('250 · a fresh conversation is untouched', () => {
     const quiet = createTranscript()
     expect(quiet.background).toEqual({ running: [], dropped: 0 })
     const railHtml = await rail([{ type: 'status', state: 'idle' }])
-    expect(railHtml).toContain('claude · idle')
+    expect(railHtml).toContain('Claude · idle')
     const paneHtml = await pane([{ type: 'status', state: 'idle' }])
     expect(tag(paneHtml, 'session-status')).toContain('data-standing="idle"')
   })
@@ -364,7 +368,7 @@ describe('250 · a fresh conversation is untouched', () => {
       } as TranscriptEvent,
     ])
     // Permission waits require the person to act; background work asks nothing.
-    expect(html).toContain('claude · needs you: permission')
+    expect(html).toContain('Claude · needs you: permission')
     expect(html).toContain('data-standing="waiting"')
   })
 })
@@ -492,9 +496,9 @@ describe('258 · the drawer’s bot, which went stale a SECOND time', () => {
 })
 
 describe('258 · the rail row', () => {
-  it('🔴 says "claude · scheduled", not "claude · idle"', async () => {
+  it('🔴 says "Claude · scheduled", not "Claude · idle"', async () => {
     const html = await rail(TURN_SCHEDULED)
-    expect(html).toContain('claude · scheduled')
+    expect(html).toContain('Claude · scheduled')
     expect(html).toContain('data-standing="scheduled"')
   })
 })

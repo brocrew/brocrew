@@ -1,3 +1,4 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -75,6 +76,7 @@ function pane(meta: typeof META, width: number, status = 'idle'): Mounted {
     runtime: {
       listResumable: () => Promise.resolve([]),
       listUnresumable: () => Promise.resolve([]),
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     },
   }
   const held = record([{ type: 'status', state: status } as never])
@@ -723,7 +725,8 @@ describe('§5 · the strip below the bar says usage; the settings are the Agent 
       expect(words, `${where} says the effort`).not.toContain('high')
     }
     // ⚑ …and the bar drew: it names the provider. The usage cells are the title bar's now.
-    expect(m.q('session-header').innerText).toContain('claude')
+    const claude = PROVIDER_DESCRIPTORS.find((one) => one.id === 'claude')!.displayName
+    expect(m.q('session-header').innerText).toContain(claude)
     expect(m.all('shelf-usage-claude-5h')).toHaveLength(0)
     const cards = await reportedUsageCards(PANE_WIDTHS[0], 300)
     await drawnReady()

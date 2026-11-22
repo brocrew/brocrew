@@ -503,8 +503,8 @@ describe('§1 · the property — who started it, what it started, and what pass
     const bot = m.q('session-bot')
     laidOut(bot)
 
-    // The descendant’s forest card in the graph draws its plate on the left, its name and
-    // profile beside it, and its standing in words below.
+    // The descendant’s forest card in the graph draws its plate on the left, its name beside
+    // it, and under the name its profile, then its standing in words on the same line.
     const node = kidIn(m, 'sess_pm')
     const plate = box(node.querySelector('[data-cy="agent-plate"]'))
     const name = box(node.querySelector('[data-cy="forest-name"]'))
@@ -512,7 +512,14 @@ describe('§1 · the property — who started it, what it started, and what pass
     const word = box(node.querySelector('[data-cy="forest-says"]'))
     expect(plate.right, 'the name is not beside the plate').toBeLessThanOrEqual(name.left)
     expect(name.bottom, 'the profile is not under the name').toBeLessThanOrEqual(profile.top + 1)
-    expect(profile.bottom, 'the word is not under the profile').toBeLessThanOrEqual(word.top + 1)
+    // The standing follows the profile: beside it when the line has room, else wrapped under it.
+    if (Math.abs(word.top - profile.top) < 1) {
+      expect(profile.right, 'the word is not after the profile').toBeLessThanOrEqual(word.left)
+    } else {
+      expect(word.top, 'the word is not under the profile').toBeGreaterThanOrEqual(
+        profile.bottom - 1,
+      )
+    }
     // ⚑ D-016 · the profile alone: the project that followed it went with projects.
     expect(words(node.querySelector('[data-cy="forest-slug"]')!)).toBe('project-manager')
   })
@@ -1459,13 +1466,15 @@ describe('§6 · measured ink at the narrowest column the drawer ever takes', ()
       const name = m.q('cast-tile-name-sess_pm')
       expect(name.textContent?.trim()).toBe('Ada')
       assertDrawn(name, `the name at ${width}px`)
-      // The state is on its own line under the name, cut at two lines, and whole on its title.
+      // The state is on the line under the name, after the profile, and whole on the title of
+      // that line.
       const word = m.q('cast-tile-word-sess_pm')
       expect(word.getBoundingClientRect().top).toBeGreaterThanOrEqual(
         name.getBoundingClientRect().bottom - 0.5,
       )
-      expect(word.title).toBe(word.textContent?.trim())
-      expect(word.title).toContain('Bartholomew Maximilian Featherstonehaugh')
+      const line = word.closest('small')!
+      expect(line.title).toBe(`project-manager · ${word.textContent?.trim()}`)
+      expect(line.title).toContain('Bartholomew Maximilian Featherstonehaugh')
       m.unmount()
     }
   })
@@ -1490,16 +1499,18 @@ describe('§6 · measured ink at the narrowest column the drawer ever takes', ()
       expect(chips.length, 'no chip drawn').toBeGreaterThan(0)
       for (const chip of chips) {
         const id = chip.dataset.conversation
-        const copy = chip.querySelector<HTMLElement>('.chip-copy')!
+        const copy = chip.querySelector<HTMLElement>('.rail-copy')!
         expect(
           copy.getBoundingClientRect().right,
           `${id}'s words leave the chip`,
         ).toBeLessThanOrEqual(chip.getBoundingClientRect().right + 0.5)
-        const line = parseFloat(getComputedStyle(copy.querySelector('.chip-name')!).lineHeight)
-        const profile = chip.querySelector<HTMLElement>('.chip-profile')
+        const line = parseFloat(
+          getComputedStyle(copy.querySelector(`[data-cy="cast-tile-name-${id}"]`)!).lineHeight,
+        )
+        const profile = chip.querySelector<HTMLElement>(`[data-cy="cast-tile-profile-${id}"]`)
         if (profile)
           expect(profile.getBoundingClientRect().height, `${id}'s profile`).toBeLessThan(line * 1.5)
-        const word = chip.querySelector<HTMLElement>('.chip-word')
+        const word = chip.querySelector<HTMLElement>(`[data-cy="cast-tile-word-${id}"]`)
         expect(word, `${id} says no word`).not.toBeNull()
         expect(word!.getBoundingClientRect().height, `${id}'s word`).toBeLessThan(line * 2.6)
       }

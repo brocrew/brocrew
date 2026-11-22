@@ -478,12 +478,14 @@ it('searches recorded conversations with the same cursor and opens an archived m
   expect(detail.textContent).toContain(' · active · ')
   expect(detail.textContent).toContain(fullTime(1_700_000_000_000))
   expect(detail.textContent).toContain('Conversation W1.1')
-  expect(detail.textContent).not.toContain('Draft sent & waiting for feedback')
+  // The recorded status is one part of the row's one line, said there once.
+  expect(detail.textContent!.split('Draft sent & waiting for feedback')).toHaveLength(2)
   const status = first.querySelector('[data-cy="palette-recorded-status"]')
+  expect(status && detail.contains(status)).toBe(true)
   expect(status?.textContent?.trim()).toBe('Status: Draft sent & waiting for feedback')
   expect(status?.getAttribute('title')).toBe('Draft sent & waiting for feedback')
-  expect(first.textContent).toContain('claude')
-  expect(first.textContent).not.toContain('codex')
+  expect(first.textContent).toContain('Claude')
+  expect(first.textContent).not.toContain('Codex')
   expect(first.querySelector('[data-cy="palette-recorded-archive"]')).toBeNull()
   expect(first.querySelector('[data-cy="palette-recorded-title-author"]')).toBeNull()
   expect(search).toHaveBeenCalledExactlyOnceWith({
@@ -505,7 +507,7 @@ it('searches recorded conversations with the same cursor and opens an archived m
     },
   })
   const second = insidePalette(`palette-row-open-${archive}`)!
-  expect(second.textContent).toContain('codex')
+  expect(second.textContent).toContain('Codex')
   expect(second.querySelector('[data-cy="palette-recorded-status"]')).toBeNull()
   expect(second.querySelector('[data-cy="palette-recorded-archive"]')?.textContent).toBe('Archived')
   expect(second.querySelector('[data-cy="palette-recorded-title-author"]')?.textContent).toBe(

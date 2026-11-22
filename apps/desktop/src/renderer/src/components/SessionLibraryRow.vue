@@ -48,6 +48,8 @@ import { childLabel } from '../lib/child-descent'
 import { calendarDay } from '../lib/clock'
 import { describeDerived } from '../lib/derived-state'
 import { basenameOf } from '../lib/paths'
+import type { ConversationRowView } from '../lib/conversation-row'
+import ConversationRow from './ConversationRow.vue'
 
 const props = defineProps<{
   entry: LibraryEntry
@@ -161,6 +163,49 @@ function label(entry: LibraryEntry): string {
   return entry.title || basenameOf(entry.cwd) || entry.cwd
 }
 
+/** What the row draws, in the shared row's terms: no plate, as a library entry has no live state. */
+function rowView(entry: LibraryEntry): ConversationRowView {
+  const origin = originChipOf(entry, props.providerLabel)
+  return {
+    id: entry.id,
+    facets: null,
+    plateLabel: label(entry),
+    head: 'plain',
+    title: label(entry),
+    marks: [
+      ...(entry.child
+        ? [
+            {
+              key: 'child',
+              text: childLabel(entry.child),
+              tone: 'child',
+              cy: `library-child-${entry.id}`,
+            },
+          ]
+        : []),
+      { key: 'origin', text: origin.label, tone: origin.kind },
+      ...(entry.archivedAt !== undefined
+        ? [
+            {
+              key: 'archived',
+              text: `Archived ${calendarDay(entry.archivedAt)}`,
+              tone: 'archived',
+              cy: `library-archived-${entry.id}`,
+            },
+          ]
+        : []),
+    ],
+    status: {
+      provider: entry.provider,
+      place: entry.cwd,
+      tail: [
+        ...(entry.bytes !== null ? [size(entry.bytes)] : []),
+        ...(canImport(entry) ? [provenance()] : []),
+      ],
+    },
+  }
+}
+
 /** An unread user-home file remains importable even after an unfinished attempt gave it a row. */
 function provenance(): string {
   return `in ${props.providerLabel ?? 'the provider'}'s own folder, not imported`
@@ -183,33 +228,11 @@ function size(bytes: number | null): string {
     @click="rowClick(entry, $event)"
   >
     <div class="row-body">
-      <div class="r-line1">
-        <span class="r-title">{{ label(entry) }}</span>
-
-        <span v-if="entry.child" class="chip child" :data-cy="`library-child-${entry.id}`">
-          <span class="dot" aria-hidden="true"></span>
-          {{ childLabel(entry.child) }}
-        </span>
-        <span class="chip" :class="originChipOf(entry, providerLabel).kind">
-          <span class="dot" aria-hidden="true"></span>
-          {{ originChipOf(entry, providerLabel).label }}
-        </span>
-        <span
-          v-if="entry.archivedAt !== undefined"
-          class="chip archived"
-          :data-cy="`library-archived-${entry.id}`"
-        >
-          Archived {{ calendarDay(entry.archivedAt) }}
-        </span>
-        <span class="r-when">{{ updatedAgo }}</span>
-      </div>
-
-      <div class="r-line2">
-        <span class="r-cwd mono">{{ entry.provider }} · {{ entry.cwd }}</span>
-        <span v-if="entry.bytes !== null" class="r-aside">· {{ size(entry.bytes) }}</span>
-
-        <span v-if="canImport(entry)" class="r-aside">· {{ provenance() }}</span>
-      </div>
+      <ConversationRow :row="rowView(entry)" :cy="{ provider: `library-provider-${entry.id}` }">
+        <template #aside>
+          <span class="r-when">{{ updatedAgo }}</span>
+        </template>
+      </ConversationRow>
 
       <p v-if="entry.preview" class="r-preview">{{ entry.preview }}</p>
 
@@ -360,116 +383,11 @@ function size(bytes: number | null): string {
   gap: var(--space-2);
 }
 
-/* Wrapping rather than shrinking (103's lesson): `min-width: 0` lets the title ellipsise, but the
-   chip and the clock are `flex: 0 0 auto` by design — at a width where the two of them alone do not
-   fit, the only alternative to a second line is a row that sticks out. */
-.r-line1 {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-
-.r-title {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-soft);
-  font-size: var(--type-body);
-  font-weight: var(--fw-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .r-when {
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--faint);
   font-size: var(--type-caption);
-}
-
-.chip {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  height: 15px;
-  padding: 0 var(--space-3);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-xs);
-  background: var(--wash-2);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-medium);
-  white-space: nowrap;
-  gap: var(--space-2);
-}
-
-.chip.child {
-  /* ⚠️ Not a colour alone (082's standing rule, and the same reason the sub-agent plate carries a
-     word): the chip's TEXT says "sub-agent", so a reader who cannot separate these hues still gets
-     the fact. The tint only makes it findable when scanning 800 rows. */
-  border-color: var(--accent-border);
-  color: var(--accent-text);
-}
-
-.chip .dot {
-  width: 5px;
-  height: 5px;
-  border-radius: var(--radius-pill);
-  background: var(--faint);
-}
-
-.chip.ours .dot {
-  background: var(--accent);
-}
-
-.chip.imported .dot {
-  background: var(--ready);
-}
-
-/* Not imported yet — the only chip that borrows the accent, because it is the one with a button. */
-.chip.home {
-  border-color: var(--accent-border);
-  color: var(--accent-text-soft);
-}
-
-.chip.home .dot {
-  background: var(--accent);
-}
-
-/* Quiet emphasis, not a warning: this is the sweep's value, not a problem (104). */
-.chip.only {
-  border-color: var(--line-strong);
-  background: var(--wash-3);
-  color: var(--text-soft);
-}
-
-.chip.only .dot {
-  background: var(--accent-2);
-}
-
-.r-line2 {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  flex-wrap: wrap;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-.r-cwd {
-  min-width: 0;
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Never ellipsised: a phrase wider than its line wraps onto lines of its own instead. */
-.r-aside {
-  min-width: 0;
-  flex: 0 1 auto;
 }
 
 /* One line, clamped (104): the preview is a caption, and a first message somebody pasted a document
@@ -665,12 +583,6 @@ function size(bytes: number | null): string {
   opacity: 0.6;
 }
 
-/* Marked, and quiet: an archived conversation is put away, not in trouble. */
-.chip.archived {
-  background: var(--wash-3);
-  color: var(--text-soft);
-}
-
 .import:disabled {
   cursor: default;
   opacity: 0.6;
@@ -680,14 +592,6 @@ function size(bytes: number | null): string {
   padding: var(--space-7);
   background: var(--panel);
   border-radius: var(--radius-card);
-}
-.r-title {
-  font-weight: var(--fw-medium);
-}
-.chip {
-  min-height: var(--space-8);
-  height: auto;
-  white-space: normal;
 }
 .behind {
   flex-wrap: wrap;

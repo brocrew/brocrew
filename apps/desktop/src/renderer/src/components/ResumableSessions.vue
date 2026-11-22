@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import ConversationRow from './ConversationRow.vue'
+import ProviderLabel from './ProviderLabel.vue'
+import type { ConversationRowView } from '../lib/conversation-row'
+import { conversationTitle } from '../lib/conversation-list'
+import { basenameOf } from '../lib/paths'
 import { computed, onMounted, ref } from 'vue'
 import type {
   AgentIdentity,
@@ -234,6 +239,26 @@ const isEmpty = computed(
  * and nothing would notice the day one of them was edited.
  */
 const ago = agoWords
+
+/**
+ * What a recorded row draws, in the shared row's terms: one line, no plate, as in the library. A
+ * row this app ran as an agent names it; a row from a bundle or the person's own folder ran as no
+ * agent here, so it is titled by its folder and its own line below says where it came from.
+ */
+function recordedView(
+  session: Pick<ResumableSessionInfo, 'sessionId' | 'provider' | 'cwd' | 'named' | 'profileId'>,
+  ranAsAgent = true,
+): ConversationRowView {
+  const agent = ranAsAgent ? agentName(session.profileId, props.identities) : null
+  return {
+    id: session.sessionId,
+    facets: null,
+    plateLabel: agent ?? session.cwd,
+    head: 'plain',
+    title: conversationTitle(agent ?? (basenameOf(session.cwd) || session.cwd), session.named),
+    status: { profile: agent, provider: session.provider, place: session.cwd },
+  }
+}
 </script>
 
 <template>
@@ -274,10 +299,12 @@ const ago = agoWords
         data-cy="resumable-row"
         :data-session-id="session.sessionId"
       >
-        <div class="what">
-          <span class="provider">{{ session.provider }}</span>
-          <span class="mono cwd">{{ session.cwd }}</span>
-        </div>
+        <ConversationRow
+          form="compact"
+          :row="recordedView(session)"
+          id-prefix="recorded"
+          :cy="{ profile: 'resumable-profile' }"
+        />
         <div class="meta muted mono">
           <span :data-cy="`resumable-status-${session.sessionId}`">{{ session.status }}</span>
           <!-- ⛔ **222 · what `220` had to open a conversation to find out.** `status` says the
@@ -302,10 +329,6 @@ const ago = agoWords
           <span data-cy="resumable-approvals">
             approvals: {{ approvalModeLabel(session.approvalMode) }}
           </span>
-          <!-- Name the agent a session will reopen as; equal cwd values do not imply equal identities. `resumable()` excludes user-home rows, so a remaining null profile is a legacy default-profile session, named BroBot by `agentName`. Label the display name agent, reserving profile for its slug. -->
-          <span data-cy="resumable-profile"
-            >agent: {{ agentName(session.profileId, props.identities) }}</span
-          >
           <!-- What it will come back thinking with (024). `provider default` is the honest word
                for a session that asked for nothing: reopening it does not impose a level it never
                ran with. -->
@@ -436,10 +459,16 @@ const ago = agoWords
         data-cy="unresumable-row"
         :data-session-id="session.sessionId"
       >
-        <div class="what">
-          <span class="provider">{{ session.provider }}</span>
-          <span class="mono cwd">{{ session.cwd }}</span>
-        </div>
+        <ConversationRow
+          form="compact"
+          :row="recordedView(session, !(session.restoredFromBundle || session.foundInUserHome))"
+          id-prefix="recorded"
+          :cy="
+            session.restoredFromBundle || session.foundInUserHome
+              ? {}
+              : { profile: 'unresumable-profile' }
+          "
+        />
         <div class="meta muted mono">
           <span :data-cy="`unresumable-status-${session.sessionId}`">{{ session.status }}</span>
           <!-- ⚑ **The SAME cell as the offerable half above** (222). A row that cannot be reopened
@@ -472,12 +501,14 @@ const ago = agoWords
                so a bundle that names no profile is ALSO `foundInUserHome` — `session-library.ts`
                and `whyNotResumable` ask the bundle first for the same reason.
                ⛔ Then a row from the person's own folder, which ran as no agent at all. -->
-          <span data-cy="unresumable-profile">
+          <span
+            v-if="session.restoredFromBundle || session.foundInUserHome"
+            data-cy="unresumable-profile"
+          >
             <template v-if="session.restoredFromBundle">from a bundle</template>
-            <template v-else-if="session.foundInUserHome"
+            <template v-else
               >from {{ providerName(session.provider) ?? 'the provider' }}'s own folder</template
             >
-            <template v-else>agent: {{ agentName(session.profileId, props.identities) }}</template>
           </span>
           <span>{{ ago(session.updatedAt) }}</span>
         </div>
@@ -501,7 +532,7 @@ const ago = agoWords
       <summary class="muted">{{ lastScan.skipped.length }} found but not adopted — why</summary>
       <ul>
         <li v-for="entry in lastScan.skipped" :key="entry.path" class="muted mono">
-          <span class="provider">{{ entry.provider }}</span>
+          <ProviderLabel :provider="entry.provider" />
           {{ entry.reason }}
           <div class="path">{{ entry.path }}</div>
         </li>
@@ -542,28 +573,6 @@ ul {
   border-top: var(--border-width) solid var(--line);
   gap: var(--space-1) var(--space-4);
   grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.what {
-  display: flex;
-  gap: var(--space-4);
-  align-items: baseline;
-  min-width: 0;
-}
-
-.provider {
-  color: var(--accent-text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.cwd {
-  overflow: hidden;
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .meta {

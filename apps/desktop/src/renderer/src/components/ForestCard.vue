@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import ConversationRow from './ConversationRow.vue'
 import { computed } from 'vue'
-import AgentState from './AgentState.vue'
 import type { GraphNode } from '../lib/forest-graph'
 import { OPEN_THE_CONVERSATION } from '../lib/taking-over'
 import { showFilesOn, type RootFiles } from '../lib/files-kept'
@@ -87,33 +87,33 @@ const shown = computed(() =>
       :title="props.node.members ? 'Show conversations' : OPEN_THE_CONVERSATION"
       :aria-expanded="props.node.members ? props.opened : undefined"
     >
-      <!-- Bind the whole plate so scheduled and background states retain their clock or terminal here. Use the rail row's avatar size. -->
-      <AgentState size="row" v-bind="props.node.row.facets" :label="props.node.row.name" />
-      <span class="who">
-        <!-- ⚑ **Each clipper carries its own whole string** — a name or a slug a
-           card this narrow can cut (the clipped-text ledger's row). -->
-        <span class="name" data-cy="forest-name" :title="props.node.row.name">{{
-          props.node.row.name
-        }}</span>
-        <span
-          v-if="props.node.row.identity"
-          class="slug"
-          data-cy="forest-slug"
-          :title="props.node.row.identity"
-          >{{ props.node.row.identity }}</span
-        >
-      </span>
+      <ConversationRow
+        plate="row"
+        id-prefix="forest"
+        :row="{
+          id: props.node.row.key,
+          facets: props.node.row.facets,
+          plateLabel: props.node.row.name,
+          head: 'plain',
+          title: props.node.row.name,
+          status: {
+            profile: props.node.row.identity,
+            word: props.node.row.says,
+            elsewhere: props.node.row.conversationRow?.whereSays ?? null,
+          },
+        }"
+        :cy="{
+          title: 'forest-name',
+          profile: 'forest-slug',
+          word: 'forest-says',
+          elsewhere: 'forest-here',
+        }"
+      />
     </button>
     <!-- ⚠️ **The standing in WORDS** — the one place the forest says its holder's
        wait, since a plate never draws one (`645`); the task lines below it carry no
        dot since `668`, and `a-dot-says-one-thing.render.test.ts` §3 pins both. -->
     <span class="state">
-      <span v-if="props.node.row.says" class="says" data-cy="forest-says">{{
-        props.node.row.says
-      }}</span>
-      <span v-if="props.node.row.conversationRow?.whereSays" class="here" data-cy="forest-here">{{
-        props.node.row.conversationRow?.whereSays
-      }}</span>
       <!-- ⚑ **UI-002 · the files on its own root, counted** — a press opens the Files tab there. -->
       <button
         v-if="props.rootFiles"
@@ -233,32 +233,8 @@ button.head {
   cursor: pointer;
 }
 
-button.head:hover .name {
+button.head:hover :deep(.rail-copy strong) {
   text-decoration: underline;
-}
-
-.who {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.name {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.slug {
-  overflow: hidden;
-  color: var(--faint);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .state {
@@ -267,10 +243,6 @@ button.head:hover .name {
   color: var(--muted);
   font-size: var(--type-caption);
   gap: var(--space-3);
-}
-
-.here {
-  color: var(--faint);
 }
 
 .tasks {

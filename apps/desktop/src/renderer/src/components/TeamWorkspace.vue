@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ConversationRow from './ConversationRow.vue'
+import ProviderLabel from './ProviderLabel.vue'
 import { tabDestination } from '../lib/tab-destination'
 import { computed, ref } from 'vue'
 import AgentBookButton from './AgentBookButton.vue'
@@ -7,7 +9,7 @@ import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import { workByConversation } from '../lib/working-together'
 import type { AgentStore } from '../lib/agent-store'
 import { AGENT_REMOVAL_MEANS } from '../../../shared/agent-roster'
-import { activityWords, STANDING_TONE } from '../lib/agent-state'
+import { activityWords } from '../lib/agent-state'
 import {
   groupWorkers,
   workerLabel,
@@ -444,37 +446,29 @@ function pressForest(row: ForestRow): void {
                 :data-cy="`team-worker-${row.conversation}`"
               >
                 <div class="shelf-body">
-                  <div class="team-worker-top">
-                    <strong
-                      class="team-worker-name"
-                      :data-cy="`team-worker-name-${row.conversation}`"
-                      :title="
-                        [
-                          workerLabel(member.heading, row.worker, row.namingPiece),
-                          workerDescription(row.worker!, props.agents?.identities ?? null),
-                        ].join('\n')
-                      "
-                      >{{ workerLabel(member.heading, row.worker, row.namingPiece) }}</strong
-                    >
-                    <span
-                      class="team-now"
-                      :class="STANDING_TONE[row.standing]"
-                      :title="row.detail"
-                      >{{ workerState(row.word, row.namingPiece) }}</span
-                    >
-                  </div>
-                  <p
-                    v-for="piece in workerSubtitles(
-                      row.conversation,
-                      row.namingPiece,
-                      workByHolder.get(row.conversation) ?? [],
-                    )"
-                    :key="piece.key"
-                    class="team-worker-piece"
-                    :title="piece.text"
-                  >
-                    {{ piece.text }}
-                  </p>
+                  <ConversationRow
+                    id-prefix="team"
+                    :row="{
+                      id: row.conversation,
+                      facets: null,
+                      plateLabel: workerLabel(member.heading, row.worker, row.namingPiece),
+                      head: 'worker',
+                      title: workerLabel(member.heading, row.worker, row.namingPiece),
+                      titleHint: [
+                        workerLabel(member.heading, row.worker, row.namingPiece),
+                        workerDescription(row.worker!, props.agents?.identities ?? null),
+                      ].join('\n'),
+                      topWord: workerState(row.word, row.namingPiece),
+                      topWordHint: row.detail,
+                      status: { place: row.place, tail: row.says ? [row.says] : [] },
+                      pieces: workerSubtitles(
+                        row.conversation,
+                        row.namingPiece,
+                        workByHolder.get(row.conversation) ?? [],
+                      ),
+                    }"
+                    :cy="{ title: `team-worker-name-${row.conversation}` }"
+                  />
                   <template v-if="activityOf(member, row.conversation)">
                     <p
                       v-if="activityOf(member, row.conversation)!.doing"
@@ -494,10 +488,6 @@ function pressForest(row: ForestRow): void {
                       Nothing published · {{ activityOf(member, row.conversation)!.since }}
                     </p>
                   </template>
-                  <p class="shelf-line">
-                    <span v-if="row.says" class="shelf-where">{{ row.says }}</span>
-                    <span v-if="row.place" class="shelf-folder">{{ row.place }}</span>
-                  </p>
                 </div>
                 <button
                   class="band-act"
@@ -568,19 +558,23 @@ function pressForest(row: ForestRow): void {
                     :data-cy="`team-conversation-${row.conversation}`"
                   >
                     <div class="shelf-body">
-                      <p class="shelf-line">
-                        <span
-                          class="team-now"
-                          :class="STANDING_TONE[row.standing]"
-                          :title="row.detail"
-                          :aria-description="row.detail"
-                        >
-                          <span class="dot"></span>{{ row.word }}
-                        </span>
-                        <span v-if="row.named" class="shelf-named">{{ row.named }}</span>
-                        <span v-if="row.says" class="shelf-where">{{ row.says }}</span>
-                        <span v-if="row.place" class="shelf-folder">{{ row.place }}</span>
-                      </p>
+                      <ConversationRow
+                        form="compact"
+                        id-prefix="team-shelf"
+                        :row="{
+                          id: row.conversation,
+                          facets: null,
+                          plateLabel: row.named ?? member.heading,
+                          head: 'plain',
+                          title: row.named ?? member.heading,
+                          status: {
+                            word: row.word,
+                            detail: row.detail,
+                            place: row.place,
+                            tail: row.says ? [row.says] : [],
+                          },
+                        }"
+                      />
                     </div>
                     <button
                       class="band-act"
@@ -611,7 +605,12 @@ function pressForest(row: ForestRow): void {
               <div class="more-body">
                 <p class="more-fact">
                   <span class="more-key">Engine</span>
-                  <span :data-cy="`team-provider-${member.identity.slug}`">{{
+                  <ProviderLabel
+                    v-if="member.use.runsOn.provider !== null"
+                    :provider="member.use.runsOn.provider"
+                    :data-cy="`team-provider-${member.identity.slug}`"
+                  />
+                  <span v-else :data-cy="`team-provider-${member.identity.slug}`">{{
                     agentProviderSays(member.use.runsOn, names)
                   }}</span>
                 </p>

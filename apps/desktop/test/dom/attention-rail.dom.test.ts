@@ -178,7 +178,7 @@ describe('203 · the rail says how many are waiting, and what for (195 H3)', () 
     // ⚑ The pairing: a conversation needing nothing says neither word, and still says what it is.
     const quiet = smallOf(m, 'sess_quiet').textContent ?? ''
     expect(quiet).not.toContain('needs you')
-    expect(quiet).toContain('codex')
+    expect(quiet).toContain('Codex')
   })
 
   it('⛔ the attention badge is really painted at 24px — the size the rail draws (176 §12)', async () => {

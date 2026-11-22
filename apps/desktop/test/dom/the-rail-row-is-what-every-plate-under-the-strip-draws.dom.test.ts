@@ -1,7 +1,8 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { answerTheCatalogue } from './answered-catalogue'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -18,6 +19,9 @@ import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, drawerProps, mount, permission, unmountAll, type Mounted } from './harness'
+
+// Rows name providers as the window's catalogue supplies them.
+beforeAll(answerTheCatalogue)
 
 /**
  * # 🔴 UI-001 · the rail row is what EVERY plate under the strip draws
