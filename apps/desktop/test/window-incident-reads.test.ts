@@ -82,10 +82,24 @@ describe('window incident dependency reuse', () => {
             {
               messageId: 'held',
               kind: 'work',
-              text: 'Fictional words.',
               attachments: [],
-              authorship: {},
+              authorship: { relayedFrom: 'giver' },
               at: 1,
+              piece: 'work_one',
+              drives: 'work_one',
+            },
+            {
+              messageId: 'answer',
+              kind: 'work',
+              attachments: [],
+              authorship: {
+                answeredQuestion: {
+                  requestId: 'ask',
+                  answeredBy: null,
+                  answer: 'Fictional answer.',
+                },
+              },
+              at: 2,
             },
           ],
           stop: null,
@@ -97,10 +111,13 @@ describe('window incident dependency reuse', () => {
     f.cache.run(() => {
       const unread = rowsUnreadOnce()
       const first = f.store.messagesWaitingIn('one', unread)
-      expect(first).toEqual(snapshot.owners[0]?.messages)
+      expect(first.map((message) => ({ ...message }))).toEqual(snapshot.owners[0]?.messages)
+      expect(() => first[0]!.text).toThrow(WindowReadUnavailable)
       expect(unread.count).toBe(1)
       Object.assign(first, { 0: 'Changed by a caller.' })
-      expect(f.store.messagesWaitingIn('one')).toEqual(snapshot.owners[0]?.messages)
+      expect(f.store.messagesWaitingIn('one').map((message) => ({ ...message }))).toEqual(
+        snapshot.owners[0]?.messages,
+      )
       expect(f.store.lastAskToStop('one', unread)).toBeNull()
       expect(f.store.reconciliationOwners()).toEqual(['one'])
       for (const [read] of [f.store.reconciliationWork(), f.store.openPiecesOf('one')]) {
@@ -117,9 +134,11 @@ describe('window incident dependency reuse', () => {
       expect(f.held).not.toHaveBeenCalled()
       expect(f.stop).not.toHaveBeenCalled()
     }, snapshot)
+    const durable = [{ ...snapshot.owners[0]!.messages[0]!, text: 'Fictional words.' }]
+    f.held.mockReturnValue(durable)
     await f.cache.run(async () => {
       await Promise.resolve()
-      f.store.messagesWaitingIn('one')
+      expect(f.store.messagesWaitingIn('one')).toEqual(durable)
       f.store.lastAskToStop('one')
     }, snapshot)
     expect(f.held).toHaveBeenCalledOnce()

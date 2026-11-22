@@ -151,15 +151,18 @@ export class WindowIncidentReads {
       if (fact == null) throw new WindowReadUnavailable()
       return structuredClone(fact.value)
     }
-    // The snapshot leaves brief text out; reading it falls back like any omitted fact.
-    const withoutBrief = <T extends object>(rows: readonly T[]) =>
+    // Reading a field omitted from the snapshot follows the unavailable path.
+    const withUnavailableField = <T extends object, K extends string>(
+      rows: readonly T[],
+      field: K,
+    ) =>
       structuredClone(rows).map(
         (row) =>
-          Object.defineProperty(row, 'brief', {
+          Object.defineProperty(row, field, {
             get: () => {
               throw new WindowReadUnavailable()
             },
-          }) as T & { readonly brief: never },
+          }) as T & Readonly<Record<K, never>>,
       )
     const history = (owner: string) => {
       const owners = current()
@@ -230,13 +233,15 @@ export class WindowIncidentReads {
             return [...(holders ?? owners.keys())].flatMap((id) => {
               const row = fact(id, unread, 'pieces')
               if (row === undefined) throw new WindowReadUnavailable()
-              return withoutBrief(row.work)
+              return withUnavailableField(row.work, 'brief')
             })
           }
         if (key === 'openPiecesOf')
           return (id: string, unread?: RowsUnread) => {
             const row = fact(id, unread, 'pieces')
-            return row === undefined ? store.openPiecesOf(id, unread) : withoutBrief(row.pieces)
+            return row === undefined
+              ? store.openPiecesOf(id, unread)
+              : withUnavailableField(row.pieces, 'brief')
           }
         if (key === 'routedRequestsOf')
           return (id: string, unread?: RowsUnread) => {
@@ -250,7 +255,7 @@ export class WindowIncidentReads {
             const row = fact(id, unread, 'messages')
             if (row !== undefined) {
               if (maximumRows !== undefined) throw new WindowReadUnavailable()
-              return structuredClone(row.messages)
+              return withUnavailableField(row.messages, 'text')
             }
             return this.context.getStore()?.active === true
               ? this.read(
