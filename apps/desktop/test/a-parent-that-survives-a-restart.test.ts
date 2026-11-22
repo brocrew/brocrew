@@ -743,6 +743,9 @@ describe('373 · a parent that survives a restart', () => {
         /nothing to send/i,
       )
       expect(ledger(worker).filter((event) => event.type === 'work_interrupted')).toEqual(before)
+      await host.close(worker, caller)
+      expect(host.sessionIds).not.toContain(worker)
+      await reopen(worker, secondWindow)
       await host.setApprovalMode(worker, 'ask', secondWindow)
       await host.sendInterrupting(addressed, 'continue the report', caller)
       await waitFor(
@@ -759,8 +762,9 @@ describe('373 · a parent that survives a restart', () => {
         requested: true,
         queued: true,
       })
-      await host.interrupt(worker, caller)
-      await host.close(worker, caller)
+      await expect(host.interrupt(worker, caller)).rejects.toThrow(/waiting for a person/)
+      await host.interrupt(worker, secondWindow)
+      await host.close(worker, secondWindow)
       expect(host.sessionIds).not.toContain(worker)
     })
   })

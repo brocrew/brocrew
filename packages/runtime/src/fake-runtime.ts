@@ -174,6 +174,8 @@ export class FakeSessionHandle implements SessionHandle {
     () => ({ kind: 'reject' }),
   )
   private idCounter = 0
+  private holdsNextTurn = false
+  private heldTurn: number | null = null
   /** Set once teardown has emitted the terminal events: late events are then dropped. */
   private terminated = false
   /** Single-flight close: every concurrent caller awaits ONE teardown (023 P1-A). */
@@ -436,6 +438,11 @@ export class FakeSessionHandle implements SessionHandle {
     }
   }
 
+  /** Keep the next accepted turn working so a test can interrupt it before any approval. */
+  holdNextTurn(): void {
+    this.holdsNextTurn = true
+  }
+
   async send(text: string, origin?: TurnProvenance, onInputAccepted?: () => void): Promise<void> {
     const turnId = this.machine.beginTurn()
     // ⚑ **Which half of the `null` it was, as a type** (650) — the double refuses the way both
@@ -453,6 +460,11 @@ export class FakeSessionHandle implements SessionHandle {
     this.plan.adopt()
     this.folders.adopt()
     onInputAccepted?.()
+    if (this.holdsNextTurn) {
+      this.holdsNextTurn = false
+      this.heldTurn = turnId
+      return
+    }
     void this.driveTurn(text, turnId).catch((error: unknown) => this.fatal(String(error)))
   }
 
@@ -645,6 +657,11 @@ export class FakeSessionHandle implements SessionHandle {
     this.stoppedTurn = this.machine.activeTurnId
     this.machine.requestInterrupt()
     this.settleRequests()
+    if (this.heldTurn !== null && this.heldTurn === this.stoppedTurn) {
+      this.heldTurn = null
+      this.machine.completeTurn('interrupted')
+      return
+    }
     // ⚠️ **A burst outside a turn is ended here too** (123, review). `doClose` was updated and this
     // was not, which left the double unable to catch an adapter whose Stop stopped working outside a
     // turn — the exact regression 123 exists to guard. A no-op while a turn is running, because the

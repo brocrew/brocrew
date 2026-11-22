@@ -106,6 +106,7 @@ export const APP_NOTICES = [
   // a server of that name themselves, and this app tells it how the request ended.
   'an-mcp-server-request-decided',
   'a-conversation-was-compacted',
+  'a-queued-message-was-cancelled',
 ] as const
 
 /** One of {@link APP_NOTICES}. */
@@ -224,6 +225,8 @@ export const NOTICE_MEANS: Readonly<Record<AppNotice, string>> = {
   'a-conversation-was-compacted':
     'This app put these words here because the provider confirmed compaction of this conversation. ' +
     'You did not write them, and they were not sent on anybody’s behalf.',
+  'a-queued-message-was-cancelled':
+    'This app reports a cancellation. These words were not sent on anybody’s behalf.',
 }
 
 /** ⛔ **Is this a member of the vocabulary, asked of a value that has crossed the LEDGER?** */

@@ -20,7 +20,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { undrivenWorkText } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -411,6 +411,38 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
     ledger(pm)
       .slice(from)
       .some((event) => (event.type as string) === 'work_stall_told')
+
+  it.each(['interrupt', 'takeBackAndStop'] as const)(
+    '%s lets an unrelated conversation stop ordinary work',
+    async (verb) => {
+      const { pm, worker, handle, its } = await aPmAndItsWorker()
+      const observer = await personOpens('observer', 'codex')
+      const caller = { ownerId: agentCallerId(observer) }
+      const held = await host.queueMessage(worker, 'Do not send these words.', {
+        ownerId: agentCallerId(pm),
+      })
+      if (held.outcome !== 'queued') throw new Error('the worker did not hold the message')
+
+      if (verb === 'interrupt') await host.interrupt(worker, caller)
+      else await host.takeBackAndStop(worker, held.messageId, caller)
+      expect(its.stops).toBe(1)
+      if (verb === 'takeBackAndStop') {
+        await waitFor(() => handle.status() === 'idle', 'the worker idle after stopping')
+        const events = ledger(worker)
+        const cancelled = events.findIndex(
+          (event) =>
+            event.type === 'message_unqueued' &&
+            event.messageId === held.messageId &&
+            event.reason === 'cancelled',
+        )
+        const stopped = events.findIndex((event) => event.type === 'work_interrupted')
+        expect(cancelled).toBeGreaterThanOrEqual(0)
+        expect(stopped).toBeGreaterThan(cancelled)
+        expect(events[stopped]).toMatchObject({ by: 'an-agent', agent: observer })
+        expect(its.words).toHaveLength(1)
+      }
+    },
+  )
 
   describe('§1 · interrupt_agent — an explicit stop', () => {
     it('🔴 the answer names every command the stop ended; the notice says it; the next words open with it, once', async () => {

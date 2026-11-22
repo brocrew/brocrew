@@ -311,6 +311,17 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
       () => recorded(spawned.sessionId).some((event) => event.type === 'permission_request'),
       'the card the approval mode would have removed',
     )
+    await expect(outsider.close({ sessionId: spawned.sessionId })).rejects.toThrow(
+      /waiting for a person/,
+    )
+    const card = recorded(spawned.sessionId).find((event) => event.type === 'permission_request')
+    if (card === undefined || card.type !== 'permission_request') throw new Error('no card')
+    expect(await storeA.claim(spawned.sessionId)).toBe(true)
+    await storeA.respondPermission(spawned.sessionId, card.id, { outcome: 'allow' })
+    await waitFor(
+      () => recorded(spawned.sessionId).some((event) => event.type === 'turn'),
+      'the turn to finish after the person answers',
+    )
     await outsider.close({ sessionId: spawned.sessionId })
     expect(host.sessionIds).not.toContain(spawned.sessionId)
   })

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
-import type { AgentToolset } from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -54,6 +54,8 @@ describe('374 · the rails a message passes', () => {
   let host: RuntimeHost
   let hosts: RuntimeHost[]
   let handed: AgentToolset[]
+  let holdNextBrief: boolean
+  let lastStartedHandle: FakeSessionHandle
   /**
    * ⚠️ **One registry for every runtime this suite builds** (`373`). `createRuntime` is called once
    * per launch, so a runtime holding its own would forget every ref the next launch asked for and a
@@ -70,7 +72,16 @@ describe('374 · the rails a message passes', () => {
     const built = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
+      createRuntime: (provider: Provider) =>
+        new (class extends ToolWatchingRuntime {
+          override async start(options: StartOptions) {
+            const handle = await super.start(options)
+            if (holdNextBrief) handle.holdNextTurn()
+            holdNextBrief = false
+            lastStartedHandle = handle
+            return handle
+          }
+        })(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -92,6 +103,7 @@ describe('374 · the rails a message passes', () => {
     counter = 0
     hosts = []
     handed = []
+    holdNextBrief = false
     issued = new FakeProviderSessions()
     host = buildHost()
     window = new RecordingSink('webContents:1')
@@ -156,10 +168,12 @@ describe('374 · the rails a message passes', () => {
     pmProfile = 'pm',
     workerProfile = 'worker',
     pmMode: 'ask' | 'auto' = 'ask',
+    holdBrief = false,
   ): Promise<{ pm: string; worker: string; pmTools: AgentToolset }> => {
     await bringIdentityIntoBeing(workerProfile)
     const pm = await personOpens(pmProfile, root, pmMode)
     const pmTools = theToolsetJustHandedOut()
+    holdNextBrief = holdBrief
     const given = await giveANewWorkerItsFirstTask(
       pmTools,
       workerProfile,
@@ -203,12 +217,13 @@ describe('374 · the rails a message passes', () => {
 
   describe('§2 · a commander interrupts, sends and takes back', () => {
     it('🔴 the parent interrupts and its words are delivered, whatever the retired can_message column holds', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker('pm', 'worker', 'ask', true)
       db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = 'pm'`).run()
       const by = speakingAs(pm)
 
       await expect(host.interrupt(worker, by)).resolves.toBeUndefined()
       // `queueMessage` answers whether the child is mid-turn or idle; only a refusal would throw.
+      lastStartedHandle.holdNextTurn()
       await expect(host.queueMessage(worker, 'when you are free', by)).resolves.toBeDefined()
       await expect(host.sendInterrupting(worker, 'no, this', by)).resolves.toBeUndefined()
     })
@@ -275,7 +290,7 @@ describe('374 · the rails a message passes', () => {
   // a spawn may start in any folder that exists. The other rows' rules still stand.
   describe('§5 · the rules 341, 354 and 366 already own', () => {
     it('⛔ `354` · an interruption still does not contend with the singleton', async () => {
-      const { pm, worker } = await aPmAndItsWorker()
+      const { pm, worker } = await aPmAndItsWorker('pm', 'worker', 'ask', true)
       const by = speakingAs(pm)
       await host.send(worker, 'the first thing', by)
       const queued = await host.queueMessage(worker, 'the one that was waiting', by)

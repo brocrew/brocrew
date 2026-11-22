@@ -111,7 +111,7 @@ describe('354 · the message that has no name', () => {
     store = createSessionStore(db)
     providerSessions = new FakeProviderSessions()
     host = buildHost()
-    sink = new RecordingSink()
+    sink = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {

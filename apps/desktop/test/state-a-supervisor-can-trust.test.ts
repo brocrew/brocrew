@@ -576,7 +576,8 @@ describe('484 · state a supervisor can trust', () => {
         unnameable,
       )
       const handle = latestHandle()
-      await busy(sessionId, handle, unnameable)
+      handle.simulateThinking()
+      await waitFor(() => handle.status() === 'working', 'ordinary provider work')
       await host.interrupt(sessionId, unnameable)
       expect(
         ledger(sessionId)

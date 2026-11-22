@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId } from '../src/main/runtime/conversation-caller'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { F093World, waitFor } from './lib/f093-host'
 
@@ -190,6 +191,34 @@ describe('ending notices ride the next input', () => {
       expect(turn).toContain('Reason: no reason given.')
       await settle()
       expect(handed(pmTask.holder)).toHaveLength(before + 1)
+    })
+
+    it('a wait reminder carries the work ending while cancellation waits for ordinary input', async () => {
+      const { pmTask, target } = await chain()
+      const { holder, label } = pmTask
+      await waitsOn(holder, label, { agent: target.label })
+      await host.send(target.holder, 'Keep this turn open.', world.window)
+      await waitFor(() => cards(target.holder).length === 2, 'the target parked again')
+      const held = await host.queueMessage(target.holder, 'Include the index.', {
+        ownerId: agentCallerId(holder),
+      })
+      if (held.outcome !== 'queued') throw new Error('the target did not hold the message')
+      await host.cancelQueuedMessage(target.holder, held.messageId, world.window)
+      const [cancelled] = heldNotices(holder, 'a-queued-message-was-cancelled')
+      expect(cancelled).toContain('cancelled your queued message')
+
+      const observer = await open('observer')
+      const before = handed(holder).length
+      await call(observer, 'update_work', { piece: target.label, close: true })
+      await waitFor(() => handed(holder).length === before + 1, 'the wait reminder')
+      expect(handed(holder)[before]).toContain(`closed ${target.label}`)
+      expect(handed(holder)[before]).not.toContain(cancelled!)
+      await endTheTurn(holder, before + 1)
+
+      await host.send(holder, 'Ordinary input.', world.window)
+      await waitFor(() => handed(holder).length === before + 2, 'the next ordinary input')
+      expect(handed(holder)[before + 1]).toContain(cancelled!)
+      expect(handed(holder)[before + 1]).not.toContain(`closed ${target.label}`)
     })
 
     it.each(['another task', 'a time'])('waiting on %s is not started', async (waitsFor) => {

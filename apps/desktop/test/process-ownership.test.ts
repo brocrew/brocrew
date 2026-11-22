@@ -18,6 +18,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
+  THE_APP_ITSELF,
   type RuntimeEventSink,
   type RuntimeHostDeps,
 } from '../src/main/runtime/runtime-host'
@@ -644,11 +645,7 @@ describe('a provider the host could not confirm stopped (070)', () => {
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     // A turn has to be OPEN for there to be an ending to over-claim. `FakeRuntime` opens one on
     // send and this test never lets it finish — the close is what interrupts it.
-    await host.send(created.sessionId, 'run the build', sink)
-    await waitFor(
-      () => store.turns(created.sessionId).some((turn) => turn.closedAt === null),
-      'an open turn',
-    )
+    await sendAndWaitForOpenTurn(host, store, created.sessionId, sink)
 
     // `closing` is never resolved here, so `stopProvider` times out at 40ms and the host lets go of
     // a provider it could not confirm stopped — H3's exact condition.
@@ -960,13 +957,9 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
   it('⛔ when close resolved but nothing exited, says the turn was interrupted', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
-    await host.send(created.sessionId, 'run the build', sink)
-    await waitFor(
-      () => store.turns(created.sessionId).some((turn) => turn.closedAt === null),
-      'an open turn',
-    )
+    await sendAndWaitForOpenTurn(host, store, created.sessionId, sink)
 
-    await host.close(created.sessionId, sink)
+    await host.close(created.sessionId, THE_APP_ITSELF)
 
     // ⚑ **The anti-vacuity pair, and it is the whole test.** If `close()` had merely hung, this
     // would be indistinguishable from Block E — so the two halves are asserted separately:
@@ -1036,15 +1029,11 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
   it('⚑ …and a PROVEN exit releases the id, and warns about nothing', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
-    await host.send(created.sessionId, 'run the build', sink)
-    await waitFor(
-      () => store.turns(created.sessionId).some((turn) => turn.closedAt === null),
-      'an open turn',
-    )
+    await sendAndWaitForOpenTurn(host, store, created.sessionId, sink)
     // ⚑ The only difference from the tests above is the receipt.
     exit.confirm()
 
-    await host.close(created.sessionId, sink)
+    await host.close(created.sessionId, THE_APP_ITSELF)
 
     // ⚑ **Ownership released, asserted as the mirror of the refusal two tests up.** A resume that
     // RESOLVES is the only observation available from outside that `launches.finish` let the entry
@@ -1158,3 +1147,13 @@ describe('233 · a launch handed back while starting is owned against the proces
     )
   })
 })
+
+async function sendAndWaitForOpenTurn(
+  host: RuntimeHost,
+  store: SessionStore,
+  sessionId: string,
+  sink: RuntimeEventSink,
+): Promise<void> {
+  await host.send(sessionId, 'run the build', sink)
+  await waitFor(() => store.turns(sessionId).some((turn) => turn.closedAt === null), 'an open turn')
+}

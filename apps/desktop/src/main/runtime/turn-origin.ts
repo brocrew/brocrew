@@ -223,6 +223,8 @@ export interface ACallerWithAnId {
    * caller is {@link THE_APP_ITSELF}, which is answered `null` one branch up.
    */
   readonly caller: string
+  /** The conversation was identified at send time, before any ledger reconstruction. */
+  readonly knownAtSend?: true
   /**
    * ⚑ **The identity behind it, folded — `agent_identity.slug`, or `null` when that conversation
    * has no identity** (204, 238).

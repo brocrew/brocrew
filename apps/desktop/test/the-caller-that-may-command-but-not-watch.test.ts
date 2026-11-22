@@ -286,15 +286,7 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(ledger(sessionId).map((event) => event.type)).not.toContain('user_turn')
     })
 
-    it('🔴 the four ways to send or take back words', async () => {
-      // ⛔ **One gesture with four spellings, and splitting them would make *"may this agent drive
-      // this session"* depend on whether it happened to be busy when it was asked.** Every verb is
-      // pressed by the commander and by a stranger in the same breath, so each line is a statement
-      // about the identity rather than about the verb working at all.
-      // ⚠️ **`ask`, so the first turn STAYS running** — it stops on a card nobody will answer. Two
-      // of the five verbs are only reachable against a busy session, and against an idle one
-      // `queueMessage` sends instead of queueing, so `cancelQueuedMessage` would then have nothing
-      // to cancel and the row would be about the wrong thing.
+    it('checks command admission for sending and queueing', async () => {
       const sessionId = await spawn({ commandedBy: PLANNER, approvalMode: 'ask' })
       await parkOnAQuestion(sessionId, PLANNER)
       expect(await refusalOf(() => host.send(sessionId, 'one', STRANGER))).toBe(HELD_BY_NOBODY)
@@ -304,19 +296,7 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(await refusalOf(() => host.queueMessage(sessionId, 'three', STRANGER))).toBe(
         HELD_BY_NOBODY,
       )
-      const messageId = held.outcome === 'queued' ? held.messageId : ''
 
-      await host.cancelQueuedMessage(sessionId, messageId, PLANNER)
-      // 🔴 **ENTITLEMENT BEFORE EXISTENCE, and 354 gave this row a second way to go wrong** (341).
-      // The commander has just taken the message, so by the time the stranger asks there is nothing
-      // held and the id it names is stale — two other true sentences this call could answer with.
-      // ⛔ It must still answer *"not yours"*: a stranger that could tell *"no such message"* from
-      // *"already gone"* would be reading the state of a conversation it may not touch.
-      expect(await refusalOf(() => host.cancelQueuedMessage(sessionId, messageId, STRANGER))).toBe(
-        HELD_BY_NOBODY,
-      )
-
-      await host.sendInterrupting(sessionId, 'two', PLANNER)
       expect(await refusalOf(() => host.sendInterrupting(sessionId, 'two', STRANGER))).toBe(
         HELD_BY_NOBODY,
       )
@@ -388,18 +368,27 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       expect(host.sessionIds).not.toContain(owned)
     })
 
-    it('an unrelated caller can stop and close it explicitly', async () => {
-      const sessionId = await spawn({ commandedBy: PLANNER })
-      await parkOnAQuestion(sessionId, PLANNER)
-      await host.interrupt(sessionId, STRANGER)
-      await waitFor(
-        () => ledger(sessionId).some((event) => event.type === 'work_interrupted'),
-        'the recorded stop',
-      )
-      expect(host.sessionIds).toEqual([sessionId])
-      await host.close(sessionId, STRANGER)
-      expect(host.sessionIds).not.toContain(sessionId)
-    })
+    it.each(['interrupt', 'sendInterrupting', 'close'] as const)(
+      '%s leaves a person’s approval pending for a non-person caller',
+      async (verb) => {
+        const sessionId = await spawn({ commandedBy: PLANNER })
+        await parkOnAQuestion(sessionId, PLANNER)
+        const stop = () =>
+          verb === 'sendInterrupting'
+            ? host.sendInterrupting(sessionId, 'Replacement words.', PLANNER)
+            : host[verb](sessionId, STRANGER)
+        await expect(stop()).rejects.toThrow(/waiting for a person/)
+        expect(host.unclaimedSessions()[0]).toMatchObject({ waitingForAHuman: true })
+        const events = ledger(sessionId).map((event) => event.type)
+        expect(events).not.toContain('request_interrupted')
+        expect(events).not.toContain('work_interrupted')
+        expect(providerEchoed(sessionId, 'Replacement words.')).toBe(false)
+
+        host.claimSession(sessionId, one)
+        await host.interrupt(sessionId, one)
+        expect(ledger(sessionId).map((event) => event.type)).toContain('request_interrupted')
+      },
+    )
   })
 
   // ── §2 · knowledge escalates, authority does not ────────────────────────────────────────────

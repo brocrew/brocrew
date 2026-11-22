@@ -218,18 +218,24 @@ describe('396 · nothing waits on somebody looking', () => {
     worker,
     pmTools,
     workerHandle,
+    ordinary = false,
   }: {
     worker: string
     pmTools: AgentToolset
     workerHandle: FakeSessionHandle
+    ordinary?: boolean
   }): Promise<void> => {
+    if (ordinary) workerHandle.holdNextTurn()
     const first = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'first',
       kind: 'note',
     })
     expect(first.outcome).toBe('ok')
-    await waitFor(() => workerHandle.status() === 'waiting_permission', 'the child to be working')
+    await waitFor(
+      () => workerHandle.status() === (ordinary ? 'working' : 'waiting_permission'),
+      'the child’s first turn',
+    )
     const held = await callOn(pmTools, 'message_agent', {
       agent: worker,
       text: 'second',
@@ -271,14 +277,13 @@ describe('396 · nothing waits on somebody looking', () => {
       // No window, a busy child, a held message — and the turn ends through the provider rather
       // than through a person, so no sink is ever attached.
       const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle, ordinary: true })
 
       // Nobody has ever looked at this conversation.
       expect(claimed.has(worker)).toBe(false)
       expect(window.messages.some((one) => one.sessionId === worker)).toBe(false)
 
-      // The turn ends through the parent: answering the card would mean attaching a window. What
-      // the flush keys on is `status: 'idle'`, whatever produced it.
+      // The parent Stops ordinary work. The provider’s idle event triggers the flush.
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => mailboxOf(store.events(worker)).some((one) => one.ending === 'sent'),
@@ -623,7 +628,7 @@ describe('396 · nothing waits on somebody looking', () => {
 
     it('a message flushed to an unwatched child is in the ledger the next launch reads', async () => {
       const { pm, worker, pmTools, workerHandle } = await aPmAndItsWorker()
-      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle })
+      await aNoteHeldBehindAnother({ worker, pmTools, workerHandle, ordinary: true })
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () =>

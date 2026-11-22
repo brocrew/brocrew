@@ -34,10 +34,10 @@ import { neutralHostDeps } from './lib/host-fixture'
  */
 
 class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
+  readonly aPersonIsBehindIt = true
   readonly messages: RuntimeEventMessage[] = []
   readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
+  constructor(readonly ownerId = 'webContents:1') {}
   send(message: RuntimeEventMessage): void {
     this.messages.push(message)
   }

@@ -2015,6 +2015,7 @@ interface ProviderHandover {
  */
 const NOTICES_FOR_ITS_NEXT_INPUT: ReadonlySet<AppNotice> = new Set<AppNotice>([
   'a-conversation-was-compacted',
+  'a-queued-message-was-cancelled',
   'a-piece-closed',
   'a-piece-a-person-closed',
   'a-piece-taken-back',
@@ -2043,16 +2044,14 @@ function somethingRunnableIsHeld(session: Pick<HostedSession, 'mailbox'>): boole
   return session.mailbox.some(isRunnableHeldMessage)
 }
 
-/**
- * Whether words take the held notices with them: any ordinary input, and the notice that a wait
- * on a piece has ended, which starts the conversation that recorded that wait.
- */
-function itTakesTheHeldNotices(
-  authorship: Pick<QueuedMessage['authorship'], 'appNotice'>,
-): boolean {
-  return (
-    authorship.appNotice === undefined || authorship.appNotice === 'a-work-wait-needs-attention'
-  )
+/** A work-wait reminder can carry held notices that do not require ordinary input. */
+function noticesThatRideThisInput(
+  held: readonly QueuedMessage[],
+  inputs: readonly Pick<QueuedMessage['authorship'], 'appNotice'>[],
+): QueuedMessage[] {
+  if (inputs.some((input) => input.appNotice === undefined)) return held.slice()
+  if (!inputs.some((input) => input.appNotice === 'a-work-wait-needs-attention')) return []
+  return held.filter((notice) => notice.authorship.appNotice !== 'a-queued-message-was-cancelled')
 }
 
 /** Who a compaction a person asked for says it came from: nobody is told. */
@@ -21886,9 +21885,7 @@ export class RuntimeHost implements LiveHost {
     // (it goes as typed, above), so a person's command on a fresh life leaves it for the next turn.
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const heldNotices = itTakesTheHeldNotices(authorship)
-      ? session.noticesForItsNextInput.slice()
-      : []
+    const heldNotices = noticesThatRideThisInput(session.noticesForItsNextInput, [authorship])
     const words = this.withWhatThisLifeOwes(
       session,
       framed,
@@ -22015,9 +22012,10 @@ export class RuntimeHost implements LiveHost {
     const nothingRuns = session.handle.status() === 'idle'
     const owedLead = session.firstTurnLead
     const owedLeadIs = session.firstTurnLeadIs
-    const heldNotices = messages.some(({ queued }) => itTakesTheHeldNotices(queued.authorship))
-      ? session.noticesForItsNextInput.slice()
-      : []
+    const heldNotices = noticesThatRideThisInput(
+      session.noticesForItsNextInput,
+      messages.map(({ queued }) => queued.authorship),
+    )
     const words = this.withWhatThisLifeOwes(session, turn, currentPiece, heldNotices)
     const handover = this.sendOrdinaryInput(session, owedLead, owedLeadIs, {
       words,
@@ -23551,6 +23549,8 @@ export class RuntimeHost implements LiveHost {
     itsSignInMoved: boolean,
   ): Promise<void> {
     if (session.handle.status() !== 'idle') {
+      const refusal = this.nonPersonStopRefusal(session, by)
+      if (refusal !== null) throw new Error(refusal.reason)
       // ⛔ **Through {@link askTheWorkToStop} since `397`, and it used to be a bare call.** This is
       // the fourth door that stops a turn and the only one that recorded nothing — see that method
       // for what the silence cost. ⚑ **Inside the `!== 'idle'` branch**, which is the one condition
@@ -26548,6 +26548,7 @@ export class RuntimeHost implements LiveHost {
     return {
       who: 'a-caller-with-an-id',
       caller: conversation,
+      knownAtSend: true,
       profile: this.deps.store.identityOf(conversation)?.profileSlug ?? null,
       // 🔴 **439 · off the SLOT** — see {@link ACallerWithAnId.aPersonIsBehindIt}. ⛔ A sending
       // conversation this process is not running has no slot, and `false` is right there too: the
@@ -26608,7 +26609,7 @@ export class RuntimeHost implements LiveHost {
    * the composer keeps the text.
    */
   async cancelQueuedMessage(sessionId: string, messageId: string, by: Caller): Promise<void> {
-    const session = this.requireToCommand(sessionId, by)
+    const session = this.sessionFor(sessionId, () => {})
     // ⚑ **D-017 · R3 — a conversation on its way out has handed what it held on** to its next start
     // ({@link heldAtAStop}); a message is taken back from there too, so that start never sends it.
     const slot = this.slots.get(sessionId)
@@ -26671,21 +26672,49 @@ export class RuntimeHost implements LiveHost {
     if (!inTheMailbox) this.whatWaitsForItsStart(sessionId, queued.id)
     this.takeQueuedBack(session, queued)
     this.publishStateIfChanged(session)
+    const sender = queued.origin
+    if (sender?.who === 'a-caller-with-an-id' && sender.knownAtSend === true) {
+      void this.tellSenderTheirMessageWasCancelled(sender.caller, sessionId, by)
+    }
+  }
+
+  private async tellSenderTheirMessageWasCancelled(
+    sender: string,
+    recipient: string,
+    by: Caller,
+  ): Promise<void> {
+    try {
+      const actor = whoDidIt(by)
+      const who =
+        actor.who === 'an-agent'
+          ? `${this.whatToCallTheConversation(actor.agent)}, ${this.nameByItsWork(actor.agent)},`
+          : actor.who === 'a-person'
+            ? 'A person'
+            : didIt(actor)
+      const text = `${who} cancelled your queued message to ${this.whatToCallTheConversation(recipient)}. ${reasonSaid(undefined)}`
+      await this.holdANoticeForItsNextInput(sender, text, {
+        appNotice: 'a-queued-message-was-cancelled',
+      })
+    } catch (error) {
+      console.warn(
+        `runtime host could not tell ${sender} about its cancelled message: ${errorMessage(error)}`,
+      )
+    }
   }
 
   /**
    * Take a held message back and stop the turn, as one press: a person's held "stop" means stop,
    * and its words must never go.
    *
-   * The take-back runs to its end before anything awaits, so no flush can start between it and
-   * the stop: either the message leaves the mailbox here, or {@link cancelQueuedMessage} refuses
-   * in its own words (already being sent, not held) and nothing is stopped.
+   * The message leaves the mailbox before the stop is asked. If cancellation refuses, nothing
+   * is stopped.
    */
   async takeBackAndStop(sessionId: string, messageId: string, by: Caller): Promise<void> {
     await this.cancelQueuedMessage(sessionId, messageId, by)
     // The same breadcrumb a Stop writes, before the ask, so it lands on the turn it stops.
     this.noteUserCommand(sessionId, 'interrupted', by)
-    await this.interrupt(sessionId, by)
+    const session = this.sessionFor(sessionId, () => {})
+    await this.interruptLiveSession(session, by, 'Message cancelled. ')
   }
 
   /**
@@ -29257,6 +29286,16 @@ export class RuntimeHost implements LiveHost {
    */
   async interrupt(sessionId: string, by: Caller): Promise<void> {
     const session = this.sessionFor(sessionId, () => {})
+    await this.interruptLiveSession(session, by)
+  }
+
+  private async interruptLiveSession(
+    session: HostedSession,
+    by: Caller,
+    refusalPrefix = '',
+  ): Promise<void> {
+    const refusal = this.nonPersonStopRefusal(session, by)
+    if (refusal !== null) throw new Error(refusalPrefix + refusal.reason)
     // 🔴 **723 · R83 — a second press joins the first ask**: *"a second press does not queue a second
     // ask behind the first."* ⛔ **Measured on `main`** (`a-stop-codex-does-not-answer-is-said`):
     // each press sent Codex another `turn/interrupt` behind the one it had not answered, and wrote
@@ -29431,6 +29470,13 @@ export class RuntimeHost implements LiveHost {
       pending.length > 0 &&
       pending.every((one) => one.went.to !== 'a-person' && one.parent !== null)
     )
+  }
+
+  private nonPersonStopRefusal(session: HostedSession, by: Caller) {
+    if (whoDidIt(by).who === 'a-person' || session.handle.status() !== 'waiting_permission') {
+      return null
+    }
+    return admitInterrupt(session.id, 'waiting_permission', this.stopWaitsForAgent(session.id))
   }
 
   /**
@@ -31525,6 +31571,11 @@ export class RuntimeHost implements LiveHost {
     const slot = this.slots.get(sessionId)
     // ⚠️ The tolerant no-op for an id nothing is running: there is nothing to stop.
     if (!slot) return Promise.resolve()
+    // An explicit Close can settle an approval too. App lifecycle cleanup uses its own caller.
+    if (slot.session !== null && !onItsWayOut(slot) && by !== THE_APP_ITSELF) {
+      const refusal = this.nonPersonStopRefusal(slot.session, by)
+      if (refusal !== null) return Promise.reject(new Error(refusal.reason))
+    }
     // ⚑ A person closing it ends a cut turn's wait for its limit's reset: they stopped it.
     if (aPersonIsAsking(by)) this.aPersonEndedItsWait(sessionId)
     if (slot.session === null) {

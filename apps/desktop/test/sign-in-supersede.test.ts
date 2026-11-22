@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -170,14 +170,11 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
       readProviderConfig: (provider, home) => ({
-        home,
+        ...fixtureProviderConfig(provider, home),
         homeEnv: provider === 'claude' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME',
-        model: 'm',
-        authNote: null,
-        files: [],
       }),
     })
-    sink = new RecordingSink()
+    sink = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
@@ -518,7 +515,7 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
     expect(watch.latched).toBe(true)
 
     // The window reloads: same owner, a brand-new sink that has been told nothing.
-    const reloaded = new RecordingSink()
+    const reloaded = new RecordingSink('webContents:1')
     const handed = handedBack(id, reloaded)
 
     // ⛔ It used to be handed `session.liveness.current` — the tracker's own state, with no
@@ -533,7 +530,7 @@ describe('147 — a turn is not taken on a sign-in that has been replaced', () =
     watch.moved = true
     await host.send(id, 'carry on', sink).catch(() => undefined)
 
-    const reloaded = new RecordingSink()
+    const reloaded = new RecordingSink('webContents:1')
     handedBack(id, reloaded)
     const before = reloaded.liveness.length
 

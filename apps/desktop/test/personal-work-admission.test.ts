@@ -275,8 +275,9 @@ describe('personal work requires its own recorded request', () => {
 
   it('a provider-started burst fences restoration of a refused handover’s earlier personal anchor', async () => {
     const caller = await world.aPersonOpens(host, 'caller')
-    await host.send(caller, 'Please take on the new personal work.', world.window)
     const handle = world.handleOf('caller') as FakeSessionHandle
+    handle.holdNextTurn()
+    await host.send(caller, 'Please take on the new personal work.', world.window)
     vi.spyOn(handle, 'send').mockImplementationOnce(async () => {
       handle.simulateThinking()
       await vi.waitFor(() => {

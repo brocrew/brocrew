@@ -98,11 +98,13 @@ class ProviderDouble extends FakeRuntime {
     provider: Provider,
     private readonly handles: FakeSessionHandle[],
     sessions: FakeProviderSessions,
+    private readonly prepare: (handle: FakeSessionHandle) => void,
   ) {
     super(provider, { sessions })
   }
   override async start(options: StartOptions): Promise<FakeSessionHandle> {
     const handle = await super.start(options)
+    this.prepare(handle)
     this.handles.push(handle)
     return handle
   }
@@ -127,6 +129,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
   let window: RecordingSink
   let claimed: Set<string>
   let pairs: number
+  let holdNextBrief: boolean
   const tick = (): number => clock++
 
   const buildHost = (over: SessionStore = store): RuntimeHost => {
@@ -134,7 +137,11 @@ describe('395 · the interruption that looks like a provider fault', () => {
       store: over,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
+      createRuntime: (provider: Provider) =>
+        new ProviderDouble(provider, handles, issued, (handle) => {
+          if (holdNextBrief) handle.holdNextTurn()
+          holdNextBrief = false
+        }),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
@@ -165,6 +172,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     window = new RecordingSink('webContents:1')
     claimed = new Set<string>()
     pairs = 0
+    holdNextBrief = false
   })
 
   afterEach(async () => {
@@ -232,7 +240,9 @@ describe('395 · the interruption that looks like a provider fault', () => {
    * child comes back BUSY, where a spawn left it idle and {@link busy} then parked it: the brief is
    * that turn, and a test that wants the child idle first lets it finish ({@link letTheTurnFinish}).
    */
-  const aPmAndItsWorker = async (): Promise<{
+  const aPmAndItsWorker = async (
+    holdBrief = false,
+  ): Promise<{
     pm: string
     pmProfile: string
     worker: string
@@ -247,6 +257,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
     for (const one of siblings) await bringIdentityIntoBeing(one)
     const pm = await personOpens(pmProfile)
     const pmTools = agentToolsFor(host, pm)
+    holdNextBrief = holdBrief
     const given = await callOn(
       pmTools,
       'give_work',
@@ -257,9 +268,11 @@ describe('395 · the interruption that looks like a provider fault', () => {
     const workerHandle = latestHandle()
     await waitFor(
       () =>
-        workerHandle.status() === 'waiting_permission' &&
-        ledger(worker).some((event) => event.type === 'permission_request'),
-      'the brief’s turn to park on its permission card',
+        holdBrief
+          ? workerHandle.status() === 'working'
+          : workerHandle.status() === 'waiting_permission' &&
+            ledger(worker).some((event) => event.type === 'permission_request'),
+      'the brief to start the expected turn',
     )
     return { pm, pmProfile, worker, piece: given.label as string, pmTools, workerHandle }
   }
@@ -460,20 +473,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
     })
 
     it('🔴 a person is told WHO, and “you stopped it” is no longer said about an agent’s doing', async () => {
-      const { pm, pmProfile, worker, workerHandle } = await aPmAndItsWorker()
-      // ⚑ D-016 · the brief's turn is the one parked on its card.
-      expect(workerHandle.status()).toBe('waiting_permission')
-      // 🔴 **The paragraph that stood here was this defect described as a property, and `496` closed
-      // it.** ⛔ It read: *"A child parked on a person's card is the one state an agent may NOT cut
-      // into (§3) — **but it may still END it**, and the teardown calls `machine.forceEnd()` on both
-      // adapters, so the ledger takes `turn:'interrupted'` from a gesture no person made."*
-      // ⚠️ **HO-034 §1 ruled exactly that sentence**: *an agent may not end a conversation while a
-      // person is being asked something in it*, and `END_RAILS` refuses it now — **so the more
-      // destructive door is shut and the less destructive one is what an agent has left.**
-      //
-      // ⚑ **The turn this test is about is the same turn**: an agent's ask, a forced terminal, and a
-      // ledger that has to name who did it. `RuntimeHost.interrupt` is the door `interrupt_agent`
-      // reaches once its own rails admit, and §6 drives it the same way.
+      const { pm, pmProfile, worker, workerHandle } = await aPmAndItsWorker(true)
+      expect(workerHandle.status()).toBe('working')
       await host.interrupt(worker, asPm(pm))
       await turnEnded(worker)
       // ⛔ **The sentence `222` shipped said *"you stopped its last turn before it finished"* about
@@ -930,13 +931,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
 
   describe('§4 · the ask is a fact, and it is written before the provider is touched', () => {
     it('🔴 the ask lands INSIDE the turn it stops, ahead of the terminal', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      // ⚑ D-016 · the brief's turn is the one parked on its card.
-      expect(workerHandle.status()).toBe('waiting_permission')
-      // ⛔ **Through the HOST's door with the parent as the caller**, and not through the tool — a
-      // child parked on a person's card is the one state the tool refuses (§3), and what this test
-      // is about is where the row LANDS rather than who may ask for it. ⚑ Same `recordTheAsk`, same
-      // `by`, and §7 asserts there is only one writer of either.
+      const { pm, worker, workerHandle } = await aPmAndItsWorker(true)
+      expect(workerHandle.status()).toBe('working')
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => ledger(worker).some((event) => event.type === 'turn'),
@@ -1085,15 +1081,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
         piece,
       })
       expect(held.outcome, JSON.stringify(held)).toBe('ok')
-      // ⛔ **Through the host's door with the parent as caller**, for §4's reason: the tool refuses a
-      // child parked on a person's card, and what an interruption does to the three folds is not a
-      // question about who may ask for one.
-      // ⚠️ **The window is attached first, and since `396` it is no longer load-bearing.** It was:
-      // an unattended child's flush never fired, because `flushQueued` sat under `deliver`'s sink
-      // gate, so without this line the assertion below measured that defect instead of what an
-      // interruption does to a held message. ⛔ **Kept, and kept as a claim about THIS test**: what
-      // is being measured here is the fold, and pinning the flush's independence from a window is
-      // the test below's job and `396`'s suite's.
+      // The person Stops the parked approval through the window that claims the worker.
       host.claimSession(worker, window)
       claimed.add(worker)
       // ⚑ **Read BEFORE the interrupt**, because the held message starts a turn of its own the
@@ -1105,7 +1093,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
         .filter((one) => one.state === 'open')
         .map((one) => one.requestId)
       expect(openWhenStopped.length).toBeGreaterThan(0)
-      await host.interrupt(worker, asPm(pm))
+      await host.interrupt(worker, window)
       await waitFor(
         () => ledger(worker).some((event) => event.type === 'turn'),
         'the interrupted terminal',
@@ -1236,9 +1224,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // 🔴 **And now the same shape with nobody watching.** A second child, a second held message,
       // and the turn ends the same way — through the provider rather than through a person, so no
       // window is ever attached.
-      const alone = await aPmAndItsWorker()
-      // ⚑ **D-016 · the brief opens the turn here too**, for the reason the arm above states.
-      expect(alone.workerHandle.status()).toBe('waiting_permission')
+      const alone = await aPmAndItsWorker(true)
+      expect(alone.workerHandle.status()).toBe('working')
       const stranded = await callOn(alone.pmTools, 'message_agent', {
         kind: 'follow-up',
         agent: alone.worker,
@@ -1289,9 +1276,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
 
   describe('§6 · what an interruption looks like after the app comes back', () => {
     it('🔴 the reading survives a relaunch field for field — it is derived, so there is nothing to lose', async () => {
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      // ⚑ D-016 · the brief's turn is the one parked on its card.
-      expect(workerHandle.status()).toBe('waiting_permission')
+      const { pm, worker, workerHandle } = await aPmAndItsWorker(true)
+      expect(workerHandle.status()).toBe('working')
       await host.interrupt(worker, asPm(pm))
       await waitFor(
         () => ledger(worker).some((event) => event.type === 'turn'),
@@ -1391,14 +1377,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
       for (const event of ledger(quiet)) {
         if (event.type === 'work_interrupted') seen.add(event.by)
       }
-      // ⛔ **496 · `an-agent` is produced through the STOP door and no longer through the ending.**
-      // ⚠️ Both verbs still write this row in production — an agent may stop or end a child that is
-      // merely working — but the Fake parks every turn it drives on a person's card, and that is the
-      // one state HO-034 §1 refuses an agent for. ⚑ `RuntimeHost.interrupt` is the door
-      // `interrupt_agent` reaches once its rails admit, and §6 drives it the same way.
-      const { pm, worker, workerHandle } = await aPmAndItsWorker()
-      // ⚑ D-016 · the brief's turn is the one parked on its card.
-      expect(workerHandle.status()).toBe('waiting_permission')
+      const { pm, worker, workerHandle } = await aPmAndItsWorker(true)
+      expect(workerHandle.status()).toBe('working')
       await host.interrupt(worker, asPm(pm))
       for (const event of ledger(worker)) {
         if (event.type === 'work_interrupted') seen.add(event.by)
@@ -1420,7 +1400,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
         unnameable,
       )
       const theirHandle = latestHandle()
-      await busy(theirs.sessionId, theirHandle, unnameable)
+      await working(theirs.sessionId, theirHandle)
       await host.interrupt(theirs.sessionId, unnameable)
       for (const event of ledger(theirs.sessionId)) {
         if (event.type === 'work_interrupted') seen.add(event.by)
@@ -1439,8 +1419,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // claimed. ⚑ **D-017 — asked through `RuntimeHost.interrupt`**: `endAgent`, the door this was
       // measured on, went with `end_agent`, and `recordTheAsk` has one caller now, which both doors
       // reach.
-      const byTheApp = await aPmAndItsWorker()
-      expect(byTheApp.workerHandle.status()).toBe('waiting_permission')
+      const byTheApp = await aPmAndItsWorker(true)
+      expect(byTheApp.workerHandle.status()).toBe('working')
       await host.interrupt(byTheApp.worker, THE_APP_ITSELF)
       await turnEnded(byTheApp.worker)
       expect(ledger(byTheApp.worker).filter((one) => one.type === 'work_interrupted')).toEqual([])
@@ -1448,8 +1428,8 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // ⚑ **The paired positive**: the same verb, the same shape of conversation, and a caller
       // this app has a word for — so the empty array above is a refusal and not a door that
       // stopped working.
-      const byItsParent = await aPmAndItsWorker()
-      expect(byItsParent.workerHandle.status()).toBe('waiting_permission')
+      const byItsParent = await aPmAndItsWorker(true)
+      expect(byItsParent.workerHandle.status()).toBe('working')
       await host.interrupt(byItsParent.worker, asPm(byItsParent.pm))
       await turnEnded(byItsParent.worker)
       expect(

@@ -299,6 +299,7 @@ describe('RuntimeHost', () => {
   })
 
   it('interrupt settles the pending request and interrupts the turn', async () => {
+    sink = new RecordingSink('webContents:1')
     const created = await host.createSession({ provider: 'claude' }, sink)
     await host.send(created.sessionId, 'hello', sink)
     await waitFor(() => sink.types().includes('permission_request'), 'the permission card')
@@ -312,6 +313,7 @@ describe('RuntimeHost', () => {
   })
 
   it('close drains the stream, delivers the terminal events and unregisters the session', async () => {
+    sink = new RecordingSink('webContents:1')
     const created = await host.createSession({ provider: 'claude' }, sink)
     await host.send(created.sessionId, 'hello', sink)
     await waitFor(() => sink.types().includes('permission_request'), 'the permission card')
@@ -843,14 +845,23 @@ describe('RuntimeHost.sendInterrupting — send anyway, mid-turn (074)', () => {
   const userData = mkdtempSync(join(tmpdir(), 'brobot2-host-interrupt-'))
   let host: RuntimeHost
   let sink: RecordingSink
+  let holdFirst: boolean
 
   beforeEach(() => {
     let counter = 0
+    holdFirst = false
     sink = new RecordingSink()
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
       ...neutralHostDeps(() => userData),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider),
+      createRuntime: (provider: Provider) =>
+        new (class extends FakeRuntime {
+          override async start(options: StartOptions) {
+            const handle = await super.start(options)
+            if (holdFirst) handle.holdNextTurn()
+            return handle
+          }
+        })(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
@@ -869,13 +880,14 @@ describe('RuntimeHost.sendInterrupting — send anyway, mid-turn (074)', () => {
   })
 
   it('interrupts the running turn, then sends — the plain send would have waited behind it', async () => {
+    holdFirst = true
     const created = await host.createSession({ provider: 'claude' }, sink)
     await host.send(created.sessionId, 'first', sink)
-    await waitFor(() => sink.types().includes('permission_request'), 'the first turn to be running')
+    await waitFor(() => sink.types().includes('user_turn'), 'the first turn to be recorded')
 
     // A plain send here does not start a turn — that is the trap the user was in. ⚠️ **It was
     // REFUSED until 670**, with the adapter's sentence; since 670 a send that loses to a running
-    // turn is HELD, so it waits behind a turn parked on a card, and interrupting is still the only
+    // turn is HELD, so it waits behind ordinary work, and interrupting is still the only
     // way to have it now.
     await host.send(created.sessionId, 'held while it works', sink)
     expect(

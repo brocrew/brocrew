@@ -249,12 +249,17 @@ describe('the provider working outside a turn (123)', () => {
     })
   }
 
+  const eventsOfType = <T extends TranscriptEvent['type']>(type: T) =>
+    recordedEventsOfType(sink, type)
+
+  const statuses = (): string[] => eventsOfType('status').map((event) => event.state)
+
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-out-of-turn-'))
     fq = new FakeQuery()
     canUseTool = null
     host = buildHost()
-    sink = new RecordingSink()
+    sink = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
@@ -262,15 +267,6 @@ describe('the provider working outside a turn (123)', () => {
     await host.closeAll()
     rmSync(userData, { recursive: true, force: true })
   })
-
-  const eventsOfType = <T extends TranscriptEvent['type']>(
-    type: T,
-  ): Extract<TranscriptEvent, { type: T }>[] =>
-    sink
-      .events()
-      .filter((event): event is Extract<TranscriptEvent, { type: T }> => event.type === type)
-
-  const statuses = (): string[] => eventsOfType('status').map((event) => event.state)
 
   /** A live session whose foreground turn has ended. */
   async function afterTheTurnEnded(): Promise<string> {
@@ -714,7 +710,7 @@ describe('a conversation whose ledger ends on a phantom `working` (123 §4)', ()
 
     // A brand-new host, as if the app had been quit and relaunched on a build with 123.
     const relaunched = buildHost()
-    const live = new RecordingSink()
+    const live = new RecordingSink('webContents:1')
     const resumed = await relaunched.resumeSession(created.sessionId, live)
 
     // ⚑ **The phantom is overwritten by a live one, and the conversation takes a message.** The
@@ -735,3 +731,12 @@ describe('a conversation whose ledger ends on a phantom `working` (123 §4)', ()
     await relaunched.close(created.sessionId, live)
   })
 })
+
+function recordedEventsOfType<T extends TranscriptEvent['type']>(
+  sink: RecordingSink,
+  type: T,
+): Extract<TranscriptEvent, { type: T }>[] {
+  return sink
+    .events()
+    .filter((event): event is Extract<TranscriptEvent, { type: T }> => event.type === type)
+}
