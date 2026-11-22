@@ -24257,12 +24257,8 @@ export class RuntimeHost implements LiveHost {
     if (paths.length === 0) return { ok: true, files: [] }
     const task = this.taskForSendAttachment(sender, piece)
     if (task === undefined) {
-      const cwd = this.deps.store.recordedOne(sender)?.cwd
-      if (cwd === undefined) {
-        return { ok: false, refusal: refuseResource('resource-unreadable', { path: paths[0] }) }
-      }
-      const offered = this.readFilesOfferedIn(cwd, paths)
-      return offered.ok ? keepTasklessSendFiles(cwd, offered.files) : offered
+      const offered = this.filesForKeeping(sender, paths)
+      return offered.ok ? keepTasklessSendFiles(offered.root, offered.files) : offered
     }
     const kept = this.keepFilesForSend(sender, paths)
     if (!kept.ok) return kept
@@ -24280,13 +24276,13 @@ export class RuntimeHost implements LiveHost {
   ): PreparedSendText {
     if (text.length <= INLINE_TEXT_LIMIT) return { ok: true, text }
     const on = this.taskForSendAttachment(sender, piece)
+    const root = this.deps.resourcesRoot?.()
     if (on === undefined) {
-      const cwd = this.deps.store.recordedOne(sender)?.cwd
-      return cwd === undefined
+      return root === undefined
         ? { ok: false, refusal: refuseResource('resource-store-unavailable') }
-        : keepTasklessSendText(cwd, field, text)
+        : keepTasklessSendText(root, field, text)
     }
-    const kept = keepSendOverflow(this.deps.resourcesRoot?.(), field, text)
+    const kept = keepSendOverflow(root, field, text)
     if (!kept.ok) return kept
     const overflow = kept.overflow
     if (overflow === null) return { ok: true, text }
