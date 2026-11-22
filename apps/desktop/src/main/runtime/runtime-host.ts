@@ -20660,7 +20660,9 @@ export class RuntimeHost implements LiveHost {
       if (launch !== undefined) this.homeCopyWaitingLaunches.add(launch)
       void this.copyHomeWhenIdle(provider, profileId)
       try {
-        await barrier.ready
+        const request = this.homeCopies.get(provider)?.get(profileId)
+        if (request?.newerOnly !== true || request.stillWanted?.() === true) await barrier.ready
+        await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
       } finally {
         if (launch !== undefined) this.homeCopyWaitingLaunches.delete(launch)
       }
@@ -21543,7 +21545,9 @@ export class RuntimeHost implements LiveHost {
     // carries `{mode:'default'}` with it, because that is how this transition has always travelled.
     // ⚑ Planning is one thing a reopen on the current sign-in waits for ({@link reopenForWhatWaits}).
     if (text === undefined) {
-      void this.copyHomeWhenIdle(session.provider, session.profileId)
+      const copy = this.homeCopies.get(session.provider)?.get(session.profileId)
+      if (copy?.newerOnly !== true || copy.stillWanted !== undefined)
+        void this.copyHomeWhenIdle(session.provider, session.profileId)
       this.reopenForWhatWaits(session)
       return
     }
@@ -26283,7 +26287,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **Held for a sign-in that moved on, it goes at the reopen** — now, if nothing is in its way.
     if (
       itsSignInMovedOn &&
-      this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending'
+      this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending' &&
+      (this.homeCopies.get(session.provider)?.get(session.profileId)?.newerOnly !== true ||
+        this.homeCopies.get(session.provider)?.get(session.profileId)?.stillWanted !== undefined)
     )
       void this.copyHomeWhenIdle(session.provider, session.profileId)
     else if (itsSignInMovedOn) this.reopenForWhatWaits(session)
@@ -26964,14 +26970,16 @@ export class RuntimeHost implements LiveHost {
    * know: nothing was sent. The composer puts the words back (`019`), so that is true.
    */
   private async assertSignInCurrent(session: HostedSession, verb: 'send' | 'queue'): Promise<void> {
-    if (this.queueANewerHomeCopy(session.provider, session.profileId))
+    if ((await session.handle.checkSignIn?.()) !== true) {
+      this.queueANewerHomeCopy(session.provider, session.profileId)
+      delete session.reopenedForWhatWaited
+      return
+    }
+    if (this.queueANewerHomeCopy(session.provider, session.profileId)) {
+      session.itsSignInMovedOn = true
       throw new ItsSignInMovedOn(
         'A newer Codex sign-in is being copied before this turn. Nothing has been sent.',
       )
-    if ((await session.handle.checkSignIn?.()) !== true) {
-      // ⚑ A life this app reopened for what waited reads as current: its loop guard is done.
-      delete session.reopenedForWhatWaited
-      return
     }
     // ⚑ The machine's login moved: a window drawing it asks again — once per life — and the limits
     // the login before reached stop applying ({@link aSignInChanged}).
@@ -27195,10 +27203,8 @@ export class RuntimeHost implements LiveHost {
   private flushQueued(session: HostedSession): void {
     if (somethingRunnableIsHeld(session)) this.compactBeforeTheNextInput(session)
     if (session.explicitCompaction !== undefined || session.compactionWhenIdle !== undefined) return
-    if (somethingRunnableIsHeld(session)) {
-      this.queueANewerHomeCopy(session.provider, session.profileId)
-    }
-    if (this.homeCopies.get(session.provider)?.get(session.profileId)?.state === 'pending') {
+    const copy = this.homeCopies.get(session.provider)?.get(session.profileId)
+    if (copy?.state === 'pending' && (copy.newerOnly !== true || copy.stillWanted !== undefined)) {
       void this.copyHomeWhenIdle(session.provider, session.profileId)
       if (this.homeCopyJobs.has(profileSignInKey(session.provider, session.profileId))) return
     }
@@ -30784,12 +30790,29 @@ export class RuntimeHost implements LiveHost {
   private queueANewerHomeCopy(
     provider: Provider,
     profileId: string,
+    /** A real-401 requester may replace a refused copy once siblings are idle. */
     stillWanted?: () => boolean,
   ): boolean {
-    if (provider !== 'codex' || this.aKeyIsSaved(provider)) return false
+    if (this.aKeyIsSaved(provider)) return false
     const rows = this.homeCopies.get(provider)
-    if (rows?.get(profileId)?.state === 'pending')
-      return this.homeCopyBarriers.has(profileSignInKey(provider, profileId))
+    const pending = rows?.get(profileId)
+    if (pending?.state === 'pending') {
+      if (
+        pending.newerOnly === true &&
+        stillWanted !== undefined &&
+        pending.stillWanted === undefined &&
+        !this.deps.providerAuth?.hasNewerCopy?.(provider, profileId)
+      ) {
+        rows!.set(profileId, { profileId, state: 'skipped', reason: 'unchanged' })
+        this.releaseHomeCopyBarrier(provider, profileId)
+        return false
+      }
+      if (stillWanted !== undefined) {
+        const previous = pending.stillWanted
+        pending.stillWanted = () => previous?.() === true || stillWanted()
+      }
+      if (this.homeCopyBarriers.has(profileSignInKey(provider, profileId))) return true
+    }
     if (!this.deps.providerAuth?.hasNewerCopy?.(provider, profileId)) return false
     const copies = rows ?? new Map()
     this.homeCopies.set(provider, copies)
@@ -30860,6 +30883,11 @@ export class RuntimeHost implements LiveHost {
     if (rows?.get(profileId)?.state !== 'pending') return Promise.resolve()
     const copying = this.homeCopyJobs.get(key)
     if (copying) return copying
+    const request = rows.get(profileId)
+    if (request?.newerOnly === true && request.stillWanted?.() === false) {
+      delete request.stillWanted
+      this.releaseHomeCopyBarrier(provider, profileId)
+    }
     try {
       if (this.deps.apiKeys?.status(provider).set === true) {
         rows.set(profileId, { profileId, state: 'skipped', reason: 'api-key' })
@@ -30909,6 +30937,13 @@ export class RuntimeHost implements LiveHost {
     )
       return Promise.resolve()
     const sessions = slots.flatMap((slot) => (slot.session === null ? [] : [slot.session]))
+    // Only refused-copy recovery supplies stillWanted; ordinary freshness leaves usable lives alone.
+    if (
+      request?.newerOnly === true &&
+      request.stillWanted?.() !== true &&
+      sessions.some((session) => session.itsSignInMovedOn !== true)
+    )
+      return Promise.resolve()
     for (const session of sessions) this.signInStops.add(session)
     // Install the gate before closing a provider can admit another probe or launch.
     let copied: ProviderHomesReprovision['profiles'][number] | undefined
@@ -41613,7 +41648,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **Work that ran in the background is one thing a reopen on the current sign-in waits for**
     // — so a level that moved asks again ({@link reopenForWhatWaits}).
     if (event.type === 'background_work') {
-      void this.copyHomeWhenIdle(session.provider, session.profileId)
+      const copy = this.homeCopies.get(session.provider)?.get(session.profileId)
+      if (copy?.newerOnly !== true || copy.stillWanted !== undefined)
+        void this.copyHomeWhenIdle(session.provider, session.profileId)
       this.reopenForWhatWaits(session)
     }
   }

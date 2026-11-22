@@ -1,8 +1,4 @@
-import {
-  copiesBeforeEveryTurn,
-  keepsTheKeySession,
-  copiesBeforeApprovingAPlan,
-} from './lib/automatic-codex-copy'
+import { currentSignInAdmission } from './lib/automatic-codex-copy'
 import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -52,8 +48,10 @@ describe('copying this install’s provider sign-ins', () => {
   let activeCloseFails: boolean
   let host: RuntimeHost
   let closingHost: Promise<void> | undefined
+  let activeHandle: Awaited<ReturnType<FakeRuntime['start']>>
   let ops: ProviderAuthOps
   const copy = vi.fn()
+  const currentSignIn = vi.fn(async () => false)
   const keyRead = vi.fn()
   let keySaved: boolean
   let keyStatusFails: boolean
@@ -83,6 +81,7 @@ describe('copying this install’s provider sign-ins', () => {
     keyStatusFails = false
     copy.mockReset()
     keyRead.mockReset()
+    currentSignIn.mockReset().mockResolvedValue(false)
     const source = join(root, 'machine-sign-in.json')
     writeFileSync(source, '{"madeUpSignIn":"new-fictional-sign-in"}')
     for (const id of [DEFAULT_PROFILE_ID, 'alpha', 'beta']) {
@@ -136,6 +135,8 @@ describe('copying this install’s provider sign-ins', () => {
         start: async (options) => {
           await beforeStart?.()
           const handle = await runtime.start(options)
+          activeHandle = handle
+          Object.assign(handle, { checkSignIn: currentSignIn })
           handle.awaitProcessExit = () => oldProcessExit
           const close = handle.close.bind(handle)
           handle.close = async () => {
@@ -165,6 +166,8 @@ describe('copying this install’s provider sign-ins', () => {
             await close()
             if (replacementCloseFails) throw new Error('fictional replacement close failed')
           }
+          activeHandle = handle
+          Object.assign(handle, { checkSignIn: currentSignIn })
           handle.awaitProcessExit = () => oldProcessExit
           await beforeReturn?.()
           launches++
@@ -217,6 +220,13 @@ describe('copying this install’s provider sign-ins', () => {
     ops,
     copy,
     messages,
+    currentSignIn,
+    get activeHandle() {
+      return activeHandle
+    },
+    setKeySaved() {
+      keySaved = true
+    },
     get launches() {
       return launches
     },
@@ -225,16 +235,7 @@ describe('copying this install’s provider sign-ins', () => {
     },
   })
 
-  it('automatically stops the cached server and copies a newer sign-in before sending', () =>
-    copiesBeforeEveryTurn(automaticFixture()))
-
-  it('does not check or copy machine sign-ins for an API-key turn', async () => {
-    keySaved = true
-    await keepsTheKeySession(automaticFixture())
-  })
-
-  it('copies a newer sign-in before the turn that approves a plan', () =>
-    copiesBeforeApprovingAPlan(automaticFixture()))
+  currentSignInAdmission(automaticFixture)
 
   for (const opening of ['start', 'resume'] as const) {
     for (const change of ['native-refusal', 'cancel', 'timeout'] as const) {
