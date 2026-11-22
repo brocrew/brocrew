@@ -1,3 +1,4 @@
+import { serialize } from 'node:v8'
 import { expect, it, vi } from 'vitest'
 import type { AppDatabase } from '../../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
@@ -25,6 +26,49 @@ export function windowIncidentCases(
     row(session: string, type: string, payload: object | string, generation?: number): void
   },
 ) {
+  it('keeps a large held Give in the ledger while omitting its words from the incident snapshot', () => {
+    const { store, db, engine, row } = fixture()
+    const root = store.ensurePersonalRoot('alpha', 1)
+    const piece = 'held-piece'
+    const label = `${root.label}.1`
+    const text = 'The large held Give stays in the ledger. '.repeat(2000)
+    row('alpha', 'work_given', {
+      type: 'work_given',
+      piece,
+      parent: root.piece,
+      label,
+      givenBy: 'beta',
+      title: 'Fictional work',
+      brief: text,
+    })
+    row('alpha', 'message_queued', {
+      type: 'message_queued',
+      messageId: 'held-give',
+      kind: 'work',
+      piece,
+      label,
+      drives: piece,
+      relayedFrom: 'beta',
+      text,
+    })
+
+    const snapshot = engine.read({ kind: 'incidents' })
+    if (snapshot.kind !== 'incidents') throw new Error('wrong incident result')
+    const [held] = createSessionStore(db).messagesWaitingIn('alpha')
+    const facts = {
+      messageId: 'held-give',
+      piece,
+      label,
+      drives: piece,
+      authorship: { relayedFrom: 'beta' },
+    }
+    expect(held).toMatchObject({ ...facts, text })
+    expect(snapshot.owners.find((one) => one.sessionId === 'alpha')?.messages).toMatchObject([
+      facts,
+    ])
+    expect(serialize(snapshot).includes('The large held Give stays in the ledger.')).toBe(false)
+  })
+
   it('projects incident history without main reads and preserves failed receipts and closed wait targets', () => {
     const { store, engine, row } = fixture()
     const root = store.ensurePersonalRoot('alpha', 1)
@@ -182,7 +226,12 @@ export function windowIncidentCases(
           fresh.reconciliationWork(new Set([one.sessionId]), pieces).map(withoutBrief),
         )
         expect(one.routes).toEqual(fresh.routedRequestsOf(one.sessionId, routes))
-        expect(one.messages).toEqual(fresh.messagesWaitingIn(one.sessionId, messages))
+        expect(one.messages).toStrictEqual(
+          fresh.messagesWaitingIn(one.sessionId, messages).map(({ text, ...message }) => {
+            void text
+            return message
+          }),
+        )
         expect(one.stop).toEqual(fresh.lastAskToStop(one.sessionId, stop))
         expect(one.messagesSkipped.length).toBe(messages.count + messages.ledgersSkipped)
         expect(one.stopSkipped.length).toBe(stop.count + stop.ledgersSkipped)

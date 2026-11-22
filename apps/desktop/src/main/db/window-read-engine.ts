@@ -294,7 +294,12 @@ export class WindowReadEngine {
             pieces: pieces.map(withoutBrief),
             work: work.map(withoutBrief),
             routes: store.routedRequestsOf(sessionId, noted(routesSkipped)),
-            messages: store.messagesWaitingIn(sessionId, noted(messagesSkipped)),
+            messages: store
+              .messagesWaitingIn(sessionId, noted(messagesSkipped))
+              .map(({ text, ...message }) => {
+                void text
+                return message
+              }),
             stop,
             piecesSkipped: [...piecesSkipped],
             routesSkipped: [...routesSkipped],

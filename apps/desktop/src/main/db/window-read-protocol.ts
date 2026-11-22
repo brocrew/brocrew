@@ -153,7 +153,8 @@ export interface IncidentReading {
   readonly pieces: readonly Omit<ReturnType<SessionStore['openPiecesOf']>[number], 'brief'>[]
   readonly work: readonly Omit<ReturnType<SessionStore['reconciliationWork']>[number], 'brief'>[]
   readonly routes: ReturnType<SessionStore['routedRequestsOf']>
-  readonly messages: ReturnType<SessionStore['messagesWaitingIn']>
+  /** Held messages without their delivery text. */
+  readonly messages: readonly Omit<ReturnType<SessionStore['messagesWaitingIn']>[number], 'text'>[]
   readonly stop: ReturnType<SessionStore['lastAskToStop']>
   readonly piecesSkipped: readonly SkippedRow[]
   readonly routesSkipped: readonly SkippedRow[]

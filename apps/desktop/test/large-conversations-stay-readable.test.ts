@@ -190,6 +190,8 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
           : reason === 'cancelled'
             ? 2000
             : 1
+      const replyBytes = 4 * 1024 * 1024
+      const heldText = reason === 'reply' ? 'x'.repeat(replyBytes) : ''
       db.transaction(() => {
         for (let i = 0; i < count; i++) {
           const event =
@@ -197,8 +199,12 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
               ? {
                   type: 'message_queued',
                   messageId: 'atlas-message',
-                  text: 'x'.repeat(4 * 1024 * 1024),
+                  text: heldText,
                   kind: 'work',
+                  // A retained field keeps the reply beyond the former transport limit.
+                  attachments: [
+                    { path: `/${'a'.repeat(replyBytes - 1)}`, kind: 'file', outsideCwd: true },
+                  ],
                 }
               : {
                   type: 'request_routed',
@@ -230,10 +236,13 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
           expect(answer.routes[0]?.requests).toHaveLength(reason === 'unread' ? 1 : count)
           if (reason === 'unread') expect(answer.routes[0]?.skipped).toHaveLength(count - 1)
         } else if (answer.kind === 'incidents') {
-          expect(answer.owners[0]?.messages[0]?.text).toHaveLength(4 * 1024 * 1024)
+          const message = answer.owners[0]?.messages[0]
+          expect(message?.attachments[0]?.path).toHaveLength(replyBytes)
+          expect(message).not.toHaveProperty('text')
         }
       }
       if (reason === 'reply') {
+        expect(store.messagesWaitingIn('atlas')[0]?.text).toBe(heldText)
         const workerFile = await bundleAWorker(
           'src/main/window-reader.worker.ts',
           directory,
@@ -242,8 +251,11 @@ it.each(['rows', 'bytes', 'reply', 'cancelled', 'unread'] as const)(
         native = new WindowWorkerReader(new Worker(workerFile, { workerData: { file } }))
         const answer = await native.read({ kind: 'incidents' })
         expect(answer.kind).toBe('incidents')
-        if (answer.kind === 'incidents')
-          expect(answer.owners[0]?.messages[0]?.text).toHaveLength(4 * 1024 * 1024)
+        if (answer.kind === 'incidents') {
+          const message = answer.owners[0]?.messages[0]
+          expect(message?.attachments[0]?.path).toHaveLength(replyBytes)
+          expect(message).not.toHaveProperty('text')
+        }
       }
       // Failure rolls back its snapshot and does not poison a later successful read.
       db.prepare('DELETE FROM events').run()
