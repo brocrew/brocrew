@@ -1,6 +1,17 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer, WebContents } from 'electron'
@@ -108,6 +119,53 @@ it('measures logical bytes from the host roots, including database sidecars and 
   expect(reading.freeBytes).toBeGreaterThan(0)
   expect(reading.measuredAt).toBeGreaterThan(0)
   expect(reading.partial).toBe(false)
+})
+
+it(`keeps native ${process.platform} task-output union and a read-only manifest`, async () => {
+  const ordinary = join(roots.workspace, 'ordinary')
+  const output = join(roots.workspace, 'task-output')
+  await file(join(ordinary, 'file'), 13)
+  await file(join(output, 'build'), 23)
+  await file(roots.database[0]!, 29)
+  await file(join(roots.data, 'unrelated'), 999)
+  async function manifest(path: string): Promise<[string, number, string, number][]> {
+    const rows: [string, number, string, number][] = []
+    for (const entry of await readdir(path, { withFileTypes: true })) {
+      const child = join(path, entry.name)
+      if (entry.isDirectory()) rows.push(...(await manifest(child)))
+      else {
+        const stat = await lstat(child)
+        const hash = createHash('sha256')
+          .update(await readFile(child))
+          .digest('hex')
+        rows.push([relative(roots.data, child), stat.size, hash, stat.mtimeMs])
+      }
+    }
+    return rows.sort(([a], [b]) => a.localeCompare(b))
+  }
+  const before = await manifest(roots.data)
+  expect(before).toHaveLength(4)
+  expect(before.reduce((sum, [, bytes]) => sum + bytes, 0)).toBe(1064)
+  for (const nested of [false, true]) {
+    let mapped = { ...roots, workspace: nested ? roots.workspace : ordinary, output }
+    if (process.platform === 'win32') {
+      mapped = {
+        ...mapped,
+        output: output.toUpperCase() + sep,
+        database: [roots.database[0]!, roots.database[0]!.toUpperCase()],
+      }
+      expect((await lstat(mapped.output)).isDirectory()).toBe(true)
+      expect((await lstat(mapped.database[1]!)).isFile()).toBe(true)
+    }
+    const reading = await new StorageEngine(mapped).measure()
+    expect(reading).toMatchObject({ totalBytes: 65, partial: false })
+    expect(reading.parts.reduce((sum, part) => sum + (part.bytes ?? 0), 0)).toBe(65)
+    expect(reading.parts.find((part) => part.id === 'workspace')?.bytes).toBe(nested ? 36 : 13)
+    expect(reading.parts.find((part) => part.id === 'agent-output')?.bytes).toBe(nested ? 0 : 23)
+    const listing = await new StorageEngine(mapped).children({ part: 'workspace', segments: [] })
+    expect(listing).toMatchObject({ totalBytes: nested ? 36 : 13, partial: false })
+    expect(await manifest(roots.data)).toEqual(before)
+  }
 })
 
 it('returns the ten largest children and exact remainder, using recursive directory sizes', async () => {

@@ -32,7 +32,8 @@ export type StorageRequest =
   | { readonly kind: 'children'; readonly location: StorageLocation }
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
 export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
-const STORAGE_BOUNDS = { entries: 100_000, depth: 64 } as const
+type StorageRoot = { path: string; part: StoragePartId }
+const STORAGE_BOUNDS = { entries: Infinity, depth: 64 } as const
 /** A worker that reports no progress for this long is judged stalled; a slow walk that keeps reporting is not. */
 export const STORAGE_STALL_TIMEOUT = 15_000
 
@@ -132,14 +133,25 @@ export class StorageEngine {
     return directories !== undefined && (segments.length < 4 || directories.includes(segments[3]!))
   }
 
+  private countedByEarlierRoot(path: string, roots: readonly StorageRoot[]): boolean {
+    return roots.some((root) => {
+      if (!insideData(root.path, path)) return false
+      const rel = relative(root.path, path)
+      return this.allowed(root.part, rel ? rel.split(sep) : [])
+    })
+  }
+
   private async size(
     path: string,
     part: StoragePartId,
     segments: readonly string[],
     state: { error?: StorageError },
     checkedParent = false,
+    earlierRoots: readonly StorageRoot[] = [],
+    rootState?: { started: boolean },
   ): Promise<number> {
     let bytes = 0
+    let enumerating = false
     if (segments.length > this.bounds.depth) {
       state.error = 'limit'
       return 0
@@ -151,29 +163,34 @@ export class StorageEngine {
       if (stat.isSymbolicLink()) throw new StorageFailure('linked-path')
       const actual = await realpath(safe)
       if (!insideData(safe, actual)) throw new StorageFailure('outside-data')
-      if (stat.isFile()) return stat.size
+      if (stat.isFile()) {
+        if (rootState) rootState.started = true
+        return this.countedByEarlierRoot(actual, earlierRoots) ? 0 : stat.size
+      }
       if (!stat.isDirectory()) {
         state.error ??= 'unavailable'
         return 0
       }
       const directory = await opendir(actual)
+      if (rootState) rootState.started = true
+      enumerating = true
       for await (const entry of directory) {
         this.checkpoint()
         const child = [...segments, entry.name]
         if (!this.allowed(part, child)) continue
-        bytes += await this.size(join(actual, entry.name), part, child, state, true)
+        bytes += await this.size(join(actual, entry.name), part, child, state, true, earlierRoots)
         if (state.error === 'limit') break
       }
       return bytes
     } catch (error) {
-      if (missing(error)) return 0
+      if (missing(error) && !enumerating) return 0
       if (storageReason(error) === 'cancelled') throw error
       if (storageReason(error) === 'limit') {
         state.error = 'limit'
         return bytes
       }
       state.error ??= storageReason(error)
-      return 0
+      return bytes
     }
   }
 
@@ -225,6 +242,7 @@ export class StorageEngine {
 
   async measure(): Promise<StorageOverview> {
     const parts: StoragePart[] = []
+    const earlierRoots: StorageRoot[] = []
     let freeBytes: number | null = null
     try {
       await this.initialise()
@@ -240,7 +258,18 @@ export class StorageEngine {
         let bytes = 0
         const state: { error?: StorageError } = {}
         try {
-          for (const path of this.paths(id)) bytes += await this.size(path, id, [], state)
+          for (const path of this.paths(id)) {
+            try {
+              const safe = await this.checked(path, id)
+              const rootState = { started: false }
+              bytes += await this.size(safe, id, [], state, true, earlierRoots, rootState)
+              if (rootState.started) earlierRoots.push({ path: safe, part: id })
+            } catch (error) {
+              if (missing(error)) continue
+              if (storageReason(error) === 'cancelled') throw error
+              state.error ??= storageReason(error)
+            }
+          }
           parts.push({
             id,
             bytes: state.error && bytes === 0 ? null : bytes,
@@ -275,31 +304,30 @@ export class StorageEngine {
     try {
       if (!isStorageLocation(location)) throw new StorageFailure('invalid-location')
       await this.initialise()
-      const candidates: { name: string; path: string; segments: readonly string[] }[] = []
-      if (this.virtual(location.part) && location.segments.length === 0) {
-        for (const entry of this.groupedPaths(location.part))
-          candidates.push({ ...entry, segments: [] })
-      } else {
-        const path = this.locationPath(location)
-        const safe = await this.checked(path, location.part)
-        if (!(await lstat(safe)).isDirectory()) throw new StorageFailure('not-directory')
-        const directory = await opendir(safe)
-        for await (const entry of directory) {
-          this.checkpoint()
-          const segments = [...location.segments, entry.name]
-          if (this.allowed(location.part, segments))
-            candidates.push({ name: entry.name, path: join(path, entry.name), segments })
+      const entries: StorageEntry[] = []
+      let smallerCount = 0
+      let smallerBytes = 0
+      const state: { error?: StorageError } = {}
+      const keep = (entry: StorageEntry): void => {
+        entries.push(entry)
+        entries.sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.name.localeCompare(b.name))
+        if (entries.length > 10) {
+          const smaller = entries.pop()!
+          smallerCount++
+          smallerBytes += smaller.bytes ?? 0
         }
       }
-      const entries: StorageEntry[] = []
-      const state: { error?: StorageError } = {}
-      for (const entry of candidates) {
+      const include = async (entry: {
+        name: string
+        path: string
+        segments: readonly string[]
+      }): Promise<boolean> => {
         try {
           const safe = await this.checked(entry.path, location.part)
           const stat = await lstat(safe)
           if (!stat.isFile() && !stat.isDirectory()) {
             state.error ??= 'unavailable'
-            continue
+            return true
           }
           if (
             location.part === 'backups' &&
@@ -307,24 +335,49 @@ export class StorageEngine {
             stat.isDirectory() &&
             (await this.emptyRecovery(entry.path, safe))
           )
-            continue
+            return true
           const bytes = await this.size(entry.path, location.part, entry.segments, state)
-          entries.push({ name: entry.name, bytes, isDirectory: stat.isDirectory() })
+          keep({ name: entry.name, bytes, isDirectory: stat.isDirectory() })
         } catch (error) {
-          if (storageReason(error) === 'linked-path') {
-            entries.push({ name: entry.name, bytes: null, isDirectory: false, isLink: true })
+          const reason = storageReason(error)
+          if (reason === 'cancelled') throw error
+          if (reason === 'linked-path') {
+            keep({ name: entry.name, bytes: null, isDirectory: false, isLink: true })
           }
-          if (!missing(error)) state.error ??= storageReason(error)
-          if (state.error === 'limit' || state.error === 'cancelled') break
+          if (!missing(error)) state.error ??= reason
+          if (reason === 'limit') return false
+        }
+        return true
+      }
+      if (this.virtual(location.part) && location.segments.length === 0) {
+        for (const entry of this.groupedPaths(location.part))
+          if (!(await include({ ...entry, segments: [] }))) break
+      } else {
+        const path = this.locationPath(location)
+        const safe = await this.checked(path, location.part)
+        if (!(await lstat(safe)).isDirectory()) throw new StorageFailure('not-directory')
+        const directory = await opendir(safe)
+        try {
+          for await (const entry of directory) {
+            this.checkpoint()
+            const segments = [...location.segments, entry.name]
+            if (
+              this.allowed(location.part, segments) &&
+              !(await include({ name: entry.name, path: join(path, entry.name), segments }))
+            )
+              break
+          }
+        } catch (error) {
+          if (storageReason(error) === 'cancelled') throw error
+          state.error ??= storageReason(error)
         }
       }
-      entries.sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.name.localeCompare(b.name))
       return {
         location,
-        entries: entries.slice(0, 10),
-        smallerCount: Math.max(0, entries.length - 10),
-        smallerBytes: entries.slice(10).reduce((n, entry) => n + (entry.bytes ?? 0), 0),
-        totalBytes: entries.reduce((n, entry) => n + (entry.bytes ?? 0), 0),
+        entries,
+        smallerCount,
+        smallerBytes,
+        totalBytes: smallerBytes + entries.reduce((n, entry) => n + (entry.bytes ?? 0), 0),
         partial: state.error !== undefined,
         ...state,
       }
