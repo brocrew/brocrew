@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { ResumeError, type SessionMachine } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -60,30 +60,48 @@ describe('explicit outbound sends', () => {
     expect(parts).toContainEqual(expect.objectContaining({ text, relayedFrom: sender }))
   })
 
-  it('delivers a taskless message and keeps the full words in its sender’s folder', async () => {
+  it('keeps taskless Message attachments once in the app resource store', async () => {
     expect(world.store.piecesOwnedBy(sender)).toHaveLength(0)
-    const attachment = join(world.folder, 'appendix.txt')
+    const attachment = join(world.folder, 'Appendix #1.txt')
     writeFileSync(attachment, 'The appendix.')
-    const tree = resourcesRoot(world.folder)
-    const kept = () => (existsSync(tree) ? readdirSync(tree).sort() : [])
-    const before = kept()
+    const sentRoot = join(resourcesRoot(world.folder), 'sent')
+    const workspaceCopies = () =>
+      readdirSync(world.folder).filter((name) => name.startsWith('brocrew-'))
+    expect(workspaceCopies()).toEqual([])
     const text = 'Details '.repeat(300) + 'last line'
-    const sent = await send('message_agent', { agent: target, text, resources: [attachment] })
+    const args = { agent: target, text, resources: [attachment] }
+    mkdirSync(dirname(sentRoot), { recursive: true })
+    writeFileSync(sentRoot, 'A file is in the way.')
+    const refused = await send('message_agent', args)
+    expect(refused.structured?.rail).toBe('resource-could-not-be-kept')
+    expect(world.ledger(sender).some((event) => event.type === 'message_sent')).toBe(false)
+    expect(workspaceCopies()).toEqual([])
+    unlinkSync(sentRoot)
+    const sent = await send('message_agent', args)
     const receipt = sent.structured?.receipt as SendReceipt
     expect(receipt.recorded).toMatchObject({ kind: 'message', taskLabel: null })
     expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'started' } })
     const [copy, file] = receipt.attachments
     if (copy === undefined || !('path' in copy)) throw new Error('The attachment was not copied.')
-    expect(copy.path).not.toBe(attachment)
+    expect(dirname(dirname(copy.path))).toBe(sentRoot)
+    expect(copy.name).toBe('Appendix #1.txt')
+    expect(readFileSync(attachment, 'utf8')).toBe('The appendix.')
     expect(readFileSync(copy.path, 'utf8')).toBe('The appendix.')
-    expect(kept()).toEqual(before)
     if (file === undefined || !('path' in file)) throw new Error('The complete text was not saved.')
-    expect(isAbsolute(file.path)).toBe(true)
+    expect(dirname(dirname(file.path))).toBe(sentRoot)
     expect(readFileSync(file.path, 'utf8')).toBe(text)
     expect(sent.text).toContain(`Delivered to conversation ${receipt.recipient.address}`)
     expect(world.sent.find((one) => one.as === 'outbound-target')?.words).toContain(
       `The full text is saved at ${file.path}: read the file.`,
     )
+    const repeated = await send('message_agent', args)
+    expect(repeated.structured?.receipt).toMatchObject({ attachments: receipt.attachments })
+    writeFileSync(attachment, 'Revised appendix.')
+    const forwarded = await send('message_agent', { ...args, resources: [copy.path] })
+    expect(forwarded.structured?.receipt).toMatchObject({ attachments: receipt.attachments })
+    expect(readFileSync(copy.path, 'utf8')).toBe('The appendix.')
+    expect(readdirSync(sentRoot)).toHaveLength(2)
+    expect(workspaceCopies()).toEqual([])
   })
 
   it('makes ordinary attachments and the full text readable by the recipient', async () => {
@@ -166,13 +184,23 @@ describe('explicit outbound sends', () => {
   })
 
   it('starts the answerer’s next turn with an unanswered recorded question', async () => {
+    const answerer = await world.aRecordedWorker(sender, 'outbound-target')
+    await host.resumeSession(answerer, world.window)
+    expect(world.store.rootOf(answerer)).toBeNull()
+    expect(world.store.piecesOwnedBy(answerer)).toHaveLength(0)
+    const question = 'Does the report cover the old routing? '.repeat(70).trimEnd()
     const asked = await send('ask_question', {
       who_answers: 'an-agent',
-      agent: target,
-      question: 'Does the report cover the old routing?',
+      agent: answerer,
+      question,
     })
     const id = asked.structured?.question
     if (typeof id !== 'string') throw new Error('The question has no recorded id.')
+    const [questionFile] = (asked.structured?.receipt as SendReceipt).attachments
+    if (questionFile === undefined || !('path' in questionFile))
+      throw new Error('Missing question file.')
+    expect(questionFile.name).toBe('question.txt')
+    expect(readFileSync(questionFile.path, 'utf8')).toBe(question)
     const received = () =>
       world.sent.filter((one) => one.as === 'outbound-target' && one.words.includes(id))
     await waitFor(() => received().length >= 2, 'the unanswered question to start the next turn')
@@ -182,14 +210,20 @@ describe('explicit outbound sends', () => {
     expect(world.store.routedRequestsOf(sender)).toEqual(
       expect.arrayContaining([expect.objectContaining({ requestId: id, state: 'open' })]),
     )
-    const answer = agentToolsFor(host, target).tools.find((one) => one.name === 'answer_question')
+    const answer = agentToolsFor(host, answerer).tools.find((one) => one.name === 'answer_question')
     if (answer === undefined) throw new Error('The answer tool is missing.')
+    const fullAnswer = 'Yes. '.repeat(500) + 'The last sentence.'
     const result = await answer.call({
       asked_by: sender,
       question: id,
-      answers: [{ part: 'answer', answer: ['Yes.'] }],
+      answers: [{ part: 'answer', answer: [fullAnswer] }],
     })
     expect(result.structured?.outcome).toBe('ok')
+    const answerReceipt = result.structured?.receipt as SendReceipt
+    const [answerFile] = answerReceipt.attachments
+    expect(result.structured?.resources).toEqual(answerReceipt.attachments)
+    if (answerFile === undefined || !('path' in answerFile)) throw new Error('Missing answer file.')
+    expect(readFileSync(answerFile.path, 'utf8')).toBe(fullAnswer)
     expect(world.store.routedRequestsOf(sender).find((one) => one.requestId === id)?.state).toBe(
       'answered',
     )
@@ -202,24 +236,29 @@ describe('explicit outbound sends', () => {
     try {
       await host.send(target, 'Hold this conversation open.', world.window)
       const prompt = 'Which of these two plans applies?'
+      const attachment = join(world.folder, 'plans.txt')
+      writeFileSync(attachment, 'The two plans.')
       const result = await send('ask_question', {
         who_answers: 'an-agent',
         agent: target,
         question: prompt,
         options: ['Original', 'Revised'],
+        resources: [attachment],
       })
       const receipt = result.structured?.receipt as SendReceipt
       expect(receipt.recipient).toMatchObject({ id: target, state: { kind: 'queued' } })
       const id = receipt.recorded.id
+      const [copy] = receipt.attachments
+      if (copy === undefined || !('path' in copy)) throw new Error('Missing question attachment.')
       const original = world.store
         .messagesWaitingIn(target)
         .find((row) => row.asks?.requestId === id)
       if (original === undefined) throw new Error('The queued Ask is missing.')
       await host.closeAll()
+      unlinkSync(attachment)
       world.turnsWait = null
       gate.resolve()
       recordHistoricalReplacement(world.store, target, successor, world.clock++)
-
       host = world.aHost()
       const starting = host as unknown as {
         startForADelivery(id: string, window: null): Promise<string>
@@ -238,8 +277,11 @@ describe('explicit outbound sends', () => {
         expect.objectContaining({ type: 'message_queued', asks: { asker: sender, requestId: id } }),
       )
       expect(original.text).toContain(`in your conversation ${receipt.recipient.address} ·`)
+      expect(delivered()).toMatchObject({ text: expect.stringContaining(copy.path) })
+      expect(readFileSync(copy.path, 'utf8')).toBe('The two plans.')
       expect(world.store.questionsRaisedIn(sender).get(id)).toMatchObject({
         prompt,
+        files: [copy],
         questions: [
           expect.objectContaining({ options: [{ label: 'Original' }, { label: 'Revised' }] }),
         ],
@@ -923,22 +965,15 @@ describe('explicit outbound sends', () => {
     ).toHaveLength(1)
   })
 
-  it('returns a short receipt for a question put in front of the person', async () => {
-    const task = await world.gives(host, target, 'outbound-sender')
-    if (!task.ok) throw new Error('The parent did not give work.')
-    sender = task.owner
-    const asked = await send('ask_question', {
-      who_answers: 'a-person',
-      piece: task.label,
-      question: 'Do you want the short label?',
-    })
-    const id = asked.structured?.question
-    expect(typeof id).toBe('string')
-    expect(asked.text).toBe(
-      `Question ${id} recorded for the person. The answer arrives as a message.`,
-    )
+  it.each(['own work', 'named work'])('returns person-request receipts on %s', async (work) => {
+    expect(world.store.rootOf(sender)).toBeNull()
+    const task = work === 'named work' ? await world.gives(host, target, 'outbound-sender') : null
+    if (task?.ok === false) throw new Error('The parent did not give work.')
+    if (task !== null) sender = task.owner
+    const piece = task?.label
     const fullAction = 'Check the name. '.repeat(150)
-    const action = await send('request_action', { piece: task.label, action: fullAction })
+    const action = await send('request_action', { piece, action: fullAction })
+    expect(action.structured?.outcome).toBe('ok')
     expect(action.text).toContain('The to-do is under Waiting on you')
     expect(action.text).toContain('the full text is attached')
     const files = action.structured?.attachments
@@ -948,7 +983,18 @@ describe('explicit outbound sends', () => {
     const actionId = action.structured?.question
     if (typeof actionId !== 'string') throw new Error('The to-do has no recorded id.')
     const recorded = world.store.questionsRaisedIn(sender).get(actionId)
-    expect(recorded?.prompt).toBe(fullAction.slice(0, 2000))
-    expect(recorded?.action?.files).toEqual(files)
+    const expectedPiece = task?.piece ?? world.store.rootOf(sender)?.piece
+    expect(expectedPiece).toEqual(expect.any(String))
+    expect(recorded).toMatchObject({
+      piece: expectedPiece,
+      prompt: fullAction.slice(0, 2000),
+      action: { files },
+    })
+    const asked = await send('ask_question', { who_answers: 'a-person', piece, question: 'Label?' })
+    const id = asked.structured?.question
+    expect(typeof id).toBe('string')
+    expect(asked.text).toBe(
+      `Question ${id} recorded for the person. The answer arrives as a message.`,
+    )
   })
 })
