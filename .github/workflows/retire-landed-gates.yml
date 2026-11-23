@@ -1,0 +1,28 @@
+name: Retire landed gates
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.after }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: Read current disposable gate heads
+        run: git fetch --no-tags origin '+refs/heads/gate/prepare-*:refs/remotes/origin/gate/prepare-*'
+      - name: Retire newly landed heads
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: node scripts/retire-landed-gates.mjs "$BEFORE" "$AFTER"
