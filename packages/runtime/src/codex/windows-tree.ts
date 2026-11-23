@@ -140,14 +140,25 @@ export function treeOf(
   return [...found.values()]
 }
 
-/** One reading of the process table within `ms`, or null when it could not be read in time. */
-export function readTable(ms: number): Promise<TableReading | null> {
-  if (ms <= 0) return Promise.resolve(null)
+/**
+ * One reading of the process table, or null when it failed. With `ms`, a reading that has not
+ * finished by then is null: only the stop path asks for that, because closing cannot wait on a
+ * stuck PowerShell. With `null`, the read waits for PowerShell's exit (card 197): on a slow or
+ * loaded PC the read can take longer than any fixed limit, and a limit only turned "slow" into "no
+ * answer". A reading nobody waits on has no reason for a limit.
+ */
+export function readTable(ms: number | null): Promise<TableReading | null> {
+  if (ms !== null && ms <= 0) return Promise.resolve(null)
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', TABLE_COMMAND],
-      { timeout: ms, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', windowsHide: true },
+      {
+        ...(ms === null ? {} : { timeout: ms }),
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: 'utf8',
+        windowsHide: true,
+      },
       (error, stdout) => resolve(error ? null : parseReading(stdout)),
     )
   })

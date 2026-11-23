@@ -97,7 +97,7 @@ afterEach(async () => {
     vi.resetAllMocks()
   }
 })
-function transport(read: (ms: number) => Promise<TableReading | null>) {
+function transport(read: (ms: number | null) => Promise<TableReading | null>) {
   const value = new SpawnCodexTransport('fictional-program', [], {
     env: {},
     processTable: (ms) =>
@@ -143,7 +143,7 @@ it('single-flight sampling owes one reread and retains a vanished launcher witho
   const strangersChild = { pid: 4814, ppid: 4812, created: born + 40_000_000n }
   let release!: (value: TableReading) => void
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -158,10 +158,10 @@ it('single-flight sampling owes one reread and retains a vanished launcher witho
   item()
   item()
   item()
-  expect(read).toHaveBeenCalledExactlyOnceWith(15_000)
+  expect(read).toHaveBeenCalledExactlyOnceWith(null)
   release(reading([launcher], born + 10_000_000n))
   await flush()
-  expect(read.mock.calls).toEqual([[15_000], [15_000]])
+  expect(read.mock.calls).toEqual([[null], [null]])
   running.add(descendant.pid)
   let quiet = false
   void value.quiesced.then(() => {
@@ -179,7 +179,7 @@ it('single-flight sampling owes one reread and retains a vanished launcher witho
 
 it('a rejected and then unavailable sample releases single-flight state and leaves responses usable', async () => {
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockRejectedValueOnce(new Error('fictional sampling failure'))
     .mockResolvedValueOnce(null)
     .mockResolvedValue(reading([]))
@@ -194,7 +194,7 @@ it('a rejected and then unavailable sample releases single-flight state and leav
   ).not.toThrow()
   frame({ id: 1, result: { recovered: true } })
   await expect(response).resolves.toEqual({ recovered: true })
-  expect(read.mock.calls).toEqual([[15_000], [15_000]])
+  expect(read.mock.calls).toEqual([[null], [null]])
   await closed(value)
   await value.quiesced
   expect(ender.stdin.end).toHaveBeenCalledExactlyOnceWith()
@@ -210,7 +210,7 @@ it('retains at most 4096 identities and refreshes a known launcher cutoff withou
   const newest = { pid: 20_000, ppid: 4811, created: born + 9000n }
   const laterChild = { pid: 20_001, ppid: rows[1]!.pid, created: born + 25_000_000n }
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockResolvedValueOnce(reading(rows))
     .mockResolvedValueOnce(reading([rows[1]!], born + 30_000_000n))
     .mockResolvedValueOnce(reading([newest], born + 40_000_000n))
@@ -295,7 +295,7 @@ it('a table that never answers reaches the reserve deadline using only previousl
   const row = { pid: 4813, ppid: 4811, created: born + 1000n }
   let finish!: (value: TableReading | null) => void
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockResolvedValueOnce(reading([row]))
     .mockImplementationOnce(
       () =>
@@ -358,7 +358,7 @@ it('a spawn without a PID settles exit and close without starting an ending help
 })
 
 it('observes a late empty Windows tree after a missing stop reading without extending close', async () => {
-  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const read = vi.fn<(ms: number | null) => Promise<TableReading | null>>().mockResolvedValue(null)
   const value = transport(read)
   let quiet = false
   void value.quiesced.then(() => {
@@ -383,7 +383,7 @@ it('observes a late empty Windows tree after a missing stop reading without exte
 it('keeps unknown and live identities held, then ignores a reused PID without killing it', async () => {
   const owned = { pid: 4813, ppid: 4811, created: born + 1000n }
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockImplementation(async () => reading([owned], fileTimeOf(Date.now())))
   running.add(owned.pid)
   outcomes.set(`4813:${owned.created}`, 'failed')
@@ -414,7 +414,7 @@ it('keeps unknown and live identities held, then ignores a reused PID without ki
 it('keeps post-stop table reads single-flight while a slow reading is outstanding', async () => {
   let finish!: (value: TableReading) => void
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockResolvedValueOnce(null)
     .mockImplementation(
       () =>
@@ -430,6 +430,8 @@ it('keeps post-stop table reads single-flight while a slow reading is outstandin
   try {
     await closed(value)
     expect(read).toHaveBeenCalledTimes(2)
+    // 🔴 The late observer's read keeps a written limit: a wedged PowerShell must count as a failure.
+    expect(read.mock.calls[1]).toEqual([60_000])
     await vi.advanceTimersByTimeAsync(30_000)
     expect(read).toHaveBeenCalledTimes(2)
     expect(quiet).toBe(false)
@@ -442,10 +444,28 @@ it('keeps post-stop table reads single-flight while a slow reading is outstandin
   }
 })
 
+it('🔴 releases after persistent failures even when the background sample never finishes', async () => {
+  const read = vi
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
+    .mockImplementationOnce(() => new Promise(() => {}))
+    .mockResolvedValue(null)
+  const value = transport(read)
+  let quiet = false
+  void value.quiesced.then(() => {
+    quiet = true
+  })
+  item()
+  await closed(value)
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(quiet).toBe(false)
+  await vi.advanceTimersByTimeAsync(400_000)
+  expect(quiet).toBe(true)
+})
+
 it('joins a stop reading that outlasted its budget before observing again', async () => {
   let finish!: (value: TableReading | null) => void
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -473,7 +493,7 @@ it('joins a stop reading that outlasted its budget before observing again', asyn
 })
 
 it('releases after bounded table failures only when the exited leader and known PIDs are gone', async () => {
-  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const read = vi.fn<(ms: number | null) => Promise<TableReading | null>>().mockResolvedValue(null)
   const value = transport(read)
   let quiet = false
   void value.quiesced.then(() => {
@@ -495,7 +515,7 @@ it('releases after bounded table failures only when the exited leader and known 
 it('does not release on table failures while a known or reused PID remains alive', async () => {
   const owned = { pid: 4813, ppid: 4811, created: born + 1000n }
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockResolvedValue(reading([owned]))
   const value = transport(read)
   item()
@@ -524,7 +544,7 @@ it('does not release on table failures while a known or reused PID remains alive
 
 it('never treats a successful table with an unknown identity as a table failure deadline', async () => {
   const read = vi
-    .fn<(ms: number) => Promise<TableReading | null>>()
+    .fn<(ms: number | null) => Promise<TableReading | null>>()
     .mockResolvedValueOnce(null)
     .mockImplementation(async () =>
       reading([{ pid: 4813, ppid: 4811, created: 0n }], fileTimeOf(Date.now())),
@@ -543,7 +563,7 @@ it('never treats a successful table with an unknown identity as a table failure 
 })
 
 it.each(['EPERM', 'EIO'])('retains exclusion when a direct PID probe reports %s', async (code) => {
-  const read = vi.fn<(ms: number) => Promise<TableReading | null>>().mockResolvedValue(null)
+  const read = vi.fn<(ms: number | null) => Promise<TableReading | null>>().mockResolvedValue(null)
   const value = transport(read)
   let quiet = false
   void value.quiesced.then(() => {
