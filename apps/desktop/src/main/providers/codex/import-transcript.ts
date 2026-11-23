@@ -26,7 +26,7 @@ import {
  *
  * It emits no lifecycle (the file records what was said, not session transitions), no deltas (only
  * finished messages are written) and no status inference (a rollout that stops is a file that
- * stops; see `session-reader.ts`).
+ * stops; completion comes from the endings Codex sends, `thread/status/changed`).
  */
 
 type Record_ = Record<string, unknown>
