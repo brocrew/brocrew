@@ -1,11 +1,6 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { afterEach, expect, it, vi } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
 import { ProfilePastWorkSearch, searchPastWork } from '../src/main/db/past-work-search'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -15,7 +10,6 @@ import {
   pastWorkSearchQuery,
   pastWorkSearchResult,
   pastWorkStart,
-  type PastWorkHit,
   type PastWorkSource,
 } from '../src/shared/past-work-search'
 import { WORK_SEARCH_BOUNDS } from '../src/shared/work-search'
@@ -29,42 +23,7 @@ import type { WorkSearchPage } from '../src/shared/work-search'
 import { FakeRuntime } from '@brobot2/runtime'
 import { archivedInMemory } from '../src/main/archived-file'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-
-const cleanups: (() => void | Promise<void>)[] = []
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
-})
-
-function world() {
-  const directory = mkdtempSync(join(tmpdir(), 'fictional-past-work-'))
-  const file = join(directory, 'records.sqlite')
-  const db = openDatabase(file)
-  applyMigrations(db, join(import.meta.dirname, '../src/main/db/migrations'))
-  const store = createSessionStore(db, () => 1_800_000_000_000)
-  const ordinals = new Map<string, number>()
-  cleanups.push(() => {
-    store.closePastWorkSearch()
-    db.close()
-    rmSync(directory, { recursive: true, force: true })
-  })
-  const create = (id: string, profileId = 'fictional-reader') => {
-    store.create({ id, provider: 'codex', profileId, cwd: directory, approvalMode: 'ask' })
-    ordinals.set(id, 0)
-    return store.rootOf(id)!
-  }
-  const append = (id: string, event: TranscriptEvent, at?: number) => {
-    const ordinal = ordinals.get(id) ?? 0
-    store.append(id, ordinal, event, at ?? 1_800_000_000_000 + ordinal)
-    ordinals.set(id, ordinal + 1)
-  }
-  const find = (caller: string, words: string, profile?: string): readonly PastWorkHit[] => {
-    const result = store.searchPastWork(caller, words, profile)
-    expect(result.ok, JSON.stringify(result)).toBe(true)
-    if (!result.ok) throw new Error('fictional search failed')
-    return result.hits
-  }
-  return { db, directory, file, store, create, append, find }
-}
+import { cleanups, world } from './profile-past-work-search-fixtures'
 
 it('requires all words to occur in one message in both search modes', () => {
   const w = world()
@@ -226,9 +185,13 @@ it('resumes transcript-only results after a full hit page and binds the cursor t
   const at = Date.parse('2027-01-15T12:00:00.000Z')
   w.create(caller)
   const targets = Array.from({ length: 7 }, (_, index) => `transcript-hit-${index}`)
-  for (const target of targets) {
+  for (const [index, target] of targets.entries()) {
     w.create(target)
-    w.append(target, { type: 'user_turn', text: 'violetwing sample text' }, at)
+    w.append(
+      target,
+      { type: 'user_turn', text: `violetwing sample ${target}` },
+      at + index * 86_400_000,
+    )
   }
   const first = w.store.searchPastWork(caller, 'violetwing', undefined, undefined, dateRange)
   expect(first).toMatchObject({ ok: true, complete: false })
@@ -247,6 +210,22 @@ it('resumes transcript-only results after a full hit page and binds the cursor t
   expect(next).toMatchObject({ ok: true, complete: true, next_cursor: null })
   if (!next.ok) throw new Error('transcript continuation failed')
   expect(next.hits.map((hit) => hit.conversation)).toEqual(targets.slice(5))
+  for (const hit of [...first.hits, ...next.hits]) {
+    const index = targets.indexOf(hit.conversation)
+    const recording = w.db
+      .prepare('SELECT turn_id FROM events WHERE session_id = ? AND ordinal = 0')
+      .get(hit.conversation) as { turn_id: string }
+    expect(hit).toMatchObject({
+      snippet: `[violetwing] sample ${hit.conversation}`,
+      turn: {
+        id: recording.turn_id,
+        at: new Date(at + index * 86_400_000).toISOString(),
+        generation: 0,
+        ordinal: 0,
+      },
+    })
+    expect(recording.turn_id).toEqual(expect.any(String))
+  }
 })
 
 it('finds words only in person messages and agent replies, with bounded metadata and links', () => {

@@ -528,12 +528,13 @@ export class ProfilePastWorkSearch {
         })
         if (transcript === undefined && hits.length === 5) break
       }
+      // FTS5 can ignore rowid equality with MATCH; equal bounds keep the excerpt on its row.
       const snippetFor = indexDb.prepare(
         `SELECT snippet(documents, 3, '[', ']', ' … ', 24) AS snippet
-         FROM documents WHERE documents MATCH ? AND rowid = ?`,
+         FROM documents WHERE documents MATCH ? AND rowid >= ? AND rowid <= ?`,
       )
       const withExcerpts = hits.map(({ rowid, ...hit }) => {
-        const excerpt = snippetFor.get(match, rowid) as { snippet: string }
+        const excerpt = snippetFor.get(match, rowid, rowid) as { snippet: string }
         return { ...hit, snippet: excerpt.snippet.slice(0, 320) }
       })
       const previewCounts =
