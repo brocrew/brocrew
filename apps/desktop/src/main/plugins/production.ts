@@ -1,3 +1,4 @@
+import { observePluginStartup } from './state/observe-startup'
 import {
   pluginStartupTrace,
   PluginStartupError,
@@ -588,12 +589,16 @@ export function productionPluginController() {
               },
             )
             if (!existing) return false
-            const saved = observeInstallations()
+            const saved = await observePluginStartup({
+              root: join(options.root, 'state'),
+              workspaceRoots: [options.workspaceRoot],
+            })
             if (saved && saved.installed.length === 0 && saved.pending === null) return false
           }
           phase = 'storage'
           const personKey = await pluginPersonCapability(options.root)
           storage.check()
+          if (ended) return false
           phase = 'service-start'
           const launch = createPluginSupervisorLauncher({
             root: options.root,

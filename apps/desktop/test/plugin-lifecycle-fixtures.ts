@@ -14,6 +14,7 @@ import {
   encodeState,
   installationProjection,
   type JournalRecord,
+  type ProjectionReceipt,
 } from '../src/main/plugins/state/format'
 import { foldRecord, type LifecycleState } from '../src/main/plugins/state/machine'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
@@ -170,13 +171,13 @@ export function appendProjectionHistory(
   head: LifecycleState,
   workspaceId: string,
   history: number,
-) {
-  const receipt = installationProjection(
+  receipt: ProjectionReceipt | null = installationProjection(
     head.rootId,
     head.epoch,
     workspaceId,
     head.admitted.get('chrome')!,
-  )
+  ),
+) {
   for (let i = 0; i < history; i++) {
     const record: JournalRecord = {
       sequence: head.sequence + 1,

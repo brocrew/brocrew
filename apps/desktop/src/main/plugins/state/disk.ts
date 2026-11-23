@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { isMainThread } from 'node:worker_threads'
 import { PluginFence } from './fence'
+import { journalEntries, stageName, recordName } from './journal'
 import {
   closeSync,
   constants,
@@ -65,10 +66,6 @@ interface Counterpart {
 }
 const same = (left: BigIntStats, right: BigIntStats) =>
   left.dev === right.dev && left.ino === right.ino
-const stageName = /^\.stage-[0-9a-f-]{36}$/
-const recordName = /^\d{8}\.json$/
-const sealName = /^\d{8}-[a-f0-9]{64}\.seal$/
-
 /** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
 class PluginJournalReader {
   readonly #pins: Pin[] = []
@@ -292,25 +289,7 @@ class PluginJournalReader {
   protected loadLocked(keptActivations?: Set<string>, repair = false): LifecycleState {
     try {
       this.check()
-      const names = readdirSync(this.guard)
-      if (
-        names.length > STATE_LIMITS.records * 2 ||
-        names.some(
-          (name) => !recordName.test(name) && !stageName.test(name) && !sealName.test(name),
-        )
-      )
-        refuseState('corrupt')
-      const records = names.filter((name) => recordName.test(name)).sort()
-      if (records.length === 0) refuseState('missing-guard')
-      if (records.length > STATE_LIMITS.records) refuseState('limit')
-      const recordNames = new Set(records)
-      const seals = new Map<string, string>()
-      // Even a missing final record must not rewind the last denying lifecycle floor.
-      for (const name of names.filter((name) => sealName.test(name))) {
-        const sequence = name.slice(0, 8)
-        if (seals.has(sequence) || !recordNames.has(`${sequence}.json`)) refuseState('corrupt')
-        seals.set(sequence, name)
-      }
+      const { records, seals } = journalEntries(readdirSync(this.guard))
       const state = newLifecycle()
       let total = 0
       records.forEach((name, index) => {
