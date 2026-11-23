@@ -5137,6 +5137,8 @@ export class RuntimeHost implements LiveHost {
     this.workReads = new WorkReads({
       currentStore: () => this.deps.store,
       idsForTurnRead: (id) => this.theIdsItStandsFor(id),
+      isPersonsConversation: (id) =>
+        this.theParentInItsPlace(id) === null && !this.itIsAService(id),
       waitForTurnRead: (unread, ledger, workOut) =>
         this.oneWaitReadPerAnswer(unread, ledger, workOut),
       queueForTurnRead: (row, bounded) => this.withItsPlaceInTheQueue(row, bounded),
@@ -22178,6 +22180,7 @@ export class RuntimeHost implements LiveHost {
       waiting: this.whoWaitsOnItAtHand(session),
       extra: {
         ...changed.extra,
+        openHeldCount: facts.openHeldCount,
         conversation: this.nameByItsWork(session.id),
         currentContext: this.contextSizeOf(session.id)?.percentUsed ?? null,
         contextOf: (id) => this.contextSizeOf(id)?.percentUsed ?? null,
@@ -22209,6 +22212,7 @@ export class RuntimeHost implements LiveHost {
     readonly nobodyWaiting: boolean
     readonly replyQuestionTurn: string | null
     readonly current: CurrentWorkInTheTurn
+    readonly openHeldCount: number
   } {
     return this.workReads.factsForTheTurnBlock(session.id, currentPiece)
   }

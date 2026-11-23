@@ -2,6 +2,8 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { latch } from './helpers/held-operation'
+import { whatThisAppAdded } from './lib/what-this-app-adds'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
@@ -29,6 +31,35 @@ describe('personal work joins existing queues and preserves its recorded ownersh
     agentToolsFor(host, id)
       .tools.find((tool) => tool.name === name)!
       .call(args)
+
+  it('counts a person conversation’s open held pieces in its next turn', async () => {
+    const { sessionId: caller } = await host.createSession(
+      { provider: 'claude', profileId: 'caller', cwd: world.folder, approvalMode: 'auto' },
+      world.window,
+    )
+    const root = world.store.rootOf(caller)!
+    const hold = latch()
+    world.turnsWait = hold.promise
+    const block = () => whatThisAppAdded(world.sent.at(-1)?.words ?? '')
+    try {
+      await host.send(caller, 'Please record these requests.', world.window)
+      expect(block()).toContain(`Your current work: task ${root.label}`)
+      expect(block()).not.toContain('list_tasks')
+
+      for (let index = 1; index <= 6; index++) {
+        const taken = await call(caller, 'take_on_work', { ...request, title: `Request ${index}` })
+        expect(taken.structured).toMatchObject({ outcome: 'ok', under: root.label })
+      }
+      hold.open()
+      await vi.waitFor(() => expect(world.handles.at(-1)?.handle.status()).toBe('idle'))
+      await host.send(caller, 'What work is still open?', world.window)
+      expect(block()).toContain(`Your current work: task ${root.label}`)
+      expect(block()).toContain('You hold 6 open tasks. list_tasks shows them.')
+    } finally {
+      hold.open()
+    }
+  })
+
   const anEndedAssignment = async () => {
     const caller = await world.aPersonOpens(host, 'caller')
     const given = await world.gives(host, caller, 'worker')

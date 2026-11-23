@@ -36,6 +36,10 @@ export const TURN_BLOCK_WORDS = {
   currentNone: 'Your current work: none.',
   currentAmbiguous: (labels: readonly string[], more: number): string =>
     `You hold ${String(labels.length + more)} tasks: ${labels.join(', ')}${more > 0 ? ` and ${String(more)} more` : ''}. list_tasks shows them.`,
+  openHeld: (count: number): string =>
+    count === 1
+      ? 'You hold 1 open task. list_tasks shows it.'
+      : `You hold ${String(count)} open tasks. list_tasks shows them.`,
   helpersHeading: 'Work you gave, still open:',
   waitingOnThePerson: 'waiting on the person',
   currentUnavailable: 'Your current work is not available. list_tasks shows what you hold.',
@@ -91,6 +95,7 @@ export interface ExtraTurnFacts {
   readonly nobodyWaiting?: boolean
   readonly replyQuestion?: boolean
   readonly currentWork?: CurrentWorkInTheTurn
+  readonly openHeldCount?: number
 }
 
 function oneLine(text: string, limit: number): string {
@@ -165,6 +170,8 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
             : TURN_BLOCK_WORDS.currentUnavailable,
       )
   }
+  const count = facts.openHeldCount ?? 0
+  if (count > 0) lines.push(TURN_BLOCK_WORDS.openHeld(count))
   const context = facts.currentContext ?? null
   if (context !== null) lines.push(`Your context: ${String(context)}% used.`)
   return lines

@@ -54,6 +54,7 @@ interface WorkReadSources {
     | 'workById'
   >
   readonly idsForTurnRead: (id: string) => readonly string[]
+  readonly isPersonsConversation: (id: string) => boolean
   readonly waitForTurnRead: (
     unread: RowsUnread,
     ledger: (id: string) => ItsLedger,
@@ -396,6 +397,7 @@ export class WorkReads {
     readonly nobodyWaiting: boolean
     readonly replyQuestionTurn: string | null
     readonly current: CurrentWorkInTheTurn
+    readonly openHeldCount: number
   } {
     const unread = rowsUnreadOnce()
     const owners = new Set<string>([conversation])
@@ -499,6 +501,7 @@ export class WorkReads {
     let personWait: string | null = null
     let nobodyWaiting = false
     let replyQuestionTurn: string | null = null
+    let openHeldCount = 0
     try {
       if (this.sources.currentStore().turnBlockCandidates(conversation, 0) === null)
         throw new Error('turn has no ledger')
@@ -514,11 +517,15 @@ export class WorkReads {
           }
       }
       const mine = pieces(conversation)
+      const open = mine.filter((row) => TASK_IS_OPEN[row.state])
       if (
-        root === null ||
-        mine.some((row) => row.piece === currentPiece && TASK_IS_OPEN[row.state])
-      ) {
-        const open = mine.filter((row) => TASK_IS_OPEN[row.state])
+        root !== null &&
+        open.length > 0 &&
+        !unreadOwners.has(conversation) &&
+        this.sources.isPersonsConversation(conversation)
+      )
+        openHeldCount = open.length
+      if (root === null || open.some((row) => row.piece === currentPiece)) {
         const selected =
           open.find((row) => row.piece === currentPiece) ??
           (open.length === 1 ? open[0] : undefined)
@@ -654,6 +661,7 @@ export class WorkReads {
         nobodyWaiting,
         replyQuestionTurn,
         current,
+        openHeldCount,
       }
     } catch (error) {
       console.warn(`turn block facts unavailable for ${conversation}: ${errorMessage(error)}`)
@@ -665,6 +673,7 @@ export class WorkReads {
         nobodyWaiting,
         replyQuestionTurn,
         current,
+        openHeldCount,
       }
     }
   }
