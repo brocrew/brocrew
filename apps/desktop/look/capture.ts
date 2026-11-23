@@ -1,3 +1,6 @@
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
+import { providerCatalogue } from '../src/renderer/src/client-provider/catalogue'
+import { desktopProviderApi } from '../src/renderer/src/client-provider/window'
 import { it } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -73,6 +76,12 @@ export function scene(name: string, build: (stage: LookStage) => unknown): void 
     document.body.style.margin = '0'
     // ⚑ The icons the window draws come from one sprite, mounted once off-picture.
     mount(IconSprite, {}, { width: 1, height: 1 }).host.style.position = 'absolute'
+    // ⚑ Provider names come from the Client API's catalogue, which scenes don't each fake: read it
+    // once here, so every scene names providers the way the window does.
+    const api = (window as { api?: unknown }).api
+    window.api = { runtime: { providerCatalogue: async () => PROVIDER_DESCRIPTORS } } as never
+    await providerCatalogue(desktopProviderApi).read()
+    ;(window as { api?: unknown }).api = api
     await build({
       width,
       height,

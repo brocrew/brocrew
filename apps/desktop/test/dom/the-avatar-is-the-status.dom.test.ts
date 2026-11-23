@@ -559,15 +559,16 @@ describe('§4 · one conversation, as the shelf draws it', () => {
     await press(theirs(card, 'ada'))
 
     // ⚑ **D-016 · the row says the one state in the rail's own words** (`agentStateWords`).
+    // The row's status line draws its parts in order: the state, then the folder and what it says.
+    // Neither row here has a folder, so the parts are the state and, where there is one, the phrase.
+    const parts = (row: HTMLElement): HTMLElement[] => [
+      ...row.querySelectorAll<HTMLElement>('.rail-brobot-standing > span'),
+    ]
     const recording = q(card, 'team-conversation-sess_old')
-    expect(recording.querySelector('.team-now')!.textContent?.trim()).toBe(
-      agentStateWords({ is: 'idle' }),
-    )
-    assertDrawn(recording.querySelector<HTMLElement>('.team-now')!, 'the state', m.host)
-    expect(
-      recording.querySelector('.shelf-where'),
-      'the row nothing runs says a second phrase',
-    ).toBeNull()
+    const [recordingState, ...recordingRest] = parts(recording)
+    expect(recordingState!.textContent?.trim()).toBe(agentStateWords({ is: 'idle' }))
+    assertDrawn(recordingState!, 'the state', m.host)
+    expect(recordingRest, 'the row nothing runs says a second phrase').toEqual([])
     expect(recording.textContent, 'a process word is back on the row').not.toMatch(
       /ended|not running|not open in any window/i,
     )
@@ -575,11 +576,11 @@ describe('§4 · one conversation, as the shelf draws it', () => {
     // 🔴 **The other half, same mount** — and it is also the control that proves the search above
     // is a search: the same shape DOES find the phrase where the phrase belongs.
     const live = q(card, 'team-conversation-sess_live')
-    expect(live.querySelector('.shelf-where')!.textContent?.trim()).toBe(OPEN_IN_ANOTHER_WINDOW)
-    expect(live.querySelector('.team-now')!.textContent?.trim()).toBe(
-      agentStateWords({ is: 'active' }),
-    )
-    assertDrawn(live.querySelector<HTMLElement>('.shelf-where')!, 'where the live row is', m.host)
+    const [liveState, where, ...liveRest] = parts(live)
+    expect(where!.textContent?.trim()).toBe(OPEN_IN_ANOTHER_WINDOW)
+    expect(liveRest).toEqual([])
+    expect(liveState!.textContent?.trim()).toBe(agentStateWords({ is: 'active' }))
+    assertDrawn(where!, 'where the live row is', m.host)
   })
 
   /**

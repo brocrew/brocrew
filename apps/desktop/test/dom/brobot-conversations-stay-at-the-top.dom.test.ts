@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS, providerDescriptor } from '@brobot2/shared'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import CREW_NIGHT from '../../resources/themes/crew-night/theme.json'
@@ -65,6 +66,7 @@ async function draw(
         : roster
   vi.stubGlobal('api', {
     runtime: {
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
       listConversations: async () => ({
         resumable: rows,
         unresumable: [],
@@ -199,7 +201,7 @@ it('renders the restored group with seven BroBots and many newer helpers', async
     expect(style.whiteSpace).toBe('nowrap')
     expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(49)
     expect(row.getAttribute('aria-describedby')).toBe(`rail-state-person-${number}`)
-    expect(row.querySelector(`#rail-state-person-${number}`)?.textContent).toContain('claude')
+    expect(row.querySelector(`#rail-state-person-${number}`)?.textContent).toContain('Claude')
   }
   await drawnReady()
   if (import.meta.env.VITE_RAIL_RESTORE_CAPTURE)
@@ -265,10 +267,29 @@ it('uses an authored conversation title before its root title', async () => {
   expect(m.q('rail-brobot-title-person-4').title).toBe('W4 · Saved conversation name')
 })
 
-function visiblePrefix(line: HTMLElement, text: string): void {
+/** The first `text.length` characters of the line, across the text nodes they are drawn in. */
+function prefixRange(line: HTMLElement, text: string): Range {
+  expect(line.textContent?.startsWith(text)).toBe(true)
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
-  range.setStart(line.firstChild!, 0)
-  range.setEnd(line.firstChild!, text.length)
+  let left = text.length
+  let first = true
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (first) {
+      range.setStart(node, 0)
+      first = false
+    }
+    if (node.length >= left) {
+      range.setEnd(node, left)
+      return range
+    }
+    left -= node.length
+  }
+  throw new Error(`the line does not hold "${text}"`)
+}
+
+function visiblePrefix(line: HTMLElement, text: string): void {
+  const range = prefixRange(line, text)
   expect(range.getBoundingClientRect().right).toBeLessThanOrEqual(
     line.getBoundingClientRect().right + 1,
   )
@@ -276,6 +297,7 @@ function visiblePrefix(line: HTMLElement, text: string): void {
 
 for (const provider of ['claude', 'codex'] as const) {
   it(`uses the 0.2.32 inline ${provider} status at the real 158px status width`, async () => {
+    const name = providerDescriptor(provider).displayName
     const row = person(21)
     row.provider = provider
     row.named = { label: 'W21', title: null }
@@ -285,13 +307,18 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(m.q('side-rail').getBoundingClientRect().width).toBe(252)
     expect(card.getBoundingClientRect().width).toBe(216)
     expect(line.getBoundingClientRect().width).toBe(158)
-    expect(line.textContent).toBe(`${provider} · idle · bakery`)
-    expect(line.title).toBe(`${provider} · idle · bakery`)
-    expect(line.children).toHaveLength(0)
+    await expect.poll(() => line.textContent).toBe(`${name} · idle · bakery`)
+    expect(line.title).toBe(`${name} · idle · bakery`)
+    // The status is one run of inline text, so the line's one ellipsis covers all of it.
+    expect([...line.children].map((part) => getComputedStyle(part).display)).toEqual([
+      'inline',
+      'inline',
+      'inline',
+    ])
     expect(card.querySelector('time')).toBeNull()
     expect(getComputedStyle(line).display).toBe('block')
     expect(getComputedStyle(line).textOverflow).toBe('ellipsis')
-    visiblePrefix(line, `${provider} · idle`)
+    visiblePrefix(line, `${name} · idle`)
     expect(card.getBoundingClientRect().height).toBeLessThanOrEqual(49)
   })
 }
@@ -310,8 +337,10 @@ for (const width of [252, 266.2]) {
     m.host.style.width = `${width}px`
     await expect.poll(() => m.all('rail-profile-recipe-1').length).toBe(1)
     const line = m.q('open-session-person-4').querySelector<HTMLElement>('.rail-brobot-standing')!
-    expect(line.textContent).toBe(`claude · waiting on an answer from ${long} · bakery`)
-    visiblePrefix(line, 'claude')
+    await expect
+      .poll(() => line.textContent)
+      .toBe(`Claude · waiting on an answer from ${long} · bakery`)
+    visiblePrefix(line, 'Claude')
     expect(line.title).toContain(long)
     expect(line.scrollWidth).toBeGreaterThan(line.clientWidth)
     const label = m.q('rail-profile-recipe-1')

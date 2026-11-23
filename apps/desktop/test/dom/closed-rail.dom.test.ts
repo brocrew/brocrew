@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { answerTheCatalogue } from './answered-catalogue'
 import { nextTick } from 'vue'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -20,6 +21,8 @@ import {
   type Mounted,
 } from './harness'
 import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../../src/shared/runtime-ipc'
+
+beforeAll(answerTheCatalogue) // Rows name providers as the window's catalogue supplies them.
 
 /**
  * **151 · a closed conversation, shown the way an open one is** — and since D-017b, simply ONE list.
@@ -289,7 +292,7 @@ describe('a row the host lists is made of what a row this window holds is made o
     // 3 · exactly one `<small>` of facts, never a second line. ⚑ **449 kept this**: the folder
     //     moved INTO that one line rather than taking a second one.
     expect(listed.querySelectorAll('small')).toHaveLength(1)
-    expect(listed.querySelector('small')!.textContent).toContain('claude · ')
+    expect(listed.querySelector('small')!.textContent).toContain('Claude · ')
     // ⛔ **And the directory did not go away** — see the label test at the foot of this section.
     expect(listed.querySelector('small')!.textContent).toContain('brobot-2')
 
@@ -342,7 +345,7 @@ describe('a row the host lists is made of what a row this window holds is made o
       const activity = line.querySelector('time')!
       expect(activity.title).toBe(`${activity.textContent} · ${fullTime(entry.updatedAt)}`)
       expect(line.textContent?.trim()).toBe(
-        `claude · ${standing} · ${activity.textContent} · ${place}`,
+        `Claude · ${standing} · ${activity.textContent} · ${place}`,
       )
     }
     expect(row(m, 'sess_child').textContent).not.toMatch(
@@ -383,7 +386,7 @@ describe('a row the host lists is made of what a row this window holds is made o
     expect(only.querySelector('strong')!.textContent).toBe(DEFAULT_PROFILE_LABEL)
     const line = only.querySelector('small')!
     const activity = line.querySelector('time')!
-    expect(line.textContent?.trim()).toBe(`claude · idle · ${activity.textContent}`)
+    expect(line.textContent?.trim()).toBe(`Claude · idle · ${activity.textContent}`)
     // ⛔ **No trailing separator**, which is the shape a naive interpolation would have left.
     expect(line.textContent?.trim().endsWith('·')).toBe(false)
     expect(line.getAttribute('data-place')).toBeNull()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { computed, ref } from 'vue'
 import type {
   AgentIdentity,
@@ -293,9 +294,9 @@ const when = computed(() => fullTime(props.entry.updatedAt))
       </button>
       <div class="what">
         <strong data-cy="reading-title">{{ title }}</strong>
-        <!-- Pass-through, never a lookup: the provider name is a value on the entry, so this view
-             has no opinion about which providers exist (047 AC5). -->
-        <span class="meta mono">{{ props.entry.provider }} · {{ props.entry.cwd }}</span>
+        <span class="meta mono"
+          ><ProviderLabel :provider="props.entry.provider" /> · {{ props.entry.cwd }}</span
+        >
       </div>
       <span class="when">{{ when }}</span>
     </header>

@@ -15,7 +15,7 @@ import { META, drawerProps, mount, unmountAll } from './harness'
  * The right panel displays only the current agent’s card, so there is no default-open chip
  * selection underneath it. A chip opens that agent’s conversation.
  *
- * The Sub agents box places a small plate beside each name with a state dot. `activeNow`
+ * The Sub agents box places a small plate, which says the state, beside each name. `activeNow`
  * independently accepts a recent give, recently ended work, or a currently running
  * conversation. A child’s start time comes from the piece’s `givenAt`; the spawn edge has no
  * independent time. Each fixture pair keeps every other OR-branch false so a regression in
@@ -117,7 +117,7 @@ function show(over: Shown) {
 }
 
 describe('the strip picks the agent that is doing something', () => {
-  it('an agent chip draws its small plate, then its name and the dot of its state (the person’s v3 card)', () => {
+  it('an agent chip draws its small plate, which says its state, then its name (the person’s v3 card)', () => {
     const m = show({
       identities: [identity('worker', 'A very long worker name indeed')],
       read: answer({
@@ -134,16 +134,17 @@ describe('the strip picks the agent that is doing something', () => {
       const name = tile.querySelector<HTMLElement>('[data-cy^="cast-tile-name-"]')
       expect(plate, 'the chip drew no plate').not.toBeNull()
       expect(name, 'the chip drew no name').not.toBeNull()
-      // Measure the row order in pixels: plate, name, then state dot.
-      const dot = tile.querySelector<HTMLElement>('.chip-dot')
-      expect(dot, 'the chip drew no dot').not.toBeNull()
+      // The plate says the state: the chip draws no dot of its own beside the name.
+      expect(tile.querySelector('.chip-dot'), 'the chip drew a dot of its own').toBeNull()
+      expect(
+        tile.querySelector('[data-cy="agent-state"]')?.getAttribute('data-doing'),
+        'the plate says no state',
+      ).toBeTruthy()
+      // Measure the row order in pixels: plate, then name.
       expect(
         plate!.getBoundingClientRect().right,
         'the plate sat above the name, not beside it',
       ).toBeLessThanOrEqual(name!.getBoundingClientRect().left)
-      expect(name!.getBoundingClientRect().right).toBeLessThanOrEqual(
-        dot!.getBoundingClientRect().left,
-      )
     }
   })
 

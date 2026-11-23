@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConversationRow from './ConversationRow.vue'
 import { computed } from 'vue'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
@@ -14,7 +15,7 @@ import {
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { NOT_MEASURED, NOT_RUNNING_NOW, type AgentPanelSubAgent } from '../lib/agent-panel'
-import { priorityDotToken, standingOf, type AgentFacets } from '../lib/agent-state'
+import { standingOf, type AgentFacets } from '../lib/agent-state'
 import {
   inTheirPlace,
   LIST_DOUBT_WORDS,
@@ -22,7 +23,6 @@ import {
   type CastCard,
   type CastReading,
 } from '../lib/working-together'
-import AgentState from './AgentState.vue'
 import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
@@ -355,86 +355,59 @@ function chipWord(card: CastCard): string | undefined {
               @click="canOpen && emit('openConversation', card.conversation)"
             >
               <!-- Show plate, name, state and profile, with a chevron when it can be opened. Separate the run settings below with a line. -->
-              <span class="team-identity">
-                <!-- ⚑ Ida's review: v3's child plates are 40–46px — the rail row's size, not a chip's. -->
-                <AgentState
-                  size="row"
-                  v-bind="asTheRailSays(card.conversation, card.facets).facets"
-                  :label="card.name"
-                />
-                <!-- Show name, profile and state using the rail row's word, matching its plate. Without a rail identity, omit the word as the plate remains unknown. -->
-                <span class="chip-copy">
-                  <span
-                    class="team-top"
-                    :class="{ explained: asTheRailSays(card.conversation, card.facets).detail }"
-                  >
-                    <span
-                      class="chip-name"
-                      :title="card.name"
-                      :data-cy="`cast-tile-name-${card.conversation}`"
-                      >{{ card.name }}</span
-                    >
-                    <!-- ⚑ The dot always, in its plate's colour; the word where the rail names one. -->
-                    <span
-                      class="team-status"
-                      :class="{ explained: asTheRailSays(card.conversation, card.facets).detail }"
-                    >
-                      <span
-                        class="chip-dot"
-                        :style="{
-                          '--_c': `var(${priorityDotToken(asTheRailSays(card.conversation, card.facets).facets)})`,
-                        }"
-                        aria-hidden="true"
-                      ></span>
-                      <span
-                        v-if="chipWord(card)"
-                        class="chip-word"
-                        :title="
-                          asTheRailSays(card.conversation, card.facets).detail ?? chipWord(card)
-                        "
-                        :aria-description="asTheRailSays(card.conversation, card.facets).detail"
-                        :data-cy="`cast-tile-word-${card.conversation}`"
-                        >{{ chipWord(card) }}</span
-                      >
-                    </span>
-                  </span>
-                  <span class="chip-meta">
-                    <!-- What it waits for, under its wait: the piece's status line, cut, whole on
-                         its title. -->
-                    <span
-                      v-if="onPurposeLine(card)"
-                      class="chip-piece"
-                      :title="onPurposeLine(card) ?? undefined"
-                      :data-cy="`cast-tile-on-purpose-${card.conversation}`"
-                      >{{ onPurposeLine(card) }}</span
-                    >
-                    <span
-                      v-if="card.conversation === conversation"
-                      class="chip-owner"
-                      :data-cy="`cast-tile-owner-${card.conversation}`"
-                      >this conversation</span
-                    >
-                    <span
-                      v-for="piece in subtitles(card)"
-                      :key="piece.key"
-                      class="chip-piece"
-                      :data-cy="`cast-tile-piece-${card.conversation}-${piece.key}`"
-                      :title="piece.text"
-                      >{{ piece.text }}</span
-                    >
-                    <span
-                      v-if="card.identity"
-                      class="chip-profile"
-                      :title="card.identity"
-                      :data-cy="`cast-tile-profile-${card.conversation}`"
-                      >{{ card.identity }}</span
-                    >
-                  </span>
-                </span>
-                <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
-                  <use href="#i-chevron" />
-                </svg>
-              </span>
+              <ConversationRow
+                class="team-identity"
+                plate="row"
+                id-prefix="cast"
+                :row="{
+                  id: card.conversation,
+                  facets: asTheRailSays(card.conversation, card.facets).facets,
+                  plateLabel: card.name,
+                  head: 'plain',
+                  title: card.name,
+                  marks:
+                    card.conversation === conversation
+                      ? [
+                          {
+                            key: 'owner',
+                            text: 'this conversation',
+                            cy: `cast-tile-owner-${card.conversation}`,
+                          },
+                        ]
+                      : [],
+                  status: {
+                    profile: card.identity,
+                    word: chipWord(card) || null,
+                    detail: asTheRailSays(card.conversation, card.facets).detail ?? undefined,
+                  },
+                  pieces: [
+                    ...(onPurposeLine(card)
+                      ? [
+                          {
+                            key: 'on-purpose',
+                            text: onPurposeLine(card)!,
+                            cy: `cast-tile-on-purpose-${card.conversation}`,
+                          },
+                        ]
+                      : []),
+                    ...subtitles(card).map((piece) => ({
+                      ...piece,
+                      cy: `cast-tile-piece-${card.conversation}-${piece.key}`,
+                    })),
+                  ],
+                }"
+                :cy="{
+                  title: `cast-tile-name-${card.conversation}`,
+                  word: `cast-tile-word-${card.conversation}`,
+                  profile: `cast-tile-profile-${card.conversation}`,
+                }"
+              >
+                <template #aside>
+                  <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
+                    <use href="#i-chevron" />
+                  </svg>
+                </template>
+              </ConversationRow>
               <!-- ⚑ **W4.183 · v3's telemetry**: model, effort, context, memory, in full — a dash
                    where not reported, with the reason on its title. -->
               <span
@@ -697,39 +670,6 @@ function chipWord(card: CastCard): string | undefined {
   transform: rotate(0deg);
 }
 
-.chip-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-/* The name on its own line, the state under it: a long state never takes the name's room. */
-.team-top {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-1);
-}
-
-.chip-name {
-  overflow: hidden;
-  min-width: 0;
-  font-weight: var(--fw-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.team-status {
-  display: inline-flex;
-  max-width: 100%;
-  min-width: 0;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-1);
-}
-
 /* ⚑ The dot before its state — its plate's own priority colour, as the card's header draws it. */
 .chip-dot {
   width: 5px;
@@ -737,43 +677,6 @@ function chipWord(card: CastCard): string | undefined {
   flex: none;
   border-radius: 50%;
   background: var(--_c);
-}
-
-/* ⚑ **The state word, on two lines at most** — the part that tells one wait from another is its
-   end (*waiting on an answer from BroBot*, *scheduled · 21:10*); the whole of it is its title. */
-.chip-word {
-  display: -webkit-box;
-  overflow: hidden;
-  min-width: 0;
-  color: var(--text-soft);
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.chip-meta {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.chip-piece {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chip-owner {
-  margin-bottom: var(--space-1);
-}
-
-.chip-profile {
-  overflow: hidden;
-  min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ⚑ W4.183 · v3's telemetry: model and effort, then context and memory, in full, under a line. */
@@ -990,37 +893,5 @@ function chipWord(card: CastCard): string | undefined {
 .cast-toggle[aria-pressed='true'] {
   color: var(--accent-text);
   background: var(--panel);
-}
-.agent-chip[data-worker] .team-top {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  column-gap: var(--space-2);
-}
-.agent-chip[data-worker] .chip-name {
-  flex: none;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.agent-chip[data-worker] .team-status {
-  flex: 0 1 auto;
-  max-width: 100%;
-  white-space: normal;
-}
-.agent-chip[data-worker] .chip-word {
-  white-space: normal;
-}
-
-.agent-chip .team-top:not(:has(.chip-word)) {
-  flex-flow: row nowrap;
-  align-items: baseline;
-}
-.agent-chip .team-top:not(:has(.chip-word)) .chip-name {
-  flex: 1;
-}
-.agent-chip .team-top:not(:has(.chip-word)) .team-status {
-  flex: none;
 }
 </style>

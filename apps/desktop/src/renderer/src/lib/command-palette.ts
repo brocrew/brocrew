@@ -2,6 +2,8 @@ import type { ConversationSearchHit } from '../../../shared/work-search'
 import { providerName, type Provider, type ProviderCommandSet } from '../../../shared/runtime-ipc'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import { conversationTitle } from './conversation-list'
+import type { AgentFacets } from './agent-state'
+import type { ConversationRowView } from './conversation-row'
 
 /**
  * **What ⌘K can actually do, and what it looked at to answer** (249).
@@ -165,6 +167,8 @@ export interface PaletteCommand {
    */
   readonly detail: string | null
   readonly recorded?: ConversationSearchHit['metadata']
+  /** A conversation, which the palette draws with the shared conversation row. */
+  readonly row?: ConversationRowView
   readonly group: PaletteGroup
   /**
    * Words a search should match that are NOT on screen — a session id, a provider name.
@@ -223,6 +227,8 @@ export interface PaletteOpenRow {
   readonly word: string
   /** `record.opening`, ≤120 chars, or `null` for a conversation whose beginning this window never saw. */
   readonly opening: string | null
+  /** The rail row's plate, when the rail has one. */
+  readonly facets?: AgentFacets
 }
 
 export interface PaletteInput {
@@ -241,6 +247,8 @@ export interface PaletteInput {
    * whose provider never answered, which are not the same news.
    */
   readonly agent: PaletteAgent | null
+  /** How the window says a provider's name; the palette never prints a provider's id. */
+  readonly providerName?: (provider: Provider) => string
 }
 
 /**
@@ -298,7 +306,11 @@ export function buildCommands(input: PaletteInput): PaletteCommand[] {
     // line to prefer — the row's `<small>` reads the same way.
     const facts =
       row.opening ??
-      [row.provider ?? 'unknown', row.word, row.place]
+      [
+        row.provider ? (input.providerName?.(row.provider as Provider) ?? null) : null,
+        row.word,
+        row.place,
+      ]
         .filter((part) => part !== null && part !== '')
         .join(' · ')
     commands.push({
@@ -322,6 +334,19 @@ export function buildCommands(input: PaletteInput): PaletteCommand[] {
         'open',
       ],
       action: { kind: 'select', sessionId: id },
+      row: {
+        id,
+        facets: row.facets ?? null,
+        plateLabel: row.label,
+        head: 'plain',
+        title: conversationTitle(row.label, row.named),
+        status: {
+          profile: row.named === null ? null : row.label,
+          provider: row.provider as Provider | null,
+          word: row.word,
+          place: row.opening ?? row.place,
+        },
+      },
     })
   }
 

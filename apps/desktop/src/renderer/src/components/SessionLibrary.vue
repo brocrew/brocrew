@@ -150,6 +150,7 @@ export function recencyOf(at: number, now: number): Recency {
 </script>
 
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type {
   AgentIdentity,
@@ -1089,7 +1090,7 @@ function ago(at: number, now: number = Date.now()): string {
             <summary>{{ page.skippedTotal }} could not be read</summary>
             <ul>
               <li v-for="item in page.skipped" :key="item.path" class="mono">
-                {{ item.provider }} · {{ item.path }} — {{ item.reason }}
+                <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason }}
               </li>
             </ul>
             <p v-if="page.skippedTotal > page.skipped.length" class="more mono">
@@ -1181,7 +1182,7 @@ function ago(at: number, now: number = Date.now()): string {
             </summary>
             <ul>
               <li v-for="item in homeScan.lastScan.value.skipped" :key="item.path" class="mono">
-                {{ item.provider }} · {{ item.path }} — {{ item.reason }}
+                <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason }}
               </li>
             </ul>
           </details>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { onMounted, ref, shallowRef, useId, watch } from 'vue'
 import { useClientApi } from '../client-provider/injection'
 import type { KeptRules, Provider } from '../../../shared/runtime-ipc'
-import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { grantRulesSaid } from '../lib/permission-offer'
 import { readableError } from '../lib/session-record'
 import { usePersistentToggle } from '../composables/usePersistentToggle'
@@ -14,7 +14,6 @@ import { usePersistentToggle } from '../composables/usePersistentToggle'
  */
 const props = defineProps<{
   providers: readonly Provider[]
-  names?: Readonly<Partial<Record<Provider, string>>>
 }>()
 
 const client = useClientApi()
@@ -109,7 +108,7 @@ watch(failures, () => (open.value = true))
         data-cy="kept-rules-provider"
         :data-provider="provider"
       >
-        <h3>{{ props.names?.[provider] ?? PROVIDER_NAME[provider] ?? provider }}</h3>
+        <h3><ProviderLabel :provider="provider" /></h3>
         <p
           v-if="kept !== null && (kept[provider]?.length ?? 0) === 0"
           class="none"

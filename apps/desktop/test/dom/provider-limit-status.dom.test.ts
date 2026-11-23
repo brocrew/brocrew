@@ -1,7 +1,8 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
 import { type RailSays, screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
@@ -24,6 +25,7 @@ import { BODY_WAS_CUT } from '../../src/renderer/src/lib/outgoing-card'
 import { assertDrawn, drawnReady, lineCount } from './drawn'
 import { EXCHANGE_AT, questionFixture } from './agent-card-facts.fixture'
 import { META, mount, paneProps, permission, record, unmountAll, visible } from './harness'
+import { answerTheCatalogue } from './answered-catalogue'
 
 const NOW = Date.now()
 const CURRENT = {
@@ -60,6 +62,8 @@ function pane(events: TranscriptEvent[] = [], over = {}, at?: number) {
 function liveness(over: Partial<SessionLiveness>): SessionLiveness {
   return { state: 'ended', since: NOW, ...over }
 }
+
+beforeAll(answerTheCatalogue)
 
 describe('Current provider stop in the real conversation header and panel', () => {
   it.each(['claude', 'codex'] as const)(
@@ -671,9 +675,13 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       await drawnReady()
       const chip = m.host.querySelector<HTMLElement>('[data-conversation="menu-child"]')!
       const word = () => m.q('cast-tile-word-menu-child')
+      // The chip's state line carries the explanation the way the rail's does: in full on its
+      // accessible description, and after the profile on its hover.
+      const line = () => m.host.querySelector<HTMLElement>('#cast-state-menu-child')!
       expect(read(word())).toBe(`${providerWord} limit`)
-      expect(word().title).toBe(detail)
-      const name = chip.querySelector<HTMLElement>('.chip-name')!
+      expect(line().getAttribute('aria-description')).toBe(detail)
+      expect(line().title).toBe(`worker · ${detail}`)
+      const name = m.q('cast-tile-name-menu-child')
       const profile = m.q('cast-tile-profile-menu-child')
       expect(read(profile)).toBe('worker')
       expect(visible(profile)).toBe(true)
@@ -704,7 +712,8 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       expect(read(profile)).toBe('worker')
       expect(visible(profile)).toBe(true)
       assertDrawn(profile, 'the retained child profile', m.host)
-      expect(word().title).not.toContain('Stopped')
+      expect(line().title).not.toContain('Stopped')
+      expect(line().getAttribute('aria-description')).not.toContain('Stopped')
       screenFacts().update({ railSays: rail('idle') })
       await nextTick()
       expect(read(word())).toBe('idle')
@@ -727,7 +736,11 @@ describe('An open rail record follows the latest folded channel fact', () => {
     const authority = createProviderBlockStore()
     authority.accept(one.sessionId, CURRENT)
     ;(window as { api?: unknown }).api = {
-      runtime: { listResumable: async () => [], listUnresumable: async () => [] },
+      runtime: {
+        listResumable: async () => [],
+        listUnresumable: async () => [],
+        providerCatalogue: async () => PROVIDER_DESCRIPTORS,
+      },
     }
     const m = mount(
       SideRail,
@@ -745,7 +758,7 @@ describe('An open rail record follows the latest folded channel fact', () => {
     const state = () => m.host.querySelector<HTMLElement>(`#rail-state-${one.sessionId}`)!
     const stateWord = (word: string) =>
       expect(read(state())).toBe(
-        ['claude', word, state().dataset.place].filter(Boolean).join(' · '),
+        ['Claude', word, state().dataset.place].filter(Boolean).join(' · '),
       )
     // The runtime screen gives the same state push to the rail and the held record.
     const statePush = async (facts: Partial<AgentStateMoved>) => {

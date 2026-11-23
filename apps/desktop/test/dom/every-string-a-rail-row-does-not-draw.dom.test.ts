@@ -1,6 +1,7 @@
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { AGENT_DISPLAY_NAME_CHARS } from '../../src/shared/runtime-ipc'
 import {
@@ -119,6 +120,7 @@ async function rail(width: number, displayName: string | null = null): Promise<M
     runtime: {
       listResumable: () => Promise.resolve(RECORDED),
       listUnresumable: () => Promise.resolve([]),
+      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
     },
   }
   const agents = {
@@ -195,17 +197,18 @@ const SHORTENED_ON_PURPOSE: readonly Cut[] = [
   },
   {
     cy: 'rail-place-sess_long',
-    starts: '· a-very-long-directory-name-that-will-not-fit',
+    // The tail with its separator, and the folder in its own part inside it.
+    starts: /^(· )?a-very-long-directory-name-that-will-not-fit$/,
     because: 'The long folder cannot expand the status line; the full text remains on hover.',
   },
   {
     cy: 'rail-place-sess_openable',
-    starts: '·',
+    starts: /^(· open in another window · brobot-2|open in another window|brobot-2)$/,
     because: 'The other-window notice and folder retain their full text on the standing hover.',
   },
   {
     cy: 'rail-place-sess_named',
-    starts: '· brobot-2',
+    starts: /^(· )?brobot-2$/,
     because: 'The shortened folder remains on the standing hover.',
   },
 ]

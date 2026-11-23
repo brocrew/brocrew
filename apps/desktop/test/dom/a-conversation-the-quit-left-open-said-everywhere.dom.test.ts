@@ -190,11 +190,16 @@ describe('§2 · the Team shelf’s row', () => {
     const { m, card, raised } = await shelf(listed({ sessionId: 'sess_stopped' }))
     const row = card.querySelector<HTMLElement>('[data-cy="team-conversation-sess_stopped"]')
     expect(row, 'the shelf drew no row').not.toBeNull()
-    const now = row!.querySelector<HTMLElement>('.team-now')
-    expect(now, 'the shelf drew no standing').not.toBeNull()
+    // The row's status line: its standing first, then where it is only when it is elsewhere.
+    const line = row!.querySelector<HTMLElement>('small.rail-brobot-standing')
+    expect(line, 'the shelf drew no status line').not.toBeNull()
+    const parts = [...line!.querySelectorAll<HTMLElement>(':scope > span')]
+    const now = parts[0]
+    expect(now, 'the shelf drew no standing').toBeDefined()
+    expect(text(now)).not.toBe('')
     expect(text(now)).not.toMatch(GONE)
     // ⚑ `593`'s rule, D-017b's reach: one phrase per fact — and nothing here is elsewhere.
-    expect(row!.querySelector('.shelf-where')).toBeNull()
+    expect(parts.map(text)).toEqual([text(now)])
     expect(text(row)).not.toMatch(GONE)
     const press = m.q('team-conversation-go-sess_stopped')
     expect(text(press)).toBe(OPEN_THE_CONVERSATION)
@@ -209,8 +214,12 @@ describe('§2 · the Team shelf’s row', () => {
     )
     const row = card.querySelector<HTMLElement>('[data-cy="team-conversation-sess_there"]')
     expect(row, 'the shelf drew no row').not.toBeNull()
-    const where = row!.querySelector<HTMLElement>('.shelf-where')
-    expect(where, 'where it is is not drawn').not.toBeNull()
+    const line = row!.querySelector<HTMLElement>('small.rail-brobot-standing')
+    expect(line, 'the shelf drew no status line').not.toBeNull()
+    const where = [...line!.querySelectorAll<HTMLElement>(':scope > span')].find(
+      (part) => text(part) === OPEN_IN_ANOTHER_WINDOW,
+    )
+    expect(where, 'where it is is not drawn').toBeDefined()
     expect(text(where)).toBe(OPEN_IN_ANOTHER_WINDOW)
     assertDrawn(where!, 'where the shelf’s row is', m.host)
     m.q('team-conversation-go-sess_there').click()

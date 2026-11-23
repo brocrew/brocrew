@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useClientApi } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
+import { useProviderLabel } from '../composables/useProviderLabel'
+import type { Provider } from '@brobot2/shared'
 import { providerNamesIn } from '../lib/front-door-words'
 import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 
@@ -18,7 +20,7 @@ import {
 } from '../lib/conversation-list'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
 import { RECENT_CONVERSATION_PAGE_SIZE } from '../../../shared/listing-published'
-import { agoWords, fullTime } from '../lib/clock'
+import { agoWords } from '../lib/clock'
 import {
   CONVERSATION_IDENTITY_BATCH_SIZE,
   type ConversationIdentity,
@@ -26,6 +28,7 @@ import {
 } from '../../../shared/conversation-title'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation } from '../lib/command-palette'
+import type { ConversationRowCy, ConversationRowView } from '../lib/conversation-row'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import { liveSignalView } from '../lib/live-signal'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
@@ -37,7 +40,7 @@ import type { RailSays } from '../composables/useWhoCalledWhom'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import type { AppInfo } from '@brobot2/shared'
 import type { SessionRecord } from '../lib/session-record'
-import AgentState from './AgentState.vue'
+import ConversationRow from './ConversationRow.vue'
 import CommandPalette from './CommandPalette.vue'
 import UpdatesMenu from './UpdatesMenu.vue'
 import WorkspacesSection from './WorkspacesSection.vue'
@@ -54,6 +57,7 @@ import { useRailSections, type RailSectionKey } from '../composables/useRailSect
  */
 const client = useClientApi()
 const nameOfProvider = useProviderNames(client)
+const providerLabel = useProviderLabel()
 const props = withDefaults(
   defineProps<{
     /** The conversations this window is fed — `SessionStore.live`. */
@@ -386,7 +390,7 @@ function profileName(row: RailRow): string {
 function statusLine(row: RailRow, detailed = false): string {
   return [
     !row.brobot && row.named ? row.label : null,
-    row.provider,
+    row.provider ? providerLabel(row.provider as Provider) : null,
     detailed ? (row.detail ?? row.word) : row.word,
     !row.brobot && row.activityAt !== undefined ? agoWords(row.activityAt, railMinute.value) : null,
     row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
@@ -394,6 +398,67 @@ function statusLine(row: RailRow, detailed = false): string {
   ]
     .filter(Boolean)
     .join(' · ')
+}
+
+/** What one rail row draws, in the shared row's terms. */
+function railView(row: RailRow): ConversationRowView {
+  const identity = identityOf(row)
+  const worker = !!row.worker
+  const workerTop = worker && !identity
+  return {
+    id: row.sessionId,
+    facets: row.facets,
+    plateLabel: row.label,
+    head: row.brobot ? 'brobot' : workerTop ? 'worker' : 'plain',
+    canonical: !!identity,
+    title: workerTop ? row.label : rowTitle(row),
+    titleHint: workerTop
+      ? [row.label, row.named?.title].filter(Boolean).join(' · ')
+      : rowTitle(row),
+    topWord: workerTop ? workerState(row.word, row.named) : undefined,
+    topWordHint: workerTop ? (row.detail ?? workerState(row.word, row.named)) : undefined,
+    status: {
+      profile: !row.brobot && (identity || (row.named && !worker)) ? profileName(row) : null,
+      provider: row.brobot || !identity ? (row.provider as Provider | null) : null,
+      word:
+        row.word && (row.brobot || !worker || identity)
+          ? worker && !row.brobot
+            ? workerState(row.word, row.named)
+            : row.word
+          : null,
+      detail: row.detail,
+      standing: row.standing,
+      needing: row.facets.needing,
+      activityAt: row.brobot ? undefined : row.activityAt,
+      elsewhere: row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
+      place: row.place,
+      hint: statusLine(row, true),
+    },
+    address: !row.brobot && identity ? identity.address : null,
+    addressProvider: !row.brobot && identity ? (row.provider as Provider | null) : null,
+    namedByYou: !row.brobot && identity?.author?.kind === 'person',
+    pieces:
+      worker && !row.brobot
+        ? workerSubtitles(row.sessionId, row.named, workByHolder.value.get(row.sessionId) ?? [])
+        : [],
+    opening: !row.brobot && !identity ? row.opening : null,
+  }
+}
+
+function railCy(row: RailRow): ConversationRowCy {
+  return {
+    title: row.brobot
+      ? `rail-brobot-title-${row.sessionId}`
+      : row.worker
+        ? `rail-worker-name-${row.sessionId}`
+        : undefined,
+    topWord: `rail-state-word-${row.sessionId}`,
+    word: `rail-state-word-${row.sessionId}`,
+    profile: `rail-profile-${row.sessionId}`,
+    place: `rail-place-${row.sessionId}`,
+    address: `rail-address-${row.sessionId}`,
+    opening: `session-opening-${row.sessionId}`,
+  }
 }
 
 function fold(key: RailSectionKey): void {
@@ -866,139 +931,23 @@ const platform = platformHere()
                 "
                 @click="emit('select', row.sessionId)"
               >
-                <AgentState size="compact" v-bind="row.facets" :label="row.label" />
-                <span
-                  v-if="props.collapsed && row.named"
-                  class="work-label"
-                  aria-hidden="true"
-                  :data-cy="`rail-work-label-${row.sessionId}`"
-                  >{{ row.named.label }}</span
+                <ConversationRow
+                  :row="railView(row)"
+                  :minute="railMinute"
+                  id-prefix="rail"
+                  layout="contents"
+                  :cy="railCy(row)"
                 >
-                <span
-                  class="rail-copy"
-                  :class="{
-                    'rail-worker-top': row.worker && !identityOf(row),
-                    'rail-brobot-copy': row.brobot,
-                  }"
-                >
-                  <strong
-                    :class="{ 'rail-canonical-title': identityOf(row) }"
-                    :data-cy="
-                      row.brobot
-                        ? `rail-brobot-title-${row.sessionId}`
-                        : row.worker
-                          ? `rail-worker-name-${row.sessionId}`
-                          : undefined
-                    "
-                    :title="
-                      row.worker && !identityOf(row)
-                        ? [row.label, row.named?.title].filter(Boolean).join(' · ')
-                        : rowTitle(row)
-                    "
-                    >{{ row.worker && !identityOf(row) ? row.label : rowTitle(row) }}</strong
-                  >
-                  <span
-                    v-if="row.worker && !identityOf(row)"
-                    class="rail-worker-state"
-                    :title="row.detail ?? workerState(row.word, row.named)"
-                    :data-cy="`rail-state-word-${row.sessionId}`"
-                    >{{ workerState(row.word, row.named) }}</span
-                  >
-                  <small
-                    v-if="row.brobot"
-                    :id="`rail-state-${row.sessionId}`"
-                    class="rail-brobot-standing"
-                    :data-standing="row.standing"
-                    :data-needing="row.facets.needing"
-                    :data-place="row.place ?? undefined"
-                    :aria-description="row.detail"
-                    :title="statusLine(row, true)"
-                    >{{ statusLine(row) }}</small
-                  >
-                  <small
-                    v-else
-                    :id="`rail-state-${row.sessionId}`"
-                    :class="{
-                      'rail-standing-with-age': row.activityAt !== undefined,
-                      'rail-standing-canonical': !!identityOf(row),
-                    }"
-                    :data-standing="row.standing"
-                    :aria-description="row.detail"
-                    :data-needing="row.facets.needing"
-                    :data-place="row.place ?? undefined"
-                    :title="statusLine(row, true)"
-                    ><span class="rail-standing-prefix"
-                      ><template v-if="identityOf(row) || (row.named && !row.worker)"
-                        ><span
-                          class="rail-standing-profile"
-                          :data-cy="`rail-profile-${row.sessionId}`"
-                          :title="profileName(row)"
-                          >{{ profileName(row) }}</span
-                        ></template
-                      ><span
-                        v-if="!identityOf(row) && row.provider"
-                        class="rail-standing-profile"
-                        :title="row.provider"
-                      >
-                        <template v-if="row.named && !row.worker"> · </template>
-                        {{ row.provider }} </span
-                      ><template v-if="row.word && (!row.worker || identityOf(row))">
-                        <template v-if="row.provider || row.named || identityOf(row)"> · </template>
-                        <span
-                          class="rail-standing-word"
-                          :data-cy="`rail-state-word-${row.sessionId}`"
-                        >
-                          {{ row.worker ? workerState(row.word, row.named) : row.word }}
-                        </span></template
-                      ></span
-                    ><span v-if="row.activityAt !== undefined" class="rail-standing-age">
-                      <span> · </span>
-                      <time
-                        :title="`${agoWords(row.activityAt, railMinute)} · ${fullTime(row.activityAt)}`"
-                        >{{ agoWords(row.activityAt, railMinute) }}</time
-                      > </span
-                    ><span
-                      v-if="row.elsewhere || row.place"
-                      class="rail-standing-tail"
-                      :data-cy="`rail-place-${row.sessionId}`"
-                      ><template v-if="row.elsewhere"> · {{ OPEN_IN_ANOTHER_WINDOW }}</template
-                      ><template v-if="row.place"> · {{ row.place }}</template></span
-                    ></small
-                  >
-                  <small
-                    v-if="!row.brobot && identityOf(row)"
-                    :title="[identityOf(row)?.address, row.provider].filter(Boolean).join(' · ')"
-                    >Conversation
-                    <span :data-cy="`rail-address-${row.sessionId}`">{{
-                      identityOf(row)?.address
-                    }}</span>
-                    <template v-if="row.provider"> · {{ row.provider }}</template>
-                    <template v-if="identityOf(row)?.author?.kind === 'person'">
-                      · Named by you</template
-                    >
-                  </small>
-                  <template v-if="row.worker && !row.brobot">
-                    <small
-                      v-for="piece in workerSubtitles(
-                        row.sessionId,
-                        row.named,
-                        workByHolder.get(row.sessionId) ?? [],
-                      )"
-                      :key="piece.key"
-                      class="rail-worker-piece"
-                      :title="piece.text"
-                      >{{ piece.text }}</small
+                  <template #lead>
+                    <span
+                      v-if="props.collapsed && row.named"
+                      class="work-label"
+                      aria-hidden="true"
+                      :data-cy="`rail-work-label-${row.sessionId}`"
+                      >{{ row.named.label }}</span
                     >
                   </template>
-                  <small
-                    v-if="!row.brobot && row.opening && !identityOf(row)"
-                    :id="`rail-opening-${row.sessionId}`"
-                    class="opening"
-                    :title="row.opening"
-                    :data-cy="`session-opening-${row.sessionId}`"
-                    >{{ row.opening }}</small
-                  >
-                </span>
+                </ConversationRow>
               </button>
             </template>
           </div>
@@ -1453,113 +1402,26 @@ const platform = platformHere()
   grid-template-columns: var(--space-12) minmax(0, 1fr) auto;
 }
 
-.rail-copy small.opening {
-  color: var(--row-muted, var(--muted));
-}
-
-.rail-copy {
-  min-width: 0;
-}
-
-.rail-copy strong {
-  display: block;
-  overflow: hidden;
-  color: inherit;
-  font-size: var(--type-caption);
-  font-weight: var(--fw-medium);
-  line-height: var(--leading-snug);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rail-group-rows .rail-copy strong {
+.rail-group-rows :deep(.rail-copy strong) {
   line-height: var(--leading-normal);
 }
-.rail-group-rows .rail-copy:not(.rail-brobot-copy) strong:not(.rail-canonical-title) {
+.rail-group-rows :deep(.rail-copy:not(.rail-brobot-copy) strong:not(.rail-canonical-title)) {
   overflow: visible;
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.rail-group-rows .rail-brobot-copy strong {
+.rail-group-rows :deep(.rail-brobot-copy strong) {
   line-height: var(--leading-snug);
 }
-.rail-scroll > .rail-section:not(.rail-conversations) .rail-copy strong {
+.rail-scroll > .rail-section:not(.rail-conversations) :deep(.rail-copy strong) {
   font-weight: var(--fw-normal);
 }
-.rail-copy small {
-  display: block;
-  overflow: hidden;
-  margin-top: var(--space-1);
-  color: var(--row-muted, var(--muted));
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 /* Explanatory copy is bounded; its title retains the complete sentence. */
-.rail-copy small.says {
-  display: -webkit-box;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  overflow: hidden;
-}
-.rail-copy small.rail-standing-with-age {
-  display: flex;
-  color: var(--text);
-}
-.rail-item:hover .rail-standing-with-age {
+.rail-item:hover :deep(.rail-standing-with-age) {
   color: var(--rail-item-hover-ink, var(--text));
 }
-.rail-item.active .rail-standing-with-age {
+.rail-item.active :deep(.rail-standing-with-age) {
   color: var(--rail-item-active-ink, var(--text));
-}
-.rail-standing-with-age .rail-standing-prefix {
-  display: flex;
-  flex: none;
-  max-width: calc(100% - 4em - var(--space-4));
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rail-standing-with-age .rail-standing-profile {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rail-standing-word {
-  flex: none;
-}
-.rail-standing-age {
-  display: flex;
-  flex: 0 1 auto;
-  min-width: 4em;
-}
-.rail-standing-age > span {
-  flex: none;
-}
-.rail-standing-age time,
-.rail-standing-with-age .rail-standing-tail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rail-standing-with-age .rail-standing-tail {
-  flex: 1 1 0;
-  min-width: var(--space-4);
-}
-
-.rail-standing-canonical .rail-standing-prefix {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.rail-standing-canonical .rail-standing-profile {
-  flex: none;
-  max-width: 50%;
-}
-.rail-standing-canonical .rail-standing-word {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .rail-live {
@@ -1760,7 +1622,7 @@ const platform = platformHere()
 
 .rail[data-collapsed='true'] .brand-copy,
 .rail[data-collapsed='true'] .rail-live,
-.rail[data-collapsed='true'] .rail-copy,
+.rail[data-collapsed='true'] :deep(.rail-copy),
 .rail[data-collapsed='true'] .section-name,
 .rail[data-collapsed='true'] .rail-other-heading,
 .rail[data-collapsed='true'] .count:not(.badge),
@@ -1834,33 +1696,5 @@ const platform = platformHere()
 
 .rail[data-collapsed='true'] .rail-footer {
   justify-content: center;
-}
-.rail-worker-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: baseline;
-  column-gap: var(--space-2);
-  min-width: 0;
-}
-.rail-worker-top > small {
-  grid-column: 1 / -1;
-}
-.rail-worker-top strong {
-  min-width: 0;
-  white-space: nowrap;
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rail-worker-state {
-  flex: none;
-  font-size: var(--type-caption);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.rail-copy .rail-worker-piece {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 </style>

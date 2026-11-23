@@ -550,7 +550,6 @@ const runningOf = (provider: Provider) => {
           <KeptRules
             v-if="versions?.[selected]?.program?.standing !== 'missing'"
             :providers="[selected]"
-            :names="{ [selected]: selectedDescriptor.displayName }"
           />
         </div>
       </section>

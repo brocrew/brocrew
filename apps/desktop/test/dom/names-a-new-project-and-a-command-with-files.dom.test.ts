@@ -138,16 +138,18 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
   it('🔴 Home: a waiting row says WHO — *Ada*, not `developer`', async () => {
     const m = await home([waitingAs('sess_a', 'developer')])
     const row = m.q('attention-request-sess_a')
-    expect(words(m.q('attention-who'))).toBe('· Ada')
+    // The row draws the separator before the name, so the name is the part on its own.
+    expect(words(m.q('attention-who'))).toBe('Ada')
+    expect(words(m.q('attention-who').parentElement!)).toMatch(/ · Ada$/)
     expect(visible(m.q('attention-who'))).toBe(true)
     expect(words(row)).not.toContain('developer')
   })
 
   it('⚑ THE CONTROLS — nobody named it: its slug; the host named no identity: no name at all', async () => {
     const m = await home([waitingAs('sess_w', 'worker'), waitingAs('sess_n', null)])
-    expect(words(m.q('attention-request-sess_w').querySelector('[data-cy="attention-who"]')!)).toBe(
-      '· worker',
-    )
+    const who = m.q('attention-request-sess_w').querySelector('[data-cy="attention-who"]')!
+    expect(words(who)).toBe('worker')
+    expect(words(who.parentElement!)).toMatch(/ · worker$/)
     expect(m.q('attention-request-sess_n').querySelector('[data-cy="attention-who"]')).toBeNull()
   })
 
@@ -235,11 +237,13 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
     return m
   }
 
-  it('🔴 the reopen list: *agent: Ada* on a row that can come back AND on one that cannot', async () => {
+  it('🔴 the reopen list: *Ada* on a row that can come back AND on one that cannot', async () => {
     const m = await reopenList(ROSTER)
-    expect(words(m.q('resumable-profile'))).toBe('agent: Ada')
+    // Both rows draw their agent in the shared row, once, with no *agent:* prefix.
+    expect(words(m.q('resumable-profile'))).toBe('Ada')
     const [ours] = m.all('unresumable-profile')
-    expect(words(ours!)).toBe('agent: Ada')
+    expect(words(ours!)).toBe('Ada')
+    expect(words(ours!.closest('[data-cy="unresumable-row"]')!)).not.toContain('agent:')
   })
 
   it('⚑ THE CONTROLS — before the roster lands: the slug, and BroBot’s own word for BroBot', async () => {
@@ -247,10 +251,7 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
       RESUMABLE,
       { ...RESUMABLE, sessionId: 's2', profileId: null },
     ])
-    expect(m.all('resumable-profile').map(words)).toEqual([
-      'agent: developer',
-      `agent: ${DEFAULT_PROFILE_LABEL}`,
-    ])
+    expect(m.all('resumable-profile').map(words)).toEqual(['developer', DEFAULT_PROFILE_LABEL])
   })
 
   it('⛔ a conversation restored from a BUNDLE is not named from this roster — another machine ran it', async () => {
@@ -286,6 +287,9 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
     expect(words(theirs)).toBe("from Claude's own folder")
     expect(words(theirs)).not.toContain('agent')
     expect(words(theirs)).not.toContain(DEFAULT_PROFILE_LABEL)
+    // Its row is titled by its folder, never by an agent it did not run as.
+    const row = theirs.closest('[data-cy="unresumable-row"]')!.querySelector('.conversation-row')!
+    expect(words(row)).not.toContain(DEFAULT_PROFILE_LABEL)
   })
 
   /* ---------------------------------------------------------- the pane: Agent panel + Info tab */

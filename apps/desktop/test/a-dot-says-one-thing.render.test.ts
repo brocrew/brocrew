@@ -422,18 +422,16 @@ describe('§1 · the roster is read, whole, from the import AND the tag', () => 
     // ages exactly like a number in a docblock. ⚑ **Every importer, not five of them** — `651`'s
     // review found the first version's title claimed all and checked five (#21), which left six
     // files with no floor at all: a changed import form would have dropped any of them silently.
+    // The rail, the header, the attention queue, the forest card and the cast chips draw their
+    // conversation's plate through the one conversation row.
     for (const file of [
-      'components/AttentionQueue.vue',
+      'components/ConversationRow.vue',
       'components/SessionBot.vue',
-      'components/SessionHeader.vue',
       'components/SessionPanel.vue',
-      'components/SideRail.vue',
       'components/SubAgentEntry.vue',
       'components/TaskList.vue',
-      'components/ForestCard.vue',
       'components/TeamWorkspace.vue',
       'components/WorkflowEntry.vue',
-      'components/WorkingTogether.vue',
     ])
       expect(ROSTER.get(file)?.tags.length ?? 0, file).toBeGreaterThan(0)
   })

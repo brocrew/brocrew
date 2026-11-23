@@ -36,12 +36,6 @@
   padding-left: var(--space-5);
   border-left: var(--border-width) solid var(--line);
 }
-.team-worker-name {
-  font-size: var(--type-small);
-  font-weight: var(--fw-medium);
-  overflow-wrap: anywhere;
-}
-
 .team-workspace {
   display: flex;
   box-sizing: border-box;
@@ -253,19 +247,6 @@
   flex-direction: column;
   gap: var(--space-1);
 }
-.shelf-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  margin: 0;
-  gap: var(--space-3);
-}
-.shelf-named,
-.shelf-where,
-.shelf-folder {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
 .shelf-quiet {
   margin: var(--space-3) 0 0;
   color: var(--paper-muted);
@@ -457,28 +438,4 @@
   margin: var(--space-7) 0 0;
   color: var(--paper-muted);
   font-size: var(--type-caption);
-}
-.team-worker-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-.team-worker-top .team-now {
-  flex: none;
-  white-space: nowrap;
-}
-.team-worker-top .team-worker-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.team-worker-piece {
-  margin: var(--space-1) 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }

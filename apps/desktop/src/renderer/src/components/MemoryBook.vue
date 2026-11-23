@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import ProviderLabel from './ProviderLabel.vue'
 import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 import { useClientApi } from '../client-provider/injection'
-import { useProviderNames } from '../composables/useProviderNames'
 import {
   AMENDMENT_MEANS,
   MEMORY_STORE_IS,
@@ -24,7 +24,6 @@ type MemoryBridge = Pick<
 >
 const props = defineProps<{ profileSlug: string; bridge?: MemoryBridge }>()
 const client = useClientApi()
-const providerName = useProviderNames(client)
 const api = computed(() => props.bridge ?? client.agents)
 const reading = ref<AgentMemoryReading | null>(null)
 const loading = ref(false)
@@ -251,7 +250,7 @@ function outcome(one: MemoryAmendment) {
         :data-cy="`memory-store-${store.provider}`"
         class="store"
       >
-        <h4>{{ providerName(store.provider) ?? 'Provider' }}</h4>
+        <h4><ProviderLabel :provider="store.provider" /></h4>
         <p class="note">
           {{
             MEMORY_STORE_IS[store.state].charAt(0).toUpperCase() +
@@ -320,7 +319,7 @@ function outcome(one: MemoryAmendment) {
         <article v-for="row in reading.amendments" :key="row.id" data-cy="memory-history-row">
           <p>{{ action(row) }} · {{ fullTime(row.at) }}</p>
           <p class="note">Done by: {{ didIt(row.by) }}</p>
-          <p class="path">{{ row.provider }} · {{ row.entry }}</p>
+          <p class="path"><ProviderLabel :provider="row.provider" /> · {{ row.entry }}</p>
           <p>{{ outcome(row) }}</p>
           <p v-if="row.settlement?.by.who === 'the-app-itself'">
             The app recorded what it found after an interruption.
@@ -343,7 +342,7 @@ function outcome(one: MemoryAmendment) {
     <section v-if="preview" class="confirmation" data-cy="memory-confirmation">
       <template v-if="preview.kind === 'removed' || preview.kind === 'corrected'">
         <h4>{{ preview.kind === 'removed' ? 'Remove this entry?' : 'Replace this entry?' }}</h4>
-        <p class="path">{{ preview.provider }} · {{ preview.entry }}</p>
+        <p class="path"><ProviderLabel :provider="preview.provider" /> · {{ preview.entry }}</p>
         <strong>Before</strong>
         <pre data-cy="memory-confirm-before">{{ preview.before }}</pre>
         <template v-if="preview.kind === 'corrected'"

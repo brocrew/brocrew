@@ -127,13 +127,13 @@ function expectUnknownGoneNote(out: Awaited<ReturnType<typeof library>>) {
 it('uses selected names in home provenance while keeping recorded and imported origin priority', async () => {
   const out = await library()
   const row = out.view.q('library-row-claude:unimported')
-  expect(row.querySelector('.chip.home')?.textContent?.trim()).toBe("in Fern's folder")
+  expect(row.querySelector('.row-mark.home')?.textContent?.trim()).toBe("in Fern's folder")
   expect(row.textContent).toContain("in Fern's own folder, not imported")
-  expect(out.view.q('library-row-claude:a').querySelector('.chip.ours')?.textContent?.trim()).toBe(
-    'ours',
-  )
   expect(
-    out.view.q('library-row-codex:behind').querySelector('.chip.imported')?.textContent?.trim(),
+    out.view.q('library-row-claude:a').querySelector('.row-mark.ours')?.textContent?.trim(),
+  ).toBe('ours')
+  expect(
+    out.view.q('library-row-codex:behind').querySelector('.row-mark.imported')?.textContent?.trim(),
   ).toBe('imported')
   expect(out.raw.catalogue).not.toHaveBeenCalled()
   expect(out.raw.listLibrary).not.toHaveBeenCalled()
@@ -168,10 +168,16 @@ it('keeps two clients distinct and preserves the exact supplied import note and 
   const one = await library('Fern')
   const two = await library('Willow')
   expect(
-    one.view.q('library-row-claude:unimported').querySelector('.chip.home')?.textContent?.trim(),
+    one.view
+      .q('library-row-claude:unimported')
+      .querySelector('.row-mark.home')
+      ?.textContent?.trim(),
   ).toBe("in Fern's folder")
   expect(
-    two.view.q('library-row-claude:unimported').querySelector('.chip.home')?.textContent?.trim(),
+    two.view
+      .q('library-row-claude:unimported')
+      .querySelector('.row-mark.home')
+      ?.textContent?.trim(),
   ).toBe("in Willow's folder")
   two.view.q('library-import-claude:unimported').click()
   await vi.waitFor(() =>
@@ -215,7 +221,9 @@ it('keeps unread and explicitly empty selected names distinct on home and gone p
 
   const out = await library('', true, '')
   const home = () => out.view.q('library-row-claude:unimported')
-  expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe("in the provider's folder")
+  expect(home().querySelector('.row-mark.home')?.textContent?.trim()).toBe(
+    "in the provider's folder",
+  )
   expect(home().textContent).toContain("in the provider's own folder, not imported")
   expect(home().textContent).not.toContain('Claude')
 
@@ -231,7 +239,7 @@ it('keeps unread and explicitly empty selected names distinct on home and gone p
 
   out.answer()
   await vi.waitFor(() => {
-    expect(home().querySelector('.chip.home')?.textContent?.trim()).toBe("in 's folder")
+    expect(home().querySelector('.row-mark.home')?.textContent?.trim()).toBe("in 's folder")
     expect(home().textContent).toContain("in 's own folder, not imported")
     expect(note.textContent?.trim()).toBe(
       "'s file for this conversation is gone, so it can't be rebuilt.",

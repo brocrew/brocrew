@@ -149,7 +149,12 @@ describe('the Sub agents card', () => {
     const m = await card(true)
     const word = m.q(`cast-tile-word-${HOLDER}`)
     expect(read(word)).toBe('waiting on purpose')
-    expect(word.title).toBe(`waiting on purpose: ${STATUS}`)
+    // The word sits in the row's status line, whose title is the whole status: the agent, then the
+    // wait with its status line.
+    const status = word.closest<HTMLElement>('small')!
+    const profile = read(m.q(`cast-tile-profile-${HOLDER}`))
+    expect(status.title).toBe(`${profile} · waiting on purpose: ${STATUS}`)
+    expect(status.getAttribute('aria-description')).toBe(`waiting on purpose: ${STATUS}`)
     assertDrawn(word, 'the wait on purpose on the card', m.host)
     // Under the word, what it waits for: the status line, cut to the card, whole on its title.
     const line = m.q(`cast-tile-on-purpose-${HOLDER}`)
@@ -188,7 +193,7 @@ describe('Team', () => {
 
   it('says "waiting on purpose", with the status line on its title', async () => {
     const m = await team(true)
-    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.team-now')!
+    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.rail-worker-state')!
     expect(read(word)).toBe('waiting on purpose')
     expect(word.title).toBe(`waiting on purpose: ${STATUS}`)
     assertDrawn(word, 'the wait on purpose on Team', m.host)
@@ -196,13 +201,13 @@ describe('Team', () => {
 
   it('the control: a helper idle with no mark still reads "idle"', async () => {
     const m = await team(false)
-    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.team-now')!
+    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.rail-worker-state')!
     expect(read(word)).toBe('idle')
   })
 
   it('the control: a helper at work keeps its word, though its piece is marked', async () => {
     const m = await team(true, true)
-    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.team-now')!
+    const word = m.q(`team-worker-${HOLDER}`).querySelector<HTMLElement>('.rail-worker-state')!
     expect(read(word)).toBe('active')
   })
 })

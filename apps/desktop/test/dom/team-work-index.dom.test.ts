@@ -92,7 +92,7 @@ describe('Team worker work index', () => {
     })
     const m = mount(TeamWorkspace, props(rows), { width: 1000, height: 900 })
     const titles = () =>
-      [...m.q(`team-worker-${rows[0]!.sessionId}`).querySelectorAll('.team-worker-piece')].map(
+      [...m.q(`team-worker-${rows[0]!.sessionId}`).querySelectorAll('.rail-worker-piece')].map(
         (el) => el.textContent?.trim(),
       )
     expect(titles()).toEqual([

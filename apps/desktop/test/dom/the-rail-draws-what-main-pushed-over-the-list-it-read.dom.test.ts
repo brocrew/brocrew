@@ -1,6 +1,7 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { PROVIDER_DESCRIPTORS, type ProviderDescriptor } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
@@ -103,6 +104,7 @@ type RailApi = {
   runtime: {
     listResumable: () => Promise<ResumableSessionInfo[]>
     listUnresumable: () => Promise<UnresumableSessionInfo[]>
+    providerCatalogue?: () => Promise<readonly ProviderDescriptor[]>
   }
 }
 
@@ -113,6 +115,7 @@ const answering = (resumable: ResumableSessionInfo[]): RailApi => ({
   runtime: {
     listResumable: () => Promise.resolve(resumable),
     listUnresumable: () => Promise.resolve([]),
+    providerCatalogue: async () => PROVIDER_DESCRIPTORS,
   },
 })
 
@@ -212,12 +215,12 @@ describe('the rail draws what main pushed over the list it read', () => {
 
     // The row it names says so, in its words.
     expect(standing(m, 'sess_a')).toBe('waiting')
-    expect(said(standingOf(m, 'sess_a'))).toContain('claude · needs you')
+    expect(said(standingOf(m, 'sess_a'))).toContain('Claude · needs you')
     // No other row moved.
     expect(standing(m, 'sess_b')).toBe('idle')
-    expect(said(standingOf(m, 'sess_b'))).toContain('claude · idle')
+    expect(said(standingOf(m, 'sess_b'))).toContain('Claude · idle')
     expect(standing(m, 'sess_c')).toBe('idle')
-    expect(said(standingOf(m, 'sess_c'))).toContain('claude · idle')
+    expect(said(standingOf(m, 'sess_c'))).toContain('Claude · idle')
     // The badge counts the one row that is waiting on a person, and the count of rows does not move.
     const badge = m.q('rail-needs-you')
     expect(visible(badge)).toBe(true)
@@ -253,7 +256,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     // Message 2, a separate one · B is active. A's word is not forgotten.
     await push(m, { conversation: 'sess_b', state: { is: 'active' } })
     expect(standing(m, 'sess_b')).toBe('working')
-    expect(said(standingOf(m, 'sess_b'))).toContain('claude · active')
+    expect(said(standingOf(m, 'sess_b'))).toContain('Claude · active')
     expect(standing(m, 'sess_a'), 'A after the second message').toBe('waiting')
     expect(said(m.q('rail-needs-you'))).toBe('1')
     expect(standing(m, 'sess_c')).toBe('idle')
@@ -298,7 +301,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(said(standingOf(m, 'sess_c'))).toContain('running in the background · npm run build')
     // …so A and B going idle is the list winning, not the list being ignored.
     expect(standing(m, 'sess_a')).toBe('idle')
-    expect(said(standingOf(m, 'sess_a'))).toContain('claude · idle')
+    expect(said(standingOf(m, 'sess_a'))).toContain('Claude · idle')
     expect(standing(m, 'sess_b')).toBe('idle')
     expect(m.all('rail-needs-you')).toHaveLength(0)
   })
@@ -331,7 +334,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(standing(m, 'sess_c')).toBe('background')
     // …and the push that arrived after it was asked stands over the answer it raced.
     expect(standing(m, 'sess_a')).toBe('waiting')
-    expect(said(standingOf(m, 'sess_a'))).toContain('claude · needs you')
+    expect(said(standingOf(m, 'sess_a'))).toContain('Claude · needs you')
     expect(said(m.q('rail-needs-you'))).toBe('1')
 
     // A read asked AFTER the push: the same push gives way, so "stands" is not a push that never
