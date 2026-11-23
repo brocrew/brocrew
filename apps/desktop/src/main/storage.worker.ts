@@ -56,6 +56,11 @@ if (port) {
               batchOrdinal += 1
               port.on('message', answered)
               port.postMessage({ kind: 'trim-batch', batch })
+              console.error(
+                'retention worker batch posted',
+                process.hrtime.bigint().toString(),
+                batchOrdinal,
+              )
             }),
         )
         console.error('retention worker result', process.hrtime.bigint().toString())

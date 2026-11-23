@@ -115,7 +115,7 @@ export function startEventRetention(
               )
             } catch (error) {
               console.error(
-                'retention writer threw',
+                'retention write or reply failed',
                 process.hrtime.bigint().toString(),
                 batchOrdinal,
               )
@@ -149,12 +149,16 @@ export function startEventRetention(
     })
       .then(async () => {
         if (closed || failure !== undefined || result === null) return
-        console.error('retention compaction entered', process.hrtime.bigint().toString())
+        console.error(
+          'retention compaction decision',
+          process.hrtime.bigint().toString(),
+          result.interrupted,
+        )
         const compacted = result.interrupted
           ? { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
           : await incrementallyCompact(db, () => closed)
         console.error(
-          'retention compaction returned',
+          'retention compaction decision finished',
           process.hrtime.bigint().toString(),
           compacted.steps,
         )
