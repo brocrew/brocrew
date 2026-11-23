@@ -107,6 +107,7 @@ export async function trimOldEvents(
   now: number = Date.now(),
 ): Promise<EventTrimResult> {
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 })
+  console.error('retention worker database opened', process.hrtime.bigint().toString())
   observeDatabaseMemory(db, 'event-retention')
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0

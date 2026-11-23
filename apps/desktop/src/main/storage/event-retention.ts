@@ -41,7 +41,8 @@ export function startEventRetention(
     let removed = 0
     let exitCode: number | null = null
     let failure: unknown
-    console.info('BroCrew event history sweep started.')
+    console.info('BroCrew event history sweep started.', process.hrtime.bigint().toString())
+    let batchOrdinal = 0
     const finish = (): void => {
       busy = false
       const outcome = {
@@ -66,9 +67,15 @@ export function startEventRetention(
     let current: Worker
     try {
       current = start()
+      console.error(
+        'retention factory returned',
+        process.hrtime.bigint().toString(),
+        current.threadId,
+      )
       worker = current
       busy = true
     } catch (error) {
+      console.error('retention factory threw', process.hrtime.bigint().toString())
       failure = error
       finish()
       return
@@ -89,26 +96,50 @@ export function startEventRetention(
             return
           }
           if (message.kind === 'trim-batch') {
+            batchOrdinal += 1
+            console.error(
+              'retention batch received',
+              process.hrtime.bigint().toString(),
+              batchOrdinal,
+            )
             try {
               const value = write(message.batch)
               removed += value.changed ?? 0
               current.postMessage({ value })
+              console.error(
+                'retention writer replied',
+                process.hrtime.bigint().toString(),
+                batchOrdinal,
+                value.durationMs,
+                value.checkpointMs,
+              )
             } catch (error) {
+              console.error(
+                'retention write or reply failed',
+                process.hrtime.bigint().toString(),
+                batchOrdinal,
+              )
               current.postMessage({
                 error: error instanceof Error ? error.message : String(error),
                 code: (error as { code?: string }).code,
               })
             }
           } else if (message.ok && message.value) {
+            console.error('retention result received', process.hrtime.bigint().toString())
             result = message.value
             removed = result.removed
-          } else failure = message.error ?? 'Event history cleanup failed.'
+          } else {
+            console.error('retention failure received', process.hrtime.bigint().toString())
+            failure = message.error ?? 'Event history cleanup failed.'
+          }
         },
       )
       current.once('error', (error) => {
+        console.error('retention worker error', process.hrtime.bigint().toString(), error.name)
         failure = error
       })
       current.once('exit', (code) => {
+        console.error('retention native exit', process.hrtime.bigint().toString(), code)
         worker = null
         exitCode = code
         if (failure === undefined && (code !== 0 || result === null))
@@ -118,9 +149,19 @@ export function startEventRetention(
     })
       .then(async () => {
         if (closed || failure !== undefined || result === null) return
+        console.error(
+          'retention compaction decision',
+          process.hrtime.bigint().toString(),
+          result.interrupted,
+        )
         const compacted = result.interrupted
           ? { steps: 0, reclaimedPages: 0, longestLockMs: 0 }
           : await incrementallyCompact(db, () => closed)
+        console.error(
+          'retention compaction decision finished',
+          process.hrtime.bigint().toString(),
+          compacted.steps,
+        )
         if (closed) return
         result = {
           ...result,
@@ -131,6 +172,7 @@ export function startEventRetention(
         await trimmed(result)
       })
       .catch((error: unknown) => {
+        console.error('retention completion failed', process.hrtime.bigint().toString())
         failure = error
       })
       .finally(finish)

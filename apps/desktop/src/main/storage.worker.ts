@@ -24,6 +24,8 @@ if (port) {
           port.postMessage({ ok: true, value: null })
           return
         }
+        console.error('retention worker entered', process.hrtime.bigint().toString())
+        let batchOrdinal = 0
         let stopped = false
         port.on('message', (message) => {
           if (message.kind === 'stop') stopped = true
@@ -40,15 +42,28 @@ if (port) {
                 code?: string
               }) => {
                 if (reply.kind === 'stop') return
+                console.error(
+                  'retention worker received reply',
+                  process.hrtime.bigint().toString(),
+                  batchOrdinal,
+                  reply.error === undefined,
+                )
                 port.off('message', answered)
                 if (reply.error !== undefined)
                   reject(Object.assign(new Error(reply.error), { code: reply.code }))
                 else resolve(reply.value!)
               }
+              batchOrdinal += 1
               port.on('message', answered)
               port.postMessage({ kind: 'trim-batch', batch })
+              console.error(
+                'retention worker batch posted',
+                process.hrtime.bigint().toString(),
+                batchOrdinal,
+              )
             }),
         )
+        console.error('retention worker result', process.hrtime.bigint().toString())
         port.postMessage({ ok: true, value })
         return
       }
@@ -68,6 +83,7 @@ if (port) {
             : await engine.reveal(request.location)
       port.postMessage({ ok: true, value })
     } catch (error) {
+      console.error('storage worker failed', process.hrtime.bigint().toString())
       port.postMessage({ ok: false, error: storageReason(error) })
     } finally {
       port.close()
