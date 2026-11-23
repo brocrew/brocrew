@@ -250,17 +250,11 @@ const props = defineProps<{
   identities?: readonly AgentIdentity[] | null
   /** What is typed in THIS conversation and not yet sent (019). Owned by the screen, keyed by id. */
   draft: string
+  awaitingSend?: boolean
   submit?: (text: string, intent: SendIntent, attachments: HandedPath[]) => Promise<void>
   /**
-   * ⛔ **This conversation's ATTACHMENT TRANSACTION** (216 §2, 292 §2) — owned by the screen and
-   * keyed beside {@link draft}, because a message and its attachments are one message.
-   *
-   * ⚠️ **It was the LIST until 292, and the list was never the whole draft.** This pane keys the
-   * composer by session id, so switching conversations tears it down — and an acquisition begun in
-   * this conversation had nowhere to land once that happened (`288` H2). ⛔ **Required, so
-   * `RuntimeScreen` cannot forget it**: the failure mode of a missing one is silent, and the
-   * typechecker is the only thing in this repository that can see it (nothing here mounts
-   * `RuntimeScreen` — `211` §11, `212` §9, `214` §8).
+   * The screen owns the attachments alongside the draft so acquisition survives a keyed remount.
+   * Required so the composer always has the same transaction for this conversation.
    */
   handing: DraftHanding
   /** This conversation's working directory, so the picker can say when a path is outside it. */
@@ -1683,6 +1677,7 @@ onUnmounted(() => {
           :who="who"
           :draft="props.draft"
           :submit="props.submit"
+          :awaiting-send="props.awaitingSend"
           :blocked="sendBlocked"
           :handing="props.handing"
           :cwd="props.cwd"

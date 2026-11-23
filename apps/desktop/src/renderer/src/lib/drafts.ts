@@ -329,6 +329,8 @@ export interface DraftBook {
   write(key: string, text: string): void
   /** Coalesce a submitted gesture for this slot until runtime settles, across composer mounts. */
   send(key: string, send: () => Promise<boolean>, queued?: boolean): Promise<void>
+  /** Whether this slot still shows a draft awaiting acceptance. */
+  awaitingSend(key: string): boolean
   /** Includes the submitted queue draft until acceptance, beside any newer typing. */
   saved(): SavedDraft[]
   /**
@@ -542,7 +544,7 @@ export function sweepDrafts(
 export function createDraftBook(): DraftBook {
   const drafts = reactive(new Map<string, string>())
   const paths = createAttachmentBook()
-  const sending = new Map<string, Promise<void>>()
+  const sending = shallowReactive(new Map<string, { run: Promise<void>; keepsDraft: boolean }>())
   const queued = shallowReactive(new Map<string, SavedDraft>())
 
   const savedSlot = (key: string): SavedDraft => {
@@ -558,14 +560,15 @@ export function createDraftBook(): DraftBook {
   const book: DraftBook = {
     paths,
     read: (key) => drafts.get(key) ?? '',
+    awaitingSend: (key) => sending.get(key)?.keepsDraft === true,
 
     send(key, send, hideQueued = false) {
       const pending = sending.get(key)
-      if (pending) return pending
+      if (pending) return pending.run
       const run = (
         hideQueued ? sendQueuedDraft(key, send) : sendKeptDraftOnce(book, key, send)
       ).finally(() => sending.delete(key))
-      sending.set(key, run)
+      sending.set(key, { run, keepsDraft: !hideQueued })
       return run
     },
 

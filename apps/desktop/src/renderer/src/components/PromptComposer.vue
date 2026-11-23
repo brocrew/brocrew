@@ -160,6 +160,7 @@ const props = withDefaults(
      * text was then whatever the DOM happened to be holding — the previous conversation's.
      */
     draft: string
+    awaitingSend?: boolean
     /** The draft owner clears only after runtime acceptance. */
     submit?: (text: string, intent: SendIntent, attachments: HandedPath[]) => Promise<void>
     /** What the box invites you to type — a new thread asks a different question. */
@@ -521,7 +522,9 @@ const interruptKey = interruptKeyLabel(platform)
  * hint below reads the same computed, because the sentence and the buttons describing different
  * states is how `223`'s tooltip went wrong.
  */
-const busyChoices = computed(() => props.state === 'busy' && canSendNow.value)
+const busyChoices = computed(
+  () => props.state === 'busy' && !props.awaitingSend && canSendNow.value,
+)
 
 /**
  * ⛔ **Whether the composer WEARS the frozen register** (234 §2, from an adversarial pass over this
@@ -1364,7 +1367,7 @@ defineExpose({
              over a locked box. One evaluation, so a dark button always has a sentence and a lit one
              never does. -->
         <button
-          v-else
+          v-else-if="!props.awaitingSend"
           class="send-button"
           type="submit"
           :disabled="!canSendNow"
@@ -1411,12 +1414,16 @@ defineExpose({
            more actionable than the reason the caller has — and `canSend` refuses both anyway, so
            nothing is left un-gated by the silence. Reachable from `idle` and `busy`. -->
       <p
-        v-if="blockedWords === null"
+        v-if="props.awaitingSend || blockedWords === null"
         class="composer-hint"
         :class="{ frozen: frozenLook }"
+        :role="props.awaitingSend ? 'status' : undefined"
         data-cy="composer-hint"
       >
-        <template v-if="voiceActive">Finish dictating and review the text before sending.</template>
+        <template v-if="props.awaitingSend">Sending…</template>
+        <template v-else-if="voiceActive"
+          >Finish dictating and review the text before sending.</template
+        >
         <!-- The frozen hint names BOTH ways forward now (094). It used to name only one, and the
            other one did not exist. 🔴 **737 · `730` F-3** — and the second says what Esc does in
            R43's words: it said *"Esc stops the turn"*. -->

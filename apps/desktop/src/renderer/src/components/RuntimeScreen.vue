@@ -3957,6 +3957,7 @@ onUnmounted(() => {
             :identities="agentStore.identities.value?.identities ?? null"
             :draft="drafts.read(draftKeyForActive)"
             :handing="drafts.paths.handing(draftKeyForActive)"
+            :awaiting-send="drafts.awaitingSend(draftKeyForActive)"
             :cwd="active?.meta?.cwd ?? ''"
             :held="heldHere"
             :launching="store.isLaunching(active.sessionId)"
