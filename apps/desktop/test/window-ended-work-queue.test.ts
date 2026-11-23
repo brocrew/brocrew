@@ -1,3 +1,4 @@
+import * as sessionStores from '../src/main/db/session-store'
 import { afterEach, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
@@ -213,26 +214,33 @@ it('still refuses cancellation after consuming ended-work proof, then permits a 
   const engine = new WindowReadEngine(join(w.folder, 'brobot2.sqlite'))
   Object.assign(engine, { answers: windowFoldCache(0) })
   const native = (engine as unknown as { db: AppDatabase }).db
-  const prepare = native.prepare.bind(native)
   let done = false
-  let walks = 0
-  const observation = vi.spyOn(native, 'prepare').mockImplementation((sql) => {
-    const statement = prepare(sql)
-    if (
-      sql ===
-      'SELECT DISTINCT owner_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL'
-    ) {
-      const iterate = statement.iterate.bind(statement)
-      vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
-        yield* iterate(...args)
-        if (++walks === 3) done = true
-      })
-    }
-    return statement
-  })
+  let proof: ((owner: string) => boolean) | undefined
+  const create = sessionStores.createSessionStore
+  const observation = vi
+    .spyOn(sessionStores, 'createSessionStore')
+    .mockImplementation((...args) => {
+      const snapshot = create(...args)
+      const stops = snapshot.stalledWorkItsGiverWasToldAbout.bind(snapshot)
+      vi.spyOn(snapshot, 'stalledWorkItsGiverWasToldAbout').mockImplementation(
+        (unread, noOpen, work) => {
+          expect(native.inTransaction).toBe(true)
+          proof = noOpen
+          expect(proof?.('holder-00')).toBe(true)
+          const result = stops(unread, noOpen, work)
+          expect(result).toMatchObject({ ledgers: 16, rows: [] })
+          done = true
+          return result
+        },
+      )
+      return snapshot
+    })
+  const abandoned = vi.fn(() => done)
   try {
-    expect(() => engine.read({ kind: 'routes' }, () => done)).toThrow()
+    expect(() => engine.read({ kind: 'routes' }, abandoned)).toThrow()
     expect(done).toBe(true)
+    expect(abandoned).toHaveReturnedWith(true)
+    expect(proof?.('holder-00')).toBe(false)
     expect(native.inTransaction).toBe(false)
     observation.mockRestore()
     expect(engine.read({ kind: 'routes' }).kind).toBe('routes')

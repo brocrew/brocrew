@@ -224,7 +224,7 @@ it.each(['none', 'before', 'after'] as const)(
   },
 )
 
-it('bounds giver, stall and reply history to the canonical open pieces with no retained fold', () => {
+it('bounds giver and stall history while retaining task waits without person attention', () => {
   const w = world()
   const parent = w.store.rootOf('person')!
   for (const [owner, piece] of [
@@ -276,7 +276,14 @@ it('bounds giver, stall and reply history to the canonical open pieces with no r
   const expectedReplies = canonical.piecesWaitingOnWhoWrote()
   const expectedGiven = canonical.piecesGivenBy('person')
   expect(expectedStalls.rows.map((one) => one.piece)).toEqual(['stall'])
-  expect(expectedReplies.rows.map((one) => one.piece)).toEqual(['reply'])
+  expect(canonical.piecesWaitingOnWhoWroteIn('agent').map((one) => one.piece)).toEqual(['reply'])
+  expect(canonical.piecesOwnedBy('agent')[0]).toMatchObject({
+    piece: 'reply',
+    state: 'waiting-on-the-person-who-wrote',
+    answeredAPersonAt: 4,
+  })
+  expect(expectedGiven.map((one) => one.piece)).toEqual(['reply', 'stall'])
+  expect(expectedReplies).toEqual({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 })
   const engine = new WindowReadEngine(w.file)
   cleanup.push(() => engine.close())
   Object.assign(engine, { answers: windowFoldCache(0) })

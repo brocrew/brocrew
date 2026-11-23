@@ -1,189 +1,58 @@
+import { callOn } from './helpers/call-agent-tool'
+import { heldTurnHostFixture, type TurnEnds } from './lib/held-turn-provider'
 import { givePagesAndWaitForStall } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { rmSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  RuntimeEvent,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
+import type { AgentToolset } from '@brobot2/runtime'
 import { type AppDatabase } from '../src/main/db/connection'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
-import {
-  fixtureFolder,
-  fixtureDatabase,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, settleFixtureTurns, fixtureTurnCounts } from './lib/host-fixture'
 
-/**
- * # a032e58f · feat(work): a piece waits on the person who wrote to its holder
- *
- * More cases for F097, over the harness of `a-person-owes-the-agent-that-answered-them.test.ts`: a
- * real `RuntimeHost` over a real SQLite ledger, and a provider double that can hold a turn's end.
- *
- * | § | what it pins | why the devs' own tests do not reach it |
- * |---|---|---|
- * | 1 | a holder that gives part of the piece out reads *waiting on* that worker: not *needs you*, not on the person's list, not counted — while its own fold still says the person wrote | their one *more specific wait* case is a question asked of the giver; the worker arm of `composeWhatEachPieceIsWaitingOn` is never met by either reader (`RuntimeHost.aPieceItHoldsWaitsOnWhoWrote`, `SessionStore.piecesWaitingOnWhoWrote`) |
- * | 2 | the take-back of a person's held reply, and the holder's own reply, each move what the windows were told, with no other row | `MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE` is read only by the push; the fold tests are pure and never look at what was pushed |
- * | 3 | the person's list is oldest first; a rebuilt ledger is folded again even when it ends at the same ordinal; a ledger with a torn row is never kept, so every read counts the row | the list and its kept fold are only ever read with one row, once |
- *
- * ⚑ The names are literals: BroBot's first new agent is Ada, and she owns W1.1.
- * ⚠️ The rail badge's one-row-per-piece count (a helper holding two such pieces counts 2) is an open
- * product decision, and nothing here pins it either way.
- */
+/** Task waits, held messages and fold freshness stay independent of reply attention. */
 
 /** A delay no other timer in the host uses, and no test waits out: nothing is stopped for idling. */
 const IDLE = 7_654_321
 const WROTE = 'waiting-on-the-person-who-wrote'
 
-/** Long enough for every pump and every flush a row arms to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
-
-/** ⚑ The end of a turn, held at the provider while `held` stands. */
-interface TurnEnds {
-  held: Promise<void> | null
-  release: () => void
-}
-
-/** The provider double: it keeps its handles, and holds each turn's end while the test says so. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-    private readonly turnEnds: TurnEnds,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    return this.kept(await super.start(options))
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    return this.kept(await super.resume(ref, options))
-  }
-  /** ⚑ Every event passes as it came, but a `turn` waits for the hold to be let go. */
-  private kept(handle: FakeSessionHandle): FakeSessionHandle {
-    this.handles.push(handle)
-    const theirSend = handle.send.bind(handle)
-    const theirs = handle.events.bind(handle)
-    const theirStatus = handle.status.bind(handle)
-    const ends = this.turnEnds
-    let running = false
-    handle.send = (...words: Parameters<FakeSessionHandle['send']>) => {
-      running = ends.held !== null
-      return theirSend(...words)
-    }
-    handle.events = () =>
-      (async function* heldAtItsEnd(): AsyncGenerator<RuntimeEvent> {
-        for await (const event of theirs()) {
-          if (event.type === 'turn') {
-            if (ends.held !== null) await ends.held
-            running = false
-          }
-          yield event
-        }
-      })()
-    handle.status = () => (running ? 'working' : theirStatus())
-    return handle
-  }
-}
+const settle = () => settleFixtureTurns(2, 30)
 
 /** A tool call left running while the test goes on, settled either way so nothing is unhandled. */
 type Settled = { readonly answer: Record<string, unknown> } | { readonly error: unknown }
 
-describe('F097 · a person owes the agent that answered them — more cases', () => {
-  let userData: string
+describe('answered work preserves task state without reply attention — more cases', () => {
   let root: string
+  let cleanUp: () => Promise<void>
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let handles: FakeSessionHandle[]
   let turnEnds: TurnEnds
-  let counter: number
-  let clock: number
   let window: RecordingSink
   /** Every message the host pushed on `runtime:states`, in order. */
   let pushed: RuntimeStatesMessage[]
-  const tick = (): number => clock++
+  let tick: () => number
 
   beforeEach(() => {
-    userData = fixtureFolder('brobot2-f097-more-')
-    root = fixtureFolder('brobot2-f097-more-root-')
-    db = fixtureDatabase(userData)
-    clock = 9_000_000
-    store = createSessionStore(db, tick)
-    counter = 0
-    handles = []
-    pushed = []
-    turnEnds = { held: null, release: () => undefined }
-    const issued = new FakeProviderSessions()
-    host = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
-      createRuntime: (provider: Provider) =>
-        new ProviderDouble(provider, handles, issued, turnEnds),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
-      statesMoved: (message) => {
-        pushed.push(message)
-      },
-      idleStopAfterMs: IDLE,
-    })
-    window = new RecordingSink('webContents:1')
+    ;({ root, db, store, host, turnEnds, window, pushed, tick, cleanUp } = heldTurnHostFixture(
+      'brobot2-f097-more',
+      IDLE,
+    ))
   })
 
   afterEach(async () => {
     turnEnds.held = null
-    turnEnds.release()
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await cleanUp()
   })
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-  const turnsIn = (sessionId: string): number =>
-    ledger(sessionId).filter((event) => event.type === 'turn').length
-  const userTurnsIn = (sessionId: string): number =>
-    ledger(sessionId).filter((event) => event.type === 'user_turn').length
+  const { turnsIn, userTurnsIn } = fixtureTurnCounts(() => store)
   const stallNoticesIn = (sessionId: string): string[] => giverStallNotices(store, sessionId)
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
   /** ⚑ A call whose answer may wait on a held turn: started now, read at the end. */
   const leftRunning = (call: Promise<Record<string, unknown>>): Promise<Settled> =>
     call.then(
@@ -240,18 +109,18 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     const gave = await aGiverAndItsHelper()
     await aPersonWritesTo(gave.ada, 'is it done?')
     expect(pieceOf(gave.ada, gave.piece)?.state).toBe(WROTE)
-    expect(stateOf(gave.ada)).toEqual({ is: 'needs-you' })
-    expect(lastSaid(gave.ada)).toEqual({ is: 'needs-you' })
+    expect(stateOf(gave.ada)).toEqual({ is: 'idle' })
+    expect(lastSaid(gave.ada)).toEqual({ is: 'idle' })
     return gave
   }
 
   describe('§1 · a holder that handed part of the piece out waits on that worker', () => {
     it('🔴 not needs you, not listed, not counted — while the fold’s own row still says the person wrote', async () => {
       const { ada, piece } = await adaWaitsOnThePerson()
-      // ⚑ THE CONTROL — before the give, the person's list holds the piece and the badge counts it.
-      expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.piece)).toEqual([piece])
-      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 1 })
-      expect(needsYouOnItsPlate(ada)).toBe(true)
+      // ⚑ THE CONTROL — before the give, the task is open without a person request.
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
+      expect(needsYouOnItsPlate(ada)).toBe(false)
 
       // Ada gives a part of W1.1 to a new agent. Its brief's turn is held, so W1.1.1 stays open
       // (`working`) and nobody is told anything that would run Ada again.
@@ -283,8 +152,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       expect(stateOf(ada)?.is).toBe('waiting-on-a-worker')
       expect(needsYouOnItsPlate(ada)).toBe(false)
       expect(lastSaid(ada)?.is).toBe('waiting-on-a-worker')
-      // ⛔ The store's walk composes: the person's list is empty and the badge counts nothing.
-      // (Skipping the composition in `piecesWaitingOnWhoWrote` lists W1.1 and counts 1.)
+      // Handing out work also creates no person request.
       expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
       expect(store.piecesWaitingOnWhoWrote().rows).toEqual([])
       expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
@@ -295,7 +163,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
   })
 
   describe('§2 · the rows that move what the windows were told, with no other row behind them', () => {
-    it('⛔ a person’s reply held while the agent is busy, then taken back: the windows are told needs you again', async () => {
+    it('⛔ a person’s reply held while the agent is busy, then taken back: the task wait returns while the agent stays active', async () => {
       const { brobotTools, ada, piece } = await adaWaitsOnThePerson()
       const first = pieceOf(ada, piece)?.answeredAPersonAt
       expect(typeof first).toBe('number')
@@ -318,9 +186,9 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
         'W1.2’s brief to open Ada’s turn',
       )
       await settle()
-      // ⚑ The premise: busy, and still needs you — W1.1 waits on the person under the running turn.
+      // ⚑ The premise: busy, with W1.1 still in its existing task state.
       expect(pieceOf(ada, piece)?.state).toBe(WROTE)
-      expect(stateOf(ada)).toEqual({ is: 'needs-you' })
+      expect(stateOf(ada)).toEqual({ is: 'active' })
 
       // The person replies while Ada is busy: the words are held, and W1.1 is driven by them.
       const queued = await host.queueMessage(ada, 'use postgres', window)
@@ -337,9 +205,9 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       await settle()
       expect(pieceOf(ada, piece)?.state).toBe(WROTE)
       expect(pieceOf(ada, piece)?.answeredAPersonAt).toBe(first)
-      expect(stateOf(ada)).toEqual({ is: 'needs-you' })
-      // 🔴 Without `message_unqueued` in the set, the windows would go on saying active.
-      expect(lastSaid(ada)).toEqual({ is: 'needs-you' })
+      expect(stateOf(ada)).toEqual({ is: 'active' })
+      // 🔴 Taking back the message restores task state, without creating a person request.
+      expect(lastSaid(ada)).toEqual({ is: 'active' })
 
       letTheTurnEndsGo()
       expect(await giving).toMatchObject({ answer: { outcome: 'ok', label: 'W1.2', agent: ada } })
@@ -364,8 +232,8 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     })
   })
 
-  describe('§3 · the person’s list: its order and its kept fold', () => {
-    it('⚑ two holders are listed oldest first — the one written to first, not the one given work first', async () => {
+  describe('task wait timestamps and fold freshness', () => {
+    it('two holders keep their task timestamps and create no reply attention', async () => {
       const { brobot, brobotTools, ada, piece } = await aGiverAndItsHelper()
       await callOn(brobotTools, 'create_agent', { profile_slug: 'tester' })
       const second = await callOn(brobotTools, 'give_work', {
@@ -389,20 +257,23 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       const adas = pieceOf(ada, piece)?.answeredAPersonAt ?? Number.NaN
       expect(bobs).toBeLessThan(adas)
 
-      // ⛔ Oldest first: Bob's, then Ada's — the reverse of the order the pieces were given in, so
-      // neither a flipped sign nor a missing sort can pass.
-      const rows = store.piecesWaitingOnWhoWrote().rows
-      expect(rows.map((row) => row.owner)).toEqual([bob, ada])
-      expect(rows.map((row) => row.answeredAPersonAt)).toEqual([bobs, adas])
-      // ⚑ The host's list carries the store's order.
-      expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.owner)).toEqual([bob, ada])
+      // Both task timestamps remain, but neither answer invents an attention entry.
+      expect(store.piecesWaitingOnWhoWroteIn(bob).map((row) => row.answeredAPersonAt)).toEqual([
+        bobs,
+      ])
+      expect(store.piecesWaitingOnWhoWroteIn(ada).map((row) => row.answeredAPersonAt)).toEqual([
+        adas,
+      ])
+      expect(store.piecesWaitingOnWhoWrote().rows).toEqual([])
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
     })
 
     it('⛔ a rebuilt ledger is folded again, even when it ends at the same ordinal as the one kept', async () => {
       const { brobot, ada, piece } = await adaWaitsOnThePerson()
       // ⚑ THE CONTROL — read twice, the second from what was kept: the piece is listed both times.
-      expect(store.piecesWaitingOnWhoWrote().rows.map((row) => row.piece)).toEqual([piece])
-      expect(store.piecesWaitingOnWhoWrote().rows.map((row) => row.piece)).toEqual([piece])
+      expect(store.piecesWaitingOnWhoWroteIn(ada).map((row) => row.piece)).toEqual([piece])
+      expect(store.piecesWaitingOnWhoWroteIn(ada).map((row) => row.piece)).toEqual([piece])
 
       // Ada's ledger is rebuilt as a new generation with the SAME ordinals, so its newest row is the
       // one the kept fold was keyed on — but there the turn was opened by the giver's note, not by
@@ -436,8 +307,7 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
       // ⚑ The rebuild took: the fold of the new generation stalls the piece.
       expect(pieceOf(ada, piece)).toMatchObject({ state: 'stalled', stalledBecause: 'turn_ended' })
 
-      // ⛔ The walk folds the new generation too. Keyed on the newest ordinal alone, it would hand
-      // back the kept row from the generation that is gone.
+      expect(store.piecesWaitingOnWhoWroteIn(ada)).toEqual([])
       expect(store.piecesWaitingOnWhoWrote().rows).toEqual([])
       expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
     })
@@ -454,16 +324,20 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
          VALUES (?, ?, 0, ?, 'status', '{not json', ?)`,
       ).run('evt_torn_status_90000', ada, 90_000, tick())
 
-      const once = store.piecesWaitingOnWhoWrote()
-      expect(once.rows.map((row) => row.piece)).toEqual([piece])
-      expect(once.rowsUnread).toBe(1)
-      // ⛔ The ledger has not grown since, so a kept fold would be handed back — and the row it
-      // skipped would go uncounted. It was not kept: the second read counts it again.
-      const twice = store.piecesWaitingOnWhoWrote()
-      expect(twice.rows.map((row) => row.piece)).toEqual([piece])
-      expect(twice.rowsUnread).toBe(1)
-      // ⚑ …and so does the host's list, read a third time.
-      expect(host.waitingOnWhoWroteForAPerson().rowsUnread).toBe(1)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const unread = rowsUnreadOnce()
+        expect(store.piecesWaitingOnWhoWroteIn(ada, unread).map((row) => row.piece)).toEqual([
+          piece,
+        ])
+        expect(unread.count).toBe(1)
+      }
+      // The retired attention reader opens no ledger; it does not claim to have read this row.
+      expect(host.waitingOnWhoWroteForAPerson()).toMatchObject({
+        rows: [],
+        walk: 'no-ledger',
+        ledgers: 0,
+        rowsUnread: 0,
+      })
     })
   })
 })

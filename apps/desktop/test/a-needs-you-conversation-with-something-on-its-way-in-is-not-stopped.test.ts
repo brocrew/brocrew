@@ -1,6 +1,5 @@
-import type { AgentState } from '../src/shared/agent-state-contracts'
-import type { PieceRow } from '../src/shared/task-contracts'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { callOn } from './helpers/call-agent-tool'
+import { permissionTurnFixture } from './helpers/permission-card-on'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,16 +18,13 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  type ResumableSessionInfo,
-  type RuntimeStatesMessage,
-  type UnresumableSessionInfo,
-} from '../src/shared/runtime-ipc'
+import { type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import {
   fixtureProviderConfig,
+  fixtureConversationReaders,
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
@@ -37,7 +33,7 @@ import {
 /**
  * # The idle stop · a start or a delivery on its way in keeps a *needs you* conversation running
  *
- * A conversation whose piece waits on the person who wrote to it reads *needs you*, and *needs
+ * A conversation with an open question for the person reads *needs you*, and *needs
  * you* is idle enough to stop: the ledger holds it. *Needs you* ranks above *active*, so its word
  * hides a start or a message arriving at that moment; `idleEnoughToStop` reads both directly
  * (`startsInFlight`, `arrivals`) for that reason.
@@ -229,68 +225,25 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     return sessionId
   }
 
-  const saidOf = (id: string): { conversation: string; state: AgentState }[] =>
-    pushed.flatMap((message) => message.moved).filter((one) => one.conversation === id)
-  const lastSaid = (id: string): AgentState | undefined => saidOf(id).at(-1)?.state
-
-  const listed = (id: string): ResumableSessionInfo | UnresumableSessionInfo | undefined =>
-    [...host.resumableSessions(), ...host.unresumableSessions()].find((row) => row.sessionId === id)
-  const runningOf = (id: string): string | undefined => listed(id)?.running
+  const { lastSaid, listed, runningOf } = fixtureConversationReaders(() => ({ host, pushed }))
 
   /** The idle-stop line the host logs, synchronously, the moment it decides to stop. */
   const stopLines = (): string[] =>
     infoSpy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('was idle for'))
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const {
+    ledger,
+    finish: letTheTurnFinish,
+    pieceGivenTo,
+  } = permissionTurnFixture(() => ({
+    store,
+    host,
+    window,
+    claimed,
+  }))
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-
-  const cardOn = async (sessionId: string): Promise<string> => {
-    await waitFor(
-      () => ledger(sessionId).some((event) => event.type === 'permission_request'),
-      'the card the turn parks on',
-    )
-    const asked = ledger(sessionId)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1)
-    if (asked === undefined || asked.type !== 'permission_request') {
-      throw new Error('no permission request on the ledger')
-    }
-    return asked.id
-  }
-
-  /** Answer the open card so the turn runs to its own terminal. */
-  const letTheTurnFinish = async (sessionId: string): Promise<void> => {
-    const before = ledger(sessionId).filter((event) => event.type === 'turn').length
-    const id = await cardOn(sessionId)
-    if (!claimed.has(sessionId)) {
-      host.claimSession(sessionId, window)
-      claimed.add(sessionId)
-    }
-    await host.respondPermission(sessionId, id, { outcome: 'allow' }, window)
-    await waitFor(
-      () => ledger(sessionId).filter((event) => event.type === 'turn').length > before,
-      'the turn to reach its own terminal',
-    )
-  }
-
-  const pieceGivenTo = (worker: string): PieceRow => {
-    const row = store.piecesOwnedBy(worker).at(-1)
-    if (row === undefined) throw new Error(`no piece in ${worker}`)
-    return row
-  }
-
-  /** A helper given work by a PM, written to by a person, whose turn ended with the piece open. */
-  const aHelperWaitingOnThePersonWhoWrote = async (): Promise<string> => {
+  /** Open work retains its task state; a genuine question supplies the person attention. */
+  const aHelperWithAPersonQuestion = async () => {
     const brought = await opens('worker-b')
     await host.close(brought, window)
     await opens('pm')
@@ -320,14 +273,34 @@ describe('the idle stop and what is on its way into a conversation that needs yo
       () => ledger(helper).filter((event) => event.type === 'turn').length > turns,
       'the turn the person opened to end',
     )
+    await settle()
+    expect(lastSaid(helper)?.is).toBe('idle')
+    expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+    const asked = await callOn(agentToolsFor(host, helper), 'ask_question', {
+      who_answers: 'a-person',
+      question: 'Which completed result should I keep?',
+    })
+    expect(asked).toMatchObject({ outcome: 'ok', question: expect.any(String) })
+    const requestId = asked.question as string
+    expect(host.questionsForAPerson().rows.map((row) => row.request.requestId)).toEqual([requestId])
     await waitFor(() => lastSaid(helper)?.is === 'needs-you', 'the helper to need the person')
     await settle()
     expect(pieceGivenTo(helper).state).toBe('waiting-on-the-person-who-wrote')
-    return helper
+    return { helper, requestId }
+  }
+
+  const expectQuestionSurvivesStopAndWake = async (helper: string, requestId: string) => {
+    await waitFor(() => runningOf(helper) === 'not-running', 'the helper to be stopped')
+    expect(listed(helper)?.state.is).toBe('needs-you')
+    expect(host.questionsForAPerson().rows.map((row) => row.request.requestId)).toEqual([requestId])
+    const answer = await host.startAndSend(helper, 'Continue with the question still open.', window)
+    expect('notSent' in answer).toBe(false)
+    expect(runningOf(helper)).toBe('in-a-window')
+    expect(host.questionsForAPerson().rows.map((row) => row.request.requestId)).toEqual([requestId])
   }
 
   it('⛔ a countdown that runs out while a message is arriving stops nothing; ⚑ nothing arriving, the same conversation is stopped', async () => {
-    const helper = await aHelperWaitingOnThePersonWhoWrote()
+    const { helper, requestId } = await aHelperWithAPersonQuestion()
 
     insides().arrivals.set(helper, Promise.resolve())
     await fire(countdownOf(helper))
@@ -338,11 +311,11 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     await markAndSettle(helper)
     await fire(countdownOf(helper))
     expect(stopLines()).toHaveLength(1)
-    await waitFor(() => runningOf(helper) === 'not-running', 'the helper to be stopped')
+    await expectQuestionSurvivesStopAndWake(helper, requestId)
   })
 
   it('⛔ a countdown that runs out while a start is in flight stops nothing; ⚑ the start settled, the same conversation is stopped', async () => {
-    const helper = await aHelperWaitingOnThePersonWhoWrote()
+    const { helper, requestId } = await aHelperWithAPersonQuestion()
 
     insides().startsInFlight.set(helper, Promise.resolve(helper))
     await fire(countdownOf(helper))
@@ -353,6 +326,6 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     await markAndSettle(helper)
     await fire(countdownOf(helper))
     expect(stopLines()).toHaveLength(1)
-    await waitFor(() => runningOf(helper) === 'not-running', 'the helper to be stopped')
+    await expectQuestionSurvivesStopAndWake(helper, requestId)
   })
 })

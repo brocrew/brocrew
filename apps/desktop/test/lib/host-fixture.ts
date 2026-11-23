@@ -2,7 +2,9 @@ import { tmpdir } from 'node:os'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
-import { createSessionStore } from '../../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
+import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
@@ -24,7 +26,13 @@ import type {
   RuntimeHost,
   RuntimeHostDeps,
 } from '../../src/main/runtime/runtime-host'
-import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import type {
+  ProviderConfigInfo,
+  RuntimeEventMessage,
+  RuntimeStatesMessage,
+  ResumableSessionInfo,
+  UnresumableSessionInfo,
+} from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -100,6 +108,39 @@ export function latestToolset(handed: readonly AgentToolset[]): AgentToolset {
   const last = handed.at(-1)
   if (last === undefined) throw new Error('no toolset was handed to that launch')
   return last
+}
+
+export function fixtureConversationReaders(
+  current: () => {
+    host: Pick<RuntimeHost, 'resumableSessions' | 'unresumableSessions'>
+    pushed: RuntimeStatesMessage[]
+  },
+) {
+  const saidOf = (id: string): { conversation: string; state: AgentState }[] =>
+    current()
+      .pushed.flatMap((message) => message.moved)
+      .filter((one) => one.conversation === id)
+  const lastSaid = (id: string): AgentState | undefined => saidOf(id).at(-1)?.state
+  const listed = (id: string): ResumableSessionInfo | UnresumableSessionInfo | undefined => {
+    const { host } = current()
+    return [...host.resumableSessions(), ...host.unresumableSessions()].find(
+      (row) => row.sessionId === id,
+    )
+  }
+  const runningOf = (id: string): string | undefined => listed(id)?.running
+  return { saidOf, lastSaid, listed, runningOf }
+}
+
+export function fixtureTurnCounts(currentStore: () => Pick<SessionStore, 'events'>) {
+  const ledger = (sessionId: string): TranscriptEvent[] =>
+    currentStore()
+      .events(sessionId)
+      .map((entry) => entry.event)
+  const turnsIn = (sessionId: string): number =>
+    ledger(sessionId).filter((event) => event.type === 'turn').length
+  const userTurnsIn = (sessionId: string): number =>
+    ledger(sessionId).filter((event) => event.type === 'user_turn').length
+  return { turnsIn, userTurnsIn }
 }
 
 type FixtureHost = Pick<RuntimeHost, 'closeAll'>

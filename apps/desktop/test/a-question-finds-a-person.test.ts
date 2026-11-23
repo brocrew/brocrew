@@ -1,3 +1,4 @@
+import { finishPermissionTurn, permissionCardOn } from './helpers/permission-card-on'
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import { waitFor } from './lib/f093-host'
@@ -199,34 +200,10 @@ describe('394 · a question finds a person, and a permission never travels', () 
     return handle
   }
 
-  const cardOn = async (sessionId: string): Promise<string> => {
-    await waitFor(
-      () => ledger(sessionId).some((event) => event.type === 'permission_request'),
-      'the card the turn parks on',
-    )
-    const asked = ledger(sessionId)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1)
-    if (asked === undefined || asked.type !== 'permission_request') {
-      throw new Error('no permission request on the ledger')
-    }
-    return asked.id
-  }
+  const cardOn = permissionCardOn(ledger)
 
-  /** Answer the open card so the turn runs to its own terminal (`379`'s helper). */
-  const letTheTurnFinish = async (sessionId: string): Promise<void> => {
-    const before = ledger(sessionId).filter((event) => event.type === 'turn').length
-    const id = await cardOn(sessionId)
-    if (!claimed.has(sessionId)) {
-      host.claimSession(sessionId, window)
-      claimed.add(sessionId)
-    }
-    await host.respondPermission(sessionId, id, { outcome: 'allow' }, window)
-    await waitFor(
-      () => ledger(sessionId).filter((event) => event.type === 'turn').length > before,
-      'the turn to reach its own terminal',
-    )
-  }
+  const letTheTurnFinish = (sessionId: string): Promise<void> =>
+    finishPermissionTurn(ledger, host, window, claimed, sessionId)
 
   /**
    * `393`'s helper: a PM in a window with one child of its own, started through the real door —

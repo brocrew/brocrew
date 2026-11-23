@@ -17783,20 +17783,7 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * 🔴 **F097 · the work whose agent answered a person and waits on their next words** — another
-   * read of the one look, and the one *Waiting on you* draws as a group of its own.
-   *
-   * ## ⚑ A person's to answer, so it is counted
-   *
-   * When delegated work remains open after a turn opened by the person's words, its holder waits on that person. The giver still waits on the holder and receives no stall notice. Count this wait in {@link readWorkspace}'s `a-reply`, as with {@link instructionAsksForAPerson}, and show needs you through {@link aPieceItHoldsWaitsOnWhoWrote}. These rows require a person's reply, unlike {@link stalledWorkForAPerson}.
-   *
-   * ## ⛔ It reports and rules nothing
-   *
-   * ⚠️ **A READ, answered when a window asks**: it changes no state and arms no clock. ⚑ What clears a
-   * row is a ledger fact — any drive of the piece: the person's next words above all, or its giver's
-   * follow-up, a new brief, a reply or a take-back.
-   */
+  /** Legacy reply-list contract; recorded person questions and actions use questionsForAPerson. */
   waitingOnWhoWroteForAPerson(): LedgerWalk<WaitingOnWhoWrote> {
     return this.forAPerson('waitingOnWhoWroteForAPerson', () =>
       this.waitingOnWhoWroteForAPersonComposed(),
@@ -18064,9 +18051,7 @@ export class RuntimeHost implements LiveHost {
       'an-instruction-ask': this.instructionAsksNow(),
       // The agents' requests to register an MCP server, the read *Waiting on you* draws.
       'a-server-request': this.mcpServerRequestsNow(),
-      // ⚑ **F097 — the work whose agent answered a person**, the walk
-      // {@link waitingOnWhoWroteForAPerson} hands *Waiting on you*, so this count, the rail's badge
-      // and that page are one number.
+      // Keep the legacy reply-list contract aligned with the page; answered turns add no asks.
       'a-reply': this.shown(this.deps.store.piecesWaitingOnWhoWrote(), (row) => row.owner),
     }
     return {
@@ -19922,8 +19907,7 @@ export class RuntimeHost implements LiveHost {
    *
    *  - **needs you** — from its LEDGER, so it is the same whether or not it runs: a question asked of
    *    a person, a decision, an ask against its rules — ⚑ and a card open in a running conversation
-   *    that went to nobody but a person (none routed to another conversation). ⚑ **F097** — and a
-   *    piece it holds that waits on the person who wrote to it.
+   *    that went to nobody but a person (none routed to another conversation).
    *  - **active** — a start or a delivery on its way in, a reservation whose provider has not come
    *    up, or a turn running. ⚠️ A conversation on its way out is not: it is stopping.
    *  - **waiting on an answer from <name>** — ⚑ **R19**: an open question of its own that went to
@@ -20101,9 +20085,7 @@ export class RuntimeHost implements LiveHost {
       needsYou:
         aPersonOwesAnAnswerIn(standing) ||
         reads.askingForRules.has(sessionId) ||
-        (status === 'waiting_permission' && theirs === undefined) ||
-        // ⚑ **F097** — asked last: the one arm that reads its pieces.
-        this.aPieceItHoldsWaitsOnWhoWrote(sessionId, unread, { routings, raised }, workOut),
+        (status === 'waiting_permission' && theirs === undefined),
       askedOf,
       // ⚑ **D-016 · commit 7 · R3 — named by the piece it owns**: a question can go to any of one
       // agent's conversations, and the agent's name alone could name two. ⚑ **F033 · by its piece
@@ -20143,32 +20125,6 @@ export class RuntimeHost implements LiveHost {
       owesAnAnswerSince: earliest(owedNow.map((one) => one.at)),
       owedQuestions: owedNow,
     }
-  }
-
-  /**
-   * ⚑ **F097 · a piece this conversation holds waits on the person who wrote to it** — one its
-   * pieces' fold left `waiting-on-the-person-who-wrote` (a person's own words opened its turn, and
-   * it ended with the piece open) and that still reads so COMPOSED: ⛔ a holder that asked another
-   * conversation about the piece, or handed part of it out, waits on that and is never *needs you*
-   * for it (R19, D-036), and a card a person owes there is already *needs you* on its own.
-   * ⚑ **The store's kept rows** (`SessionStore.piecesWaitingOnWhoWroteIn`): a ledger that has not
-   * grown since is one probe, and only a conversation with such a row is composed — through this
-   * conversation's own wait reads, which {@link whoOwesIt} already holds.
-   */
-  private aPieceItHoldsWaitsOnWhoWrote(
-    sessionId: string,
-    unread: RowsUnread,
-    itsLedger: StateLedger,
-    workOut: WorkOutOf<StateWork>,
-  ): boolean {
-    const waits =
-      this.windowRoutingReads.waitingOnWhoWrote(sessionId, unread) ??
-      this.deps.store.piecesWaitingOnWhoWroteIn(sessionId, unread)
-    if (waits.length === 0) return false
-    return composeWhatEachPieceIsWaitingOn(
-      waits,
-      this.oneWaitReadPerAnswer(unread, () => itsLedger, workOut),
-    ).some((piece) => piece.state === 'waiting-on-the-person-who-wrote')
   }
 
   /**

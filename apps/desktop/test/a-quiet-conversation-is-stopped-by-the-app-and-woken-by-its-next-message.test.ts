@@ -1,10 +1,13 @@
+import { permissionTurnFixture } from './helpers/permission-card-on'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink } from './helpers/a-service-world'
 import { callOn } from './helpers/call-agent-tool'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import type { AgentState } from '../src/shared/agent-state-contracts'
-import type { PieceRow } from '../src/shared/task-contracts'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import {
+  fixtureConversationReaders,
+  fixtureProviderConfig,
+  neutralHostDeps,
+  latestToolset,
+} from './lib/host-fixture'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,11 +33,7 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-import type {
-  ResumableSessionInfo,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 /**
  * Drive idle countdowns through the real SQLite host with a provider double.
@@ -272,15 +271,10 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   }
   const stopped = (nth: number): boolean => handleOf(nth).status() === 'ended'
 
-  /** Every entry pushed for one conversation, in order. */
-  const saidOf = (id: string): { conversation: string; state: AgentState }[] =>
-    pushed.flatMap((message) => message.moved).filter((one) => one.conversation === id)
-  const lastSaid = (id: string): AgentState | undefined => saidOf(id).at(-1)?.state
-
-  /** A list read, as the window makes it. */
-  const listed = (id: string): ResumableSessionInfo | UnresumableSessionInfo | undefined =>
-    [...host.resumableSessions(), ...host.unresumableSessions()].find((row) => row.sessionId === id)
-  const runningOf = (id: string): string | undefined => listed(id)?.running
+  const { saidOf, lastSaid, listed, runningOf } = fixtureConversationReaders(() => ({
+    host,
+    pushed,
+  }))
 
   /** The idle-stop line the host logs when a countdown runs out into a stop. */
   const stopLines = (): string[] =>
@@ -330,49 +324,18 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     await host.close(id, window)
   }
 
-  const theToolsetJustHandedOut = (): AgentToolset => {
-    const last = handed.at(-1)
-    if (last === undefined) throw new Error('no toolset was handed to that launch')
-    return last
-  }
+  const theToolsetJustHandedOut = (): AgentToolset => latestToolset(handed)
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-
-  const cardOn = async (sessionId: string): Promise<string> => {
-    await waitFor(
-      () => ledger(sessionId).some((event) => event.type === 'permission_request'),
-      'the card the turn parks on',
-    )
-    const asked = ledger(sessionId)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1)
-    if (asked === undefined || asked.type !== 'permission_request') {
-      throw new Error('no permission request on the ledger')
-    }
-    return asked.id
-  }
-
-  /** Answer the open card so the turn runs to its own terminal. */
-  const letTheTurnFinish = async (sessionId: string): Promise<void> => {
-    const before = ledger(sessionId).filter((event) => event.type === 'turn').length
-    const id = await cardOn(sessionId)
-    if (!claimed.has(sessionId)) {
-      host.claimSession(sessionId, window)
-      claimed.add(sessionId)
-    }
-    await host.respondPermission(sessionId, id, { outcome: 'allow' }, window)
-    await waitFor(
-      () => ledger(sessionId).filter((event) => event.type === 'turn').length > before,
-      'the turn to reach its own terminal',
-    )
-  }
-
-  const pieceGivenTo = (worker: string): PieceRow => {
-    const row = store.piecesOwnedBy(worker).at(-1)
-    if (row === undefined) throw new Error(`no piece in ${worker}`)
-    return row
-  }
+  const {
+    ledger,
+    finish: letTheTurnFinish,
+    pieceGivenTo,
+  } = permissionTurnFixture(() => ({
+    store,
+    host,
+    window,
+    claimed,
+  }))
 
   /** A PM with two children, each holding one piece of work, each started by a give. */
   const aPmAndTwoWorkers = async (): Promise<{
@@ -687,7 +650,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(listed(a)?.state.is).toBe('idle')
   })
 
-  it('⚑ W4.210 · an agent a person wrote to, with work it was given open, is stopped, still needs you everywhere, and starts again on their next message', async () => {
+  it('⚑ W4.210 · an agent a person wrote to, with work it was given open, is stopped, owes no reply without an open request, and starts again on their next message', async () => {
     const { pm, quiet } = await aPmAndTwoWorkers()
     // The brief's turn ends (the giver's), then a person writes and that turn ends with the piece open.
     await letTheTurnFinish(quiet)
@@ -703,11 +666,11 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       () => ledger(quiet).filter((event) => event.type === 'turn').length > turns,
       'the turn the person opened to end',
     )
-    await waitFor(() => lastSaid(quiet)?.is === 'needs-you', 'the helper to need the person')
+    await waitFor(() => lastSaid(quiet)?.is === 'idle', 'the answered helper to become idle')
     await settle()
     expect(pieceGivenTo(quiet).state).toBe('waiting-on-the-person-who-wrote')
 
-    // 🔴 Counted and stopped, with nothing else in the way.
+    // The process can still stop without changing the task or notifying its giver.
     const started = handles.length
     const giversRows = ledger(pm).length
     await fire(countdownOf(quiet))
@@ -719,11 +682,10 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
         .filter((event) => event.type === 'user_turn' || event.type === 'message_queued'),
     ).toEqual([])
 
-    // ⚑ Still needs you, wherever it is read: the window's list, another agent's tools, and the
-    // person's own list — the piece still waits on them.
-    expect(listed(quiet)?.state.is).toBe('needs-you')
-    expect(await theWordsOf(pm, quiet)).toEqual(['needs you', 'needs you'])
-    expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.owner)).toEqual([quiet])
+    // The process stop preserves task state and creates no new person request.
+    expect(listed(quiet)?.state.is).toBe('idle')
+    expect(await theWordsOf(pm, quiet)).toEqual(['idle', 'idle'])
+    expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
     expect(pieceGivenTo(quiet).state).toBe('waiting-on-the-person-who-wrote')
 
     // ⚑ The person's next message starts it again, through the window's door.
