@@ -110,7 +110,9 @@ describe('the recovery copy is checked off the main thread', () => {
     trimBundle = await bundleAWorker('src/main/db/event-retention.ts', folder, 'trim.cjs')
   }, 120_000)
   afterAll(() => {
+    console.error('recovery fixture removal entered', process.hrtime.bigint().toString())
     rmSync(folder, { recursive: true, force: true })
+    console.error('recovery fixture removed', process.hrtime.bigint().toString())
   })
 
   it('a long check in the worker leaves the main thread beating; the same check here does not', async () => {
@@ -356,6 +358,7 @@ describe('the recovery copy is checked off the main thread', () => {
   )
 
   it('worker selections commit on the ordinary writer without a foreign-write resync', async () => {
+    console.error('ordinary writer case entered', process.hrtime.bigint().toString())
     const file = join(aRoot(), 'owned-trim.sqlite')
     const db = aHistory(file, 1402, 8192)
     db.prepare(
@@ -402,6 +405,7 @@ describe('the recovery copy is checked off the main thread', () => {
                 "INSERT INTO events (id,session_id,ordinal,type,payload,created_at) VALUES ('new-stream','fictional',1407,'thinking','{\"type\":\"thinking\"}',0)",
               ).run()
               ordinaryWrite = true
+              console.error('ordinary insert completed', process.hrtime.bigint().toString())
             }, 0)
         })
         worker.once('exit', () => {
@@ -410,11 +414,13 @@ describe('the recovery copy is checked off the main thread', () => {
         return worker
       },
       async (result) => {
+        console.error('ordinary writer completion', process.hrtime.bigint().toString())
         done(result)
       },
       failed,
     )
     try {
+      console.error('ordinary writer fixture ready', process.hrtime.bigint().toString())
       retention.firstListAccepted(-600_000)
       const result = await finished
       expect(exited).toBe(true)
@@ -451,10 +457,14 @@ describe('the recovery copy is checked off the main thread', () => {
       }
       committed.check()
       expect(seen.at(-1)?.resync).toBe(true)
+      console.error('ordinary writer assertions completed', process.hrtime.bigint().toString())
     } finally {
+      console.error('ordinary writer stop entered', process.hrtime.bigint().toString())
       await retention.stop()
+      console.error('ordinary writer stop joined', process.hrtime.bigint().toString())
       unsubscribe()
       db.close()
+      console.error('ordinary writer database closed', process.hrtime.bigint().toString())
     }
   }, 15_000)
 
