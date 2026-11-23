@@ -93,13 +93,13 @@ function assembleReceipt(
   }
   const { recorded, state } = facts
   const task = `Task ${recorded.taskLabel}`
+  const target = facts.targetKind === 'new' ? 'a new' : 'the existing'
+  const lastActive =
+    facts.targetKind === 'continued' && facts.lastActiveAt != null && facts.readAt !== undefined
+      ? `, last active ${howLongAgo(facts.lastActiveAt, facts.readAt)}`
+      : ''
   if (state.kind === 'started' || state.kind === 'queued') {
     const delivery = state.kind === 'started' ? 'sent to' : 'held for'
-    const target = facts.targetKind === 'new' ? 'a new' : 'the existing'
-    const lastActive =
-      facts.targetKind === 'continued' && facts.lastActiveAt != null && facts.readAt !== undefined
-        ? `, last active ${howLongAgo(facts.lastActiveAt, facts.readAt)}`
-        : ''
     return {
       receipt,
       said: `${task} ${delivery} ${facts.profile} in ${target} ${conversation}${lastActive}. ${contextInTheReceipt(facts.context)}`,
@@ -109,9 +109,17 @@ function assembleReceipt(
     .replace(/^This conversation did not start: /, '')
     .replace(/\.$/, '')
   if (state.cause.code === 'provider-file-missing') {
+    const activity =
+      facts.targetKind === 'continued' && lastActive === ''
+        ? ', last active time unknown'
+        : lastActive
+    const giveAgain =
+      facts.targetKind === 'new'
+        ? 'give it again with to: "new"'
+        : `give it with to: "new" and a brief pointing at ${address}`
     return {
       receipt,
-      said: `${task} is recorded in ${conversation}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript. To have the work done, give it with to: "new" and a brief pointing at ${address}, then close task ${facts.recorded.taskLabel}.`,
+      said: `${task} is recorded in ${target} ${conversation}${activity}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript. To have the work done, ${giveAgain}, then close task ${recorded.taskLabel}. ${contextInTheReceipt(facts.context)}`,
     }
   }
   const person = state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''

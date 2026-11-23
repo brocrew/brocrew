@@ -157,6 +157,107 @@ it.each([
   },
 )
 
+it.each([
+  { compacted: false, readAgain: false, context: '5% used' },
+  { compacted: true, readAgain: false, context: 'no current reading' },
+  { compacted: true, readAgain: true, context: '3% used' },
+])('reports the stopped destination’s current context as $context', async (test) => {
+  const world = aServiceWorld()
+  try {
+    world.anAgent('worker', 'normal')
+    const host = world.aHost()
+    const giver = await world.aPersonOpens(host, 'giver')
+    const holder = await world.aRecordedWorker(giver, 'worker')
+    const readContext = (used: number): void => {
+      world.store.append(
+        holder,
+        world.store.nextOrdinal(holder),
+        {
+          type: 'context_reading',
+          reading: { kind: 'proportional', used, window: 100_000 },
+          source: 'message_start',
+        },
+        world.clock++,
+      )
+    }
+    readContext(5_000)
+    if (test.compacted) {
+      world.store.append(
+        holder,
+        world.store.nextOrdinal(holder),
+        { type: 'compaction', source: 'compact_boundary' },
+        world.clock++,
+      )
+      if (test.readAgain) readContext(3_000)
+    }
+    world.store.append(
+      holder,
+      world.store.nextOrdinal(holder),
+      { type: 'compaction', source: 'compact_boundary', parentToolCallId: 'agent-call' },
+      world.clock++,
+    )
+    world.clock += 5 * 60_000
+    world.resumesAreGoneFor = 'worker'
+
+    const result = await answerOn(agentToolsFor(host, giver), 'give_work', {
+      profile: 'worker',
+      to: host.addressOf(holder),
+      title: 'Book the room',
+      brief: 'Book the meeting room for Tuesday.',
+      definition_of_done: 'The room is booked.',
+    })
+
+    expect(result.structured).toMatchObject({
+      outcome: 'ok',
+      receipt: {
+        recipient: {
+          id: holder,
+          state: { kind: 'cannot-run', cause: { code: 'provider-file-missing' } },
+        },
+      },
+    })
+    expect(result.text).toContain('last active 5 minutes ago')
+    expect(result.text).toContain(`Context: ${test.context}.`)
+  } finally {
+    await world.cleanUp()
+  }
+})
+
+it.each([
+  {
+    targetKind: 'continued',
+    target: /in the existing conversation .+, last active time unknown, but /,
+    recovery: 'give it with to: "new" and a brief pointing at ',
+  },
+  {
+    targetKind: 'new',
+    target: /in a new conversation [^,]+, but /,
+    recovery: 'To have the work done, give it again with to: "new", then close task W1.1.',
+  },
+] as const)('states the target and recovery for a $targetKind Give', async (test) => {
+  const world = aServiceWorld()
+  try {
+    const host = world.aHost()
+    const owner = await world.aPersonOpens(host, 'worker')
+    const { said } = host.receiptForSend({
+      to: owner,
+      profile: 'worker',
+      targetKind: test.targetKind,
+      lastActiveAt: null,
+      recorded: { kind: 'task', id: 'work_kept', taskLabel: 'W1.1' },
+      state: {
+        kind: 'cannot-run',
+        cause: { code: 'provider-file-missing', reason: 'its provider session file is missing' },
+      },
+      attachments: [],
+    })
+    expect(said).toMatch(test.target)
+    expect(said).toContain(test.recovery)
+  } finally {
+    await world.cleanUp()
+  }
+})
+
 it.each(['restart', 'withdrawal', 'live'])('rechecks a held failure notice (%s)', async (when) => {
   const world = aServiceWorld()
   try {

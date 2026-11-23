@@ -2954,6 +2954,12 @@ const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
   'pending_compaction',
 ])
 
+function compactionClearsContext(event: TranscriptEvent): boolean {
+  return (
+    event.type === 'compaction' && event.after === undefined && event.parentToolCallId === undefined
+  )
+}
+
 /** Unrecognized protocol origins never supply housekeeping evidence. */
 function authPolicyForNotice(event: TranscriptEvent): ProviderAuthPolicy | undefined {
   if (event.type !== 'unknown') return undefined
@@ -24309,7 +24315,7 @@ export class RuntimeHost implements LiveHost {
       return sendReceipt(delivery, this.deps.store, service)
     }
     let context: ContextReading | null = null
-    if (facts.state.kind !== 'cannot-run') {
+    if (facts.state.kind !== 'cannot-run' || facts.state.cause.code === 'provider-file-missing') {
       try {
         context = this.contextOfConversation(facts.to)
       } catch (error) {
@@ -24324,8 +24330,15 @@ export class RuntimeHost implements LiveHost {
     live = this.slots.get(sessionId)?.session ?? null,
   ): ContextReading | null {
     if (live !== null) return live.latestContext
-    const row = this.deps.store.newestOfType?.(sessionId, 'context_reading') ?? null
-    return row?.event.type === 'context_reading' ? row.event.reading : null
+    const store = this.deps.store
+    const reading = store.newestOfType?.(sessionId, 'context_reading')
+    if (reading?.event.type !== 'context_reading') return null
+    for (let before: number | undefined; ;) {
+      const compaction = store.newestOfType?.(sessionId, 'compaction', before, reading.ordinal + 1)
+      if (compaction == null) return reading.event.reading
+      if (compactionClearsContext(compaction.event)) return { kind: 'unknown' }
+      before = compaction.ordinal
+    }
   }
 
   stateOfARecordedMessage(owner: string, id: string): SendRecipientState {
@@ -41396,11 +41409,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ A compaction that says no size leaves no current reading: the one before it is too large.
     // One that says its size is followed by a reading of that size. ⛔ A sub-agent's compaction
     // is of its own context, not this conversation's.
-    if (
-      event.type === 'compaction' &&
-      event.after === undefined &&
-      event.parentToolCallId === undefined
-    ) {
+    if (compactionClearsContext(event)) {
       session.latestContext = { kind: 'unknown' }
     }
     // 🔴 **723 · R81 — a card whose Cancel asks nothing**, remembered for the one writer of a

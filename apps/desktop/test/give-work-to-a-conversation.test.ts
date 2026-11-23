@@ -891,7 +891,7 @@ describe('give_work goes to the conversation the giver names', () => {
       },
     })
     expect(navigationReply(result.text).prose).toBe(
-      `Task ${recorded.label} is recorded in conversation ${recipient.address} · ${recipient.title}, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript. To have the work done, give it with to: "new" and a brief pointing at ${recipient.address}, then close task ${recorded.label}.`,
+      `Task ${recorded.label} is recorded in the existing conversation ${recipient.address} · ${recipient.title}, last active just now, but that conversation can't run: its session file is missing. Its record is still readable with read_transcript. To have the work done, give it with to: "new" and a brief pointing at ${recipient.address}, then close task ${recorded.label}. Context: no current reading.`,
     )
     expect(store.recorded()).toHaveLength(before)
     expect(host.tookItsPlace(first.owner)).toBeNull()
