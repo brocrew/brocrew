@@ -231,6 +231,65 @@ describe('Service lifecycle', () => {
       },
     )
 
+    it('lists a rooted service question at the address Create published and answers it there', async () => {
+      world.anAgent('caller', 'nothing kept')
+      world.store.setDefaultApprovalMode('auto')
+      const host = world.aHost()
+      const caller = await world.aPersonOpens(host, 'caller')
+      const created = await call(host, caller, 'create_agent', {
+        profile_slug: 'fetcher',
+        kind: 'service',
+      })
+      expect(created.structured).toMatchObject({ outcome: 'ok' })
+      const address = String(created.structured.conversation)
+      expect(address).toMatch(/^W[0-9]+$/)
+      const service = accepted(await world.gives(host, caller, 'fetcher', { to: address })).owner
+      expect(world.store.rootOf(service)?.label).toBe(address)
+      await vi.waitFor(() => {
+        expect(
+          world.sent.some(
+            (turn) =>
+              turn.as === 'fetcher' && turn.words.includes('book the meeting room for Tuesday'),
+          ),
+        ).toBe(true)
+      })
+      const ask = async (question: string) => {
+        const result = await call(host, service, 'ask_question', {
+          who_answers: 'an-agent',
+          agent: caller,
+          question,
+        })
+        expect(result.structured, result.text).toMatchObject({
+          outcome: 'ok',
+          question: expect.any(String),
+        })
+        return result.structured.question
+      }
+      const answer = (question: unknown, askedBy: string) =>
+        call(host, caller, 'answer_question', {
+          question,
+          asked_by: askedBy,
+          answers: [{ part: 'answer', answer: ['Use the third floor.'] }],
+          interrupt: false,
+        })
+
+      const question = await ask('Which floor should I use?')
+      const listed = await call(host, caller, 'list_questions', {})
+      expect(listed.structured.questions).toContainEqual(
+        expect.objectContaining({ question, asked_by: address, state: 'open' }),
+      )
+      expect(listed.text).toContain(`asked_by ${address}.`)
+      expect(listed.text).not.toContain(`asked_by ${service}.`)
+      expect((await answer(question, address)).structured).toMatchObject({ outcome: 'ok' })
+      const ended = await call(host, caller, 'list_questions', { state: 'ended' })
+      expect(ended.structured.questions).toContainEqual(
+        expect.objectContaining({ question, asked_by: address, state: 'answered' }),
+      )
+      expect(ended.text).toContain(`(a service) · ${address} · answered`)
+      const second = await ask('Which floor should I use next?')
+      expect((await answer(second, service)).structured).toMatchObject({ outcome: 'ok' })
+    })
+
     it.each(['writeOwnInstructions', 'setModelChoice'] as const)(
       'keeps a failed %s setup unaddressable and lets creation retry',
       async (method) => {

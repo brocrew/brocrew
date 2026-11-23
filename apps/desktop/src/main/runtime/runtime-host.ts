@@ -19135,10 +19135,10 @@ export class RuntimeHost implements LiveHost {
      * once.
      */
     agent: string = this.whatToCallTheConversation(conversation),
-  ): { readonly called: string; readonly address: string } {
+  ): { readonly called: string; readonly address: string; readonly service?: true } {
     // ⚑ A service goes by its agent's name and what it is, as {@link nameByItsWork} says it.
     if (this.itIsAService(conversation)) {
-      return { called: `${agent} (a service)`, address: conversation }
+      return { called: `${agent} (a service)`, address: conversation, service: true }
     }
     const named = theWorkAlone(this.theWorkThatNamesUnder(conversation, piece))
     return {
@@ -19278,18 +19278,21 @@ export class RuntimeHost implements LiveHost {
     // once per asker per answer, as its record is read.
     // ⚑ **F033 · …by the piece each question was ASKED UNDER** ({@link calledUnder}) — once per
     // asker and piece per answer; a question whose words are not read names no piece.
-    const askers = new Map<string, { readonly called: string; readonly address: string }>()
-    const askerOf = (
-      conversation: string,
-      piece: string | null,
-    ): { readonly called: string; readonly address: string } => {
+    const askers = new Map<string, ReturnType<RuntimeHost['calledUnder']>>()
+    const askerOf = (conversation: string, piece: string | null) => {
       const key = `${conversation}\u0000${piece ?? ''}`
       const held = askers.get(key)
       if (held !== undefined) return held
-      const asker = this.calledUnder(conversation, piece)
+      const name = this.calledUnder(conversation, piece)
+      const asker =
+        name.service === true ? { ...name, address: this.addressOf(conversation) } : name
       askers.set(key, asker)
       return asker
     }
+    const askerFields = (asker: ReturnType<typeof askerOf>) => ({
+      askerCalled: asker.called,
+      ...(asker.service === true ? { askerAddress: asker.address } : {}),
+    })
     return rows.map((request) => {
       // 🔴 **611 · the gate is the REFUSED arm, and it used to be `because !== null`** (HO-088
       // §2.3). ⛔ The two were one set until an asker could address a question to a person, and
@@ -19297,7 +19300,7 @@ export class RuntimeHost implements LiveHost {
       // asking, not her sight of it."* ⚑ So an addressed question keeps its words here, and the
       // one thing still withheld is a permission's text, which is what this gate was always for.
       if (request.went.is === 'the-person-the-channel-left-it-with') {
-        return { request, words: null, askerCalled: askerOf(request.askedBy, null).called }
+        return { request, words: null, ...askerFields(askerOf(request.askedBy, null)) }
       }
       const read = readOrSkip(request.askedBy, unread?.in(request.askedBy), null, () => {
         const asked = raised(request.askedBy).get(request.requestId)
@@ -19307,14 +19310,14 @@ export class RuntimeHost implements LiveHost {
         return {
           request,
           words: questionText(asker, { ...asked, id: request.requestId }),
-          askerCalled: asker.called,
+          ...askerFields(asker),
           ...(asked.raisedBy === 'this-app' ? {} : { byItsProvider: true as const }),
           ...(stalledRecipient === undefined ? {} : { stalledRecipient }),
         }
       })
       // 🔴 **D-017 · R8 — the outer net**: words the asker's record cannot give are absent, and a
       // counted answer says it skipped that record.
-      return read ?? { request, words: null, askerCalled: askerOf(request.askedBy, null).called }
+      return read ?? { request, words: null, ...askerFields(askerOf(request.askedBy, null)) }
     })
   }
 

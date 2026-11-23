@@ -331,6 +331,8 @@ export interface VisibleQuestion {
    * days after asking. ⚠️ A question that names no piece names its asker as it is called now.
    */
   readonly askerCalled: string
+  /** The service's published address when its question is listed. */
+  readonly askerAddress?: string
   /**
    * ⛔ **The words the parent would have been sent — `null` for anything it may not answer, and for
    * anything whose request row this app can no longer read.**

@@ -47,7 +47,7 @@ const answerableByYou = (one: VisibleQuestion): boolean =>
 
 const questionPayload = (one: VisibleQuestion): Readonly<Record<string, unknown>> => ({
   question: one.request.requestId,
-  asked_by: one.request.askedBy,
+  asked_by: one.askerAddress ?? one.request.askedBy,
   state: one.request.state,
   // A question addressed to a person is still this caller's to answer if it knows (`admitAnswer`);
   // a channel-refused request and a provider's own question are not.
@@ -69,7 +69,7 @@ const questionPayload = (one: VisibleQuestion): Readonly<Record<string, unknown>
 /** A question that is over, as a payload carries it: how it ended, and none of its words. */
 const endedQuestionPayload = (one: VisibleQuestion): Readonly<Record<string, unknown>> => ({
   question: one.request.requestId,
-  asked_by: one.request.askedBy,
+  asked_by: one.askerAddress ?? one.request.askedBy,
   state: one.request.state,
   asked_at: one.request.at,
   ended_at: one.request.endedAt,
@@ -107,6 +107,11 @@ const QUESTION_STATE_SENTENCE: Partial<Readonly<Record<RequestState, string>>> =
     'the conversation that raised it stopped while it was waiting, and the request stopped with it, so it cannot be answered',
 }
 
+const askerLine = (one: VisibleQuestion): string =>
+  one.askerAddress === undefined || one.askerAddress === one.request.askedBy
+    ? one.askerCalled
+    : `${one.askerCalled} · ${one.askerAddress}`
+
 const questionLine = (one: VisibleQuestion): string => {
   const said = QUESTION_STATE_SENTENCE[one.request.state]
   const refused = theChannelRefusalIn(one.request)
@@ -118,7 +123,7 @@ const questionLine = (one: VisibleQuestion): string => {
   // **D-016 · commit 7 · R3 — the asker by its agent's name and its piece** — F033 · the one it
   // asked under ({@link VisibleQuestion.askerCalled}), as the question's own words name it. The
   // payload keeps its id.
-  return `  ${one.request.requestId} · from ${one.askerCalled} · ${one.request.state}${
+  return `  ${one.request.requestId} · from ${askerLine(one)} · ${one.request.state}${
     said === undefined ? '' : ` (${said})`
   }${
     refused === null
@@ -137,7 +142,7 @@ const questionLine = (one: VisibleQuestion): string => {
 /** A question that is over, as a line says it: who asked, and how it ended. */
 const endedQuestionLine = (one: VisibleQuestion): string => {
   const said = QUESTION_STATE_SENTENCE[one.request.state]
-  return `  ${one.request.requestId} · from ${one.askerCalled} · ${one.request.state}${
+  return `  ${one.request.requestId} · from ${askerLine(one)} · ${one.request.state}${
     said === undefined ? '' : ` (${said})`
   }`
 }
