@@ -16,7 +16,6 @@ export interface ClaudeSetupDependencies {
   stop(pid: number, force: boolean): void
 }
 export const CLAUDE_SETUP_BOUNDS = {
-  installMs: 300_000,
   loginMs: 600_000,
   stopMs: 2_000,
   outputBytes: 262_144,
@@ -294,12 +293,14 @@ export class ClaudeSetupService {
           stream.removeListener('error', pipeFailed)
         })
       }
-      operation.timers.push(
-        setTimeout(
-          () => this.stop(operation, 'timed-out'),
-          kind === 'install' ? this.bounds.installMs : this.bounds.loginMs,
-        ),
-      )
+      // ⚑ **An install has no total limit** (card 197): it ends when `claude install` exits, as a
+      // download on a slow connection or PC can take longer than any fixed limit, and a limit only
+      // killed a working install. Its output is capped, and `cancel()` stops it. Sign-in is a human
+      // flow that nobody may finish, so it keeps its limit.
+      if (kind === 'signIn')
+        operation.timers.push(
+          setTimeout(() => this.stop(operation, 'timed-out'), this.bounds.loginMs),
+        )
       return { ok: true }
     } catch {
       if (operation.child?.pid) this.stop(operation, 'start-failed')

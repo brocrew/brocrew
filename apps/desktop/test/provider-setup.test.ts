@@ -32,7 +32,7 @@ function fixture(platform: NodeJS.Platform = 'darwin', available = false) {
   const stop = vi.fn()
   const service = new ClaudeSetupService(
     { platform, findProgram, spawn, stop },
-    { ...CLAUDE_SETUP_BOUNDS, installMs: 100, loginMs: 200, stopMs: 10 },
+    { ...CLAUDE_SETUP_BOUNDS, loginMs: 200, stopMs: 10 },
   )
   const states: ProviderSetupState[] = []
   service.onState((state) => states.push(state))
@@ -71,17 +71,17 @@ describe('trusted native completion notifications', () => {
   )
   it.each(
     (['install', 'signIn'] as const).flatMap((action) =>
-      (['failure', 'cancel', 'timeout', 'missing'] as const).map((outcome) => ({
-        action,
-        outcome,
-      })),
+      (['failure', 'cancel', 'timeout', 'missing'] as const)
+        // An install has no timeout (card 197): only sign-in is stopped by its limit.
+        .filter((outcome) => !(action === 'install' && outcome === 'timeout'))
+        .map((outcome) => ({ action, outcome })),
     ),
   )('does not announce $action $outcome as successful setup', async ({ action, outcome }) => {
     vi.useFakeTimers()
     const f = fixture('darwin', action === 'signIn')
     f.service[action]()
     if (outcome === 'cancel') f.service.cancel()
-    if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(action === 'install' ? 100 : 200)
+    if (outcome === 'timeout') await vi.advanceTimersByTimeAsync(200)
     f.findProgram.mockReturnValue(outcome === 'missing' ? null : '/fictional/tools/official-cli')
     f.child.emit('close', outcome === 'failure' ? 1 : 0)
     expect(f.completed).not.toHaveBeenCalled()
@@ -246,22 +246,34 @@ describe('bounded process lifecycle', () => {
     expect(f.service.busy).toBe(false)
     expect(f.service.state()).toMatchObject({ phase: 'cancelled', authUrl: null })
   })
-  it.each(['install', 'signIn'] as const)(
-    'times out %s and never returns sign-in diagnostics',
-    async (action) => {
-      vi.useFakeTimers()
-      const f = fixture('darwin', action === 'signIn')
-      f.service[action]()
-      await vi.advanceTimersByTimeAsync(action === 'install' ? 100 : 200)
-      expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
-      f.child.emit('close', null)
-      expect(f.service.state()).toMatchObject({
-        phase: 'failed',
-        error: 'timed-out',
-        details: null,
-      })
-    },
-  )
+  it('times out sign-in and never returns sign-in diagnostics', async () => {
+    vi.useFakeTimers()
+    const f = fixture('darwin', true)
+    f.service.signIn()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(f.stop).toHaveBeenCalledWith(f.child.pid, false)
+    f.child.emit('close', null)
+    expect(f.service.state()).toMatchObject({ phase: 'failed', error: 'timed-out', details: null })
+  })
+  it('🔴 never times out an install: a slow silent one is left to finish, and cancel still stops it', async () => {
+    vi.useFakeTimers()
+    const f = fixture()
+    f.service.install()
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(f.stop).not.toHaveBeenCalled()
+    expect(f.service.busy).toBe(true)
+    expect(f.service.state()).not.toMatchObject({ error: 'timed-out' })
+    f.child.stdout.emit('data', 'still downloading')
+    await vi.advanceTimersByTimeAsync(60 * 60_000)
+    expect(f.stop).not.toHaveBeenCalled()
+    f.child.emit('close', 0)
+    expect(f.service.busy).toBe(false)
+    const g = fixture()
+    g.service.install()
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    g.service.cancel()
+    expect(g.stop).toHaveBeenCalledWith(g.child.pid, false)
+  })
   it('bounds output across both pipes and stops rather than silently dropping unlimited data', () => {
     const f = fixture()
     f.service.install()
@@ -365,7 +377,7 @@ describe('native process adapter with every OS call mocked', () => {
           ...adapter,
           findProgram: () => (action === 'signIn' ? 'Z:\\FictionalTools\\official-cli.exe' : null),
         },
-        { ...CLAUDE_SETUP_BOUNDS, installMs: 100, loginMs: 200, stopMs: 10 },
+        { ...CLAUDE_SETUP_BOUNDS, loginMs: 200, stopMs: 10 },
       )
       expect(service[action]()).toEqual({ ok: true })
       child.emit('exit', 0)
