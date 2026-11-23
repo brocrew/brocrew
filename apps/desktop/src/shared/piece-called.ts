@@ -227,8 +227,8 @@ export const PERSON_CLOSE_RAILS = [
 export type PersonCloseRail = (typeof PERSON_CLOSE_RAILS)[number]
 
 /**
- * What a person's close answers: the piece closed, and whether the turn working on it was asked to
- * stop with it — or the rail that refused it.
+ * What a person's close answers: the piece closed, whether its brief never reached its holder, and
+ * whether the turn working on it was asked to stop. A refusal names its rail instead.
  */
 export type WorkClosedByAPerson =
   | {
@@ -236,5 +236,6 @@ export type WorkClosedByAPerson =
       readonly piece: string
       readonly label: string
       readonly askedItsTurnToStop: boolean
+      readonly briefNeverDelivered?: true
     }
   | { readonly ok: false; readonly rail: PersonCloseRail }

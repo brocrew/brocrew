@@ -11476,6 +11476,7 @@ export class RuntimeHost implements LiveHost {
     const itsTurn = queued ? null : this.theTurnOnThePieceItIsOn(piece, stands.held.session)
     const copies = this.theCopiesToEnd(piece.owner, piece.piece)
     if (!copies.ok) return { ok: false, rail: copies.because }
+    const briefNeverDelivered = queued || piece.briefHandedOver !== true
     this.endThePiece(
       piece.owner,
       {
@@ -11494,7 +11495,8 @@ export class RuntimeHost implements LiveHost {
     this.theWorldMoved('work')
     const live = this.slots.get(piece.owner)?.session ?? null
     if (live !== null) this.publishStateIfChanged(live)
-    if (!queued) await this.tellItsOwnerItWasClosed(piece, sessionSpeakingAs(by), whoDidIt(by))
+    if (!briefNeverDelivered)
+      await this.tellItsOwnerItWasClosed(piece, sessionSpeakingAs(by), whoDidIt(by))
     const askedItsTurnToStop =
       itsTurn !== null &&
       this.itsNoticeAsksItsTurnToStop(
@@ -11505,7 +11507,13 @@ export class RuntimeHost implements LiveHost {
       )
     // ⚑ Not waited for, as a person's take-back's tell is not: the close stands either way.
     void this.tellItsGiverThePieceEnded(piece, 'closed', by)
-    return { ok: true, piece: piece.piece, label: piece.label, askedItsTurnToStop }
+    return {
+      ok: true,
+      piece: piece.piece,
+      label: piece.label,
+      askedItsTurnToStop,
+      ...(briefNeverDelivered ? { briefNeverDelivered } : {}),
+    }
   }
 
   private aPersonMayCloseIt(spelled: string): boolean {
@@ -24989,9 +24997,10 @@ export class RuntimeHost implements LiveHost {
    *
    * ⚑ **Then the owner is told, once at most**: a new brief as a turn in the giver's words, naming
    * the piece's inputs — ⚑ **D-022 · R1 · a new brief riding a give that still waits queues
-   * nothing**: the give goes out with it ({@link itsGiveStillWaits}); a close, or files its giver
-   * added, as an app notice. The answer says what reached it (D-022 · R3). A title, a status line
-   * and files the owner made are sent to nobody. ⛔ **A root's lines are read by nothing that folds**
+   * nothing**: the give goes out with it ({@link itsGiveStillWaits}); a close if its first brief
+   * reached it, or files its giver added, as an app notice. The answer says what reached it
+   * (D-022 · R3). A title, a status line and files the owner made are sent to nobody.
+   * ⛔ **A root's lines are read by nothing that folds**
    * (R1): `rootLines` reads its newest two.
    *
    * ⚑ **D-022 · R4 — a piece is inferred only among those whose brief has reached the caller**: one
@@ -25316,9 +25325,10 @@ export class RuntimeHost implements LiveHost {
         closeReason === null
           ? undefined
           : textWithOverflowResource(closeReason.inline, written.closeOverflowRow?.resource)
-      told = queued
-        ? { delivery: 'not-delivered', whyNotTold: QUEUED_NEVER_TOLD }
-        : await this.tellItsOwnerItWasClosed(endedPiece, caller, whoDidIt(by), reason)
+      told =
+        queued || folded.briefHandedOver !== true
+          ? { delivery: 'not-delivered', whyNotTold: QUEUED_NEVER_TOLD }
+          : await this.tellItsOwnerItWasClosed(endedPiece, caller, whoDidIt(by), reason)
       void this.tellItsGiverThePieceEnded(endedPiece, 'closed', by, reason)
     } else if (role === 'input' && rows.length > 0) {
       told = queued

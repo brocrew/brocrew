@@ -76,6 +76,87 @@ it('tells the actual giver when the first brief stays held after a failed handof
   }
 })
 
+it.each([
+  ['conversation', false],
+  ['person', false],
+  ['conversation', true],
+  ['person', true],
+] as const)(
+  'returns a close receipt without telling a stopped holder (%s, abandoned: %s)',
+  async (closer, abandoned) => {
+    const world = aServiceWorld()
+    try {
+      world.anAgent('worker', 'normal')
+      const host = world.aHost()
+      const giver = await world.aPersonOpens(host, 'giver')
+      const holder = await world.aRecordedWorker(giver, 'worker')
+      world.resumesAreGoneFor = 'worker'
+      const given = await world.gives(host, giver, 'worker', { to: holder })
+      if (!given.ok) throw new Error('the task was not recorded')
+      expect(given.recipientState).toMatchObject({
+        kind: 'cannot-run',
+        cause: { code: 'provider-file-missing' },
+      })
+      const brief = world.store.messagesWaitingIn(holder).find((row) => row.piece === given.piece)
+      if (brief === undefined) throw new Error('the first brief was not held')
+      if (abandoned) {
+        world.store.append(
+          holder,
+          world.store.nextOrdinal(holder),
+          {
+            type: 'message_unqueued',
+            messageId: brief.messageId,
+            reason: 'abandoned',
+            text: brief.text,
+          },
+          Date.now(),
+        )
+        expect(world.store.piecesOwnedBy(holder)).toContainEqual(
+          expect.objectContaining({ piece: given.piece, stalledBecause: 'message_never_sent' }),
+        )
+      }
+
+      if (closer === 'person') {
+        expect(await host.closeForAPerson(given.piece, world.window)).toMatchObject({
+          ok: true,
+          piece: given.piece,
+          label: given.label,
+          briefNeverDelivered: true,
+        })
+      } else {
+        const observer = await world.aPersonOpens(host, 'observer')
+        const receipt = await answerOn(agentToolsFor(host, observer), 'update_work', {
+          piece: given.label,
+          close: true,
+        })
+        expect(receipt.structured).toMatchObject({
+          outcome: 'ok',
+          state: 'closed',
+          tookBackTheMessage: !abandoned,
+          delivery: 'not-delivered',
+        })
+        expect(receipt.text).toContain(`${given.label} is closed`)
+        expect(receipt.text).toContain('had not reached it')
+      }
+
+      expect(world.ledger(holder)).toContainEqual(
+        expect.objectContaining({ type: 'work_closed', piece: given.piece }),
+      )
+      expect(world.store.messagesWaitingIn(holder)).not.toContainEqual(
+        expect.objectContaining({ piece: given.piece }),
+      )
+      expect(world.ledger(holder)).not.toContainEqual(
+        expect.objectContaining({
+          type: 'message_queued',
+          appNotice: closer === 'person' ? 'a-piece-a-person-closed' : 'a-piece-closed',
+        }),
+      )
+    } finally {
+      await world.cleanUp()
+    }
+  },
+)
+
 it.each(['restart', 'withdrawal', 'live'])('rechecks a held failure notice (%s)', async (when) => {
   const world = aServiceWorld()
   try {

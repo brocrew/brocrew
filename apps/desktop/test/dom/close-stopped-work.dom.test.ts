@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import CloseWorkButton from '../../src/renderer/src/components/CloseWorkButton.vue'
+import { closeWorkSays } from '../../src/renderer/src/lib/close-work'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { mount, unmountAll } from './harness'
@@ -47,27 +48,40 @@ it('shows Close on real stopped and stalled cards and opens to-do conversations'
     parseFloat(getComputedStyle(reference).fontSize),
   )
 })
-it('sends Close once, shares pending between copies, and keeps success disabled', async () => {
-  const called: string[] = []
-  let finish: (value: { ok: boolean; said: string }) => void = () => {}
-  supply((piece) => {
-    called.push(piece)
-    return new Promise((resolve) => {
-      finish = resolve
+it.each([false, true])(
+  'sends Close once, shares pending between copies, and shows its receipt (never delivered: %s)',
+  async (neverDelivered) => {
+    const called: string[] = []
+    let finish: (value: { ok: boolean; said: string }) => void = () => {}
+    supply((piece) => {
+      called.push(piece)
+      return new Promise((resolve) => {
+        finish = resolve
+      })
     })
-  })
-  const a = mount(CloseWorkButton, { piece: 'work_sample', cy: 'close-a' })
-  const b = mount(CloseWorkButton, { piece: 'work_sample', cy: 'close-b' })
-  a.q('close-a').click()
-  b.q('close-b').click()
-  await nextTick()
-  expect(called).toEqual(['work_sample'])
-  expect((b.q('close-b') as HTMLButtonElement).disabled).toBe(true)
-  finish({ ok: true, said: 'W3.4 is closed.' })
-  await tick()
-  expect(a.q('close-a-said').textContent).toBe('W3.4 is closed.')
-  expect((a.q('close-a') as HTMLButtonElement).disabled).toBe(true)
-})
+    const a = mount(CloseWorkButton, { piece: 'work_sample', cy: 'close-a' })
+    const b = mount(CloseWorkButton, { piece: 'work_sample', cy: 'close-b' })
+    a.q('close-a').click()
+    b.q('close-b').click()
+    await nextTick()
+    expect(called).toEqual(['work_sample'])
+    expect((b.q('close-b') as HTMLButtonElement).disabled).toBe(true)
+    finish(
+      closeWorkSays({
+        ok: true,
+        piece: 'work_sample',
+        label: 'W3.4',
+        askedItsTurnToStop: false,
+        ...(neverDelivered ? { briefNeverDelivered: true } : {}),
+      }),
+    )
+    await tick()
+    expect(a.q('close-a-said').textContent).toBe(
+      neverDelivered ? 'W3.4 is closed. Its brief never reached the holder.' : 'W3.4 is closed.',
+    )
+    expect((a.q('close-a') as HTMLButtonElement).disabled).toBe(true)
+  },
+)
 it('keeps refusal and transport failure visible and retryable', async () => {
   let calls = 0
   supply(async () => {

@@ -534,9 +534,16 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       if (messageId === null || messageId === undefined) throw new Error('the give was not held')
       expect(stillHeld(store.events(worker)).map((one) => one.messageId)).toContain(messageId)
 
-      const closed = await callOn(pm, 'update_work', { piece: second.label, close: true })
+      const { structured: closed, text } = await callFull(pm, 'update_work', {
+        piece: second.label,
+        close: true,
+      })
       expect(closed.outcome, JSON.stringify(closed)).toBe('ok')
       expect(closed).toMatchObject({ state: 'closed', tookBackTheMessage: true })
+      expect(text).toContain(`${second.label} is closed`)
+      expect(heldNotices(worker, 'a-piece-closed')).toEqual([])
+      expect(closed).toMatchObject({ delivery: 'not-delivered' })
+      expect(text).toContain('The piece was queued and had not reached it, so nothing was sent.')
       expect(pieceOf(worker, second.piece).state).toBe('closed')
       expect(pieceOf(worker, second.piece).state).not.toBe('withdrawn')
       expect(stillHeld(store.events(worker)).map((one) => one.messageId)).not.toContain(messageId)
@@ -556,16 +563,18 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(takenBackAt).toBeGreaterThanOrEqual(0)
       expect(closedAt).toBeLessThan(takenBackAt)
 
-      // ⚑ The paired positive: the first piece is untouched and open, and closing it takes back nothing.
+      // The first brief reached the worker. A held rebrief does not suppress its close notice.
       expect(TASK_IS_OPEN[pieceOf(worker, piece).state]).toBe(true)
+      const rebriefed = await callOn(pm, 'update_work', { piece: label, brief: THE_NEW_BRIEF })
+      expect(rebriefed).toMatchObject({ outcome: 'ok', delivery: 'held' })
       const first = await callOn(pm, 'update_work', { piece: label, close: true })
-      expect(first.outcome, JSON.stringify(first)).toBe('ok')
-      expect(first).toMatchObject({ state: 'closed', tookBackTheMessage: false })
+      expect(first).toMatchObject({ outcome: 'ok', state: 'closed', delivery: 'held' })
 
-      // ⚑ The turn ends: both close notices are held for the worker's next input, and the held work
-      // never goes. Its next input carries the close of the first piece.
+      // Only the delivered piece's close notice rides the next input.
       await letTheTurnEnd(worker)
-      expect(heldNotices(worker, 'a-piece-closed').some((text) => text.includes(label))).toBe(true)
+      expect(heldNotices(worker, 'a-piece-closed')).toEqual([
+        expect.stringContaining(`closed your task ${pieceLine(label, 'the first piece')}`),
+      ])
       await callOn(pm, 'message_agent', { agent: worker, text: 'thanks' })
       await waitFor(
         () =>

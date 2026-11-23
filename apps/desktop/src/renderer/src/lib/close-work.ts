@@ -12,6 +12,9 @@ const REASONS: Record<PersonCloseRail, string> = {
 
 export function closeWorkSays(result: WorkClosedByAPerson): { ok: boolean; said: string } {
   return result.ok
-    ? { ok: true, said: `${result.label} is closed.` }
+    ? {
+        ok: true,
+        said: `${result.label} is closed.${result.briefNeverDelivered ? ' Its brief never reached the holder.' : ''}`,
+      }
     : { ok: false, said: REASONS[result.rail] }
 }
