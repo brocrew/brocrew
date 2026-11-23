@@ -1,10 +1,5 @@
 import type { AppNotice } from '../../shared/app-notice'
-import type { GivenInput } from '../../shared/documents'
-import {
-  createLedgerHistoryRead,
-  type LedgerWindowQuery,
-  type LedgerWindow,
-} from '../database/sqlite/ledger/history'
+import { createLedgerHistoryRead } from '../database/sqlite/ledger/history'
 import { readInstructionAskers } from './instruction-askers-read'
 import { piecesAtTheCutAndNow } from './piece-fold-cut'
 import { retryBusyWrite } from './retry-busy-write'
@@ -13,14 +8,10 @@ import {
   derivedStateOf,
   resolveEndReason,
   parseChildDescent,
-  type ResumableSession,
-  type LiveSessionRow,
-  type UnresumableSession,
   type RecordedSession,
-  type RecordedPageInput,
 } from './session-catalogue-read'
 export type { ResumableSession, LiveSessionRow, RecordedSession } from './session-catalogue-read'
-import type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
+import type { EventRow, PersistedEvent } from './ledger-row-types'
 export type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
 import {
   toPersistedEvents,
@@ -36,38 +27,27 @@ import {
   theQuestionItAsks,
 } from './stored-event-codec'
 export { toPersistedEvents } from './stored-event-codec'
-import type { WorkLedgerRead, WorkRow } from './work-ledger-read'
+import type { WorkRow } from './work-ledger-read'
 export type { WorkRow } from './work-ledger-read'
-import type { AncestryContext } from './work-ancestry-reader'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
-import type {
-  HolderReconciliationReceipt,
-  ReconciliationReceipt,
-  WorkRecoveryEvent,
-} from '../../shared/reconciliation-contracts'
 import type {
   LedgerWalk,
   LedgerWalkKind,
-  ProviderRequestEvent,
   QuestionAskedEvent,
   RaisedQuestion,
-  RequestOnlyAPersonCanSettle,
   RoutedRequest,
 } from '../../shared/question-contracts'
 import type {
   InstructionProposedEvent,
   InstructionSettledEvent,
-  MailboxKind,
   McpServerRequestSettledEvent,
   McpServerRequestedEvent,
   QueuedMessageEvent,
   TheQuestionItAsks,
   TranscriptEvent,
   UnqueuedMessageEvent,
-  WorkerRegisteredEvent,
 } from '../../shared/conversation-events'
-import type { MoveReceipt } from '../../shared/move-contracts'
-import type { AgentModelChoice, ModelAndEffort } from '../../shared/model-choice-contracts'
+import type { ModelAndEffort } from '../../shared/model-choice-contracts'
 import {
   parseProvider,
   parseModelChoice,
@@ -75,23 +55,14 @@ import {
 } from './session-store-parts/model-choice-storage'
 export { parseModelChoice, modelChoiceWritten } from './session-store-parts/model-choice-storage'
 import { createHumanAnswerReader } from './human-answer-reader'
-import type { ThreadLeadRow } from './thread-lead-reader'
 export { THREAD_LEAD_EVENT_TYPES, type ThreadLeadRow } from './thread-lead-reader'
-import type {
-  HumanAnswers,
-  HumanFinalContext,
-  TurnAuthorship,
-  UserTurnEvent,
-} from '../../shared/human-answer-contracts'
+import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import type {
   PieceRow,
   PieceWaitingOnWhoWrote,
-  StatusLine,
   WhatAConversationIsWaitingOn,
   WorkGivenEvent,
-  WorkGivenOut,
 } from '../../shared/task-contracts'
-import type { HandedPath } from '../../shared/attachment-contracts'
 import {
   aConversationTitle,
   aTitleAuthor,
@@ -104,63 +75,47 @@ import {
 } from '../../shared/conversation-title'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
-import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
+import { createOwnNotesStore } from './own-notes'
 import { createMemoryRecoveryStore } from './memory-recovery'
 export { createMemoryAmendmentObserver } from './memory-recovery'
 import { createAgentKnowledgeHistory } from './agent-knowledge-history'
-import {
-  createMethodChangeStore,
-  type MethodChangeIntent,
-  type MethodChangeRecord,
-  type MethodFileState,
-} from './method-changes'
+import { createMethodChangeStore } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
-import { committedChangesOf, committedRowOf, type Committed } from './committed-changes'
+import { committedChangesOf, committedRowOf } from './committed-changes'
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
-import type {
-  PastWorkSearchResult,
-  PastWorkAfter,
-  PastWorkSource,
-  PastWorkTranscriptScope,
-} from '../../shared/past-work-search'
 import {
   holderReconciliationReceipt,
   reconciliationReceipt,
   workRecoveryEvent,
 } from '../../shared/work-reconciliation'
 
-import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
 import { serviceRegistrationOf } from '../service-registration'
-import type { ServiceBorn } from '../profile-execution-file'
 import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../shared/move-request'
 import {
   capabilitiesFor,
   isAvailable,
   NOT_STARTED_BECAUSE,
   SUPPORTED_PROVIDERS,
-  type parseSessionRef,
   serializeSessionRef,
   storedQuestionsParsed,
   type NotStartedBecause,
 } from '@brobot2/runtime'
-import type { Provider, SessionStatus, TurnEnding } from '@brobot2/shared'
+import type { Provider, SessionStatus } from '@brobot2/shared'
 import { AN_ANSWER_HELD_THEN_LOST, theAnswerItCarries } from '../../shared/tasks'
 import {
   externalMcpGrantRowId,
   externalMcpServerRowId,
   foldExternalMcpReach,
-  type ExternalMcpServerReach,
   type ExternalMcpServerRow,
 } from '../../shared/external-mcp'
-import { workEdge, type SpawnEdge, type WorkEdge } from '../../shared/who-called-whom'
+import { workEdge } from '../../shared/who-called-whom'
 import type { ForestParent } from '../../shared/the-whole-forest'
-import type { ProviderLimitAccountLife, ProviderLimitSeen } from '../../shared/provider-limit'
 import { createProviderLimitReader, type SessionReadPhases } from './provider-limit-reader'
 export type { SessionReadPhases } from './provider-limit-reader'
 import { NONE_STARTED } from '../../shared/agent-roster'
-import type { IdentityHistory, StartedOn } from '../../shared/agent-roster'
+import type { StartedOn } from '../../shared/agent-roster'
 import { sameModel } from '../../shared/model-choice'
 import type { ChildDescent } from '../adopt/discover-sessions'
 import type {
@@ -168,7 +123,6 @@ import type {
   AgentIdentityName,
   IdentityCreator,
   NewAgent,
-  LedgerStatus,
 } from '../../shared/runtime-ipc'
 import { failureAtTurnEnd } from '../../shared/piece-fold'
 import {
@@ -184,31 +138,79 @@ import {
   deleteTheTree,
   providerSessionsOf,
   whatTiesTheTreeOutside,
-  type ProviderSessionOf,
-  type TiedOutside,
-  type TreeDeleted,
 } from './conversation-tree'
 import { forestListing } from './forest-listing'
-import { EMPTY_FOREST_STORE, type ForestStore } from './forest-store'
 import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
-import {
-  ensureQuestionCopies,
-  fillQuestionCopies,
-  questionCopiesReady,
-  type QuestionCopySlice,
-} from './question-copies'
+import { ensureQuestionCopies, fillQuestionCopies, questionCopiesReady } from './question-copies'
 import { withWindowWriteFence } from './window-write-fence'
-import { ledgerWritesFor, type LedgerWriteStamp } from './ledger-write-stamp'
+import { ledgerWritesFor } from './ledger-write-stamp'
 import { createLedgerFoldState, type SnapshotFoldAnswers } from './ledger-fold-state'
 import { createDigestWindowRead } from './digest-window-read'
 import { createWorkerRecordsRead } from './worker-records-read'
+import { A_RESTART_LEFT_THE_MESSAGE_WAITING, createTurnEvidenceRead } from './turn-evidence-read'
+
 import {
-  A_RESTART_LEFT_THE_MESSAGE_WAITING,
-  createTurnEvidenceRead,
-  type OpenTurn,
-  type LeftRunning,
-  type TurnAsItEnded,
-} from './turn-evidence-read'
+  WORK_COLUMNS,
+  RESOURCE_COLUMNS,
+  KEPT_FILE_COLUMNS,
+  HELD_UNDER,
+  KEPT_BEFORE,
+  inLabelOrder,
+  MAX_SCHEDULE_EVIDENCE_ROWS,
+  MAX_SCHEDULE_HISTORY_WALKED,
+  CLOSED_TURNS_FOR_PROVIDER_FAILURE,
+  PERSON_LAST_WROTE_WITHIN_TURNS,
+  type ResourceRow,
+  type KeptFileRow,
+  type KeptFilesAsked,
+  type GivenPiece,
+  type NewSessionRecord,
+  type AdoptedSessionRecord,
+  type SessionSnapshot,
+  type RaisedQuestionRow,
+  type PieceForAName,
+  type WindowOpenWork,
+  type GivenWorkRow,
+  type BindingRow,
+  type SpawnedSessionRow,
+  type ForestSessionRow,
+  type WorkDbRow,
+  type ResourceDbRow,
+  type KeptFileDbRow,
+  type GenerationRow,
+  type ScheduleEvidenceRow,
+  type QueuedPromptProgress,
+  type ProviderFailureNoticeProgress,
+  type OpenTurnRow,
+  type ExchangeRow,
+  type ProviderFailureEpisode,
+  type ProviderFailureEvidence,
+  type ClosedTurnRow,
+  type AskRow,
+  type TurnEndReason,
+} from './session-store-parts/session-store-rows'
+import type { SessionStore } from './session-store-parts/session-store-contract'
+export {
+  MAX_SCHEDULE_HISTORY_WALKED,
+  PERSON_LAST_WROTE_WITHIN_TURNS,
+} from './session-store-parts/session-store-rows'
+export type {
+  ResourceRow,
+  ResourcePosition,
+  KeptFileRow,
+  KeptFilesAsked,
+  KeptFilesPaged,
+  NewSessionRecord,
+  WaitingMessage,
+  PieceHeld,
+  WindowOpenWork,
+  ScheduleEvidenceRow,
+  ProviderFailureEpisode,
+  ProviderFailureEvidence,
+  RecordedTurn,
+} from './session-store-parts/session-store-rows'
+export type { SessionStore } from './session-store-parts/session-store-contract'
+export { NULL_SESSION_STORE } from './session-store-parts/null-session-store'
 
 export const ROUTED_REQUEST_EVENT_TYPES = [
   'request_routed',
@@ -275,7 +277,6 @@ import {
   WORDS_CAP,
   capped,
   whatATurnDelivered,
-  type Exchange,
   type ReceivedInATurn,
   type TaskRecordExchange,
   type TranscriptTurn,
@@ -283,18 +284,9 @@ import {
 } from '../../shared/last-exchange'
 import { actedByFrom, type ActedBy } from '../../shared/who-did-it'
 import {
-  type MemoryAmendment,
-  type MemoryAmendmentWrite,
-  type MemoryObservation,
-} from '../../shared/agent-memory'
-import {
   waitingOnAPerson,
   type InstructionAskWaiting,
   type InstructionEnding,
-  type InstructionUnread,
-  type OwnInstructions,
-  type OwnInstructionsVersion,
-  type OwnInstructionsWrite,
 } from '../../shared/own-instructions'
 import {
   mcpServerRequestsWaiting,
@@ -304,159 +296,10 @@ import { formOfName, type ResourceRole } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
-type SpawnedConversation = Omit<SpawnEdge, 'running'>
-
 export type { ForestedConversation, ForestedNode } from './forest-store'
 import type { ForestedNode } from './forest-store'
 
-interface ConversationBinding {
-  /** Always present when this app holds the row — the column is `NOT NULL`. */
-  readonly provider: Provider
-  readonly identity: string | null
-}
-
 export type { OpenTurn, LeftRunning, TurnAsItEnded } from './turn-evidence-read'
-
-export interface ResourceRow {
-  /** `res_<32 hex>` — `newResourceId`. */
-  readonly resource: string
-  readonly piece: string
-  readonly role: ResourceRole
-  readonly title: string | null
-  readonly summary: string | null
-  readonly name: string
-  readonly sha256: string
-  readonly bytes: number
-  /** The conversation that handed it in, or `null`: a person. */
-  readonly addedBy: string | null
-  readonly createdAt: number
-}
-
-export type ResourcePosition = Pick<ResourceRow, 'createdAt' | 'resource'>
-
-export interface KeptFileRow {
-  readonly group?: import('../../shared/work-file-groups').WorkFileGroup
-  readonly mainResult?: true
-  readonly resource: ResourceRow
-  /** The label of the piece it was kept on, as that piece's chain spells it. */
-  readonly label: string
-  /** The title that piece stands under now — `null`: a root nobody has titled. */
-  readonly pieceTitle: string | null
-  readonly addedByIdentity: string | null
-}
-
-export type KeptFilesAsked =
-  | { readonly scope: 'tree'; readonly holder: string; readonly givers: readonly string[] }
-  | { readonly scope: 'conversation'; readonly conversation: string }
-  | { readonly scope: 'piece'; readonly piece: string }
-
-export type KeptFilesPaged =
-  Extract<KeptFilesAsked, { readonly scope: 'tree' }> | { readonly scope: 'everywhere' }
-
-interface KeptFilesFrom {
-  readonly olderThan: string | null
-  readonly limit: number
-}
-
-interface GivenPiece {
-  /** `work_<uuid>`, minted by the host (`newWorkId`) before it is sent or written. */
-  readonly piece: string
-  readonly parent: string
-  readonly number: number
-  readonly owner: string
-  readonly givenBy: string | null
-  readonly title: string
-  readonly brief: string
-  readonly folder: string | null
-  /** The files the giver handed over with it, each kept as an `input` resource — empty for none. */
-  readonly inputs: readonly GivenInput[]
-}
-
-export interface NewSessionRecord {
-  /** The admitted connection for this successful launch; omitted legacy choices stay dynamic. */
-  connectionId?: string
-  /** A normal worker's binding, written atomically at ordinal zero of its first life. */
-  worker?: Omit<WorkerRegisteredEvent, 'type'>
-  id: string
-  provider: Provider
-  cwd: string
-  /** Fixed at creation, and the one launch decision that cannot be re-derived later. */
-  approvalMode: 'ask' | 'auto'
-  /** The profile whose provider home it ran in — resume has to land in the same one. */
-  profileId: string
-  reasoningEffort?: string
-  model?: string
-  planMode?: boolean
-  parentSessionId?: string
-  service?: true
-  /** New services record this root and their independent birth together. */
-  serviceStandingTitle?: string
-  launchedAs?: string
-}
-
-/** A session that could be resumed: it has a provider ref to resume *from*. */
-export interface WaitingMessage {
-  readonly messageId: string
-  readonly kind: MailboxKind
-  readonly text: string
-  readonly attachments: readonly HandedPath[]
-  readonly authorship: TurnAuthorship
-  /** When it was held, epoch ms. */
-  readonly at: number
-  readonly piece?: string
-  readonly label?: string
-  readonly rebrief?: true
-  readonly drives?: string
-  readonly about?: string
-  readonly providerFailureHolder?: string
-  readonly asks?: TheQuestionItAsks
-  readonly unansweredQuestion?: TheQuestionItAsks
-  readonly messageAct?: string
-}
-
-interface AdoptedSessionRecord {
-  id: string
-  provider: Provider
-  /** The provider's own id, which becomes the ref resume reattaches from. */
-  sessionId: string
-  cwd: string
-  profileId: string | null
-  /** When the provider last touched it — the row's updated time, not now. */
-  updatedAt: number
-  /** When the conversation began, as the provider records it. */
-  createdAt: number
-  rotation?: number
-  child?: ChildDescent
-}
-
-interface SessionSnapshot {
-  session: AdoptedSessionRecord
-  /** How many of the provider's lines the ledger was read from, as the bundle carried them. */
-  derivedThrough: number
-  /** The conversation, with the ordinals and times it was exported under. */
-  ledger: { ordinal: number; event: TranscriptEvent; at: number }[]
-}
-
-interface RaisedQuestionRow {
-  files: string | null
-  move: string | null
-  action: string | null
-  id: string | null
-  type: string | null
-  prompt: string | null
-  questions: string | null
-  piece: string | null
-  passedUpFrom: string | null
-  context: string | null
-  ordinal: number
-  readable: number
-  idIs: string | null
-  promptIs: string | null
-  questionsIs: string | null
-  pieceIs: string | null
-  passedUpFromIs: string | null
-  contextIs: string | null
-}
 
 function noSuchConversation<Row>(): LedgerWalk<Row> {
   return { rows: [], walk: 'no-such-conversation', ledgers: 0, rowsUnread: 0 }
@@ -467,19 +310,6 @@ export function underWhat(parent: string | null, drawn: ReadonlySet<string>): Fo
   return drawn.has(parent)
     ? { is: 'a-conversation', conversation: parent }
     : { is: 'a-conversation-this-reading-did-not-draw', conversation: parent }
-}
-
-type PieceForAName = Pick<
-  PieceRow,
-  'piece' | 'label' | 'title' | 'owner' | 'giver' | 'givenAt' | 'state' | 'outcome' | 'endedAt'
->
-
-export type PieceHeld = PieceForAName
-
-/** Open work already read for this window snapshot, including its unread-row evidence. */
-export interface WindowOpenWork {
-  ownedBy(owner: string, noteSkip?: SkipNote): readonly PieceRow[]
-  givenBy(giver: string, unread?: RowsUnread): readonly PieceRow[]
 }
 
 export function skipTheLedger(
@@ -556,1040 +386,6 @@ function stalledInOrder(found: LedgerWalk<PieceRow>): LedgerWalk<PieceRow> {
   }
 }
 
-interface GivenWorkRow {
-  readonly id: string
-  readonly identity: string | null
-}
-
-interface BindingRow {
-  readonly provider: string
-  readonly identity: string | null
-}
-
-interface SpawnedSessionRow {
-  readonly id: string
-  readonly provider: string
-  readonly identity: string | null
-}
-
-interface ForestSessionRow {
-  readonly id: string
-  readonly profile_slug: string
-  readonly provider: string
-  readonly status: string
-  readonly created_at: number
-  readonly updated_at: number
-  readonly parent_session_id: string | null
-}
-
-interface WorkDbRow {
-  readonly id: string
-  readonly parent_id: string | null
-  readonly number: number
-  readonly owner_session_id: string
-  readonly given_by_session_id: string | null
-  readonly title: string | null
-  readonly brief: string | null
-  readonly folder: string | null
-  readonly created_at: number
-}
-/** The columns every `work` read selects, so the SELECT and {@link WorkDbRow} cannot disagree. */
-const WORK_COLUMNS =
-  'id, parent_id, number, owner_session_id, given_by_session_id, title, brief, folder, created_at'
-
-interface ResourceDbRow {
-  readonly id: string
-  readonly work_id: string
-  readonly role: string
-  readonly title: string | null
-  readonly summary: string | null
-  readonly name: string
-  readonly sha256: string
-  readonly bytes: number
-  readonly added_by_session_id: string | null
-  readonly created_at: number
-}
-/** The columns every `work_resource` read selects. */
-const RESOURCE_COLUMNS =
-  'id, work_id, role, title, summary, name, sha256, bytes, added_by_session_id, created_at'
-
-interface KeptFileDbRow extends ResourceDbRow {
-  readonly added_by_identity: string | null
-}
-const KEPT_FILE_COLUMNS = `${RESOURCE_COLUMNS},
-  (SELECT identity.slug FROM provider_session s
-     JOIN agent_identity identity ON identity.id = s.agent_identity_id
-    WHERE s.id = work_resource.added_by_session_id) AS added_by_identity`
-
-const HELD_UNDER = `WITH RECURSIVE held(id) AS (
-           SELECT id FROM work
-            WHERE owner_session_id = @holder OR given_by_session_id IN (SELECT value FROM json_each(@givers))
-           UNION
-           SELECT w.id FROM work w JOIN held h ON w.parent_id = h.id
-         )`
-
-const KEPT_BEFORE = `rowid < coalesce((SELECT rowid FROM work_resource WHERE id = @from), 9223372036854775807)`
-
-function inLabelOrder(a: readonly number[], b: readonly number[]): number {
-  for (let level = 0; level < Math.min(a.length, b.length); level += 1) {
-    const apart = (a[level] ?? 0) - (b[level] ?? 0)
-    if (apart !== 0) return apart
-  }
-  return a.length - b.length
-}
-
-/** What a session's `derived_generation` row holds, before it is turned into a {@link LedgerStatus}. */
-interface GenerationRow {
-  active: number
-  normalizer_version: number
-  derived_through: number
-  building: number | null
-  highest: number
-  failure: string | null
-}
-
-const MAX_SCHEDULE_EVIDENCE_ROWS = 2_000
-
-export const MAX_SCHEDULE_HISTORY_WALKED = 20_000
-
-/** What {@link SessionStore.scheduleEvidenceRows} gives. */
-interface ScheduleEvidenceRead {
-  /** The rows, oldest first. */
-  readonly rows: readonly ScheduleEvidenceRow[]
-  readonly cut: boolean
-}
-
-export interface ScheduleEvidenceRow {
-  readonly ordinal: number
-  /** When it was appended, epoch ms. */
-  readonly at: number
-  /** The row's type, as the ledger names it. */
-  readonly rowType: string
-  readonly payload: unknown
-}
-
-type QueuedPromptProgress = 'missing' | 'pending' | 'running' | 'turn-ended' | 'not-delivered'
-type ProviderFailureNoticeProgress = QueuedPromptProgress | 'retracted'
-
-export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
-  /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
-  turnBlockCandidates(
-    giver: string,
-    limit: number,
-    after?: string | null,
-  ): readonly { readonly piece: string; readonly owner: string }[] | null
-  instructionAsksWaitingIn(
-    conversation: string,
-    unread: RowsUnread,
-  ): readonly InstructionAskWaiting[] | null
-  /** The last completed person reply ended in '?' and opened no person request. */
-  replyQuestionWithoutARequest(conversation: string): string | null
-  /** Whether the writer has no retained native cursor from one of this store's iterator reads. */
-  canReadFreshSnapshot?(): boolean
-  create(record: NewSessionRecord): void
-  /** A recorded binding only; reading an older row never chooses or writes a default. */
-  connectionOf(sessionId: string): string | null
-  firstLaunchOf(
-    record: Pick<
-      NewSessionRecord,
-      'id' | 'model' | 'reasoningEffort' | 'planMode' | 'launchedAs' | 'connectionId'
-    >,
-  ): boolean
-  aLaunchWentUnnamed(sessionId: string): boolean
-  adopt(record: AdoptedSessionRecord): void
-  identityOf(sessionId: string): {
-    profileSlug: string
-  } | null
-  /** One identity, or null when no agent has that name. */
-  agentIdentityOf(profileSlug: string): AgentIdentity | null
-  agentIdentities(): readonly AgentIdentity[]
-  agentIdentityPage(
-    after: string,
-    limit: number,
-  ): {
-    readonly identities: readonly Pick<AgentIdentity, 'id' | 'slug' | 'displayName' | 'createdAt'>[]
-    readonly count: number
-  }
-  /** The naming columns of one identity. */
-  agentIdentityNameById(id: string): AgentIdentityName | null
-  reconciliationNames(
-    conversations: readonly string[],
-  ): readonly (AgentIdentityName & { conversation: string })[]
-  createAgentIdentity(
-    said: NewAgent,
-    broughtIntoBeingBy: IdentityCreator | null,
-  ): AgentIdentity | null
-  providerOf(profileSlug: string): Provider | null
-  startedOnOf(profileSlug: string): StartedOn
-  saveProviderIfNoneIsSaved(profileSlug: string, provider: Provider): boolean
-  /** Replace the external MCP servers one identity is associated with; false: no such identity. */
-  setExternalMcpServers(profileSlug: string, externalMcpServerIds: readonly string[]): boolean
-  ownInstructionsOf(profileSlug: string): OwnInstructions
-  configuredLayerFor(profileSlug: string): string | null
-  writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
-  undoOwnInstructions(
-    profileSlug: string,
-    expectedVersion: number,
-    by: ActedBy,
-    at: number,
-  ): OwnInstructionsVersion | null
-  instructionUnread(profileSlug: string): InstructionUnread
-  beginMethodChange(
-    profileSlug: string,
-    said: MethodChangeIntent,
-    by: ActedBy,
-    at: number,
-  ): MethodChangeRecord | null
-  settleMethodChange(
-    profileSlug: string,
-    id: string,
-    outcome: 'done' | 'partial',
-    actual: readonly MethodFileState[],
-    by: ActedBy,
-  ): boolean
-  hasPendingMethodChange(profileSlug: string): boolean
-  methodChange(profileSlug: string, id: string): MethodChangeRecord | null
-  methodChanges(profileSlug: string, offset?: number, limit?: number): readonly MethodChangeRecord[]
-  markInstructionsSeen(profileSlug: string, version: number, by: ActedBy): boolean
-  memoryAmendmentsOf(profileSlug: string): readonly MemoryAmendment[]
-  writeMemoryAmendment(said: MemoryAmendmentWrite, at: number): MemoryAmendment | null
-  beginMemoryAmendment(said: MemoryAmendmentWrite, at: number): MemoryAmendment | null
-  settleMemoryAmendment(
-    profileSlug: string,
-    id: string,
-    actual: MemoryObservation,
-    by: ActedBy,
-  ): boolean
-  hasPendingMemoryAmendment(profileSlug: string): boolean
-  memoryAmendment(profileSlug: string, id: string): MemoryAmendment | null
-  instructionAsksWaiting(unread?: RowsUnread): readonly InstructionAskWaiting[]
-  instructionAskersAmong(owners: readonly string[], unread: RowsUnread): readonly string[]
-  settleInstructionAsk(askId: string, ending: InstructionEnding, by: ActedBy, at: number): boolean
-  /** Every MCP server request no ending names yet, oldest first, across every conversation. */
-  mcpServerRequestsWaiting(unread?: RowsUnread): readonly McpServerRequestWaiting[]
-  /** Whether a request by this id was ever made, waiting or settled. */
-  mcpServerRequestWasMade(requestId: string): boolean
-  grantExternalMcpServer(
-    serverName: string,
-    profileSlugs: readonly string[],
-  ): { readonly granted: readonly string[]; readonly missing: readonly string[] } | null
-  externalMcpServers(): readonly ExternalMcpServerRow[]
-  registerExternalMcpServer(said: {
-    name: string
-    url: string
-    reach: ExternalMcpServerReach
-  }): ExternalMcpServerRow | null
-  removeExternalMcpServer(serverId: string): boolean
-  externalMcpServersFor(profileSlug: string): readonly ExternalMcpServerRow[]
-  setAgentProvider(profileSlug: string, provider: Provider | null): boolean
-  setAgentDisplayName(profileSlug: string, displayName: string | null): boolean
-  modelChoiceOf(profileSlug: string): AgentModelChoice | null
-  setModelChoice(profileSlug: string, choice: AgentModelChoice | null): boolean
-  handAddedModels(provider: Provider): readonly string[]
-  addHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
-  deleteHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
-  lastPicked(provider: Provider): ModelAndEffort | null
-  hasSealedApiKey(provider: Provider): boolean
-  forgetSealedApiKey(provider: Provider): void
-  aPersonPicked(provider: Provider, pair: ModelAndEffort, at: number): void
-  conversationsPerIdentity(): readonly IdentityHistory[]
-  removeAgentIdentity(profileSlug: string): boolean
-  defaultApprovalModeChosen(): boolean
-  defaultApprovalMode(): 'ask' | 'auto'
-  setDefaultApprovalMode(mode: 'ask' | 'auto'): void
-  parentOf(sessionId: string): string | null
-  refreshAdopted(sessionId: string, updatedAt: number, child?: ChildDescent): boolean
-  learnDescent(sessionId: string, child?: ChildDescent): boolean
-  setApprovalMode(sessionId: string, mode: 'ask' | 'auto'): void
-  setModel(sessionId: string, model: string | null): void
-  setReasoningEffort(sessionId: string, effort: string | null): void
-  aPersonSetItsModelOrEffort(sessionId: string, at: number): void
-  setReportedModel(sessionId: string, model: string | null, effort: string | null): void
-  whatItRunsOn(sessionId: string): {
-    readonly model: string | null
-    readonly reasoningEffort: string | null
-    /** When a person last changed its model or effort, or null — `R31c`'s stamp. */
-    readonly aPersonChoseItAt: number | null
-    readonly reportedModel: string | null
-    readonly reportedEffort: string | null
-  } | null
-  endPlanMode(sessionId: string, at: number): void
-  startPlanMode(sessionId: string, at: number): void
-  findByProviderRef(provider: Provider, sessionId: string): string | null
-  nameItsLaunch(sessionId: string, ref: ReturnType<typeof parseSessionRef>): boolean
-  append(sessionId: string, ordinal: number, event: TranscriptEvent, at: number): void
-  /**
-   * Sets a conversation's title: one `titled` entry in its own ledger, at `ordinal`. Throws, writing
-   * nothing, unless the title is one line of 1 to 200 characters. Inside `atomically`, it commits or
-   * rolls back with the rest of that write.
-   */
-  titleConversation(
-    conversation: string,
-    ordinal: number,
-    titled: ConversationTitledEvent,
-    at: number,
-  ): void
-  /** The newest title set on a conversation in its current history, or `null` when none was. */
-  conversationTitle(conversation: string, unread?: RowsUnread): ConversationTitle | null
-  conversationTitleHistory(
-    conversation: string,
-    before?: ConversationTitleHistoryCursor,
-  ): ConversationTitleHistory
-  appendMany(
-    sessionId: string,
-    entries: { ordinal: number; event: TranscriptEvent; at: number }[],
-  ): void
-  atomically<T>(work: () => T): T
-  onCommitted(listener: (change: Committed) => void): () => void
-  /** Asks whether another connection has committed since the last look; one resync if so. */
-  checkCommitted(): void
-  /** Sessions with a ref to resume from, most recently touched first. */
-  resumable(): ResumableSession[]
-  /** The recorded sessions that cannot be reopened, each with the reason it cannot. */
-  unresumable(): UnresumableSession[]
-  recorded(): RecordedSession[]
-  recordedPage(input: RecordedPageInput): RecordedSession[]
-  recordedOne(sessionId: string): RecordedSession | null
-  searchPastWork(
-    caller: string,
-    words: string,
-    profile?: string,
-    cursor?: string,
-    transcript?: PastWorkTranscriptScope,
-  ): PastWorkSearchResult
-  closePastWorkSearch(): void
-  pastWorkSearchSource(
-    caller: string,
-    profile?: string,
-    after?: PastWorkAfter,
-    recent?: PastWorkSource['recent'],
-  ): PastWorkSource | null
-  replacements(): readonly { readonly replaced: string; readonly by: string }[]
-  newestScheduleLevels(owners?: ReadonlySet<string>): readonly {
-    readonly conversation: string
-    readonly level: ScheduleLevel
-    readonly compactedAt: number | null
-    readonly notStartedSaid?: Readonly<Record<string, NotStartedBecause>>
-  }[]
-  newestScheduleLevel(
-    sessionId: string,
-  ): ReturnType<SessionStore['newestScheduleLevels']>[number] | null
-  scheduleEvidenceRows(sessionId: string): ScheduleEvidenceRead
-  lastStatusAt(sessionId: string): number | null
-  find(sessionId: string): ResumableSession | null
-  findLive(sessionId: string): LiveSessionRow | null
-  /** One session's ledger in order: the transcript a reopened chat is rebuilt from. */
-  workflowOutputPath(sessionId: string, taskId: string, unread?: RowsUnread): string | null
-  workflowAgentTask(sessionId: string, agentId: string, unread?: RowsUnread): string | null
-  workflowAgentIds(sessionId: string, taskId: string, unread?: RowsUnread): string[]
-  reportedSubAgent(sessionId: string, agentId: string, unread?: RowsUnread): boolean
-  events(sessionId: string): PersistedEvent[]
-  eventsFrom(sessionId: string, fromOrdinal: number, limit: number): PersistedEvent[]
-  newestOfType?(
-    sessionId: string,
-    type: TranscriptEvent['type'],
-    before?: number,
-    from?: number,
-  ): PersistedEvent | null
-  threadLeadRows?(
-    sessionId: string,
-    leadsOpenWith: string,
-    before?: number,
-    historicalLeadsOpenWith?: string,
-    /** Inclusive ordinal floor for pages; omitted: the whole history before the upper bound. */
-    fromOrdinal?: number,
-  ): readonly ThreadLeadRow[]
-  ancestryContext(
-    sessionId: string,
-    page: readonly PersistedEvent[],
-    through: number,
-    budget: number,
-  ): AncestryContext
-  turnWindow(sessionId: string, options: LedgerWindowQuery): LedgerWindow
-  /** Bounded indexed context, independent of how many app turns follow the human turn. */
-  latestHumanAnswers(sessionId: string): HumanAnswers
-  humanFinalsInWindow(
-    sessionId: string,
-    from: number,
-    through: number,
-  ): ReadonlyMap<number, HumanFinalContext>
-  ledgerStatus(sessionId: string): LedgerStatus
-  beginGeneration(sessionId: string): number
-  clearOrphanBuilds(running: ReadonlySet<string>, owners?: ReadonlySet<string>): number
-  settleOrphanRuns(at: number, running: ReadonlySet<string>, owners?: ReadonlySet<string>): number
-  whatACrashLeftRunning(running: ReadonlySet<string>): readonly LeftRunning[]
-  recordedTurnOpening(sessionId: string, turnId: string): UserTurnEvent | null
-  recordedTurnMessage(
-    sessionId: string,
-    turnId: string,
-  ): (PersistedEvent & { event: UserTurnEvent }) | null
-  ensurePersonalRoot(sessionId: string, at: number): WorkRow
-  theOpenTurn(sessionId: string): OpenTurn | null
-  theNewestTurn(sessionId: string): string | null
-  aLifeOpenedTheTurn(
-    sessionId: string,
-    turnId: string,
-    life: { readonly generation: number; readonly launched: number },
-  ): boolean
-  howATurnEnded(sessionId: string, turnId: string): TurnAsItEnded | null
-  piecesOwnedBefore(owner: string, ordinal: number, unread?: RowsUnread): readonly PieceRow[]
-  whatBecameOfAMessage(
-    sessionId: string,
-    messageId: string,
-    keepRestartedBrief?: boolean,
-  ): 'sent' | 'ended' | 'waiting' | 'absent'
-  startupRepairOwners(phase?: 'builds' | 'runs' | 'requests' | 'work'): readonly string[]
-  settleStrandedMessagesInSteps(
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-    owners?: ReadonlySet<string>,
-  ): Generator<() => void, number>
-  settleStrandedMessages(
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-    owners?: ReadonlySet<string>,
-  ): number
-  messagesWaitingIn(
-    sessionId: string,
-    unread?: RowsUnread,
-    maximumRows?: number,
-  ): readonly WaitingMessage[]
-  settleStrandedRequests(
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-    owners?: ReadonlySet<string>,
-  ): number
-  stalledWorkNobodyWasToldAbout(
-    unread?: RowsUnread,
-    noOpenPieces?: (owner: string) => boolean,
-    work?: WindowOpenWork,
-  ): LedgerWalk<PieceRow>
-  stalledWorkItsGiverWasToldAbout(
-    unread?: RowsUnread,
-    noOpenPieces?: (owner: string) => boolean,
-    work?: WindowOpenWork,
-  ): LedgerWalk<PieceRow>
-  stalledWorkAPersonGave(unread?: RowsUnread): LedgerWalk<PieceRow>
-  piecesWaitingOnWhoWrote(
-    unread?: RowsUnread,
-    work?: WindowOpenWork,
-  ): LedgerWalk<PieceWaitingOnWhoWrote>
-  piecesWaitingOnWhoWroteIn(owner: string, unread?: RowsUnread): readonly PieceWaitingOnWhoWrote[]
-  providerLimitsSeen(
-    now: number,
-    signInChangedAt?: ReadonlyMap<Provider, number>,
-    accountLives?: readonly ProviderLimitAccountLife[],
-  ): LedgerWalk<ProviderLimitSeen>
-  readAheadProviderWalls(now: number, budgetMs: number): boolean
-  settleRestartedWork(
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-    wokenForAJob?: ReadonlySet<string>,
-    diedInTheBackground?: Set<string>,
-    continuing?: ReadonlySet<string>,
-    owners?: ReadonlySet<string>,
-  ): number
-  questionsAPersonMustAnswer(unread?: RowsUnread): LedgerWalk<RoutedRequest>
-  decisionsAwaitingAPerson(unread?: RowsUnread): LedgerWalk<RequestOnlyAPersonCanSettle>
-
-  numberUnder(parent: string): number
-  recordGive(given: GivenPiece, ordinal: number, event: WorkGivenEvent, at: number): void
-  /** Every saved work row, including roots, for incident reconciliation. */
-  reconciliationOwners(includeProviderFailureNotices?: boolean): readonly string[]
-  reconciliationWork(holders?: ReadonlySet<string>, unread?: RowsUnread): readonly WorkRow[]
-  reconciliationReceiptsForOwner(owner: string): readonly HolderReconciliationReceipt[]
-  reconciliationRecovery(owner: string): WorkRecoveryEvent | null
-  reconciliationDrivenByTurn(owner: string, turn: string): readonly string[]
-  reconciliationPieces(
-    owner: string,
-    unread?: RowsUnread,
-  ): {
-    readonly pieces: readonly PieceRow[]
-    readonly newestTurn: string | null
-    readonly driven: readonly string[] | null
-  }
-  reconciliationReceipts(owner: string, piece: string): readonly ReconciliationReceipt[]
-  queuedPromptProgress(
-    target: string,
-    messageId: string,
-    appNotice: AppNotice,
-  ): QueuedPromptProgress
-  providerFailureNoticeProgress(target: string, messageId: string): ProviderFailureNoticeProgress
-  reconciliationDelivery(
-    target: string,
-    messageId: string,
-  ): 'pending' | 'running' | 'turn-ended' | 'not-delivered'
-  /** Canonical labels and current titles, with one retitle walk per owner. */
-  activityWorkNames(
-    pieces: readonly string[],
-  ): ReadonlyMap<string, { readonly label: string; readonly title: string | null } | null>
-  workByLabel(label: string): WorkRow | null
-  /**
-   * The first task recorded in this conversation, in the order tasks were stored (never by clock
-   * time), root or not, ended or open; `null` while it has none. Its label is the conversation's
-   * address, and it never changes.
-   */
-  firstTaskOf(conversation: string): { readonly piece: string; readonly label: string } | null
-  defaultConversationTitle(conversation: string, includeOpening?: boolean): string | null
-  /** The root this conversation owns, or `null`: a conversation another one started owns none. */
-  rootOf(conversation: string): WorkRow | null
-  serviceBorn(conversation: string): boolean
-  servicesBorn(): readonly ServiceBorn[]
-  /** Bounded indexed birth evidence; malformed or oversized evidence throws. */
-  workersBorn(): readonly WorkerBorn[]
-  /** Complete, bounded replacement evidence for the giver of a worker binding. */
-  workerGiverContains(giver: string, conversation: string): boolean
-  /** The current worker, from a complete bounded replacement chain. */
-  workerInItsPlace(conversation: string): string
-  workerLineage(conversation: string): readonly string[]
-  rootLines(root: string): { readonly title: string | null; readonly statusLine: StatusLine | null }
-  workThatNames(conversation: string, unread?: RowsUnread): WorkThatNamesIt | null
-  workThatNamesAndItsWait(
-    conversation: string,
-    unread?: RowsUnread,
-    folded?: readonly PieceRow[],
-  ): {
-    readonly named: WorkThatNamesIt | null
-    readonly waitingOnPurpose: PieceRow | null
-  }
-  workThatNamesUnder(
-    conversation: string,
-    /** The piece the sentence is about, by id. */
-    piece: string,
-    unread?: RowsUnread,
-  ): WorkThatNamesIt | null
-  workOnItsChainThatNames(conversation: string, piece: string): WorkThatNamesIt | null
-  /** The rows given under one piece, by number — rows, not folded. */
-  childrenOf(piece: string, after?: number, limit?: number): readonly WorkRow[]
-  countChildrenAfter(piece: string, after: number): number
-  pieceOfItsChainHeldBy(piece: string, owner: string): string | null
-  turnBlockPiecesOwnedBy(owner: string, unread?: RowsUnread): readonly PieceRow[]
-  openPiecesOf(owner: string, unread?: RowsUnread): readonly PieceRow[]
-  conversationsOf(profileSlug: string): readonly {
-    readonly conversation: string
-    readonly parent: string | null
-    readonly startedAt: number
-    readonly lastActiveAt: number
-  }[]
-  /**
-   * The most recently active conversations of `recipientProfile` that hold work given from the
-   * giver's profile (or, for a giver with no profile, from the giver itself), newest first: at most
-   * `limit`, and whether there are more. Each carries the title of its latest task.
-   */
-  recentConversationsGivenFrom(
-    giver: string,
-    recipientProfile: string,
-    limit: number,
-  ): {
-    readonly rows: readonly { readonly conversation: string; readonly title: string | null }[]
-    readonly more: boolean
-  }
-  newestPiecesHeldIn(
-    conversations: readonly string[],
-    limit: number,
-    unread?: RowsUnread,
-  ): {
-    /** The newest it could read, newest given first. */
-    readonly rows: readonly PieceHeld[]
-    /** How many of the newest `work` named — `rows`, and those it could not read. */
-    readonly newest: number
-    /** How many those conversations hold in all. */
-    readonly total: number
-  }
-  pieceItWasStartedWith(conversation: string, unread?: RowsUnread): string | null
-  addResource(
-    input: Omit<ResourceRow, 'resource' | 'createdAt' | 'title'> & { readonly title: string },
-    at: number,
-  ): ResourceRow
-  /** The resources kept for one piece, oldest first. */
-  resourcesOf(
-    piece: string,
-    after?: ResourcePosition | null,
-    limit?: number,
-  ): readonly ResourceRow[]
-  countResourcesAfter(piece: string, after: ResourcePosition | null): number
-  filesKept(asked: KeptFilesAsked): readonly KeptFileRow[]
-  /** Both opening lists, named in one pass over their union. */
-  filesKeptTogether(asked: Extract<KeptFilesAsked, { scope: 'tree' }>): {
-    readonly tree: readonly KeptFileRow[]
-    readonly added: readonly KeptFileRow[]
-  }
-  madeBy(
-    profileSlug: string,
-    limit: number,
-  ): { readonly rows: readonly KeptFileRow[]; readonly total: number }
-  keptFilesNewestFirst(
-    asked: KeptFilesPaged,
-    page: KeptFilesFrom,
-  ): {
-    readonly rows: readonly KeptFileRow[]
-    readonly through: string | null
-  }
-  keptFilesBefore(asked: KeptFilesPaged, olderThan: string, cap: number): number
-  /** One resource by its id, or `null`. */
-  resource(id: string): ResourceRow | null
-  untitledResources(limit: number): readonly ResourceRow[]
-  titleResource(id: string, title: string): boolean
-  titledResources(
-    after: number,
-    limit: number,
-    keptBefore: number,
-  ): readonly { readonly at: number; readonly row: ResourceRow }[]
-  retitleResource(id: string, was: string, title: string): boolean
-  digestWindow(from: number, to: number): LedgerWalk<DigestRow>
-  /** The same vocabulary, materialized only inside this exact window and never cached. */
-  activityWindow(from: number, to: number): LedgerWalk<DigestRow>
-  conversationsHeldByNoAgent(): number
-  piecesGivenBy(sessionId: string, unread?: RowsUnread): readonly PieceRow[]
-  workGivenOutBy(sessionId: string): LedgerWalk<WorkGivenOut>
-  spawnedBy(sessionId: string): LedgerWalk<SpawnedConversation>
-  /** A conversation and every conversation below it (`conversation-tree.ts`): itself first. */
-  conversationTree(root: string): string[]
-  /** What ties a tree's conversations to conversations outside it (`conversation-tree.ts`). */
-  whatTiesTheTreeOutside(tree: readonly string[]): TiedOutside[]
-  /** Every provider session a conversation had, by the ids its provider's files are named by. */
-  providerSessionsOf(conversation: string): ProviderSessionOf[]
-  /** Deletes every row of a tree's conversations, in one transaction (`conversation-tree.ts`). */
-  deleteTheTree(tree: readonly string[]): TreeDeleted
-  conversationBinding(sessionId: string): ConversationBinding | null
-  workThisOneGaveOut(sessionId: string): LedgerWalk<WorkEdge>
-  workThisOneWasGiven(sessionId: string): LedgerWalk<WorkEdge>
-  workReportedTo(sessionId: string): ReadonlySet<string>
-  /** A pre-upgrade ordinary stall covered by a standing notice in its giver lineage. */
-  legacyOrdinaryStallWasReported(owner: string, piece: string, giver: string): boolean
-  routedRequestsOf(sessionId: string, unread?: RowsUnread): readonly RoutedRequest[]
-  questionsRoutedTo(parentSessionId: string, unread?: RowsUnread): readonly RoutedRequest[]
-  whoRoutedToWhom(): readonly { readonly asker: string; readonly parent: string }[]
-  conversationsHoldingACopyOf(requestId: string): readonly string[]
-  fillQuestionCopies(rows: number, bytes: number): QuestionCopySlice
-  generationOf?(sessionId: string): number
-  latestMoveOffer?(
-    sessionId: string,
-  ): import('../../shared/question-contracts').QuestionAskedEvent | null
-  theDecisionOn(
-    sessionId: string,
-    requestId: string,
-  ): {
-    readonly outcome: string
-    readonly by: ActedBy | null
-    readonly movedTo?: MoveReceipt
-  } | null
-  theRequestRouted(sessionId: string, requestId: string): ProviderRequestEvent | null
-  questionsRaisedIn(sessionId: string, unread?: RowsUnread): ReadonlyMap<string, RaisedQuestion>
-  questionStatesIn(
-    sessionId: string,
-    unread?: RowsUnread,
-  ): ReadonlyMap<string, Pick<RaisedQuestion, 'piece' | 'raisedBy'>>
-  routedRequestsAtHand(sessionId: string): readonly RoutedRequest[] | null
-  questionsRaisedAtHand(sessionId: string): ReadonlyMap<string, RaisedQuestion> | null
-  piecesAtHand(owner: string): readonly PieceRow[] | null
-  questionsRoutedToAtHand(parentSessionId: string): readonly RoutedRequest[] | null
-  whenAPersonLastWrote(sessionId: string): number | null
-  requestsItsLastEndedTurnInterrupted(sessionId: string): readonly string[]
-  lastEndedTurn(sessionId: string, unread?: RowsUnread): LastEndedTurn | null
-  providerFailureEpisode(
-    sessionId: string,
-    unread?: RowsUnread,
-    evidence?: ProviderFailureEvidence,
-  ): ProviderFailureEpisode
-  lastExchange(sessionId: string): Exchange
-  lastExchangeForTaskRecord(sessionId: string): TaskRecordExchange
-  whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
-  transcript(
-    sessionId: string,
-    read: { readonly back: number; readonly search: string | null },
-  ): { readonly turns: readonly TranscriptTurn[]; readonly older: boolean }
-  lastAskToStop(
-    sessionId: string,
-    unread?: RowsUnread,
-    source?: 'work_interrupted',
-  ): AskToStop | null
-  lastExplicitStopRequest(
-    sessionId: string,
-  ): { readonly asker: string; readonly reason: string } | null
-  appendGeneration(
-    sessionId: string,
-    generation: number,
-    entries: { ordinal: number; event: TranscriptEvent; at: number }[],
-  ): void
-  promoteGeneration(
-    sessionId: string,
-    generation: number,
-    through: { normalizerVersion: number; derivedThrough: number },
-  ): boolean
-  abandonGeneration(sessionId: string, generation: number, failure: string | null): void
-  discardGeneration(sessionId: string, generation: number, limit: number): number
-  deadGenerations(sessionId: string): number[]
-  turns(sessionId: string): RecordedTurn[]
-  closeOpenTurn(sessionId: string, reason: TurnEndReason, at: number): boolean
-  reopened(sessionId: string, at: number): boolean
-  closedByTheQuit(sessionIds: readonly string[], at: number): void
-  whatTheQuitClosed(): readonly string[]
-  whatTheNewestQuitClosed(notBefore: number): readonly string[]
-  restartedWorkLate(conversation: string, pieces: readonly string[], at: number): void
-  backgroundTheRestartStopped(
-    alsoTheseDied: readonly string[],
-    before: number,
-    notBefore: number,
-    owners?: ReadonlySet<string>,
-    quitClosed?: readonly string[],
-  ): readonly { conversation: string; stopped: readonly string[]; endedAt: number }[]
-  terminate(
-    sessionId: string,
-    status: 'ended' | 'errored',
-    reason: TurnEndReason,
-    at: number,
-  ): boolean
-  importSnapshot(snapshot: SessionSnapshot): void
-  nextOrdinal(sessionId: string): number
-  lastOrdinalWrite(sessionId: string): LedgerWriteStamp | undefined
-}
-
-export const NULL_SESSION_STORE: SessionStore = {
-  create: () => {},
-  connectionOf: () => null,
-  firstLaunchOf: () => false,
-  aLaunchWentUnnamed: () => false,
-  adopt: () => {},
-  identityOf: () => null,
-  createAgentIdentity: () => null,
-  providerOf: () => null,
-  startedOnOf: () => NONE_STARTED,
-  saveProviderIfNoneIsSaved: () => false,
-  agentIdentityOf: () => null,
-  agentIdentityNameById: () => null,
-  reconciliationNames: () => [],
-  agentIdentities: () => [],
-  agentIdentityPage: () => ({ identities: [], count: 0 }),
-  setExternalMcpServers: () => false,
-  ownNotesOf: () => null,
-  currentOwnNotesOf: () => null,
-  writeOwnNotes: () => null,
-  undoOwnNotes: () => null,
-  ownNotesUnread: () => ({ seenThrough: 0, newestAgentVersion: 0, unread: false }),
-  markOwnNotesSeen: () => false,
-  ownInstructionsOf: (profileSlug) => ({ identity: foldProfileName(profileSlug), versions: [] }),
-  configuredLayerFor: () => null,
-  writeOwnInstructions: () => null,
-  undoOwnInstructions: () => null,
-  instructionUnread: () => ({ seenThrough: 0, newestDirectVersion: 0, unread: false }),
-  beginMethodChange: () => null,
-  settleMethodChange: () => false,
-  hasPendingMethodChange: () => false,
-  methodChange: () => null,
-  methodChanges: () => [],
-  markInstructionsSeen: () => false,
-  memoryAmendmentsOf: () => [],
-  writeMemoryAmendment: () => null,
-  beginMemoryAmendment: () => null,
-  settleMemoryAmendment: () => false,
-  hasPendingMemoryAmendment: () => false,
-  memoryAmendment: () => null,
-  instructionAsksWaiting: () => [],
-  instructionAskersAmong: () => [],
-  turnBlockCandidates: () => null,
-  instructionAsksWaitingIn: () => null,
-  replyQuestionWithoutARequest: () => null,
-  settleInstructionAsk: () => false,
-  mcpServerRequestsWaiting: () => [],
-  mcpServerRequestWasMade: () => false,
-  grantExternalMcpServer: () => null,
-  externalMcpServers: () => [],
-  registerExternalMcpServer: () => null,
-  removeExternalMcpServer: () => false,
-  externalMcpServersFor: () => [],
-  setAgentProvider: () => false,
-  setAgentDisplayName: () => false,
-  modelChoiceOf: () => null,
-  setModelChoice: () => false,
-  handAddedModels: () => [],
-  addHandAddedModel: () => [],
-  deleteHandAddedModel: () => [],
-  lastPicked: () => null,
-  aPersonPicked: () => {},
-  hasSealedApiKey: () => false,
-  forgetSealedApiKey: () => {},
-  conversationsPerIdentity: () => [],
-  removeAgentIdentity: () => false,
-  defaultApprovalModeChosen: () => false,
-  defaultApprovalMode: () => 'ask',
-  setDefaultApprovalMode: () => {},
-  parentOf: () => null,
-  importSnapshot: () => {},
-  refreshAdopted: () => false,
-  learnDescent: () => false,
-  setApprovalMode: () => {},
-  endPlanMode: () => {},
-  startPlanMode: () => {},
-  setModel: () => {},
-  setReasoningEffort: () => {},
-  aPersonSetItsModelOrEffort: () => {},
-  setReportedModel: () => {},
-  whatItRunsOn: () => null,
-  workflowOutputPath: () => null,
-  workflowAgentTask: () => null,
-  workflowAgentIds: () => [],
-  reportedSubAgent: () => false,
-  ledgerStatus: () => ({
-    present: false,
-    derived: null,
-    derivedThrough: 0,
-    normalizerVersion: PRE_CONTRACT_NORMALIZER_VERSION,
-    failure: null,
-  }),
-  beginGeneration: () => 0,
-  clearOrphanBuilds: () => 0,
-  settleOrphanRuns: () => 0,
-  whatACrashLeftRunning: () => [],
-  recordedTurnOpening: () => null,
-  recordedTurnMessage: () => null,
-  ensurePersonalRoot: () => {
-    throw new Error('work is not being recorded')
-  },
-  theOpenTurn: () => null,
-  theNewestTurn: () => null,
-  theActiveGeneration: () => 0,
-  aLifeOpenedTheTurn: () => false,
-  howATurnEnded: () => null,
-  piecesOwnedBefore: () => [],
-  whatBecameOfAMessage: () => 'absent',
-  startupRepairOwners: () => [],
-  *settleStrandedMessagesInSteps() {
-    yield* []
-    return 0
-  },
-  settleStrandedMessages: () => 0,
-  messagesWaitingIn: () => [],
-  // ⚠️ **0 for {@link settleStrandedMessages}' reason**: a store with no database repaired nothing.
-  settleStrandedRequests: () => 0,
-  stalledWorkNobodyWasToldAbout: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  stalledWorkItsGiverWasToldAbout: () => ({
-    rows: [],
-    walk: 'no-ledger',
-    ledgers: 0,
-    rowsUnread: 0,
-  }),
-  stalledWorkAPersonGave: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  piecesWaitingOnWhoWrote: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  piecesWaitingOnWhoWroteIn: () => [],
-  providerLimitsSeen: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  readAheadProviderWalls: () => true,
-  // ⚠️ **0 for {@link settleStrandedRequests}' reason**: a store with no database repaired nothing.
-  settleRestartedWork: () => 0,
-  questionsAPersonMustAnswer: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  decisionsAwaitingAPerson: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  numberUnder: () => {
-    throw new Error('no database: a piece of work cannot be numbered')
-  },
-  recordGive: () => {
-    throw new Error('no database: a piece of work cannot be recorded')
-  },
-  reconciliationOwners: () => [],
-  reconciliationWork: () => [],
-  reconciliationReceiptsForOwner: () => [],
-  reconciliationRecovery: () => null,
-  reconciliationDrivenByTurn: () => [],
-  reconciliationPieces: () => ({ pieces: [], newestTurn: null, driven: [] }),
-  reconciliationReceipts: () => [],
-  queuedPromptProgress: () => 'missing',
-  providerFailureNoticeProgress: () => 'not-delivered',
-  reconciliationDelivery: () => 'not-delivered',
-  workById: () => null,
-  activityWorkNames: () => new Map(),
-  workByLabel: () => null,
-  firstTaskOf: () => null,
-  defaultConversationTitle: () => null,
-  rootOf: () => null,
-  serviceBorn: () => false,
-  servicesBorn: () => [],
-  workersBorn: () => [],
-  workerGiverContains: () => false,
-  workerInItsPlace: (conversation) => conversation,
-  workerLineage: (conversation) => [conversation],
-  rootDoneCondition: () => null,
-  rootLines: () => ({ title: null, statusLine: null }),
-  turnBlockRootLines: () => null,
-  workThatNames: () => null,
-  workThatNamesAndItsWait: () => ({ named: null, waitingOnPurpose: null }),
-  workThatNamesUnder: () => null,
-  workOnItsChainThatNames: () => null,
-  childrenOf: () => [],
-  countChildrenAfter: () => 0,
-  pieceOfItsChainHeldBy: () => null,
-  piecesOwnedBy: () => [],
-  piecesWithTheirWaits: () => [],
-  turnBlockPiecesOwnedBy: () => [],
-  openPiecesOf: () => [],
-  conversationsOf: () => [],
-  recentConversationsGivenFrom: () => ({ rows: [], more: false }),
-  newestPiecesHeldIn: () => ({ rows: [], newest: 0, total: 0 }),
-  pieceItWasStartedWith: () => null,
-  addResource: () => {
-    throw new Error('no database: a resource cannot be kept')
-  },
-  resourcesOf: () => [],
-  countResourcesAfter: () => 0,
-  untitledResources: () => [],
-  titleResource: () => false,
-  titledResources: () => [],
-  retitleResource: () => false,
-  filesKept: () => [],
-  filesKeptTogether: () => ({ tree: [], added: [] }),
-  madeBy: () => ({ rows: [], total: 0 }),
-  keptFilesNewestFirst: () => ({ rows: [], through: null }),
-  keptFilesBefore: () => 0,
-  resource: () => null,
-  digestWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  activityWindow: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  conversationsHeldByNoAgent: () => 0,
-  ...EMPTY_FOREST_STORE,
-  workGivenOutBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  spawnedBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  conversationTree: () => [],
-  whatTiesTheTreeOutside: () => [],
-  providerSessionsOf: () => [],
-  deleteTheTree: () => {
-    throw new Error('there is no database to delete a conversation from')
-  },
-  conversationBinding: () => null,
-  workThisOneGaveOut: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  workThisOneWasGiven: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
-  piecesGivenBy: () => [],
-  workReportedTo: () => new Set<string>(),
-  legacyOrdinaryStallWasReported: () => false,
-  routedRequestsOf: () => [],
-  questionsRoutedTo: () => [],
-  questionsRaisedIn: () => new Map(),
-  questionStatesIn: () => new Map(),
-  theDecisionOn: () => null,
-  theRequestRouted: () => null,
-  whoRoutedToWhom: () => [],
-  conversationsHoldingACopyOf: () => [],
-  fillQuestionCopies: () => ({ state: 'done', visited: 0, matched: 0 }),
-  providerFailureEpisode: () => 'unknown',
-  lastEndedTurn: () => null,
-  routedRequestsAtHand: () => null,
-  questionsRaisedAtHand: () => null,
-  piecesAtHand: () => null,
-  questionsRoutedToAtHand: () => null,
-  whenAPersonLastWrote: () => null,
-  requestsItsLastEndedTurnInterrupted: () => [],
-  lastExchange: () => ({ received: null, answer: null }),
-  lastExchangeForTaskRecord: () => ({ exchange: { received: null, answer: null }, revision: '' }),
-  whatOpenedTheLastEndedTurn: () => null,
-  transcript: () => ({ turns: [], older: false }),
-  lastAskToStop: () => null,
-  lastExplicitStopRequest: () => null,
-  appendGeneration: () => {},
-  promoteGeneration: () => true,
-  abandonGeneration: () => {},
-  discardGeneration: () => 0,
-  deadGenerations: () => [],
-  findByProviderRef: () => null,
-  nameItsLaunch: () => false,
-  append: () => {},
-  titleConversation: () => {},
-  conversationTitle: () => null,
-  conversationTitleHistory: () => ({ kind: 'titles', titles: [], rowsUnread: 0, next: null }),
-  appendMany: () => {},
-  atomically: (work) => work(),
-  onCommitted: () => () => undefined,
-  checkCommitted: () => undefined,
-  resumable: () => [],
-  unresumable: () => [],
-  recorded: () => [],
-  recordedPage: () => [],
-  recordedOne: () => null,
-  searchPastWork: () => ({ ok: false, reason: 'unavailable' }),
-  closePastWorkSearch: () => {},
-  pastWorkSearchSource: () => null,
-  replacements: () => [],
-  newestScheduleLevels: () => [],
-  newestScheduleLevel: () => null,
-  scheduleEvidenceRows: () => ({ rows: [], cut: false }),
-  lastStatusAt: () => null,
-  find: () => null,
-  findLive: () => null,
-  events: () => [],
-  eventsFrom: () => [],
-  ancestryContext: () => ({ epochs: [], entries: [], missing: [], truncated: false }),
-  turnWindow: () => ({ entries: [], from: 0, hasOlder: false, turnAligned: true }),
-  latestHumanAnswers: () => ({ latest: null, active: null }),
-  humanFinalsInWindow: (): ReadonlyMap<number, HumanFinalContext> => new Map(),
-  turns: () => [],
-  closeOpenTurn: () => false,
-  reopened: () => false,
-  closedByTheQuit: () => {},
-  backgroundTheRestartStopped: () => [],
-  restartedWorkLate: () => {},
-  whatTheQuitClosed: () => [],
-  whatTheNewestQuitClosed: () => [],
-  terminate: () => false,
-  nextOrdinal: () => 0,
-  lastOrdinalWrite: () => undefined,
-}
-
-/** The open-turn lookup's row — just enough to decide attribution and status. */
-interface OpenTurnRow {
-  id: string
-  blocked_at: number | null
-}
-
-interface ExchangeRow {
-  readonly type: string
-  readonly payload: string | null
-  readonly ordinal: number
-}
-
-export type ProviderFailureEpisode =
-  | 'none'
-  | 'unknown'
-  | {
-      readonly generation: number
-      readonly terminalOrdinal: number
-      readonly turnId: string
-      readonly cause: Omit<NonNullable<PieceRow['providerTurnFailure']>, 'turnOrdinal'>
-      readonly asks: readonly TheQuestionItAsks[]
-    }
-
-const CLOSED_TURNS_FOR_PROVIDER_FAILURE = 8
-
-export interface ProviderFailureEvidence {
-  checkedTurnEndings: number
-  exceededPartLimit?: number
-}
-
-interface ClosedTurnRow {
-  id: string
-  opened_at: number
-  closed_at: number
-}
-
-interface AskRow {
-  payload: string
-  created_at: number
-  turn_id: string | null
-  type: string
-  ordinal: number
-}
-
-export interface RecordedTurn {
-  id: string
-  ordinal: number
-  prompt: string
-  openedAt: number
-  closedAt: number | null
-  endReason: TurnEndReason | null
-  /** Since when it has been waiting on the user, or null. */
-  blockedAt: number | null
-}
-
-type TurnEndReason = TurnEnding
-
 function parseStrings(stored: string | null): readonly string[] {
   if (stored === null) return []
   try {
@@ -1601,9 +397,6 @@ function parseStrings(stored: string | null): readonly string[] {
     return []
   }
 }
-
-/** How many of a conversation's newest turns are read to learn when a person last wrote. */
-export const PERSON_LAST_WROTE_WITHIN_TURNS = 200
 
 function theFoldIndexHolds(statement: { readonly source: string }): void {
   const sql = statement.source
