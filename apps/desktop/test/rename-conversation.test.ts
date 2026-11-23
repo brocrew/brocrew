@@ -1,5 +1,5 @@
 import { describeConversationForRead } from '../src/main/runtime/conversation-address'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -172,8 +172,8 @@ describe('renaming a conversation', () => {
     expect(world.store.conversationTitle(conversation)).toBeNull()
 
     expect(world.store.defaultConversationTitle(conversation)).toBeNull()
-    expect(describeConversationForRead(world.store, conversation).title).toBe('BroBot')
     const title = `${firstLine.slice(0, CONVERSATION_TITLE_CHARS - 1).trimEnd()}…`
+    expect(describeConversationForRead(world.store, conversation).title).toBe(title)
     const identity = { conversation, address: root.label, title, author: null }
     expect(await readIdentity(conversation)).toEqual(identity)
     expect(
@@ -182,6 +182,89 @@ describe('renaming a conversation', () => {
         sessionIds: [conversation],
       }),
     ).toEqual([identity])
+  })
+
+  it('uses the capped opening title in receipts, notices, controls, tasks, transcripts and rename', async () => {
+    const address = world.store.rootOf(caller)!.label
+    const targetAddress = world.store.rootOf(target)!.label
+    const opening = `Opening field notes ${'x'.repeat(CONVERSATION_TITLE_CHARS)}`
+    const title = `${opening.slice(0, CONVERSATION_TITLE_CHARS - 1)}…`
+    const line = `conversation ${address} · ${title}`
+    recordTurn(caller, { text: `${opening}\nFind alpinequartz here`, humanInitiated: true })
+    const call = (from: string, name: string, args: Record<string, unknown>) =>
+      agentToolsFor(host, from)
+        .tools.find((tool) => tool.name === name)!
+        .call(args)
+    const receipt = { outcome: 'ok', receipt: { recipient: { address, title } } }
+
+    expect((await call(target, 'list_tasks', { conversation: address })).text).toContain(line)
+    const search = world.store.searchPastWork(target, 'alpinequartz', undefined, undefined, {})
+    expect(search).toMatchObject({
+      ok: true,
+      hits: [{ conversation: caller, line, title }],
+    })
+
+    const callerHandle = world.handles.find(({ as }) => as === 'caller')!.handle
+    callerHandle.compact = async () => {
+      callerHandle.simulateCompaction({ trigger: 'manual' })
+      return { compacted: true }
+    }
+    expect((await call(caller, 'compact_agent', { agent: address })).text).toContain(
+      `Compaction requested for ${line}.`,
+    )
+    await vi.waitFor(() => {
+      expect(world.ledger(caller)).toContainEqual(
+        expect.objectContaining({
+          type: 'message_queued',
+          text: expect.stringContaining(`${line}, compacted this conversation`),
+        }),
+      )
+    })
+
+    const message = await call(target, 'message_agent', { agent: address, text: 'A field note' })
+    expect(message.structured).toMatchObject(receipt)
+    await vi.waitFor(() => expect(callerHandle.status()).toBe('waiting_permission'))
+    const refused = await call(target, 'interrupt_agent', { agent: address })
+    expect(refused.text).toContain(`Not stopped: ${line} is waiting for the person`)
+
+    const question = await call(target, 'ask_question', {
+      agent: address,
+      who_answers: 'an-agent',
+      question: 'Which field notes should I check?',
+    })
+    expect(question.structured).toMatchObject(receipt)
+    expect(world.ledger(caller)).toContainEqual(
+      expect.objectContaining({
+        type: 'message_queued',
+        text: expect.stringContaining(`in your ${line}.\n`),
+      }),
+    )
+
+    const given = await world.gives(host, caller, 'worker')
+    if (!given.ok) throw new Error(`work could not be given: ${given.refusal.reason}`)
+    const reply = await call(given.owner, 'reply_to_parent', {
+      piece: given.label,
+      outcome: 'done',
+      summary: 'Field notes checked.',
+    })
+    expect(reply.structured).toMatchObject(receipt)
+
+    const targetHandle = world.handles.find(({ as }) => as === 'worker')!.handle
+    targetHandle.holdNextTurn()
+    await host.send(target, 'Hold these notes', world.window)
+    expect(targetHandle.status()).toBe('working')
+    const stop = await call(caller, 'interrupt_agent', { agent: targetAddress, reason: 'Review' })
+    expect(stop.structured).toMatchObject({ outcome: 'ok', asked: true })
+    expect(targetHandle.status()).toBe('idle')
+    await host.send(target, 'Continue these notes', world.window)
+    expect(world.sent.find(({ words }) => words.includes('Continue these notes'))?.words).toContain(
+      `${line}, stopped your turn: Review.`,
+    )
+
+    expect((await agentRenames(address, 'Field notes')).structured).toMatchObject({
+      outcome: 'ok',
+      previousTitle: title,
+    })
   })
 
   it('shows the same opening title in rail identity, agent status and work search', async () => {

@@ -44,8 +44,8 @@ function conversationDisplayTitle(
   reads: DisplayTitleReads,
   conversation: string,
   service: boolean,
+  includeOpening: boolean,
   savedTitle = reads.conversationTitle(conversation),
-  includeOpening = false,
 ): { readonly title: string; readonly profileFallback?: true } {
   if (savedTitle !== null) return { title: savedTitle.title }
   if (!service) {
@@ -66,7 +66,7 @@ export function describeConversation(
   conversation: string,
   service: boolean,
   savedTitle?: ConversationTitle | null,
-  includeOpening = false,
+  includeOpening = true,
 ): {
   readonly address: string
   readonly title: string
@@ -78,8 +78,8 @@ export function describeConversation(
     reads,
     conversation,
     service,
-    savedTitle,
     includeOpening,
+    savedTitle,
   )
   return { address, ...resolved, line: conversationLine(address, resolved.title) }
 }
@@ -104,7 +104,7 @@ export function describeConversationForRead(
   conversation: string,
   itIsAService = isRecordedServiceConversation(reads, conversation),
   savedTitle?: ConversationTitle | null,
-  includeOpening = false,
+  includeOpening?: boolean,
 ) {
   return describeConversation(reads, conversation, itIsAService, savedTitle, includeOpening)
 }
