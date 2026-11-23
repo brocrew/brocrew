@@ -432,9 +432,7 @@ describe('sign-in reopens share a yielding queue', () => {
       moved = true
       await late.handle.runTurnRefusedOnItsLogin()
       await vi.advanceTimersByTimeAsync(200)
-      await expect(host.resumeSession(late.id, sink)).rejects.toMatchObject({
-        cause: { unavailable: 'not-confirmed-stopped' },
-      })
+      const waiting = host.resumeSession(late.id, sink).catch(() => undefined)
       await note(sender.id, healthy.id, 'healthy')
       await vi.advanceTimersByTimeAsync(1100)
       expect(resumes).toEqual([healthy.handle.ref.sessionId])
@@ -445,6 +443,7 @@ describe('sign-in reopens share a yielding queue', () => {
       }
       receipt.resolve()
       await vi.advanceTimersByTimeAsync(1100)
+      await waiting
       expect(resumes).toEqual(
         quit
           ? [healthy.handle.ref.sessionId]
@@ -466,11 +465,10 @@ describe('sign-in reopens share a yielding queue', () => {
     await note(sender.id, healthy.id, 'healthy')
     await vi.advanceTimersByTimeAsync(1600)
     expect(resumes).toEqual([healthy.handle.ref.sessionId])
-    await expect(host.resumeSession(late.id, sink)).rejects.toMatchObject({
-      cause: { unavailable: 'not-confirmed-stopped' },
-    })
+    const waiting = host.resumeSession(late.id, sink).catch(() => undefined)
     receipt.resolve()
     await vi.advanceTimersByTimeAsync(1100)
+    await waiting
     expect(resumes).toEqual([healthy.handle.ref.sessionId, late.handle.ref.sessionId])
     expect(events(late.id).filter((event) => event.type === 'message_unqueued')).toEqual([
       expect.objectContaining({ reason: 'sent' }),

@@ -220,9 +220,17 @@ describe('Windows-suite Codex delegation round trip', () => {
     expect(store.messagesWaitingIn(parent)).toHaveLength(0)
     expect(host.sessionIds).not.toContain(parent)
     expect(parentStarts).toBe(1)
-    await expect(host.resumeSession(parent, window)).rejects.toThrow(
-      'has not finished putting away',
+    // A person's reopen waits for the exit proof instead of being refused, and starts nothing first.
+    const reopening = host.resumeSession(parent, window).then(
+      () => 'opened',
+      () => 'refused',
     )
+    const early = await Promise.race([
+      reopening,
+      new Promise((resolve) => setTimeout(() => resolve('waiting'), 100)),
+    ])
+    expect(early).toBe('waiting')
+    expect(parentResumes).toBe(0)
     const first = await finish(alder, 'Alder result')
     const second = await finish(cedar, 'Cedar result')
     expect(first.delivered).toBe('kept')
@@ -231,6 +239,7 @@ describe('Windows-suite Codex delegation round trip', () => {
     expect(replies(parent)).toEqual([])
     expect(parentResumes).toBe(0)
     proveExit()
+    await reopening
     await until(() => replies(parent).length === 2)
     expect(parentStarts).toBe(1)
     expect(parentResumes).toBe(1)
