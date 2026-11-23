@@ -12,6 +12,7 @@ import {
 } from '@brobot2/runtime'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { gateClose, stillWaiting } from './helpers/provider-close-waits'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -55,34 +56,6 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-/**
- * A handle whose `close()` can be held open — 070's lever, for the case where termination cannot
- * be confirmed. A `Proxy` rather than a subclass for the reason `process-ownership.test.ts` gives:
- * the Fake's state lives in own fields its own methods mutate.
- */
-function gateClose(
-  handle: SessionHandle,
-  gate: Promise<void>,
-  onClose: () => void,
-): { handle: SessionHandle; closed: () => boolean } {
-  let finished = false
-  const proxied = new Proxy(handle, {
-    get(target, property) {
-      if (property === 'close') {
-        return async (): Promise<void> => {
-          onClose()
-          await gate
-          await target.close()
-          finished = true
-        }
-      }
-      const value = Reflect.get(target, property, target) as unknown
-      return typeof value === 'function' ? (value as () => unknown).bind(target) : value
-    },
-  })
-  return { handle: proxied, closed: () => finished }
 }
 
 /**
@@ -226,19 +199,6 @@ function aLaunchHost(
   })
 }
 
-/** Asks to reopen `sess_1` until the answer is no longer "cannot continue yet", for two seconds. */
-async function whenTheIdIsFree(host: RuntimeHost, sink: RecordingSink): Promise<string> {
-  const until = Date.now() + 2_000
-  let message: string
-  do {
-    const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    message = (again as Error).message
-    if (!message.includes('cannot continue yet')) break
-    await new Promise((resolve) => setTimeout(resolve, 5))
-  } while (Date.now() < until)
-  return message
-}
-
 describe('a launch that cannot complete (102)', () => {
   let userData: string
   let sink: RecordingSink
@@ -293,15 +253,20 @@ describe('a launch that cannot complete (102)', () => {
         expect(runtime.late?.closed()).toBe(true)
         expect(host.sessionIds).toEqual([])
         expect(exit.isConfirmed).toBe(false)
-        const refused = await host.resumeSession('sess_1', sink).catch((error: Error) => error)
-        expect((refused as Error).message).toContain('cannot continue yet')
+        let settled = false
+        const reopening = host
+          .resumeSession('sess_1', sink)
+          .catch((error: Error) => error)
+          .finally(() => (settled = true))
         runtime.phase('validated')
         await vi.advanceTimersByTimeAsync(160)
         expect(exit.isConfirmed).toBe(false)
+        expect(settled, 'a reopen waits for the process to exit').toBe(false)
         exit.confirm()
         await vi.advanceTimersByTimeAsync(0)
-        const released = await host.resumeSession('sess_1', sink).catch((error: Error) => error)
-        expect((released as Error).message).toBe('There is no record of this conversation here.')
+        expect(((await reopening) as Error).message).toBe(
+          'There is no record of this conversation here.',
+        )
       } finally {
         runtime.arriveNow()
         exit.confirm()
@@ -357,17 +322,16 @@ describe('a launch that cannot complete (102)', () => {
     await host.createSession({ provider: 'codex' }, sink).catch(() => undefined)
     await waitFor(() => runtime.aborted, 'the launch to be aborted')
 
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    // ⚑ **D-017b** — 070's refusal in the new words (`not-confirmed-stopped`): *"cannot continue
-    // yet"*, with no process fact in it; it said *"its agent has not confirmed that it stopped"*.
-    expect((refused as Error).message).toContain('cannot continue yet')
-    expect((refused as Error).message).not.toContain('sess_')
+    // The reopen waits for the process to be really down instead of being refused as dead.
+    const reopening = host.resumeSession('sess_1', sink).catch((e: Error) => e)
+    expect(await stillWaiting(reopening)).toBe(true)
 
     runtime.finishTeardown()
-    // Once it IS confirmed, the id is free again — refusing forever would be a different bug. The
-    // next refusal is the ordinary "no such recording", which is a POSITIVE assertion that the
-    // reservation path was reached rather than merely that one sentence stopped appearing.
-    expect(await whenTheIdIsFree(host, sink)).toBe('There is no record of this conversation here.')
+    // Once it IS confirmed the id is free: the reopen reaches the reservation path, and the answer
+    // is the ordinary "no such recording" rather than a refusal about the old provider.
+    expect(((await reopening) as Error).message).toBe(
+      'There is no record of this conversation here.',
+    )
     await host.closeAll()
   })
 
@@ -414,12 +378,14 @@ describe('a launch that cannot complete (102)', () => {
     // ⚑ The double's `close()` has no `await` in its body, so it has genuinely RESOLVED — and the
     // process has not gone anywhere. That pair is the 229 H1 shape, here on the give-up path.
     expect(exit.isConfirmed).toBe(false)
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    expect((refused as Error).message).toContain('cannot continue yet')
+    const reopening = host.resumeSession('sess_1', sink).catch((e: Error) => e)
+    expect(await stillWaiting(reopening)).toBe(true)
 
     // …and once the process really goes, the id is free — refusing forever would be a different bug.
     exit.confirm()
-    expect(await whenTheIdIsFree(host, sink)).toBe('There is no record of this conversation here.')
+    expect(((await reopening) as Error).message).toBe(
+      'There is no record of this conversation here.',
+    )
     await host.closeAll()
   })
 
@@ -558,10 +524,11 @@ describe('cancelling a launch (102)', () => {
     expect(host.sessionIds).toEqual([])
     expect(runtime.late?.closed()).toBe(false)
     // …and the id is refused, in 070's words, because we cannot say the process is gone.
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    expect((refused as Error).message).toContain('cannot continue yet')
+    const reopening = host.resumeSession('sess_1', sink).catch((e: Error) => e)
+    expect(await stillWaiting(reopening)).toBe(true)
 
     closing.resolve()
+    await reopening
     await waitFor(() => runtime.late?.closed() === true, 'the hand-back to finish')
     await host.closeAll()
   })

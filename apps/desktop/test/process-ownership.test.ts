@@ -23,6 +23,7 @@ import {
   type RuntimeHostDeps,
 } from '../src/main/runtime/runtime-host'
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
+import { gateClose, stillWaiting } from './helpers/provider-close-waits'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { readLines } from '../src/main/archive/native-file'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -83,33 +84,13 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
   throw new Error(`timed out waiting for ${what}`)
 }
 
-/**
- * A handle whose `close()` can be held open — the lever 068 said the hand-back tests were missing
- * ("immediately closing fakes"). A Proxy rather than a subclass or a spread: the Fake's state lives
- * in own fields its own methods mutate, so anything that re-homes `this` quietly stops being the
- * session under test.
- */
-function gateClose(
-  handle: SessionHandle,
-  gate: Promise<void>,
-  onClose: () => void,
-): { handle: SessionHandle; closed: () => boolean } {
-  let finished = false
-  const proxied = new Proxy(handle, {
-    get(target, property) {
-      if (property === 'close') {
-        return async (): Promise<void> => {
-          onClose()
-          await gate
-          await target.close()
-          finished = true
-        }
-      }
-      const value = Reflect.get(target, property, target) as unknown
-      return typeof value === 'function' ? (value as () => unknown).bind(target) : value
-    },
-  })
-  return { handle: proxied, closed: () => finished }
+/** A Codex session that has its provider ref and has been closed, so the host holds no slot for it. */
+async function aClosedCodexSession(host: RuntimeHost, store: SessionStore, dir: string) {
+  const sink = new RecordingSink()
+  const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
+  await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
+  await host.close(created.sessionId, sink)
+  return created
 }
 
 /** The homes, folders, ids and config every host here is built with; each host counts its own ids. */
@@ -413,7 +394,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('refuses a resume attempted while the handed-back provider is still closing', async () => {
+  it('waits on a resume attempted while the handed-back provider is still closing', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'claude', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
@@ -441,20 +422,17 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
 
     // ⚠️ **Two providers for one record must be impossible.** Before 070 the reservation was freed
     // on the first line of `handBack`, so this resume was admitted and spawned a second child onto
-    // the same transcript while the first was still shutting down.
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
+    // the same transcript while the first was still shutting down. It now waits and starts nothing.
+    const second = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    expect(await stillWaiting(second, 150), 'waits past twice the drain bound').toBe(true)
     expect(resumes).toBe(1)
 
-    // …and the id comes back the moment the provider really is gone. Refusing forever would be a
+    // …and it goes ahead the moment the provider really is gone. Refusing forever would be a
     // different bug: a conversation permanently unopenable because one close was slow.
     arriving = null
     closing.resolve()
     await waitFor(() => handedBack?.closed() === true, 'the provider to finish closing')
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:3')),
-    ).resolves.toMatchObject({ sessionId: created.sessionId })
+    await expect(second).resolves.toMatchObject({ sessionId: created.sessionId })
   })
 })
 
@@ -663,18 +641,20 @@ describe('a provider the host could not confirm stopped (070)', () => {
     expect(store.recordedOne(created.sessionId)?.lastEnding).toBe('unknown')
   })
 
-  it('keeps the id refused until the provider really goes', async () => {
-    const sink = new RecordingSink()
-    const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
-    await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
-    await host.close(created.sessionId, sink)
+  it('a Reopen waits for the provider to really go, and starts no second one', async () => {
+    const created = await aClosedCodexSession(host, store, dir)
 
     // The slot is gone — the session is over as far as the UI is concerned — but the process is not
     // confirmed down, and the UI's Reopen button is one click away.
     expect(host.sessionIds).toEqual([])
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
+    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    expect(await stillWaiting(reopening, 150)).toBe(true)
+    expect(host.sessionIds).toEqual([])
+    // A quit does not wait for it, and the waiting Reopen then starts nothing.
+    await host.closeAll()
+    closing.resolve()
+    await expect(reopening).rejects.toThrow()
+    expect(host.sessionIds).toEqual([])
   })
 })
 
@@ -990,21 +970,17 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     expect(store.find(created.sessionId)?.status).toBe('ended')
   })
 
-  it('⛔ keeps the launch, so a reopen into the gap is refused with a sentence', async () => {
-    const sink = new RecordingSink()
-    const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
-    await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
-
-    await host.close(created.sessionId, sink)
+  it('⛔ keeps the launch, so a reopen into the gap waits for the exit', async () => {
+    const created = await aClosedCodexSession(host, store, dir)
 
     // The slot is gone — the UI has moved this conversation to Reopen — and the process is not.
     expect(host.sessionIds).toEqual([])
     expect(exit.isConfirmed).toBe(false)
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
-    // ⛔ **Refused, not raced.** Before 233 this resume SUCCEEDED against a live process, because
-    // `launches.finish` had been handed the resolved teardown as the termination fact.
+    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    // ⛔ **Waiting, not raced and not refused.** Before 233 this resume SUCCEEDED against a live process.
+    expect(await stillWaiting(reopening, 150)).toBe(true)
+    exit.confirm()
+    await expect(reopening).resolves.toMatchObject({ sessionId: created.sessionId })
   })
 
   it('⛔ warns on the quit instead of certifying a clean stop', async () => {
@@ -1114,7 +1090,7 @@ describe('233 · a launch handed back while starting is owned against the proces
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('⛔ keeps the id refused after handBack, until the process is proven gone', async () => {
+  it('⛔ keeps the id owned after handBack: a reopen waits until the process is proven gone', async () => {
     const sink = new RecordingSink()
     const creating = host.createSession({ provider: 'codex', cwd: dir }, sink)
     creating.catch(() => {})
@@ -1132,19 +1108,15 @@ describe('233 · a launch handed back while starting is owned against the proces
     // The teardown resolved — the double's `close()` has no `await` in its body, exactly as a
     // wedged Claude's resolves on the SDK's bounded receipt — and the process did not.
     expect(exit.isConfirmed).toBe(false)
-    await expect(host.resumeSession('sess_1', new RecordingSink('owner:2'))).rejects.toThrow(
-      NOT_CONFIRMED_STOPPED,
-    )
+    const reopening = host.resumeSession('sess_1', new RecordingSink('owner:2'))
+    expect(await stillWaiting(reopening, 150)).toBe(true)
 
-    // ⚑ **The paired positive: the refusal is the OWNERSHIP's, and it lifts when the process goes.**
-    // Asserted as "no longer refused for that reason" rather than as a successful reopen, because a
+    // ⚑ **The paired positive: the wait is the OWNERSHIP's, and it ends when the process goes.**
+    // Asserted as "not refused for that reason" rather than as a successful reopen, because a
     // handed-back launch never registered a provider ref for one to resume onto — so a resolved
     // resume here would be a different claim than the one under test.
     exit.confirm()
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    await expect(host.resumeSession('sess_1', new RecordingSink('owner:2'))).rejects.not.toThrow(
-      NOT_CONFIRMED_STOPPED,
-    )
+    await expect(reopening).rejects.not.toThrow(NOT_CONFIRMED_STOPPED)
   })
 })
 

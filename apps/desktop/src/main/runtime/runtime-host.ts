@@ -31669,15 +31669,23 @@ export class RuntimeHost implements LiveHost {
    * A finalized session lets go of its slot when its teardown stops waiting, and of its launch only
    * when its provider is confirmed gone: a provider that ends a few seconds later (on Windows the
    * Claude SDK kills a wedged CLI 7 s after the close) left a message delivered in between refused.
-   * A delivery about to start the conversation waits for that confirmation for twice the drain
-   * bound; past it, or during a quit, `reserve` refuses. A direct reopen still refuses at once.
+   * A person's reopen waits for that confirmation however long it takes: a slow PC can need longer
+   * than any fixed bound, and the provider is only dead when it has exited. A delivery about to
+   * start the conversation waits twice the drain bound and then keeps its words for the wake that
+   * follows the exit, so a helper's reply is never held up by a parent still exiting. A quit that
+   * has begun skips both, and `reserve` refuses then.
    */
-  private async settleTheLastLaunch(sessionId: string): Promise<void> {
+  private async settleTheLastLaunch(sessionId: string, untilGone: boolean): Promise<void> {
     if (this.launches.closed) return
     const slot = this.slots.get(sessionId)
-    if (slot !== undefined && !onItsWayOut(slot)) return
+    // A slot still here means its own teardown outlived `settleTeardown`'s bound: `reserve` says so.
+    if (slot !== undefined && (untilGone || !onItsWayOut(slot))) return
     const released = this.launches.released(sessionId)
     if (released === null) return
+    if (untilGone) {
+      await released
+      return
+    }
     if (await settledWithin(released, this.closeDrainTimeoutMs * 2)) return
     console.warn(
       `runtime session ${sessionId}: its provider has not confirmed it stopped after ` +
@@ -37306,7 +37314,7 @@ export class RuntimeHost implements LiveHost {
     try {
       if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
       await this.settleTeardown(sessionId)
-      if (this.startingForADelivery.has(sessionId)) await this.settleTheLastLaunch(sessionId)
+      await this.settleTheLastLaunch(sessionId, !this.startingForADelivery.has(sessionId))
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a
