@@ -27,6 +27,7 @@ import {
 
 const CELL_LIMIT = 1024 * 1024
 const DOCUMENT_LIMIT = 1_000_000
+const CAPACITY_BATCH = 256
 const PROFILE_LIMIT = 1
 const PAST_WORK_MESSAGE_LIMIT = 4096
 const MIXED_RANK_HEAD = 1024
@@ -49,7 +50,19 @@ type Index = {
   db: Database.Database
   versions: Map<string, { version: number | null; count: number }>
 }
+type IndexedPage = {
+  versions: Index['versions']
+  nextPage: PastWorkAfter
+  scanned: Map<string, PastWorkRecentPoint>
+  recentAfter: PastWorkRecentPoint | null
+  moreRecent: boolean
+  completedConversations: number
+}
 const searches = new WeakMap<AppDatabase, ProfilePastWorkSearch>()
+
+function indexIsFull(error: unknown): boolean {
+  return error instanceof Database.SqliteError && error.code === 'SQLITE_FULL'
+}
 
 export function searchPastWork(
   db: AppDatabase,
@@ -242,29 +255,7 @@ export class ProfilePastWorkSearch {
       const version = revision?.externalVersion ?? db.pragma('data_version', { simple: true })
       if (version !== this.dataVersion) this.close()
       this.dataVersion = version
-      let index = this.profiles.get(profile)
-      if (index === undefined) {
-        if (this.profiles.size >= PROFILE_LIMIT) {
-          const oldest = this.profiles.keys().next().value!
-          this.profiles.get(oldest)!.db.close()
-          this.profiles.delete(oldest)
-        }
-        const memory = new Database(':memory:')
-        observeDatabaseMemory(memory, 'past-work-index')
-        try {
-          memory.pragma('max_page_count = 65536')
-          memory.exec(`CREATE VIRTUAL TABLE documents USING fts5(conversation UNINDEXED, piece UNINDEXED, field UNINDEXED, text,
-            turn_id UNINDEXED, recorded_at UNINDEXED, generation UNINDEXED, ordinal UNINDEXED);
-            CREATE TABLE document_sources(document INTEGER PRIMARY KEY, conversation TEXT NOT NULL);
-            CREATE INDEX document_sources_conversation ON document_sources(conversation);`)
-        } catch (error) {
-          memory.close()
-          throw error
-        }
-        index = { db: memory, versions: new Map() }
-      }
-      this.profiles.delete(profile)
-      this.profiles.set(profile, index)
+      let index = this.indexFor(profile)
       const recent = revision?.recent
       const stopAt = recent?.preview === true ? performance.now() + RECENT_INDEX_MS : Infinity
       const page =
@@ -286,86 +277,121 @@ export class ProfilePastWorkSearch {
                 .all({ versions: JSON.stringify(revision.versions), profile }) as Source[],
             }
       const { sessions } = page
-      let nextPage: PastWorkAfter = page.next
       const resume =
         recent?.after?.position !== undefined
           ? { id: recent.after.id, position: recent.after.position }
           : (revision?.partial ?? (typeof after === 'object' && after !== null ? after : undefined))
-      const scanned = new Map<string, PastWorkRecentPoint>()
-      let recentAfter: PastWorkRecentPoint | null = recent?.after ?? null
-      let moreRecent = recent !== undefined && page.next !== null
       const current = new Set(sessions.map((session) => session.id))
-      const next = new Map(index.versions)
-      index.db.transaction(() => {
-        const remove = index.db.prepare(
-          'DELETE FROM documents WHERE rowid IN (SELECT document FROM document_sources WHERE conversation = ?)',
-        )
-        const removeSources = index.db.prepare(
-          'DELETE FROM document_sources WHERE conversation = ?',
-        )
-        for (const previous of next.keys()) {
-          if (!current.has(previous)) {
-            remove.run(previous)
-            removeSources.run(previous)
-            next.delete(previous)
-          }
-        }
-        let remaining = this.documentLimit
-        const refresh = (session: Source) => {
-          const position = resume?.id === session.id ? resume.position : undefined
-          const cached = next.get(session.id)
-          if (
-            position === undefined &&
-            cached?.version === session.version &&
-            cached.count <= remaining
+      const fill = (searchIndex: Index, recoverCapacity: boolean): IndexedPage => {
+        let nextPage: PastWorkAfter = page.next
+        const scanned = new Map<string, PastWorkRecentPoint>()
+        let recentAfter: PastWorkRecentPoint | null = recent?.after ?? null
+        let moreRecent = recent !== undefined && page.next !== null
+        let completedConversations = 0
+        const versions = new Map(searchIndex.versions)
+        const write = () => {
+          const remove = searchIndex.db.prepare(
+            'DELETE FROM documents WHERE rowid IN (SELECT document FROM document_sources WHERE conversation = ?)',
           )
-            return { count: cached.count }
-          if (cached !== undefined) {
-            remove.run(session.id)
-            removeSources.run(session.id)
-          }
-          return this.indexConversation(index!, store, session, stopAt, remaining, position)
-        }
-        const refreshPreview = index!.db.transaction(refresh)
-        const processed = new Set<string>()
-        for (const session of sessions) {
-          if (recent?.preview === true && performance.now() >= stopAt) {
-            moreRecent = true
-            break
-          }
-          try {
-            const { count, position } =
-              recent?.preview === true ? refreshPreview(session) : refresh(session)
-            remaining -= count
-            processed.add(session.id)
-            next.set(session.id, {
-              version: position === undefined && resume?.id !== session.id ? session.version : null,
-              count,
-            })
-            if (recent !== undefined) {
-              recentAfter = { id: session.id, at: session.at }
-              scanned.set(session.id, recentAfter)
+          const removeSources = searchIndex.db.prepare(
+            'DELETE FROM document_sources WHERE conversation = ?',
+          )
+          for (const previous of versions.keys()) {
+            if (!current.has(previous)) {
+              remove.run(previous)
+              removeSources.run(previous)
+              versions.delete(previous)
             }
-            if (position !== undefined) {
-              nextPage = { id: session.id, position }
-              if (recentAfter !== null) recentAfter = { ...recentAfter, position }
+          }
+          let remaining = this.documentLimit
+          const refresh = (session: Source) => {
+            const position = resume?.id === session.id ? resume.position : undefined
+            const cached = versions.get(session.id)
+            if (
+              position === undefined &&
+              cached?.version === session.version &&
+              cached.count <= remaining
+            )
+              return { count: cached.count }
+            if (cached !== undefined) {
+              remove.run(session.id)
+              removeSources.run(session.id)
+            }
+            return recoverCapacity
+              ? this.indexConversationInBatches(
+                  searchIndex,
+                  store,
+                  session,
+                  stopAt,
+                  remaining,
+                  position,
+                )
+              : this.indexConversation(searchIndex, store, session, stopAt, remaining, position)
+          }
+          const refreshPreview = searchIndex.db.transaction(refresh)
+          const processed = new Set<string>()
+          for (const session of sessions) {
+            if (recent?.preview === true && performance.now() >= stopAt) {
               moreRecent = true
               break
             }
-          } catch (error) {
-            if (error !== PREVIEW_DEADLINE) throw error
-            moreRecent = true
-            break
+            try {
+              const { count, position } =
+                recent?.preview === true && !recoverCapacity
+                  ? refreshPreview(session)
+                  : refresh(session)
+              remaining -= count
+              processed.add(session.id)
+              versions.set(session.id, {
+                version:
+                  position === undefined && resume?.id !== session.id ? session.version : null,
+                count,
+              })
+              if (recent !== undefined) {
+                recentAfter = { id: session.id, at: session.at }
+                scanned.set(session.id, recentAfter)
+              }
+              if (position !== undefined) {
+                nextPage = { id: session.id, position }
+                if (recentAfter !== null) recentAfter = { ...recentAfter, position }
+                moreRecent = true
+                break
+              }
+              completedConversations++
+            } catch (error) {
+              if (error !== PREVIEW_DEADLINE) throw error
+              moreRecent = true
+              break
+            }
+          }
+          for (const previous of versions.keys()) {
+            if (!processed.has(previous)) {
+              remove.run(previous)
+              removeSources.run(previous)
+              versions.delete(previous)
+            }
           }
         }
-        for (const previous of next.keys()) {
-          if (!processed.has(previous)) {
-            remove.run(previous)
-            removeSources.run(previous)
-            next.delete(previous)
-          }
+        if (recoverCapacity) write()
+        else searchIndex.db.transaction(write)()
+        return { versions, nextPage, scanned, recentAfter, moreRecent, completedConversations }
+      }
+      const fillWithinCapacity = () => {
+        try {
+          const filled = fill(index, false)
+          return { ...filled, recoveredCapacity: false }
+        } catch (error) {
+          if (!indexIsFull(error)) throw error
+          // SQLITE_FULL can discard the whole FTS transaction. Rebuild the same
+          // source snapshot with independently committed batches.
+          this.close()
+          index = this.indexFor(profile)
+          return { ...fill(index, true), recoveredCapacity: true }
         }
-      })()
+      }
+      const filled = fillWithinCapacity()
+      let { nextPage, recentAfter, moreRecent } = filled
+      const { scanned } = filled
       const hits: (Omit<PastWorkHit, 'snippet'> & { rowid: number })[] = []
       const seen = new Set<string>()
       const fields =
@@ -513,7 +539,7 @@ export class ProfilePastWorkSearch {
       const previewCounts =
         recent?.preview === true && moreRecent
           ? {
-              scanned: scanned.size - (typeof nextPage === 'object' && nextPage !== null ? 1 : 0),
+              scanned: filled.completedConversations,
               total: (
                 db
                   .prepare(
@@ -525,7 +551,8 @@ export class ProfilePastWorkSearch {
             }
           : undefined
       db.exec('COMMIT')
-      index.versions = next
+      if (filled.recoveredCapacity) this.close()
+      else index.versions = filled.versions
       return {
         ok: true,
         hits: withExcerpts,
@@ -544,6 +571,67 @@ export class ProfilePastWorkSearch {
       if (db.inTransaction) db.exec('ROLLBACK')
       this.close()
       throw error
+    }
+  }
+
+  private indexFor(profile: string | null): Index {
+    let index = this.profiles.get(profile)
+    if (index === undefined) {
+      if (this.profiles.size >= PROFILE_LIMIT) {
+        const oldest = this.profiles.keys().next().value!
+        this.profiles.get(oldest)!.db.close()
+        this.profiles.delete(oldest)
+      }
+      const memory = new Database(':memory:')
+      observeDatabaseMemory(memory, 'past-work-index')
+      try {
+        memory.pragma('max_page_count = 65536')
+        memory.exec(`CREATE VIRTUAL TABLE documents USING fts5(conversation UNINDEXED, piece UNINDEXED, field UNINDEXED, text,
+          turn_id UNINDEXED, recorded_at UNINDEXED, generation UNINDEXED, ordinal UNINDEXED);
+          CREATE TABLE document_sources(document INTEGER PRIMARY KEY, conversation TEXT NOT NULL);
+          CREATE INDEX document_sources_conversation ON document_sources(conversation);`)
+      } catch (error) {
+        memory.close()
+        throw error
+      }
+      index = { db: memory, versions: new Map() }
+    }
+    this.profiles.delete(profile)
+    this.profiles.set(profile, index)
+    return index
+  }
+
+  private indexConversationInBatches(
+    index: Index,
+    store: WorkLedgerRead,
+    session: Source,
+    stopAt: number,
+    limit: number,
+    position?: PastWorkPosition,
+  ): { count: number; position?: PastWorkPosition } {
+    const write = index.db.transaction((size: number, after?: PastWorkPosition) =>
+      this.indexConversation(index, store, session, stopAt, size, after),
+    )
+    let count = 0
+    let batch = CAPACITY_BATCH
+    while (true) {
+      const size = Math.min(batch, limit - count)
+      try {
+        const written = write(size, position)
+        count += written.count
+        position = written.position
+        if (position === undefined || count === limit) return { count, position }
+      } catch (error) {
+        if (error === PREVIEW_DEADLINE && count > 0) return { count, position }
+        if (!indexIsFull(error)) throw error
+        if (size === 1) {
+          // The cursor returned by the last commit identifies the first unread
+          // document. For a new conversation, locate it without any FTS writes.
+          position ??= this.indexConversation(index, store, session, stopAt, 0).position
+          return { count, position }
+        }
+        batch = Math.floor(size / 2)
+      }
     }
   }
 

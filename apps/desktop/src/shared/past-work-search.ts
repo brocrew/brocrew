@@ -317,7 +317,7 @@ export function pastWorkSearchInWords(
           ? 'No more matches.'
           : transcript
             ? 'No transcript matches.'
-            : "No matches in these conversations' transcripts or the names of files they made.",
+            : 'No matches in work titles, briefs or transcripts.',
     )
   }
   if (result.work_unread === true) rows.push('Some work records could not be read.')
