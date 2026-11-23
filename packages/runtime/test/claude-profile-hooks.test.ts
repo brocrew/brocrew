@@ -75,7 +75,10 @@ async function launch(kind: Launch, home = providerHome): Promise<Options> {
     const handle =
       kind === 'start'
         ? await runtime.start({ cwd, ...context })
-        : await runtime.resume({ provider: 'claude', sessionId: 'fictional', cwd, rotation: 0 }, context)
+        : await runtime.resume(
+            { provider: 'claude', sessionId: 'fictional', cwd, rotation: 0 },
+            context,
+          )
     await handle.close()
   }
   if (!captured) throw new Error('No launch options reached Claude.')
@@ -83,18 +86,21 @@ async function launch(kind: Launch, home = providerHome): Promise<Options> {
 }
 
 describe('Claude profile settings hooks', () => {
-  it.each(['start', 'resume'] as const)('passes hooks from a hooks-only profile on %s', async (kind) => {
-    settingsFile(join(providerHome, 'settings.json'), { hooks: PROFILE_HOOKS })
+  it.each(['start', 'resume'] as const)(
+    'passes hooks from a hooks-only profile on %s',
+    async (kind) => {
+      settingsFile(join(providerHome, 'settings.json'), { hooks: PROFILE_HOOKS })
 
-    const options = await launch(kind)
+      const options = await launch(kind)
 
-    expect(options.settings).toMatchObject({ hooks: PROFILE_HOOKS })
-    expect(options.settings).not.toHaveProperty('permissions')
-    expect(options.settingSources).toEqual([])
-    expect(options.hooks?.PreToolUse).toHaveLength(2)
-    expect(options.hooks?.PostToolUse).toBeDefined()
-    expect(options.hooks?.Stop).toBeDefined()
-  })
+      expect(options.settings).toMatchObject({ hooks: PROFILE_HOOKS })
+      expect(options.settings).not.toHaveProperty('permissions')
+      expect(options.settingSources).toEqual([])
+      expect(options.hooks?.PreToolUse).toHaveLength(2)
+      expect(options.hooks?.PostToolUse).toBeDefined()
+      expect(options.hooks?.Stop).toBeDefined()
+    },
+  )
 
   it('keeps all three selected local rule lists and takes hooks only from the profile', async () => {
     settingsFile(join(providerHome, 'settings.json'), {

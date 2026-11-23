@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process'
 import { closeSync, constants, fstatSync, lstatSync, openSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 
 export function persistedRulesFile(providerHome: string): string {
   return join(providerHome, 'settings.json')
@@ -93,30 +94,44 @@ export interface KeptRules {
 
 const NO_RULES: KeptRules = { allow: [], deny: [], ask: [] }
 
-export function persistedAllowRules(providerHome: string): string[] {
-  return [...keptRulesIn(persistedRulesFile(providerHome)).allow]
+export type KeptRuleLists = { allow?: string[]; deny?: string[]; ask?: string[] }
+
+export interface KeptLaunchSettings {
+  readonly permissions: KeptRuleLists
+  readonly hooks?: Settings['hooks']
 }
 
-export async function keptRulesForALaunch(
+export function persistedAllowRules(providerHome: string): string[] {
+  return [...rulesFrom(settingsIn(persistedRulesFile(providerHome))['permissions']).allow]
+}
+
+export async function keptSettingsForALaunch(
   providerHome: string,
   localFiles: readonly string[] | null,
   signal?: AbortSignal,
-): Promise<{ allow?: string[]; deny?: string[]; ask?: string[] }> {
+): Promise<KeptLaunchSettings> {
+  const profile = settingsIn(persistedRulesFile(providerHome))
   const read = [
-    keptRulesIn(persistedRulesFile(providerHome)),
+    rulesFrom(profile['permissions']),
     ...(localFiles === null ? [] : [await projectRulesFor(localFiles, signal)]),
   ]
-  const merged: { allow?: string[]; deny?: string[]; ask?: string[] } = {}
+  const permissions: KeptRuleLists = {}
   for (const list of ['allow', 'deny', 'ask'] as const) {
     const rules = [...new Set(read.flatMap((one) => one[list]))]
-    if (rules.length > 0) merged[list] = rules
+    if (rules.length > 0) permissions[list] = rules
   }
-  return merged
+  const hooks = profile['hooks']
+  return {
+    permissions,
+    ...(typeof hooks === 'object' && hooks !== null && !Array.isArray(hooks)
+      ? { hooks: hooks as NonNullable<Settings['hooks']> }
+      : {}),
+  }
 }
 
 async function projectRulesFor(files: readonly string[], signal?: AbortSignal): Promise<KeptRules> {
   const folders = files.map((file) => dirname(dirname(file)))
-  const read = files.map(keptRulesIn)
+  const read = files.map((file) => rulesFrom(settingsIn(file)['permissions']))
   const allow = read.flatMap((one) => one.allow)
   return {
     allow: allow.length > 0 && (await anyCarried(folders, signal)) ? [] : allow,
@@ -132,24 +147,26 @@ async function anyCarried(folders: readonly string[], signal?: AbortSignal): Pro
   return false
 }
 
-function keptRulesIn(file: string): KeptRules {
+function settingsIn(file: string): Record<string, unknown> {
   const text = readSmall(file)
-  if (text === undefined) return NO_RULES
+  if (text === undefined) return {}
   try {
     const parsed: unknown = JSON.parse(text)
-    if (typeof parsed !== 'object' || parsed === null) return NO_RULES
-    const permissions = (parsed as { permissions?: unknown }).permissions
-    if (typeof permissions !== 'object' || permissions === null) return NO_RULES
-    const list = (key: keyof KeptRules): string[] => {
-      const rules = (permissions as Record<string, unknown>)[key]
-      return Array.isArray(rules)
-        ? rules.filter((rule): rule is string => typeof rule === 'string' && rule !== '')
-        : []
-    }
-    return { allow: list('allow'), deny: list('deny'), ask: list('ask') }
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {}
   } catch {
-    return NO_RULES
+    return {}
   }
+}
+
+function rulesFrom(permissions: unknown): KeptRules {
+  if (typeof permissions !== 'object' || permissions === null) return NO_RULES
+  const list = (key: keyof KeptRules): string[] => {
+    const rules = (permissions as Record<string, unknown>)[key]
+    return Array.isArray(rules)
+      ? rules.filter((rule): rule is string => typeof rule === 'string' && rule !== '')
+      : []
+  }
+  return { allow: list('allow'), deny: list('deny'), ask: list('ask') }
 }
 
 function readSmall(file: string): string | undefined {

@@ -75,7 +75,7 @@ import { SessionMachine } from '../internal/session-machine'
 import { StallWatchdog } from '../internal/stall-watchdog'
 import { claudeAutoMemoryDir } from './auto-memory'
 import { localSettingsFilesOf } from './local-settings-location'
-import { keptRulesForALaunch } from './persisted-rules'
+import type { KeptRuleLists } from './persisted-rules'
 import { FileEdits } from './file-edits'
 import { ClaudeMemoryStore } from './memory-store'
 import { AnnouncedCli } from './provider-refusal'
@@ -164,8 +164,6 @@ export function flagSettingsFor(
     ...(permissions === null ? {} : { permissions }),
   }
 }
-
-export type KeptRuleLists = Awaited<ReturnType<typeof keptRulesForALaunch>>
 
 function flagPermissionsOf(
   kept: KeptRuleLists,

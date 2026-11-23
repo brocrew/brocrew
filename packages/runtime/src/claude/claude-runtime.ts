@@ -1,5 +1,5 @@
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
-import { managedTranscriptSettings } from './app-transcript-retention'
+import { isManagedClaudeHome, managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
 import { claudeBuiltInSkillOptions } from './built-in-skills'
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs'
@@ -51,7 +51,11 @@ import {
 import { buildChildEnv } from '../internal/child-env'
 import { assertNotCancelled, cancelWith, withDeadline } from '../internal/bounded'
 import type { SessionConfinement } from '../internal/confinement'
-import { keptRulesForALaunch } from './persisted-rules'
+import {
+  keptSettingsForALaunch,
+  type KeptLaunchSettings,
+  type KeptRuleLists,
+} from './persisted-rules'
 import { SCHEDULING_TOOLS } from '../scheduled-work'
 import { CLAUDE_DEFAULT_BY_NAME } from './default-by-name'
 import {
@@ -64,7 +68,6 @@ import {
   USER_INPUT_TOOLS,
   WHY_THIS_GUARD_ASKS,
   type ClaudeQuery,
-  type KeptRuleLists,
 } from './claude-session-handle'
 import type { ToolPermissionOptions } from './permission-offers'
 
@@ -534,7 +537,7 @@ export class ClaudeRuntime implements AgentRuntime {
     const auth = await this.authForALaunch()
     assertNotCancelled(opts.signal, 'claude start')
 
-    const kept = await keptRulesForALaunch(
+    const kept = await keptSettingsForALaunch(
       opts.providerHome,
       handle.launchLocalFiles(),
       opts.signal,
@@ -606,8 +609,8 @@ export class ClaudeRuntime implements AgentRuntime {
     const auth = await this.authForALaunch()
     assertNotCancelled(context.signal, 'claude model list')
 
-    const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
-    const options = this.listOptionsFor(context.providerHome, kept, auth)
+    const { permissions } = await keptSettingsForALaunch(context.providerHome, null, context.signal)
+    const options = this.listOptionsFor(context.providerHome, permissions, auth)
 
     const child = this.spawnWitness()
     options.spawnClaudeCodeProcess = child.spawn
@@ -721,7 +724,7 @@ export class ClaudeRuntime implements AgentRuntime {
       )
       handle.noteAlwaysRulesFile()
 
-      const kept = await keptRulesForALaunch(
+      const kept = await keptSettingsForALaunch(
         options.providerHome,
         handle.launchLocalFiles(),
         options.signal,
@@ -804,7 +807,7 @@ export class ClaudeRuntime implements AgentRuntime {
 
     auth?: { key: string | null; login?: string | null },
 
-    kept: KeptRuleLists = {},
+    kept: KeptLaunchSettings = { permissions: {} },
     builtInSkills?: BuiltInSkillsContext,
     sharedSkillsRoot?: string,
     managedPluginMcp?: readonly ManagedPluginMcpServer[],
@@ -835,6 +838,7 @@ export class ClaudeRuntime implements AgentRuntime {
       (input) => handle.noteSchedulingCall(input),
       (input) => handle.noteSchedulingAnswer(input),
     )
+    const { hooks } = kept
     const options: Omit<Options, 'settings'> & { settings: Settings } = {
       cwd,
       includePartialMessages: true,
@@ -866,8 +870,11 @@ export class ClaudeRuntime implements AgentRuntime {
       strictMcpConfig: true,
 
       settings: {
-        ...handle.launchFlagSettings(providerHome, kept),
+        ...handle.launchFlagSettings(providerHome, kept.permissions),
         ...managedTranscriptSettings(providerHome, this.managedProviderHomesRoot),
+        ...(hooks !== undefined && isManagedClaudeHome(providerHome, this.managedProviderHomesRoot)
+          ? { hooks }
+          : {}),
       },
 
       canUseTool: (name, toolInput, o) =>
