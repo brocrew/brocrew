@@ -3,6 +3,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { CallToolResultSchema, ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { AgentToolAnswer } from '@brobot2/runtime'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { SendReceipt } from '../src/shared/tool-outcome'
@@ -450,8 +452,24 @@ describe('five more tools answer field failures through Claude MCP', () => {
     )
   })
 
+  it('give_work keeps files supplied under both names through MCP', async () => {
+    const wire = await server('give_work')
+    const first = join(world.folder, 'first.md')
+    const second = join(world.folder, 'second.md')
+    writeFileSync(first, 'First file')
+    writeFileSync(second, 'Second file')
+    words(await wire.call({ ...valid('give_work'), resources: [first], inputs: [second] }))
+    expect(calls.at(-1)?.structured).toMatchObject({
+      outcome: 'ok',
+      inputs: [{ name: 'first.md' }, { name: 'second.md' }],
+    })
+  })
+
   it('give_work still requires definition_of_done at the handler', async () => {
     const wire = await server('give_work')
+    const catalogue = (await wire.list()).result!.tools![0]!.inputSchema
+    expect(catalogue.properties).toMatchObject({ resources: { type: 'array' } })
+    expect(catalogue.properties).not.toHaveProperty('inputs')
     const args = valid('give_work')
     delete args.definition_of_done
     const before = effects()

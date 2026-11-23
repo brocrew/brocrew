@@ -312,7 +312,7 @@ export interface ReplyRefusal {
  * A long summary names its measured length and the shared limit, never the caller's text. The
  * file remedy is rendered from the store's held-form list.
  */
-const LONG_SUMMARY_REMEDY = `Put the rest in ${HELD_FORMS_SAID} and name its path in resource_paths; the piece stays open. Nothing was shortened for you.`
+const LONG_SUMMARY_REMEDY = `Put the rest in ${HELD_FORMS_SAID} and name its path in resources; the piece stays open. Nothing was shortened for you.`
 
 const UNKEPT_FILE_KIND_NAMES: Readonly<Record<string, string>> = {
   '.zsh': 'a .zsh file',
@@ -334,12 +334,12 @@ export function replyUnkeptFileReason(path: unknown): string {
     (Object.hasOwn(UNKEPT_FILE_KIND_NAMES, extension)
       ? UNKEPT_FILE_KIND_NAMES[extension]
       : undefined) ?? 'a file of an unrecognised kind'
-  return `This app does not keep ${kind}. It keeps ${HELD_FORMS_SAID}. Name its full path in summary instead of resource_paths; keep the file where it is. Nothing was kept or recorded.`
+  return `This app does not keep ${kind}. It keeps ${HELD_FORMS_SAID}. Name its full path in summary instead of resources; keep the file where it is. Nothing was kept or recorded.`
 }
 
 const REPLY_SENTENCES: Readonly<Record<ReplyRail, string>> = {
   'result-document-not-returned':
-    'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.',
+    'The main result document must be a Markdown file or page listed in resources. Nothing was recorded.',
   // ⚠️ **The last clause is the remedy** (424): a label is minted by this app, so the one in the
   // refused call does not become yours later, however long you wait.
   'no-piece-by-that-name':

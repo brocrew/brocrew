@@ -274,7 +274,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const absent = join(root, 'fictional-unreadable', 'caller-secret.md')
       const pdf = wrote('caller-main.pdf', Buffer.from('%PDF-fictional'))
       const reason =
-        'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.'
+        'The main result document must be a Markdown file or page listed in resources. Nothing was recorded.'
       const tool = toolsOf(worker).tools.find((one) => one.name === 'reply_to_parent')!
       for (const args of [
         { resource_paths: [join(root, 'also-unreadable.md')], result_document: absent },
@@ -379,7 +379,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
           permanence: 'permanent',
           retryable: false,
           reason:
-            'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.',
+            'The main result document must be a Markdown file or page listed in resources. Nothing was recorded.',
         })
         expect(store.resourcesOf(task)).toEqual(before)
         expect(keptHashes()).toEqual(hashes)

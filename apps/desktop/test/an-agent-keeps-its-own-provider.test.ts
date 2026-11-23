@@ -363,7 +363,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       expect(refused['rail']).toBe('malformed-request')
       expect(refused['detail']).toMatchObject({
         problems: [
-          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, to, conversation_title, under, provider, inputs, model, effort',
+          '(request): unknown fields "priority" — it takes only profile, title, brief, definition_of_done, folder, to, conversation_title, under, provider, resources, inputs, model, effort',
         ],
       })
     })

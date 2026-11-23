@@ -527,6 +527,7 @@ export const giveRequestSchema = z
      * 🔴 **D-016 · files handed over with the work, kept as the piece's inputs** — read from the
      * giver's folder, and kept before anything is written or sent (`RuntimeHost.giveWork`).
      */
+    resources: z.array(z.string().min(1)).optional(),
     inputs: z.array(z.string().min(1)).optional(),
     /**
      * 🔴 **D-042 · R4 — the model that conversation runs on, from this piece on** — one in the list

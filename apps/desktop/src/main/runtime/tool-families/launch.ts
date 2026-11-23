@@ -168,7 +168,7 @@ interface GiveWorkArguments {
   /** The provider a new conversation runs on. */
   readonly provider?: Provider
   /** **D-016 · R2** — files handed over with the work, kept as the piece's inputs. */
-  readonly inputs?: readonly string[]
+  readonly resources?: readonly string[]
   /** **D-042 · R4** — the model that conversation runs on, from this piece on. */
   readonly model?: string
   /** **D-042 · R4** — its reasoning effort, one that model offers. */
@@ -188,7 +188,7 @@ export function createGiveWorkTool(
   return {
     name: 'give_work',
     handlerOwnsMissingInput: true,
-    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. For a service, use its conversation address or give by profile alone. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with inputs; the brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
+    description: `Give a profile a task. to: "new" starts a new conversation for a new job; name it in conversation_title. A conversation's task label adds a new task there; the labelled task keeps its outcome. Same job, same conversation; a task ending is no reason to start another conversation. Before choosing "new" for a known job, search the profile's conversations. For a service, use its conversation address or give by profile alone. under names your task this belongs to. Give a title, brief and definition_of_done. Hand files with resources. The brief names their ids for read_document. Anything over 2,000 characters arrives as a file the reader is pointed to. Every valid give records its task and conversation before starting the provider. If starting fails, the work is kept; use the returned address to continue. A new conversation uses the provider, model and effort you name, else the profile's defaults. An existing conversation keeps its provider. Its model and effort can change from this task on. A busy conversation still takes the task. Before giving more to a conversation about 70% full that doesn't need its exact history, compact it first with compact_agent, saying why and what comes next. New work brings an archived conversation back. The receipt names the recipient, conversation and sent/held state, or the recorded failure and recovery. The structured answer includes any stalled tasks you gave it.`,
     /**
      * **486 · a person is asked as well** (HO-031 §2.4) — as `spawn_agent` was.
      *
@@ -241,7 +241,7 @@ export function createGiveWorkTool(
           'Which provider a new conversation runs on. Leave it out to use the named model’s provider, else the profile’s default. An existing conversation keeps its provider.',
           'Leave it out for the named model’s provider, else the profile’s default.',
         ).optional(),
-        inputs: z
+        resources: z
           .array(z.string())
           .optional()
           .describe(

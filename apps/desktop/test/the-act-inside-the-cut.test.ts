@@ -591,8 +591,7 @@ const ACT: Readonly<Record<string, string>> = {
   'WORK_SEARCH_RAILS|work-search-cursor-invalid': 'Start the search again',
   'WORK_SEARCH_RAILS|work-search-unavailable': 'Try again',
   'WORK_SEARCH_RAILS|work-search-busy': 'Try again in a moment',
-  'REPLY_RAILS|result-document-not-returned':
-    'must be a Markdown file or page listed in resource_paths',
+  'REPLY_RAILS|result-document-not-returned': 'must be a Markdown file or page listed in resources',
   // ⚑ **D-017 · R12** — said only about an id no conversation has; the act names what reaches.
   'TOOL_REFUSALS|no-such-agent': 'list_agents names the conversations this app can run',
   'TOOL_REFUSALS|that-agent-has-several-conversations':
@@ -719,7 +718,7 @@ const ACT: Readonly<Record<string, string>> = {
   // ⚑ **731** — the act names no folder: a resource path takes a file anywhere since `726`.
   // ⚑ **736** — and names the kinds of file the store holds (`733` F-4), rendered from its list.
   'REPLY_RAILS|summary-too-long':
-    'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resource_paths',
+    'Put the rest in a Markdown file, a page, an image, a PDF or any other file and name its path in resources',
   'QUESTION_RAILS|no-question-by-that-name': 'list_questions names the requests you can answer',
   'QUESTION_RAILS|a-person-answers-this-one': 'that one is a person’s to settle',
   'QUESTION_RAILS|person-addressed-request': 'withdraw it',

@@ -156,7 +156,7 @@ export class GiveWork {
     const chosen = this.theChoiceOfAGive(asked, goes, choosing)
     if (chosen !== null && !chosen.ok) return { ok: false, refusal: chosen.refusal }
     // The files it hands over are the last rail: kept before anything is written or sent.
-    const kept = h.keptFor(admission.giver, asked.inputs ?? [])
+    const kept = h.keptFor(admission.giver, [...(asked.resources ?? []), ...(asked.inputs ?? [])])
     if (!kept.ok) return { ok: false, refusal: kept.refusal }
     const brief = keepSendOverflow(h.resourcesRoot(), 'brief', asked.brief)
     if (!brief.ok) return brief

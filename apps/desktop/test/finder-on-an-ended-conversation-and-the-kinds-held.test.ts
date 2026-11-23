@@ -128,7 +128,7 @@ describe('§2 · the long form is any kind of file this app holds, rendered from
     const said = refuseReply('summary-too-long').reason
     // ⚑ D-016 · the long form is a RESOURCE now, so its path goes in `resource_paths` rather than
     // being quoted in the summary.
-    expect(said).toContain(`Put the rest in ${HELD_FORMS_SAID} and name its path in resource_paths`)
+    expect(said).toContain(`Put the rest in ${HELD_FORMS_SAID} and name its path in resources`)
     expect(said).not.toContain('in a Markdown file and')
     expect(HELD_FORMS_SAID).toBe('a Markdown file, a page, an image, a PDF or any other file')
   })
