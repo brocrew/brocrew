@@ -20,8 +20,8 @@ import {
   type ToolName,
   documentedToolEnum,
 } from './catalog'
-import { answer, refusalAnswer } from './answers'
-import { carryReplyRefusal, refuseTool } from './refusals'
+import { answer, refusalAnswer, sendAnswer } from './answers'
+import { carryReplyRefusal, refusalSaid, refuseTool } from './refusals'
 import { workRequestRefused } from '../spawn-rails'
 import { z } from 'zod'
 
@@ -124,10 +124,10 @@ export function createReplyToParentTool(
           )
           const detail = workRequestRefused(problems, args, fields)
           if (unknown.length === 0) {
-            const taskChoice =
+            const choice =
               piece === undefined && problems.length === 1 ? host.replyTaskChoice(me) : undefined
-            if (taskChoice === undefined)
-              return refusalAnswer(refuseTool('malformed-request', detail))
+            if (choice === undefined) return refusalAnswer(refuseTool('malformed-request', detail))
+            const taskChoice = refusalSaid(choice)
             return answer(
               { ...refuseTool('malformed-request', { ...detail, taskChoice }), reason: taskChoice },
               taskChoice,
@@ -147,8 +147,8 @@ export function createReplyToParentTool(
           resultDocument !== undefined &&
           (typeof resultDocument !== 'string' || resultDocument.length === 0)
         ) {
-          const refused = refuseReply('result-document-not-returned')
-          return answer(carryReplyRefusal(refused), `refused (${refused.rail}): ${refused.reason}`)
+          const carried = carryReplyRefusal(refuseReply('result-document-not-returned'))
+          return answer(carried, carried.reason)
         }
         // **Not one rail is asked here.** Which piece this caller holds, whether it is still
         // open, how long a summary may be and whether a file may be kept are all the host's — the
@@ -170,7 +170,7 @@ export function createReplyToParentTool(
           // **Two vocabularies arrive here and neither is translated** — this file's job is to
           // carry a refusal, and the resource sentences were written for exactly this caller.
           const carried = carryReplyRefusal(replied.refusal)
-          return answer(carried, `refused (${replied.refusal.rail}): ${replied.refusal.reason}`)
+          return answer(carried, carried.reason)
         }
         // The files kept with the reply, by id (the outcome holds no names).
         const overflow =
@@ -215,7 +215,7 @@ export function createReplyToParentTool(
           },
           `${replied.label} answered · ${whereTheReplyWent(replied)}${kept}${main}${saveMethod}${overflow}`,
         )
-      }),
+      }).then(sendAnswer),
   }
 }
 

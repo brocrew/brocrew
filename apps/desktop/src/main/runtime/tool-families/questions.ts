@@ -13,7 +13,7 @@ import { REQUEST_IS_OPEN, theChannelRefusalIn } from '../../../shared/questions'
 import { type ToolName } from './catalog'
 import { outboundOverflowSaid, sendOverflowAttachment } from '../send-overflow'
 import { sendResourcesInput, sendResourcesProblem } from './send-resources'
-import { answer, refusalAnswer } from './answers'
+import { answer, refusalAnswer, sendAnswer } from './answers'
 import { carryQuestionRefusal, refuseTool } from './refusals'
 import {
   countedBy,
@@ -365,16 +365,9 @@ export function createAnswerQuestionTool(
           by,
         )
         if (!answered.ok) {
-          if ('outcome' in answered.refusal) {
-            const reason = `Not answered: ${answered.refusal.reason}`
-            return answer({ ...answered.refusal, reason }, reason)
-          }
-          const carried = carryQuestionRefusal(answered.refusal)
-          if (answered.refusal.rail === 'person-addressed-request') {
-            const reason = `Not answered: ${carried.reason}`
-            return answer({ ...carried, reason }, reason)
-          }
-          return answer(carried, `refused (${answered.refusal.rail}): ${answered.refusal.reason}`)
+          const { refusal } = answered
+          const carried = 'outcome' in refusal ? { ...refusal } : carryQuestionRefusal(refusal)
+          return answer(carried, carried.reason)
         }
         // **D-016 · commit 7 · R3 — the asker by the piece it owns**; the payload keeps its id.
         // F033 · the one it asked the question under.
@@ -460,7 +453,7 @@ export function createAnswerQuestionTool(
           (stopped === null ? said : `${said} ${stopped.said}`) +
             (answered.overflow === undefined ? '' : outboundOverflowSaid(answered.overflow)),
         )
-      }),
+      }).then(sendAnswer),
   }
 }
 

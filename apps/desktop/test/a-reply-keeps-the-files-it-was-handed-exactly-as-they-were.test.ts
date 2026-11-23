@@ -274,7 +274,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       const absent = join(root, 'fictional-unreadable', 'caller-secret.md')
       const pdf = wrote('caller-main.pdf', Buffer.from('%PDF-fictional'))
       const reason =
-        'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.'
+        'Not sent: The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.'
       const tool = toolsOf(worker).tools.find((one) => one.name === 'reply_to_parent')!
       for (const args of [
         { resource_paths: [join(root, 'also-unreadable.md')], result_document: absent },
@@ -306,9 +306,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
           remedy: null,
         })
         const cause = args.result_document === absent ? 'not listed' : 'not Markdown or a page'
-        expect(answered.text).toBe(
-          `refused (result-document-not-returned): ${reason} ${args.result_document} is ${cause}.`,
-        )
+        expect(answered.text).toBe(`${reason} ${args.result_document} is ${cause}.`)
         expect(answered.text.match(/Nothing was recorded\./g)).toHaveLength(1)
         expect(answered.text).not.toContain('This exact call can never succeed.')
         const told = reason
@@ -326,9 +324,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
             told: { text: told, dropped: 0 },
           },
         ])
-        expect(
-          answered.text.slice('refused (result-document-not-returned): '.length).startsWith(told),
-        ).toBe(true)
+        expect(answered.text.startsWith(told)).toBe(true)
         expect(JSON.stringify(carriers)).not.toContain(args.result_document)
         expect(store.resourcesOf(task)).toEqual([])
         expect(keptHashes()).toEqual(hashes)
@@ -379,7 +375,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
           permanence: 'permanent',
           retryable: false,
           reason:
-            'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.',
+            'Not sent: The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.',
         })
         expect(store.resourcesOf(task)).toEqual(before)
         expect(keptHashes()).toEqual(hashes)

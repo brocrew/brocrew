@@ -495,7 +495,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(closer).not.toMatch(/sess_/)
     expect(clockTime(closedAt)).toMatch(/\d/)
     expect(refused.reason).toBe(
-      `${STOP} It was closed by ${closer} at ${clockTime(closedAt)}, ${NOTHING_CHANGED}`,
+      `Not sent: ${STOP} It was closed by ${closer} at ${clockTime(closedAt)}, ${NOTHING_CHANGED}`,
     )
     expect(JSON.stringify(refused)).not.toMatch(/sess_/)
     // Nothing was recorded.
@@ -526,7 +526,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(giver).not.toBe(host.whatToCallTheConversation(worker))
     expect(clockTime(at)).toMatch(/\d/)
     expect(refused.reason).toBe(
-      `${STOP} It was taken back by ${giver} at ${clockTime(at)}, ${NOTHING_CHANGED}`,
+      `Not sent: ${STOP} It was taken back by ${giver} at ${clockTime(at)}, ${NOTHING_CHANGED}`,
     )
     expect(JSON.stringify(refused)).not.toMatch(/sess_/)
     expect(JSON.stringify(refused)).not.toContain('giver')
@@ -553,7 +553,9 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(again.detail).toEqual({ piece: task, label, state: 'answered', at })
     expect(again.detail).not.toHaveProperty('called')
     expect(clockTime(at)).toMatch(/\d/)
-    expect(again.reason).toBe(`${STOP} You already replied at ${clockTime(at)}, ${NOTHING_CHANGED}`)
+    expect(again.reason).toBe(
+      `Not sent: ${STOP} You already replied at ${clockTime(at)}, ${NOTHING_CHANGED}`,
+    )
     expect(again.reason).not.toContain(' by ')
     // And the answer a giver has read is the one the row keeps.
     expect(taskOf(worker, task)?.outcome).toBe('done')
@@ -617,7 +619,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
     expect(refused.detail).not.toHaveProperty('called')
     expect(clockTime(cancelledAt)).toMatch(/\d/)
     expect(refused.reason).toBe(
-      `${STOP} It was taken back at ${clockTime(cancelledAt)}, ${NOTHING_CHANGED}`,
+      `Not sent: ${STOP} It was taken back at ${clockTime(cancelledAt)}, ${NOTHING_CHANGED}`,
     )
     expect(refused.reason).not.toContain(' by ')
     expect(refused.reason).not.toContain('giver')

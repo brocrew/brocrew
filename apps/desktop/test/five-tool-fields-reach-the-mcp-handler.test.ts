@@ -151,7 +151,11 @@ describe('five more tools answer field failures through Claude MCP', () => {
   }
   function ownRefusal(tool: ToolName, packet: Packet, field: string): string {
     const text = words(packet)
-    const sends = tool === 'give_work' || tool === 'ask_question' || tool === 'message_agent'
+    const sends =
+      tool === 'give_work' ||
+      tool === 'ask_question' ||
+      tool === 'message_agent' ||
+      tool === 'answer_question'
     expect(text).toMatch(sends ? /^Not sent: / : /^refused \(malformed-request\): /)
     expect(text).toContain(field)
     expect(text).not.toContain('PRIVATE_VALUE')

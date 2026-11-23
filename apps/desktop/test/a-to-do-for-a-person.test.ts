@@ -340,7 +340,7 @@ describe('a to-do for a person', () => {
       outcome: 'refused',
       rail: 'person-addressed-request',
       reason:
-        'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
+        'Not sent: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
     }
     expect(proxy.structured).toMatchObject(refusal)
     expect(proxy.text).toBe(refusal.reason)
@@ -743,7 +743,7 @@ describe('a to-do for a person', () => {
           rail: 'a-conversation-with-its-questions-is-starting',
           retryable: true,
           remedy: 'make-the-same-call-when-this-settles',
-          reason: `${label} wasn't ${how}: a conversation with a question about it is still starting. Try again in a moment.`,
+          reason: `${ending === 'work-replied' ? 'Not sent: ' : ''}${label} wasn't ${how}: a conversation with a question about it is still starting. Try again in a moment.`,
         })
         expect(
           store.events(bea).filter((entry) => entry.event.type === ENDS_THE_PIECE[ending]),
@@ -814,7 +814,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(row.ordinal)}: is not a well-formed question. Check that record, then retry this call.`,
+          reason: `${ending === 'work-replied' ? 'Not sent: ' : ''}${label} wasn't ${how}: question records for conversation ${ada}, row ${String(row.ordinal)}: is not a well-formed question. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -890,7 +890,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(routing.ordinal)}: is not a well-formed routing. Check that record, then retry this call.`,
+          reason: `${ending === 'work-replied' ? 'Not sent: ' : ''}${label} wasn't ${how}: question records for conversation ${ada}, row ${String(routing.ordinal)}: is not a well-formed routing. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -1080,7 +1080,7 @@ describe('a to-do for a person', () => {
       ).toMatchObject({
         outcome: 'refused',
         rail: 'its-questions-could-not-all-be-read',
-        reason: `${label} wasn't handed back: question records for conversation ${brobot}, row 0: the question record could not be decoded. Check that record, then retry this call.`,
+        reason: `Not sent: ${label} wasn't handed back: question records for conversation ${brobot}, row 0: the question record could not be decoded. Check that record, then retry this call.`,
       })
       store.questionsRaisedIn = raised
       expect([stateOf(bea, original), stateOf(ada, copy), stateOf(brobot, copyOfTheCopy)]).toEqual([
@@ -1108,7 +1108,7 @@ describe('a to-do for a person', () => {
             rail: 'its-questions-could-not-all-be-read',
             retryable: true,
             remedy: 'make-the-same-call-when-this-settles',
-            reason: `${label} wasn't ${how}: question records for conversation ${chain[passer]}: the disk could not be read. Check that record, then retry this call.`,
+            reason: `${ending === 'work-replied' ? 'Not sent: ' : ''}${label} wasn't ${how}: question records for conversation ${chain[passer]}: the disk could not be read. Check that record, then retry this call.`,
           })
           store.questionsRaisedIn = raised
           await settle()

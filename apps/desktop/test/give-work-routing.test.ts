@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { admitGive, type GiveFacts } from '../src/main/runtime/spawn-rails'
+import { aGiverAndHelper } from './helpers/a-service-world'
+import { answerOn } from './helpers/call-tool'
 
 const facts: GiveFacts = {
   giver: () => ({
@@ -41,6 +44,33 @@ const give = (asked: Record<string, unknown>, when: GiveFacts = facts) =>
   admitGive({ ...task, ...asked }, { ownerId: 'agent:sess_giver' }, when)
 
 describe('give_work names where the work goes', () => {
+  it('says why admission sent nothing when the destination address is unknown', async () => {
+    const { world, host, giver } = await aGiverAndHelper()
+    try {
+      const before = [world.conversationsRecorded(), world.startedAs.length, world.sent.length]
+      const refused = await answerOn(agentToolsFor(host, giver), 'give_work', {
+        ...task,
+        profile: 'helper',
+        to: 'W1.77',
+      })
+      const reason =
+        'Not sent: no conversation has the address W1.77. list_agents lists conversations; to: "new" starts one.'
+      expect(refused.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'no-conversation-by-that-address',
+        reason,
+      })
+      expect(refused.text.slice(0, reason.length)).toBe(reason)
+      expect(refused.structured).not.toHaveProperty('receipt')
+      expect(world.store.piecesGivenBy(giver)).toEqual([])
+      expect([world.conversationsRecorded(), world.startedAs.length, world.sent.length]).toEqual(
+        before,
+      )
+    } finally {
+      await world.cleanUp()
+    }
+  })
+
   it('refuses a give that names no conversation and lists the recent ones', () => {
     const refused = give({})
     expect(refused).toMatchObject({

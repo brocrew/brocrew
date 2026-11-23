@@ -832,9 +832,8 @@ describe('405 · a refusal you can see', () => {
         // ⚑ What the window joins on today is the receipt's first 200 characters: the kept sentence
         // must read on from them word for word.
         const { prose: said } = navigationReply(texts[at] ?? '')
-        const prefix =
-          row.tool === 'give_work' || row.tool === 'message_agent' ? '' : `refused (${row.rail}): `
-        expect(said.startsWith(prefix + (row.told?.text ?? '')), said).toBe(true)
+        expect(said).toMatch(/^Not sent: /)
+        expect(said.startsWith(row.told?.text ?? ''), said).toBe(true)
         // Detail-bearing answers keep only the existing reason; app-only answers keep their tail.
         const permanence = permanenceInWords(row.rail, row.permanence)
         expect(said.endsWith(` ${permanence}`), said).toBe(true)
@@ -847,7 +846,7 @@ describe('405 · a refusal you can see', () => {
           expect(JSON.stringify(row)).not.toContain('unasked')
         } else {
           expect(row.told).toEqual({
-            text: said.slice(prefix.length),
+            text: said,
             dropped: 0,
           })
           expect((row.told?.text ?? '').split(permanence).length - 1).toBe(1)

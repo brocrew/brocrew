@@ -185,7 +185,11 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
     sessionId: string,
     name: ToolName,
     args: Record<string, unknown>,
-  ): Promise<{ text: string; json: unknown; row: ToolRefusedEvent }> {
+  ): Promise<{
+    text: string
+    json: Readonly<Record<string, unknown>> | undefined
+    row: ToolRefusedEvent
+  }> {
     const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     const answered = await tool.call(args)
@@ -205,6 +209,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
   async function aRefusedAnswer(): Promise<{
     text: string
     json: unknown
+    current: { text: string; json: unknown }
     /** The refusal as a row written before the host kept its sentence: joined by its receipt. */
     row: ToolRefusedEvent
     /** The refusal as the host writes it now, its whole sentence kept. */
@@ -216,6 +221,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
       answers: [{ part: 'q0', answer: ['yes'] }],
     })
     expect(out.row.rail).toBe('no-question-by-that-name')
+    expect(out.text).toMatch(/^Not sent: /)
     // ⛔ **The premise, asserted**: the row is longer than the cut, so a person's row is cut.
     expect(out.text.length).toBeGreaterThan(200)
     expect(out.row.told, 'the host kept no sentence on its refusal').toBeDefined()
@@ -225,12 +231,18 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
     ) as unknown as ToolRefusedEvent
     expect(older.told).toBeUndefined()
     expect(older.rail).toBe(out.row.rail)
-    return { text: out.text, json: out.json, row: older, kept: out.row }
+    // Reconstruct the legacy opening for receipts that predate the kept refusal quotation.
+    const text = out.text.replace(/^Not sent: /, 'refused (no-question-by-that-name): ')
+    const json = { ...out.json, reason: String(out.json?.reason).replace(/^Not sent: /, '') }
+    return { text, json, current: out, row: older, kept: out.row }
   }
 
   it('🔴 a refusal the host kept whole is quoted whole on its notice, and not called a part', async () => {
-    const { text, json, kept } = await aRefusedAnswer()
-    const whole = text.slice('refused (no-question-by-that-name): '.length)
+    const {
+      current: { text, json },
+      kept,
+    } = await aRefusedAnswer()
+    const whole = text
     for (const [naming, call, receipt] of [
       [
         CLAUDE_NAMING,

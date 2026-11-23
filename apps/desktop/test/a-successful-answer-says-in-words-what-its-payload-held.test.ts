@@ -459,6 +459,43 @@ describe('a successful answer says in words what its payload held', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   describe('a write says what happened, and none of what it was sent', () => {
+    it('Give reports Not sent only when no piece was recorded', async () => {
+      const { pmTools, given } = await aPmAndItsWorker()
+      const refused = await call(pmTools, 'give_work', {})
+      expect(refused.structured?.outcome).toBe('refused')
+      expect(refused.text).toMatch(/^Not sent: /)
+      expect(given.structured?.outcome).toBe('ok')
+      expect(given.text).not.toMatch(/^Not sent: /)
+    })
+
+    it('Answer reports Not sent only when no answer was recorded', async () => {
+      const { pmTools, workerTools } = await aPmAndItsWorker()
+      const asked = await ok(workerTools, 'ask_question', {
+        who_answers: 'the-parent',
+        question: 'May the survey skip the archive?',
+      })
+      const refused = await call(pmTools, 'answer_question', {
+        question: asked.structured?.question,
+      })
+      expect(refused.structured?.outcome).toBe('refused')
+      expect(refused.text).toMatch(/^Not sent: /)
+      const answered = await ok(pmTools, 'answer_question', {
+        question: asked.structured?.question,
+        cannot_answer: 'I have not seen the archive.',
+      })
+      expect(answered.text).not.toMatch(/^Not sent: /)
+    })
+
+    it('Reply reports Not sent only when no reply was recorded', async () => {
+      const { workerTools, label } = await aPmAndItsWorker()
+      const args = { piece: label, outcome: 'done', summary: 'The survey is complete.' }
+      const refused = await call(workerTools, 'reply_to_parent', { ...args, result_document: '' })
+      expect(refused.structured?.outcome).toBe('refused')
+      expect(refused.text).toMatch(/^Not sent: /)
+      const replied = await ok(workerTools, 'reply_to_parent', args)
+      expect(replied.text).not.toMatch(/^Not sent: /)
+    })
+
     it('give_work keeps its generated label, the profile and how the brief went', async () => {
       const { given, label } = await aPmAndItsWorker()
       const action = given.structured?.delivery === 'sent' ? 'sent to' : 'held for'

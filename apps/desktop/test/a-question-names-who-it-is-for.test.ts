@@ -844,7 +844,7 @@ describe('611 · a question names who it is for', () => {
         outcome: 'refused',
         rail: 'person-addressed-request',
         reason:
-          'Not answered: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
+          'Not sent: only the person can answer this request. If you asked it and no longer need it, withdraw it.',
       }
       expect(
         await callOn(pmTools, 'answer_question', { ...proxy, asked_by: worker }),

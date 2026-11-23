@@ -648,7 +648,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       expect(unaddressedReply).toMatchObject({
         outcome: 'refused',
         rail: 'malformed-request',
-        reason: choice,
+        reason: `Not sent: ${choice}`,
       })
 
       // ⚑ The paired positive: naming one of the two succeeds where the bare call was refused, and

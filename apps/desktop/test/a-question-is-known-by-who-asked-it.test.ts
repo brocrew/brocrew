@@ -311,7 +311,7 @@ describe('679 · a question is known by who asked it', () => {
       })
       // ⚑ **The act is in the sentence**, before anything that explains it (`675`'s cut).
       expect(refused.reason).toMatch(
-        /^name which one you mean: make the same call again with asked_by/,
+        /^Not sent: name which one you mean: make the same call again with asked_by/,
       )
       // ⛔ **And nothing moved**: neither provider was answered and neither ledger took a decision.
       expect(store.theDecisionOn(a.asker, a.id)).toBeNull()
