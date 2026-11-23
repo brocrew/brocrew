@@ -28,22 +28,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-/**
- * F097 · a person owes the agent that answered them — the host half.
- *
- * A giver’s brief turn ending with work open stalls and notifies the giver. After a person
- * writes directly to the helper, a turn ending with that piece still open instead reads
- * `waiting-on-the-person-who-wrote`. The helper says “needs you”; the giver keeps waiting
- * without another notice. `waitingOnWhoWroteForAPerson` and the workspace count include the
- * piece, the person’s next message drives it, and the giver may assign more work.
- *
- * A real `RuntimeHost` over a real SQLite ledger, real migrations and the real tools; the only double
- * is the provider, which can hold a turn's end so *mid-turn* is a place the test can stand.
- *
- * ⚑ The names are literals, never computed by the code under test: the first new agent BroBot makes
- * is minted Ada, and she owns W1.1 (`an-agent-that-owes-another-an-answer-says-so.test.ts`'s family).
- */
-
+/** Real host, tools and SQLite; only the provider and its turn endings are controlled. */
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
@@ -122,7 +107,7 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-describe('F097 · a person owes the agent that answered them', () => {
+describe('an answered turn preserves work without inventing a person request', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -244,7 +229,72 @@ describe('F097 · a person owes the agent that answered them', () => {
     await settle()
   }
 
-  it('🔴 the agent a person wrote to waits on that person: needs you everywhere, listed and counted, and its giver told nothing', async () => {
+  describe('actual person requests determine attention', () => {
+    it('an answer without an ask keeps the task state but owes no reply', async () => {
+      const { brobot, ada, piece } = await aGiverAndItsHelper()
+      host.claimSession(ada, window)
+      await aPersonWritesTo(ada, 'Thanks for completing the requested result.')
+      expect(pieceOf(ada, piece)).toMatchObject({
+        state: 'waiting-on-the-person-who-wrote',
+        answeredAPersonAt: expect.any(Number),
+      })
+      expect(host.questionsForAPerson().rows).toEqual([])
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
+      expect(stateOf(ada)?.is).not.toBe('needs-you')
+      expect(needsYouOnItsPlate(ada)).toBe(false)
+      expect(stallNoticesIn(brobot)).toHaveLength(1)
+    })
+
+    it.each([
+      ['question', 'answered'],
+      ['question', 'withdrawn'],
+      ['action', 'answered'],
+      ['action', 'withdrawn'],
+    ] as const)('counts a real %s once until %s, then no reply is owed', async (kind, ending) => {
+      const { ada } = await aGiverAndItsHelper()
+      host.claimSession(ada, window)
+      await aPersonWritesTo(ada, 'Thanks for completing the requested result.')
+      const tools = agentToolsFor(host, ada)
+      const asked = await callOn(tools, kind === 'question' ? 'ask_question' : 'request_action', {
+        piece: 'W1.1',
+        ...(kind === 'question'
+          ? { who_answers: 'a-person', question: 'Which result should I keep?' }
+          : { action: 'Choose the result to keep.' }),
+      })
+      expect(asked).toMatchObject({ outcome: 'ok', question: expect.any(String) })
+      const id = asked.question as string
+      expect(host.questionsForAPerson().rows.map((row) => row.request.requestId)).toEqual([id])
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 1 })
+      expect(stateOf(ada)?.is).toBe('needs-you')
+      if (ending === 'withdrawn') {
+        expect(await callOn(tools, 'withdraw_question', { question: id })).toMatchObject({
+          outcome: 'ok',
+        })
+      } else if (kind === 'action') {
+        expect(await host.answerAction(ada, id, true, null, window)).toMatchObject({
+          outcome: 'taken',
+        })
+      } else {
+        expect(
+          await host.respondUserInput(
+            ada,
+            id,
+            { kind: 'answer', answers: { answer: ['Keep the result.'] } },
+            window,
+          ),
+        ).toMatchObject({ outcome: 'taken' })
+      }
+      await settle()
+      expect(host.questionsForAPerson().rows).toEqual([])
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
+      expect(stateOf(ada)?.is).not.toBe('needs-you')
+    })
+  })
+
+  it('a person-started turn preserves the task state without reply attention or a new giver notice', async () => {
     const { brobot, ada, piece } = await aGiverAndItsHelper()
 
     // ⛔ THE CONTROL — the brief's turn was the giver's: the piece stalled and the giver was told.
@@ -258,7 +308,7 @@ describe('F097 · a person owes the agent that answered them', () => {
     host.claimSession(ada, window)
     await aPersonWritesTo(ada, 'is it done?')
 
-    // The piece waits on the person who wrote: open, no stall, and since when.
+    // The task keeps its existing state and timestamp.
     const waiting = pieceOf(ada, piece)
     expect(waiting).toMatchObject({
       state: 'waiting-on-the-person-who-wrote',
@@ -269,13 +319,12 @@ describe('F097 · a person owes the agent that answered them', () => {
     })
     expect(typeof waiting?.answeredAPersonAt).toBe('number')
 
-    // 🔴 Ada's one state is needs you, wherever it is read: the card, what was pushed to the
-    // windows, get_agent_status and list_agents through the giver's own tools, and the plates.
-    expect(stateOf(ada)).toEqual({ is: 'needs-you' })
-    expect(lastSaid(ada)).toEqual({ is: 'needs-you' })
-    expect(await wordsOf(brobot, ada)).toBe('needs you')
-    expect(await listedBy(brobot, ada)).toBe('needs you')
-    expect(needsYouOnItsPlate(ada)).toBe(true)
+    // No ask was recorded: every conversation surface stays free of reply attention.
+    expect(stateOf(ada)).toEqual({ is: 'idle' })
+    expect(lastSaid(ada)).toEqual({ is: 'idle' })
+    expect(await wordsOf(brobot, ada)).toBe('idle')
+    expect(await listedBy(brobot, ada)).toBe('idle')
+    expect(needsYouOnItsPlate(ada)).toBe(false)
 
     // ⛔ The giver keeps reading waiting on Ada, and is told nothing more.
     expect(stateOf(brobot)).toEqual({
@@ -290,25 +339,15 @@ describe('F097 · a person owes the agent that answered them', () => {
     })
     expect(stallNoticesIn(brobot)).toHaveLength(1)
 
-    // 🔴 The person's list holds it, through the host and through the window's own door, and the
-    // workspace reading counts it.
+    // The list and count agree through the host and the window command.
     const listed = host.waitingOnWhoWroteForAPerson()
-    expect(listed).toMatchObject({ walk: 'every-conversation-that-was-given-work', rowsUnread: 0 })
-    expect(listed.rows).toEqual([
-      {
-        piece,
-        label: 'W1.1',
-        title: 'Build the pages',
-        owner: ada,
-        ownerName: 'Ada',
-        answeredAt: waiting?.answeredAPersonAt,
-      },
-    ])
+    expect(listed).toMatchObject({ walk: 'no-ledger', ledgers: 0, rowsUnread: 0 })
+    expect(listed.rows).toEqual([])
     const throughTheDoor = await executeRuntimeCommand(host, window, {
       kind: 'waitingOnWhoWroteForAPerson',
     })
     expect(throughTheDoor).toEqual(listed)
-    expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 1 })
+    expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
   })
 
   it('keeps the holder waiting on the person through two notes and the giver waiting on the holder', async () => {
@@ -336,28 +375,28 @@ describe('F097 · a person owes the agent that answered them', () => {
         stalledAt: null,
         stalledBy: null,
       })
-      expect(stateOf(ada)).toEqual({ is: 'needs-you' })
-      expect(lastSaid(ada)).toEqual({ is: 'needs-you' })
-      expect(await wordsOf(brobot, ada)).toBe('needs you')
-      expect(await listedBy(brobot, ada)).toBe('needs you')
-      expect(needsYouOnItsPlate(ada)).toBe(true)
+      expect(stateOf(ada)).toEqual({ is: 'idle' })
+      expect(lastSaid(ada)).toEqual({ is: 'idle' })
+      expect(await wordsOf(brobot, ada)).toBe('idle')
+      expect(await listedBy(brobot, ada)).toBe('idle')
+      expect(needsYouOnItsPlate(ada)).toBe(false)
       expect(stateOf(brobot)).toEqual({
         is: 'waiting-on-a-worker',
         on: [ADA],
         since: expect.any(Number),
       })
-      expect(host.waitingOnWhoWroteForAPerson().rows).toMatchObject([{ piece, answeredAt: first }])
-      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 1 })
+      expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+      expect(host.readWorkspace().needsYou).toEqual({ counted: 'in-full', count: 0 })
       expect(stallNoticesIn(brobot)).toHaveLength(1)
     }
   })
 
-  it('⚑ the person’s next message drives it — mid-turn the agent is no longer needs you — and its end waits on them again', async () => {
+  it('the person’s next message drives the task and its end restores task state without reply attention', async () => {
     const { ada, piece } = await aGiverAndItsHelper()
     host.claimSession(ada, window)
     await aPersonWritesTo(ada, 'is it done?')
     const first = pieceOf(ada, piece)?.answeredAPersonAt
-    expect(stateOf(ada)).toEqual({ is: 'needs-you' })
+    expect(stateOf(ada)).toEqual({ is: 'idle' })
 
     // The next message opens a turn whose end the provider holds.
     turnEnds.held = new Promise((resolve) => {
@@ -389,11 +428,9 @@ describe('F097 · a person owes the agent that answered them', () => {
     const again = pieceOf(ada, piece)
     expect(again?.state).toBe('waiting-on-the-person-who-wrote')
     expect(again?.answeredAPersonAt).toBeGreaterThan(first ?? Number.POSITIVE_INFINITY)
-    expect(stateOf(ada)).toEqual({ is: 'needs-you' })
-    expect(lastSaid(ada)).toEqual({ is: 'needs-you' })
-    expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.answeredAt)).toEqual([
-      again?.answeredAPersonAt,
-    ])
+    expect(stateOf(ada)).toEqual({ is: 'idle' })
+    expect(lastSaid(ada)).toEqual({ is: 'idle' })
+    expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
   })
 
   it('⚑ a new give to the agent while it waits names no stall — where a stall is named — and its own brief’s end still stalls', async () => {
@@ -426,8 +463,8 @@ describe('F097 · a person owes the agent that answered them', () => {
       stalledBecause: 'turn_ended',
     })
     expect(pieceOf(ada, piece)?.state).toBe('waiting-on-the-person-who-wrote')
-    expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.label)).toEqual(['W1.1'])
-    expect(stateOf(ada)).toEqual({ is: 'needs-you' })
+    expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
+    expect(stateOf(ada)).toEqual({ is: 'idle' })
 
     // ⛔ THE CONTROL — the next give names the piece that stalled, and not the one that
     // waits on the person.
@@ -443,9 +480,9 @@ describe('F097 · a person owes the agent that answered them', () => {
     const { brobot, ada, piece } = await aGiverAndItsHelper()
     host.claimSession(ada, window)
     await aPersonWritesTo(ada, 'which database should it use?')
-    // The premise: the fold left the piece waiting on the person, and Ada reads needs you.
+    // The premise: the fold left the piece waiting on the person, and Ada owes no reply attention.
     expect(pieceOf(ada, piece)?.state).toBe('waiting-on-the-person-who-wrote')
-    expect(stateOf(ada)).toEqual({ is: 'needs-you' })
+    expect(stateOf(ada)).toEqual({ is: 'idle' })
 
     // Ada asks her giver about the piece — the answer it waits on is the giver's, not the person's.
     const asked = await callOn(agentToolsFor(host, ada), 'ask_question', {

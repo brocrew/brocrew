@@ -27,7 +27,7 @@ import {
 } from '../src/main/db/window-read-protocol'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
-import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { aLibraryHost } from './helpers/files-library-fixture'
 import { joinLiveHosts } from '../src/main/runtime/live-hosts'
@@ -346,6 +346,68 @@ describe('canonical window worker folds and independent live-store reads', () =>
     })
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
   }
+
+  it('actual person requests determine attention in direct and window snapshot reads', async () => {
+    row('alpha', 'request_resolved', { type: 'request_resolved', id: 'first' })
+    const root = store.ensurePersonalRoot('alpha', 1000 + ordinal++)
+    store.recordGive(
+      {
+        piece: 'fictional-open-work',
+        parent: root.piece,
+        number: 1,
+        owner: 'beta',
+        givenBy: 'alpha',
+        title: 'Completed result with work still open',
+        brief: 'Keep the agreed task state.',
+        folder: null,
+        inputs: [],
+      },
+      store.nextOrdinal('beta'),
+      {
+        type: 'work_given',
+        piece: 'fictional-open-work',
+        label: `${root.label}.1`,
+        parent: root.piece,
+        givenBy: 'alpha',
+        title: 'Completed result with work still open',
+        brief: 'Keep the agreed task state.',
+      },
+      1000 + ordinal++,
+    )
+    for (const event of [
+      { type: 'user_turn', text: 'Thanks for completing it.' },
+      { type: 'turn', state: 'completed' },
+      { type: 'status', state: 'idle' },
+    ] as const) {
+      store.append('beta', store.nextOrdinal('beta'), event, 1000 + ordinal++)
+    }
+    expect(store.workById('fictional-open-work')?.owner).toBe('beta')
+    expect(store.piecesOwnedBy('beta')[0]?.state).toBe('waiting-on-the-person-who-wrote')
+    const direct = hostWith().host
+    const { host } = hostWith({ read: async (query) => engine.read(query), close: async () => {} })
+    const attention = (reading: RuntimeHost) => {
+      const card = reading.agentCard('beta', THE_APP_ITSELF, null)
+      expect(card).not.toBeNull()
+      return {
+        replies: reading.waitingOnWhoWroteForAPerson().rows,
+        count: reading.readWorkspace().needsYou,
+        needsYou: card!.state.is === 'needs-you',
+      }
+    }
+    const expected = { replies: [], count: { counted: 'in-full', count: 0 }, needsYou: false }
+    const directAttention = attention(direct)
+    const snapshot = engine.read({ kind: 'routes' })
+    if (snapshot.kind !== 'routes') throw new Error('wrong result')
+    expect(
+      snapshot.work?.owners.find((one) => one.id === 'beta')?.waitsOnWhoWrote.value,
+    ).toHaveLength(1)
+    const windowAttention = await host.readForWindow(() => attention(host))
+    expect({ direct: directAttention, window: windowAttention }).toEqual({
+      direct: expected,
+      window: expected,
+    })
+    expect(store.piecesOwnedBy('beta')[0]?.state).toBe('waiting-on-the-person-who-wrote')
+  })
 
   const sink = {
     ownerId: 'fictional-window',

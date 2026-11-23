@@ -687,7 +687,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(listed(a)?.state.is).toBe('idle')
   })
 
-  it('⚑ W4.210 · an agent a person wrote to, with work it was given open, is stopped, still needs you everywhere, and starts again on their next message', async () => {
+  it('⚑ W4.210 · an agent a person wrote to, with work it was given open, is stopped, owes no reply without an open request, and starts again on their next message', async () => {
     const { pm, quiet } = await aPmAndTwoWorkers()
     // The brief's turn ends (the giver's), then a person writes and that turn ends with the piece open.
     await letTheTurnFinish(quiet)
@@ -703,11 +703,11 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       () => ledger(quiet).filter((event) => event.type === 'turn').length > turns,
       'the turn the person opened to end',
     )
-    await waitFor(() => lastSaid(quiet)?.is === 'needs-you', 'the helper to need the person')
+    await waitFor(() => lastSaid(quiet)?.is === 'idle', 'the answered helper to become idle')
     await settle()
     expect(pieceGivenTo(quiet).state).toBe('waiting-on-the-person-who-wrote')
 
-    // 🔴 Counted and stopped, with nothing else in the way.
+    // The process can still stop without changing the task or notifying its giver.
     const started = handles.length
     const giversRows = ledger(pm).length
     await fire(countdownOf(quiet))
@@ -719,11 +719,10 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
         .filter((event) => event.type === 'user_turn' || event.type === 'message_queued'),
     ).toEqual([])
 
-    // ⚑ Still needs you, wherever it is read: the window's list, another agent's tools, and the
-    // person's own list — the piece still waits on them.
-    expect(listed(quiet)?.state.is).toBe('needs-you')
-    expect(await theWordsOf(pm, quiet)).toEqual(['needs you', 'needs you'])
-    expect(host.waitingOnWhoWroteForAPerson().rows.map((row) => row.owner)).toEqual([quiet])
+    // The process stop preserves task state and creates no new person request.
+    expect(listed(quiet)?.state.is).toBe('idle')
+    expect(await theWordsOf(pm, quiet)).toEqual(['idle', 'idle'])
+    expect(host.waitingOnWhoWroteForAPerson().rows).toEqual([])
     expect(pieceGivenTo(quiet).state).toBe('waiting-on-the-person-who-wrote')
 
     // ⚑ The person's next message starts it again, through the window's door.

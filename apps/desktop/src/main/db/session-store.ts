@@ -6383,34 +6383,9 @@ export function createSessionStore(
       )
       return stalledInOrder(found)
     },
-    piecesWaitingOnWhoWrote(counted, work) {
-      const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
-      const unread = counted ?? rowsUnreadOnce()
-      const itsWaits = oneWaitReadPerHolder(unread, work)
-      const walked = walkLedgers(
-        'every-conversation-that-was-given-work',
-        holders,
-        (sessionId, noteSkip) =>
-          composeWhatEachPieceIsWaitingOn(
-            work === undefined
-              ? piecesWaitingOnWhoWroteIn(sessionId, noteSkip)
-              : work.ownedBy(sessionId, noteSkip).filter(waitsOnWhoWrote),
-            itsWaits,
-          ).filter(waitsOnWhoWrote),
-        unread,
-      )
-      return {
-        walk: walked.walk,
-        ledgers: walked.ledgers,
-        rowsUnread: walked.rowsUnread,
-        ...ledgersSkippedOf(walked.ledgersSkipped),
-        rows: [...walked.rows].sort((left, right) => {
-          if (left.answeredAPersonAt !== right.answeredAPersonAt) {
-            return left.answeredAPersonAt - right.answeredAPersonAt
-          }
-          return left.piece < right.piece ? -1 : 1
-        }),
-      }
+    piecesWaitingOnWhoWrote() {
+      // An answered turn creates no request. Real asks are in questionsAPersonMustAnswer.
+      return { rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }
     },
     piecesWaitingOnWhoWroteIn(owner, unread) {
       return piecesWaitingOnWhoWroteIn(owner, unread?.in(owner))
