@@ -670,7 +670,7 @@ describe('240 · the teardown waits for the group, not for the leader', () => {
 
   /** The process table, read as the transport reads it, counting the readings that came back. */
   function countedTable(): {
-    processTable: (ms: number) => Promise<TableReading | null>
+    processTable: (ms: number | null) => Promise<TableReading | null>
     readings: () => number
     goSlow: () => void
   } {
@@ -679,7 +679,7 @@ describe('240 · the teardown waits for the group, not for the leader', () => {
     return {
       processTable: async (ms) => {
         if (slow) {
-          await new Promise((resolve) => setTimeout(resolve, ms))
+          await new Promise((resolve) => setTimeout(resolve, ms ?? 15_000))
           return null
         }
         const reading = await readTable(ms)

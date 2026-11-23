@@ -4,7 +4,9 @@ import { buildChildEnv } from '../internal/child-env'
 import {
   endTree,
   fileTimeOf,
+  finishesWithin,
   isRunning,
+  OBSERVER_READ_LIMIT_MS,
   readTable,
   startEnder,
   treeOf,
@@ -195,8 +197,8 @@ export interface SpawnCodexOptions {
    * own wait for a closing conversation (5 s), so every ending is done before it lets go.
    */
   stopBudgetMs?: number
-  /** On Windows, one reading of the process table within `ms`; Windows' own by default. */
-  processTable?: (ms: number) => Promise<TableReading | null>
+  /** On Windows, one reading of the process table, within `ms` unless that is null; Windows' own by default. */
+  processTable?: (ms: number | null) => Promise<TableReading | null>
 }
 
 const DEFAULTS = {
@@ -205,9 +207,6 @@ const DEFAULTS = {
   killGraceMs: 2000,
   stopBudgetMs: 4500,
 }
-
-/** How long a reading taken while the app-server runs may take: nothing waits on it. */
-const SAMPLE_TIMEOUT_MS = 15_000
 
 /** Persistent table failures may release only after all remembered process numbers are gone. */
 const WINDOWS_TABLE_FAILURE_RELEASE_MS = 120_000
@@ -487,7 +486,7 @@ export class SpawnCodexTransport implements CodexTransport {
     this.sampling = (async () => {
       do {
         this.sampleOwed = false
-        const reading = await this.opts.processTable(SAMPLE_TIMEOUT_MS)
+        const reading = await this.opts.processTable(null)
         if (reading !== null) {
           const leader = { pid, startedAt: this.startedAt, endedAt: this.endedAt }
           this.remember(treeOf(reading.rows, leader, [...this.known.values()]), reading.at)
@@ -689,11 +688,13 @@ export class SpawnCodexTransport implements CodexTransport {
       let unavailable = true
       try {
         // A live sampling read may still be finishing; never overlap it with another table read.
-        await this.sampling
+        // The sample has no limit of its own, so a wedged one is waited for only as long as a read.
+        if (!(await finishesWithin(this.sampling, OBSERVER_READ_LIMIT_MS)))
+          throw new Error('the background process-table read has not finished')
         await this.windowsStopReading
         const endedAt = this.endedAt
         if (endedAt !== null) {
-          const reading = await this.opts.processTable(SAMPLE_TIMEOUT_MS)
+          const reading = await this.opts.processTable(OBSERVER_READ_LIMIT_MS)
           if (reading !== null && reading.at >= endedAt) {
             unavailable = false
             const known = [...this.known.values()]

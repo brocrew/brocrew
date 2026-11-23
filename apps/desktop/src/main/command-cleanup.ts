@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { isInside } from '@brobot2/shared/paths'
-import { PS_ARGS, PS_MAX_BUFFER_BYTES, PS_TIMEOUT_MS, parseProcessTable } from './process-tree'
+import { PS_ARGS, PS_MAX_BUFFER_BYTES, parseProcessTable } from './process-tree'
 import { WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
 
 /** A worker end owns its one output directory, never the shared workspace or its peers. */
@@ -37,17 +37,18 @@ export function stopOrphanedCommands(userData: string): Promise<void> {
   return stopCommandsInFolders([join(userData, WORKER_OUTPUT_DIRNAME)])
 }
 
+/**
+ * ⚑ **Waits for the command to exit** (card 197): `lsof` took 21 s on a loaded Mac, and a fixed
+ * limit there only made the sweep give up and leave the orphans running. Each caller runs once per
+ * close or quit, so reads cannot pile up. A quit waits for it until it is pressed again, which
+ * leaves after `IMPATIENT_EXIT_MS` (app-lifetime.ts).
+ */
 function listing(command: string, args: readonly string[]): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    execFile(
-      command,
-      args,
-      { timeout: PS_TIMEOUT_MS, maxBuffer: PS_MAX_BUFFER_BYTES },
-      (error, stdout) => {
-        if (error && !(error.code === 1 && (command === 'lsof' || stdout === ''))) reject(error)
-        else resolve(stdout)
-      },
-    )
+    execFile(command, args, { maxBuffer: PS_MAX_BUFFER_BYTES }, (error, stdout) => {
+      if (error && !(error.code === 1 && (command === 'lsof' || stdout === ''))) reject(error)
+      else resolve(stdout)
+    })
   })
 }
 

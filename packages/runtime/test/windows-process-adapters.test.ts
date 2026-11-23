@@ -42,6 +42,23 @@ describe('the Windows process table adapter', () => {
     expect(await readTable(-1)).toBeNull()
     expect(execFile).not.toHaveBeenCalled()
   })
+  it('🔴 waits for the exit with no limit when none is asked, so a slow read is still a reading', async () => {
+    vi.useFakeTimers()
+    let finish: (() => void) | undefined
+    vi.mocked(execFile).mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[3] as (error: Error | null, text: string) => void
+      finish = () => callback(null, 'at 800\n41 2 700\n')
+      return {} as ReturnType<typeof execFile>
+    })
+    let reading: unknown = 'pending'
+    void readTable(null).then((one) => (reading = one))
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(reading).toBe('pending')
+    expect(vi.mocked(execFile).mock.calls[0]?.[2]).not.toHaveProperty('timeout')
+    finish?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(reading).toEqual({ at: 800n, rows: [{ pid: 41, ppid: 2, created: 700n }] })
+  })
   it.each([
     [
       'at 800\n41 2 700\n42 41 750\n',

@@ -140,14 +140,50 @@ export function treeOf(
   return [...found.values()]
 }
 
-/** One reading of the process table within `ms`, or null when it could not be read in time. */
-export function readTable(ms: number): Promise<TableReading | null> {
-  if (ms <= 0) return Promise.resolve(null)
+/**
+ * ⚑ The one limit left on a reading nobody is closing for: the late observer's. A reading that has
+ * not finished in a minute is wedged, not slow, and the observer must count it as a failure: the
+ * release after {@link WINDOWS_TABLE_FAILURE_RELEASE_MS} runs on counted failures, and an unbounded
+ * read would hold the transcript for ever. The background sample has no limit: nothing waits on it.
+ */
+export const OBSERVER_READ_LIMIT_MS = 60_000
+
+/** Whether `work` (none: at once) has finished within `ms`; the timer never keeps the app alive. */
+export async function finishesWithin(work: Promise<unknown> | null, ms: number): Promise<boolean> {
+  if (work === null) return true
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work.then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), ms)
+        timer.unref?.()
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * One reading of the process table, or null when it failed. With `ms`, a reading that has not
+ * finished by then is null: only the stop path asks for that, because closing cannot wait on a
+ * stuck PowerShell. With `null`, the read waits for PowerShell's exit (card 197): on a slow or
+ * loaded PC the read can take longer than any fixed limit, and a limit only turned "slow" into "no
+ * answer". A reading nobody waits on has no reason for a limit.
+ */
+export function readTable(ms: number | null): Promise<TableReading | null> {
+  if (ms !== null && ms <= 0) return Promise.resolve(null)
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', TABLE_COMMAND],
-      { timeout: ms, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', windowsHide: true },
+      {
+        ...(ms === null ? {} : { timeout: ms }),
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: 'utf8',
+        windowsHide: true,
+      },
       (error, stdout) => resolve(error ? null : parseReading(stdout)),
     )
   })
