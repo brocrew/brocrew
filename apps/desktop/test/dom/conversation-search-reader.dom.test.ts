@@ -11,6 +11,7 @@ import type {
   WorkSearchResult,
 } from '../../src/shared/work-search'
 import { mount } from './harness'
+import { entry as libraryEntry, page as libraryPage } from './library-filter-fixture'
 import { workerRows } from './parallel-workers-fixture'
 import {
   disposeRuntimeScreenFixture,
@@ -36,6 +37,113 @@ afterEach(() => {
 
 const caller = 'recorded-caller'
 const archive = 'archived-result'
+
+it('keeps profile-filtered palette search reachable from an archive-only library', async () => {
+  const archivedEditor = libraryEntry({
+    recordId: caller,
+    provider: 'codex',
+    profileId: 'editor',
+    origin: 'ours',
+    archivedAt: 1_700_000_000_000,
+  })
+  const archivedDesigner = libraryEntry({
+    recordId: 'archived-designer',
+    profileId: 'designer',
+    origin: 'ours',
+    archivedAt: 1_700_000_001_000,
+  })
+  window.api.runtime.listResumable = async () => []
+  window.api.runtime.listUnresumable = async () => []
+  const listLibrary = vi
+    .fn<RuntimeBridge['listLibrary']>()
+    .mockResolvedValue(libraryPage({ entries: [archivedEditor, archivedDesigner] }))
+  window.api.runtime.listLibrary = listLibrary
+
+  const briefTask: ConversationSearchHit['matched_tasks'][number] = {
+    kind: 'piece',
+    piece: 'W7.124',
+    label: 'Archive-only lookup',
+    title: 'Archive-only lookup',
+    given_at: 1_700_000_000_000,
+    definition_of_done: 'brief-only-term',
+    state: null,
+    owner: { conversation: caller, name: null, profile: 'editor' },
+    giver: null,
+    result: null,
+    status: null,
+    resource_ids: { brief: [], result: [], attachments: [], working: [] },
+    clipped: { title: false, result: false, status: false },
+    resources_omitted: 0,
+  }
+  const briefMatch: ConversationSearchHit = {
+    ...hit(caller, 'Archived brief match', 'W7.124'),
+    matched_tasks: [briefTask],
+  }
+  const designerMatch: ConversationSearchHit = {
+    ...hit('archived-designer', 'Other profile result', 'W7.126'),
+    profile: 'designer',
+  }
+  const statusMatch = {
+    ...hit('archived-status', 'Archived status match', 'W7.125'),
+    status: 'status-only-term',
+  }
+  const search = vi.fn<RuntimeBridge['searchWork']>().mockImplementation(async ({ query }) => {
+    if (query.words === 'brief-only-term')
+      return result(query.profile === 'editor' ? [briefMatch] : [briefMatch, designerMatch], null)
+    if (query.words === 'status-only-term') return result([statusMatch], null)
+    return result([], null)
+  })
+  window.api.runtime.searchWork = search
+
+  const m = mount(RuntimeScreen, {})
+  await expect.poll(() => m.q('rail-sessions')).toBeTruthy()
+  const findDestination = () => document.querySelector('[data-cy="rail-find-destination"]')
+  expect(findDestination()).toBeNull()
+
+  m.q('rail-sessions').click()
+  await expect.poll(() => listLibrary.mock.calls.length).toBe(1)
+  await expect.poll(() => findDestination()).not.toBeNull()
+  m.q('rail-find-destination').click()
+  await expect.poll(() => insidePalette('palette-profile-filter')?.children.length).toBe(2)
+
+  const profile = insidePalette('palette-profile-filter') as HTMLSelectElement
+  profile.value = 'editor'
+  profile.dispatchEvent(new Event('change', { bubbles: true }))
+  typeQuery('brief-only-term')
+  await expect
+    .poll(() => insidePalette(`palette-row-open-${caller}`)?.textContent)
+    .toContain('Archived brief match')
+  expect(insidePalette(`palette-row-open-${caller}`)?.textContent).toContain('Archive-only lookup')
+  expect(insidePalette('palette-row-open-archived-designer')).toBeNull()
+  expect(search).toHaveBeenCalledWith({
+    conversation: caller,
+    query: {
+      words: 'brief-only-term',
+      profile: 'editor',
+      limit: 20,
+      includeConversationMetadata: true,
+    },
+  })
+
+  typeQuery('status-only-term')
+  await expect
+    .poll(() => insidePalette('palette-row-open-archived-status')?.textContent)
+    .toContain('Archived status match')
+  expect(
+    insidePalette('palette-row-open-archived-status')?.querySelector(
+      '[data-cy="palette-recorded-status"]',
+    )?.textContent,
+  ).toContain('status-only-term')
+  expect(search).toHaveBeenCalledWith({
+    conversation: caller,
+    query: {
+      words: 'status-only-term',
+      profile: 'editor',
+      limit: 20,
+      includeConversationMetadata: true,
+    },
+  })
+})
 
 function hit(
   conversation: string,

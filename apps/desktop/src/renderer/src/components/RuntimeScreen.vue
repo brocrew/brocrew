@@ -343,6 +343,8 @@ const railFold = useRailFold()
  * conversations moved, as the rail does.
  */
 const library = ref<InstanceType<typeof SessionLibrary> | null>(null)
+/** A recorded row from All conversations can anchor the palette after every row is archived. */
+const librarySearchCaller = ref<string | null>(null)
 /**
  * The conversation on screen, so {@link openRequest} can land on the card it was asked for (236 §2).
  *
@@ -3806,6 +3808,7 @@ onUnmounted(() => {
           :read-identities="readRailIdentities"
           :identity-revision="workRevision + agentIdentityRevision + personIdentityRevision"
           :search-conversations="searchConversations"
+          :library-search-caller="librarySearchCaller"
           @read-conversation="openFoundConversation"
           @go="
             (destination) => {
@@ -3868,6 +3871,7 @@ onUnmounted(() => {
             @open="select"
             @delete="(sessionId) => overlays.open({ kind: 'deleteConversation', sessionId })"
             @archived="archivedHere"
+            @search-caller="(sessionId) => (librarySearchCaller = sessionId)"
           />
 
           <!-- The Team page raises agent actions; this screen opens their sheets. -->

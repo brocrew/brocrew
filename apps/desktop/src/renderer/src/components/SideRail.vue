@@ -174,6 +174,7 @@ const props = withDefaults(
       conversation: string,
       query: WorkSearchQuery,
     ) => Promise<WorkSearchResult>
+    librarySearchCaller?: string | null
   }>(),
   {
     collapsed: false,
@@ -296,14 +297,13 @@ const {
    --------------------------------------------------------------------------- */
 
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
-
 /** Only a conversation surface has an on-screen identity; destinations keep activeId too. */
 const onScreenId = computed(() => (props.place === null ? props.activeId : null))
 const paletteSearchCaller = computed(
   () =>
     listed.value.find((row) => row.sessionId === onScreenId.value)?.sessionId ??
     listed.value[0]?.sessionId ??
-    null,
+    props.librarySearchCaller,
 )
 
 const { sectionOpen, recentLimit, rowsIdOf, waitingRows, sections, moreRecent } = useRailSections(

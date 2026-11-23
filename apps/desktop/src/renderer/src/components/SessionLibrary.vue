@@ -216,6 +216,8 @@ const emit = defineEmits<{
   delete: [sessionId: string]
   /** These conversations were archived from a row: a view of any of them should close. */
   archived: [conversations: readonly string[]]
+  /** An existing recorded row can anchor the shared palette search without reopening it. */
+  searchCaller: [sessionId: string]
 }>()
 
 /** The recorded list, so the screen can ask it to re-read when the host says something moved. */
@@ -326,6 +328,8 @@ async function load(): Promise<void> {
     })
     if (mine !== issued) return
     page.value = result
+    const searchCaller = result.entries.find((entry) => entry.recordId !== null)?.recordId
+    if (searchCaller) emit('searchCaller', searchCaller)
     // The two move together, always: `page.matched` is only meaningful beside the filters it was
     // counted over, and anything that says WHICH rows matched reads this rather than the controls.
     applied.value = { filters: asked, query: words.trim() }
