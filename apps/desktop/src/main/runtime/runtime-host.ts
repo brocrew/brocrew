@@ -319,6 +319,7 @@ import {
   originalMoveRequest,
   previousMoveDecision,
   recordMovedRequest,
+  rejectOpenMoveOffersForTurn,
 } from './move-request'
 import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine } from '../../shared/move-request'
 import type {
@@ -14112,14 +14113,15 @@ export class RuntimeHost implements LiveHost {
     ) {
       return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
     }
-    return {
-      ok: true,
-      move: {
-        destination,
-        destinationName: this.nameByItsWork(destination),
-        sourceTurnId: original.id,
-      },
+    const move = {
+      destination,
+      destinationName: this.nameByItsWork(destination),
+      sourceTurnId: original.id,
     }
+    if (previousMoveDecision(this.deps.store, session.id, move) !== null) {
+      return { ok: false, refusal: refuseQuestion('move-offer-not-available') }
+    }
+    return { ok: true, move }
   }
 
   /**
@@ -14424,9 +14426,9 @@ export class RuntimeHost implements LiveHost {
     const held = this.heldBy(conversation)
     if (named !== null) {
       const piece = held.find((one) => one.piece === named || one.label === named)
-      return piece === undefined || (!piece.received && this.itIsAService(conversation))
-        ? null
-        : piece
+      if (piece === undefined) return null
+      if (who === 'the-parent' && !piece.received && this.itIsAService(conversation)) return null
+      return piece
     }
     const received = held.filter((one) => one.received)
     return received.length === 1 ? (received[0] ?? null) : null
@@ -21654,7 +21656,7 @@ export class RuntimeHost implements LiveHost {
       sessionSpeakingAs(by) === null &&
       TURN_ATTRIBUTION_KEYS.every((key) => turn[key] === undefined)
     )
-      this.declineMoveOffersFromText(session.id, by)
+      this.declineMoveOffersFromText(session, by)
     return this.beginMoveHandoff(
       session,
       TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || turn[key] === undefined),
@@ -26226,10 +26228,10 @@ export class RuntimeHost implements LiveHost {
     if (giving !== null) {
       this.recordTheGive(session, giving, id, null, { queued, mailboxEntry: held })
     } else {
-      session.mailbox.push(held)
       if (TURN_ATTRIBUTION_KEYS.every((key) => held.authorship[key] === undefined)) {
-        this.declineMoveOffersFromText(session.id, by)
+        this.declineMoveOffersFromText(session, by)
       }
+      session.mailbox.push(held)
       this.publishOurs(session, queued)
     }
     if (says !== null) {
@@ -28753,27 +28755,28 @@ export class RuntimeHost implements LiveHost {
   private moveDestinationAvailable(sessionId: string): boolean {
     return (
       this.deps.store.recordedOne(sessionId) !== null &&
-      !this.archived.has(sessionId) &&
       !this.settingAside.has(sessionId) &&
       this.theOneInItsPlace(sessionId) === sessionId
     )
   }
 
-  private declineMoveOffersFromText(sessionId: string, by: Caller): void {
+  private declineMoveOffersFromText(session: HostedSession, by: Caller): void {
     if (!aPersonIsAsking(by) || sessionSpeakingAs(by) !== null) return
-    const offered = this.deps.store.latestMoveOffer?.(sessionId)
-    if (offered === null || offered === undefined) return
-    const request = this.deps.store
-      .routedRequestsOf(sessionId)
-      .find((one) => one.requestId === offered.requestId)
-    if (request === undefined || !REQUEST_IS_OPEN[request.state]) return
-    this.writeIntoItsLedger(sessionId, {
-      type: 'user_decision',
-      requestId: request.requestId,
-      outcome: 'rejected',
-      by: whoDidIt(by),
-    })
-    this.theWorldMoved('work')
+    const source = session.id
+    const offer = this.deps.store.latestMoveOffer?.(source)?.move
+    if (offer !== undefined) {
+      const show = this.writeRecord(source, 'events', () =>
+        rejectOpenMoveOffersForTurn(this.deps.store, source, offer, whoDidIt(by)).map((event) =>
+          this.appendInTheTransaction(source, event),
+        ),
+      )
+      for (const row of show) row()
+      if (show.length > 0) this.theWorldMoved('work')
+    }
+    // A late provider return cannot make the request eligible again after a queued reply.
+    session.moveRequestHandoff = null
+    session.moveRequestRowPending = false
+    session.moveRequestTurn = null
   }
 
   async decideMoveRequest(input: DecideMoveRequestInput, by: Caller): Promise<MoveRequestAck> {
@@ -28834,7 +28837,8 @@ export class RuntimeHost implements LiveHost {
       }
     }
     if (this.startupRepairs.has(offer.destination)) await this.settleBeforeUse(offer.destination)
-    const target = this.deps.store.recordedOne(offer.destination)!
+    const target = this.deps.store.recordedOne(offer.destination)
+    if (target === null) return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
     const handed = await recheckHandedPaths(original.event.attachments ?? [], target.cwd)
     if ('refusal' in handed) return { outcome: 'refused', reason: handed.refusal }
     if (!this.moveDestinationAvailable(offer.destination))
@@ -28847,25 +28851,40 @@ export class RuntimeHost implements LiveHost {
       }
     }
     let recorded: ReturnType<typeof recordMovedRequest>
+    let publishArchiveRemoval: (() => void) | null
     try {
       const unread = rowsUnreadOnce()
       const named = this.workThatNames(offer.destination, unread)
       if (unread.count !== 0 || unread.ledgersSkipped !== 0) throw new Error(MOVE_WORDS.notRecorded)
-      recorded = recordMovedRequest(
-        this.deps.store,
-        input.sessionId,
-        input.requestId,
-        offer,
-        this.nameByItsWork(input.sessionId),
-        handed.paths,
-        whoDidIt(by),
-        this.now(),
-        !this.runsNow(offer.destination),
-        named?.title ?? this.whatToCallTheConversation(offer.destination),
-      )
+      const sourceName = this.nameByItsWork(input.sessionId)
+      const at = this.now()
+      const forNextStart = !this.runsNow(offer.destination)
+      const destinationName = named?.title ?? this.whatToCallTheConversation(offer.destination)
+      const move = this.deps.store.atomically(() => {
+        const recorded = recordMovedRequest(
+          this.deps.store,
+          input.sessionId,
+          input.requestId,
+          offer,
+          sourceName,
+          handed.paths,
+          whoDidIt(by),
+          at,
+          forNextStart,
+          destinationName,
+        )
+        const publishArchiveRemoval =
+          recorded.queued !== null && this.archived.has(offer.destination)
+            ? this.archived.removeInTransaction([offer.destination])
+            : null
+        return { recorded, publishArchiveRemoval }
+      })
+      recorded = move.recorded
+      publishArchiveRemoval = move.publishArchiveRemoval
     } catch {
       return { outcome: 'refused', reason: MOVE_WORDS.notRecorded }
     }
+    publishArchiveRemoval?.()
     for (const entry of recorded.entries) {
       const session = this.slots.get(entry.sessionId)?.session
       if (session != null) session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
@@ -28873,6 +28892,7 @@ export class RuntimeHost implements LiveHost {
       if (session != null) this.emitOurs(session, entry)
       else this.showTheWindowsLookingAt(entry.sessionId, entry)
     }
+    if (publishArchiveRemoval !== null) this.publishArchiveRestoration([offer.destination])
     if (recorded.queued !== null) {
       const queued = recorded.queued
       const session = this.slots.get(offer.destination)?.session
@@ -32135,13 +32155,19 @@ export class RuntimeHost implements LiveHost {
       }
     }
     try {
-      this.removeArchiveMarks(archived)
+      this.archived.remove(archived)
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
+    this.publishArchiveRestoration(archived)
+    return { done: true, conversations: archived }
+  }
+
+  private publishArchiveRestoration(archived: readonly string[]): void {
+    this.moveTheListing()
+    this.moveThePersons()
     this.carryOnAfterTheStop(archived, NEWER_WORDS_AFTER_THE_ARCHIVE)
     this.theWorldMoved('conversations')
-    return { done: true, conversations: archived }
   }
 
   /** A committed give brings its archived destination back even if the provider cannot start. */

@@ -2,7 +2,7 @@ import type { MoveOffer } from '../src/shared/move-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { writeFileSync, unlinkSync, realpathSync } from 'node:fs'
+import { readFileSync, writeFileSync, unlinkSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AServiceWorld } from './helpers/a-service-world'
 import { aMoveRequestFixture, offerMoveRequest, ORIGINAL } from './helpers/move-request-world'
@@ -165,8 +165,8 @@ describe('a person moves the stored request', () => {
     expect(targetWords()).toHaveLength(0)
   })
 
-  it('text saying move it stays here and closes only the move offer', async () => {
-    const requestId = await offer()
+  it('text saying move it stays here and closes only the same-turn Move offers', async () => {
+    const requestIds = [await offer(), await offer()]
     const ordinary = await host.raiseAQuestion(
       {
         piece: null,
@@ -179,17 +179,24 @@ describe('a person moves the stored request', () => {
     )
     expect(ordinary.ok).toBe(true)
     await host.queueMessage(source, 'move it', world.window)
-    expect(world.store.theDecisionOn(source, requestId)?.outcome).toBe('rejected')
+    for (const requestId of requestIds) {
+      expect(world.store.theDecisionOn(source, requestId)).toMatchObject({
+        outcome: 'rejected',
+        by: PERSON,
+      })
+      const press = await host.decideMoveRequest(
+        { sessionId: source, requestId, decision: 'move' },
+        world.window,
+      )
+      expect(press).toEqual({ outcome: 'refused', reason: MOVE_WORDS.ended })
+    }
     if (ordinary.ok) expect(world.store.theDecisionOn(source, ordinary.question)).toBeNull()
+    const lateOffer = await host.raiseAQuestion(
+      { piece: null, question: 'Move?', options: [], who: 'a-person', agent: null, moveTo: target },
+      byAgent(),
+    )
+    expect(lateOffer).toMatchObject({ ok: false, refusal: { rail: 'move-offer-not-available' } })
     expect(targetWords()).toHaveLength(0)
-    expect(
-      (
-        await host.decideMoveRequest(
-          { sessionId: source, requestId, decision: 'move' },
-          world.window,
-        )
-      ).outcome,
-    ).toBe('refused')
   })
 
   it('a generic answer labelled Move it cannot execute the move', async () => {
@@ -579,8 +586,9 @@ describe('a person moves the stored request', () => {
     },
   )
 
-  it('a newly submitted text reply closes an older offer before its native return', async () => {
+  it('a newly submitted text reply closes both offers before its native return', async () => {
     const requestId = await offer()
+    const sibling = await offer()
     await endFakeTurn(source)
     let finish!: () => void
     world.sendFinishesWait = new Promise<void>((resolve) => {
@@ -591,6 +599,7 @@ describe('a person moves the stored request', () => {
       await expect.poll(() => world.sent.filter((one) => one.as === 'source').length).toBe(2)
       expect(sourceWords()).toHaveLength(1)
       expect(world.store.theDecisionOn(source, requestId)?.outcome).toBe('rejected')
+      expect(world.store.theDecisionOn(source, sibling)?.outcome).toBe('rejected')
       expect(
         (
           await host.decideMoveRequest(
@@ -600,11 +609,19 @@ describe('a person moves the stored request', () => {
         ).outcome,
       ).toBe('refused')
       expect(targetWords()).toHaveLength(0)
+      await host.queueMessage(source, 'A newer reply for this conversation.', world.window)
     } finally {
       world.sendFinishesWait = null
       finish()
       await delivery
     }
+    const late = await throughFinalTool({
+      question: 'Move the earlier reply?',
+      who_answers: 'a-person',
+      move_to: target,
+    })
+    expect(sourceWords()).toHaveLength(2)
+    expect(late.structured).toMatchObject({ outcome: 'refused', rail: 'move-offer-not-available' })
   })
 
   it.each(['notice', 'continuation'] as const)(
@@ -631,7 +648,7 @@ describe('a person moves the stored request', () => {
     },
   )
 
-  it.each(['unchanged', 'archive', 'owner'] as const)(
+  it.each(['unchanged', 'archive', 'owner', 'typed reply'] as const)(
     'held target check revalidates %s before committing',
     async (change) => {
       const requestId = await offer()
@@ -661,16 +678,18 @@ describe('a person moves the stored request', () => {
           const resumed = await host.resumeSession(target, new RecordingSink('webContents:2'))
           expect(resumed.sessionId).toBe(target)
         }
+        if (change === 'typed reply') await host.queueMessage(source, 'Keep it here.', world.window)
         finish()
         const ack = await deciding
-        if (change === 'unchanged' || change === 'owner') {
-          expect(ack.outcome).toBe('moved')
-          await expect.poll(() => targetWords().length).toBe(1)
-        } else {
+        if (change === 'typed reply') {
           expect(ack.outcome).toBe('refused')
-          expect(world.store.theDecisionOn(source, requestId)).toBeNull()
+          expect(world.store.theDecisionOn(source, requestId)?.outcome).toBe('rejected')
           expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
           expect(targetWords()).toHaveLength(0)
+        } else {
+          expect(ack.outcome).toBe('moved')
+          expect(host.whenItWasArchived(target)).toBeNull()
+          await expect.poll(() => targetWords().length).toBe(1)
         }
       } finally {
         finish()
@@ -752,6 +771,39 @@ describe('a person moves the stored request', () => {
     expect(answered.structured).toMatchObject({ outcome: 'ok', went_to: 'a-person' })
     expect(answered.text).toContain('The Move card is under Waiting on you.')
     expect(world.store.questionsRaisedIn(source).size).toBe(1)
+    expect(targetWords()).toHaveLength(0)
+  })
+
+  it('the Move Ask receipt returns the recorded files and the full-text notice', async () => {
+    const question = 'Q'.repeat(2101)
+    const file = join(realpathSync(world.folder), 'fictional-notes.md')
+    writeFileSync(file, 'Fictional notes.')
+    const answered = await throughFinalTool({
+      question,
+      who_answers: 'a-person',
+      move_to: target,
+      resources: [file],
+    })
+    expect(answered.structured).toMatchObject({
+      outcome: 'ok',
+      went_to: 'a-person',
+      attachments: [
+        { name: 'fictional-notes.md', resource: expect.any(String) },
+        { name: 'question.txt', resource: expect.any(String), overflowField: 'question' },
+      ],
+    })
+    const { question: id, attachments } = answered.structured as {
+      question: string
+      attachments: [{ resource: string }, { resource: string }]
+    }
+    expect(world.store.questionsRaisedIn(source).get(id)?.files).toEqual(attachments)
+    expect(world.store.theDecisionOn(source, id)).toBeNull()
+    const overflow = host.readResource(attachments[1].resource)
+    if (!overflow.ok || overflow.content.as !== 'file') throw new Error('Unreadable question file')
+    expect(readFileSync(overflow.content.path, 'utf8')).toBe(question)
+    expect(answered.text).toContain(
+      `full text is attached as question.txt (${attachments[1].resource})`,
+    )
     expect(targetWords()).toHaveLength(0)
   })
 
@@ -1072,21 +1124,23 @@ describe('a person moves the stored request', () => {
 
     it('a move the person turns down, or one that is refused, tells nobody of a move', async () => {
       const kept = await offer()
-      expect(
-        await host.decideMoveRequest(
-          { sessionId: source, requestId: kept, decision: 'here' },
-          world.window,
-        ),
-      ).toEqual({ outcome: 'here' })
-      const refused = await offer()
-      expect(
-        (
-          await host.decideMoveRequest(
-            { sessionId: source, requestId: refused, decision: 'move' },
-            byAgent(),
-          )
-        ).outcome,
-      ).toBe('refused')
+      const input = { sessionId: source, requestId: kept }
+      expect(await host.decideMoveRequest({ ...input, decision: 'move' }, byAgent())).toEqual({
+        outcome: 'refused',
+        reason: MOVE_WORDS.personOnly,
+      })
+      expect(await host.decideMoveRequest({ ...input, decision: 'here' }, world.window)).toEqual({
+        outcome: 'here',
+      })
+      const late = await throughFinalTool({
+        question: 'Offer again?',
+        who_answers: 'a-person',
+        move_to: target,
+      })
+      expect(late.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'move-offer-not-available',
+      })
       await host.send(target, 'A fictional question of its own.', world.window)
       await expect.poll(() => heardBy('target').length).toBe(1)
       expect([toldOfAMove('source'), toldOfAMove('target')]).toEqual([0, 0])

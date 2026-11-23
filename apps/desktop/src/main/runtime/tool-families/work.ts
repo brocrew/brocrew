@@ -637,7 +637,7 @@ export function createTakeOnWorkTool(
           .array(z.string())
           .optional()
           .describe(
-            'Files holding the detail, at most 10. Relative paths use this conversation’s working folder.',
+            'Files holding the detail. Relative paths use this conversation’s working folder.',
           ),
       } satisfies Readonly<Record<keyof TakeOnWorkArguments, z.ZodType>>).map(([field, schema]) => [
         field,

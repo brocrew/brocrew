@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect } from 'vitest'
 import { agentCallerId } from '../../src/main/runtime/agent-tools'
+import { archivedConversationsIn } from '../../src/main/archived-file'
 import type { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { aServiceWorld, type AServiceWorld } from './a-service-world'
 
@@ -19,7 +20,7 @@ export function aMoveRequestFixture() {
     world = aServiceWorld()
     world.anAgent('source', 'normal')
     world.anAgent('target', 'normal')
-    const host = world.aHost()
+    const host = world.aHost({ archived: archivedConversationsIn(world.db) })
     const source = await world.aPersonOpens(host, 'source')
     const target = await world.aPersonOpens(host, 'target')
     await host.send(source, ORIGINAL, world.window)

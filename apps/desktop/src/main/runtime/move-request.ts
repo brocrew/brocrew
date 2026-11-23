@@ -79,7 +79,7 @@ export function moveOfferDecisions(
   by: ActedBy,
   movedTo?: MoveReceipt,
 ): UserDecisionEvent[] {
-  const decisions: UserDecisionEvent[] = [
+  return [
     {
       type: 'user_decision',
       requestId,
@@ -87,23 +87,27 @@ export function moveOfferDecisions(
       by,
       ...(movedTo === undefined ? {} : { movedTo }),
     },
+    ...rejectOpenMoveOffersForTurn(store, source, offer, by, requestId),
   ]
-  const siblings = new Set(moveOffersForTurn(store, source, offer))
-  for (const request of store.routedRequestsOf(source)) {
-    if (
-      request.requestId !== requestId &&
-      siblings.has(request.requestId) &&
+}
+
+export function rejectOpenMoveOffersForTurn(
+  store: SessionStore,
+  source: string,
+  offer: MoveOffer,
+  by: ActedBy,
+  except?: string,
+): UserDecisionEvent[] {
+  const offers = new Set(moveOffersForTurn(store, source, offer))
+  return store
+    .routedRequestsOf(source)
+    .flatMap((request) =>
+      request.requestId !== except &&
+      offers.has(request.requestId) &&
       REQUEST_IS_OPEN[request.state]
-    ) {
-      decisions.push({
-        type: 'user_decision',
-        requestId: request.requestId,
-        outcome: 'rejected',
-        by,
-      })
-    }
-  }
-  return decisions
+        ? [{ type: 'user_decision', requestId: request.requestId, outcome: 'rejected', by }]
+        : [],
+    )
 }
 
 /** Accept the target queue entry and source decision together, before dispatch. */

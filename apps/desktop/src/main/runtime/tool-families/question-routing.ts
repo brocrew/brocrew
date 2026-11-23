@@ -229,12 +229,11 @@ export function createAskQuestionTool(
           by,
         )
         if (!asked.ok) return refusedAsk(asked)
-        if (moveTo !== undefined)
-          return answer(
-            { outcome: 'ok', question: asked.question, went_to: 'a-person' },
-            "The Move card is under Waiting on you. Write your reply in this turn as usual. Only the person's press moves the person's current request; a text reply keeps it here.",
-          )
         const { delivery, attachments, overflowSaid } = asked
+        const personReceipt =
+          moveTo === undefined
+            ? `Question ${asked.question} recorded for the person. ${THE_ANSWER_ARRIVES_AS_A_MESSAGE}`
+            : "The Move card is under Waiting on you. Write your reply in this turn as usual. Only the person's press moves the person's current request; a text reply keeps it here."
         return answer(
           {
             outcome: 'ok',
@@ -245,9 +244,7 @@ export function createAskQuestionTool(
               : {}),
             ...(delivery === undefined ? { attachments } : { receipt: delivery.receipt }),
           },
-          (delivery?.said ??
-            `Question ${asked.question} recorded for the person. ${THE_ANSWER_ARRIVES_AS_A_MESSAGE}`) +
-            overflowSaid,
+          (delivery?.said ?? personReceipt) + overflowSaid,
         )
       }).then(sendAnswer),
   }

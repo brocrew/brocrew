@@ -2124,7 +2124,7 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(routed(service).get(first.id)).toMatchObject({ to: 'the-parent', parent: caller })
       })
-      // A question about a queued piece is not the service's to ask; one about its own goes to its caller.
+      // A queued piece does not identify the caller for a parent-directed Ask.
       const aboutTheQueued = await call(host, service, 'ask_question', {
         piece: two.label,
         question: 'tea or coffee?',
@@ -2162,6 +2162,28 @@ describe('a service is reached through the piece it is on', () => {
       await vi.waitFor(() => {
         expect(routed(service).get(next.id)).toMatchObject({ to: 'the-parent', parent: other })
       })
+    })
+
+    it('records a person Ask and to-do for the explicitly named queued piece', async () => {
+      const { host, service, two } = await aServiceOnTheFirstPiece()
+      expect(stateOf(service, two.piece)).toBe('waiting')
+      const ask = await call(host, service, 'ask_question', {
+        piece: two.label,
+        question: 'Which outline should the second task use?',
+        who_answers: 'a-person',
+      })
+      const todo = await call(host, service, 'request_action', {
+        piece: two.piece,
+        action: 'Check the second outline.',
+      })
+      for (const { structured } of [ask, todo]) {
+        expect(structured).toMatchObject({ outcome: 'ok', question: expect.any(String) })
+        const id = String(structured.question)
+        expect(world.store.questionsRaisedIn(service).get(id)).toMatchObject({ piece: two.piece })
+        expect(routed(service).get(id)).toMatchObject({ to: 'a-person' })
+        expect(world.store.theDecisionOn(service, id)).toBeNull()
+      }
+      expect(stateOf(service, two.piece)).toBe('waiting')
     })
 
     it('go to a person while it is on no piece, and nothing is passed up', async () => {

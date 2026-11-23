@@ -16,6 +16,8 @@ export interface ArchivedConversations {
   add(ids: readonly string[], at: number): void
   /** Takes `ids` out of the set, and keeps it. Throws, changing nothing, when it cannot be kept. */
   remove(ids: readonly string[]): void
+  /** Removes the stored marks in the caller’s transaction. Call the result after commit. */
+  removeInTransaction(ids: readonly string[]): () => void
 }
 
 const INSERT =
@@ -64,6 +66,12 @@ function keptIn(
   add: (ids: readonly string[], at: number) => void,
   remove: (ids: readonly string[]) => void,
 ): ArchivedConversations {
+  const removeInTransaction = (ids: readonly string[]): (() => void) => {
+    remove(ids)
+    return () => {
+      for (const id of ids) archived.delete(id)
+    }
+  }
   return {
     has: (id) => archived.has(id),
     ids: () => new Set(archived.keys()),
@@ -73,8 +81,8 @@ function keptIn(
       for (const id of ids) if (!archived.has(id)) archived.set(id, at)
     },
     remove(ids) {
-      remove(ids)
-      for (const id of ids) archived.delete(id)
+      removeInTransaction(ids)()
     },
+    removeInTransaction,
   }
 }

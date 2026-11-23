@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { archivedConversationsIn } from '../src/main/archived-file'
+import { MOVE_WORDS } from '../src/shared/move-request'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { aMoveRequestFixture } from './helpers/move-request-world'
+import { aMoveRequestFixture, ORIGINAL } from './helpers/move-request-world'
 
 describe('a person settles competing move offers', () => {
   const move = aMoveRequestFixture()
@@ -29,6 +31,18 @@ describe('a person settles competing move offers', () => {
       world.window,
     )
     expect(repeated).toEqual(accepted)
+    const late = await host.raiseAQuestion(
+      {
+        piece: null,
+        question: 'Move again?',
+        options: [],
+        who: 'a-person',
+        agent: null,
+        moveTo: target,
+      },
+      { ownerId: agentCallerId(source) },
+    )
+    expect(late).toMatchObject({ ok: false, refusal: { rail: 'move-offer-not-available' } })
     expect(
       world.ledger(otherTarget).some((event) => event.type === 'message_queued' && event.movedFrom),
     ).toBe(false)
@@ -95,17 +109,53 @@ describe('a person settles competing move offers', () => {
     await expect.poll(() => targetWords().length).toBe(1)
   })
 
-  it('shows an archived destination in an offer but checks availability at the press', async () => {
-    const { world, host, source, target, offer } = move()
+  it('brings a destination back from the archive only when the person presses Move', async () => {
+    const { world, host, source, target, offer, targetWords } = move()
     expect((await host.archiveConversation(target)).done).toBe(true)
+    const archivedAt = host.whenItWasArchived(target)
+    expect(archivedAt).not.toBeNull()
     const requestId = await offer()
     expect(world.store.questionsRaisedIn(source).get(requestId)?.move?.destination).toBe(target)
-    const result = await host.decideMoveRequest(
+    expect(host.whenItWasArchived(target)).toBe(archivedAt)
+    expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
+    const accepted = await host.decideMoveRequest(
       { sessionId: source, requestId, decision: 'move' },
       world.window,
     )
-    expect(result.outcome).toBe('refused')
-    expect(world.store.theDecisionOn(source, requestId)).toBeNull()
-    expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
+    expect(accepted).toMatchObject({ outcome: 'moved', sessionId: target })
+    expect(host.whenItWasArchived(target)).toBeNull()
+    expect(archivedConversationsIn(world.db).has(target)).toBe(false)
+    expect(world.store.theDecisionOn(source, requestId)?.movedTo).toMatchObject({
+      sessionId: target,
+    })
+    await expect
+      .poll(targetWords)
+      .toMatchObject([{ text: ORIGINAL, movedFrom: { requestId, sessionId: source } }])
+  })
+
+  it('keeps the offer open if the archive change fails and moves it once the write works', async () => {
+    const { world, host, source, target, offer, targetWords } = move()
+    expect((await host.archiveConversation(target)).done).toBe(true)
+    const requestId = await offer()
+    const input = { sessionId: source, requestId, decision: 'move' as const }
+    world.db.exec(`CREATE TEMP TRIGGER reject_archive_removal BEFORE DELETE ON archived_conversation
+      BEGIN SELECT RAISE(ABORT, 'fixture refused archive removal'); END`)
+    try {
+      expect(await host.decideMoveRequest(input, world.window)).toEqual({
+        outcome: 'refused',
+        reason: MOVE_WORDS.notRecorded,
+      })
+      expect(host.whenItWasArchived(target)).not.toBeNull()
+      expect(archivedConversationsIn(world.db).has(target)).toBe(true)
+      expect(world.store.theDecisionOn(source, requestId)).toBeNull()
+      expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
+      expect(targetWords()).toHaveLength(0)
+    } finally {
+      world.db.exec('DROP TRIGGER reject_archive_removal')
+    }
+    const moved = await host.decideMoveRequest(input, world.window)
+    expect(moved).toMatchObject({ outcome: 'moved', sessionId: target })
+    expect(await host.decideMoveRequest(input, world.window)).toEqual(moved)
+    await expect.poll(targetWords).toHaveLength(1)
   })
 })

@@ -162,6 +162,7 @@ export interface AServiceWorld {
     retiredServicesOff?: true
     deferStartupUntilListPaint?: boolean
     store?: SessionStore
+    archived?: ConstructorParameters<typeof RuntimeHost>[0]['archived']
     interruptWaitMs?: number
     deliveryWaitMs?: number
     endingWaitMs?: number
@@ -373,6 +374,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         store: opts.store ?? world.store,
         deferStartupUntilListPaint: opts.deferStartupUntilListPaint ?? false,
         ...neutralHostDeps(() => folder),
+        ...(opts.archived === undefined ? {} : { archived: opts.archived }),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfThisWorld(provider, { sessions: issued }),
