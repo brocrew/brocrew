@@ -19,12 +19,17 @@ on:
     branches: ['gate/windows-suite-*']
   workflow_dispatch:
     inputs:
+      recovery_copy_scope:
+        description: Recovery diagnostic workload
+        type: choice
+        options: [case, shard2]
+        default: case
       recovery_copy_commit:
-        description: Exact source commit for the single recovery writer diagnostic
+        description: Exact source commit for the recovery diagnostic
         type: string
         default: ''
       recovery_copy_tree:
-        description: Expected source tree for the single recovery writer diagnostic
+        description: Expected source tree for the recovery diagnostic
         type: string
         default: ''
 
@@ -113,16 +118,24 @@ jobs:
             --reporter=default --reporter=json \
             --outputFile.json=windows-suite/test-${{ matrix.shard }}.json
 
-      - name: The ordinary recovery writer case
+      - name: The recovery diagnostic workload
         if: inputs.recovery_copy_commit != ''
+        env:
+          RECOVERY_SCOPE: ${{ inputs.recovery_copy_scope || 'case' }}
         run: |
           mkdir -p windows-suite
           pnpm exec vitest --version | tee windows-suite/recovery-vitest.txt
           set +e
-          pnpm exec vitest run --project desktop \
-            apps/desktop/test/the-recovery-copy-is-checked-off-the-main-thread.test.ts \
-            -t '^the recovery copy is checked off the main thread worker selections commit on the ordinary writer without a foreign-write resync$' \
-            --reporter=default --reporter=json \
+          args=(run)
+          if [ "$RECOVERY_SCOPE" = shard2 ]; then
+            args+=(--project '!dom' --shard=2/4)
+          else
+            args+=(--project desktop
+              apps/desktop/test/the-recovery-copy-is-checked-off-the-main-thread.test.ts
+              -t '^the recovery copy is checked off the main thread worker selections commit on the ordinary writer without a foreign-write resync$')
+          fi
+          printf 'scope=%s\n' "$RECOVERY_SCOPE" | tee windows-suite/recovery-scope.txt
+          pnpm exec vitest "${args[@]}" --reporter=default --reporter=json \
             --outputFile.json=windows-suite/recovery.json 2>&1 | tee windows-suite/recovery-stdout-stderr.log
           codes=("${PIPESTATUS[@]}")
           printf 'vitest_exit=%s\ncapture_exit=%s\n' "${codes[0]}" "${codes[1]}" | tee windows-suite/recovery-terminal.txt
