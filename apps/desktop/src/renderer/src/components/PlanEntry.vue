@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import DocumentBody from './DocumentBody.vue'
+import RunInput from './RunInput.vue'
 import type { PlanItem } from '../lib/transcript'
 
 /**
@@ -24,7 +25,7 @@ import type { PlanItem } from '../lib/transcript'
  * restarting the active row's pulse animation mid-cycle. With the index, the DOM node persists and
  * only its content and class change, which is exactly what a list that is replaced wholesale wants.
  */
-const props = defineProps<{ item: PlanItem }>()
+const props = defineProps<{ item: PlanItem; embedded?: boolean; compact?: boolean }>()
 
 const done = computed(() => props.item.steps.filter((step) => step.status === 'done').length)
 
@@ -40,11 +41,24 @@ const heading = computed(() => {
 </script>
 
 <template>
-  <section class="plan" data-cy="plan-entry" :data-steps="item.steps.length" :data-done="done">
-    <header class="plan-head">
+  <section
+    class="plan"
+    :class="{ embedded }"
+    data-cy="plan-entry"
+    :data-steps="item.steps.length"
+    :data-done="done"
+  >
+    <header v-if="!embedded" class="plan-head">
       <svg class="icon"><use href="#i-check" /></svg>
       <span class="title" data-cy="plan-heading">{{ heading }}</span>
     </header>
+
+    <RunInput
+      v-if="!compact"
+      :text="item.run?.input"
+      :progress="item.run?.progress"
+      :result="item.run?.result"
+    />
 
     <ol v-if="item.steps.length" class="steps">
       <li
@@ -75,6 +89,12 @@ const heading = computed(() => {
 </template>
 
 <style scoped>
+.plan.embedded {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
 .plan {
   max-width: var(--measure-message);
   margin: 0 auto var(--space-6);

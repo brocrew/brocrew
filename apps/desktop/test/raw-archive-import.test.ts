@@ -549,7 +549,13 @@ describe('transcript import from the provider’s own file', () => {
     )
     expect(entries.map((entry) => entry.event)).toEqual([
       { type: 'assistant_message', text: 'BEFORE' },
-      { type: 'tool_call', id: 't1', name: 'Bash', summary: 'ls' },
+      {
+        type: 'tool_call',
+        id: 't1',
+        name: 'Bash',
+        summary: 'ls',
+        run: { kind: 'command', input: 'ls' },
+      },
       { type: 'assistant_message', text: 'AFTER' },
     ])
   })
@@ -617,7 +623,13 @@ describe('an archived authentication failure (110)', () => {
     )
     expect(entries.map((entry) => entry.event)).toEqual([
       { type: 'assistant_message', text: 'Let me check the logs…' },
-      { type: 'tool_call', id: 't1', name: 'Bash', summary: 'ls' },
+      {
+        type: 'tool_call',
+        id: 't1',
+        name: 'Bash',
+        summary: 'ls',
+        run: { kind: 'command', input: 'ls' },
+      },
       { type: 'error', message: 'claude could not authenticate', fatal: false },
     ])
   })

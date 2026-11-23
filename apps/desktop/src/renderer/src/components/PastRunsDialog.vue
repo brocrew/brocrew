@@ -14,7 +14,8 @@ const groups: (RunGroup | 'All kinds')[] = [
   'Commands',
   'Workflows',
   'Jobs & monitors',
-  'Background',
+  'Checklists',
+  'Runs',
 ]
 const count = (group: RunGroup | 'All kinds'): number =>
   props.runs.filter((row) => group === 'All kinds' || row.group === group).length
@@ -64,3 +65,28 @@ const shown = computed(() =>
   </ListDialogShell>
 </template>
 <style scoped src="./dialog-presentation.css"></style>
+
+<style scoped>
+.list-dialog {
+  width: min(560px, calc(100% - 2 * var(--space-8)));
+  min-width: 0;
+}
+:deep(.list-body),
+:deep([data-cy='past-runs-rows']),
+:deep(.list-dialog) {
+  min-width: 0;
+}
+:deep(.list-body) {
+  overflow-x: hidden;
+}
+.list-filters {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.list-filter {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+}
+</style>

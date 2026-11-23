@@ -1,12 +1,19 @@
-import { cardHomes, type TranscriptState, type WorkflowRunCard } from './transcript'
+import type { NativeRun } from '@brobot2/runtime'
 import { backgroundState, BACKGROUND_WORD } from './background-work'
-import { durationWords, toolTook } from './tool-outcome'
+import { cardHomes, type TranscriptState, type WorkflowRunCard } from './transcript'
+import { durationWords, toolTook, toolOutcome, TOOL_OUTCOME_WORD } from './tool-outcome'
 import type { ScheduledRow } from '../../../shared/agent-state-contracts'
 
-export type RunGroup = 'Agents' | 'Commands' | 'Workflows' | 'Jobs & monitors' | 'Background'
-export type RunTarget = { kind: 'agent' | 'workflow'; id: string; label: string }
+export type RunGroup =
+  'Agents' | 'Commands' | 'Workflows' | 'Jobs & monitors' | 'Checklists' | 'Runs'
+export type RunTarget = {
+  kind: 'agent' | 'workflow' | 'tool' | 'background' | 'checklist'
+  id: string
+  label: string
+}
 export type OpenPanelRun = (target: RunTarget) => Promise<boolean>
 export interface PanelRun {
+  run?: Partial<NativeRun>
   key: string
   label: string
   detail: string
@@ -43,9 +50,10 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     const active = card.running || background !== undefined
     rows.push({
       key,
-      label: card.title || card.kind || 'Sub-agent',
+      label: card.title || 'Sub-agent',
+      run: card.run,
       detail: card.lastTool ?? '',
-      group: 'Agents',
+      group: 'Runs',
       status: active
         ? 'Running'
         : card.outcome === 'completed'
@@ -59,13 +67,33 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       failed: !active && card.outcome === 'failed',
       icon: '#i-bot',
       time: card.usage?.ms === undefined ? undefined : durationWords(card.usage.ms),
-      order: items.get(itemId)?.order ?? 0,
+      order: items.get(itemId)?.item.at ?? 0,
       itemId,
       ...(background ? { stopId: background.id } : {}),
-      target: { kind: 'agent', id: card.agentId, label: card.title || card.kind || 'Sub-agent' },
+      target: { kind: 'agent', id: card.agentId, label: card.title || 'Sub-agent' },
     })
   }
   for (const [itemId, { item, order }] of items) {
+    if (
+      item.kind === 'plan' &&
+      item.steps.length &&
+      item.steps.every((step) => step.status === 'done')
+    ) {
+      rows.push({
+        key: `checklist:${itemId}`,
+        label: 'Checklist',
+        detail: item.note ?? '',
+        group: 'Runs',
+        run: item.run,
+        status: 'Done',
+        active: false,
+        failed: false,
+        icon: '#i-check',
+        order: item.at ?? order,
+        itemId,
+        target: { kind: 'checklist', id: itemId, label: 'Checklist' },
+      })
+    }
     if (item.kind !== 'tool') continue
     if (item.workflow) {
       const run = item.workflow
@@ -77,8 +105,9 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       rows.push({
         key: `workflow:${run.taskId}`,
         label: run.name || 'Workflow',
+        run: run.run,
         detail: run.description ?? '',
-        group: 'Workflows',
+        group: 'Runs',
         status: active
           ? 'Running'
           : run.outcome === 'completed'
@@ -89,7 +118,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         active,
         failed: !active && run.outcome === 'failed',
         icon: '#i-bot',
-        order,
+        order: item.at ?? order,
         itemId,
         workflow: run,
         time: run.usage?.ms === undefined ? undefined : durationWords(run.usage.ms),
@@ -97,58 +126,104 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         target: { kind: 'workflow', id: run.taskId, label: run.name || 'Workflow' },
       })
     } else if (
-      item.background &&
-      (item.background.outcome !== undefined || item.background.unfinished)
+      item.run?.kind === 'command' ||
+      item.run?.kind === 'job' ||
+      item.run?.kind === 'monitor' ||
+      (item.background && (item.background.outcome !== undefined || item.background.unfinished))
     ) {
       const work = item.background
-      if (
-        (work.id !== undefined && claimed.has(work.id)) ||
-        live.some((row) => row.id === work.id || row.toolCallId === item.callId)
-      )
-        continue
+      const background = live.find((row) => row.id === work?.id || row.toolCallId === item.callId)
+      if (work?.id !== undefined && claimed.has(work.id)) continue
+      if (background) claimed.add(background.id)
+      if (work?.id) claimed.add(work.id)
+      const active =
+        background !== undefined ||
+        (!item.background && item.run !== undefined && item.result === null && !item.unfinished)
       rows.push({
         key: `background:${item.callId}`,
         label: item.summary || item.name,
-        detail: work.summary ?? '',
-        group: item.name === 'Bash' ? 'Commands' : 'Background',
-        status: BACKGROUND_WORD[backgroundState(work)],
-        active: false,
-        failed: work.outcome === 'failed',
+        detail: work?.summary ?? '',
+        run: { ...background?.run, ...item.run },
+        group: 'Runs',
+        status: active ? 'Running' : TOOL_OUTCOME_WORD[toolOutcome(item)],
+        active,
+        failed: !active && (work?.outcome === 'failed' || item.result?.ok === false),
+        ...((background?.id ?? item.stopKey) === undefined
+          ? {}
+          : { stopId: background?.id ?? item.stopKey }),
+        target: { kind: 'tool', id: item.callId, label: item.summary || item.name },
         time: toolTook(item, item.at) ?? undefined,
         icon: '#i-terminal',
-        order,
+        order: item.at ?? order,
         itemId,
       })
     }
   }
   for (const work of live) {
     if (claimed.has(work.id)) continue
-    const group: RunGroup =
-      work.kind === 'monitor' || work.kind === 'job'
-        ? 'Jobs & monitors'
-        : work.kind === 'local_bash' || work.kind === 'shell'
-          ? 'Commands'
-          : work.kind === 'local_agent' || work.kind === 'remote_agent' || work.kind === 'subagent'
-            ? 'Agents'
-            : work.kind === 'workflow'
-              ? 'Workflows'
-              : 'Background'
     rows.push({
       key: `background:${work.id}`,
       label: work.command?.text || work.description || work.id,
       detail: work.command?.name || '',
-      group,
+      group: 'Runs',
+      run: work.run,
       status: 'Running',
       active: true,
       failed: false,
       icon: '#i-terminal',
       order: rows.length,
       stopId: work.id,
+      target: { kind: 'background', id: work.id, label: work.description || work.id },
     })
+  }
+  for (const work of state.background.history ?? []) {
+    if (
+      (work.outcome === undefined && !work.unfinished) ||
+      claimed.has(work.id) ||
+      live.some((one) => one.id === work.id)
+    )
+      continue
+    rows.push({
+      key: `background:${work.id}`,
+      label: work.description || 'Run',
+      detail: work.summary ?? '',
+      group: 'Runs',
+      run: work.run,
+      status:
+        work.outcome === undefined
+          ? BACKGROUND_WORD[backgroundState(work)]
+          : work.outcome === 'completed'
+            ? 'Done'
+            : work.outcome === 'failed'
+              ? 'Failed'
+              : work.outcome === 'stopped'
+                ? 'Stopped'
+                : 'Ended',
+      active: false,
+      failed: work.outcome === 'failed',
+      icon: '#i-terminal',
+      order: work.at ?? rows.length,
+      target: { kind: 'background', id: work.id, label: work.description || 'Run' },
+    })
+  }
+  for (const row of rows) {
+    const kind = row.run?.kind
+    row.group = kind === undefined ? 'Runs' : RUN_GROUP[kind]
+    if (row.run?.input) row.label = row.run.input.split(/\r?\n/)[0]!
+    row.detail = row.run?.result ?? row.run?.progress ?? row.detail
   }
   return {
     active: rows.filter((row) => row.active),
     past: rows.filter((row) => !row.active).sort((a, b) => b.order - a.order),
     coming: state.schedule.jobs,
   }
+}
+
+const RUN_GROUP: Record<NativeRun['kind'], RunGroup> = {
+  agent: 'Agents',
+  command: 'Commands',
+  workflow: 'Workflows',
+  job: 'Jobs & monitors',
+  monitor: 'Jobs & monitors',
+  checklist: 'Checklists',
 }

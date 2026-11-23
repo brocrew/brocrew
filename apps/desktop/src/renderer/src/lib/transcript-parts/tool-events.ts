@@ -1,3 +1,4 @@
+import { mergeRun } from '../native-run'
 import type { WorkflowRunCard, SubAgentToolRow } from '../transcript-tool-contracts'
 import { mergeWorkflowAgents, mergeWorkflowPhases } from '../workflow'
 import { drawsAsACard } from '../draws-as-a-card'
@@ -50,6 +51,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
       // no `tool_use_id` or `subagent_type` at all — so an absent field means "not reported by this
       // message", never "cleared". Writing undefined over a title the start already gave us would
       // blank the card's heading the moment it finished.
+      card.run = mergeRun(card.run, event.run)
       if (event.idKind) card.idKind = event.idKind
       // Merged like the rest, and it is the one field a later phase can only ever CORRECT upwards:
       // an `observed` card that turns out to have been announced after all is an announced card.
@@ -107,6 +109,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
           name: event.name,
           ...(event.displayName === undefined ? {} : { displayName: event.displayName }),
           summary: event.summary,
+          ...(event.run === undefined ? {} : { run: { ...event.run } }),
         })
         owner.lastTool = event.name
         // Remembered as a DISPATCH POINT (035). It is deliberately not in `toolItems` — there is no
@@ -130,6 +133,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
         ...(event.displayName === undefined ? {} : { displayName: event.displayName }),
         summary: event.summary,
         result: null,
+        ...(event.run === undefined ? {} : { run: { ...event.run } }),
         // ⚑ **The one thing that makes a memory write legible as one** (330). Spread rather than
         // assigned `undefined` so an ordinary row carries no key at all — the same absent-is-a-fact
         // shape `stopKey` uses one line down.
@@ -190,6 +194,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
         // an excess-property error, so the first draft of this line stored a field nothing declared
         // and nothing read. Giving card rows a duration is a feature this dispatch was not asked
         // for; writing one nobody can see is worse than not writing it.
+        nested.run = mergeRun(nested.run, event.run)
         nested.result = { summary: event.summary, ok: event.ok }
         tellItsRefusal(state, nested.name, event.summary, false)
         if (detached) nested.background = { ...nested.background, ...detached }
@@ -200,6 +205,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
       }
       const item = itemById(state, state.toolItems[event.id])
       if (item?.kind === 'tool') {
+        item.run = mergeRun(item.run, event.run)
         // ⚠️ **`=== undefined`, never a truthiness test** (327): a tool that failed instantly reports
         // `durationMs: 0`, and `...(event.durationMs ? … : {})` would drop the duration of exactly
         // the rows where how fast it failed is the interesting part.
@@ -257,6 +263,7 @@ export function foldEvent(state: TranscriptState, event: ToolEvent, at?: number)
         running: true,
       }
       if (known === undefined) state.workflows[event.taskId] = run
+      run.run = mergeRun(run.run, event.run)
       if (event.toolUseId !== undefined) run.toolUseId = event.toolUseId
       if (event.name !== undefined) run.name = event.name
       if (event.description !== undefined) run.description = event.description

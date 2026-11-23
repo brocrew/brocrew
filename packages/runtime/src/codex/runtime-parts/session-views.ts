@@ -1,3 +1,4 @@
+import { checklistRun } from '../../native-run'
 import { readCodexSkill, codexErrorIsAUsageLimit } from '../normalize'
 import { boundCommands } from '../../provider-commands'
 import { CODEX_COMMAND_PREFIX } from '../command-prefix'
@@ -182,7 +183,13 @@ export function restatedPlan(
     return { event, savedSteps: event.steps.map((step) => ({ ...step })) }
   }
   if (savedSteps.length === 0) return { event }
-  return { event: { ...event, steps: savedSteps.map((step) => ({ ...step })) } }
+  return {
+    event: {
+      ...event,
+      steps: savedSteps.map((step) => ({ ...step })),
+      run: checklistRun(savedSteps, event.note, event.body),
+    },
+  }
 }
 
 import type { CodexTransport } from '../codex-transport'

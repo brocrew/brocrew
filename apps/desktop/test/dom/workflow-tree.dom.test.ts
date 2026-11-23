@@ -86,6 +86,16 @@ function run(over: Partial<WorkflowRunCard> = {}): WorkflowRunCard {
  * a finished phase") would all have passed for the wrong reason. The transition is asserted here
  * rather than trusted, which is the same guard `drawer-tabs.dom.test.ts` documents.
  */
+function queuedAndRunning(): WorkflowRunCard {
+  return run({
+    phases: [{ index: 1, title: 'Draft' }],
+    agents: [
+      { agentId: 'q1', label: 'waiting', phaseIndex: 1, state: 'queued' },
+      { agentId: 'r1', label: 'going', phaseIndex: 1, state: 'running' },
+    ],
+  })
+}
+
 async function open(card: WorkflowRunCard, width = 720): Promise<ReturnType<typeof mount>> {
   const view = mount(WorkflowEntry, { run: card }, { width })
   view.q('workflow-head').click()
@@ -183,11 +193,11 @@ describe('the expanded tree (108)', () => {
     // leaving the words rendered `judge · StructuredOutput · running` beside a ring whose
     // accessible name said *state unknown* — the two-answers-in-one-card defect restated, not
     // fixed. Every part of the row answers to one predicate now.
-    const word = rows[0]!.querySelector('[data-cy="workflow-agent-status"]')
+    const word = rows[0]!.querySelector('[data-cy="subagent-status"]')
     expect(word!.textContent?.trim()).toBe('state not reported')
     expect(rows[0]!.textContent).not.toContain('running')
     // The last tool is no more current than the `running` was, so it goes with it.
-    expect(rows[0]!.querySelector('[data-cy="workflow-agent-tool"]')).toBeNull()
+    expect(rows[0]!.querySelector('[data-cy="subagent-last-tool"]')).toBeNull()
     expect(rows[0]!.getAttribute('data-state')).toBe('unknown')
     // …and the head above them stops counting it as working, so the card has ONE answer top to
     // bottom: it used to read `1 running` directly beside its own word, *did not finish*.
@@ -269,33 +279,33 @@ describe('the expanded tree (108)', () => {
 
   it('an agent row OPENS that agent — the id, not a path (112)', async () => {
     const opened: unknown[][] = []
+    const card = run()
+    const agents = card.agents.map((agent) => ({
+      ...agent,
+      lastToolSummary: 'Checking fictional notes',
+    }))
     const view = mount(
       WorkflowEntry,
-      { run: run(), onOpenChild: (...args: unknown[]) => opened.push(args) },
+      { run: { ...card, agents }, onOpenChild: (...args: unknown[]) => opened.push(args) },
       { width: 720 },
     )
     view.q('workflow-head').click()
     await nextTick()
-    view.q('workflow-agent-label').click()
+    expect(view.q('subagent-title').textContent).toContain('Checking fictional notes')
+    view.q('subagent-open-transcript').click()
     expect(opened).toEqual([[{ part: 'transcript', agentId: 'a3' }, 'judge']])
   })
 
   it('⛔ a QUEUED agent is NOT a control — it has written nothing to open (112)', async () => {
-    const view = await open(
-      run({
-        phases: [{ index: 1, title: 'Draft' }],
-        agents: [
-          { agentId: 'q1', label: 'waiting', phaseIndex: 1, state: 'queued' },
-          { agentId: 'r1', label: 'going', phaseIndex: 1, state: 'running' },
-        ],
-      }),
-    )
-    // The queued one renders its name and no button; the running one is a button.
-    expect(view.all('workflow-agent-label')).toHaveLength(1)
-    expect(view.q('workflow-agent-label').textContent).toContain('going')
-    expect(view.q('workflow-agent-label-plain').textContent).toContain('waiting')
+    const view = await open(queuedAndRunning())
+    // Only the running child offers the shared transcript button.
+    expect(view.all('subagent-open-transcript')).toHaveLength(1)
+    const [waiting, going] = view.all('workflow-agent')
+    expect(going!.querySelector('[data-cy="subagent-kind"]')?.textContent).toContain('going')
+    expect(waiting!.querySelector('[data-cy="subagent-kind"]')?.textContent).toContain('waiting')
+    expect(waiting!.querySelector('[data-cy="subagent-open-transcript"]')).toBeNull()
     // …and it still says why there is nothing to open, rather than going quiet.
-    expect(view.q('workflow-queued').textContent).toContain('awaiting a slot')
+    expect(view.q('subagent-status').textContent).toContain('awaiting a slot')
   })
 
   it("the person's prefix is surfaced where it LANDS, and identity never depends on it (112)", async () => {
@@ -315,10 +325,9 @@ describe('the expanded tree (108)', () => {
         ],
       }),
     )
-    expect(view.q('workflow-agent-summary').textContent).toContain('[fixture-overflow]')
-    // ⚠️ The paired point: the LABEL is the control, and it carries the exact id — so opening the
-    // child never depends on a convention the user typed (111's ruling, restated).
-    expect(view.q('workflow-agent-label').textContent).toContain('fixture:overflow')
+    expect(view.q('subagent-title').textContent).toContain('[fixture-overflow]')
+    // The shared row keeps its identity separate from the reported tool summary.
+    expect(view.q('subagent-kind').textContent).toContain('fixture:overflow')
   })
 
   it('a FINISHED phase lists no rows; the RUNNING one lists its own', async () => {
@@ -398,7 +407,7 @@ describe('the expanded tree (108)', () => {
     const tag = view.q('workflow-attempt')
     expect(tag.textContent).toContain('attempt 2')
     // The state word is still there beside it, not replaced by the tag.
-    expect(view.q('workflow-agent-status').textContent?.trim()).toBe('running')
+    expect(view.q('subagent-status').textContent?.trim()).toBe('running')
   })
 
   it('attempt 1 draws no tag — 1 is the ordinary case, and 75 of 75 measured agents were on it', async () => {
@@ -415,16 +424,8 @@ describe('the expanded tree (108)', () => {
   it('queued renders differently from running, and says what it is waiting for', async () => {
     // Never observed on the wire — 0 of 75 agents had a `queuedAt` without a `startedAt`. Kept
     // reachable and drawn, because a fan-out wider than the concurrency cap produces exactly this.
-    const view = await open(
-      run({
-        phases: [{ index: 1, title: 'Draft' }],
-        agents: [
-          { agentId: 'q1', label: 'waiting', phaseIndex: 1, state: 'queued' },
-          { agentId: 'r1', label: 'going', phaseIndex: 1, state: 'running' },
-        ],
-      }),
-    )
-    expect(view.q('workflow-queued').textContent).toContain('awaiting a slot')
+    const view = await open(queuedAndRunning())
+    expect(view.q('subagent-status').textContent).toContain('awaiting a slot')
     const rows = view.all('workflow-agent')
     expect(rows.map((row) => row.getAttribute('data-state'))).toEqual(['queued', 'running'])
   })
@@ -449,7 +450,7 @@ describe('the expanded tree (108)', () => {
     expect(reasons[1]?.textContent).toContain('Bash')
     // Docked BELOW: the reason is a sibling after the row, not inside it.
     const row = view.all('workflow-agent')[0]!
-    expect(row.querySelector('.wf-agent-row')?.contains(reasons[0]!)).toBe(false)
+    expect(row.querySelector('[data-cy="subagent-head"]')?.contains(reasons[0]!)).toBe(false)
   })
 
   it('the phase chip turns a tick and a bang, and neither is amber', async () => {
@@ -758,7 +759,7 @@ describe('the walk step 57 could not finish (114)', () => {
     expect(view.all('workflow-agent')).toHaveLength(1)
 
     // **The agent's own transcript**, addressed by the id the tree carries.
-    view.q('workflow-agent-label').click()
+    view.q('subagent-open-transcript').click()
     await nextTick()
     expect(asked.child).toEqual([{ part: 'transcript', agentId: AGENT }])
     await nextTick()
@@ -819,8 +820,8 @@ describe('the walk step 57 could not finish (114)', () => {
     )
     view.q('workflow-head').click()
     await nextTick()
-    expect(view.all('workflow-agent-label')).toHaveLength(0)
-    const plain = view.q('workflow-agent-label-plain')
+    expect(view.all('subagent-open-transcript')).toHaveLength(0)
+    const plain = view.q('subagent-kind')
     expect(plain.textContent).toContain('waiting')
     // ⛔ **The click is the assertion, and the first version of this test did not make it.** Review
     // caught `expect(asked).toHaveLength(0)` sitting over a gesture nobody performed — an empty
@@ -834,6 +835,6 @@ describe('the walk step 57 could not finish (114)', () => {
     expect(view.all('child-work-viewer')).toHaveLength(0)
     // …and the paired positive, so the three negatives are not about an empty component: the tree
     // is open and it says what the row is waiting for.
-    expect(view.q('workflow-queued').textContent).toContain('awaiting a slot')
+    expect(view.q('subagent-status').textContent).toContain('awaiting a slot')
   })
 })

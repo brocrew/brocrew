@@ -1,3 +1,4 @@
+import { mergeRun } from '../native-run'
 import type { LostReply } from '../transcript-message-contracts'
 import type { OutgoingMessage } from '../transcript-tool-contracts'
 import { isAgentMessageKind } from '../../../../shared/tasks'
@@ -23,6 +24,7 @@ import {
   listedSinceOf,
   withCommand,
   markLevelRunning,
+  retainBackgroundWork,
 } from './lifecycle'
 import {
   heldMessageNamed,
@@ -591,26 +593,62 @@ export function foldEvent(
     // Background frames restate a level, not a conversation item. Retain command identity
     // from the previous level before replacing it, and apply endings to the matching tool row.
     case 'background_work': {
+      const previous = state.background.running
       if (event.running !== undefined) {
         // Resolve commands against the previous level before replacing state.background.
         // The old level carries a command whose original tool row has left the transcript window.
         const running = event.running.map((row) => withCommand(state, row))
-        state.background = { running, dropped: event.dropped ?? 0 }
+        retainBackgroundWork(
+          state,
+          previous.filter((row) => !running.some((one) => one.id === row.id)),
+          at,
+        )
+        state.background = {
+          ...state.background,
+          running,
+          dropped: event.dropped ?? 0,
+        }
         // 🔴 **…and the CARDS the level names** (287 finding 1). Before this, a stated level updated
         // the registry alone, and the card of the call that started the work went on reading *"did
         // not finish"* beside a bar offering to stop it. See {@link markLevelRunning}.
         markLevelRunning(state, running)
       }
+      if (event.progress !== undefined) {
+        const progress = event.progress
+        const running = state.background.running.find((one) => one.id === progress.id)
+        const run = mergeRun(running?.run, progress.run)
+        if (run?.kind !== undefined) {
+          const facts = { ...run, kind: run.kind }
+          state.background.running = state.background.running.map((one) =>
+            one.id === progress.id ? { ...one, run: facts } : one,
+          )
+        }
+        state.background.history = state.background.history?.map((one) =>
+          one.id === progress.id ? { ...one, run: mergeRun(one.run, progress.run) } : one,
+        )
+        const callId = progress.toolCallId ?? running?.toolCallId
+        const call = callId === undefined ? undefined : toolRowFor(state, callId)
+        if (call) call.run = mergeRun(call.run, progress.run)
+      }
       if (event.ended !== undefined) {
-        // ⛔ **`toolCallId` is the only route, and the fallback a reader expects here is a guard for
-        // a case that cannot occur** (106's rule, as 246 applied it). The card learns its
-        // `background.id` from `tool_result.backgroundId`, which the adapter sets from
-        // `BackgroundTasks.detachedAs` — and that answers only when the task↔tool binding exists.
-        // The ending's own `toolCallId` comes from `toolFor`, the SAME binding, in a map that never
-        // forgets. So an ending with no `toolCallId` is an ending whose card also has no id to be
-        // found by: a scan would be searching for a key nothing could have written.
-        const row = event.ended.toolCallId ? toolRowFor(state, event.ended.toolCallId) : undefined
+        const ended = event.ended
+        const live =
+          state.background.running.find((one) => one.id === ended.id) ??
+          previous.find((one) => one.id === ended.id)
+        const past = state.background.history ?? []
+        const before = past.find((one) => one.id === ended.id)
+        const facts = {
+          ...live,
+          ...before,
+          ...ended,
+          run: mergeRun(mergeRun(live?.run, before?.run), ended.run),
+          at,
+        }
+        state.background.history = [...past.filter((one) => one.id !== ended.id), facts]
+        const callId = ended.toolCallId ?? before?.toolCallId ?? live?.toolCallId
+        const row = callId ? toolRowFor(state, callId) : undefined
         if (row) {
+          row.run = mergeRun(row.run, facts.run)
           row.background = {
             ...row.background,
             id: event.ended.id,

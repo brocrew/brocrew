@@ -118,13 +118,24 @@ it('opens the native transcript through the existing pane reader', async () => {
   expect(m.q('child-work-viewer').textContent).toContain('Three paths found.')
 })
 
-it('opens the selected workflow through the existing output reader only after a click', async () => {
+it('opens the selected workflow component and reads its artifact only through the output action', async () => {
   const asked: string[] = []
   const m = mount(
     ConversationPane,
     paneProps({
       drawerOpen: true,
-      record: record(mapWorkflowEvents()),
+      record: record([
+        ...mapWorkflowEvents(),
+        {
+          type: 'workflow_run',
+          taskId: 'map-review',
+          toolUseId: 'workflow-call',
+          name: 'Review the map',
+          outcome: 'completed',
+          outputFile: '/sample/map-review.output',
+          source: 'task_notification',
+        },
+      ]),
       onReadWorkflowOutput: async (id: string) => {
         asked.push(id)
         return {
@@ -139,9 +150,16 @@ it('opens the selected workflow through the existing output reader only after a 
     { width: 1400, height: 900 },
   )
   expect(asked).toEqual([])
+  m.q('past-runs-open').click()
+  await tick()
   m.q('panel-run-workflow:map-review')
     .querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!
     .click()
+  await tick()
+  expect(asked).toEqual([])
+  expect(m.all('workflow-entry')).toHaveLength(2)
+  expect(m.all('workflow-output-viewer')).toHaveLength(0)
+  m.q('workflow-open-output').click()
   await tick()
   expect(asked).toEqual(['map-review'])
   expect(m.q('workflow-output-viewer').textContent).toContain('Three paths checked.')

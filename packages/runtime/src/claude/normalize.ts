@@ -1,3 +1,4 @@
+import { nativeRun, agentInput, workflowInput, runLine } from '../native-run'
 import { splitQualified } from '@brobot2/shared/tool-naming'
 import { CLAUDE_TOOL_NAMING } from './tool-naming'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
@@ -98,10 +99,12 @@ export function normalizeMessage(
             flushText()
             const name = typeof block['name'] === 'string' ? block['name'] : 'tool'
             receipts?.called(block['id'], name, message.parent_tool_use_id)
+            const runFacts = background.called(block['id'], name, block['input'])
             const memoryPath = memory.target(block['input'])
             const displayName = splitQualified(CLAUDE_TOOL_NAMING, name)?.tool
             events.push({
               type: 'tool_call',
+              ...(runFacts?.kind === 'command' ? { run: runFacts } : {}),
               id: block['id'],
               name,
               ...(displayName === undefined ? {} : { displayName }),
@@ -184,6 +187,10 @@ export function normalizeMessage(
             const ok = block['is_error'] !== true
             const detachedAs = background.detachedAs(block['tool_use_id'])
             const parts = textParts(block['content'])
+            const run = !detachedAs
+              ? background.resultFor(block['tool_use_id'], block['content'], ok)
+              : undefined
+            if (!detachedAs) background.releaseCall(block['tool_use_id'])
             answers.write(block['tool_use_id'], parts)
             const soleResult =
               content.filter((part) => isRecord(part) && part['type'] === 'tool_result').length ===
@@ -201,6 +208,7 @@ export function normalizeMessage(
             )
             events.push({
               type: 'tool_result',
+              ...(run ? { run } : {}),
               id: block['tool_use_id'],
               summary: summarizeToolResult(block['content']),
               ok,
@@ -304,9 +312,9 @@ export function normalizeMessage(
         ...backgroundWorkEvents(message, background),
         ...providerCommandsEvents(message),
       ]
-      const ran = workflowRunEvent(message, runs)
+      const ran = workflowRunEvent(message, runs, background)
       if (ran) return [...background_, ran]
-      const dispatched = subAgentEvent(message, tasks)
+      const dispatched = subAgentEvent(message, tasks, background)
       if (dispatched) return [...background_, dispatched]
       const category = systemCategory(message.subtype)
       return [...background_, wrapUnknown('claude', message, category, message.subtype)]
@@ -417,6 +425,23 @@ function backgroundWorkEvents(
   const toolUseId = readString(message, 'tool_use_id')
   if (toolUseId) background.bind(taskId, toolUseId)
 
+  if (subtype === 'task_progress') {
+    if (!background.has(taskId)) return []
+    const run = background.progressFor(
+      taskId,
+      readString(message, 'summary') || readString(message, 'description'),
+    )
+    if (!run) return []
+    const toolCallId = background.toolFor(taskId)
+    return [
+      {
+        type: 'background_work',
+        progress: { id: taskId, ...(toolCallId ? { toolCallId } : {}), run },
+        source: subtype,
+      },
+    ]
+  }
+
   if (subtype === 'task_started') {
     if (!background.has(taskId)) return []
     return [
@@ -471,8 +496,11 @@ function endingOf(
   const toolCallId = background.toolFor(taskId)
   const summary = truncate(readString(message, 'summary'))
   const outputFile = readString(message, 'output_file')
+  const run = background.endingRun(taskId, summary, backgroundOutcome(status))
+  background.releaseTask(taskId)
   return {
     id: taskId,
+    ...(run ? { run } : {}),
     ...(toolCallId ? { toolCallId } : {}),
     outcome: backgroundOutcome(status),
     ...(summary ? { summary } : {}),
@@ -483,6 +511,7 @@ function endingOf(
 function subAgentEvent(
   message: Extract<SDKMessage, { type: 'system' }>,
   tasks: SubAgentTasks,
+  background: BackgroundTasks,
 ): RuntimeEvent | null {
   const subtype = message.subtype
   if (
@@ -509,12 +538,37 @@ function subAgentEvent(
 
   if (subtype === 'task_started') {
     const title = readString(message, 'description')
-    return { type: 'sub_agent', phase: 'started', ...common, ...(title ? { title } : {}) }
+    return {
+      type: 'sub_agent',
+      phase: 'started',
+      ...common,
+      run:
+        background.runFor(parentToolCallId) ??
+        nativeRun('agent', {
+          input: agentInput(
+            readString(message, 'prompt') || title,
+            kind,
+            readString(message, 'model'),
+          ),
+        }),
+      ...(title ? { title } : {}),
+    }
   }
 
   if (subtype === 'task_progress') {
     const lastTool = readString(message, 'last_tool_name')
-    return { type: 'sub_agent', phase: 'progress', ...common, ...(lastTool ? { lastTool } : {}) }
+    return {
+      type: 'sub_agent',
+      phase: 'progress',
+      ...common,
+      run: nativeRun('agent', {
+        progress:
+          runLine(readString(message, 'summary')) ??
+          runLine(readString(message, 'description')) ??
+          runLine(lastTool),
+      }),
+      ...(lastTool ? { lastTool } : {}),
+    }
   }
 
   const status =
@@ -524,10 +578,12 @@ function subAgentEvent(
   const outcome = taskOutcome(status)
   if (subtype === 'task_updated' && !outcome) return null
   const summary = readString(message, 'summary')
+  background.releaseTask(agentId)
   return {
     type: 'sub_agent',
     phase: 'ended',
     ...common,
+    run: nativeRun('agent', { result: runLine(summary) ?? outcome }),
     ...(outcome ? { outcome } : {}),
     ...(summary ? { summary } : {}),
   }
@@ -536,6 +592,7 @@ function subAgentEvent(
 function workflowRunEvent(
   message: Extract<SDKMessage, { type: 'system' }>,
   runs: WorkflowTasks,
+  background: BackgroundTasks,
 ): RuntimeEvent | null {
   const subtype = message.subtype
   if (
@@ -576,10 +633,31 @@ function workflowRunEvent(
 
   if (subtype === 'task_started') {
     const name = truncate(readString(message, 'workflow_name'))
-    return { ...common, ...(name ? { name } : {}) }
+    return {
+      ...common,
+      run: nativeRun('workflow', {
+        input: workflowInput(name, description, background.runFor(toolUseId)?.input),
+      }),
+      ...(name ? { name } : {}),
+    }
   }
 
-  if (subtype === 'task_progress') return common
+  if (subtype === 'task_progress')
+    return {
+      ...common,
+      run: nativeRun('workflow', {
+        progress:
+          runLine(readString(message, 'summary')) ??
+          runLine(
+            parsed?.agents
+              ?.filter((agent) => agent.state === 'running')
+              .map((agent) =>
+                [agent.label, agent.lastToolSummary ?? agent.lastTool].filter(Boolean).join(': '),
+              )
+              .join('; '),
+          ),
+      }),
+    }
 
   const status =
     subtype === 'task_updated'
@@ -588,9 +666,11 @@ function workflowRunEvent(
   const outcome = taskOutcome(status)
   if (subtype === 'task_updated' && !outcome) return null
   const outputFile = readString(message, 'output_file')
+  background.releaseTask(taskId)
   return {
     ...common,
     outcome: outcome ?? 'unknown',
+    run: nativeRun('workflow', { result: runLine(readString(message, 'summary')) ?? outcome }),
     ...(outputFile ? { outputFile } : {}),
   }
 }

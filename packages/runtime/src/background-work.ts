@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { nativeRunSchema, type NativeRun } from './native-run'
+
 /**
  * **Work that outlives the turn** (247) — the provider-neutral vocabulary for it.
  *
@@ -77,6 +80,7 @@
  * `SessionHandle.backgroundWork` already spell it.
  */
 export interface BackgroundWork {
+  readonly run?: NativeRun
   /** The id this provider accepts to list or stop this work — Claude `task_id`, Codex `processId`. */
   readonly id: string
   /**
@@ -102,6 +106,7 @@ export interface BackgroundWork {
  * status this code could not read, which is a different fact from "it failed".
  */
 export interface BackgroundWorkEnding {
+  readonly run?: Partial<NativeRun>
   readonly id: string
   readonly toolCallId?: string
   readonly outcome: 'completed' | 'failed' | 'stopped' | 'unknown'
@@ -160,3 +165,66 @@ export function backgroundOutcome(status: string): BackgroundWorkEnding['outcome
   if (status === 'stopped' || status === 'killed') return 'stopped'
   return 'unknown'
 }
+
+/**
+ * **What background work exists, and what just happened to it** (247) — see `background-work.ts`
+ * for the measurement this shape was built from, and for why the two fields are separate.
+ *
+ * ⛔ **Both fields are optional and that is the design, not laxity.** `running` is a LEVEL the
+ * provider states on its own frame; `ended` is an EDGE that names its own task. The SDK's doc for
+ * `background_tasks_changed` says the payload *"carries ids only, so do not correlate it with the
+ * edge stream"* — so an event produced by a level frame carries no ending, and one produced by an
+ * ending carries no level. Filling either in from the other is exactly the pairing that wedges a
+ * stale running indicator, and `222` is what that costs.
+ *
+ * ⚑ **`running` absent ≠ `running: []`.** Absent is *"this frame did not state the level"*; `[]` is
+ * *"the provider says nothing is running"*, which is the fact that clears a registry. `workflow_run`'s
+ * `agents` draws the same line for the same reason.
+ */
+export const backgroundWorkSchema = z.object({
+  type: z.literal('background_work'),
+  /** REPLACE, never merge. Every piece of live background work after this change. */
+  running: z
+    .array(
+      z.object({
+        id: z.string().max(MAX_BACKGROUND_ID),
+        run: nativeRunSchema.optional(),
+        toolCallId: z.string().max(MAX_BACKGROUND_ID).optional(),
+        kind: z.string().max(80).optional(),
+        description: z.string().max(MAX_BACKGROUND_TEXT).optional(),
+      }),
+    )
+    .max(MAX_BACKGROUND_WORK)
+    .optional(),
+  /** Presentation update for an existing identity; does not change running membership. */
+  progress: z
+    .object({
+      id: z.string().max(MAX_BACKGROUND_ID),
+      toolCallId: z.string().max(MAX_BACKGROUND_ID).optional(),
+      run: nativeRunSchema.pick({ kind: true, progress: true }).partial(),
+    })
+    .optional(),
+  /** One piece of work ended, as the provider reported it on a frame carrying its own identity. */
+  ended: z
+    .object({
+      id: z.string().max(MAX_BACKGROUND_ID),
+      run: nativeRunSchema.partial().optional(),
+      toolCallId: z.string().max(MAX_BACKGROUND_ID).optional(),
+      outcome: z.enum(['completed', 'failed', 'stopped', 'unknown']),
+      summary: z.string().max(MAX_BACKGROUND_TEXT).optional(),
+      outputFile: z.string().max(4096).optional(),
+    })
+    .optional(),
+  /**
+   * Rows the level payload carried that this event does not — **for any reason**, so a cap can never
+   * be silent (092's rule, 096's precedent). Absent or 0 normally.
+   *
+   * ⚠️ **Two reasons, deliberately counted together**: entries past {@link MAX_BACKGROUND_WORK}, and
+   * entries the provider sent with no id at all. The second is the one worth folding in rather than
+   * dropping quietly — an entry with no id cannot be listed and cannot be stopped, so a registry
+   * that simply showed one fewer row would be understating what is running with nothing to say so.
+   * The `unknown{lifecycle}` frame beside this one still carries the payload verbatim either way.
+   */
+  dropped: z.number().int().nonnegative().optional(),
+  source: z.string().max(120),
+})

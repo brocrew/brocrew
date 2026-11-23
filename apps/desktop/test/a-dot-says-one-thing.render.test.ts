@@ -431,7 +431,6 @@ describe('§1 · the roster is read, whole, from the import AND the tag', () => 
       'components/SubAgentEntry.vue',
       'components/TaskList.vue',
       'components/TeamWorkspace.vue',
-      'components/WorkflowEntry.vue',
     ])
       expect(ROSTER.get(file)?.tags.length ?? 0, file).toBeGreaterThan(0)
   })

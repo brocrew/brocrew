@@ -5,7 +5,7 @@ import {
   type WordOwed,
   type AWordOfThisApps,
 } from '../schedule-notices'
-import type { NotStartedBecause } from '@brobot2/runtime'
+import { scheduledRun, type NotStartedBecause } from '@brobot2/runtime'
 import type { SessionStore } from '../../db/session-store'
 import type { ScheduledRow, ScheduleLevel } from '../../../shared/agent-state-contracts'
 import {
@@ -168,6 +168,7 @@ export class SchedulePlanning {
         const why = notStarted.get(job.id)
         return {
           id: job.id,
+          run: scheduledRun({ prompt, schedule: job.schedule, nominalAt }),
           ...(job.schedule === undefined ? {} : { schedule: job.schedule }),
           ...(job.recurring === undefined ? {} : { recurring: job.recurring }),
           ...(prompt === undefined ? {} : { prompt }),

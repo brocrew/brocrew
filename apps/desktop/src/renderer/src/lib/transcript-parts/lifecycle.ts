@@ -1,3 +1,4 @@
+import { mergeRun } from '../native-run'
 import type { TranscriptItem } from '../transcript-message-contracts'
 import type {
   PermissionOutcome,
@@ -686,6 +687,25 @@ export function stopOpenToolCalls(state: TranscriptState, sparing?: ReadonlySet<
   }
 }
 
+export function retainBackgroundWork(
+  state: TranscriptState,
+  rows: readonly BackgroundRow[],
+  at?: number,
+): void {
+  const history = new Map(state.background.history?.map((one) => [one.id, one]))
+  for (const row of rows) {
+    const before = history.get(row.id)
+    history.delete(row.id)
+    history.set(row.id, {
+      ...before,
+      ...row,
+      run: mergeRun(before?.run, row.run),
+      ...(at === undefined ? {} : { at }),
+    })
+  }
+  state.background.history = history.size ? [...history.values()] : undefined
+}
+
 /**
  * **Work that was left running cannot outlive the CONVERSATION either** (248, on 074's rule).
  *
@@ -706,12 +726,16 @@ export function stopOpenToolCalls(state: TranscriptState, sparing?: ReadonlySet<
  * this is that door.
  */
 function stopDetachedWork(state: TranscriptState): void {
+  retainBackgroundWork(state, state.background.running)
+  state.background.history = state.background.history?.map((one) =>
+    one.outcome === undefined ? { ...one, unfinished: true } : one,
+  )
   for (const row of everyToolRow(state)) {
     if (row.background && row.background.outcome === undefined) row.background.unfinished = true
   }
   // The registry is a claim about NOW, and the only true one here is that nothing of ours is
   // running. `dropped` goes with it: it describes a level that no longer stands.
-  state.background = { running: [], dropped: 0 }
+  state.background = { ...state.background, running: [], dropped: 0 }
 }
 
 /**
@@ -825,7 +849,14 @@ export function withCommand(state: TranscriptState, row: BackgroundWork): Backgr
     call !== undefined && call.summary !== ''
       ? { name: call.name, text: call.summary }
       : state.background.running.find((previous) => previous.id === row.id)?.command
-  return command === undefined ? { ...row } : { ...row, command }
+  const previous = state.background.running.find((one) => one.id === row.id)
+  if (call) call.run = mergeRun(call.run, row.run)
+  const run = mergeRun(mergeRun(previous?.run, call?.run), row.run)
+  return {
+    ...row,
+    ...(command === undefined ? {} : { command }),
+    ...(run?.kind === undefined ? {} : { run: { ...run, kind: run.kind } }),
+  }
 }
 
 /**

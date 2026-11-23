@@ -72,4 +72,6 @@ export { CLAUDE_LAUNCH_SETTING_KEYS } from './claude/launch-setting-keys'
 
 export { summarizeToolInput, summarizeToolResult } from './claude/tool-summary'
 
+export { ClaudeToolRuns } from './claude/native-runs'
+
 export { takeAssistantNotice } from './claude/assistant-notice'

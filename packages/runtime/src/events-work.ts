@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { MAX_BACKGROUND_ID, MAX_BACKGROUND_TEXT, MAX_BACKGROUND_WORK } from './background-work'
+import { nativeRunSchema } from './native-run'
 import { MAX_WORKFLOW_AGENTS, MAX_WORKFLOW_DESCRIPTION, MAX_WORKFLOW_TEXT } from './workflow-run'
 import {
   MAX_SCHEDULED_JOBS,
@@ -32,6 +32,8 @@ import {
   MAX_THREAD_ID,
 } from './memory-recall'
 
+export { backgroundWorkSchema } from './background-work'
+
 /**
  * Represent a dynamic workflow explicitly so its frames are visible in normal mode.
  *
@@ -51,6 +53,7 @@ import {
  */
 export const workflowRunEventSchema = z.object({
   type: z.literal('workflow_run'),
+  run: nativeRunSchema.optional(),
   /** `task_id`. The correlation key, and the ONLY one `task_updated` carries. */
   taskId: z.string().max(200),
   /** The `Workflow` tool call this hangs off. Absent on `task_updated`, which sends no id at all. */
@@ -112,64 +115,13 @@ export const workflowRunEventSchema = z.object({
   source: z.string().max(120),
 })
 
-/**
- * **What background work exists, and what just happened to it** (247) — see `background-work.ts`
- * for the measurement this shape was built from, and for why the two fields are separate.
- *
- * ⛔ **Both fields are optional and that is the design, not laxity.** `running` is a LEVEL the
- * provider states on its own frame; `ended` is an EDGE that names its own task. The SDK's doc for
- * `background_tasks_changed` says the payload *"carries ids only, so do not correlate it with the
- * edge stream"* — so an event produced by a level frame carries no ending, and one produced by an
- * ending carries no level. Filling either in from the other is exactly the pairing that wedges a
- * stale running indicator, and `222` is what that costs.
- *
- * ⚑ **`running` absent ≠ `running: []`.** Absent is *"this frame did not state the level"*; `[]` is
- * *"the provider says nothing is running"*, which is the fact that clears a registry. `workflow_run`'s
- * `agents` draws the same line for the same reason.
- */
-export const backgroundWorkSchema = z.object({
-  type: z.literal('background_work'),
-  /** REPLACE, never merge. Every piece of live background work after this change. */
-  running: z
-    .array(
-      z.object({
-        id: z.string().max(MAX_BACKGROUND_ID),
-        toolCallId: z.string().max(MAX_BACKGROUND_ID).optional(),
-        kind: z.string().max(80).optional(),
-        description: z.string().max(MAX_BACKGROUND_TEXT).optional(),
-      }),
-    )
-    .max(MAX_BACKGROUND_WORK)
-    .optional(),
-  /** One piece of work ended, as the provider reported it on a frame carrying its own identity. */
-  ended: z
-    .object({
-      id: z.string().max(MAX_BACKGROUND_ID),
-      toolCallId: z.string().max(MAX_BACKGROUND_ID).optional(),
-      outcome: z.enum(['completed', 'failed', 'stopped', 'unknown']),
-      summary: z.string().max(MAX_BACKGROUND_TEXT).optional(),
-      outputFile: z.string().max(4096).optional(),
-    })
-    .optional(),
-  /**
-   * Rows the level payload carried that this event does not — **for any reason**, so a cap can never
-   * be silent (092's rule, 096's precedent). Absent or 0 normally.
-   *
-   * ⚠️ **Two reasons, deliberately counted together**: entries past {@link MAX_BACKGROUND_WORK}, and
-   * entries the provider sent with no id at all. The second is the one worth folding in rather than
-   * dropping quietly — an entry with no id cannot be listed and cannot be stopped, so a registry
-   * that simply showed one fewer row would be understating what is running with nothing to say so.
-   * The `unknown{lifecycle}` frame beside this one still carries the payload verbatim either way.
-   */
-  dropped: z.number().int().nonnegative().optional(),
-  source: z.string().max(120),
-})
-
 const scheduleText = z.string().min(1).max(MAX_SCHEDULE_TEXT)
 const anInstant = z.number().int().nonnegative()
 
 /** What every receipt carries: the call, when it ran, and the sub-agent it ran inside, if any. */
 const receiptBase = {
+  run: nativeRunSchema.optional(),
+  nominalAt: anInstant.optional(),
   toolUseId: scheduleText,
   /**
    * When the provider was about to run the call, on this host's clock. Absent when it was not seen,
@@ -191,8 +143,7 @@ const receiptBase = {
  * **One scheduling call the provider ran, and what it answered**, read at its documented
  * `PostToolUse` hook: the input as it was executed, and the result in the tool's published shape.
  * ⚑ `result` is absent when the answer did not have that shape: the call happened, and what it did
- * is not known. ⚑ A call that failed runs no such hook, so it has no receipt. ⚑ No prompt is copied:
- * the tool call's own row holds it.
+ * is not known. ⚑ A call that failed runs no such hook, so it has no receipt. The create receipt retains its prompt for the scheduled job.
  */
 const scheduleReceiptSchema = z.discriminatedUnion('tool', [
   z.object({
@@ -201,6 +152,7 @@ const scheduleReceiptSchema = z.discriminatedUnion('tool', [
     input: z
       .object({
         cron: scheduleText,
+        prompt: z.string().optional(),
         recurring: z.boolean().optional(),
         durable: z.boolean().optional(),
       })
@@ -239,7 +191,11 @@ const scheduleReceiptSchema = z.discriminatedUnion('tool', [
     ...receiptBase,
     tool: z.literal('ScheduleWakeup'),
     input: z
-      .object({ delaySeconds: z.number().nonnegative().optional(), stop: z.boolean().optional() })
+      .object({
+        delaySeconds: z.number().nonnegative().optional(),
+        stop: z.boolean().optional(),
+        prompt: z.string().optional(),
+      })
       .optional(),
     result: z
       .object({
@@ -287,6 +243,7 @@ export const scheduledWorkSchema = z.object({
     .array(
       z.object({
         id: z.string().max(MAX_SCHEDULE_TEXT),
+        run: nativeRunSchema.optional(),
         schedule: z.string().max(MAX_SCHEDULE_TEXT).optional(),
         recurring: z.boolean().optional(),
         prompt: z.string().max(MAX_SCHEDULE_PROMPT).optional(),

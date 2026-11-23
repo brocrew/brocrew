@@ -1,3 +1,4 @@
+import { nativeRun, scheduledRun } from '../native-run'
 import type { ScheduleReceipt, ScheduledWorkEvent } from '../events'
 import {
   MAX_SCHEDULED_JOBS,
@@ -87,6 +88,7 @@ function cronCreateOf(
       : {
           input: {
             cron,
+            ...(typeof input['prompt'] === 'string' ? { prompt: input['prompt'] } : {}),
             ...present({ recurring: flag(input['recurring']), durable: flag(input['durable']) }),
           },
         }),
@@ -147,6 +149,7 @@ function scheduleWakeupOf(
         delaySeconds:
           typeof delay === 'number' && Number.isFinite(delay) && delay >= 0 ? delay : undefined,
         stop: flag(input['stop']),
+        prompt: typeof input['prompt'] === 'string' ? input['prompt'] : undefined,
       })
     : {}
   const scheduledFor = isFields(response) ? count(response['scheduledFor']) : undefined
@@ -213,6 +216,22 @@ export class SchedulingCalls {
           : input.tool_name === 'CronList'
             ? { ...base, tool: 'CronList', ...cronListOf(response) }
             : { ...base, tool: 'ScheduleWakeup', ...scheduleWakeupOf(asked, response) }
+    if (receipt.tool === 'CronCreate') {
+      receipt.run = {
+        ...scheduledRun({ prompt: receipt.input?.prompt, schedule: receipt.input?.cron }),
+        ...(receipt.result ? { result: 'Scheduled' } : {}),
+      }
+    } else if (
+      receipt.tool === 'ScheduleWakeup' &&
+      receipt.input?.stop !== true &&
+      receipt.result?.stopped !== true
+    ) {
+      receipt.run = nativeRun('job', {
+        input: receipt.input?.prompt,
+        ...(receipt.result ? { result: 'Scheduled' } : {}),
+      })
+      if (receipt.result) receipt.nominalAt = receipt.result.scheduledFor
+    }
     return { type: 'scheduled_work', receipt, source: SOURCE }
   }
 }

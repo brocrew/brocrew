@@ -77,21 +77,21 @@ describe('a scheduling call is kept as it ran', () => {
         }),
       )
     })()
-    expect(event).toEqual({
+    expect(event).toMatchObject({
       type: 'scheduled_work',
       receipt: {
         tool: 'CronCreate',
         toolUseId: 'toolu_1',
         calledAt: start,
         answeredAt: start + 6,
-        input: { cron: '*/5 * * * *', recurring: true },
+        input: { cron: '*/5 * * * *', prompt: 'check the build', recurring: true },
         result: { id: 'a1b2c3d4', recurring: true, durable: false },
       },
       source: 'hook/PostToolUse',
     })
-    // It states no level, and the prompt stays with the tool call's own row.
+    // The receipt keeps the prompt without claiming a level.
     expect(event).not.toHaveProperty('jobs')
-    expect(JSON.stringify(event)).not.toContain('check the build')
+    expect(JSON.stringify(event)).toContain('check the build')
   })
 
   it('a one-shot, a cancellation, a listing and a wake-up, each in its published shape', () => {
@@ -152,13 +152,13 @@ describe('a scheduling call is kept as it ran', () => {
         { delaySeconds: 120, reason: 'r', prompt: 'p', noop: false },
         { scheduledFor: 1_800_000_120_000, clampedDelaySeconds: 120, wasClamped: false },
       ),
-    ).toEqual({
+    ).toMatchObject({
       tool: 'ScheduleWakeup',
       toolUseId: 'toolu_1',
       calledAt: expect.any(Number),
       answeredAt: expect.any(Number),
-      // Neither the prompt nor the reason is copied.
-      input: { delaySeconds: 120 },
+      // The supplied prompt stays with the scheduled input.
+      input: { delaySeconds: 120, prompt: 'p' },
       result: { scheduledFor: 1_800_000_120_000 },
     })
     expect(

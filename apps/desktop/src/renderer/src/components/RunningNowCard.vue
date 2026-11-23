@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { panelRuns, type PanelRun, type OpenPanelRun } from '../lib/panel-runs'
-import type { TranscriptState } from '../lib/transcript'
+import type { TranscriptState, PlanItem } from '../lib/transcript'
 import { droppedNote } from '../lib/background-work'
 import CardSection from './CardSection.vue'
 import CardEmpty from './CardEmpty.vue'
@@ -9,10 +9,12 @@ import PanelRunRow from './PanelRunRow.vue'
 import PastRunsDialog from './PastRunsDialog.vue'
 import ScheduleBar from './ScheduleBar.vue'
 import OverlayHost from './OverlayHost.vue'
+import PlanEntry from './PlanEntry.vue'
 
 const props = withDefaults(
   defineProps<{
     state: TranscriptState
+    checklist?: PlanItem
     conversation?: string
     canStop?: boolean
     onStop?: (id: string) => Promise<boolean>
@@ -51,7 +53,7 @@ async function stop(id: string): Promise<void> {
     asked.value = next
   }
 }
-async function open(run: PanelRun): Promise<void> {
+async function open(run: Pick<PanelRun, 'target' | 'itemId'>): Promise<void> {
   historyOpen.value = false
   const conversation = props.conversation
   if (run.target && props.onOpenRun) {
@@ -66,11 +68,40 @@ async function open(run: PanelRun): Promise<void> {
   <CardSection
     class="running-now"
     icon="#i-bot"
-    :count="runs.active.length"
+    :count="runs.active.length + (checklist ? 1 : 0)"
     fold="brobot2.cardRunningNowFolded"
     data-cy="panel-agents"
   >
     <template #title><span data-cy="running-now-title">Running now</span></template>
+    <CardSection
+      v-if="checklist"
+      class="checklist"
+      icon="#i-check"
+      fold="brobot2.cardChecklistFolded"
+      data-cy="panel-todo"
+    >
+      <template #title
+        >Checklist · {{ checklist.steps.filter((step) => step.status === 'done').length }} of
+        {{ checklist.steps.length }}</template
+      >
+      <template #action>
+        <button
+          class="history"
+          type="button"
+          data-cy="checklist-open"
+          :disabled="!onOpenRun && canNavigate?.(checklist.id) === false"
+          @click="
+            open({
+              itemId: checklist.id,
+              target: { kind: 'checklist', id: checklist.id, label: 'Checklist' },
+            })
+          "
+        >
+          Open
+        </button>
+      </template>
+      <PlanEntry :item="checklist" embedded compact />
+    </CardSection>
     <div data-cy="running-now-rows">
       <PanelRunRow
         v-for="run in runs.active"
@@ -81,7 +112,7 @@ async function open(run: PanelRun): Promise<void> {
           onOpenRun
             ? run.target?.kind === 'agent'
               ? 'Open transcript'
-              : 'Open output'
+              : 'Open run'
             : 'Show this in the conversation'
         "
         :can-stop="canStop && !!onStop"
@@ -89,7 +120,7 @@ async function open(run: PanelRun): Promise<void> {
         @open="void open(run)"
         @stop="void stop(run.stopId!)"
       />
-      <CardEmpty v-if="!runs.active.length" icon="#i-check" says="Nothing running." />
+      <CardEmpty v-if="!runs.active.length && !checklist" icon="#i-check" says="Nothing running." />
     </div>
     <p v-if="state.background.dropped" class="note">{{ droppedNote(state.background.dropped) }}</p>
     <template v-if="showSchedule && (runs.coming.length || state.schedule.dropped)">
@@ -119,6 +150,12 @@ async function open(run: PanelRun): Promise<void> {
 <style scoped>
 .running-now {
   margin: 0 var(--space-5) var(--space-5);
+}
+.checklist {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .subheading {
   padding-top: var(--space-5);

@@ -1,3 +1,4 @@
+import type { NativeRun } from '@brobot2/runtime'
 import type { MessageSentEvent } from '../../../shared/conversation-events'
 import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
 import type {
@@ -30,6 +31,7 @@ export type PermissionOutcome = PermissionDecision['outcome']
 export type NoPositiveBecause = NonNullable<PermissionRequestEvent['scope']['noPositiveBecause']>
 
 export interface ToolItem {
+  run?: Partial<NativeRun>
   kind: 'tool'
   id: string
   /** The provider's tool-use id — the correlation between a call and its result. */
@@ -482,6 +484,7 @@ export interface DetachedWork {
  * place by every later frame.
  */
 export interface WorkflowRunCard {
+  run?: NativeRun
   /** `task_id` — the correlation key across all four subtypes. */
   taskId: string
   /** The launching tool-use id, kept so an orphan can be adopted later (029's precedent). */
@@ -519,6 +522,7 @@ export interface WorkflowRunCard {
  * enabling `forwardSubagentText`.
  */
 export interface SubAgentCard {
+  run?: NativeRun
   agentId: string
   /**
    * What kind of thing `agentId` IS (111), as the adapter stated it on the wire — a dispatch inside
@@ -564,6 +568,7 @@ export interface SubAgentCard {
 
 /** One of the child's own tool calls, as it appears in {@link SubAgentCard.body}. */
 export interface SubAgentToolRow {
+  run?: Partial<NativeRun>
   kind: 'tool'
   callId: string
   name: string
@@ -612,6 +617,7 @@ type SubAgentBodyRow = SubAgentToolRow | SubAgentProse
  * running list itself, since its todo tools are incremental), so the fold replaces and never merges.
  */
 export interface PlanItem {
+  run?: NativeRun
   kind: 'plan'
   id: string
   steps: { text: string; status: 'pending' | 'active' | 'done' }[]
