@@ -371,7 +371,9 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
 
     const discovery = deferred<unknown>()
     codex.pluginDiscovery = discovery.promise
-    const unsent = 'This input waits for plugin discovery'
+    const openingTitle = 'Plugin discovery input'
+    const unsentBody = 'This input waits for plugin discovery'
+    const unsent = `${openingTitle}\n${unsentBody}`
     try {
       await app.host.send(id, unsent, app.window)
       await waitFor(() => codex.asked('mcpServerStatus/list') === 1, 'plugin discovery to begin')
@@ -409,7 +411,8 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     expect(resumed.turnTexts()).toHaveLength(1)
     expect(resumed.turnTexts()[0]).toContain(next)
     expect(resumed.turnTexts()[0]?.split(reason)).toHaveLength(2)
-    expect(resumed.turnTexts()[0]).not.toContain(unsent)
+    expect(resumed.turnTexts()[0]).toContain(openingTitle)
+    expect(resumed.turnTexts()[0]).not.toContain(unsentBody)
     expect(receipts()).toEqual([expect.objectContaining({ reason: 'sent' })])
 
     await app.host.send(id, 'One more comparison', app.window)

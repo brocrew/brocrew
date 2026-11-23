@@ -537,7 +537,13 @@ export class WorkSearchEngine {
   private titleHit(candidate: WorkSearchTitleMatch, store: SessionStore, db: Database.Database) {
     const { id, profile, at, tasks, provider, archivedAt } = candidate
     const savedTitle = provider === null ? undefined : store.conversationTitle(id)
-    const { address, title, line } = describeConversationForRead(store, id, undefined, savedTitle)
+    const { address, title, line } = describeConversationForRead(
+      store,
+      id,
+      undefined,
+      savedTitle,
+      true,
+    )
     const matched_tasks: WorkSearchHit[] = []
     let units = 0
     for (const task of tasks.slice(0, 50)) {
@@ -611,6 +617,7 @@ export class WorkSearchEngine {
       id,
       service,
       savedTitle,
+      true,
     )
     const rootLines = root === null ? null : store.turnBlockRootLines(root.piece)
     if (root !== null && rootLines === null) throw new Error('unread conversation task')

@@ -1,8 +1,10 @@
 import { describeConversationForRead } from '../src/main/runtime/conversation-address'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { CONVERSATION_TITLE_CHARS } from '../src/shared/conversation-title'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
@@ -171,7 +173,8 @@ describe('renaming a conversation', () => {
 
     expect(world.store.defaultConversationTitle(conversation)).toBeNull()
     expect(describeConversationForRead(world.store, conversation).title).toBe('BroBot')
-    const identity = { conversation, address: root.label, title: firstLine, author: null }
+    const title = `${firstLine.slice(0, CONVERSATION_TITLE_CHARS - 1).trimEnd()}…`
+    const identity = { conversation, address: root.label, title, author: null }
     expect(await readIdentity(conversation)).toEqual(identity)
     expect(
       await executeRuntimeCommand(host, world.window, {
@@ -179,6 +182,46 @@ describe('renaming a conversation', () => {
         sessionIds: [conversation],
       }),
     ).toEqual([identity])
+  })
+
+  it('shows the same opening title in rail identity, agent status and work search', async () => {
+    const conversation = await world.aPersonOpens(host, DEFAULT_PROFILE_ID)
+    const address = world.store.rootOf(conversation)!.label
+    const search = new WorkSearchEngine(world.db.name)
+    try {
+      expect(await readIdentity(conversation)).toMatchObject({
+        title: 'BroBot',
+        profileFallback: true,
+      })
+      expect(search.read(caller, { words: 'BroBot', titlesAndBriefs: true })).toMatchObject({
+        ok: true,
+        page: { hits: [] },
+      })
+
+      const opening = `Opening title for the alpine survey ${'x'.repeat(33_000)}`
+      const title = `${opening.slice(0, CONVERSATION_TITLE_CHARS - 1)}…`
+      const line = `conversation ${address} · ${title}`
+      recordTurn(conversation, { text: `${opening}\nDetails of the survey`, humanInitiated: true })
+
+      expect(await readIdentity(conversation)).toEqual({
+        conversation,
+        address,
+        title,
+        author: null,
+      })
+      const status = await agentToolsFor(host, conversation)
+        .tools.find((tool) => tool.name === 'get_agent_status')!
+        .call({ agent: address })
+      expect(status.structured?.outcome).toBe('ok')
+      expect(status.text.split('\n')[0]).toContain(line)
+      expect(status.text).not.toContain('x'.repeat(CONVERSATION_TITLE_CHARS))
+      expect(search.read(caller, { words: 'alpine survey', titlesAndBriefs: true })).toMatchObject({
+        ok: true,
+        page: { hits: [{ conversation, address, title, line }] },
+      })
+    } finally {
+      search.close()
+    }
   })
 
   it.each<{ reason: string; opening: Omit<UserTurnEvent, 'type'> }>([

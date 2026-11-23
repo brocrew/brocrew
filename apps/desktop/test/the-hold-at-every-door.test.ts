@@ -545,6 +545,12 @@ describe('670 · the hold at every door — the real Claude adapter', () => {
     /** ⚑ Busy on a parked turn, and — when asked — with the person's own message queued behind it. */
     const busyWith = async (queuedFirst: boolean): Promise<string> => {
       const pm = await personOpens('pm')
+      expect(
+        await host.renameConversation(
+          { conversation: pm, title: 'Interrupt and send' },
+          { kind: 'person' },
+        ),
+      ).toMatchObject({ ok: true })
       queryOf('pm').holding = true
       await host.send(pm, 'the first thing', window)
       await waitFor(() => queryOf('pm').heard.length === 1, 'the first turn to open')

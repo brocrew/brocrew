@@ -90,10 +90,13 @@ export function aConversationTitle(text: unknown): string | null {
   return LINE_BREAK.test(trimmed) ? null : trimmed
 }
 
-/** The first nonblank line the person wrote. The rail decides how much fits on screen. */
+/** The first nonblank line the person wrote, within the conversation title limit. */
 export function titleFromOpeningMessage(message: string): string | null {
   const [first = ''] = message.trimStart().split(LINE_BREAK, 1)
-  return first.trimEnd() || null
+  const title = first.trimEnd()
+  if (title.length <= CONVERSATION_TITLE_CHARS) return title || null
+  const cut = title.slice(0, CONVERSATION_TITLE_CHARS - 1).replace(/[\uD800-\uDBFF]$/u, '')
+  return `${cut.trimEnd()}…`
 }
 
 /** Whether a stored author is one of the two shapes; a conversation id is a non-empty string. */

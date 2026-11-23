@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { closeHostFixture, fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import {
   lstatSync,
@@ -525,30 +525,27 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     fileLife = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
+      ...fixtureHostPaths(() => userData),
       nativeTranscriptPath: (_provider, _home, ref) =>
         fileLife === null || ref.sessionId === fileLife ? nativeFile : null,
-      exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_turn_${String(tick())}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
     })
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData))
 
   /** A conversation that sent `words` in turn, and the ledger place of each. */
-  async function conversation(provider: Provider, words: readonly string[]) {
+  async function conversation(provider: Provider, words: readonly string[], title?: string) {
     // ⚑ Unattended, so the double ends each turn by itself, and each message is its own turn.
     const { sessionId } = await host.createSession({ provider, approvalMode: 'auto' }, window)
+    if (title !== undefined) {
+      expect(
+        await host.renameConversation({ conversation: sessionId, title }, { kind: 'person' }),
+      ).toMatchObject({ ok: true, title })
+    }
     const ended = (): number =>
       store.events(sessionId).filter((entry) => entry.event.type === 'turn').length
     for (const [index, one] of words.entries()) {
@@ -617,6 +614,8 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     const { sessionId, places, life } = await conversation('claude', [FIRST, NOTE])
     const first = handedOver(sessionId, places[0])
     const note = handedOver(sessionId, places[1])
+    expect(first).toContain('in conversation W1 · BroBot.')
+    expect(note).toContain(`in conversation W1 · ${FIRST}.`)
     nativeFile = join(userData, 'provider-homes', 'claude', 'projects', 'p', 'transcript.jsonl')
     mkdirSync(dirname(nativeFile), { recursive: true })
     const file = rewritten(
@@ -633,7 +632,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
   })
 
   it('⚑ the same text twice: the second message is the file’s second', async () => {
-    const { sessionId, places, life } = await conversation('claude', [FIRST, FIRST])
+    const { sessionId, places, life } = await conversation('claude', [FIRST, FIRST], 'Release plan')
     const sent = handedOver(sessionId, places[0])
     // ⚑ The premise: both were handed over with the same text.
     expect(handedOver(sessionId, places[1])).toBe(sent)
