@@ -799,3 +799,80 @@ it('keeps the footer conversation search on one normal-height row at the standar
   row.click()
   await expect.poll(() => insidePalette('palette-search')).not.toBeNull()
 })
+
+it('keeps earlier previews when a continued scan brings the same profile back', async () => {
+  const search = vi
+    .fn<RuntimeBridge['searchWork']>()
+    .mockResolvedValueOnce(
+      groupedPage(
+        [
+          {
+            profile: 'editor',
+            matched: null,
+            previews: [preview('editor-one', 'First review'), preview('editor-two', 'Second')],
+          },
+        ],
+        null,
+        'scan-two',
+      ),
+    )
+    .mockResolvedValueOnce(
+      groupedPage(
+        [
+          { profile: 'editor', matched: null, previews: [preview('editor-three', 'Third')] },
+          { profile: 'design', matched: null, previews: [preview('design-one', 'Design')] },
+        ],
+        null,
+        'scan-three',
+      ),
+    )
+    .mockResolvedValueOnce(
+      groupedPage(
+        [{ profile: 'editor', matched: null, previews: [preview('editor-four', 'Fourth')] }],
+        null,
+        null,
+      ),
+    )
+  window.api.runtime.searchWork = search
+  await openPalette()
+  typeQuery('split-profile')
+  setGrouping(true)
+
+  const groups = () =>
+    [...document.querySelectorAll('[data-cy="palette-profile-group"]')].map((group) =>
+      group.textContent?.trim(),
+    )
+  const opened = () =>
+    [...document.querySelectorAll<HTMLElement>('[data-cy^="palette-row-open-"]')].map(
+      (row) => row.dataset.cy,
+    )
+  await expect.poll(opened).toEqual(['palette-row-open-editor-one', 'palette-row-open-editor-two'])
+
+  insidePalette('palette-search-more')!.click()
+  await expect.poll(() => search.mock.calls.length).toBe(2)
+  expect(search.mock.calls[1]![0].query.cursor).toBe('scan-two')
+  await expect
+    .poll(opened)
+    .toEqual([
+      'palette-row-open-editor-one',
+      'palette-row-open-editor-two',
+      'palette-row-open-editor-three',
+      'palette-row-open-design-one',
+    ])
+  expect(groups()).toEqual(['Editor', 'design'])
+
+  insidePalette('palette-search-more')!.click()
+  await expect.poll(() => search.mock.calls.length).toBe(3)
+  expect(search.mock.calls[2]![0].query.cursor).toBe('scan-three')
+  await expect
+    .poll(opened)
+    .toEqual([
+      'palette-row-open-editor-one',
+      'palette-row-open-editor-two',
+      'palette-row-open-editor-three',
+      'palette-row-open-editor-four',
+      'palette-row-open-design-one',
+    ])
+  expect(groups()).toEqual(['Editor', 'design'])
+  expect(insidePalette('palette-search-more')).toBeNull()
+})

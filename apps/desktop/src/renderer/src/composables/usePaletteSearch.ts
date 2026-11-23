@@ -102,8 +102,15 @@ export function usePaletteSearch(
       for (const hit of result.page.hits) hits.set(hit.conversation, hit)
       searchHits.value = [...hits.values()]
       if (result.page.grouped) {
+        // A scan that stopped on its budget resumes after the last conversation it read, so a
+        // later page can bring back a profile with more of its previews.
         const groups = new Map(searchGroups.value.map((group) => [group.profile, group]))
-        for (const group of result.page.grouped.groups) groups.set(group.profile, group)
+        for (const group of result.page.grouped.groups) {
+          const known = groups.get(group.profile)?.previews ?? []
+          const previews = new Map(known.map((hit) => [hit.conversation, hit]))
+          for (const hit of group.previews) previews.set(hit.conversation, hit)
+          groups.set(group.profile, { ...group, previews: [...previews.values()] })
+        }
         searchGroups.value = [...groups.values()]
       }
       searchPage.value = result.page
