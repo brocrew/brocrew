@@ -810,14 +810,14 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
       expect(tally(pm, worker)).toEqual(before)
     })
 
-    it("give_work inputs are kept as the piece's inputs, and one that cannot be read refuses the whole give", async () => {
+    it.each(['resources', 'inputs'])('Give keeps %s files', async (field) => {
       await bringIdentityIntoBeing('worker')
       const pm = await personOpens('pm')
       const aText = 'the table to migrate\n'
       const a = wrote('a.md', aText)
 
       const given = await aGive(pm, 'worker', 'with inputs', THE_GIVES_BRIEF, 'new', {
-        inputs: [a],
+        [field]: [a],
       })
       const worker = given.agent
       host.claimSession(worker, window)
@@ -872,7 +872,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         profile: 'worker',
         title: 'never begun',
         brief: 'never sent',
-        inputs: [b, join(root, 'missing.md')],
+        [field]: [b, join(root, 'missing.md')],
       })
       expect(refused.outcome, JSON.stringify(refused)).toBe('refused')
       expect(typeof refused.rail).toBe('string')

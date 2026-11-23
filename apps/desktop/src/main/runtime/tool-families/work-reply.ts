@@ -1,4 +1,5 @@
 import { toolFieldProblems } from './field-problems'
+import { sendResourcesInput } from './send-resources'
 import { whereTheReplyWent } from './delivery'
 import {
   type AgentToolAnswer,
@@ -40,7 +41,7 @@ export function createReplyToParentTool(
     name: 'reply_to_parent',
     handlerOwnsMissingInput: true,
     description:
-      'Finish a piece of work you were given, or took on for a person, and tell the conversation that gave it. Name the piece — its label, like W1.2, or its id — and set the required outcome to done, blocked or failed; the app knows where it goes, and starts that conversation if nothing is running in it. A piece you took on with take_on_work goes to no other conversation: tell the person here. Hand back files with resource_paths: each is kept as a resource that conversation can read. Returns the piece’s label, the resources kept, and where the reply went: straight to that conversation, held until it is free, kept for its next start when it could not take it now, or not delivered — with why.',
+      'Finish a piece of work you were given, or took on for a person, and tell the conversation that gave it. Name the piece — its label, like W1.2, or its id — and set the required outcome to done, blocked or failed; the app knows where it goes, and starts that conversation if nothing is running in it. A piece you took on with take_on_work goes to no other conversation: tell the person here. Hand files with resources. Each is kept as a resource that conversation can read. Returns the piece’s label, the resources kept, and where the reply went: straight to that conversation, held until it is free, kept for its next start when it could not take it now, or not delivered — with why.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -77,7 +78,8 @@ export function createReplyToParentTool(
         const savedMethod = args.saved_method
         const methodReport =
           typeof savedMethod === 'string' && savedMethod.trim().length > 0 ? savedMethod : undefined
-        const paths = args.resource_paths
+        const paths = sendResourcesInput.safeParse(args.resources)
+        const legacyPaths = sendResourcesInput.safeParse(args.resource_paths)
         const resultDocument = args.result_document
         const { problems, problem, wrongType } = toolFieldProblems<string>()
         if (bothSummaryFields) {
@@ -107,12 +109,11 @@ export function createReplyToParentTool(
             `at most ${String(SAVED_METHOD_CHARS)} characters; got ${String(savedMethod.length)}`,
           )
         }
-        if (
-          paths !== undefined &&
-          (!Array.isArray(paths) ||
-            !paths.every((one) => typeof one === 'string' && one.length > 0))
-        ) {
-          problem('resource_paths', 'expected a list of non-empty text paths, or absent')
+        for (const [field, parsed] of [
+          ['resources', paths],
+          ['resource_paths', legacyPaths],
+        ] as const) {
+          if (!parsed.success) problem(field, 'expected a list of non-empty text paths, or absent')
         }
         if (args.needs_user_action !== undefined && typeof args.needs_user_action !== 'boolean') {
           problem('needs_user_action', 'expected true or false, or absent')
@@ -120,7 +121,8 @@ export function createReplyToParentTool(
         if (problems.length > 0) {
           const fields = Object.keys(replyInput)
           const unknown = Object.keys(args).filter(
-            (key) => key !== 'message' && !Object.hasOwn(replyInput, key),
+            (key) =>
+              key !== 'message' && key !== 'resource_paths' && !Object.hasOwn(replyInput, key),
           )
           const detail = workRequestRefused(problems, args, fields)
           if (unknown.length === 0) {
@@ -160,7 +162,7 @@ export function createReplyToParentTool(
             outcome: outcome as TaskOutcome,
             summary: summary as string,
             ...(methodReport === undefined ? {} : { savedMethod: methodReport }),
-            resourcePaths: Array.isArray(paths) ? (paths as string[]) : [],
+            resourcePaths: [...(paths.data ?? []), ...(legacyPaths.data ?? [])],
             ...(typeof resultDocument === 'string' ? { resultDocument } : {}),
             needsUserAction: args.needs_user_action === true,
           },
@@ -247,7 +249,7 @@ export function replyFields() {
       .describe(
         'What you saved to your Saved methods from this work: its file name, or none and why, in a few words. Save before you hand back.',
       ),
-    resource_paths: z.array(z.string()).optional().describe(
+    resources: z.array(z.string()).optional().describe(
       // 736 · `733` F-4 — the kinds rendered from the store's own list, not asserted.
       `Files to hand back with the reply — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed and kept as a resource, and the reply carries its id instead of its contents.`,
     ),
@@ -255,7 +257,7 @@ export function replyFields() {
       .string()
       .optional()
       .describe(
-        "The main result document's path, also listed in resource_paths. Leave it out to hand back files without naming a main document.",
+        "The main result document's path, also listed in resources. Leave it out to hand back files without naming a main document.",
       ),
     needs_user_action: z
       .boolean()

@@ -350,7 +350,7 @@ describe('permanence, true on every rail of its class', () => {
         }),
       )
       const reason =
-        'The main result document must be a Markdown file or page listed in resource_paths. Nothing was recorded.'
+        'The main result document must be a Markdown file or page listed in resources. Nothing was recorded.'
       const after = answerInWords(before, context)
       expect(after.structured).toBe(before.structured)
       expect(after.structured).toEqual({

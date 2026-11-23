@@ -412,10 +412,10 @@ describe('371 · a narrowing that means something', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · HO-010 §2.1 — the advertised arguments and the door's keys are ONE set
+  // §4 · HO-010 §2.1 — published fields and the legacy file alias
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§4 · the tool advertises exactly what the door accepts', () => {
+  describe('§4 · the tool advertises its canonical fields', () => {
     const giveTool = () => {
       const tool = agentToolsFor(host, 'sess_x').tools.find((one) => one.name === 'give_work')
       if (tool === undefined) throw new Error('give_work is not published')
@@ -424,18 +424,17 @@ describe('371 · a narrowing that means something', () => {
     const doorKeys = (): string[] => Object.keys(giveRequestSchema.shape).sort()
 
     it('🔴 every ADVERTISED argument is a field the door accepts (the direction `project` failed)', () => {
-      // ⚑ **D-016 · one spelling on both sides** — `spawn_agent` translated its advertised names
-      // into the door's; `give_work` hands its arguments to the door verbatim, so the names ARE the
-      // door's keys and there is no table between them.
+      // Give hands the advertised names to the request schema verbatim.
       const advertised = Object.keys(giveTool().input).sort()
       expect(advertised.length).toBeGreaterThan(0)
       for (const name of advertised) expect(doorKeys()).toContain(name)
     })
 
-    it('⚑ …and every field the door accepts is advertised — the tool fills none in', () => {
-      // ⚑ **D-016** — the spawn door took a `parentSessionId` the tool filled in from its session;
-      // the give's giver is the CALLER, so no door field is left for the tool to supply.
-      expect(Object.keys(giveTool().input).sort()).toEqual(doorKeys())
+    it('accepts exactly its published fields and the legacy file alias', () => {
+      const advertised = Object.keys(giveTool().input)
+      expect(advertised).toContain('resources')
+      expect(advertised).not.toContain('inputs')
+      expect(doorKeys()).toEqual([...advertised, 'inputs'].sort())
     })
 
     it('⛔ naming a conversation to give FROM is refused rather than silently used', async () => {

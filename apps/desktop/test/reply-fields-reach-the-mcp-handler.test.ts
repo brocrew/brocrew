@@ -198,6 +198,26 @@ describe('reply field failures travel through the real MCP server', () => {
     const replyIsRefused = () => expect(calls.at(-1)!.structured?.outcome).toBe('refused')
     const reportedMethod = () => world.ledger(worker).find((event) => event.type === 'work_replied')
 
+    it(`${adapter}: keeps reply files supplied under both names`, async () => {
+      const first = join(world.folder, 'first.md')
+      const second = join(world.folder, 'second.md')
+      writeFileSync(first, 'First file')
+      writeFileSync(second, 'Second file')
+      await handBack(adapter, {
+        piece,
+        outcome: 'done',
+        summary: 'Fictional completion.',
+        resources: [first],
+        resource_paths: [second],
+        result_document: second,
+      })
+      replyIsAccepted()
+      const kept = world.store.resourcesOf(piece)
+      expect(kept.map((file) => file.name).sort()).toEqual(['first.md', 'second.md'])
+      const secondId = kept.find((file) => file.name === 'second.md')?.resource
+      expect(calls.at(-1)?.structured?.result_document).toBe(secondId)
+    })
+
     for (const blank of ['', ' \t\n', ' '.repeat(200)]) {
       it(`${adapter}: a blank method report (${blank.length} units) is left out and still gets the reminder`, async () => {
         const text = await handBack(adapter, {
@@ -246,7 +266,7 @@ describe('reply field failures travel through the real MCP server', () => {
           piece,
           outcome: 'done',
           summary: 'Fictional completion.',
-          resource_paths: [path],
+          resources: [path],
         })
         replyIsAccepted()
         hasReminder(text)
@@ -476,7 +496,8 @@ describe('reply field failures travel through the real MCP server', () => {
       expect(advertised.properties.outcome!.enum).toEqual(['done', 'blocked', 'failed'])
       for (const field of ['piece', 'outcome', 'summary', 'result_document'])
         expect(advertised.properties[field]!.type).toBe('string')
-      expect(advertised.properties.resource_paths!.type).toBe('array')
+      expect(advertised.properties).not.toHaveProperty('resource_paths')
+      expect(advertised.properties.resources!.type).toBe('array')
       expect(advertised.properties.needs_user_action!.type).toBe('boolean')
       expect(advertised.properties.saved_method).toMatchObject({
         type: 'string',
