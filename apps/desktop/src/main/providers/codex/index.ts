@@ -8,7 +8,7 @@ import { instructions } from './instructions'
 import { memory } from './memory'
 import { transcripts } from './transcripts'
 import { discovery } from './discovery'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
@@ -54,9 +54,16 @@ export interface CodexAuthSeams {
 
 const CODEX_KEY_STAMP = 'brobot-api-key-login.json'
 
-function codexKeyStampOf(home: string): number | null {
+function isPresent(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => true,
+    () => false,
+  )
+}
+
+async function codexKeyStampOf(home: string): Promise<number | null> {
   try {
-    const read = JSON.parse(readFileSync(join(home, CODEX_KEY_STAMP), 'utf8')) as {
+    const read = JSON.parse(await readFile(join(home, CODEX_KEY_STAMP), 'utf8')) as {
       setAt?: unknown
     }
     return typeof read.setAt === 'number' ? read.setAt : null
@@ -96,9 +103,9 @@ async function bringTheCodexKeyToNow(
       throw new AuthUnavailableError('codex', error.message)
     throw error
   }
-  const stamp = codexKeyStampOf(home)
+  const stamp = await codexKeyStampOf(home)
   if (current !== null) {
-    if (stamp === current.setAt && existsSync(join(home, 'auth.json'))) return 'the-key'
+    if (stamp === current.setAt && (await isPresent(join(home, 'auth.json')))) return 'the-key'
     const done = await codexKey.change(home, { to: 'the-key', apiKey: current.key })
     if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
     if (done.authMethod !== 'apikey') {
@@ -108,7 +115,7 @@ async function bringTheCodexKeyToNow(
           'Save it again there, or remove it to use your sign-in instead.',
       )
     }
-    writeFileSync(join(home, CODEX_KEY_STAMP), `${JSON.stringify({ setAt: current.setAt })}\n`, {
+    await writeFile(join(home, CODEX_KEY_STAMP), `${JSON.stringify({ setAt: current.setAt })}\n`, {
       mode: 0o600,
     })
     return 'the-key'
@@ -116,7 +123,7 @@ async function bringTheCodexKeyToNow(
   if (stamp === null) return 'its-login'
   const done = await codexKey.change(home, { to: 'no-key' })
   if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
-  rmSync(join(home, CODEX_KEY_STAMP), { force: true })
+  await rm(join(home, CODEX_KEY_STAMP), { force: true })
   return 'its-login'
 }
 
@@ -263,10 +270,10 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       const codexKey = seams.key
       if (codexKey === undefined) return null
 
-      const homes = paths
-        .profiles()
-        .map((profileId) => paths.homeOf(profileId))
-        .filter((home) => existsSync(home))
+      const homes: string[] = []
+      for (const home of paths.profiles().map((profileId) => paths.homeOf(profileId))) {
+        if (await isPresent(home)) homes.push(home)
+      }
       let failed = 0
       for (const home of homes) {
         try {
