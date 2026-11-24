@@ -26,6 +26,7 @@ export interface SavedMethod {
   readonly verified: string
   /** Its file, in the profile's saved-methods folder. */
   readonly path: string
+  readonly modifiedAt: number
 }
 
 /** A profile's saved methods as one launch read them. */
@@ -128,11 +129,9 @@ export function readSavedMethods(folder: string, now: number): SavedMethodsReadi
         leftOut += 1
         continue
       }
-      methods.push({ title, when, verified, path })
+      methods.push({ title, when, verified, path, modifiedAt: method.mtimeMs })
     }
-    const sent = methods
-      .map((one) => `- ${one.title} — ${one.when} — verified ${one.verified} — ${one.path}`)
-      .join('\n')
+    const sent = methods.map(savedMethodLine).join('\n')
     const bytes = Buffer.byteLength(sent, 'utf8')
     if (bytes > SAVED_METHODS_MOST_INDEX_BYTES) throw new Refused({ kind: 'too-large', bytes })
     return {
@@ -176,10 +175,20 @@ const OPENING =
   'instruction above; where they differ, the instructions win. Open a method only ' +
   'when it applies, and check it still holds before relying on it.'
 
-const notSent = (why: string): string => `The index was not sent: ${why}.`
+export function savedMethodsRefusalNotice(refusal: SavedMethodsRefusal): string {
+  return `The index was not sent: ${savedMethodsRefusalSaid(refusal)}.`
+}
 
 const howToSave = (folder: string): string =>
   `To save a method when you may save memory: write it as one file of at most 16 KiB in ${folder}, then add one line for it to ${join(folder, SAVED_METHODS_INDEX)} in this form: \`${SAVED_METHOD_LINE_FORM}\`. The index is sent only while it stays under 4 KiB.`
+
+export function savedMethodLine(method: SavedMethod): string {
+  return `- ${method.title} — ${method.when} — verified ${method.verified} — ${method.path}`
+}
+
+export function savedMethodsHelp(folder: string): string {
+  return `${OPENING}\n\n${howToSave(folder)}`
+}
 
 /** The saved-methods section as sent to the model and kept in its record. */
 export function savedMethodsParagraphs(reading: SavedMethodsReading): string[] {
@@ -188,7 +197,7 @@ export function savedMethodsParagraphs(reading: SavedMethodsReading): string[] {
   return [
     OPENING,
     reading.kind === 'refused'
-      ? notSent(savedMethodsRefusalSaid(reading.refusal))
+      ? savedMethodsRefusalNotice(reading.refusal)
       : (index ?? 'None saved yet.'),
     howToSave(reading.folder),
   ]

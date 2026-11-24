@@ -172,7 +172,6 @@ export interface MemoryPolicy<H extends ProviderHostValues> {
 }
 export interface SkillPolicy<H extends ProviderHostValues> {
   asGiven(listed: ListedSkills | null, builtIn: boolean): H['givenSkills']
-  needsReminders(confirmed: () => boolean | undefined): boolean
   readonly builtInScope: string | null
   readonly discoveryRoot: string
   initialFiles(): Map<string, string>

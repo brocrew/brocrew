@@ -1167,8 +1167,8 @@ export function createSessionStore(
   const selectTurnBlockCandidates = db.prepare(
     `SELECT id AS piece, owner_session_id AS owner FROM work
       WHERE given_by_session_id = ?
-        AND (? IS NULL OR (created_at, id) > (SELECT created_at, id FROM work WHERE id = ?))
-      ORDER BY created_at, id LIMIT ?`,
+        AND (? IS NULL OR (created_at, id) < (SELECT created_at, id FROM work WHERE id = ?))
+      ORDER BY created_at DESC, id DESC LIMIT ?`,
   )
   const selectReconciliationOwners = db.prepare('SELECT DISTINCT owner_session_id AS id FROM work')
   const selectReconciliationOwnersWithFailures = db.prepare(

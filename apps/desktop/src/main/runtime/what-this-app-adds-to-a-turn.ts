@@ -45,7 +45,6 @@ export const TURN_BLOCK_WORDS = {
   currentUnavailable: 'Your current work is not available. list_tasks shows what you hold.',
   untitled: 'untitled',
   noStatus: 'none',
-  helperUnknown: (label: string): string => `${label} · status unknown: list_tasks reads it`,
   helper: (
     conversation: string,
     label: string,
@@ -165,12 +164,12 @@ function oneLine(text: string, limit: number): string {
 function extraLines(facts: ExtraTurnFacts, now: number): string[] {
   const lines: string[] = []
   if (facts.helpers !== undefined) {
-    const { rows, more } = facts.helpers
+    const { more } = facts.helpers
+    const rows = facts.helpers.rows.filter((row) => row.state !== null)
     if (rows.length > 0) lines.push(TURN_BLOCK_WORDS.helpersHeading)
     lines.push(
       ...rows.slice(0, 5).map((row) => {
         const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
-        if (row.state === null || label !== row.label) return TURN_BLOCK_WORDS.helperUnknown(label)
         if (row.providerTurnFailure !== undefined) {
           const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
           const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)
@@ -180,7 +179,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
           row.conversation,
           label,
           oneLine(row.name, 64),
-          oneLine(row.state, 100),
+          oneLine(row.state!, 100),
           row.changedAt === null ? null : howLongAgo(row.changedAt, now),
           facts.contextOf?.(row.owner) ?? null,
         )}`

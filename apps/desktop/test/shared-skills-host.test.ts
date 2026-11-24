@@ -9,7 +9,7 @@ afterEach(async () => {
   await world.dispose()
 })
 it.each(['claude', 'codex'] as const)(
-  'hands every %s profile the shared root at start/resume and tells each turn where to write',
+  'hands every %s profile the shared root at start and resume without repeating it in the footer',
   async (provider) => {
     const root = join(world.userData, 'skills')
     const beforeSkillDiscovery = async () => {}
@@ -40,9 +40,7 @@ it.each(['claude', 'codex'] as const)(
       expect(world.end.newest().options.sharedSkillsRoot).toBe(root)
       expect(world.end.newest().options.beforeSkillDiscovery).toBe(beforeSkillDiscovery)
       await host.send(id, 'Check the fictional recipe.', world.window)
-      expect(world.end.newest().sends.at(-1)).toContain(
-        `Shared skills: ${root}. Add or edit a skill there; every agent sees it from its next turn.`,
-      )
+      expect(world.end.newest().sends.at(-1)).not.toContain(`Shared skills: ${root}`)
       await host.close(id, world.window)
       await firstLifetime.until
       expect(firstLifetime.settled).toBe(true)
@@ -52,7 +50,7 @@ it.each(['claude', 'codex'] as const)(
       expect(lifetimes.at(-1)!.until).not.toBe(firstLifetime.until)
       expect(lifetimes.at(-1)!.settled).toBe(false)
       await host.send(id, 'Check it again.', world.window)
-      expect(world.end.newest().sends.at(-1)).toContain(`Shared skills: ${root}.`)
+      expect(world.end.newest().sends.at(-1)).not.toContain(`Shared skills: ${root}`)
       await host.close(id, world.window)
       await lifetimes.at(-1)!.until
       expect(lifetimes.at(-1)!.settled).toBe(true)

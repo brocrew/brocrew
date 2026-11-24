@@ -10,7 +10,6 @@ export const skills: SkillPolicy = {
     dropped: null,
     why: builtIn ? 'not-listed-yet' : 'no-skill-files',
   }),
-  needsReminders: (confirmed) => confirmed() !== true,
   builtInScope: 'plugin',
 
   discoveryRoot: 'claude-plugin',

@@ -286,6 +286,7 @@ export async function composeRuntimeHost(
     },
     skillImports: (from, to) => sharedSkills.recentImports(from, to),
     sharedSkillsRoot: () => sharedDiscovery.root(),
+    readPromptSkills: () => sharedDiscovery.promptSkillsAtHand(),
     prepareSharedSkills: () => sharedDiscovery.prepareLaunch(),
     beforeSkillDiscovery: () => sharedDiscovery.library.beforeOffer(),
     closeSharedSkills: () => sharedDiscovery.close(),
@@ -426,6 +427,7 @@ export async function composeRuntimeHost(
     whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
     providerSnapshot: (provider, model) => snapshotFor(provider, model),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+    savedMethodsFolderFor: (profile) => savedMethodsFolder(userData, profile),
     readSavedMethodsFor: (profile, at) =>
       readSavedMethods(savedMethodsFolder(userData, profile), at),
     readInstructions: (provider, cwd, providerHome, context, launchPack) => {

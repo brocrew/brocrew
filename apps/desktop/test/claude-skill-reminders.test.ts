@@ -1,119 +1,80 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import {
-  FakeRuntime,
-  FakeProviderSessions,
-  type ResumeOptions,
-  type SessionHandle,
-  type SessionRef,
-  type StartOptions,
-} from '@brobot2/runtime'
-import { openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import { readSavedMethods } from '../src/main/saved-methods'
+import { F093World } from './lib/f093-host'
 
-for (const provider of ['claude', 'codex'] as const) {
-  it(`${provider}: skill reminders follow the catalogue receipt and survive its absence and reopen`, async () => {
-    const root = mkdtempSync(join(tmpdir(), 'fictional-skill-reminders-'))
-    const db = openDatabase(join(root, 'records.sqlite'))
-    applyMigrations(db, join(import.meta.dirname, '../src/main/db/migrations'))
-    const store = createSessionStore(db)
-    const sent: string[] = []
-    const sessions = new FakeProviderSessions()
-    let handle: SessionHandle | undefined
-    let confirmed = false
-    let serial = 0
-    const observe = <T extends SessionHandle>(opened: T): T => {
-      handle = opened
-      confirmed = false
-      opened.builtInSkillsConfirmed = () => confirmed
-      const send = opened.send.bind(opened)
-      opened.send = (text, provenance) => {
-        sent.push(text)
-        return send(text, provenance)
-      }
-      return opened
-    }
-    class ObservedRuntime extends FakeRuntime {
-      override async start(options: StartOptions) {
-        return observe(await super.start(options))
-      }
-      override async resume(ref: SessionRef, options: ResumeOptions) {
-        return observe(await super.resume(ref, options))
-      }
-    }
-    const sink: RuntimeEventSink = {
-      ownerId: 'fictional-window',
-      aPersonIsBehindIt: true,
-      alive: true,
-      send() {},
-      sendLiveness() {},
-    }
-    const reminder = 'fictional-guide — Read a fictional guide.'
-    const host = new RuntimeHost({
-      store,
-      createRuntime: (kind) => new ObservedRuntime(kind, { sessions }),
-      newSessionId: () => `fictional-session-${++serial}`,
-      prepareProviderHome: (kind, profile) => {
-        const home = join(root, profile, kind)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (kind, profile) => join(root, profile, kind),
-      sharedSkillsRoot: async () => join(root, 'shared'),
-      prepareBuiltInSkills: async () => ({
-        context: { root: join(root, 'skills'), skills: [] },
-        reminder,
-        version: 'fictional-v1',
-        isCurrent: () => true,
-      }),
-      readProviderConfig: (_kind, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fictional-model',
-        authNote: null,
-        files: [],
-      }),
-      resolveCwd: (_id, requested) => requested ?? root,
-      exportDirectory: () => join(root, 'exports'),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-    })
+it.each(['claude', 'codex'] as const)(
+  '%s names only changed skills and methods after their first delivery and across a reopen',
+  async (provider) => {
+    const world = new F093World()
     try {
-      const { sessionId } = await host.createSession(
-        { provider, profileId: 'fictional-reader', cwd: root, approvalMode: 'auto' },
-        sink,
-      )
+      const root = join(world.userData, 'skills')
+      const methods = join(world.userData, 'methods')
+      mkdirSync(methods, { recursive: true })
+      const first = '- Rotate the fictional log | weekly | verified 2026-10-12 | rotate.md'
+      writeFileSync(join(methods, 'rotate.md'), '# Rotate\n')
+      writeFileSync(join(methods, 'index.md'), first + '\n')
+      let revision = 'original'
+      const builtInGuide = 'built-in-guide — Use the fictional built-in skill.'
+      const host = world.buildHost(true, {
+        readPromptSkills: () => ({
+          root,
+          entries: [
+            { id: 'shared:guide', name: 'Fictional guide', revision },
+            { id: 'built-in:guide', name: 'Unchanged guide', revision: 'always' },
+          ],
+        }),
+        savedMethodsFolderFor: () => methods,
+        readSavedMethodsFor: (_profile, at) => readSavedMethods(methods, at),
+        prepareBuiltInSkills: async () => ({
+          context: { root, skills: [] },
+          reminder: builtInGuide,
+          version: 'fictional-v1',
+          isCurrent: () => true,
+        }),
+      })
+      const id = await world.open(host, provider, 'fictional-reader')
       const turn = async (text: string) => {
-        await vi.waitFor(() => expect(handle?.status()).toBe('idle'))
-        await host.send(sessionId, text, sink)
-        await vi.waitFor(() => expect(handle?.status()).toBe('idle'))
-        const words = sent.at(-1)!
-        expect(words).toContain(`Shared skills: ${join(root, 'shared')}`)
-        return words
+        const endpoint = world.end.newest()
+        await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+        await host.send(id, text, world.window)
+        await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+        return endpoint.sends.at(-1) ?? ''
       }
-      expect(await turn('Read the first fictional guide.')).toContain(reminder)
-      confirmed = true
-      expect((await turn('Read after catalogue confirmation.')).includes(reminder)).toBe(
-        provider === 'codex',
+      const firstWords = await turn('Read the first fictional guide.')
+      const firstFooter = firstWords.slice(firstWords.indexOf('This app adds what follows'))
+      const start = world.end.newest().options.systemHint ?? firstWords
+      expect(start).toContain('To save a method')
+      expect(start).toContain(builtInGuide)
+      expect(firstFooter).toContain('Rotate the fictional log')
+      expect(firstFooter).not.toContain('To save a method')
+      expect(firstFooter).not.toContain(builtInGuide)
+      expect(firstFooter).not.toContain('Unchanged guide')
+
+      revision = 'edited body'
+      writeFileSync(join(methods, 'check.md'), '# Check\n')
+      writeFileSync(
+        join(methods, 'index.md'),
+        first + '\n- Check the fictional backup | weekly | verified 2026-10-12 | check.md\n',
       )
-      if (handle) delete handle.builtInSkillsConfirmed
-      expect(await turn('Read without a catalogue receipt.')).toContain(reminder)
-      await host.close(sessionId, sink)
-      await host.resumeSession(sessionId, sink)
-      expect(await turn('Read after reopening.')).toContain(reminder)
-      confirmed = true
-      expect((await turn('Read after the new confirmation.')).includes(reminder)).toBe(
-        provider === 'codex',
-      )
+      const changed = await turn('Read the changes.')
+      expect(changed).toContain('Shared skill (observed at')
+      expect(changed).toContain('Fictional guide')
+      expect(changed).not.toContain('Unchanged guide')
+      expect(changed).toContain('Check the fictional backup')
+      expect(changed).not.toContain('Rotate the fictional log')
+
+      await host.close(id, world.window)
+      await host.resumeSession(id, world.window)
+      const repeated = await turn('Read after reopening.')
+      expect(repeated).not.toContain('Fictional guide')
+      expect(repeated).not.toContain('Unchanged guide')
+      expect(repeated).not.toContain('Check the fictional backup')
+      expect(repeated).not.toContain('Rotate the fictional log')
+      expect(repeated).not.toContain(builtInGuide)
     } finally {
-      await host.closeAll()
-      db.close()
-      rmSync(root, { recursive: true, force: true })
+      await world.dispose()
     }
-  })
-}
+  },
+)

@@ -46,6 +46,7 @@ import type { LimitsWriterStamp } from '../db/fresh-limits-snapshot'
 import type { WindowWriterStamp } from '../db/window-writer-stamp'
 import type { WindowReadQuery, WindowStoreReader } from '../db/window-read-protocol'
 import type { SavedMethodService } from '../saved-method-service'
+import type { PromptSkillsReading } from '../skills/shared-discovery'
 import type { MemoryService } from './agent-memory'
 import type { LaunchProfileFile } from './what-this-agent-was-given'
 import type { SnapshotAnswer } from '../../shared/provider-snapshots'
@@ -61,9 +62,11 @@ export interface RuntimeHostDeps {
   prepareSharedSkills?: () => Promise<void>
   beforeSkillDiscovery?: () => Promise<void>
   sharedSkillsRoot?: () => Promise<string>
+  readPromptSkills?(): PromptSkillsReading | undefined
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
   savedMethods?: SavedMethodService
+  savedMethodsFolderFor?(profile: string): string
   readSavedMethodsFor?(profile: string, at: number): SavedMethodsReading
   skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 

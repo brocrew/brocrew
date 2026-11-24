@@ -905,6 +905,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     await reopen(app, id)
     await saying(app, id, 'again')
     expect(sentTo(atReopen)).toContain(SECOND)
+    expect(sentTo(atReopen)).not.toContain(TITLE)
     const ledgerNow = rowsBesideTheLaunches(app, id)
     expect(ledgerNow).toContain(TITLE)
     expect(ledgerNow).toContain(SECOND)

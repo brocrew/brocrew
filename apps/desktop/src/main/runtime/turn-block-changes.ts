@@ -19,6 +19,7 @@ export interface PromptUpdate {
   readonly observed?: boolean
   readonly untimed?: boolean
   readonly empty?: boolean
+  readonly group?: boolean
 }
 
 export interface TurnBlockSnapshot {
@@ -37,6 +38,7 @@ export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
 export function turnBlockChanges(
   input: {
     readonly promptUpdates?: readonly PromptUpdate[]
+    readonly readCollections?: readonly ('method:' | 'skill:')[]
     readonly now: number
     readonly person: boolean
     readonly helpers: readonly AHelperInTheTurn[]
@@ -56,21 +58,38 @@ export function turnBlockChanges(
     currentWork: CurrentWorkInTheTurn
   } = { currentWork: input.current }
   const promptUpdates = { ...before.promptUpdates }
+  let baselineChanged = false
   const profileChanges: string[] = []
-  for (const update of input.promptUpdates ?? []) {
+  const grouped = new Map<string, string[]>()
+  const updates = input.promptUpdates ?? []
+  if (input.readCollections?.length) {
+    const present = new Set(updates.map(({ key }) => key))
+    for (const key of Object.keys(promptUpdates) as (keyof PromptUpdateBaseline)[]) {
+      if (input.readCollections.some((prefix) => key.startsWith(prefix)) && !present.has(key)) {
+        delete promptUpdates[key]
+        baselineChanged = true
+      }
+    }
+  }
+  for (const update of updates) {
     const seen = promptUpdates[update.key]
     if (seen === update.revision || (seen === undefined && update.empty)) continue
     const when = new Date(update.at).toISOString()
     const timing = update.observed ? `observed at ${when}` : `changed at ${when}`
-    profileChanges.push(
-      update.untimed ? update.text : `${update.description} (${timing}).\n\n${update.text}`,
-    )
+    const heading = `${update.description} (${timing}).`
+    if (update.group) {
+      const lines = grouped.get(heading)
+      if (lines === undefined) grouped.set(heading, [update.text])
+      else lines.push(update.text)
+    } else profileChanges.push(update.untimed ? update.text : `${heading}\n\n${update.text}`)
     promptUpdates[update.key] = update.revision
+    baselineChanged = true
   }
+  for (const [heading, lines] of grouped) profileChanges.push(`${heading}\n\n${lines.join('\n')}`)
   if (profileChanges.length > 0) extra.profileChanges = profileChanges
   const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
     left.givenAt - right.givenAt || left.label.localeCompare(right.label)
-  const eligible = [...input.helpers].sort(order)
+  const eligible = input.helpers.filter((row) => row.state !== null).sort(order)
   const urgent = eligible.filter((row) => row.urgent)
   const allUrgentFit = urgent.length <= TURN_HELPER_LINES
   const fixed = allUrgentFit ? urgent : []
@@ -103,7 +122,9 @@ export function turnBlockChanges(
       return row
     }),
     more: eligible.length - rows.length,
-    ...(input.helpersIncomplete ? { incomplete: true } : {}),
+    ...(input.helpersIncomplete || eligible.length !== input.helpers.length
+      ? { incomplete: true }
+      : {}),
   }
   const due =
     input.person ||
@@ -120,7 +141,7 @@ export function turnBlockChanges(
   return {
     extra,
     next: {
-      promptUpdates: profileChanges.length > 0 ? promptUpdates : before.promptUpdates,
+      promptUpdates: baselineChanged ? promptUpdates : before.promptUpdates,
       rotation,
       personWait:
         input.personWait === null

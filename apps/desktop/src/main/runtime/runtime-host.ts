@@ -1,5 +1,4 @@
-import { savedMethodsParagraphs } from '../saved-methods'
-import { SAVED_METHODS_HEADING } from './instruction-headings'
+import { savedMethodLine, savedMethodsHelp, savedMethodsRefusalNotice } from '../saved-methods'
 import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
 import { AgentCreation } from './agent-creation'
@@ -20524,6 +20523,8 @@ export class RuntimeHost implements LiveHost {
     const profileSlug = profileId === null ? null : foldProfileName(profileId)
     const notes = profileSlug === null ? null : this.deps.store.currentOwnNotesOf(profileSlug)
     const rules = profileSlug === null ? null : this.currentRulesOf(profileSlug)
+    const methodsFolder =
+      profileSlug === null ? undefined : this.deps.savedMethodsFolderFor?.(profileSlug)
     return {
       // ⛔ **`null` is passed on rather than folded to the default**, found reviewing this diff.
       // `reopenSession` DOES fold it that way one line up — for the DIRECTORY, because an adopted
@@ -20539,6 +20540,8 @@ export class RuntimeHost implements LiveHost {
           : (this.deps.store.agentIdentities().find((one) => one.slug === profileSlug)
               ?.displayName ?? null),
       cwd,
+      savedMethodsHelp: methodsFolder === undefined ? undefined : savedMethodsHelp(methodsFolder),
+      sharedSkillsDirectory: this.deps.readPromptSkills?.()?.root,
       peerRoster:
         profileSlug === null
           ? undefined
@@ -20604,6 +20607,12 @@ export class RuntimeHost implements LiveHost {
       rules: String(context.rulesVersion ?? 0),
       plugins: sha256Hex(Buffer.from(pluginInstructionSection(context.plugins ?? null) ?? '')),
       starter: context.startedBy ?? '',
+      ...Object.fromEntries(
+        (this.deps.readPromptSkills?.()?.entries ?? []).map(({ id, revision }) => [
+          `skill:${id}`,
+          revision,
+        ]),
+      ),
     }
   }
 
@@ -20615,10 +20624,14 @@ export class RuntimeHost implements LiveHost {
     parent: string | null,
     conversation: string,
     pack: TextPackRead | undefined,
+    builtInSkillGuide: string | undefined,
   ) {
     const reader = this.deps.readInstructions
     if (reader === undefined) return undefined
-    const context = this.instructionContext(profile, cwd, parent, conversation)
+    const context = {
+      ...this.instructionContext(profile, cwd, parent, conversation),
+      builtInSkillGuide,
+    }
     const read = reader(provider, cwd, providerHome, context, pack)
     return { ...read, context: read.context ?? context }
   }
@@ -20839,6 +20852,7 @@ export class RuntimeHost implements LiveHost {
       parent,
       id,
       pack,
+      builtInSkills?.reminder,
     )
     const systemHint = instructions?.systemHint
     // Plan mode (030): propose first, act after. Wired on BOTH providers now — the comment here
@@ -22151,7 +22165,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       next: changed.next,
       words: '',
     }
-    const added = whatThisAppAddsToATurn({
+    return whatThisAppAddsToATurn({
       now,
       aPersonStartedIt,
       thePersonLastWroteAt: session.aPersonLastWroteAt,
@@ -22165,19 +22179,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         contextOf: (id) => this.contextSizeOf(id)?.percentUsed ?? null,
       },
     })
-    const sharedRoot = session.builtInSkills?.sharedRoot
-    const context = sharedRoot
-      ? `${added}\nShared skills: ${sharedRoot}. Add or edit a skill there; every agent sees it from its next turn.`
-      : added
-    if (
-      !session.builtInSkills ||
-      !providerKnowledge[session.provider].skills.needsReminders(() =>
-        session.handle.builtInSkillsConfirmed?.(),
-      )
-    )
-      return context
-    const reminders = session.builtInSkills.reminder
-    return reminders === '' ? context : `${context}\n${reminders}`
   }
 
   private profilePeers(profile: string, id: string | null): OtherConversations {
@@ -22199,6 +22200,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   }
 
   private profileFactsAtHand(session: HostedSession, now: number) {
+    const readCollections: ('method:' | 'skill:')[] = []
     const profileId = this.slots.get(session.id)?.profileId
     if (profileId == null) return {}
     const profile = foldProfileName(profileId)
@@ -22258,17 +22260,51 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     }
     const reading = this.deps.readSavedMethodsFor?.(profile, now)
     if (reading !== undefined) {
-      const text = [`## ${SAVED_METHODS_HEADING}`, ...savedMethodsParagraphs(reading)].join('\n\n')
+      const refused = reading.kind === 'refused'
+      const text = refused
+        ? savedMethodsRefusalNotice(reading.refusal)
+        : 'The saved-methods index is available again.'
       promptUpdates.push({
-        key: 'methods',
-        revision: sha256Hex(Buffer.from(text)),
+        key: 'methods-availability',
+        revision: refused ? reading.refusal.kind : 'available',
         description: 'Saved methods',
         text,
         at: now,
         observed: true,
+        empty: !refused,
       })
     }
-    return { promptUpdates }
+    if (reading !== undefined && reading.kind !== 'refused') {
+      readCollections.push('method:')
+      const methods = reading.kind === 'read' ? reading.methods : []
+      for (const method of new Map(methods.map((item) => [item.path, item])).values()) {
+        const text = savedMethodLine(method)
+        promptUpdates.push({
+          key: `method:${method.path}`,
+          revision: sha256Hex(Buffer.from(JSON.stringify([text, method.modifiedAt]))),
+          description: 'Saved methods',
+          text,
+          at: now,
+          observed: true,
+          group: true,
+        })
+      }
+    }
+    const skills = this.deps.readPromptSkills?.()
+    if (skills !== undefined) {
+      readCollections.push('skill:')
+      for (const skill of skills.entries) {
+        promptUpdates.push({
+          key: `skill:${skill.id}`,
+          revision: skill.revision,
+          description: 'Shared skill',
+          text: skill.name,
+          at: now,
+          observed: true,
+        })
+      }
+    }
+    return { promptUpdates, readCollections }
   }
 
   private factsForTheTurnBlock(
@@ -37885,6 +37921,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       slot.spawnedBy,
       sessionId,
       pack,
+      builtInSkills?.reminder,
     )
     const instructions =
       kept === null || currentInstructions === undefined

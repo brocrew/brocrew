@@ -5,6 +5,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { stat, mkdir, open, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { constants } from 'node:fs'
+import { createHash } from 'node:crypto'
 import type { ProfileSkillMetadata, SharedSkill, SkillsWindow } from '../../shared/skills-window'
 import { SkillsRequest } from '../../shared/skills-window'
 import { SharedSkillLibrary } from './shared-library'
@@ -15,6 +16,11 @@ import type { SessionStore } from '../db/session-store'
 
 export interface ProfileSkillAccess {
   readonly profileId: string
+}
+
+export interface PromptSkillsReading {
+  readonly root: string
+  readonly entries: readonly { id: string; name: string; revision: string }[]
 }
 
 /** Resolve an existing profile without creating an identity from a window request. */
@@ -64,6 +70,8 @@ export class SharedSkillDiscovery {
   private manifestReady = false
   private generation = 0
   private cached?: { generation: number; skills: readonly SharedSkill[] }
+  private promptSkills?: PromptSkillsReading
+  private refreshingPromptSkills = false
   private closed = false
   constructor(
     readonly userData: string,
@@ -77,6 +85,39 @@ export class SharedSkillDiscovery {
   private invalidate = () => {
     this.generation++
     this.cached = undefined
+    void this.refreshPromptSkills()
+  }
+
+  promptSkillsAtHand(): PromptSkillsReading | undefined {
+    return this.promptSkills
+  }
+
+  private async refreshPromptSkills(): Promise<void> {
+    if (this.closed || this.refreshingPromptSkills) return
+    this.refreshingPromptSkills = true
+    try {
+      let generation: number
+      do {
+        generation = this.generation
+        const skills = await this.list()
+        if (!this.closed && generation === this.generation) {
+          this.promptSkills = {
+            root: this.library.active,
+            entries: skills
+              .filter((skill) => skill.enabled)
+              .map((skill) => ({
+                id: `${skill.builtIn ? 'built-in' : 'shared'}:${skill.folder}`,
+                name: oneLine(skill.name, 120),
+                revision: createHash('sha256').update(skill.body).digest('hex'),
+              })),
+          }
+        }
+      } while (!this.closed && generation !== this.generation)
+    } catch (error) {
+      if (!this.closed) console.warn(`BroCrew could not refresh shared skills: ${String(error)}`)
+    } finally {
+      this.refreshingPromptSkills = false
+    }
   }
   async root(): Promise<string> {
     await this.ready
@@ -143,7 +184,7 @@ export class SharedSkillDiscovery {
         watcher.unref()
       }
     } catch {
-      this.invalidate()
+      this.cached = undefined
     }
   }
   close(): void {
@@ -155,7 +196,9 @@ export class SharedSkillDiscovery {
   async prepareLaunch(): Promise<void> {
     await this.root()
     await this.library.convert(async () => [])
-    this.invalidate()
+    this.generation++
+    this.cached = undefined
+    await this.refreshPromptSkills()
   }
   async list(): Promise<readonly SharedSkill[]> {
     await this.root()

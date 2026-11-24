@@ -138,7 +138,6 @@ function fernModule(): ProviderModule<FernValues> {
       asGiven: (listed: ListedSkills | null) => ({
         commands: listed?.commands.map((command) => command.name) ?? [],
       }),
-      needsReminders: () => false,
       builtInScope: null,
       discoveryRoot: 'fern',
       initialFiles: () => new Map(),

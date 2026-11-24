@@ -486,6 +486,9 @@ export interface InstructionContext {
    */
   readonly startedBy: string | null
   readonly peerRoster?: string
+  readonly savedMethodsHelp?: string
+  readonly sharedSkillsDirectory?: string
+  readonly builtInSkillGuide?: string
   readonly rulesVersion?: number
   /** A service gets the service text after the core. */
   readonly isAService?: true
@@ -552,6 +555,12 @@ function dynamicLayer(context: InstructionContext): string[] {
     )
   }
   if (context.peerRoster) lines.push(context.peerRoster)
+  if (context.sharedSkillsDirectory)
+    lines.push(
+      `- Shared skills: ${context.sharedSkillsDirectory}. Add or edit a skill there; changes appear in a later turn.`,
+    )
+  if (context.builtInSkillGuide) lines.push(context.builtInSkillGuide.trimEnd())
+  if (context.savedMethodsHelp) lines.push(`\n${context.savedMethodsHelp}`)
   return lines
 }
 

@@ -496,7 +496,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     },
   )
   it.each(['claude', 'codex'] as const)(
-    '%s starts with zero selected skills and resumes with current personal versions and installed reminders',
+    '%s starts with zero selected skills and records the current personal versions on resume',
     async (provider) => {
       const seeded = await personOpens('worker', provider)
       await host.closeAll()
@@ -518,13 +518,14 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(launchContexts.at(-1)?.context?.skills).toHaveLength(11)
       const source = catalogue.detail('person/crumb-check')!
       const block = await theBlockOfATurn(worker, 'Check the fictional recipe.', window, window)
-      expect(block).toContain(`${source.alias} — Check quantities.`)
+      expect(block).not.toContain(`${source.alias} — Check quantities.`)
       const launched = ledger(worker)
         .filter((event) => event.type === 'launched')
         .at(-1)
       if (!launched || launched.type !== 'launched') throw new Error('Missing launch record')
       const given = aLaunchRecordIn(launched.given)
       expect(given?.builtInSkills?.listed).toHaveLength(11)
+      expect(given?.builtInSkills?.reminder).toContain(`${source.alias} — Check quantities.`)
       expect(given?.builtInSkills?.versions?.find((one) => one.id === source.id)?.versionId).toBe(
         source.versionId,
       )
@@ -533,18 +534,24 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         revision(),
         source.versionId,
       )
-      expect(composedEndOfTheCurrentLife(worker)).toContain(`${source.alias} — Check quantities.`)
+      expect(composedEndOfTheCurrentLife(worker)).not.toContain(
+        `${source.alias} — Check quantities.`,
+      )
       expect(composedEndOfTheCurrentLife(worker)).not.toContain('Check fictional temperatures.')
       const current = composedEndOfTheCurrentLife(worker)
-      expect(current).toContain('build-a-team — ')
-      expect(current).toContain('add-a-capability — ')
-      expect(current).toContain(`${source.alias} — Check quantities.`)
+      expect(current).not.toContain('build-a-team — ')
+      expect(current).not.toContain('add-a-capability — ')
       await host.close(worker, window)
       await host.resumeSession(worker, window)
       expect(launchContexts.at(-1)?.context?.skills).toHaveLength(11)
-      expect(composedEndOfTheCurrentLife(worker)).toContain(
+      const reopened = ledger(worker)
+        .filter((event) => event.type === 'launched')
+        .at(-1)
+      const resumed = aLaunchRecordIn(reopened?.given)
+      expect(resumed?.builtInSkills?.reminder).toContain(
         `${source.alias} — Check fictional temperatures.`,
       )
+      expect(composedEndOfTheCurrentLife(worker)).not.toContain('Check fictional temperatures.')
       expect(seeded).not.toBe(worker)
     },
   )
@@ -631,19 +638,19 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   })
 
   it.each(['claude', 'codex'] as const)(
-    '%s carries installed reminders on briefs, people, notices and resumed turns',
+    '%s stops repeating the installed skill list on briefs, person turns, notices and resume',
     async (provider) => {
       host = buildHost(true)
       const { worker, surface } = await aWorkerBetweenTurns(provider)
       await itsTurnEnds(worker, surface)
       const expected = builtInSkillReminders(provider, shipped.skills)
-      expect(handedOver(worker).at(-1)).toContain(expected)
+      expect(handedOver(worker).at(-1)).not.toContain(expected)
       const person = await theBlockOfATurn(worker, 'Fictional person request.', surface, surface)
-      expect(person).toContain(expected)
+      expect(person).not.toContain(expected)
       const notice = await theBlockOfATurn(worker, 'Fictional app notice.', THE_APP_ITSELF, surface)
-      expect(notice).toContain(expected)
-      expect(notice).toContain('build-a-team — ')
-      expect(notice).toContain('add-a-capability — ')
+      expect(notice).not.toContain(expected)
+      expect(notice).not.toContain('build-a-team — ')
+      expect(notice).not.toContain('add-a-capability — ')
       await host.closeAll()
       host = buildHost(true)
       await host.resumeSession(worker, surface)
@@ -652,7 +659,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         () => handedOver(worker).some((one) => one.includes('Fictional resumed request.')),
         'resumed words',
       )
-      expect(handedOver(worker).at(-1)).toContain(expected)
+      expect(handedOver(worker).at(-1)).not.toContain(expected)
       await itsTurnEnds(worker, surface)
     },
   )
@@ -765,7 +772,11 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           extra: changed.extra,
         })
       }
-      expect(store.turnBlockCandidates(pm, 257)).toHaveLength(257)
+      const firstPage = store.turnBlockCandidates(pm, 257)
+      expect(firstPage).toHaveLength(257)
+      expect(firstPage?.slice(0, open.length).map((row) => row.piece)).toEqual(
+        open.map((row) => row.piece).reverse(),
+      )
       const first = render()
       expect(first).toContain('Work you gave, still open:')
       expect(first).toContain('and 7 more: list_tasks')
@@ -824,7 +835,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(after).not.toContain('task ' + ended.label + ' · ')
     })
 
-    it('names the unreadable given task without inferring its state', async () => {
+    it('omits the unreadable given task and leaves the work list incomplete', async () => {
       const { pm, worker } = await aWorkerHoldingWork()
       db.prepare(
         'INSERT INTO events(id,session_id,generation,ordinal,type,payload,created_at) VALUES(?,?,0,?,?,?,?)',
@@ -843,8 +854,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           }
         }
       ).factsForTheTurnBlock({ id: pm }, null)
-      const [unread] = facts.helpers
-      expect(unread).toMatchObject({ owner: worker, state: null })
+      expect(facts.helpers).toEqual([])
       expect(facts.nobodyWaiting).toBe(false)
       const changed = turnBlockChanges({ ...facts, person: true, now: tick() }, EMPTY_TURN_BLOCK)
       const block = whatThisAppAddsToATurn({
@@ -855,7 +865,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
         extra: changed.extra,
       })
-      expect(block).toContain(unread!.label + ' · status unknown: list_tasks reads it')
+      expect(block).toContain('list_tasks shows the work you gave.')
+      expect(block).not.toContain('status unknown')
       expect(block).not.toContain(TURN_BLOCK_WORDS.nobody)
       expect(block).not.toContain('no change')
     })
@@ -1091,6 +1102,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           selected: string | null,
         ): {
           helpers: unknown
+          helpersIncomplete: boolean
           nobodyWaiting: boolean
           personWait: string | null
           questions: { id: string }[] | null
@@ -1101,7 +1113,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         Array.from({ length: 257 }, (_, i) => ({ piece: `fiction-${i}`, owner: worker }))
       try {
         const overflow = facts.factsForTheTurnBlock({ id: pm }, null)
-        expect(overflow.helpers).toHaveLength(256)
+        expect(overflow.helpers).toEqual([])
+        expect(overflow.helpersIncomplete).toBe(true)
         expect(overflow.nobodyWaiting).toBe(false)
         expect(overflow.personWait).toBeNull()
         expect(overflow.questions?.map((row) => row.id)).toContain(question)
@@ -1137,11 +1150,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
             factsForTheTurnBlock(
               session: { id: string },
               piece: null,
-            ): { helpers: unknown; nobodyWaiting: boolean }
+            ): { helpers: unknown; helpersIncomplete: boolean; nobodyWaiting: boolean }
           }
         ).factsForTheTurnBlock({ id: pm }, null)
         expect(touched).toEqual(candidates.slice(0, 32).map((row) => row.owner))
-        expect(facts.helpers).toHaveLength(33)
+        expect(facts.helpers).toHaveLength(32)
+        expect(facts.helpersIncomplete).toBe(true)
         expect(facts.nobodyWaiting).toBe(false)
       } finally {
         store.turnBlockCandidates = candidatesBefore

@@ -50,7 +50,7 @@ describe('turn block changes', () => {
       untimed: true,
     }
     const methods = {
-      key: 'methods' as const,
+      key: 'method:rotate.md' as const,
       revision: 'rotate',
       description: 'Saved methods',
       text: '## Saved methods\n\nRotate logs',
@@ -161,7 +161,6 @@ describe('turn block changes', () => {
       "Conversation W1.1 · Fictional job couldn't run: Current provider error. Check its status and settings before choosing how to continue. · task W1.2 · recorded failed turn 9"
     for (const answer of [first, second]) {
       expect(answer.extra.helpers?.rows.map((row) => row.label)).toEqual([
-        'W1.4',
         'W1.1',
         'W1.2',
         'W1.3',
@@ -171,7 +170,8 @@ describe('turn block changes', () => {
       expect(text.split('\n').filter((line) => line.includes("couldn't run"))).toEqual([
         `- ${diagnosis}`,
       ])
-      expect(text).toContain(TURN_BLOCK_WORDS.helperUnknown('W1.4'))
+      expect(text).not.toContain('W1.4')
+      expect(text).toContain('list_tasks shows the work you gave.')
       expect(text).not.toContain(older.message)
     }
   })
@@ -236,9 +236,9 @@ describe('turn block changes', () => {
     const shown = turnBlockChanges({ ...input, helpers: rows }, EMPTY_TURN_BLOCK)
     const rendered = block(shown.extra)
     expect(shown.extra.helpers?.rows).toHaveLength(5)
-    expect(rendered).toContain('W1.2 · status unknown: list_tasks reads it')
-    expect(rendered).toContain('and 2 more: list_tasks')
-    expect(rendered).not.toContain("Helpers' status is not fully available")
+    expect(rendered).not.toContain('W1.2')
+    expect(rendered).not.toContain('and 2 more: list_tasks')
+    expect(rendered).toContain('list_tasks shows the work you gave.')
   })
 
   it('hints once per eligible reply, and never hints while somebody is waiting', () => {
@@ -261,7 +261,8 @@ describe('turn block changes', () => {
       { ...input, helpers: [{ ...helper(1), label: longLabel }] },
       EMPTY_TURN_BLOCK,
     )
-    expect(block(result.extra)).toContain('piece-1 · status unknown: list_tasks reads it')
+    expect(block(result.extra)).toContain('task piece-1')
+    expect(block(result.extra)).toContain(helper(1).state)
     expect(block(result.extra)).not.toContain(longLabel.slice(0, 20))
     expect(
       block({ currentWork: { kind: 'piece', label: longLabel, title: 'work', status: null } }),

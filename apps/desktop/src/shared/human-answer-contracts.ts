@@ -19,7 +19,19 @@ export interface HumanAnswers {
 }
 
 export type PromptUpdateBaseline = Readonly<
-  Partial<Record<'rules' | 'notes' | 'plugins' | 'starter' | 'peers' | 'methods', string>>
+  Partial<
+    Record<
+      | 'rules'
+      | 'notes'
+      | 'plugins'
+      | 'starter'
+      | 'peers'
+      | 'methods-availability'
+      | `method:${string}`
+      | `skill:${string}`,
+      string
+    >
+  >
 >
 
 /**

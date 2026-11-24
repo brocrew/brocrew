@@ -52,14 +52,23 @@ it('sees additions, edits and removals through the watcher without restarting', 
   await vi.waitFor(async () =>
     expect((await service.list()).filter((one) => !one.builtIn)).toHaveLength(1),
   )
+  const atHand = () =>
+    service.promptSkillsAtHand()?.entries.find((skill) => skill.id === 'shared:recipe-check')
+  await vi.waitFor(() => expect(atHand()).toMatchObject({ name: 'recipe-check' }))
+  const previous = atHand()?.revision
   await library.save('recipe-check/SKILL.md', text('recipe-check', 'A changed recipe.'))
   await vi.waitFor(async () =>
     expect((await service.list()).find((one) => !one.builtIn)?.body).toContain('A changed recipe.'),
   )
+  await vi.waitFor(() => {
+    expect(atHand()).toMatchObject({ name: 'recipe-check' })
+    expect(atHand()?.revision).not.toBe(previous)
+  })
   await rm(join(root, 'skills/recipe-check'), { recursive: true })
   await vi.waitFor(async () =>
     expect((await service.list()).filter((one) => !one.builtIn)).toEqual([]),
   )
+  await vi.waitFor(() => expect(atHand()).toBeUndefined())
 })
 it('lists more than eight shared folders, including duplicate native names, and moves an entire skill off and on', async () => {
   for (let n = 0; n < 12; n++)

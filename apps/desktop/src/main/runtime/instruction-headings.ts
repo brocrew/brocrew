@@ -27,6 +27,3 @@ export const THIS_CONVERSATION_HEADER = 'Composed by BroCrew for this conversati
 /** ⚑ The line above the sections of this conversation's text that changed since the thread got it. */
 export const WHAT_CHANGED_HEADER =
   'Composed by BroCrew for this conversation at this launch. These sections replace the ones of the same name you were given earlier in this conversation:'
-
-/** The heading the profile's saved methods are given under, on both providers. */
-export const SAVED_METHODS_HEADING = 'Saved methods'

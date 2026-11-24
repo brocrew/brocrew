@@ -51,7 +51,6 @@ interface WorkReadSources {
     | 'piecesAtHand'
     | 'questionsRoutedToAtHand'
     | 'piecesGivenBy'
-    | 'workById'
   >
   readonly idsForTurnRead: (id: string) => readonly string[]
   readonly isPersonsConversation: (id: string) => boolean
@@ -436,27 +435,13 @@ export class WorkReads {
     }
     const given = new Map<string, readonly PieceRow[]>()
     const helperRows = new Map<string, AHelperInTheTurn>()
-    const unknownHelper = (candidate: { piece: string; owner: string }): void => {
-      const row = this.sources.currentStore().workById(candidate.piece)
-      helperRows.set(candidate.piece, {
-        piece: candidate.piece,
-        label: row?.label ?? candidate.piece,
-        owner: candidate.owner,
-        conversation: '',
-        name: '',
-        state: null,
-        givenAt: row?.createdAt ?? 0,
-        changedAt: null,
-        urgent: false,
-      })
-    }
     const workOut = (id: string): readonly PieceRow[] => {
       const before = given.get(id)
       if (before !== undefined) return before
       const rows: PieceRow[] = []
       const givers = this.sources.idsForTurnRead(id)
       if (givers.length > TURN_HELPER_OWNERS) throw new Error('turn giver bound')
-      for (const giver of givers) {
+      readGivers: for (const giver of givers) {
         let after: string | null = null
         for (;;) {
           const candidates = this.sources
@@ -477,11 +462,10 @@ export class WorkReads {
             candidatesRead += 1
             if (candidatesRead > TURN_HELPER_PIECES) {
               helpersIncomplete = true
-              given.set(id, rows)
-              return rows
+              break readGivers
             }
             if (row === undefined || unreadOwners.has(candidate.owner)) {
-              if (id === conversation) unknownHelper(candidate)
+              helpersIncomplete = true
               continue
             }
             rows.push(row)
@@ -492,6 +476,7 @@ export class WorkReads {
           after = last
         }
       }
+      rows.sort((a, b) => a.givenAt - b.givenAt || a.piece.localeCompare(b.piece))
       given.set(id, rows)
       return rows
     }
@@ -579,9 +564,9 @@ export class WorkReads {
       )
       const raw = workOut(conversation)
       const rawStates = new Map(raw.map((row) => [row.piece, row.state]))
-      const helpers = composeWhatEachPieceIsWaitingOn(raw, waits).map((row) =>
-        this.sources.queueForTurnRead(row, { pieces: pieces(row.owner), waits }),
-      )
+      const helpers = composeWhatEachPieceIsWaitingOn(raw, waits)
+        .map((row) => this.sources.queueForTurnRead(row, { pieces: pieces(row.owner), waits }))
+        .filter((row) => TASK_IS_OPEN[row.state])
       for (const row of helpers) {
         let name = helperNames.get(row.owner)
         if (name === undefined) {

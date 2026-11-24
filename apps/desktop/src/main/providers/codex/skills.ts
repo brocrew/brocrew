@@ -22,7 +22,6 @@ export const skills: SkillPolicy = {
           dropped: listed.dropped,
           why: null,
         },
-  needsReminders: () => true,
   builtInScope: null,
 
   discoveryRoot: 'codex/skills',

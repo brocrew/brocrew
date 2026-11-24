@@ -81,6 +81,7 @@ describe('the index a launch reads', () => {
         when: 'when the log passes 1 GB',
         verified: '2026-10-12',
         path: join(folder, 'rotate-log.md'),
+        modifiedAt: expect.any(Number),
       },
     ])
     expect(reading.leftOut).toBe(0)
