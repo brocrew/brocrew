@@ -281,13 +281,11 @@ import type { CodexKeySeam } from './codex/types'
 
 /**
  * The credential seams, defaulted to the real ones. They are injectable so tests —
- * and `pnpm run ci` — never read the machine Keychain or the personal `~/.codex`.
+ * and `pnpm run ci` — never read the machine Keychain.
  */
 export interface ProviderHomeSeams {
   provisionHome?: (managedRoot: string, providerHome: string) => void | Promise<void>
   provisionCodexAuth?: (providerHome: string) => void | Promise<void>
-  /** Where this computer keeps its own Codex sign-in; `~/.codex/auth.json` when not given. */
-  machineCodexAuthPath?: () => string
   claudeAuthHealth?: () => AuthHealth | Promise<AuthHealth>
   /** The API key a person entered for a provider, or null — see `api-keys.ts`. */
   apiKey?: (provider: Provider) => string | null | Promise<string | null>
@@ -310,8 +308,6 @@ export interface ProviderRuntimeSeams {
   /** 🔒 The person's Codex key, and Codex's own login with it — see {@link CodexKeySeam}. */
   codexKey?: CodexKeySeam
   keyStatus?: (provider: Provider) => { set: boolean; unreadableReason?: string }
-  /** Where this computer keeps its own Codex sign-in; `~/.codex/auth.json` when not given. */
-  machineCodexAuthPath?: () => string
   /**
    * The person's own Claude Code by its full path, or `null` when none is installed: what a sentence
    * tells them to run to sign in. Never a copy this app's own checkout carries. Absent: `null`.
@@ -347,12 +343,10 @@ const runtimeForCodex = (seams: ProviderRuntimeSeams): CodexRuntimeSeams => ({
 const homeForCodex = (seams: ProviderHomeSeams): CodexHomeSeams => ({
   provisionHome: seams.provisionHome,
   provisionCodexAuth: seams.provisionCodexAuth,
-  machineAuthPath: seams.machineCodexAuthPath,
   key: seams.codexKey,
 })
 const authForCodex = (seams: AuthInputs): CodexAuthSeams => ({
   command: seams.codexCommand,
-  machineAuthPath: seams.machineCodexAuthPath,
   key: seams.codexKey,
 })
 

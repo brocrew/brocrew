@@ -4197,6 +4197,11 @@ type ListingReadFloor = {
   readonly read: number
 }
 
+/** One remembered refusal: a provider and the login refused, '' where only one is told apart. */
+function refusedLoginKey(provider: Provider, login: string): string {
+  return `${provider}\u0000${login}`
+}
+
 export class RuntimeHost implements LiveHost {
   /**
    * Every session id this host owns — from the moment it is RESERVED, not from the moment a
@@ -30097,7 +30102,40 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     { readonly setAt: number; readonly at: number }
   >()
   private readonly keyChanges = new Map<Provider, number>()
-  private readonly rejectedMachineLogins = new Map<Provider, object>()
+  /**
+   * Sign-ins a provider refused, by provider and the login refused: one per provider where its
+   * policy names no login a home holds, else one per login ({@link refusedLoginOfSession}).
+   */
+  private readonly rejectedMachineLogins = new Map<string, object>()
+
+  /** The login a conversation's refusal is remembered under, or null where it cannot be told. */
+  private refusedLoginOfSession(session: HostedSession): string | null {
+    const remembered = providerAuthPolicies[session.provider].remembersRejectedMachineLogin
+    if (remembered?.loginIn === undefined) return refusedLoginKey(session.provider, '')
+    const tag = session.handle.signInTag?.() ?? null
+    return tag === null ? null : refusedLoginKey(session.provider, tag)
+  }
+
+  /** The login a profile's home holds, as {@link refusedLoginOfSession} names it. */
+  private refusedLoginOfProfile(provider: Provider, profileId: string): string | null {
+    const remembered = providerAuthPolicies[provider].remembersRejectedMachineLogin
+    if (remembered?.loginIn === undefined) return refusedLoginKey(provider, '')
+    const ops = this.deps.providerAuth
+    if (!ops) return null
+    try {
+      const login = remembered.loginIn(ops.credentialHome(provider, profileId))
+      return login === null ? null : refusedLoginKey(provider, login)
+    } catch {
+      return null
+    }
+  }
+
+  /** Forget a refused login once a sign-in or a working turn shows it works; says whether one was. */
+  private forgetARefusedLogin(key: string | null, provider: Provider): boolean {
+    if (key === null || !this.rejectedMachineLogins.delete(key)) return false
+    this.providersMoved({ what: 'login', provider })
+    return true
+  }
   private readonly manualAuthChecks = new Map<string, Promise<AuthState>>()
 
   /** 🔒 **Where a provider's API key stands** — never the key, which the window is not told. */
@@ -30702,7 +30740,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
   /** A successful native setup changes what future launches can use; windows must ask again. */
   providerSetupCompleted(provider: Provider, kind: 'install' | 'signIn' = 'signIn'): void {
-    if (kind === 'signIn') this.rejectedMachineLogins.delete(provider)
+    if (kind === 'signIn') this.rejectedMachineLogins.delete(refusedLoginKey(provider, ''))
     this.modelCatalogues.forgetProviderModels(provider)
     this.providerLoginChanged(provider)
   }
@@ -30851,7 +30889,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // bounded stdin→SIGTERM→SIGKILL of the group — so this promise settling IS the child being down,
     // whereas the ten-second deadline below settles only the waiter. Registering the un-deadlined
     // promise is what makes `closeAll`'s drain wait for the process rather than for our patience.
-    const rejected = this.rejectedMachineLogins.get(provider)
+    const refusedLogin = this.refusedLoginOfProfile(provider, profileId)
+    const rejected =
+      refusedLogin === null ? undefined : this.rejectedMachineLogins.get(refusedLogin)
     const work = Promise.resolve().then(() => {
       if (launch.signal.aborted)
         return { state: 'unknown' as const, reason: 'The sign-in check was cancelled.' }
@@ -30869,16 +30909,19 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         return { state: 'unknown', reason: 'The sign-in check was cancelled.' }
       if (result.state !== 'usable' || result.login === 'api-key' || this.aKeyIsSaved(provider))
         return result
-      if (probe && this.rejectedMachineLogins.get(provider) === rejected) {
-        this.rejectedMachineLogins.delete(provider)
-        this.providersMoved({ what: 'login', provider })
+      const remembered = providerAuthPolicies[provider].remembersRejectedMachineLogin
+      if (
+        probe &&
+        remembered?.aCheckEndsIt !== false &&
+        rejected !== undefined &&
+        this.rejectedMachineLogins.get(refusedLogin!) === rejected
+      ) {
+        this.forgetARefusedLogin(refusedLogin, provider)
       }
-      return this.rejectedMachineLogins.has(provider)
-        ? {
-            state: 'stale',
-            reason:
-              'Claude refused the current sign-in. Sign in again, or check it with Claude Code.',
-          }
+      return refusedLogin !== null &&
+        this.rejectedMachineLogins.has(refusedLogin) &&
+        remembered !== undefined
+        ? { state: 'stale', reason: remembered.says }
         : result
     } catch (error) {
       // ⛔ Aborted before the sentence is written, so "we could not ask" and "nothing of ours is
@@ -31536,6 +31579,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         signIn.completed,
         this.signInDeadline(SIGN_IN_TIMEOUT_MS),
       ])
+      // A sign-in that worked ends the refusal of the login its home now holds, and only that one.
+      if (outcome.success) {
+        this.forgetARefusedLogin(this.refusedLoginOfProfile(provider, profileId), provider)
+      }
       return {
         success: outcome.success,
         ...(outcome.error ? { detail: outcome.error } : {}),
@@ -40606,12 +40653,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       // ⚑ A copy replaced by a fresh one of the same account: the account's limits still apply.
       if (session.itsCopyWasReplaced !== true) {
         if ((await session.handle.checkSignIn?.()) !== true) return
+        const refusedLogin = this.refusedLoginOfSession(session)
         if (
           rejected &&
-          this.rejectedMachineLogins.get(session.provider) === session.rejectedLoginToRenew
+          refusedLogin !== null &&
+          this.rejectedMachineLogins.get(refusedLogin) === session.rejectedLoginToRenew
         ) {
-          this.rejectedMachineLogins.delete(session.provider)
-          this.providersMoved({ what: 'login', provider: session.provider })
+          this.forgetARefusedLogin(refusedLogin, session.provider)
         }
         // ⚑ The machine's login moved: the limits the login before reached stop applying.
         this.aSignInChanged(session.provider, session.lifeSince, session.profileId)
@@ -41383,10 +41431,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       event.state === 'completed' &&
       event.onAKey !== true &&
       !this.readsAnOlderLogin(session) &&
-      !this.aKeyIsSaved(session.provider) &&
-      this.rejectedMachineLogins.delete(session.provider)
+      !this.aKeyIsSaved(session.provider)
     ) {
-      this.providersMoved({ what: 'login', provider: session.provider })
+      this.forgetARefusedLogin(this.refusedLoginOfSession(session), session.provider)
     }
 
     session.liveness.observe(event)
@@ -41461,8 +41508,11 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       !this.readsAnOlderLogin(session) &&
       !this.aKeyIsSaved(session.provider)
     ) {
-      this.rejectedMachineLogins.set(session.provider, {})
-      this.providersMoved({ what: 'login', provider: session.provider })
+      const refusedLogin = this.refusedLoginOfSession(session)
+      if (refusedLogin !== null) {
+        this.rejectedMachineLogins.set(refusedLogin, {})
+        this.providersMoved({ what: 'login', provider: session.provider })
+      }
     }
     // Existing stale-login handling is unchanged outside the one rejected-turn retry.
     if (event.type === 'error' && event.fatal) {
@@ -41479,7 +41529,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       ) {
         if (canRenewRejected) {
           session.renewItsRejectedLogin = true
-          session.rejectedLoginToRenew = this.rejectedMachineLogins.get(session.provider)
+          const refusedLogin = this.refusedLoginOfSession(session)
+          session.rejectedLoginToRenew =
+            refusedLogin === null ? undefined : this.rejectedMachineLogins.get(refusedLogin)
         }
         session.diedOnAStaleSignIn = true
         session.whatItsFailedTurnWasFor = this.whatItsTurnWasFor(session)

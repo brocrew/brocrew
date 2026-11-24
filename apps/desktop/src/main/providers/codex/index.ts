@@ -1,6 +1,4 @@
 import { authPolicy } from './auth-policy'
-import { machineLoginPresence } from './backing-login'
-export { machineLoginPresence } from './backing-login'
 import { keptRules } from './kept-rules'
 import { skills } from './skills'
 import { snapshot } from './snapshot'
@@ -12,12 +10,11 @@ import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
+  aCodexSignInIsKept,
   codexAuthHealth,
-  aNewerCodexSignInIsAvailable,
-  personalCodexAuthPath,
-  provisionCodexAuth,
-  replaceARefusedCodexCopy,
-  reprovisionCodexAuth,
+  codexSignInIsKeptAsAFile,
+  makeRoomForACodexSignIn,
+  shareCodexSignIn,
   CodexRuntime,
   createSpawnTransportFactory,
   ensureCodexMemoryConfig,
@@ -43,16 +40,17 @@ export interface CodexRuntimeSeams {
 export interface CodexHomeSeams {
   readonly provisionHome?: ProvisionHome
   readonly provisionCodexAuth?: (home: string) => void | Promise<void>
-  readonly machineAuthPath?: () => string
   readonly key?: CodexKeySeam
 }
 export interface CodexAuthSeams {
   readonly command: () => string
   readonly key?: CodexKeySeam
-  readonly machineAuthPath?: () => string
 }
 
 const CODEX_KEY_STAMP = 'brobot-api-key-login.json'
+
+/** Shown where this computer refused the links that let agents share one sign-in file. */
+const TURN_ON_DEVELOPER_MODE = 'Turn on Windows Developer Mode to share one sign-in.'
 
 function isPresent(path: string): Promise<boolean> {
   return stat(path).then(
@@ -106,8 +104,13 @@ async function bringTheCodexKeyToNow(
   const stamp = await codexKeyStampOf(home)
   if (current !== null) {
     if (stamp === current.setAt && (await isPresent(join(home, 'auth.json')))) return 'the-key'
+    // The key's login writes this home's own file, never the sign-in its account's agents share.
+    const putBack = await makeRoomForACodexSignIn(home)
     const done = await codexKey.change(home, { to: 'the-key', apiKey: current.key })
-    if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
+    if (!done.ok) {
+      await putBack()
+      throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
+    }
     if (done.authMethod !== 'apikey') {
       throw new AuthUnavailableError(
         'codex',
@@ -121,30 +124,28 @@ async function bringTheCodexKeyToNow(
     return 'the-key'
   }
   if (stamp === null) return 'its-login'
+  // The logout ends this home's key login, never the sign-in its account's agents share.
+  const putBack = await makeRoomForACodexSignIn(home)
   const done = await codexKey.change(home, { to: 'no-key' })
+  await putBack()
   if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
   await rm(join(home, CODEX_KEY_STAMP), { force: true })
   return 'its-login'
 }
 
-function theCodexCopy(
-  paths: ProviderHomePaths,
-  home: string,
-  seams: CodexHomeSeams,
-): { managedRoot: string; sourceAuthPath?: string; fallbackAuthPath?: string } {
-  const own = paths.homeOf(paths.defaultProfile)
-  return {
+/** Put a home on its account's one sign-in; see {@link shareCodexSignIn}. */
+function share(paths: ProviderHomePaths, home: string): ReturnType<typeof shareCodexSignIn> {
+  return shareCodexSignIn(home, {
     managedRoot: paths.managedRoot,
-    ...(seams.machineAuthPath === undefined ? {} : { sourceAuthPath: seams.machineAuthPath() }),
-    ...(home === own ? {} : { fallbackAuthPath: join(own, 'auth.json') }),
-  }
+    ownHome: paths.homeOf(paths.defaultProfile),
+  })
 }
 
-export function codexRuntime(seams: CodexRuntimeSeams): AgentRuntime {
+function codexRuntime(seams: CodexRuntimeSeams): AgentRuntime {
   return new CodexRuntime(createSpawnTransportFactory(seams.command()), codexAuthHealth)
 }
 
-export async function prepareCodexHome(
+async function prepareCodexHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: CodexHomeSeams,
@@ -161,7 +162,7 @@ export async function prepareCodexHome(
   }
 
   if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)
-  else await provisionCodexAuth(home, theCodexCopy(paths, home, seams))
+  else await share(paths, home)
   return home
 }
 
@@ -204,68 +205,62 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     credentialHome(profileId) {
       return paths.homeOf(profileId)
     },
-    hasNewerCopy(profileId) {
-      return aNewerCodexSignInIsAvailable(homePathFor(profileId), seams.machineAuthPath?.())
-    },
     async check(profileId, signal) {
       const providerHome = await homeFor(profileId)
 
       const state = await probeCodexAuthInHome(transports(), providerHome, providerHome, signal)
-      if (state.state !== 'usable' || state.login !== 'api-key' || signal?.aborted) return state
-      const behind = machineLoginPresence(seams.machineAuthPath?.() ?? personalCodexAuthPath())
-      return behind === undefined ? state : { ...state, loginBehindTheKey: behind }
+      if (state.state !== 'usable' || signal?.aborted) return state
+      if (state.login === 'api-key') {
+        return { ...state, loginBehindTheKey: aCodexSignInIsKept(paths.managedRoot) }
+      }
+      // Without links, agents' copies are kept in step; Developer Mode gives them one file.
+      return codexSignInIsKeptAsAFile(providerHome, paths.managedRoot)
+        ? { ...state, hint: TURN_ON_DEVELOPER_MODE }
+        : state
     },
-    reprovision(profileId, newerOnly, stillWanted) {
+    reprovision(profileId, _newerOnly, stillWanted) {
       refuseWhileAKeyIsSaved()
       const home = homePathFor(profileId)
-      return provisionProviderHome(paths.managedRoot, home).then(() =>
-        reprovisionCodexAuth(home, {
-          ...(seams.machineAuthPath === undefined
-            ? {}
-            : { sourceAuthPath: seams.machineAuthPath() }),
-          ...(newerOnly === undefined ? {} : { newerOnly }),
-          ...(stillWanted === undefined ? {} : { stillWanted }),
-        }),
-      )
+      return provisionProviderHome(paths.managedRoot, home).then(async () => {
+        if (stillWanted?.() === false) return 'unchanged'
+        return (await share(paths, home)) === 'joined' ? 'replaced' : 'unchanged'
+      })
     },
     async signIn(profileId, signal) {
       refuseWhileAKeyIsSaved()
       const providerHome = await homeFor(profileId)
-      const { login, start } = await startCodexLogin(
-        transports(),
-        providerHome,
-        providerHome,
-        signal,
-      )
+      // The sign-in writes a file of its own here, which then becomes its account's one sign-in.
+      // One that writes nothing leaves the home on the account it was on.
+      const putBack = await makeRoomForACodexSignIn(providerHome)
+      const shared = (): Promise<unknown> =>
+        putBack()
+          .then(() => share(paths, providerHome))
+          .catch((error: unknown) => {
+            console.warn(
+              `could not put a Codex sign-in in its account's place: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            )
+          })
+      let started: Awaited<ReturnType<typeof startCodexLogin>>
+      try {
+        started = await startCodexLogin(transports(), providerHome, providerHome, signal)
+      } catch (error) {
+        await shared()
+        throw error
+      }
+      const { login, start } = started
       return {
         authUrl: start.authUrl,
-        completed: login.completed(),
+        completed: login.completed().then(async (outcome) => {
+          await shared()
+          return outcome
+        }),
         cancel: () => login.cancel(),
       }
     },
-    async replaceARefusedCopy(profileId, refused, stillWanted) {
-      try {
-        refuseWhileAKeyIsSaved()
-      } catch {
-        return 'not-tried'
-      }
-      const home = homePathFor(profileId)
-      const own = paths.homeOf(paths.defaultProfile)
-      const managedRoot = paths.managedRoot
-      return await replaceARefusedCodexCopy(home, {
-        managedRoot,
-        newerOnly: true,
-        refused: refused as import('@brobot2/runtime/codex').CodexCopyIdentity,
-        stillWanted,
-        candidates: [
-          {
-            from: 'the-computers',
-            sourceAuthPath: seams.machineAuthPath?.() ?? personalCodexAuthPath(),
-          },
-          { from: 'brobots-own', fallback: { path: join(own, 'auth.json'), managedRoot } },
-        ],
-      })
-    },
+    // One sign-in per account is shared, never copied: a refused one is signed in again.
+    replaceARefusedCopy: () => Promise.resolve('not-tried'),
     async bringTheKeyToItsHomes() {
       const codexKey = seams.key
       if (codexKey === undefined) return null
@@ -278,11 +273,9 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       for (const home of homes) {
         try {
           if ((await bringTheCodexKeyTo(home, codexKey)) === 'its-login') {
-            await provisionCodexAuth(home, { managedRoot: paths.managedRoot }).catch(
-              (error: unknown) => {
-                if (!(error instanceof AuthUnavailableError)) throw error
-              },
-            )
+            await share(paths, home).catch((error: unknown) => {
+              if (!(error instanceof AuthUnavailableError)) throw error
+            })
           }
         } catch (error) {
           failed += 1

@@ -1,13 +1,7 @@
 import { refusalWords } from './refusal-words'
 import { keyPolicy } from './api-key'
 import { CodexUnavailableError } from './program'
-import {
-  CodexRefusedItsSignInError,
-  NoCodexSignInOnThisComputerError,
-  codexCopyIdentityIn,
-  isTheSameCodexCopy,
-  type CodexCopyIdentity,
-} from '@brobot2/runtime/codex'
+import { NoCodexSignInOnThisComputerError, codexSignInTagIn } from '@brobot2/runtime/codex'
 import type {
   IdentityHandle,
   IdentityFact,
@@ -46,20 +40,15 @@ function tagOf(handle: IdentityHandle): IdentityFact {
   return tag === null ? null : { kind: 'tag', tag }
 }
 
-/** Only this provider interprets its opaque file identity. */
-function isCopy(value: unknown): value is CodexCopyIdentity {
-  if (typeof value !== 'object' || value === null) return false
-  const copy = value as Partial<CodexCopyIdentity>
-  return (
-    typeof copy.dev === 'bigint' &&
-    typeof copy.ino === 'bigint' &&
-    typeof copy.size === 'bigint' &&
-    typeof copy.mtimeNs === 'bigint'
-  )
-}
-
 export const authPolicy: ProviderAuthPolicy = {
   refusalWords,
+  // Every Codex agent on an account shares one sign-in, so a refusal is that account's. Codex's
+  // own check reads only the file, so only a sign-in or a working turn ends it.
+  remembersRejectedMachineLogin: {
+    says: 'Codex refused this sign-in. Sign in again.',
+    aCheckEndsIt: false,
+    loginIn: codexSignInTagIn,
+  },
   launchRefusal: (error) =>
     error instanceof NoCodexSignInOnThisComputerError
       ? 'no-copy'
@@ -70,11 +59,11 @@ export const authPolicy: ProviderAuthPolicy = {
   renewedNotice: null,
   key: keyPolicy,
   identity: { waitsForAccount: false, launch: tagOf, limit: tagOf },
+  // No agent holds a copy of its own to replace: a refused sign-in is signed in again.
   copy: {
     carriesAcceptedAfterAccountChange: true,
-    read: codexCopyIdentityIn,
-    same: (one, other) => isCopy(one) && isCopy(other) && isTheSameCodexCopy(one, other),
-    refused: (error) => (error instanceof CodexRefusedItsSignInError ? error.refusedCopy : null),
+    same: () => false,
+    refused: () => null,
   },
   protocol: {
     refusedGive: (event) =>

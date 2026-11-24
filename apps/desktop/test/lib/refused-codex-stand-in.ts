@@ -16,7 +16,7 @@ type CopiedSignIn = ReturnType<typeof codexCopyIdentityIn>
 
 export const digestOf = (bytes: string | Buffer): string =>
   createHash('sha256').update(bytes).digest('hex').slice(0, 16)
-export const signInAt = (path: string): string => digestOf(readFileSync(path))
+const signInAt = (path: string): string => digestOf(readFileSync(path))
 
 export class StandInCodex extends FakeRuntime {
   readonly handles: FakeSessionHandle[] = []

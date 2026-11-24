@@ -31,7 +31,17 @@ export interface ProtocolNotice {
 
 /** Native facts and comparisons are separate from bound credential and launch services. */
 export interface ProviderAuthPolicy {
-  readonly remembersRejectedMachineLogin?: boolean
+  /**
+   * Whether a refused sign-in is remembered, what a check says while it is, and whether a usable
+   * answer from a person's check ends it. Where that check reads only a local file, it cannot tell
+   * a refused sign-in from a working one. With `loginIn`, a refusal is remembered per login: the
+   * login a home holds, named as the conversation's `signInTag`; without it, once per provider.
+   */
+  readonly remembersRejectedMachineLogin?: {
+    readonly says: string
+    readonly aCheckEndsIt: boolean
+    loginIn?(home: string): string | null
+  }
   /** Profile faults take priority over generic sign-in faults; wording stays at the shared door. */
   launchRefusal(error: unknown): 'profile' | 'program' | 'no-copy' | null
   readonly refusalWords: Readonly<

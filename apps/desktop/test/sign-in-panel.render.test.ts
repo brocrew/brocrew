@@ -23,7 +23,8 @@ const render = (props: Record<string, unknown>): Promise<string> =>
 const CODEX_SIGN_IN: CapabilityStatus = capabilitiesFor('codex').signIn
 const CLAUDE_SIGN_IN: CapabilityStatus = capabilitiesFor('claude').signIn
 
-const CODEX_COPY: CapabilityStatus = capabilitiesFor('codex').reprovisionAuth
+/** No provider offers a copy today; the panel still asks the capability, so a fictional one stands in. */
+const CODEX_COPY: CapabilityStatus = { state: 'available', note: 'A fictional copy remedy.' }
 const CLAUDE_COPY: CapabilityStatus = capabilitiesFor('claude').reprovisionAuth
 
 const base = {

@@ -5,7 +5,10 @@ import type { ProviderAuthPolicy } from '../auth-policy'
 
 export const authPolicy: ProviderAuthPolicy = {
   refusalWords,
-  remembersRejectedMachineLogin: true,
+  remembersRejectedMachineLogin: {
+    says: 'Claude refused the current sign-in. Sign in again, or check it with Claude Code.',
+    aCheckEndsIt: true,
+  },
   launchRefusal: (error) => (error instanceof ClaudeUnavailableError ? 'program' : null),
   setup: (platform, installedPath) => claudeSetup(platform, installedPath()),
   renewedNotice: CLAUDE_LOGIN_RENEWED,

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -12,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { capabilitiesFor, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
-import { provisionCodexAuth } from '@brobot2/runtime/codex'
+import { shareCodexSignIn } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { prepareProviderHome } from '../src/main/connections/homes'
 
@@ -28,10 +29,10 @@ import { prepareProviderHome } from '../src/main/connections/homes'
  *
  * ## What is bound to what
  *
- * `ProviderCapabilities.homeCredential` is a claim about behaviour: *"a folder here holds a sign-in
- * of its own, and it starts as a copy of the machine's"* on one provider, *"nothing of yours is
- * written into it"* on the other. ⚑ **So the gate runs the behaviour** — the real `prepareProviderHome`
- * and the real `provisionCodexAuth`, against temp directories — and asserts the declaration matches
+ * `ProviderCapabilities.homeCredential` is a claim about behaviour: *"agents on one account share
+ * one sign-in"* on one provider, *"nothing of yours is written into it"* on the other. ⚑ **So the
+ * gate runs the behaviour** — the real `prepareProviderHome` and the real `shareCodexSignIn`,
+ * against temp directories — and asserts the declaration matches
  * what happened. A declaration that drifted from the code goes red here rather than on a screen.
  *
  * ## ⛔ Why the personal `~/.codex` is never read
@@ -42,12 +43,11 @@ import { prepareProviderHome } from '../src/main/connections/homes'
  *
  *  - **Routing** is proved with the seam as a SPY. It shows which provider's branch reaches the
  *    credential writer, and it touches nothing of the user's.
- *  - **Behaviour** is proved by calling the real `provisionCodexAuth` with `sourceAuthPath` pointed
- *    at a fixture. That option exists for exactly this, and it means the function under test is the
- *    one that ships rather than a double standing in for it.
+ *  - **Behaviour** is proved by calling the real `shareCodexSignIn` in fixture homes, so the
+ *    function under test is the one that ships rather than a double standing in for it.
  *
  * ⚠️ Neither half alone would do. The spy proves the branch and says nothing about what the writer
- * writes; the direct call proves the copy and says nothing about who calls it.
+ * writes; the direct call proves the sharing and says nothing about who calls it.
  */
 
 const made: string[] = []
@@ -69,14 +69,6 @@ function temp(prefix: string): string {
 afterEach(() => {
   while (made.length > 0) rmSync(made.pop() as string, { recursive: true, force: true })
 })
-
-/** A credential-shaped fixture. 🔒 Not a token, not an account — bytes with a recognisable marker. */
-function fakeMachineAuth(body: string): string {
-  const home = temp('fake-machine')
-  const path = join(home, 'auth.json')
-  writeFileSync(path, body, { mode: 0o600 })
-  return path
-}
 
 /** Which providers' branches reach the credential writer, measured rather than assumed. */
 async function providersThatProvisionACredential(): Promise<Provider[]> {
@@ -154,45 +146,29 @@ describe('🔴 the declaration answers to the code (329)', () => {
   })
 })
 
-describe('what the Codex note claims, against `provisionCodexAuth` itself', () => {
+describe('what the Codex note claims, against `shareCodexSignIn` itself', () => {
   /** The declared sentence, or `''` — read once, so every assertion below is about the shipped one. */
   const note = (): string => {
     const status = capabilitiesFor('codex').homeCredential
     return status.state === 'available' ? (status.note ?? '') : ''
   }
+  const SIGN_IN =
+    '{"auth_mode":"chatgpt","tokens":{"account_id":"acct-fictional"},"last_refresh":"2026-11-20T09:00:00Z"}'
 
-  it('“a copy” — the CONTENT of the machine file arrives in the folder', async () => {
-    const home = temp('home')
-    const source = fakeMachineAuth('{"marker":"329-original"}')
-    await provisionCodexAuth(home, { sourceAuthPath: source })
-    expect(signInAt(join(home, 'auth.json'))).toBe(digestOf('{"marker":"329-original"}'))
-    expect(note()).toMatch(/copy/i)
-  })
-
-  it('🔴 “made once … never replaced on its own” — a second provisioning does not overwrite', async () => {
-    const home = temp('home')
-    await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-first"}') })
-    // A DIFFERENT machine credential, provisioned again into the same folder. The sentence on the
-    // launcher promises this does nothing; if it ever starts clobbering, the promise is the defect.
-    await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-second"}') })
-    expect(signInAt(join(home, 'auth.json'))).toBe(digestOf('{"marker":"329-first"}'))
-    expect(note()).toMatch(/never replaced/i)
-  })
-
-  it('🔴 “where it has none, as a copy of BroBot’s own” — with no machine sign-in, BroBot’s own is copied', async () => {
+  it('🔴 “agents on one account share one sign-in” — two agents read the very same file', async () => {
     const root = temp('managed')
-    const home = join(root, 'homes', 'farah', 'codex')
-    const ownHome = join(root, 'homes', 'brobot', 'codex')
-    mkdirSync(home, { recursive: true, mode: 0o700 })
-    mkdirSync(ownHome, { recursive: true, mode: 0o700 })
-    writeFileSync(join(ownHome, 'auth.json'), '{"marker":"brobot-own"}', { mode: 0o600 })
-    await provisionCodexAuth(home, {
-      sourceAuthPath: join(temp('no-machine'), 'auth.json'),
-      managedRoot: root,
-      fallbackAuthPath: join(ownHome, 'auth.json'),
-    })
-    expect(signInAt(join(home, 'auth.json'))).toBe(digestOf('{"marker":"brobot-own"}'))
-    expect(note()).toContain('where it has none, as a copy of BroBot’s own')
+    const own = join(root, 'homes', 'brobot', 'codex')
+    const farah = join(root, 'homes', 'farah', 'codex')
+    const ilse = join(root, 'homes', 'ilse', 'codex')
+    for (const home of [own, farah, ilse]) mkdirSync(home, { recursive: true, mode: 0o700 })
+    writeFileSync(join(own, 'auth.json'), SIGN_IN, { mode: 0o600 })
+    for (const home of [farah, ilse])
+      await shareCodexSignIn(home, { managedRoot: root, ownHome: own })
+    const kept = realpathSync(join(own, 'auth.json'))
+    expect(realpathSync(join(farah, 'auth.json'))).toBe(kept)
+    expect(realpathSync(join(ilse, 'auth.json'))).toBe(kept)
+    expect(signInAt(kept)).toBe(digestOf(SIGN_IN))
+    expect(note()).toMatch(/share one sign-in/i)
   })
 
   it('⛔ the note names no file, no path and no folder of ours', () => {

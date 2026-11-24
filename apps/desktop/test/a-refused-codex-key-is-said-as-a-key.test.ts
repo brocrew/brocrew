@@ -143,11 +143,9 @@ describe('§2 · the Codex card says what a profile holds while a key is saved',
   it('🔴 the profile line names the key beside the sign-in', () => {
     const codex = allProviderCapabilities().codex
     const note = String((codex.homeCredential as { note?: unknown }).note ?? '')
-    expect(note).toContain(
-      'This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead.',
+    expect(note).toBe(
+      'Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers.',
     )
-    // ⚑ The launcher adds *"It is copied when…"* after the note, so the note ends on the sign-in.
-    expect(note).toMatch(/never replaced on its own\.$/)
   })
 })
 

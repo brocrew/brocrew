@@ -71,23 +71,20 @@ describe('a start refused for its sign-in is told by kind', () => {
     }
   })
 
-  it('🔴 a Codex sentence names only a remedy that reaches that agent', () => {
-    // A sign-in that is there and could not be used: the card signs in only BroBot's own, so it is
-    // not where that agent is signed in again.
+  it('🔴 a Codex sentence names the one sign-in every agent on the account shares', () => {
+    // Codex agents on one account share one sign-in, so the card's sign-in reaches every agent.
     const used = A_START_ITS_SIGN_IN_REFUSED['codex-sign-in']
-    expect(used.lead).toContain('save an API key on the Codex card in Providers')
-    expect(used.lead).toContain('sign that agent in from one of its conversations')
-    expect(used.more).toContain('the Codex card signs in only BroBot’s own')
-    expect(`${used.lead} ${used.more}`).not.toMatch(
-      /sign (that|this) agent in[^.:]* on the Codex card/,
+    expect(used.lead).toContain(
+      'sign in on the Codex card in Providers, or to save an API key there',
     )
-    // None to copy, neither this computer's nor BroBot's own: signing in on the card makes BroBot's
-    // own, which a new agent then starts on.
+    expect(used.more).toContain('signing in once signs them all in')
+    // None in the workspace: signing in on the card makes the one a new agent then starts on.
     const none = A_START_ITS_SIGN_IN_REFUSED['no-sign-in-to-copy']
     expect(none.lead).toContain(
       'sign in on the Codex card in Providers, or to save an API key there',
     )
-    expect(none.more).toContain('where it keeps none, of BroBot’s own')
+    expect(none.more).toContain('the Codex sign-in BroBot’s own uses')
+    expect(`${used.more} ${none.more}`).not.toMatch(/cop(y|ies)|this computer keeps/i)
     for (const kind of ['codex-sign-in', 'no-sign-in-to-copy'] as const) {
       expect(A_START_ITS_SIGN_IN_REFUSED[kind].more).toContain('BroCrew does not need restarting')
     }
@@ -101,7 +98,7 @@ describe('a start refused for its sign-in is told by kind', () => {
 it('keeps every byte of the existing refusal-word catalogue', () => {
   expect(
     createHash('sha256').update(JSON.stringify(A_START_ITS_SIGN_IN_REFUSED)).digest('hex'),
-  ).toBe('ea4893cb5a3c414d1e15ab309c9b1846b0929b975bcdf3044e4670a92ee7eedc')
+  ).toBe('44fd28efb67d1384f482ba77608f62e5bd9e7b4fb0c8e5f59819aa67ad841f54')
 })
 
 it('shares each native refusal-word object with its provider policy', () => {

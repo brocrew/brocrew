@@ -196,15 +196,16 @@
       },
       "signIn": {
         "state": "available",
-        "note": "Signs this profile into its own Codex account. Unlike copying your machine sign-in, it does not share a token with the codex CLI, so neither one can expire the other."
+        "note": "Signs in every Codex agent on this account."
       },
       "reprovisionAuth": {
-        "state": "available",
-        "note": "Copies the sign-in from your machine`s codex CLI again. Quick, but the two keep sharing one token, so the next renewal by either will expire the other."
+        "state": "absent",
+        "reason": "Codex agents share one sign-in per account, so there is nothing to copy.",
+        "checkedAgainst": "`codex/shared-sign-in.ts`: every Codex home links to its account’s one `auth.json`, which Codex 0.167.1 renews in place through the link (`login/src/auth/storage_file.rs`)."
       },
       "homeCredential": {
         "state": "available",
-        "note": "This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once and is never replaced on its own."
+        "note": "Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers."
       },
       "ultracode": {
         "state": "absent",

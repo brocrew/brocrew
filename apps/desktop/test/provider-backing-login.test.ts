@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState } from '@brobot2/runtime'
 import * as claude from '../src/main/providers/claude'
-import * as codex from '../src/main/providers/codex'
 import { createProviderModules } from '../src/main/providers'
 
 const native = vi.hoisted(() => ({
@@ -47,16 +46,6 @@ function macProbe(): MacProbe {
   if (probe === undefined) throw new Error('The metadata-only Mac probe is absent')
   return probe
 }
-type FileProbe = (
-  path: string,
-  inspect?: () => { isFile(): boolean; isSymbolicLink(): boolean },
-) => boolean | undefined
-function fileProbe(): FileProbe {
-  const probe = Reflect.get(codex, 'machineLoginPresence') as FileProbe | undefined
-  expect(probe, 'the no-follow machine-file probe').toBeDefined()
-  if (probe === undefined) throw new Error('The machine-file probe is absent')
-  return probe
-}
 
 let root: string
 beforeEach(() => {
@@ -68,7 +57,7 @@ afterEach(() => {
   vi.useRealTimers()
   rmSync(root, { recursive: true, force: true })
 })
-function modules(presence: () => Promise<boolean | undefined>, machine: string | (() => string)) {
+function modules(presence: () => Promise<boolean | undefined>) {
   const auth = { keyStatus: () => ({ set: true }), key: native.read }
   Reflect.set(auth, 'platform', 'darwin')
   Reflect.set(auth, 'loginPresence', presence)
@@ -87,7 +76,6 @@ function modules(presence: () => Promise<boolean | undefined>, machine: string |
         home: {},
         auth: {
           command: () => '/fictional/codex',
-          machineAuthPath: typeof machine === 'string' ? () => machine : machine,
         },
       },
     },
@@ -99,7 +87,7 @@ describe('the login behind a saved key', () => {
     'reports Mac presence %s without opening the key or login',
     async (present) => {
       const presence = vi.fn(async () => present)
-      const bound = modules(presence, join(root, 'missing'))
+      const bound = modules(presence)
       expect(presence).not.toHaveBeenCalled()
       const signal = new AbortController().signal
       const state = await bound.claude.auth.check('fern', signal)
@@ -111,15 +99,17 @@ describe('the login behind a saved key', () => {
   )
 
   it.each([true, false])(
-    'counts only the Codex machine source, present=%s, never a key-written profile',
+    'counts only the workspace’s shared Codex sign-in, present=%s, never a key-written profile',
     async (present) => {
-      const machine = join(root, 'machine', 'auth.json')
-      mkdirSync(join(root, 'machine'))
-      if (present) writeFileSync(machine, 'fictional content that must not be opened')
+      if (present) {
+        const kept = join(root, 'managed', 'codex-sign-ins', 'fictional-account')
+        mkdirSync(kept, { recursive: true })
+        writeFileSync(join(kept, 'auth.json'), 'fictional content that must not be opened')
+      }
       const profile = join(root, 'managed', 'default', 'fern', 'codex')
       mkdirSync(profile, { recursive: true })
       writeFileSync(join(profile, 'auth.json'), 'fictional key-written profile')
-      const bound = modules(async () => undefined, machine)
+      const bound = modules(async () => undefined)
       const state = await bound.codex.auth.check('fern')
       expect(state).toMatchObject({ state: 'usable', login: 'api-key', loginBehindTheKey: present })
       expect(native.read).not.toHaveBeenCalled()
@@ -195,55 +185,25 @@ describe('metadata-only Mac lookup', () => {
   })
 })
 
-describe('metadata-only Codex machine source', () => {
-  it('accepts a regular file, excludes links and folders, and never opens it', () => {
-    const probe = fileProbe()
-    const path = join(root, 'auth.json')
-    writeFileSync(path, 'fictional content that must not be opened')
-    expect(probe(path)).toBe(true)
-    expect(probe(root)).toBe(false)
-    expect(probe(path, () => ({ isFile: () => true, isSymbolicLink: () => true }))).toBe(false)
-    expect(native.read).not.toHaveBeenCalled()
-  })
-
-  it('distinguishes definite absence from an unreadable location', () => {
-    const probe = fileProbe()
-    expect(probe(join(root, 'missing'))).toBe(false)
-    expect(
-      probe('/fictional/blocked', () => {
-        throw Object.assign(new Error('fictional denied'), { code: 'EACCES' })
-      }),
-    ).toBeUndefined()
-    expect(native.read).not.toHaveBeenCalled()
-  })
-})
-
 describe('Codex presence is read only for a live key check', () => {
   it.each([
     { state: 'usable', login: 'account', expiresAt: null },
     { state: 'absent', reason: 'fictional missing login' },
     { state: 'unknown', reason: 'fictional failed probe' },
-  ] as AuthState[])('skips the machine path for $state / $login', async (state) => {
-    const path = vi.fn((): string => {
-      throw new Error('No source lookup for this auth result')
-    })
+  ] as AuthState[])('answers $state / $login as Codex said it', async (state) => {
     native.codex.mockResolvedValueOnce(state)
-    const bound = modules(async () => undefined, path)
+    const bound = modules(async () => undefined)
     expect(await bound.codex.auth.check('fern')).toBe(state)
-    expect(path).not.toHaveBeenCalled()
     expect(native.read).not.toHaveBeenCalled()
   })
 
-  it('skips the source lookup when a usable key probe answers after abort', async () => {
-    const path = vi.fn((): string => {
-      throw new Error('No source lookup after abort')
-    })
+  it('looks for no sign-in when a usable key probe answers after abort', async () => {
     const cancelled = new AbortController()
     cancelled.abort()
-    const bound = modules(async () => undefined, path)
+    const bound = modules(async () => undefined)
     const state = await bound.codex.auth.check('fern', cancelled.signal)
     expect(state).toMatchObject({ state: 'usable', login: 'api-key' })
-    expect(path).not.toHaveBeenCalled()
+    expect(state).not.toHaveProperty('loginBehindTheKey')
     expect(native.read).not.toHaveBeenCalled()
   })
 })

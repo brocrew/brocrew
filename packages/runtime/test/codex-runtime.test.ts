@@ -408,7 +408,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       expect(await unread.checkSignIn?.()).toBe(false)
     })
 
-    it('Codex’s own `auth_mode` decides the kind of login; a link in the home is not read', async () => {
+    it('Codex’s own `auth_mode` decides the kind of login; a link in the home is followed', async () => {
       signedIn('acct-one', 'fake-access-one')
       const account = await codexAccountIn(home)
       expect(account).toBe('acct-one')
@@ -425,12 +425,12 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       // A login of another kind, with no account, is cannot tell.
       writeFileSync(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'agentIdentity' }))
       expect(await codexAccountIn(home)).toBeNull()
-      // ⛔ A link is not followed.
+      // ⚑ A link is followed: a home's sign-in is a link to its account's one.
       const elsewhere = join(home, 'elsewhere.json')
       signedIn('acct-one', 'fake-access-one')
       renameSync(join(home, 'auth.json'), elsewhere)
       symlinkSync(elsewhere, join(home, 'auth.json'))
-      expect(await codexAccountIn(home)).toBeNull()
+      expect(await codexAccountIn(home)).toBe(account)
     })
 
     it('a key in place of a sign-in is another account too', async () => {
