@@ -82,7 +82,6 @@
   "apps/desktop/test/a-to-do-for-a-person.test.ts": 1141,
   "apps/desktop/test/a-turn-the-app-cut-is-continued-once.test.ts": 2213,
   "apps/desktop/test/a-usage-limit-is-named-and-waited-out.test.ts": 1118,
-  "apps/desktop/test/a-work-wait-is-reconciled.test.ts": 2655,
   "apps/desktop/test/adopt-sessions.test.ts": 1304,
   "apps/desktop/test/agent-state.test.ts": 1523,
   "apps/desktop/test/always-allow-on-every-surface.render.test.ts": 1447,
