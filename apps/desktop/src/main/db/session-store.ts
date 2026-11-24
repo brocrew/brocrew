@@ -948,11 +948,7 @@ export function createSessionStore(
        FROM events INDEXED BY events_kind_owner_idx
        WHERE type = 'service_registered' AND session_id = ${owner} AND generation = 0 AND ordinal = 0`
   const selectAll = db.prepare(
-    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN},
-        (provider_session.adopted_at IS NULL AND provider_session.parent_session_id IS NULL
-         AND EXISTS (SELECT 1 FROM work INDEXED BY work_owner_idx
-                     WHERE owner_session_id = provider_session.id AND parent_id IS NULL)
-         AND NOT EXISTS (${serviceBirth('provider_session.id')})) AS person_started
+    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
        FROM provider_session ${GENERATION_JOIN}
       ORDER BY provider_session.updated_at DESC`,
   )
@@ -4292,6 +4288,168 @@ export function createSessionStore(
     openRoot(record.id, at)
   }
 
+  const selectSourceSessionIds = db.prepare(
+    'SELECT source_session_ids AS aliases FROM provider_session WHERE id = ?',
+  )
+  const writeSourceSessionIds = db.prepare(
+    'UPDATE provider_session SET source_session_ids = ? WHERE id = ?',
+  )
+  const selectSessionForSourceId = db.prepare(
+    `SELECT id FROM provider_session
+      WHERE id = ? OR EXISTS (
+        SELECT 1 FROM json_each(CASE WHEN json_valid(source_session_ids)
+          THEN source_session_ids ELSE '[]' END) WHERE value = ?
+      ) LIMIT 2`,
+  )
+  const selectAcceptedAskHandoff = db.prepare(
+    `SELECT ordinal, created_at, payload FROM events INDEXED BY events_kind_owner_idx
+      WHERE session_id = ? AND generation = ? AND type = 'user_turn' AND ordinal > ?
+        AND json_extract(CASE WHEN json_valid(payload) THEN payload END, '$.askHandoffAttempt') = ?
+      ORDER BY ordinal LIMIT 1`,
+  )
+  const selectSourceEvidence = db.prepare(
+    `SELECT CASE WHEN json_valid(payload) THEN payload END AS payload FROM events
+      WHERE session_id = ? AND generation = ? AND ordinal = ? AND type = ?`,
+  )
+  function sourceSessionIds(sessionId: string): readonly string[] {
+    const row = selectSourceSessionIds.get(sessionId) as { aliases: string | null } | undefined
+    if (row?.aliases == null) return []
+    try {
+      const values: unknown = JSON.parse(row.aliases)
+      return Array.isArray(values)
+        ? values.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : []
+    } catch {
+      return []
+    }
+  }
+
+  function keepSourceSessionIds(sessionId: string, incoming: readonly string[]): void {
+    const current = sourceSessionIds(sessionId)
+    const aliases = [...new Set([...current, ...incoming])].filter((id) => id !== sessionId).sort()
+    if (aliases.length > 0 && JSON.stringify(aliases) !== JSON.stringify(current))
+      writeSourceSessionIds.run(JSON.stringify(aliases), sessionId)
+  }
+
+  // A native reference nominates a row. A matching stamped origin proves only its own address.
+  function bundleSourceEvidence(event: TranscriptEvent): string | undefined {
+    if (event.type === 'request_routed') return event.originalOpening
+    if (event.type === 'user_turn') return event.askHandoffAttempt
+    if (event.type === 'ask_handoff_attempted') return event.attempt
+    return undefined
+  }
+
+  function sourceOfBundleEvidence(evidence: string): string | undefined {
+    try {
+      const locator: unknown = JSON.parse(evidence)
+      return Array.isArray(locator) &&
+        locator.length === 3 &&
+        typeof locator[0] === 'string' &&
+        Number.isSafeInteger(locator[1]) &&
+        Number.isSafeInteger(locator[2])
+        ? locator[0]
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  const associateBundleSource = db.transaction(
+    (sessionId: string, sourceIds: readonly string[], ledger: SessionSnapshot['ledger']): void => {
+      const known = new Set([sessionId, ...sourceSessionIds(sessionId)])
+      const wanted = new Set(sourceIds.filter((id) => !known.has(id)))
+      if (wanted.size === 0) return
+      const generation = activeGeneration(sessionId)
+      const verified: string[] = []
+      for (const { ordinal, event } of ledger) {
+        const evidence = bundleSourceEvidence(event)
+        if (evidence === undefined) continue
+        const source = sourceOfBundleEvidence(evidence)
+        if (source === undefined || !wanted.has(source)) continue
+        const row = selectSourceEvidence.get(sessionId, generation, ordinal, event.type) as
+          { payload: string | null } | undefined
+        if (row?.payload == null) continue
+        if (bundleSourceEvidence(JSON.parse(row.payload) as TranscriptEvent) !== evidence) continue
+        wanted.delete(source)
+        verified.push(source)
+        if (wanted.size === 0) break
+      }
+      if (verified.length > 0) keepSourceSessionIds(sessionId, verified)
+    },
+  )
+
+  const whereAskProvenanceWasRecorded = db.prepare(
+    `SELECT 1 FROM events INDEXED BY events_kind_owner_idx
+     WHERE session_id = ? AND generation = ? AND type = ?
+       AND (? IS NULL OR json_extract(CASE WHEN json_valid(payload) THEN payload END, ?) IS NOT NULL)
+     LIMIT 1`,
+  )
+  const replacementEdges = db.prepare(
+    `SELECT type, created_at, payload, generation FROM events INDEXED BY events_kind_owner_idx
+     WHERE session_id = ? AND type IN ('replaces', 'replaced_by')
+       AND json_valid(payload) AND json_type(payload, '$.sessionId') = 'text'
+     ORDER BY rowid`,
+  )
+  function carryAskProvenance(sessionId: string, outgoing: number, incoming: number): void {
+    if (outgoing === incoming) return
+    const has = (type: string, field: string | null = null): boolean =>
+      whereAskProvenanceWasRecorded.get(sessionId, outgoing, type, field, field) !== undefined
+    const losesEvidence =
+      has('ask_handoff_attempted') ||
+      has('ask_provenance_unresolved') ||
+      has('request_routed', '$.originalOpening') ||
+      has('message_queued', '$.asks.originalOpening') ||
+      has('user_turn', '$.askHandoffAttempt')
+    type Edge = {
+      type: 'replaces' | 'replaced_by'
+      payload: string
+      created_at: number
+      generation: number
+    }
+    // A lineage member can carry only an edge. Keep the last insertion of each target, in
+    // canonical order, before the inactive generations are collected.
+    const edges = replacementEdges.all(sessionId) as Edge[]
+    const ordered = new Map<string, Edge>()
+    for (const edge of edges) {
+      ordered.delete(edge.payload)
+      ordered.set(edge.payload, edge)
+    }
+    const surviving = [...ordered.values()]
+    const carry = surviving.some((edge) => edge.generation !== incoming)
+    if (!carry && !losesEvidence) return
+    const last = selectMaxOrdinal.get(sessionId, incoming) as
+      { max_ordinal: number | null } | undefined
+    let next = (last?.max_ordinal ?? -1) + 1
+    if (carry) {
+      for (const edge of surviving) {
+        insertEvent.run(
+          newEventId(),
+          sessionId,
+          next++,
+          edge.type,
+          edge.payload,
+          edge.created_at,
+          null,
+          incoming,
+        )
+      }
+    }
+    if (!losesEvidence) return
+    // Native parsing cannot verify the original app handoff. Keep the gap after the old rows retire.
+    appendTx(
+      sessionId,
+      next,
+      {
+        type: 'ask_provenance_unresolved',
+        outgoingGeneration: outgoing,
+        coverage: 'unprepared',
+      },
+      now(),
+      incoming,
+      false,
+    )
+  }
+
   const importSnapshotTx = db.transaction((snapshot: SessionSnapshot) =>
     committed.asAWhole(() => importSnapshotRows(snapshot)),
   )
@@ -4300,9 +4458,13 @@ export function createSessionStore(
     const at = now()
     insertAdoptedRow(snapshot.session, at)
     markRestored.run(at, snapshot.session.id)
+    if (snapshot.sourceSessionId !== undefined)
+      keepSourceSessionIds(snapshot.session.id, [snapshot.sourceSessionId])
     for (const entry of snapshot.ledger) {
       appendTx(snapshot.session.id, entry.ordinal, entry.event, entry.at, 0, true)
     }
+    if (snapshot.sourceSessionIds !== undefined)
+      associateBundleSource(snapshot.session.id, snapshot.sourceSessionIds, snapshot.ledger)
     writeGeneration.run(snapshot.session.id, NORMALIZER_VERSION, snapshot.derivedThrough, at)
   }
 
@@ -4491,7 +4653,12 @@ export function createSessionStore(
 
     ownInstructionsOf: knowledgeHistory.ownInstructionsOf,
     currentOwnInstructionsOf: knowledgeHistory.currentOwnInstructionsOf,
+    readCurrentAgentRules: knowledgeHistory.readCurrentAgentRules,
     configuredLayerFor: knowledgeHistory.configuredLayerFor,
+    writeDirectAgentRules(said, at, afterCommit) {
+      return knowledgeHistory.writeDirectAgentRules(this, said, at, afterCommit)
+    },
+
     writeOwnInstructions(said, at) {
       return knowledgeHistory.writeOwnInstructions(this, said, at)
     },
@@ -4827,6 +4994,28 @@ export function createSessionStore(
     },
     ...sessionModels,
 
+    sourceSessionIds,
+
+    associateBundleSource(sessionId, sourceIds, ledger) {
+      associateBundleSource(sessionId, sourceIds, ledger)
+    },
+
+    acceptedAskHandoff(sessionId, generation, afterOrdinal, attempt) {
+      const row = selectAcceptedAskHandoff.get(sessionId, generation, afterOrdinal, attempt) as
+        { ordinal: number; created_at: number; payload: string } | undefined
+      if (row === undefined) return null
+      return {
+        ordinal: row.ordinal,
+        at: row.created_at,
+        event: boundStoredEvent(JSON.parse(row.payload) as TranscriptEvent),
+      }
+    },
+
+    sessionForSourceId(sourceId) {
+      const rows = selectSessionForSourceId.all(sourceId, sourceId) as { id: string }[]
+      return rows.length === 1 ? (rows[0]?.id ?? null) : null
+    },
+
     findByProviderRef(provider, sessionId) {
       const row = selectByRef.get(provider, sessionId) as { id: string } | undefined
       if (row) return row.id
@@ -5021,6 +5210,7 @@ export function createSessionStore(
         )
         if (flipped.changes === 0) return false
         carryTitles(sessionId, outgoing, generation)
+        carryAskProvenance(sessionId, outgoing, generation)
         committed.whole(sessionId, 'promoted')
         ledgerWrites.set(sessionId, { ordinal: null, generation })
         const open = selectOpenTurnId.get(sessionId, generation) as { id: string } | undefined

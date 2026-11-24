@@ -91,3 +91,8 @@ export function foldProfileName(name: string): string {
  * `const BROBOT_PROFILE = 'default'`, which was a second answer to a question the host also answers.
  */
 export const DEFAULT_PROFILE_ID = 'brobot'
+
+/** Whether a profile name, in any spelling, is the default profile: its conversations stand at the top level. */
+export function isTheDefaultProfile(name: string): boolean {
+  return foldProfileName(name) === DEFAULT_PROFILE_ID
+}

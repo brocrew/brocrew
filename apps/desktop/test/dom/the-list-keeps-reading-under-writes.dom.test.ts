@@ -18,7 +18,7 @@ const row = (id: string): UnresumableSessionInfo => ({
   sessionId: id,
   provider: 'codex',
   cwd: '/fictional',
-  profileId: 'brobot',
+  profileId: 'recipe-worker',
   status: 'idle',
   state: { is: 'idle' },
   named: null,

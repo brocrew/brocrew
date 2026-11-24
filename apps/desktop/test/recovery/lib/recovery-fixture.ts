@@ -2,6 +2,7 @@ import type { CoordinatorDeps, WorkingOn } from '../../../src/main/recovery/coor
 import { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
 export { MIGRATIONS_FOLDER, BUILD_LINEAGE } from './migration-journal'
 import { UNFLUSHED } from './recovery-files'
+import { legacyConversation, legacyEvents } from '../../fixtures/legacy-migration-data'
 import type { TranscriptEvent } from '../../../src/shared/conversation-events'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -277,7 +278,7 @@ export async function makeRecoveryFixture(
     try {
       applyMigrations(db, migrationsFolder)
       let clock = now
-      const store = createSessionStore(db, () => clock)
+      const store = thisBuild < THIS_BUILD ? null : createSessionStore(db, () => clock)
       let schema: Schema = thisBuild
       const migrateTo = (wanted: Schema): void => {
         if (wanted === ONE_NEWER && schema === THIS_BUILD) {
@@ -296,6 +297,7 @@ export async function makeRecoveryFixture(
         conversations.push(
           converse(
             store,
+            db,
             dir,
             conversations.length + 1,
             `before copy ${String(copy)}`,
@@ -333,6 +335,7 @@ export async function makeRecoveryFixture(
       conversations.push(
         converse(
           store,
+          db,
           dir,
           conversations.length + 1,
           'after the newest copy',
@@ -494,9 +497,10 @@ function rowsWithControls(when: string): TranscriptEvent[] {
   ] as TranscriptEvent[]
 }
 
-/** One short conversation, written through the app's own store. Returns its id. */
+/** Current fixtures use the store; historical fixtures keep their schema and raw payloads. */
 function converse(
-  store: SessionStore,
+  store: SessionStore | null,
+  db: AppDatabase,
   userData: string,
   n: number,
   when: string,
@@ -504,18 +508,42 @@ function converse(
   everyRowKind = false,
 ): string {
   const id = `conversation-${String(n)}`
-  store.create({
+  const record = {
     id,
-    provider: 'claude',
+    provider: 'claude' as const,
     cwd: join(userData, 'brobot-workspace'),
-    approvalMode: 'ask',
+    approvalMode: 'ask' as const,
     profileId: 'default',
-  })
-  store.append(id, 0, { type: 'user_turn', text: `Asked ${when}.` }, at)
-  store.append(id, 1, { type: 'assistant_message', text: `Answered ${when}.` }, at + 1_000)
-  if (everyRowKind) {
-    for (const [index, event] of rowsWithControls(when).entries()) {
-      store.append(id, 2 + index, event, at + 2_000 + index)
+  }
+  const events: TranscriptEvent[] = [
+    { type: 'user_turn', text: `Asked ${when}.` },
+    { type: 'assistant_message', text: `Answered ${when}.` },
+    ...(everyRowKind ? rowsWithControls(when) : []),
+  ]
+  if (store === null) {
+    legacyConversation(db, record, n === 1)
+    db.prepare(
+      "UPDATE provider_session SET status = 'working', created_at = ?, updated_at = ? WHERE id = ?",
+    ).run(at, at + 1_000, id)
+    db.prepare(
+      'INSERT INTO work (id, number, owner_session_id, created_at) VALUES (?, ?, ?, ?)',
+    ).run(`root-${id}`, n, id, at)
+    const turn = `turn-${id}`
+    db.prepare(
+      'INSERT INTO turn (id, session_id, ordinal, prompt, opened_at, generation) VALUES (?, ?, 0, ?, ?, 0)',
+    ).run(turn, id, `Asked ${when}.`, at)
+    legacyEvents(db, id, events.slice(0, 1), at)
+    legacyEvents(db, id, events.slice(1, 2), at + 1_000, 1)
+    legacyEvents(db, id, events.slice(2), at + 2_000, 2)
+    db.prepare('UPDATE events SET turn_id = ? WHERE session_id = ? AND ordinal IN (0, 1)').run(
+      turn,
+      id,
+    )
+  } else {
+    store.create(record)
+    for (const [ordinal, event] of events.entries()) {
+      const time = ordinal === 0 ? at : ordinal === 1 ? at + 1_000 : at + 1_998 + ordinal
+      store.append(id, ordinal, event, time)
     }
   }
   return id

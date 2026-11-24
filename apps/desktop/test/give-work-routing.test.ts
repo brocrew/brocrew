@@ -221,3 +221,37 @@ describe('give_work names where the work goes', () => {
     expect(refused.refusal.reason).toContain('create_agent')
   })
 })
+
+describe('an omitted under selects the task the turn concerns, else the one held, else its own work', () => {
+  const piece = (id: string, received: boolean) => ({
+    piece: id,
+    label: id.toUpperCase(),
+    root: false,
+    giver: 'sess_boss',
+    received,
+  })
+  const own = { piece: 'root', label: 'W1', root: true, giver: null, received: true }
+  const under = (held: ReturnType<typeof piece>[], drives: string | null) => {
+    const admitted = give(
+      { to: 'new', conversation_title: 'A new one', profile: 'reader' },
+      { ...facts, held: () => [own, ...held], drivenByTheTurn: () => drives },
+    )
+    return admitted.ok ? admitted.under.piece : admitted.refusal.rail
+  }
+
+  it('takes the task the current turn concerns, even among several held', () => {
+    expect(under([piece('a', true), piece('b', true)], 'b')).toBe('b')
+  })
+  it('takes the one task held when the turn names none', () => {
+    expect(under([piece('a', true)], null)).toBe('a')
+  })
+  it('takes its own work when it holds no task', () => {
+    expect(under([], null)).toBe('root')
+  })
+  it('asks for the piece when several are held and the turn names none', () => {
+    expect(under([piece('a', true), piece('b', true)], null)).toBe('name-the-piece-you-give-from')
+  })
+  it('uses its own work while a brief given to it is still on its way', () => {
+    expect(under([piece('a', false)], null)).toBe('root')
+  })
+})

@@ -11,7 +11,7 @@ export const RECENT_CONVERSATION_PAGE_SIZE = 15
 
 export type RecentConversation = Pick<
   ResumableSessionInfo,
-  'sessionId' | 'personStarted' | 'profileId' | 'provider' | 'cwd' | 'updatedAt' | 'running'
+  'sessionId' | 'profileId' | 'provider' | 'cwd' | 'updatedAt' | 'running'
 > & { readonly identity: ConversationIdentity | null }
 
 export interface PublishedListing {

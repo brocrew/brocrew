@@ -770,6 +770,22 @@ describe('transcript fold', () => {
       // `silent` on the same window beside the header — and the reader it has consequences for is
       // the parent, through `list_tasks`.
       { event: { type: 'work_restarted' }, adds: 0 },
+      {
+        event: {
+          type: 'ask_handoff_attempted',
+          attempt: '["sess_recipient",0,1]',
+          originals: [{ opening: '["sess_asker",0,1]', inputIndex: 0 }],
+        },
+        adds: 0,
+      },
+      {
+        event: { type: 'ask_handoff_not_accepted', attempt: '["sess_recipient",0,1]' },
+        adds: 0,
+      },
+      {
+        event: { type: 'ask_provenance_unresolved', outgoingGeneration: 0, coverage: 'unprepared' },
+        adds: 0,
+      },
       // ⛔ **673: `adds: 0`, as every reopen drew before the row existed** — the row is for the task
       // fold. ⚠️ Not a duplicate: the transcript draws no seam line at all (a finding, not a ruling).
       { event: { type: 'pending_compaction', request: null }, adds: 0 },
@@ -996,6 +1012,9 @@ describe('transcript fold', () => {
       question_ended_with_its_piece: true,
       request_interrupted: true,
       work_restarted: true,
+      ask_handoff_attempted: true,
+      ask_handoff_not_accepted: true,
+      ask_provenance_unresolved: true,
       reopened: true,
       // An agent's restore from the archive.
       restored_from_archive: true,

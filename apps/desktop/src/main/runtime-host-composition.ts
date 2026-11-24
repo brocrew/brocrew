@@ -293,6 +293,8 @@ export async function composeRuntimeHost(
     skillsForAPerson: sharedDiscovery.window,
     savedMethods: methodKnowledge,
     memoryKnowledge,
+    readCurrentAgentRules: (profile) => store.readCurrentAgentRules(profile),
+    writeDirectAgentRules: (...args) => store.writeDirectAgentRules(...args),
     afterFirstWindowLoad: firstWindowLoad,
     deferStartupUntilListPaint: true,
     workSearchReader: startWorkSearch(database.name),

@@ -5,8 +5,7 @@ import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
-import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
-import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
+import { heldRecord, openableRow, ordinaryRowBase, stubbed } from './ordinary-rail-rows.fixture'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 // Rows name providers as the window's catalogue supplies them.
@@ -48,32 +47,12 @@ const NOW = Date.now()
 const CWD = '/Users/alex/dev/brobot-2'
 
 const resumableBase = {
-  provider: 'claude' as const,
+  ...ordinaryRowBase,
   cwd: CWD,
-  status: 'idle' as const,
-  state: { is: 'idle' as const },
-  // ⚑ **D-016 · commit 7 · R2 — it holds no piece**, so a row is titled by its agent, as it was.
-  named: null,
-  approvalMode: 'ask' as const,
-  profileId: DEFAULT_PROFILE_ID,
-  reasoningEffort: null,
-  model: null,
-  planMode: null,
-  adoptedAt: null,
-  hasTranscript: true,
-  child: null,
-  lastEnding: 'completed' as const,
   updatedAt: NOW - 240_000,
 }
 
-/** An ordinary conversation nothing runs: the host lists it, idle. */
-const OPENABLE: ResumableSessionInfo = {
-  ...resumableBase,
-  running: 'not-running',
-  sessionId: 'sess_openable',
-  ref: { provider: 'claude', sessionId: 'thread-1', cwd: CWD, rotation: 0 },
-  resumeRefusal: null,
-}
+const OPENABLE: ResumableSessionInfo = openableRow(CWD, NOW - 240_000)
 
 /** A second host row, in a folder of its own, so the two are told apart on screen. */
 const READABLE: ResumableSessionInfo = {
@@ -123,32 +102,7 @@ const hostRow = (
   over: Partial<ResumableSessionInfo> = {},
 ): ResumableSessionInfo => ({ ...OPENABLE, sessionId, state, ...over })
 
-/** A conversation this window holds — its row is drawn from its record. */
-const heldRecord = (sessionId: string, cwd: string): unknown => {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'claude',
-    cwd,
-    profileId: DEFAULT_PROFILE_ID,
-    ref: { provider: 'claude', sessionId: 'live', cwd, rotation: 0 },
-    approvalMode: 'ask',
-    planNeedsGoAhead: false,
-    liveness: { state: 'live', since: NOW },
-  } as never
-  return record
-}
-
-/* ------------------------------------------------------------------ mounting */
-
-type RailApi = {
-  runtime: {
-    listResumable: () => Promise<ResumableSessionInfo[]>
-    listUnresumable: () => Promise<UnresumableSessionInfo[]>
-  }
-}
-
-const stubbed = (): { api?: RailApi } => window as unknown as { api?: RailApi }
+const heldHere = (sessionId: string, cwd: string): unknown => heldRecord(sessionId, cwd, NOW)
 
 /** A macrotask and a tick: the fetch is a `Promise.all` inside a `try`, whose hops are not this file's. */
 const settle = async (): Promise<void> => {
@@ -256,7 +210,7 @@ describe('the rail draws its one list newest activity first, by the host’s row
           hostRow('sess_new', { is: 'idle' }, { updatedAt: NOW - 60_000 }),
         ],
       },
-      { open: [heldRecord('sess_held_old', CWD)] },
+      { open: [heldHere('sess_held_old', CWD)] },
     )
 
     // The positive that makes the order mean something: all three are on screen, and the held one
@@ -269,7 +223,7 @@ describe('the rail draws its one list newest activity first, by the host’s row
   })
 
   it('a conversation this window holds that the host has not listed yet goes first, and the same one listed goes by its row', async () => {
-    const open = [heldRecord('sess_launching', CWD)]
+    const open = [heldHere('sess_launching', CWD)]
     const others = [
       hostRow('sess_mid', { is: 'idle' }, { updatedAt: NOW - 3_600_000 }),
       hostRow('sess_new', { is: 'idle' }, { updatedAt: NOW - 60_000 }),
@@ -355,7 +309,7 @@ describe('a row the host lists says the host’s state', () => {
 describe('the conversation on screen says how it was opened when the host lists it', () => {
   it('the conversation on screen says how it was opened when the host lists it, and no other row does', async () => {
     // A recorded record the screen is drawing: NOT in `open`, so its row is the host's.
-    const onScreen = heldRecord('sess_openable', CWD) as { opening: string | null }
+    const onScreen = heldHere('sess_openable', CWD) as { opening: string | null }
     onScreen.opening = 'Fix the failing build'
 
     const drawing = await rail(
@@ -506,7 +460,7 @@ describe('what the rail exposes to the screen', () => {
     )
     const m = await rail(
       { resumable: [OPENABLE, inAWindow], unresumable: [USER_HOME] },
-      { open: [heldRecord('sess_held_unlisted', CWD)] },
+      { open: [heldHere('sess_held_unlisted', CWD)] },
     )
     const listedOf = m.vm.listedOf as (sessionId: string) => Record<string, unknown> | null
 

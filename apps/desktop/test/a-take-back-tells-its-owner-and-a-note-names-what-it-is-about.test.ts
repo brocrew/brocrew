@@ -425,8 +425,13 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
 
   it('a piece with no child is taken back with the stop and without a list of pieces', async () => {
     const { worker, pmTools, label } = await aPmAndItsWorker('the piece')
+    const rebriefed = await callOn(pmTools, 'update_work', {
+      piece: label,
+      brief: 'the held rebrief',
+    })
+    expect(rebriefed).toMatchObject({ outcome: 'ok', delivery: 'held' })
     const back = await callOn(pmTools, 'withdraw_task', { piece: label })
-    expect(back.outcome, JSON.stringify(back)).toBe('ok')
+    expect(back).toMatchObject({ outcome: 'ok', tookBackTheMessage: true, delivery: 'held' })
     const told = await theNoticeIn(worker)
 
     // Read off a real notice: it names the piece and carries the stop, so its missing clause is an absence.
@@ -435,6 +440,9 @@ describe('D-016 · a take-back tells its owner, and a note names what it is abou
     expect(told).toContain('Stop working on it and do not reply_to_parent about it.')
     expect(told).not.toContain('Its open pieces')
     expect(told).not.toContain('are still yours')
+    expect(store.messagesWaitingIn(worker)).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining('the held rebrief') }),
+    )
   })
 
   it('derives a note for the sender’s root and a follow-up for work it gave the recipient', async () => {

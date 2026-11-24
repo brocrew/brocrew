@@ -1,3 +1,4 @@
+import type { AskLedgerReference } from './ask-delivery-contracts'
 import type { SendReceipt } from './tool-outcome'
 import type { MoveOffer } from './move-contracts'
 import type { ChannelRefusal, RuntimeEvent, UserInputQuestion } from '@brobot2/runtime'
@@ -857,6 +858,7 @@ export interface LedgerWalk<Row> {
  * field, never a second row. Two halves of one fact are two things that can disagree.
  */
 export interface RequestRoutedEvent {
+  originalOpening?: AskLedgerReference
   type: 'request_routed'
   /**
    * ⛔ **The request's own id** — `permission_request.id` or `user_input_request.id`, whichever this

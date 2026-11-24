@@ -59,6 +59,7 @@ export class Wire<T> implements AsyncIterable<T> {
 export class ScriptedCodex implements CodexTransport {
   private readonly queue = new Wire<CodexIncoming>()
   private turns = 0
+  compactionInterrupted = false
   compactionMayFinish: Promise<void> | null = null
   ordinaryTurnMayStart: Promise<void> | null = null
   pluginDiscovery: Promise<unknown> = Promise.resolve(ready())
@@ -140,6 +141,13 @@ export class ScriptedCodex implements CodexTransport {
   }
   private aCompaction(id: string): void {
     this.push('turn/started', turnStartedNotification('th_1', id))
+    if (this.compactionInterrupted) {
+      this.push(
+        'turn/completed',
+        turnCompletedNotification('th_1', completedTurn(id, { status: 'interrupted' })),
+      )
+      return
+    }
     const item = { type: 'contextCompaction', id: `cc_${id}` }
     this.push('item/started', { threadId: 'th_1', turnId: id, item, startedAtMs: 1 })
     this.push('item/completed', { threadId: 'th_1', turnId: id, item, completedAtMs: 2 })

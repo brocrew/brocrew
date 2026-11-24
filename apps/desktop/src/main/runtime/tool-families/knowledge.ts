@@ -177,7 +177,7 @@ export function createReadAgentRulesTool(
               problems: [`agent is required and must be ${PATH_SEGMENT_RULE}`],
             }),
           )
-        const outcome = host.readAgentRules(me, agent, by)
+        const outcome = await host.readAgentRules(me, agent, by)
         if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
         return answer({ outcome: 'ok', ...outcome.result }, JSON.stringify(outcome.result))
       }),
@@ -225,7 +225,7 @@ export function createWriteAgentRulesTool(
         const input = rulesWriteQuery.safeParse(args)
         if (!input.success) return malformedQueryAnswer(input.error.issues)
         const value = input.data
-        const outcome = host.writeAgentRules(
+        const outcome = await host.writeAgentRules(
           me,
           {
             about: value.agent,

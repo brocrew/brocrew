@@ -666,11 +666,19 @@ describe('465 · a person who never answered', () => {
     expect(question.outcome, JSON.stringify(question)).toBe('ok')
     const id = question.question as string
     // ⛔ **The premise, off the ledger**: the routing names the agent and carries no refusal.
+    const routedAt = store
+      .events(asker.sessionId)
+      .find(({ event }) => event.type === 'request_routed' && event.requestId === id)?.ordinal
     expect(routingIn(asker.sessionId, id)).toEqual({
       type: 'request_routed',
       requestId: id,
       to: 'an-agent',
       parent: named.sessionId,
+      originalOpening: JSON.stringify([
+        asker.sessionId,
+        store.theActiveGeneration(asker.sessionId),
+        routedAt,
+      ]),
     })
     // ⛔ **Settled before it is read**: the question reached the one asked, started its turn, and
     // that turn parked on its own card in the person's window. ⚠️ It had no turn before this one,

@@ -1,4 +1,9 @@
 import { savedMethodLine, savedMethodsHelp, savedMethodsRefusalNotice } from '../saved-methods'
+import {
+  askLedgerReference,
+  type AskHandoffInput,
+  type AskLedgerReference,
+} from '../../shared/ask-delivery-contracts'
 import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
 import { AgentCreation } from './agent-creation'
@@ -271,6 +276,7 @@ import { transcriptMessageForDisplay } from '../providers/error-presentation'
 import {
   RejectedSessionLaunch,
   StoppedBeforeSend,
+  endsOnlyProviderWork,
   withManagedPluginAttachments,
   type CompactResult,
 } from '@brobot2/runtime'
@@ -356,6 +362,7 @@ import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import {
   allProviderCapabilities,
   answerRefusalOf,
+  answerToForward,
   askedOfTheChannel,
   isOfferedLabel,
   type UserInputQuestion,
@@ -392,6 +399,7 @@ import {
   withDeadline,
   MAX_USAGE_WINDOWS,
   type AgentToolset,
+  type AgentToolAnswer,
   type LaunchSetting,
   type ProviderCommand,
 } from '@brobot2/runtime'
@@ -1411,6 +1419,20 @@ interface UnclaimedBase {
  * provider is not waiting on anybody"* are different answers and an `undefined` would be one word
  * for both — 074's rule, which this app has now paid for in four places.
  */
+interface RecordedAskAttempt {
+  reference: AskLedgerReference
+  generation: number
+  ordinal: number
+}
+
+interface AcceptedAskReceipt {
+  attempt: RecordedAskAttempt
+  endings?: readonly UnqueuedMessageEvent[]
+  afterCommit?: (endings: readonly RuntimeEventMessage[] | null) => void
+  releaseUnrecorded?: () => void
+  noteInputRecorded: () => void
+}
+
 export type UnclaimedSession =
   | (UnclaimedBase & {
       /** Reserved; the provider has not arrived. There is nothing to describe and nobody to ask. */
@@ -2056,7 +2078,7 @@ function noticesThatRideThisInput(
   return held.filter((notice) => notice.authorship.appNotice !== 'a-queued-message-was-cancelled')
 }
 
-/** Who a compaction a person asked for says it came from: nobody is told. */
+/** The requester recorded for compaction that a person asked for. */
 const A_PERSON_ASKED = 'a-person'
 
 /** The reason a notice says when its sender gave none. */
@@ -3369,6 +3391,7 @@ interface TheWordsOfAQuestion {
   readonly piece: string | null
   readonly parts: readonly string[]
   readonly prompt: string
+  readonly questions: readonly UserInputQuestion[]
 }
 
 /**
@@ -4917,6 +4940,8 @@ export class RuntimeHost implements LiveHost {
    * its next start ({@link handOnWhatItHeld}); that start puts them back first ({@link reopenSession}).
    */
   private readonly heldAtAStop = new Map<string, QueuedMessage[]>()
+  // The provider accepted these mailbox entries, but their ledger write exhausted retries.
+  private readonly acceptedWithoutReceipt = new Map<string, Set<string>>()
 
   /** Services to look at, once this stretch has run, for whether they are free for their next piece. */
   private readonly servicesToAdvance = new Set<string>()
@@ -10544,12 +10569,12 @@ export class RuntimeHost implements LiveHost {
         profileId: spawn.profileId,
         cwd,
         approvalMode: spawn.approvalMode,
-        parentSessionId: spawn.parentSessionId,
+        ...(spawn.parentSessionId === null ? {} : { parentSessionId: spawn.parentSessionId }),
         ...(input.model === undefined ? {} : { model: input.model }),
         ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
       }
       const queued = this.briefForTheNextStart(firstGive, {
-        ownerId: agentCallerId(spawn.parentSessionId),
+        ownerId: agentCallerId(spawn.giverSessionId),
       })
       this.recordTheGive(id, firstGive, queued.messageId, null, { conversation, queued })
       input = { ...input, cwd }
@@ -11302,12 +11327,8 @@ export class RuntimeHost implements LiveHost {
    *     is written so the answer can say how many. ⚑ The copies passed up of them end in the same
    *     transaction, each with a row in the ledger that passed it up.
    *  3. **The original giver's stale notices are taken back**, and the window is told work moved.
-   *  4. 🔴 **The owner is TOLD** (plan ruling 8) — through {@link toItsHolderAlone}, which starts it
-   *     when nothing runs in it: an agent is never dead. ⛔ **Only while it is still the
-   *     conversation in its own place** (spec D27), before the words go and at every start they
-   *     wait for: one that could never be reopened can never hear it, and the one that took its
-   *     place never held the piece. ⚠️ A tell that fails is logged and undoes nothing: the piece is
-   *     taken back either way.
+   *  4. A holder that received its first brief gets a notice with its next input. A tell that fails
+   *     is logged and the withdrawal still stands.
    */
   async takeBackPiece(
     input: { readonly piece: string; readonly reason?: string },
@@ -11368,7 +11389,6 @@ export class RuntimeHost implements LiveHost {
         },
       }
     }
-    // A service is neither woken nor told about a withdrawal of work that never reached it.
     const queued = this.queuedAtAService(piece)
     const stands = queued
       ? this.whereTheQueuedPieceStands(piece)
@@ -11387,6 +11407,7 @@ export class RuntimeHost implements LiveHost {
     const copies = this.theCopiesToEnd(piece.owner, piece.piece)
     if (!copies.ok)
       return { ok: false, refused: { rail: copies.because, label: piece.label, ...copies.detail } }
+    const briefNeverDelivered = queued || piece.briefHandedOver !== true
     // ⚑ **The held messages go first, because they are the half that could still refuse** — the
     // brief, and any new brief: every message still waiting that carries the piece.
     const tookBackTheMessage = this.takeBackTheHeldMessages(piece, stands.held)
@@ -11418,7 +11439,9 @@ export class RuntimeHost implements LiveHost {
       tookBackTheMessage,
       endedQuestions,
       atAService: this.itIsAService(piece.owner),
-      ...(await this.tellItsOwnerItWasTakenBack(piece, asAgent, whoDidIt(by), input.reason)),
+      ...(briefNeverDelivered
+        ? { briefNeverDelivered, delivery: 'not-delivered' as const, whyNotTold: QUEUED_NEVER_TOLD }
+        : await this.tellItsOwnerItWasTakenBack(piece, asAgent, whoDidIt(by), input.reason)),
     }
     const notice = aPersonTypedIt(by) ? 'a-piece-a-person-took-back' : 'a-piece-taken-back'
     const theStop = {
@@ -11443,6 +11466,7 @@ export class RuntimeHost implements LiveHost {
         piece: taken.piece,
         label: taken.label,
         askedItsTurnToStop: taken.askedItsTurnToStop,
+        ...(taken.briefNeverDelivered === true ? { briefNeverDelivered: true } : {}),
       }
     }
     const { rail } = taken.refused
@@ -11774,10 +11798,6 @@ export class RuntimeHost implements LiveHost {
     actor?: ActedBy,
     reason?: string,
   ): Promise<Told> {
-    // ⛔ `piece` as it stood before it was taken back: one queued at a service never reached it.
-    if (this.queuedAtAService(piece)) {
-      return { delivery: 'not-delivered', whyNotTold: QUEUED_NEVER_TOLD }
-    }
     // ⚑ `null`: a person took it back.
     const text = [
       endedBy === null
@@ -13313,11 +13333,15 @@ export class RuntimeHost implements LiveHost {
       this.publishOurs(session, row)
       down = true
     } else down = this.appendIntoItsLedger(sessionId, { ...row, forItsNextStart: true })
+    this.rememberWordsHeldAtAStop(sessionId, held)
+    this.theWorldMoved('work')
+    kept?.(down ? 'its-ledger' : 'nowhere', held.id)
+  }
+
+  private rememberWordsHeldAtAStop(sessionId: string, held: QueuedMessage): void {
     if (!this.launches.closed) {
       this.heldAtAStop.set(sessionId, [...(this.heldAtAStop.get(sessionId) ?? []), held])
     }
-    this.theWorldMoved('work')
-    kept?.(down ? 'its-ledger' : 'nowhere', held.id)
   }
 
   /**
@@ -13470,6 +13494,7 @@ export class RuntimeHost implements LiveHost {
     parent: string,
     verdict: {
       id: string
+      originalOpening: AskLedgerReference
       prompt: string
       questions: readonly UserInputQuestion[]
       files?: SendReceipt['attachments']
@@ -13487,7 +13512,7 @@ export class RuntimeHost implements LiveHost {
     const label = verdict.label ?? null
     // ⚑ …and the question itself, by its request id ({@link TurnFacts.asks}).
     const about = {
-      asks: { asker: asked, requestId: verdict.id },
+      asks: { asker: asked, requestId: verdict.id, originalOpening: verdict.originalOpening },
       ...(piece === null || label === null ? {} : { aboutPiece: { piece, label } }),
     }
     const facts = { carriedFor: asked, ...about }
@@ -13551,7 +13576,7 @@ export class RuntimeHost implements LiveHost {
     return 'missing'
   }
 
-  private questionCanBeReminded(
+  private isAnUnforwardedAppQuestion(
     asker: string,
     id: string,
     answererIds: readonly string[],
@@ -13574,7 +13599,7 @@ export class RuntimeHost implements LiveHost {
     ledgerOf: (conversation: string) => ItsLedger = this.oneLedgerReadPerAnswer(),
   ): boolean {
     return (
-      this.questionCanBeReminded(asker, id, answererIds, ledgerOf) &&
+      this.isAnUnforwardedAppQuestion(asker, id, answererIds, ledgerOf) &&
       this.questionReminderProgress(answererIds, this.questionWakeIds(asker, id).reminder) ===
         'turn-ended'
     )
@@ -13639,7 +13664,7 @@ export class RuntimeHost implements LiveHost {
     const answererIds = this.theIdsItStandsFor(session.id)
     for (const { askedBy, requestId } of owed) {
       if (waiting.has(questionKey(askedBy, requestId))) continue
-      if (!this.questionCanBeReminded(askedBy, requestId, answererIds, ledgerOf)) continue
+      if (!this.isAnUnforwardedAppQuestion(askedBy, requestId, answererIds, ledgerOf)) continue
       const { reminder, notice, stoppedNotice } = this.questionWakeIds(askedBy, requestId)
       const progress = stoppedByPerson
         ? undefined
@@ -13692,7 +13717,9 @@ export class RuntimeHost implements LiveHost {
     await this.afterWhatArrivedFirst(this.theOneInItsPlace(asker), async () => {
       if (this.howItsQuestionEnded(asker, question) !== null) return
       const ledgers = this.oneLedgerReadPerAnswer()
-      if (!this.questionCanBeReminded(asker, question, this.theIdsItStandsFor(answerer), ledgers))
+      if (
+        !this.isAnUnforwardedAppQuestion(asker, question, this.theIdsItStandsFor(answerer), ledgers)
+      )
         return
       if (
         stoppedByPerson &&
@@ -13858,6 +13885,7 @@ export class RuntimeHost implements LiveHost {
       piece: asked.piece,
       parts: asked.questions.map((one) => one.id),
       prompt: asked.prompt,
+      questions: asked.questions,
     }
   }
 
@@ -13903,15 +13931,8 @@ export class RuntimeHost implements LiveHost {
    * no conversation to name. ⚑ A parent's answer names the parent, exactly as a routed question
    * names the child.
    *
-   * ## ⛔ It never throws, and the row is already written when it runs
-   *
-   * ⚠️ **`393`'s ordering, which {@link routeRequest} states for the question half**: the ending is
-   * recorded BEFORE the delivery is attempted. ⚑ **D-017 · R1 — and the words are never lost
-   * either**: an asker that is not running has them held in its LEDGER in the same stretch as the
-   * decision ({@link holdUntilItStarts}), and is then started — owned by the person's window when a
-   * person answered (R5) — and that start sends them first. ⚑ A start that fails leaves them there
-   * for the next one, and the answer says so: `null` when the words reached the asker (sent, or held
-   * behind its turn), else the sentence whoever answered is given ({@link anAnswerKeptForItsStart}).
+   * The decision precedes delivery. For an ordinary agent answer to its settled, stopped asker,
+   * this commits the decision and held words together, then starts the asker.
    */
   private async deliverAnswer(
     held: {
@@ -13919,6 +13940,7 @@ export class RuntimeHost implements LiveHost {
       readonly piece: string | null
       readonly prompt: string
       readonly action?: ActionAsked
+      readonly decisionForStoppedAsker?: UserDecisionEvent
     },
     requestId: string,
     answeredBy: string | null,
@@ -14061,24 +14083,34 @@ export class RuntimeHost implements LiveHost {
         delivery: { to, taskLabel: label, kind: 'sent' },
       }
     }
-    // ⚑ **D-017 · R1 — not running: the answer is held in its LEDGER first**, beside the decision the
-    // caller wrote, so a start that fails loses nothing — and then it is started, owned by the
-    // person's window when a person answered (R5). ⚑ That start sends what waited for it first.
-    const heldAs: { id?: string } = {}
-    this.holdUntilItStarts(asker, text, facts, undefined, (_where, id) => {
-      heldAs.id = id
-    })
+    let heldId: string | undefined
+    if (held.decisionForStoppedAsker !== undefined) {
+      const decision = held.decisionForStoppedAsker
+      const words = this.wordsThisAppHolds(asker, text, facts, 'notice')
+      const shows = this.writeRecord(asker, 'events', () => [
+        this.appendInTheTransaction(asker, decision),
+        this.appendInTheTransaction(asker, { ...words.row, forItsNextStart: true }),
+      ])
+      for (const show of shows) show()
+      this.rememberWordsHeldAtAStop(asker, words.held)
+      heldId = words.held.id
+      this.theWorldMoved('work')
+    } else {
+      this.holdUntilItStarts(asker, text, facts, undefined, (_where, id) => {
+        heldId = id
+      })
+    }
     try {
       await this.ensureRunning(asker, window)
       // ⚑ Unless it landed behind a turn that start began first — words already on their way in, or
       // a start already under way — where it waits as it would behind any running turn.
       return {
         kept: null,
-        ...(heldAs.id === undefined
+        ...(heldId === undefined
           ? {}
-          : { delivery: { to: asker, taskLabel: label, kind: 'held', queueId: heldAs.id } }),
+          : { delivery: { to: asker, taskLabel: label, kind: 'held', queueId: heldId } }),
         ...(await this.withWhatItsStopLeft(
-          this.theStopForAHeldAnswer(asker, heldAs.id ?? null, stopAs),
+          this.theStopForAHeldAnswer(asker, heldId ?? null, stopAs),
         )),
       }
     } catch (error) {
@@ -14370,7 +14402,7 @@ export class RuntimeHost implements LiveHost {
         ...(move === undefined && input.options.length > 0 ? { allowOther: true } : {}),
       },
     ]
-    this.publishOurs(session, {
+    const raised: QuestionAskedEvent = {
       type: 'question_asked',
       ...(move === undefined ? {} : { move }),
       ...(input.action === undefined ? { files: attachments } : { action: input.action }),
@@ -14379,21 +14411,35 @@ export class RuntimeHost implements LiveHost {
       ...(piece === null ? {} : { piece: piece.piece, label: piece.label }),
       prompt,
       questions,
-    })
+    }
     // The stored parent is the answerer for an agent-addressed question. Person-addressed
     // questions have no answerer in this field.
-    this.publishOurs(session, {
+    const route: RequestRoutedEvent = {
       type: 'request_routed',
       requestId,
       to: went,
       ...(answerer === null ? {} : { parent: answerer }),
-    })
+    }
+    let originalOpening: AskLedgerReference | undefined
+    if (answerer !== null && (went === 'the-parent' || went === 'an-agent')) {
+      const [question, opening] = this.recordAskRows(session, (generation, ordinal) => [
+        raised,
+        { ...route, originalOpening: askLedgerReference(session.id, generation, ordinal + 1) },
+      ])
+      if (opening?.event.type === 'request_routed') originalOpening = opening.event.originalOpening
+      if (question !== undefined) this.emitOurs(session, question)
+      if (opening !== undefined) this.emitOurs(session, opening)
+    } else {
+      this.publishOurs(session, raised)
+      this.publishOurs(session, route)
+    }
     // Only an agent-addressed question goes through agent delivery.
     this.theWorldMoved('work')
     let delivery: Extract<AskOutcome, { ok: true }>['delivery']
-    if (answerer !== null && (went === 'the-parent' || went === 'an-agent')) {
+    if (answerer !== null && originalOpening !== undefined) {
       const { to, state } = await this.deliverQuestion(speaking, answerer, {
         id: requestId,
+        originalOpening,
         prompt,
         questions,
         files: attachments,
@@ -17554,9 +17600,8 @@ export class RuntimeHost implements LiveHost {
       .filter((row) => !this.archived.has(row.sessionId))
       .sort((one, other) => other.updatedAt - one.updatedAt)
       .slice(0, RECENT_CONVERSATION_PAGE_SIZE)
-      .map(({ sessionId, personStarted, profileId, provider, cwd, updatedAt }) => ({
+      .map(({ sessionId, profileId, provider, cwd, updatedAt }) => ({
         sessionId,
-        ...(personStarted === undefined ? {} : { personStarted }),
         profileId,
         provider,
         cwd,
@@ -19596,27 +19641,29 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **D-009 · F012 — it says it cannot answer.** ⚑ The question is closed `rejected` and its
     // asker is sent the reason.
     const cannot = input.cannot ?? null
-    // ⛔ **Every part the question asked about must be answered** (437): without this a caller could
-    // settle a worker's question with an empty list and be told it had answered. ⚑ Asked before the
-    // length, so a caller told to shorten its answer is not refused next for a part it left out.
+    const questions = words.questions
     if (cannot === null) {
-      const given = new Set(input.answers.map((one) => one.part))
-      const missing = words.parts.filter((part) => !given.has(part))
-      if (missing.length > 0) {
+      const given = new Map<string, string[]>()
+      for (const { part, answer } of input.answers) {
+        const values = given.get(part) ?? []
+        for (const value of answer) values.push(value)
+        given.set(part, values)
+      }
+      // Free-text parts already accept several strings in one answer, including in overflow files.
+      const parts = questions.map((part) =>
+        part.options.length === 0 ? { ...part, multiSelect: true } : part,
+      )
+      const shape = answerToForward(parts, Object.fromEntries(given))
+      if (!shape.forwardable) {
         return {
           ok: false,
           refusal: refuseQuestion('that-answer-cannot-be-sent', {
             question: request.requestId,
-            said: `no answer was given for ${missing.join(', ')}`,
+            said: shape.why,
           }),
         }
       }
     }
-    const questions =
-      cannot === null
-        ? this.deps.store.questionsRaisedIn(request.askedBy).get(request.requestId)?.questions
-        : undefined
-    const measured = oneAgentsAnswer(input.answers, () => questions)
     const files = this.prepareFilesForSend(speaking, input.resources ?? [])
     if (!files.ok) return files
     const hasFiles = files.files.length === 0 ? {} : { files: files.files }
@@ -19651,6 +19698,7 @@ export class RuntimeHost implements LiveHost {
         ...(held ? { held } : {}),
       }
     }
+    const measured = oneAgentsAnswer(input.answers, questions)
     const prepared =
       measured.units <= INLINE_TEXT_LIMIT
         ? null
@@ -19658,7 +19706,7 @@ export class RuntimeHost implements LiveHost {
     if (prepared?.ok === false) return prepared
     const overflow = prepared?.overflow
     const parts =
-      overflow === undefined || questions === undefined
+      overflow === undefined
         ? measured.answers
         : answerPreview(measured.answers, questions, overflow)
     const hasOverflow =
@@ -19666,30 +19714,32 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **A question THIS APP is holding is resolved here and never forwarded** (437): what takes
     // this answer is its asker's `question_asked` row ({@link theWordsOf}), keyed by the asker and
     // the id (679).
-    // ⚠️ **The row FIRST, then the promise** — `393`'s ordering, for its reason. Settling first
-    // would let the worker's turn carry on and finish before the ending of the question it asked
-    // was written down, and a reader of that ledger would meet the answer's consequences above
-    // the answer.
-    // 🔴 **477 · the caller, at the moment the answer is taken** — and `speaking` above is
-    // already this same derivation, so the row and the entitlement cannot disagree about who
-    // is answering. ⛔ Never `input`: no tool argument reaches this field.
-    await this.decideAQuestionThisAppAsked(request.askedBy, request.requestId, 'answered', by)
+    const asker = request.askedBy
+    const settleWithHeldWords =
+      request.went.to !== 'a-person' &&
+      request.parent === speaking &&
+      words.move === undefined &&
+      words.action === undefined &&
+      this.theOneInItsPlace(asker) === asker &&
+      !this.slots.has(asker) &&
+      !this.startsInFlight.has(asker) &&
+      !this.arrivals.has(asker) &&
+      !this.startupRepairs.has(asker) &&
+      this.isAnUnforwardedAppQuestion(asker, request.requestId, this.theIdsItStandsFor(speaking))
+    const decisionForStoppedAsker: UserDecisionEvent | undefined = settleWithHeldWords
+      ? {
+          type: 'user_decision',
+          requestId: request.requestId,
+          outcome: 'answered',
+          by: whoDidIt(by),
+        }
+      : undefined
+    if (!settleWithHeldWords) {
+      await this.decideAQuestionThisAppAsked(asker, request.requestId, 'answered', by)
+    }
     const said = parts.map((one) => ({ part: one.part, answer: [...one.answer] }))
-    // 🔴 **591 · the answer reaches the worker as WORDS, and the ledger row above is written
-    // first** (HO-082 §2). ⛔ **A resolved promise reaches a model only while that promise is
-    // still awaited**, so a worker whose turn moved on would have been told nothing at all —
-    // which is why the bound used to have to refuse. ⚑ `deliverAnswer` is `deliverQuestion`
-    // pointed back down the edge it came up.
-    //
-    // 🔴 **608 · it is the ONLY route now, where `591` left two** (HO-084 §4). ⛔ The other arm
-    // settled the promise `ask_question` was parked on, and nothing is parked any more — so a
-    // branch on `aTurnIsWaiting` would be a flag that can only be false in front of a call that
-    // would silently drop the answer. ⚑ **Every answer is a late answer now**, which is why
-    // `591`'s delivery half is what this dispatch rests on rather than something it relaxed.
-    // ⚑ **D-017 · R1** — held in the asker's ledger in this same stretch when it is not running,
-    // then the asker started; `kept` says so when that start did not happen.
     const told = this.deliverAnswer(
-      words,
+      decisionForStoppedAsker === undefined ? words : { ...words, decisionForStoppedAsker },
       request.requestId,
       speaking,
       said,
@@ -19701,7 +19751,7 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **638 · the work moved** — `answerQuestion` closes the `answers` half on its second ending.
     // ⛔ **The `childrenOpen` half is not the only one that composes a piece's state**: `answers`
     // and `aPerson` do too, and a surface reading a row cannot tell which half moved it.
-    this.theWorldMoved('work')
+    if (!settleWithHeldWords) this.theWorldMoved('work')
     const { kept, stop, held: behindItsTurn, delivery } = await told
     return {
       ok: true,
@@ -21010,7 +21060,7 @@ export class RuntimeHost implements LiveHost {
               // a key the store does not read would compile here and write nothing. ⚑ **D-016 · and its
               // absence is what gives a conversation a person started its ROOT**, in that same
               // transaction (`NewSessionRecord.parentSessionId`).
-              ...(spawn === null ? {} : { parentSessionId: spawn.parentSessionId }),
+              ...(spawn?.parentSessionId == null ? {} : { parentSessionId: spawn.parentSessionId }),
               // 🔴 **727 · R87 — the id this launch asked for, recorded with the row** — before this
               // host sends anything, so before the CLI can write a transcript under it. ⛔ A kill,
               // an error before init or a timed-out close can no longer leave one no row names.
@@ -21828,9 +21878,13 @@ export class RuntimeHost implements LiveHost {
     // ordering reason below: the person's `/compact` row lands before the compaction does.
     const compaction = aPersonsCompaction(text, from)
     if (compaction !== null) {
-      this.aTurnIsHandedOver(session, whose, askedForTheStop)
       return {
-        accepted: session.handle.compact(compaction.instructions ?? undefined).then((result) => {
+        accepted: this.requestNativeCompaction(
+          session,
+          { agent: A_PERSON_ASKED },
+          () => session.handle.compact(compaction.instructions ?? undefined),
+          { whose, askedForTheStop },
+        ).then((result) => {
           if (!result.compacted) throw new Error(result.reason)
           if (result.note !== undefined)
             this.emit(session, {
@@ -22845,6 +22899,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       // the other three doors write the same three keys the same way and a new one cannot ship
       // unmarked. `406`'s property is unchanged: it is still one spread.
       ...whoseWordsTheseAre(by, this.profileOf, facts, declared),
+      ...this.originalAskPart(facts),
       // 🔴 **671 · and the piece these words GIVE, when they are a brief** (`658` G2; a piece since
       // D-016), **or give a new brief** — see {@link UserTurnEvent.piece}, which is how the owner
       // reads either as its giver's. ⛔ Beside the authorship and never inside it:
@@ -22861,6 +22916,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const moveHandoff = this.beginImmediateMoveHandoff(session, by, turn)
     const personalWorkTurnBefore = session.personalWorkTurn
     const personalHandover = session.personalHandover + 1
+    let askAttempt: RecordedAskAttempt | undefined
     let handover: ProviderHandover
     try {
       // ⛔ A caller's words go straight in to a service only while it is still on that caller's
@@ -22877,6 +22933,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         !session.mailbox.every(isRunnableHeldMessage)
       )
         throw new TurnInProgress()
+      this.pendingAskRecording.get(session)?.retry()
+      if (turn.originalOpening !== undefined) {
+        askAttempt = this.beginAskHandoff(session, [
+          { opening: turn.originalOpening, inputIndex: 0 },
+        ])
+        turn.askHandoffAttempt = askAttempt.reference
+      }
       handover = this.handToProvider(
         session,
         text,
@@ -22889,6 +22952,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       )
       await handover.accepted
     } catch (error) {
+      this.settleUnacceptedAsk(session, askAttempt, error)
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
         session.personalWorkTurn = personalWorkTurnBefore
       if (session.moveRequestHandoff === moveHandoff) session.moveRequestRowPending = false
@@ -22932,9 +22996,19 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     }
     // A turn is where a queued mode change is adopted (034), so this is where the header can stop
     // saying "from your next message" and start saying what the session is now doing.
-    this.publishStateIfChanged(session)
-    this.publishOurs(session, turn, undefined, moveHandoff, personalHandover)
-    handover.noteInputRecorded?.()
+    const askReceipt =
+      askAttempt === undefined
+        ? undefined
+        : {
+            attempt: askAttempt,
+            afterCommit: (endings: readonly RuntimeEventMessage[] | null) => {
+              if (endings !== null) this.publishStateIfChanged(session)
+            },
+            noteInputRecorded: () => handover.noteInputRecorded?.(),
+          }
+    if (askReceipt === undefined) this.publishStateIfChanged(session)
+    this.publishOurs(session, turn, undefined, moveHandoff, personalHandover, askReceipt)
+    if (askReceipt === undefined) handover.noteInputRecorded?.()
   }
 
   /**
@@ -23192,6 +23266,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     at?: number,
     moveHandoff?: object,
     personalHandover?: number,
+    askReceipt?: AcceptedAskReceipt,
   ): void {
     // ⛔ **The turn's opening snapshot, taken HERE and not at each caller** (318). `user_turn` is
     // what opens a turn — `opensTurn` says so in the renderer and `appendTx` says so in the
@@ -23255,10 +23330,75 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       if (session.launchGave !== null) event.given = session.launchGave
       if (session.promptStart !== undefined) event.promptStart = session.promptStart
     }
-    const written = this.recordOurs(session, event, at)
-    const committedTurn = written.event
-    if (committedTurn.type === 'user_turn' && personalHandover === session.personalHandover) {
-      const parts = theMessagesOf(committedTurn)
+    if (askReceipt === undefined) {
+      this.publishRecordedOurs(
+        session,
+        this.recordOurs(session, event, at),
+        moveHandoff,
+        personalHandover,
+      )
+      return
+    }
+    // Capture the already prepared row and the same acceptance. A flush can retry the record
+    // without building another prompt or calling the provider again.
+    const finishRecording = (): void => {
+      const result = this.recordAcceptedAsk(session, event, askReceipt)
+      this.pendingAskRecording.delete(session)
+      askReceipt.afterCommit?.(result?.endings ?? null)
+      if (result !== null)
+        this.publishRecordedOurs(session, result.turn, moveHandoff, personalHandover)
+      askReceipt.noteInputRecorded()
+    }
+    this.pendingAskRecording.set(session, {
+      retry: finishRecording,
+      release: () => askReceipt.releaseUnrecorded?.(),
+    })
+    try {
+      finishRecording()
+    } catch (error) {
+      // A queued acceptance still owns its receipt. Let the flush settle while the next
+      // provider row or close retries recording it.
+      if (
+        askReceipt.releaseUnrecorded === undefined ||
+        !(error instanceof RecordWriteFailed) ||
+        !this.pendingAskRecording.has(session)
+      )
+        throw error
+    }
+  }
+
+  private readonly pendingAskRecording = new WeakMap<
+    HostedSession,
+    { retry: () => void; release: () => void }
+  >()
+
+  private retryAskRecording(session: HostedSession, beforeAnotherRow: boolean): boolean {
+    const pending = this.pendingAskRecording.get(session)
+    if (pending === undefined) return true
+    try {
+      pending.retry()
+      return true
+    } catch (error) {
+      if (!(error instanceof RecordWriteFailed)) throw error
+      if (beforeAnotherRow) {
+        // The stream can continue, but this opening can no longer be appended in order.
+        // Reconcile the live mailbox without a receipt or provider ACK. The attempt is unresolved.
+        this.pendingAskRecording.delete(session)
+        pending.release()
+      }
+      return false
+    }
+  }
+
+  private publishRecordedOurs(
+    session: HostedSession,
+    written: RuntimeEventMessage,
+    moveHandoff?: object,
+    personalHandover?: number,
+  ): void {
+    const event = written.event
+    if (event.type === 'user_turn' && personalHandover === session.personalHandover) {
+      const parts = theMessagesOf(event)
       if (
         parts.some((part) =>
           TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
@@ -23272,12 +23412,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       session.moveRequestRowPending = false
       const turn = this.deps.store.theOpenTurn(session.id)
       if (
-        committedTurn.type === 'user_turn' &&
+        event.type === 'user_turn' &&
         turn !== null &&
-        committedTurn.parts === undefined &&
-        TURN_ATTRIBUTION_KEYS.every(
-          (key) => key === 'movedFrom' || committedTurn[key] === undefined,
-        )
+        event.parts === undefined &&
+        TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || event[key] === undefined)
       ) {
         session.moveRequestTurn = { id: turn.id }
       }
@@ -23331,6 +23469,99 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const slot = this.slots.get(session.id)
     if (slot === undefined || slot.session !== session || onItsWayOut(slot)) return
     this.tellWhoeverGaveTheWork(session.id)
+  }
+
+  private recordAskRows(
+    session: HostedSession,
+    events: (generation: number, ordinal: number) => readonly TranscriptEvent[],
+  ): RuntimeEventMessage[] {
+    const rows = this.writeRecord(session.id, 'events', () => this.appendAskRows(session, events))
+    const last = rows.at(-1)
+    if (last !== undefined) {
+      session.ordinal = Math.max(session.ordinal, last.ordinal + 1)
+      this.rememberLedgerOrdinal(session, last.ordinal)
+    }
+    return rows
+  }
+
+  // Invoked only within the writer's outer transaction.
+  private appendAskRows(
+    session: HostedSession,
+    events: (generation: number, ordinal: number) => readonly TranscriptEvent[],
+  ): RuntimeEventMessage[] {
+    const ordinal = Math.max(session.ordinal, this.deps.store.nextOrdinal(session.id))
+    const generation = this.deps.store.theActiveGeneration(session.id)
+    const at = this.now()
+    const entries = events(generation, ordinal).map((event, index) => ({
+      ordinal: ordinal + index,
+      event,
+      at,
+    }))
+    this.deps.store.appendMany(session.id, entries)
+    return entries.map((entry) => ({ sessionId: session.id, ...entry }))
+  }
+
+  private recordAcceptedAsk(
+    session: HostedSession,
+    event: TranscriptEvent,
+    receipt: AcceptedAskReceipt,
+  ): { turn: RuntimeEventMessage; endings: readonly RuntimeEventMessage[] } | null {
+    const { attempt, endings = [] } = receipt
+    const rows = this.writeRecord(session.id, 'events', () => {
+      const generation = this.deps.store.theActiveGeneration(session.id)
+      const prior = this.deps.store.acceptedAskHandoff(
+        session.id,
+        generation,
+        generation === attempt.generation ? attempt.ordinal : -1,
+        attempt.reference,
+      )
+      if (prior !== null) return null
+      return this.appendAskRows(session, () => [...endings, event])
+    })
+    if (rows === null) return null
+    const written = rows.pop()
+    if (written === undefined) throw new Error('Ask turn was not recorded')
+    session.ordinal = Math.max(session.ordinal, written.ordinal + 1)
+    this.rememberLedgerOrdinal(session, written.ordinal)
+    return { turn: written, endings: rows }
+  }
+
+  private originalAskPart({
+    asks,
+  }: Pick<TurnFacts, 'asks'>): Pick<UserTurnEvent, 'originalOpening'> {
+    return asks?.originalOpening === undefined ? {} : { originalOpening: asks.originalOpening }
+  }
+
+  private beginAskHandoff(
+    session: HostedSession,
+    originals: readonly AskHandoffInput[],
+  ): RecordedAskAttempt {
+    let attempt: RecordedAskAttempt | undefined
+    const [row] = this.recordAskRows(session, (generation, ordinal) => {
+      const reference = askLedgerReference(session.id, generation, ordinal)
+      attempt = { reference, generation, ordinal }
+      return [{ type: 'ask_handoff_attempted', attempt: reference, originals }]
+    })
+    if (row === undefined || attempt === undefined) throw new Error('Ask attempt was not recorded')
+    this.emitOurs(session, row)
+    return attempt
+  }
+
+  private settleUnacceptedAsk(
+    session: HostedSession,
+    attempt: RecordedAskAttempt | undefined,
+    error: unknown,
+  ): void {
+    if (attempt === undefined || !(error instanceof StoppedBeforeSend)) return
+    try {
+      const [row] = this.recordAskRows(session, () => [
+        { type: 'ask_handoff_not_accepted', attempt: attempt.reference },
+      ])
+      if (row !== undefined) this.emitOurs(session, row)
+    } catch (failure) {
+      // A failed record leaves the attempt unresolved and the original send outcome in charge.
+      if (!(failure instanceof RecordWriteFailed)) throw failure
+    }
   }
 
   /**
@@ -24424,7 +24655,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       return sendReceipt(delivery, this.deps.store, service)
     }
     let context: ContextReading | null = null
-    if (facts.state.kind !== 'cannot-run' || facts.state.cause.code === 'provider-file-missing') {
+    if (facts.state.kind === 'cannot-run' && facts.state.cause.code === 'could-not-start') {
+      context = this.slots.get(facts.to)?.session?.latestContext ?? null
+    } else {
       try {
         context = this.contextOfConversation(facts.to)
       } catch (error) {
@@ -24698,10 +24931,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         if (active.length > 1)
           return malformed(['Your current work is unclear. Name the parent in piece.'])
         parent = active.length === 1 ? this.deps.store.workById(active[0]!.piece) : root
-      } else if (root !== null && this.theParentInItsPlace(session.id) === null) parent = root
-      else {
-        // A helper's request from a person hangs under the work it was given, while it holds some;
-        // its own root takes only what it is asked while it holds none.
+      } else {
+        // A request from a person hangs under the work its turn drives, else the one piece it was
+        // given, else its own root.
         const personParts = theMessagesOf(opening).filter((part) =>
           TURN_ATTRIBUTION_KEYS.every((key) => key === 'movedFrom' || part[key] === undefined),
         )
@@ -25945,7 +26177,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       open = []
     }
     let moved = 0
+    const accepted = this.acceptedWithoutReceipt.get(old)
     for (const row of open) {
+      if (accepted?.has(row.messageId)) continue
       const queued = inThisRun.get(row.messageId) ?? this.rebuiltFromItsRow(row)
       const work = queued.piece !== undefined
       const itsJobs = queued.authorship.appNotice === 'a-scheduled-job-that-will-not-run'
@@ -27331,6 +27565,11 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * "unreachable"; there is a test now that pins it by making the two disagree.
    */
   private flushQueued(session: HostedSession): void {
+    if (
+      this.pendingAskRecording.has(session) &&
+      (session.flushing !== null || !this.retryAskRecording(session, false))
+    )
+      return
     if (somethingRunnableIsHeld(session)) this.compactBeforeTheNextInput(session)
     if (session.explicitCompaction !== undefined || session.compactionWhenIdle !== undefined) return
     const copy = this.homeCopies.get(session.provider)?.get(session.profileId)
@@ -28039,6 +28278,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const personalWorkTurnBefore = session.personalWorkTurn
     let personalHandover: number | undefined
     let moveHandoff: object | undefined
+    let askAttempt: RecordedAskAttempt | undefined
     let handover: ProviderHandover
     try {
       // ⚠️ **The one turn that starts without anybody pressing anything, and therefore the one that
@@ -28161,6 +28401,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
               (key) => key === 'movedFrom' || one.queued.authorship[key] === undefined,
             ),
         )
+        const originals = sending.flatMap(({ queued }, inputIndex): AskHandoffInput[] =>
+          queued.asks?.originalOpening === undefined
+            ? []
+            : [{ opening: queued.asks.originalOpening, inputIndex, heldMessageId: queued.id }],
+        )
+        if (originals.length > 0) askAttempt = this.beginAskHandoff(session, originals)
         handover =
           sending.length === 1 && one !== undefined
             ? this.handToProvider(
@@ -28181,6 +28427,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         session.handingOver = []
       }
     } catch (error) {
+      this.settleUnacceptedAsk(session, askAttempt, error)
       if (error instanceof TurnInProgress && session.personalHandover === personalHandover)
         session.personalWorkTurn = personalWorkTurnBefore
       if (session.moveRequestHandoff === moveHandoff) session.moveRequestRowPending = false
@@ -28240,42 +28487,67 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       )
       return false
     }
-    // Taken out BEFORE the disclosure is published, so what the surface is told matches what the
-    // host now holds; the composer stops offering to cancel a message that has gone.
-    //
-    // ⚠️ **No `attachments` on this one, deliberately** (review). The fold splices the waiting item
-    // out on `reason: 'sent'` and returns before it reads them, and the `user_turn` published
-    // below IS the record — so a copy here has no reader and would only be a second answer to
-    // "what went with it". `cancelled` and `abandoned` carry them because those two are offered
-    // back, and there is nothing else holding them. ⚑ **D-027 · one ending per message**, each
-    // closing its own `message_queued`, so a restart finds none of them waiting.
-    for (const { queued } of went) {
-      this.takeQueued(session, queued)
-      if (queued.moveHandoverStarted) continue
-      this.publishOurs(session, {
-        type: 'message_unqueued',
-        messageId: queued.id,
-        reason: 'sent',
-        text: queued.text,
-      })
-    }
-    // ⚑ This app's words about its jobs are told now that they are taken, and not before.
-    if (
-      went.some(({ queued }) => queued.authorship.appNotice === 'a-scheduled-job-that-will-not-run')
-    ) {
-      this.theWordsAboutItsJobsWereSent(session.id)
-    }
-    // ⚑ …and a cut turn's continuation is kept as sent: its own cut, in this life.
-    for (const { queued } of went) {
-      if (queued.authorship.appNotice === 'a-turn-the-app-cut') {
-        this.theContinuationWasSent(session, queued.id)
+    const endings = new Map(
+      went.flatMap(({ queued }): [string, UnqueuedMessageEvent][] =>
+        queued.moveHandoverStarted
+          ? []
+          : [
+              [
+                queued.id,
+                {
+                  type: 'message_unqueued',
+                  messageId: queued.id,
+                  reason: 'sent',
+                  text: queued.text,
+                },
+              ],
+            ],
+      ),
+    )
+    const finish = (committedEndings?: readonly RuntimeEventMessage[] | null): void => {
+      if (askAttempt !== undefined) session.handingOver = []
+      // The mailbox is updated before each disclosure, so a sent item can no longer be cancelled.
+      for (const { queued } of went) {
+        this.takeQueued(session, queued)
+        const ending = endings.get(queued.id)
+        if (committedEndings === undefined && ending !== undefined)
+          this.publishOurs(session, ending)
       }
+      if (committedEndings === null) return
+      if (committedEndings !== undefined)
+        for (const ending of committedEndings) this.emitOurs(session, ending)
+      if (
+        went.some(
+          ({ queued }) => queued.authorship.appNotice === 'a-scheduled-job-that-will-not-run',
+        )
+      ) {
+        this.theWordsAboutItsJobsWereSent(session.id)
+      }
+      for (const { queued } of went) {
+        if (queued.authorship.appNotice === 'a-turn-the-app-cut') {
+          this.theContinuationWasSent(session, queued.id)
+        }
+      }
+      this.theWorldMoved('work')
+      this.publishStateIfChanged(session)
     }
-    // 🔴 **638 · held work was SENT** — `waiting` → `working`, a state a person reads on the row.
-    // ⚑ It opens no task and closes none, so it moves only the holder's own list.
-    this.theWorldMoved('work')
-    // The turn this just started is where a queued setting change is adopted (034, 076).
-    this.publishStateIfChanged(session)
+    const askReceipt =
+      askAttempt === undefined
+        ? undefined
+        : {
+            attempt: askAttempt,
+            endings: [...endings.values()],
+            afterCommit: finish,
+            releaseUnrecorded: () => {
+              const accepted = this.acceptedWithoutReceipt.get(session.id) ?? new Set<string>()
+              for (const { queued } of went) accepted.add(queued.id)
+              this.acceptedWithoutReceipt.set(session.id, accepted)
+              finish(null)
+            },
+            noteInputRecorded: () => handover.noteInputRecorded?.(),
+          }
+    if (askReceipt === undefined) finish()
+    else session.handingOver = went.map(({ queued }) => queued)
     // ⚠️ **`user_turn` LAST, and only now.** This is the event 045 opens a turn row from, so it is
     // written at the moment the provider actually has the messages — never when they were queued.
     // 🔴 **D-027 · ONE for the turn, however many messages it delivered** — with each message as a
@@ -28287,6 +28559,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         session,
         {
           type: 'user_turn',
+          ...(askAttempt === undefined ? {} : { askHandoffAttempt: askAttempt.reference }),
           humanInitiated: went.some((one) => one.queued.authorship.humanInitiated === true),
           // ⛔ **The words SENT, each message's, oldest first** — `045`'s turn row, the search and a
           // page's opening line read this; ⚑ who wrote each is on its part and never here.
@@ -28298,6 +28571,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
             text: one.words,
             ...(one.handed.paths.length > 0 ? { attachments: one.handed.paths } : {}),
             ...one.queued.authorship,
+            ...this.originalAskPart(one.queued),
             ...(one.queued.piece === undefined || one.queued.label === undefined
               ? {}
               : { piece: one.queued.piece, label: one.queued.label }),
@@ -28308,8 +28582,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         undefined,
         moveHandoff,
         personalHandover,
+        askReceipt,
       )
-      handover.noteInputRecorded?.()
+      if (askReceipt === undefined) handover.noteInputRecorded?.()
       return false
     }
     const { queued, words, handed } = alone
@@ -28317,6 +28592,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       session,
       {
         type: 'user_turn',
+        ...(askAttempt === undefined ? {} : { askHandoffAttempt: askAttempt.reference }),
         // ⛔ **D-022 · R1 — the words SENT**: a held give's newest brief, not the words it was held
         // with — which its `message_unqueued` above repeats, as that row's contract says.
         text: words,
@@ -28335,6 +28611,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         // person's. {@link whoseWordsTheseAre} answered that once, at the door, and this is the
         // value it produced.
         ...queued.authorship,
+        ...this.originalAskPart(queued),
         // 🔴 **671 · the piece rides the held message to the turn it becomes** (`658` G2; D-016) —
         // see {@link UserTurnEvent.piece}, and {@link QueuedMessage.piece} for why the flush can only
         // read it here: it has no `by` and no `facts` to derive anything from. ⚑ **687 · with its
@@ -28351,8 +28628,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       undefined,
       moveHandoff,
       personalHandover,
+      askReceipt,
     )
-    handover.noteInputRecorded?.()
+    if (askReceipt === undefined) handover.noteInputRecorded?.()
     return false
   }
 
@@ -28374,6 +28652,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * finds nothing left to hand on.
    */
   private handOnWhatItHeld(session: HostedSession): void {
+    this.retryAskRecording(session, true)
     // A reopen for the tools a person approved that had not happened yet: its words go with what
     // it held, and its next start reads the servers.
     for (const toolsMoved of session.itsToolsMoved ?? []) {
@@ -28465,6 +28744,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     session: HostedSession,
     handedOn: readonly QueuedMessage[],
   ): QueuedMessage[] {
+    const accepted = this.acceptedWithoutReceipt.get(session.id)
     let open: readonly WaitingMessage[]
     try {
       open = this.deps.store.messagesWaitingIn(session.id)
@@ -28472,11 +28752,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       console.warn(
         `runtime host could not read what waits for ${session.id}'s start: ${errorMessage(error)}`,
       )
-      return [...handedOn]
+      return handedOn.filter((one) => !accepted?.has(one.id))
     }
     const inThisRun = new Map(handedOn.map((one) => [one.id, one]))
     const waiting: QueuedMessage[] = []
     for (const row of open) {
+      if (accepted?.has(row.messageId)) continue
       const queued = inThisRun.get(row.messageId) ?? this.rebuiltFromItsRow(row)
       if (isANoticeForItsNextInput(queued)) {
         session.noticesForItsNextInput.push(queued)
@@ -29893,15 +30174,22 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     session: HostedSession,
     requestedBy: CompactionRequest,
     run: () => Promise<CompactResult>,
+    typedHandover?: { whose: WhoseTurnItIs; askedForTheStop: boolean },
   ): Promise<CompactResult> {
     session.explicitCompaction = requestedBy
-    const previous = this.aTurnIsHandedOver(session, { aPersons: false, names: [] }, false)
-    session.wordsItWasHandedFor = []
-    session.wordsJustHandedOver = null
+    const previous = this.aTurnIsHandedOver(
+      session,
+      typedHandover?.whose ?? { aPersons: false, names: [] },
+      typedHandover?.askedForTheStop ?? false,
+    )
+    if (typedHandover === undefined) {
+      session.wordsItWasHandedFor = []
+      session.wordsJustHandedOver = null
+    }
     const undo = (): void => {
       if (session.explicitCompaction === requestedBy) {
         delete session.explicitCompaction
-        session.itsTurnIs = previous
+        if (typedHandover === undefined) session.itsTurnIs = previous
       }
     }
     try {
@@ -29915,14 +30203,17 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   }
 
   private tellItWhatCompactedIt(session: HostedSession, request: CompactionRequest): void {
-    if (request.agent === A_PERSON_ASKED) return
-    const actor = this.whatToCallTheConversation(request.agent)
-    const { line: address } = describeConversation(
-      this.deps.store,
-      request.agent,
-      this.itIsAService(request.agent),
-    )
-    const text = `${actor}, ${address}, compacted this conversation: ${aReasonGiven(request.reason) ?? NO_REASON_GIVEN}.`
+    const reason = aReasonGiven(request.reason) ?? NO_REASON_GIVEN
+    let text = `The person compacted this conversation: ${reason}.`
+    if (request.agent !== A_PERSON_ASKED) {
+      const actor = this.whatToCallTheConversation(request.agent)
+      const { line: address } = describeConversation(
+        this.deps.store,
+        request.agent,
+        this.itIsAService(request.agent),
+      )
+      text = `${actor}, ${address}, compacted this conversation: ${reason}.`
+    }
     const { held, row } = this.wordsThisAppHolds(
       session.id,
       text,
@@ -34690,6 +34981,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     return agentToolsFor(this, sessionId, this.theListsAsLastRead())
   }
 
+  runAgentKnowledgeTool(run: () => Promise<AgentToolAnswer>): Promise<AgentToolAnswer> {
+    return this.trackAgentKnowledge(run())
+  }
+
   /** Bind attribution to the actual running conversation, never a supplied profile or label. */
   private rulesAuthor(me: string, by: Caller): RulesAuthor | null {
     if (sessionSpeakingAs(by) !== me) return null
@@ -34760,7 +35055,11 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   }
 
   /** Internal preparation for the agent tool; public exposure follows the history and Undo UI. */
-  readAgentRules(me: string, about: string, by: Caller): AgentRulesOutcome<AgentRulesReading> {
+  readAgentRules(
+    me: string,
+    about: string,
+    by: Caller,
+  ): Promise<AgentRulesOutcome<AgentRulesReading>> {
     return this.instructionDecisions.readAgentRules(me, about, by)
   }
 
@@ -34769,7 +35068,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     me: string,
     said: AgentRulesWrite,
     by: Caller,
-  ): AgentRulesOutcome<AgentRulesReceipt> {
+  ): Promise<AgentRulesOutcome<AgentRulesReceipt>> {
     return this.instructionDecisions.writeAgentRules(me, said, by)
   }
 
@@ -36557,6 +36856,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
   private readonly instructionDecisions: InstructionDecisions = new InstructionDecisions({
     store: () => this.deps.store,
+    readCurrentAgentRules: (profile) =>
+      this.deps.readCurrentAgentRules?.(profile) ?? this.deps.store.readCurrentAgentRules(profile),
+    writeDirectAgentRules: (...args) =>
+      this.deps.writeDirectAgentRules?.(...args) ?? this.deps.store.writeDirectAgentRules(...args),
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
     instructionPublisher: (conversation) => {
       const session = this.slots.get(conversation)?.session ?? null
@@ -37002,8 +37305,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const frames = linesAsRows(path)
 
     if (kind === 'bundle') {
+      const sourceSessionIds = this.deps.store.sourceSessionIds(sessionId)
       const written = await writeBundleExport(join(targetDir, `${sessionId}.brobot-session.json`), {
-        meta,
+        meta: { ...meta, ...(sourceSessionIds.length === 0 ? {} : { sourceSessionIds }) },
         format: support.format,
         frames,
         // The ledger is windowed for the same reason the frames are: a bundle carries BOTH, so
@@ -37184,7 +37488,16 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       bundle.meta.provider,
       bundle.meta.ref.sessionId,
     )
-    if (existing !== null) return { sessionId: existing }
+    const sourceIds = [bundle.meta.sessionId, ...(bundle.meta.sourceSessionIds ?? [])]
+    const ledger = bundle.ledger.map((entry) => ({
+      ordinal: entry.ordinal,
+      event: entry.event,
+      at: entry.at ?? bundle.meta.updatedAt,
+    }))
+    if (existing !== null) {
+      this.deps.store.associateBundleSource(existing, sourceIds, ledger)
+      return { sessionId: existing }
+    }
 
     const id = this.deps.newSessionId()
     this.deps.store.importSnapshot({
@@ -37208,15 +37521,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         updatedAt: bundle.meta.updatedAt,
         rotation: bundle.meta.ref.rotation,
       },
+      sourceSessionId: bundle.meta.sessionId,
+      sourceSessionIds: bundle.meta.sourceSessionIds,
       derivedThrough: bundle.raw.frames.length,
       // The times come from the bundle, not from now: a transferred conversation keeps the
       // timeline it had where it happened. A version-1 bundle carries none, so its entries take the
       // session's own recorded time — the closest thing to the truth that bundle contains.
-      ledger: bundle.ledger.map((entry) => ({
-        ordinal: entry.ordinal,
-        event: entry.event,
-        at: entry.at ?? bundle.meta.updatedAt,
-      })),
+      ledger,
     })
     this.theWorldMoved('conversations')
     return { sessionId: id }
@@ -41453,6 +41764,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     session.liveness.observe(event)
     // A fragment a later event states whole: proof the provider is working, and nothing to keep.
     if (event.type === 'unknown' && event.passing === true) return
+    this.retryAskRecording(session, true)
     // ⚑ A turn its provider began itself: a continuation of a cut turn is never sent after it.
     if (event.type === 'provider_turn') {
       session.personalHandover++
@@ -41860,7 +42172,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         const request = session.explicitCompaction
         delete session.explicitCompaction
         keepGoing(() => this.tellItWhatCompactedIt(session, request), undefined)
-      } else if (event.type === 'turn') {
+      } else if (given.type === 'turn' && !endsOnlyProviderWork(given)) {
         delete session.explicitCompaction
       }
     }
@@ -42059,26 +42371,20 @@ function headOf(text: string, limit: number): number {
  * ## ⚠️ A part nobody asked is not delivered
  *
  * ⚑ **The held branch rendered every part the caller named**, the ones the question never asked
- * included; the provider branch already ignored them. ⚠️ Dropped when the asker's question can be
- * read, and named in `notAsked` — they did not reach the asker. ⛔ **When it cannot be read** (a
- * torn row, skipped with its warning) nothing is dropped and no label can be told from the
- * answerer's words, so every string counts toward `units`. ⚠️ So on such a question a chosen label
- * over the bound is refused as too long, and no agent can choose it.
+ * included; the provider branch already ignored them. Drop them and name them in `notAsked`.
  */
 function oneAgentsAnswer(
   given: readonly { readonly part: string; readonly answer: readonly string[] }[],
-  asked: () => readonly UserInputQuestion[] | undefined,
+  asked: readonly UserInputQuestion[],
 ): {
   readonly answers: readonly { readonly part: string; readonly answer: readonly string[] }[]
   readonly notAsked: readonly string[]
   /** ⚑ The answerer's own words across every delivered part, in UTF-16 units. */
   readonly units: number
 } {
-  const known = asked()
   const questionOf = (part: string): UserInputQuestion | undefined =>
-    known?.find((candidate) => candidate.id === part)
-  const delivered =
-    known === undefined ? given : given.filter((one) => questionOf(one.part) !== undefined)
+    asked.find((candidate) => candidate.id === part)
+  const delivered = given.filter((one) => questionOf(one.part) !== undefined)
   const notAsked = given.filter((one) => !delivered.includes(one)).map((one) => one.part)
   // ⚑ **The answerer's own words** — not blank, and not a label the question offered.
   const isItsOwn = (part: string, said: string): boolean => {

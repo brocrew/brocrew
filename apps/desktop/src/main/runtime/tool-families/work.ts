@@ -154,7 +154,7 @@ export function createWithdrawTaskTool(
     // **D-016 · ruling 8 — and the owner is told**, woken to hear it if nothing runs in it.
     // **D-022 · R3 — at once or once its turn ends, and the answer says which.**
     description:
-      "Withdraw an open child task when needed. Any conversation may withdraw it. Leave work the person gave to the person, or ask them before withdrawing it. Its holder is told who did it and why with its next input; nothing starts it just to tell it. When the task has a conversation giver and a different conversation withdraws it, that giver is told too. This acts on the task with that label, not on its conversation, which keeps its other tasks and can take new ones. Give a reason when you end someone else's work, so its holder knows why. Structural conversation roots are unchanged. A service is told only if the work reached it.",
+      "Withdraw an open child task when needed. Any conversation may withdraw it. Leave work the person gave to the person, or ask them before withdrawing it. A holder that received the first brief is told with its next input who withdrew the piece and why. The notice starts no turn. When the task has a conversation giver and a different conversation withdraws it, that giver is told too. This acts on the task with that label, not on its conversation, which keeps its other tasks and can take new ones. Give a reason when you end someone else's work. Structural conversation roots are unchanged.",
     /**
      * **Advertised against a TYPE, so *documented* and *read* cannot drift apart** (415's
      * device, `429`'s door) — see {@link WithdrawTaskArguments}.
@@ -175,7 +175,7 @@ export function createWithdrawTaskTool(
         .string()
         .optional()
         .describe(
-          'Why you are withdrawing this task. The holder reads it with your name; when the task has a conversation giver other than you, that giver reads it too. Leave it out when you have no reason to add.',
+          'Why you are withdrawing this task. The holder reads it with your name if it received the first brief. A conversation giver other than you reads it too. Leave it out when you have no reason to add.',
         ),
     } satisfies Readonly<Record<keyof WithdrawTaskArguments, z.ZodType>>,
     call: (args) =>

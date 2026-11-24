@@ -223,6 +223,14 @@ export function agentToolsFor(
       createWriteOwnNotesTool(host, by, me, guarded),
       createCompactAgentTool(host, by, me, guarded),
       createRenameConversationTool(host, me),
-    ].map(recordsWhatItRefused),
+    ].map((definition) => {
+      const tool = recordsWhatItRefused(definition)
+      if (definition.name !== 'read_agent_rules' && definition.name !== 'write_agent_rules')
+        return tool
+      return {
+        ...tool,
+        call: (args: Record<string, unknown>) => host.runAgentKnowledgeTool(() => tool.call(args)),
+      }
+    }),
   }
 }

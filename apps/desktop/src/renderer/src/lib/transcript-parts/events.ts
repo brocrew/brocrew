@@ -735,6 +735,11 @@ export function foldEvent(
       // Membership is read independently of the conversation text.
       return
 
+    case 'ask_handoff_attempted':
+    case 'ask_handoff_not_accepted':
+    case 'ask_provenance_unresolved':
+      return
+
     case 'provider_usage':
       return
 

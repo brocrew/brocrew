@@ -33,7 +33,7 @@ export function createCompactAgentTool(
     name: 'compact_agent',
     handlerOwnsMissingInput: true,
     description:
-      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; a reason is optional. If its provider is running and idle, compaction is requested now. A conversation with no history yet has nothing to compact. If no provider is running and it has history, one request is queued and runs before its next input; no turn starts just for it, and repeated requests count as one. If the attempt fails, the input proceeds without compaction. If a turn is running, one request is queued and runs when that turn ends; repeated requests count as one. When the provider confirms compaction, the conversation is told who requested it and why with its next input. Use it before giving more related work to a conversation about 70% full that doesn't need its exact history, saying why and what comes next.",
+      "Request compaction of a conversation's context with its provider's own compaction, by any of its labels. Any conversation may; a reason is optional. If its provider is running and idle, compaction is requested now. A conversation with no history yet has nothing to compact. If no provider is running and it has history, one request is recorded and the conversation is started to compact; if the app keeps it stopped, such as an archived one, or is reopening it, the request runs when it next starts. Repeated requests count as one. If the attempt fails, the input proceeds without compaction. If a turn is running, one request is queued and runs when that turn ends; repeated requests count as one. When the provider confirms compaction, the conversation is told who requested it and why with its next input. Use it before giving more related work to a conversation about 70% full that doesn't need its exact history, saying why and what comes next.",
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: {
       agent: agentToolHandlerInput(z.string().describe('The conversation, by any of its labels.')),
@@ -81,7 +81,7 @@ export function createCompactAgentTool(
             (result.afterTurn
               ? `Compaction queued for ${result.display}: it runs when its current turn ends.`
               : result.queued
-                ? `Compaction queued for ${result.display}: it runs as soon as that conversation is free.`
+                ? `Compaction queued for ${result.display}: it runs as soon as that conversation is running and free.`
                 : `Compaction requested for ${result.display}.`) +
               (result.note === undefined ? '' : ` ${result.note}`),
           )
@@ -368,10 +368,15 @@ export function createMessageAgentTool(
               : now.delivery
           const wentTo = host.tookItsPlace(agent)
           const to = wentTo ?? agent
-          const state =
+          const recordedState =
             outcome.outcome === 'sent'
               ? { kind: 'started' as const }
               : host.stateOfARecordedMessage(to, outcome.messageId)
+          // A held message can disappear from the queue through cancellation or handoff.
+          const state =
+            outcome.outcome === 'queued' && recordedState.kind === 'started'
+              ? { kind: 'delivery-unknown' as const }
+              : recordedState
           const waitsFor = state.kind === 'queued' ? host.whyWhatIsHeldWaits(to) : null
           const { receipt, said } = host.receiptForSend({
             recorded: {
@@ -390,7 +395,7 @@ export function createMessageAgentTool(
               : whatBecameOfTheStop(
                   now,
                   host.whatToCallTheConversation(to),
-                  'this message',
+                  state.kind === 'delivery-unknown' ? null : 'this message',
                   (conversation) => conversation === me,
                   (conversation) => host.nameByItsWork(conversation),
                   waitsFor !== null,
@@ -406,7 +411,7 @@ export function createMessageAgentTool(
           return answer(
             {
               outcome: 'ok',
-              delivery: outcome.outcome,
+              delivery: state.kind === 'delivery-unknown' ? 'unknown' : outcome.outcome,
               messageAct,
               receipt,
               agent,

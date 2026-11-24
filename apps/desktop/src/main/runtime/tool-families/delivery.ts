@@ -287,7 +287,8 @@ export function whatBecameOfTheStop(
    * five times through one paragraph.
    */
   called: string,
-  what: 'this message' | 'your answer' | 'your reason',
+  /** Omit the effect on the words when their delivery is unknown. */
+  what: 'this message' | 'your answer' | 'your reason' | null,
   yours: (conversation: string) => boolean,
   nameOf: (conversation: string) => string,
   /**
@@ -297,6 +298,7 @@ export function whatBecameOfTheStop(
   itsWaitIsSaid = false,
 ): { readonly structured: Readonly<Record<string, unknown>>; readonly said: string } {
   const notStopped = { asked_to_stop: false, not_stopped_because: now.stop }
+  const waits = what === null ? '' : `; ${what} waits for that turn to end`
   switch (now.stop) {
     case 'asked': {
       // **F084 · what it ended and what still runs, once its turn ended** — else the rule its
@@ -316,7 +318,7 @@ export function whatBecameOfTheStop(
           ...(now.ended === undefined ? {} : { ended: now.ended }),
           ...(runs.length === 0 ? {} : { still_running: runs }),
         },
-        said: `The turn ${called} was running was ${ASKED_TO_STOP}, so that ${what} need not wait for that work to finish, and ${called} is told you asked for the stop. ${left}`,
+        said: `The turn ${called} was running was ${ASKED_TO_STOP}${what === null ? '' : `, so that ${what} need not wait for that work to finish`}, and ${called} is told you asked for the stop. ${left}`,
       }
     }
     case 'not-needed':
@@ -327,47 +329,48 @@ export function whatBecameOfTheStop(
     case 'not-below-you':
       return {
         structured: notStopped,
-        said: `${called} is no longer working on the sender's piece, so its turn was not stopped; ${what} waits for that turn to end.`,
+        said: `${called} is no longer working on the sender's piece, so its turn was not stopped${waits}.`,
       }
     case 'a-person-is-replacing-its-turn':
       return {
         structured: notStopped,
-        said: `A person is already stopping the turn ${called} was running to give it their own words, so it was not interrupted again; ${what} goes with or after theirs.`,
+        said: `A person is already stopping the turn ${called} was running to give it their own words, so it was not interrupted again${what === null ? '' : `; ${what} goes with or after theirs`}.`,
       }
     case 'a-person-is-being-asked':
       return {
         structured: notStopped,
-        said: itsWaitIsSaid
-          ? `The turn ${called} is running was not interrupted: stopping it would answer for the person it waits on.`
-          : `The turn ${called} is running waits for a person's answer, and stopping it would answer for them, so it was not interrupted; ${what} waits for that turn to end.`,
+        said:
+          itsWaitIsSaid || what === null
+            ? `The turn ${called} is running was not interrupted: stopping it would answer for the person it waits on.`
+            : `The turn ${called} is running waits for a person's answer, and stopping it would answer for them, so it was not interrupted${waits}.`,
       }
     case 'it-is-waiting-on-an-answer': {
       const owedBy = now.askedOf
       if (owedBy !== null && yours(owedBy)) {
         return {
           structured: { ...notStopped, asked_of: owedBy },
-          said: `The turn ${called} is running waits for your answer to its question, and stopping it would throw that question away, so it was not interrupted. Answer it with answer_question; ${what} waits for that turn to end.`,
+          said: `The turn ${called} is running waits for your answer to its question, and stopping it would throw that question away, so it was not interrupted. Answer it with answer_question${waits}.`,
         }
       }
       return {
         structured: { ...notStopped, ...(owedBy === null ? {} : { asked_of: owedBy }) },
-        said: `The turn ${called} is running waits for an answer from ${owedBy === null ? 'another conversation' : nameOf(owedBy)}, and stopping it would throw that question away, so it was not interrupted; ${what} waits for that turn to end.`,
+        said: `The turn ${called} is running waits for an answer from ${owedBy === null ? 'another conversation' : nameOf(owedBy)}, and stopping it would throw that question away, so it was not interrupted${waits}.`,
       }
     }
     case 'could-not-be-asked':
       return {
         structured: notStopped,
-        said: `The turn ${called} was running could not be asked to stop, so ${what} waits for that turn to end. interrupt_agent can ask again.`,
+        said: `The turn ${called} was running could not be asked to stop${what === null ? '' : `, so ${what} waits for that turn to end`}. interrupt_agent can ask again.`,
       }
     case 'a-person-started-its-turn':
       return {
         structured: notStopped,
-        said: `A person's own words started the turn ${called} is running, so it was not interrupted; ${what} waits for that turn to end.`,
+        said: `A person's own words started the turn ${called} is running, so it was not interrupted${waits}.`,
       }
     case 'already-asked':
       return {
         structured: notStopped,
-        said: `The turn ${called} was running had already been ${ASKED_TO_STOP}, so it was not asked again; ${what} goes in as that turn ends.`,
+        said: `The turn ${called} was running had already been ${ASKED_TO_STOP}, so it was not asked again${what === null ? '' : `; ${what} goes in as that turn ends`}.`,
       }
   }
 }

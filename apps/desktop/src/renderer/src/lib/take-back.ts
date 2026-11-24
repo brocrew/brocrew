@@ -21,6 +21,7 @@ const NOT_TAKEN_BACK: Record<PersonTakeBackRail, string> = {
 /** What a person's take-back answered, in words. */
 function takeBackSays(answer: WorkTakenBackByAPerson): string {
   if (!answer.ok) return NOT_TAKEN_BACK[answer.rail]
+  if (answer.briefNeverDelivered) return 'Taken back. Its brief never reached the holder.'
   return answer.askedItsTurnToStop ? 'Taken back; its turn was asked to stop.' : 'Taken back.'
 }
 

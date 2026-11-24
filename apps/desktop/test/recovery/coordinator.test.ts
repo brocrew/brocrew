@@ -1,3 +1,4 @@
+import { expectCapturedConversations } from './lib/captured-conversations'
 import {
   databaseContents,
   fullCopyFs,
@@ -1255,9 +1256,7 @@ it.each([
       const live = new Database(databaseFile(userData), { readonly: true })
       const saved = openCheckpointForRead(join(copy.folder, 'database.sqlite'))
       try {
-        expect(saved.prepare('SELECT id FROM provider_session ORDER BY id').all()).toEqual(
-          live.prepare('SELECT id FROM provider_session ORDER BY id').all(),
-        )
+        expectCapturedConversations(saved, live, migrations === LEGACY_BUILD)
       } finally {
         saved.close()
         live.close()
