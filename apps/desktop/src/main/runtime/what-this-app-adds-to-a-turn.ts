@@ -53,7 +53,7 @@ export const TURN_BLOCK_WORDS = {
     age: string | null,
     context: number | null,
   ): string =>
-    `${conversation} · task ${label} · ${name} · ${state}${age === null ? '' : ` · ${age}`}${context === null ? '' : ` · context ${String(context)}%`}`,
+    `${conversation} · task ${label} · ${name} · ${state}${age === null ? '' : ` · state updated ${age}`}${context === null ? '' : ` · context ${String(context)}%`}`,
   more: (count: number): string => `and ${String(count)} more: list_tasks`,
   current: (label: string, title: string, status: string, conversation: string): string =>
     `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}. If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,

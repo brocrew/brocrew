@@ -281,7 +281,7 @@ describe('turn block changes', () => {
       'Work you gave, still open:\n- conversation W1.1 · Fictional job · task W1.1 · worker-1 · being worked on\n',
     )
     // The formatter's clock is input.now (60,000); givenAt must never supply an age.
-    expect(rendered).toContain('W1.2 · worker-2 · being worked on · just now')
+    expect(rendered).toContain('W1.2 · worker-2 · being worked on · state updated just now')
     expect(rendered).not.toContain('given ')
     expect(block({ helpers: { rows: [], more: 0 } })).not.toContain('Work you gave')
   })

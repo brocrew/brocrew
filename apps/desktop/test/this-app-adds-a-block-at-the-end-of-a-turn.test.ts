@@ -435,6 +435,31 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
     })
   }
 
+  it.each(['claude', 'codex'] as const)(
+    '%s labels the age of an active work row',
+    async (provider) => {
+      const { pm, worker, piece, surface } = await aWorkerBetweenTurns(provider)
+      await itsTurnEnds(worker, surface)
+      started.at(-1)!.holdNextTurn()
+      await host.send(worker, 'Continue the fictional work.', surface)
+      await waitFor(
+        () =>
+          store.piecesOwnedBy(worker).some((row) => row.piece === piece && row.state === 'working'),
+        'the selected piece to be working',
+      )
+      store.append(
+        worker,
+        store.nextOrdinal(worker),
+        { type: 'work_status_set', piece, line: 'Fictional progress', by: worker },
+        tick(),
+      )
+      clock += 19 * 60 * 60_000
+      expect(composedEndOfTheCurrentLife(pm)).toContain(
+        'being worked on · state updated 19 hours ago',
+      )
+    },
+  )
+
   function selectedHost(beforeInstructions?: () => void) {
     const source = readBuiltInSkills(join(import.meta.dirname, '../resources/built-in-skills'))
     const catalogue = new SqliteSkillCatalogue(db, source)
