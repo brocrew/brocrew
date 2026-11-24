@@ -28,7 +28,7 @@ import { startLimitsReader } from './db/start-limits-reader'
 import { startWindowReader } from './db/start-window-reader'
 import { startFilesLibrary } from './db/start-files-library'
 import { FilesLibraryWindows, filesLibraryRevision } from './db/files-library-windows'
-import { TeamProfileGraphWindows } from './db/team-profile-graph-windows'
+import { TeamProfileGraphWindows, teamProfileGraphRevision } from './db/team-profile-graph-windows'
 import { startTeamProfileGraph } from './db/start-team-profile-graph'
 import { startWorkSearch } from './db/start-work-search'
 import { startPastWorkSearch } from './db/start-past-work-search'
@@ -306,16 +306,10 @@ export async function composeRuntimeHost(
     teamProfileGraphs: new TeamProfileGraphWindows((admission, failure) =>
       startTeamProfileGraph(database.name, admission, failure),
     ),
-    teamProfileGraphRevision: () => {
-      if (store.canReadFreshSnapshot?.() !== true) return null
-      return JSON.stringify(
-        database
-          .prepare(
-            'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
-          )
-          .get(),
-      )
-    },
+    teamProfileGraphRevision: teamProfileGraphRevision(
+      database,
+      () => store.canReadFreshSnapshot?.() === true,
+    ),
     themes: themes() ?? undefined,
     mainThreadWork,
     store,
