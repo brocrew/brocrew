@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,84 +19,71 @@ const keys = [
   'APPLE_API_ISSUER',
 ]
 
-function argumentsFor(overrides = {}) {
-  const temp = mkdtempSync(join(tmpdir(), 'mac-action-args-'))
-  try {
-    writeFileSync(
-      join(temp, 'pnpm'),
-      '#!/usr/bin/env python3\nimport json,os,sys\nwith open(os.environ["ARGUMENTS"], "a") as out: out.write(json.dumps(sys.argv[1:])+"\\n")\n',
-      { mode: 0o755 },
-    )
-    const inputs = Object.fromEntries(
-      Object.entries(action.inputs).map(([key, value]) => [key, value.default ?? '']),
-    )
-    Object.assign(inputs, { owner: 'brocrew', repo: 'brocrew', version: '0.2.22' }, overrides)
-    const env = {
-      ...process.env,
-      PATH: `${temp}:${process.env.PATH}`,
-      ARGUMENTS: join(temp, 'args'),
-    }
-    for (const [name, value] of Object.entries(build.env)) {
-      if (/^\$\{\{ inputs\./.test(value)) env[name] = inputs[value.slice(11, -3)]
-    }
-    execFileSync('bash', ['-c', build.run], { env })
-    return readFileSync(env.ARGUMENTS, 'utf8')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line))
-  } finally {
-    rmSync(temp, { recursive: true, force: true })
-  }
+/**
+ * Runs a step's bash with `command` replaced by a shell function that prints each call's
+ * arguments, and returns one array per call. A function starts no interpreter: the Python
+ * stand-in it replaced cost the first case about a second on hosted Windows (card 410).
+ */
+function callsOf(command, run, env) {
+  const record = `${command}() { printf '%s\\0' "$@"; printf '\\n'; }\n`
+  return execFileSync('bash', ['-c', record + run], {
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.split('\0').slice(0, -1))
 }
 
-const hostedWindows =
-  process.platform === 'win32' &&
-  process.env.GITHUB_ACTIONS === 'true' &&
-  process.env.RUNNER_ENVIRONMENT === 'github-hosted'
-// Card415: Majid-directed hosted Windows test headroom; physical cause remains unknown.
-const builderTimeoutMs = hostedWindows ? 20000 : 5000
+function argumentsFor(overrides = {}) {
+  const inputs = Object.fromEntries(
+    Object.entries(action.inputs).map(([key, value]) => [key, value.default ?? '']),
+  )
+  Object.assign(inputs, { owner: 'brocrew', repo: 'brocrew', version: '0.2.22' }, overrides)
+  const env = {}
+  for (const [name, value] of Object.entries(build.env)) {
+    if (/^\$\{\{ inputs\./.test(value)) env[name] = inputs[value.slice(11, -3)]
+  }
+  return callsOf('pnpm', build.run, env)
+}
 
-it(
-  'keeps the release builder arguments unchanged with the default inputs',
-  () => {
-    expect(argumentsFor()).toEqual([
-      ['--filter', '@brobot2/desktop', 'run', 'build'],
-      [
-        '--filter',
-        '@brobot2/desktop',
-        'exec',
-        'electron-builder',
-        '--mac',
-        'dmg',
-        'zip',
-        'dir',
-        '--arm64',
-        '--config',
-        'electron-builder.yml',
-        '-c.forceCodeSigning=true',
-        '-c.mac.hardenedRuntime=true',
-        '-c.mac.timestamp=http://timestamp.apple.com/ts01',
-        '-c.mac.notarize=true',
-        '-c.dmg.sign=true',
-        '-c.artifactBuildCompleted=./build/notarize-dmg.mjs',
-        '-c.extraMetadata.version=0.2.22',
-        '-c.publish.provider=github',
-        '-c.publish.owner=brocrew',
-        '-c.publish.repo=brocrew',
-        '--publish',
-        'never',
-      ],
-    ])
-    const release = read('.github/workflows/release.yml')
-    const call = release.jobs.macos.steps.find(
-      (step) => step.uses === './.github/actions/signed-mac',
-    )
-    expect(call.with).not.toHaveProperty('feed_url')
-    expect(call.with).not.toHaveProperty('marker')
-    expect(call.with).not.toHaveProperty('output')
-  },
-  builderTimeoutMs,
-)
+// No flat limit: the case waits for bash to exit. The call is synchronous, so Vitest's timer could
+// only fail it after that exit. Its cold start once took 5.1 s on hosted Windows (card 410).
+it('keeps the release builder arguments unchanged with the default inputs', { timeout: 0 }, () => {
+  expect(argumentsFor()).toEqual([
+    ['--filter', '@brobot2/desktop', 'run', 'build'],
+    [
+      '--filter',
+      '@brobot2/desktop',
+      'exec',
+      'electron-builder',
+      '--mac',
+      'dmg',
+      'zip',
+      'dir',
+      '--arm64',
+      '--config',
+      'electron-builder.yml',
+      '-c.forceCodeSigning=true',
+      '-c.mac.hardenedRuntime=true',
+      '-c.mac.timestamp=http://timestamp.apple.com/ts01',
+      '-c.mac.notarize=true',
+      '-c.dmg.sign=true',
+      '-c.artifactBuildCompleted=./build/notarize-dmg.mjs',
+      '-c.extraMetadata.version=0.2.22',
+      '-c.publish.provider=github',
+      '-c.publish.owner=brocrew',
+      '-c.publish.repo=brocrew',
+      '--publish',
+      'never',
+    ],
+  ])
+  const release = read('.github/workflows/release.yml')
+  const call = release.jobs.macos.steps.find((step) => step.uses === './.github/actions/signed-mac')
+  expect(call.with).not.toHaveProperty('feed_url')
+  expect(call.with).not.toHaveProperty('marker')
+  expect(call.with).not.toHaveProperty('output')
+})
 
 it('uses the same signing command with generic or private rehearsal feeds', () => {
   const generic = argumentsFor({
@@ -192,24 +179,9 @@ it('runs the native rehearsal after packaging on a separate clean hosted job', (
     path: 'apps/desktop/dist-mac-update',
   })
   const run = rehearse.steps.find((step) => step.name?.startsWith('Rehearse ZIP')).run
-  const temp = mkdtempSync(join(tmpdir(), 'mac-native-workflow-'))
-  try {
-    const output = join(temp, 'arguments')
-    writeFileSync(
-      join(temp, 'node'),
-      '#!/usr/bin/env python3\nimport json,os,sys\nwith open(os.environ["ARGUMENTS"], "w") as out: json.dump(sys.argv[1:], out)\n',
-      { mode: 0o755 },
-    )
-    const source = 'a'.repeat(40)
-    execFileSync('bash', ['-c', run], {
-      env: {
-        ...process.env,
-        PATH: `${temp}:${process.env.PATH}`,
-        ARGUMENTS: output,
-        GITHUB_SHA: source,
-      },
-    })
-    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual([
+  const source = 'a'.repeat(40)
+  expect(callsOf('node', run, { GITHUB_SHA: source })).toEqual([
+    [
       'scripts/mac-signed-upgrade.mjs',
       '--predecessor',
       'apps/desktop/dist-mac-update/a',
@@ -225,10 +197,8 @@ it('runs the native rehearsal after packaging on a separate clean hosted job', (
       `mac-b-${source}`,
       '--evidence',
       'mac-update-results',
-    ])
-  } finally {
-    rmSync(temp, { recursive: true, force: true })
-  }
+    ],
+  ])
   for (const step of build.steps.filter((one) => one.uses === './.github/actions/signed-mac')) {
     expect(step.with.feed_url).toContain('inputs.build_only && !inputs.feed_private')
     expect(step.with.feed_private).toContain('inputs.build_only && inputs.feed_private')

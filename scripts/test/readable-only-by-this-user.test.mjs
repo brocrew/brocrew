@@ -44,7 +44,10 @@ describe('the accounts an access list allows, by SID', () => {
   })
 })
 
-describe('a file on this computer', () => {
+// No flat limit: each case waits for PowerShell (and icacls) to exit. The calls are synchronous, so
+// Vitest's timer could only fail a case after that exit. The first cold powershell.exe on hosted
+// Windows once took 6.1 s (card 412).
+describe('a file on this computer', { timeout: 0 }, () => {
   const folders = []
   afterEach(() => {
     for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true })
