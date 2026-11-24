@@ -395,6 +395,9 @@ const loginBehindTheKey = computed(() => {
   )
 })
 
+/** The provider's own short line about this sign-in, when it has one. */
+const authHint = computed(() => (auth.value?.state === 'usable' ? (auth.value.hint ?? '') : ''))
+
 const keyInUseSays = computed(() => {
   const status = keyStatus.value
   if (status === null) return ''
@@ -864,6 +867,7 @@ defineExpose({ beginSetup })
         </span>
         <ProviderOptions v-if="configured && !programMissing" :name="name" @setup="beginSetup" />
       </header>
+      <p v-if="authHint && !programMissing" class="line" data-cy="provider-hint">{{ authHint }}</p>
       <p v-if="programMissing && !props.setup?.install" class="line" role="status">
         Reading installation details…
       </p>

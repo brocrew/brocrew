@@ -420,7 +420,7 @@ export async function probeCodexAuthInHome(
 export type CodexKeyChange =
   /** Log the home in with this key — Codex keeps it in its own `auth.json`. */
   | { readonly to: 'the-key'; readonly apiKey: string }
-  /** Log the home out, so the copied machine login can take its place again. */
+  /** Log the home out, so its account's shared sign-in can take its place again. */
   | { readonly to: 'no-key' }
 
 /** What the home holds after a {@link changeCodexKeyInHome}. */

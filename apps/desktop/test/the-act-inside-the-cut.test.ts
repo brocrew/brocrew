@@ -629,7 +629,7 @@ const ACT: Readonly<Record<string, string>> = {
     'Giving it again will not help until a person has looked',
   // ⚑ A start refused on the agent's sign-in, or its Codex settings: what a person does, first.
   'TOOL_REFUSALS|agent-did-not-start/its-sign-in-or-settings':
-    'Ask a person to save an API key on the Codex card in Providers',
+    'Ask a person to sign in on the Codex card in Providers',
   'TOOL_REFUSALS|agent-name-taken': 'Choose a different name, or use the agent that exists',
   // ⚑ **D-016 · commit 3** — the task words became piece words, and a new piece is a give.
   'TOOL_REFUSALS|that-piece-is-still-queued': 'Change its brief with update_work',

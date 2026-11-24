@@ -93,10 +93,7 @@ it('a saved Codex key remains usable to a fresh startup probe after its launch c
           throw new Error('No OAuth copy belongs in this API-key fixture')
         },
       },
-      auth: {
-        ...bindings.auth,
-        machineAuthPath: () => join(root, 'absent-machine-login.json'),
-      },
+      auth: bindings.auth,
     })
     expect(await module.auth.check('fern')).toMatchObject({ state: 'absent' })
     const prepared = await module.prepareLaunch('fern')
@@ -106,10 +103,7 @@ it('a saved Codex key remains usable to a fresh startup probe after its launch c
     const beforeRestart = children.length
     const restarted = createCodexModule(paths, {
       ...bindings,
-      auth: {
-        ...bindings.auth,
-        machineAuthPath: () => join(root, 'absent-machine-login.json'),
-      },
+      auth: bindings.auth,
     })
     const auth = await restarted.auth.check('fern')
     expect(children).toHaveLength(beforeRestart + 1)

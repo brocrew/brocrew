@@ -48,6 +48,7 @@ import {
   THE_AGENT_ASKS_FOR_ACCESS,
 } from '../src/codex/codex-runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
+import { shareCodexSignIn, stopKeepingCodexSignInsInStep } from '../src/codex/shared-sign-in'
 import { CODEX_PROTOCOL_VERSION, codexVersionFromUserAgent } from '../src/codex/protocol-version'
 import type { ServerRequestResolvedNotification } from '../src/codex/protocol/v2/ServerRequestResolvedNotification'
 import {
@@ -408,7 +409,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       expect(await unread.checkSignIn?.()).toBe(false)
     })
 
-    it('Codex’s own `auth_mode` decides the kind of login; a link in the home is not read', async () => {
+    it('Codex’s own `auth_mode` decides the kind of login; a link in the home is followed', async () => {
       signedIn('acct-one', 'fake-access-one')
       const account = await codexAccountIn(home)
       expect(account).toBe('acct-one')
@@ -425,12 +426,12 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
       // A login of another kind, with no account, is cannot tell.
       writeFileSync(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'agentIdentity' }))
       expect(await codexAccountIn(home)).toBeNull()
-      // ⛔ A link is not followed.
+      // ⚑ A link is followed: a home's sign-in is a link to its account's one.
       const elsewhere = join(home, 'elsewhere.json')
       signedIn('acct-one', 'fake-access-one')
       renameSync(join(home, 'auth.json'), elsewhere)
       symlinkSync(elsewhere, join(home, 'auth.json'))
-      expect(await codexAccountIn(home)).toBeNull()
+      expect(await codexAccountIn(home)).toBe(account)
     })
 
     it('a key in place of a sign-in is another account too', async () => {
@@ -8228,6 +8229,65 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
     expect(started).toHaveLength(1)
     expect((started[0] as { effort?: string }).effort).toBe('high')
     await handle.close()
+  })
+
+  it('🔴 a home kept as a file starts each turn on its account’s newest sign-in', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'codex-turn-catch-up-'))
+    try {
+      const homeOf = (who: string) => join(root, 'homes', who, 'codex')
+      const keyIn = (who: string) =>
+        (
+          JSON.parse(readFileSync(join(homeOf(who), 'auth.json'), 'utf8')) as {
+            tokens: { refresh_token: string }
+          }
+        ).tokens.refresh_token
+      const holding = (who: string, key: string, at: string) => {
+        mkdirSync(homeOf(who), { recursive: true })
+        writeFileSync(
+          join(homeOf(who), 'auth.json'),
+          JSON.stringify({
+            auth_mode: 'chatgpt',
+            tokens: { account_id: 'acct-fictional', access_token: 'a', refresh_token: key },
+            last_refresh: at,
+          }),
+        )
+      }
+      const noLinks = (): never => {
+        throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' })
+      }
+      holding('brobot', 'key-one', '2026-11-20T08:00:00.000Z')
+      for (const who of ['farah', 'ilse']) {
+        mkdirSync(homeOf(who), { recursive: true })
+        await shareCodexSignIn(homeOf(who), {
+          managedRoot: root,
+          ownHome: homeOf('brobot'),
+          link: noLinks,
+          platform: 'win32',
+        })
+      }
+      const transport = new FakeTransport()
+      transport.onRequest('thread/start', () => okThread('th_1'))
+      const startedOn: string[] = []
+      transport.onRequest('turn/start', () => {
+        startedOn.push(keyIn('ilse'))
+        return {}
+      })
+      const handle = await new CodexRuntime(adopt(transport)).start({
+        cwd: '/tmp/x',
+        providerHome: homeOf('ilse'),
+      })
+      // Farah's Codex renews, and the watch never passes it on: its timer does not run.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      holding('farah', 'key-two', '2026-11-24T01:00:00.000Z')
+      await handle.send('the next turn')
+      await vi.waitFor(() => expect(startedOn).toEqual(['key-two']))
+      vi.useRealTimers()
+      await handle.close()
+    } finally {
+      vi.useRealTimers()
+      stopKeepingCodexSignInsInStep()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('asking for nothing sends nothing — the server keeps its own default (024)', async () => {

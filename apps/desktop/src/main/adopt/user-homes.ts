@@ -74,8 +74,8 @@ export function userProviderHomePath(provider: Provider, env = process.env): str
  * both directories today. Refusing them here made this app stricter than the client it is meant to
  * feel like, for nothing that is true only of BroBot.
  *
- * ⚑ **`726` · R92 removed the one that survived it**: `userData`, where this app puts the
- * credential COPIES it makes (`provisionCodexAuth`), is no longer refused to any session either —
+ * ⚑ **`726` · R92 removed the one that survived it**: `userData`, where this app keeps its agents'
+ * provider sign-ins, is no longer refused to any session either —
  * *"BroBot and its agents have access to every folder, as Claude Code, Codex and ChatGPT do on
  * their own."*
  *
