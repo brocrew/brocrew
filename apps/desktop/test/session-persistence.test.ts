@@ -1197,11 +1197,9 @@ describe('resume', () => {
     const released = await relaunched.resumeSession(planning.created.sessionId, new RecordingSink())
     const still = await relaunched.resumeSession(untouched.created.sessionId, new RecordingSink())
 
-    // Check app authorship through publication, a real SQLite ledger, and replay validation.
-    // A reload must preserve both the generated go-ahead’s causality and its authorship. In
-    // one assertion, the person’s typed `hello` returns unmarked while the app turn is
-    // marked; the `untouched` session retains only the typed turn. Preserve `sent` too: the
-    // full text handed to the provider is kept separately.
+    // Check the go-ahead's causality and authorship through publication, SQLite and replay.
+    // The person's `hello` is unmarked, and it is the only turn in the untouched session.
+    // The ledger keeps `sent`, the full text handed to the provider, separately.
     const turnsOf = (sessionId: string) =>
       store
         .events(sessionId)
@@ -1213,7 +1211,12 @@ describe('resume', () => {
       { type: 'user_turn', text: 'Go ahead with this plan.', attribution: 'app_authored' },
     ])
     expect(turnsOf(untouched.created.sessionId)).toEqual([
-      { type: 'user_turn', text: 'hello', humanInitiated: true },
+      {
+        type: 'user_turn',
+        text: 'hello',
+        humanInitiated: true,
+        promptUpdates: { peers: expect.stringMatching(/^[0-9a-f]{64}$/) },
+      },
     ])
 
     // ⚠️ BOTH fields reach the adapter, and both are needed: `planMode` alone cannot distinguish a

@@ -41,23 +41,51 @@ const block = (extra: Parameters<typeof whatThisAppAddsToATurn>[0]['extra']): st
 
 describe('turn block changes', () => {
   it('sends peer activity and saved-method changes independently, at the end', () => {
-    const facts = {
-      ...input,
-      peerActivity: 'Peer activity at noon',
-      savedMethods: '## Saved methods\n\nRotate logs',
+    const peers = {
+      key: 'peers' as const,
+      revision: 'noon',
+      description: '',
+      text: 'Peer activity at noon',
+      at: 0,
+      untimed: true,
     }
-    const first = turnBlockChanges(facts, EMPTY_TURN_BLOCK)
-    expect(block(first.extra)).toMatch(/Peer activity at noon\n## Saved methods\n\nRotate logs$/)
+    const methods = {
+      key: 'methods' as const,
+      revision: 'rotate',
+      description: 'Saved methods',
+      text: '## Saved methods\n\nRotate logs',
+      at: 0,
+      observed: true,
+    }
+    const first = turnBlockChanges({ ...input, promptUpdates: [peers, methods] }, EMPTY_TURN_BLOCK)
+    expect(block(first.extra)).toContain('Peer activity at noon')
+    expect(block(first.extra)).toContain('Saved methods (observed at 1970-01-01T00:00:00.000Z)')
+    expect(block(first.extra)).toContain('Rotate logs')
 
     const later = turnBlockChanges(
-      { ...facts, now: 120_000, peerActivity: 'Peer activity at 12:01' },
+      {
+        ...input,
+        now: 120_000,
+        promptUpdates: [{ ...peers, revision: 'later', text: 'Peer activity at 12:01' }, methods],
+      },
       first.next,
     )
     expect(block(later.extra)).toContain('Peer activity at 12:01')
     expect(block(later.extra)).not.toContain('## Saved methods')
 
     const withoutPeers = turnBlockChanges(
-      { ...facts, peerActivity: '', savedMethods: '## Saved methods\n\nCheck backups' },
+      {
+        ...input,
+        promptUpdates: [
+          {
+            ...peers,
+            revision: '',
+            text: 'There are no other conversations of this profile.',
+            empty: true,
+          },
+          { ...methods, revision: 'backup', text: '## Saved methods\n\nCheck backups' },
+        ],
+      },
       later.next,
     )
     expect(block(withoutPeers.extra)).toContain('There are no other conversations of this profile.')

@@ -341,22 +341,21 @@ describe('one normal agent on both providers', () => {
         host.claimSession(owner, world.window)
         await host.close(owner, world.window)
         await host.resumeSession(owner, world.window)
-        await checkLaunch(provider, v2, textTwo)
+        expect(launches(owner).at(-1)?.given?.ownNotesVersion).toBe(v1)
         const resumed = resumes.mock.calls
           .map(([, options]) => options)
           .filter((options) => options.providerHome.endsWith(join('draft-reader', provider)))
           .at(-1)
-        if (provider === 'claude') expect(resumed?.systemHint).toContain('> ' + textTwo)
+        if (provider === 'claude') expect(resumed?.systemHint).toBe(claudeStart?.systemHint)
         else expect(resumed?.systemHint).toBeUndefined()
         await host.send(owner, 'Continue with the current catalogue revision.', world.window)
         await settle(owner, 2)
-        if (provider === 'codex') {
-          const sent = world
-            .ledger(owner)
-            .filter((event) => event.type === 'user_turn')
-            .at(-1)
-          expect(sent?.type === 'user_turn' ? sent.sent : '').toContain('> ' + textTwo)
-        }
+        const sent = world
+          .ledger(owner)
+          .filter((event) => event.type === 'user_turn')
+          .at(-1)
+        expect(sent?.sent).toContain(textTwo)
+        expect(sent?.sent).toContain('Your own notes (changed at')
       }
       const clear = {
         expectedVersion: v2,
@@ -379,26 +378,23 @@ describe('one normal agent on both providers', () => {
       for (const provider of ['claude', 'codex'] as const) {
         await host.close(owners[provider], world.window)
         await host.resumeSession(owners[provider], world.window)
-        await checkLaunch(provider, v3, '')
+        expect(launches(owners[provider]).at(-1)?.given?.ownNotesVersion).toBe(v1)
         await host.send(owners[provider], 'Continue with the empty notes page.', world.window)
         await settle(owners[provider], 3)
         const clearedOptions = resumes.mock.calls
           .map(([, options]) => options)
           .filter((options) => options.providerHome.endsWith(join('draft-reader', provider)))
           .at(-1)
-        if (provider === 'claude')
-          expect(clearedOptions?.systemHint).not.toContain('## Your own notes')
-        else {
-          const turn = world
-            .ledger(owners[provider])
-            .filter((event) => event.type === 'user_turn')
-            .at(-1)
-          expect(turn?.type === 'user_turn' ? turn.sent : '').toContain('Your own notes are empty.')
-        }
+        if (provider === 'claude') expect(clearedOptions?.systemHint).toBe(claudeStart?.systemHint)
+        const turn = world
+          .ledger(owners[provider])
+          .filter((event) => event.type === 'user_turn')
+          .at(-1)
+        expect(turn?.sent).toContain('Your own notes are empty.')
         expect(launches(owners[provider]).map((launch) => launch.given?.ownNotesVersion)).toEqual([
           v1,
-          v2,
-          v3,
+          v1,
+          v1,
         ])
       }
       for (const capture of originals)

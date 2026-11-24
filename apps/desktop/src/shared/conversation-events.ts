@@ -2,6 +2,7 @@ import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
 import type { ConversationTitledEvent } from './conversation-title'
+import type { KeptPromptStart } from './instruction-contracts'
 import type { AnsweredQuestion, UserTurnEvent } from './human-answer-contracts'
 import type {
   McpServerRequestedEvent,
@@ -907,6 +908,7 @@ export interface RestoredFromTheArchiveEvent {
  */
 export interface LaunchedEvent {
   type: 'launched'
+  promptStart?: KeptPromptStart
   /**
    * What this launch gave its agent, every text in full ({@link WhatALaunchGave}). Absent on older
    * rows, and on a launch with no instruction reader.

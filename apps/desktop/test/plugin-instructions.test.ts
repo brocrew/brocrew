@@ -314,7 +314,7 @@ for (const provider of ['claude', 'codex'] as const) {
       { ...AVAILABLE, state: 'Installed', tools: 'all agents', service: 'fictional-map-helper' },
     ]
     const installed = await turn('Read the next fictional map.')
-    expect(installed).toContain('These sections replace the ones of the same name')
+    expect(installed).toContain('Plugin information (observed at')
     expect(installed).toContain(
       'Plugins: Fictional Atlas — Installed; tools: all agents; service: fictional-map-helper.',
     )
@@ -327,8 +327,8 @@ for (const provider of ['claude', 'codex'] as const) {
       'Plugins: Fictional Atlas — Available; tools: none; service: none.',
     )
     expect(await turn('Keep reading.')).not.toContain('## Plugins')
-    // A reopened Claude launch has current metadata in its system prompt. Codex
-    // needs a turn refresh to replace the live metadata retained in its history.
+    // Neither provider takes a new conversation prefix on an ordinary reopen. The
+    // changed plugin state reaches both in the next accepted turn.
     entries = [{ ...AVAILABLE, state: 'Running', tools: 'all agents' }]
     expect(await turn('Read the running fictional map.')).toContain(
       'Plugins: Fictional Atlas — Running;',
@@ -340,9 +340,8 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(launches.at(-1)).toContain(
       'Plugins: Fictional Atlas — Available; tools: none; service: none.',
     )
-    expect(
-      reopened.includes('Plugins: Fictional Atlas — Available; tools: none; service: none.'),
-    ).toBe(provider === 'codex')
+    expect(reopened).toContain('Plugins: Fictional Atlas — Available; tools: none; service: none.')
+    expect(reopened).toContain('Plugin information (observed at')
     expect(await turn('Read once more after reopening.')).not.toContain('## Plugins')
   })
 }

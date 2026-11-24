@@ -1,3 +1,4 @@
+import type { PromptUpdateBaseline } from './human-answer-contracts'
 import type { InstructionSpan } from './whose-text'
 import type { InjectedInstructionKind } from './injected-instruction-kind'
 
@@ -216,6 +217,17 @@ export interface ProviderInstruction {
   /** Which layer this session's home and cwd put that path in. */
   scope: InstructionScope
 }
+
+/** App-owned text captured when a provider prompt starts. Later launches reference its row. */
+export type KeptPromptStart =
+  | {
+      readonly systemHint?: string
+      readonly firstTurnLead?: string
+      readonly model: string | null
+      readonly updates?: PromptUpdateBaseline
+      readonly injected?: readonly InjectedInstruction[]
+    }
+  | { readonly from: number }
 
 /**
  * **Everything that shaped this session's instructions, and who chose each part** (158).

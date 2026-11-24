@@ -280,11 +280,7 @@ import type {
   TeamProfileGraphRequest,
   TeamProfileGraphResult,
 } from '../../shared/team-profile-graph'
-import {
-  readPluginInstructions,
-  pluginInstructionSection,
-  PLUGINS_HEADING,
-} from '../plugins/instructions'
+import { readPluginInstructions, pluginInstructionSection } from '../plugins/instructions'
 import type { SkillsRequest, SkillsReply } from '../../shared/skills-window'
 import type { PastWorkSearchResult, PastWorkTranscriptScope } from '../../shared/past-work-search'
 import type { RecentActivityReading } from '../../shared/recent-activity'
@@ -849,7 +845,9 @@ import type {
   ReplacesEvent,
   MailboxKind,
 } from '../../shared/conversation-events'
-import type { SessionInstructions } from '../../shared/instruction-contracts'
+import type { KeptPromptStart, SessionInstructions } from '../../shared/instruction-contracts'
+import { hasCompactionAfter, promptStartFor, promptUpdatesFor } from './kept-prompt-start'
+import type { PromptUpdateBaseline } from '../../shared/human-answer-contracts'
 import type {
   RequestEscalatedEvent,
   QuestionAskedEvent,
@@ -932,13 +930,19 @@ import {
 import {
   OTHER_CONVERSATIONS_SHOWN,
   peerActivityText,
+  type OtherConversations,
   whatThisAppAddsToATurn,
   type AQuestionItHasOpen,
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
   type WhoWaitsOnIt,
 } from './what-this-app-adds-to-a-turn'
-import { EMPTY_TURN_BLOCK, turnBlockChanges, type TurnBlockSnapshot } from './turn-block-changes'
+import {
+  type PromptUpdate,
+  EMPTY_TURN_BLOCK,
+  turnBlockChanges,
+  type TurnBlockSnapshot,
+} from './turn-block-changes'
 
 import {
   ACommandTakesNoAttachments,
@@ -1183,7 +1187,6 @@ import { warningWindow } from '../providers/usage-period'
 import { limitsForDisplay } from '../providers/limit-meaning'
 import type { KnownAccount } from '../provider-accounts-file'
 import {
-  whatChangedBlock,
   HISTORICAL_LEADS_OPEN_WITH,
   LEADS_OPEN_WITH,
   leadRowsFrom,
@@ -2292,6 +2295,7 @@ interface HostedSession {
   readonly lifeLead: string | null
 
   readonly launchGave: WhatALaunchGave | null
+  readonly promptStart?: KeptPromptStart
 
   wordsJustHandedOver: string | null
   /**
@@ -2367,11 +2371,8 @@ interface HostedSession {
    * (`SessionStore.whenAPersonLastWrote`). `null` is *not that this app knows of*.
    */
   aPersonLastWroteAt: number | null
-  /** Last accepted plugin section; staged updates commit with their user_turn. */
-  pluginsAsLastSaid: string | null
   turnBlockSnapshot: TurnBlockSnapshot
   pendingTurnBlock: {
-    plugins: string | null
     readonly next: TurnBlockSnapshot
     readonly words: string
   } | null
@@ -20522,6 +20523,7 @@ export class RuntimeHost implements LiveHost {
     // that grants it anything says `developer` is two names for one thing.
     const profileSlug = profileId === null ? null : foldProfileName(profileId)
     const notes = profileSlug === null ? null : this.deps.store.currentOwnNotesOf(profileSlug)
+    const rules = profileSlug === null ? null : this.currentRulesOf(profileSlug)
     return {
       // ⛔ **`null` is passed on rather than folded to the default**, found reviewing this diff.
       // `reopenSession` DOES fold it that way one line up — for the DIRECTORY, because an adopted
@@ -20537,10 +20539,11 @@ export class RuntimeHost implements LiveHost {
           : (this.deps.store.agentIdentities().find((one) => one.slug === profileSlug)
               ?.displayName ?? null),
       cwd,
-      startedBy:
-        parentSessionId === null
-          ? null
-          : `${this.whatToCallTheConversation(parentSessionId)}, ${this.nameByItsWork(parentSessionId)}`,
+      peerRoster:
+        profileSlug === null
+          ? undefined
+          : peerActivityText(this.profilePeers(profileSlug, conversation), false),
+      startedBy: this.promptStarter(parentSessionId),
       // 🔴 **D-016 · its own root, when a person started it** (plan §3.10) — the label, or
       // `'not-yet-numbered'` on a first launch: the root is written with the conversation's row, by
       // `store.create`, which runs after this read. ⚠️ `null` for a conversation another one started:
@@ -20570,7 +20573,11 @@ export class RuntimeHost implements LiveHost {
        * does — writing one is refused for a slug with no row (`SessionStore.writeOwnInstructions`) —
        * so *no row* and *no rules* are the same answer.
        */
-      configured: profileSlug === null ? null : this.deps.store.configuredLayerFor(profileSlug),
+      configured:
+        rules === undefined && profileSlug !== null
+          ? this.deps.store.configuredLayerFor(profileSlug)
+          : rules?.text.trim() || null,
+      ...(rules === undefined ? {} : { rulesVersion: rules?.version ?? 0 }),
       ownNotes:
         profileSlug === null
           ? null
@@ -20578,6 +20585,56 @@ export class RuntimeHost implements LiveHost {
       plugins: readPluginInstructions(this.deps.plugins),
       // ⚑ **F006 — which build is running**, as the window's title bar says it.
       build: this.theBuildRunning(),
+    }
+  }
+
+  private currentRulesOf(profile: string) {
+    return this.deps.store.currentOwnInstructionsOf?.(profile)
+  }
+
+  private promptStarter(parent: string | null): string | null {
+    return parent === null
+      ? null
+      : `${this.whatToCallTheConversation(parent)}, ${this.nameByItsWork(parent)}`
+  }
+
+  private promptUpdateBaseline(context: InstructionContext): PromptUpdateBaseline {
+    return {
+      notes: String(context.ownNotes?.version ?? 0),
+      rules: String(context.rulesVersion ?? 0),
+      plugins: sha256Hex(Buffer.from(pluginInstructionSection(context.plugins ?? null) ?? '')),
+      starter: context.startedBy ?? '',
+    }
+  }
+
+  private readLaunchInstructions(
+    provider: Provider,
+    cwd: string,
+    providerHome: string,
+    profile: string | null,
+    parent: string | null,
+    conversation: string,
+    pack: TextPackRead | undefined,
+  ) {
+    const reader = this.deps.readInstructions
+    if (reader === undefined) return undefined
+    const context = this.instructionContext(profile, cwd, parent, conversation)
+    const read = reader(provider, cwd, providerHome, context, pack)
+    return { ...read, context: read.context ?? context }
+  }
+
+  private keptStart(
+    read: ReturnType<NonNullable<RuntimeHostDeps['readInstructions']>> | undefined,
+    model: string | null,
+  ): KeptPromptStart | undefined {
+    if (read === undefined || (read.systemHint === undefined && read.firstTurnLead === undefined))
+      return undefined
+    return {
+      model,
+      ...(read.context === undefined ? {} : { updates: this.promptUpdateBaseline(read.context) }),
+      ...(read.systemHint === undefined ? {} : { systemHint: read.systemHint }),
+      ...(read.firstTurnLead === undefined ? {} : { firstTurnLead: read.firstTurnLead }),
+      ...(read.systemHint === undefined ? {} : { injected: read.instructions.injected }),
     }
   }
 
@@ -20774,15 +20831,13 @@ export class RuntimeHost implements LiveHost {
       profileId,
       pack,
     )
-    const instructions = this.deps.readInstructions?.(
+    const instructions = this.readLaunchInstructions(
       input.provider,
       cwd,
       providerHome,
-      // 🔴 **What this child is told about itself** (377) — built HERE, where the profile and the
-      // spawn token are resolved, and never derived downstream.
-      //
-      // A first launch uses the parent in the spawn admission or in the already recorded row.
-      this.instructionContext(profileId, cwd, parent, instructionConversation),
+      profileId,
+      parent,
+      id,
       pack,
     )
     const systemHint = instructions?.systemHint
@@ -20887,6 +20942,7 @@ export class RuntimeHost implements LiveHost {
       providerHome,
       profileId,
       launchGave,
+      promptStart: this.keptStart(instructions, model),
       createdApprovalMode: approvalMode,
       handle,
       sink,
@@ -22068,14 +22124,9 @@ export class RuntimeHost implements LiveHost {
     heldNotices: readonly QueuedMessage[],
   ): string {
     // ⚑ …and this app's own block last, after the message ({@link whatThisAppAddsAtItsEnd}).
-    const plugins = pluginInstructionSection(readPluginInstructions(this.deps.plugins))
-    const refresh =
-      plugins !== null &&
-      plugins !== session.pluginsAsLastSaid &&
-      !session.firstTurnLead?.includes(plugins)
-        ? `\n\n${whatChangedBlock([plugins])}`
-        : ''
-    const words = `${this.withWhatThisLifeStillOwes(session, said, heldNotices)}${refresh}\n\n${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
+    const words = `${this.withWhatThisLifeStillOwes(session, said, heldNotices)}
+
+${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // ⚑ **F093 · R2 — the whole text, kept for the turn's row** ({@link HostedSession.wordsJustHandedOver}):
     // both doors that frame words compose their last step here, just before the hand-over.
     session.wordsJustHandedOver = words
@@ -22083,7 +22134,6 @@ export class RuntimeHost implements LiveHost {
       session.pendingTurnBlock = {
         ...session.pendingTurnBlock,
         words,
-        plugins: plugins ?? session.pluginsAsLastSaid,
       }
     return words
   }
@@ -22098,7 +22148,6 @@ export class RuntimeHost implements LiveHost {
       session.turnBlockSnapshot,
     )
     session.pendingTurnBlock = {
-      plugins: session.pluginsAsLastSaid,
       next: changed.next,
       words: '',
     }
@@ -22131,32 +22180,95 @@ export class RuntimeHost implements LiveHost {
     return reminders === '' ? context : `${context}\n${reminders}`
   }
 
-  private profileFactsAtHand(
-    session: HostedSession,
-    now: number,
-  ): { peerActivity?: string; savedMethods?: string } {
+  private profilePeers(profile: string, id: string | null): OtherConversations {
+    const itself = id === null ? [] : this.theIdsItStandsFor(id)
+    const others = this.deps.store
+      .conversationsOf(profile)
+      .filter(
+        ({ conversation }) =>
+          !itself.includes(conversation) &&
+          !this.replacedBy.has(conversation) &&
+          !this.archived.has(conversation),
+      )
+      .sort((a, b) => b.startedAt - a.startedAt || a.conversation.localeCompare(b.conversation))
+    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => {
+      const { line, title } = this.conversationForRead(one.conversation)
+      return { id: one.conversation, title, line, lastActiveAt: one.lastActiveAt }
+    })
+    return { shown, more: others.length - shown.length }
+  }
+
+  private profileFactsAtHand(session: HostedSession, now: number) {
     const profileId = this.slots.get(session.id)?.profileId
     if (profileId == null) return {}
     const profile = foldProfileName(profileId)
-    const itself = this.theIdsItStandsFor(session.id)
-    const others = this.deps.store
-      .conversationsOf(profile)
-      .filter((one) => !itself.includes(one.conversation) && !this.replacedBy.has(one.conversation))
-    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => ({
-      line: this.nameByItsWork(one.conversation),
-      lastActiveAt: one.lastActiveAt,
-    }))
-    const reading = this.deps.readSavedMethodsFor?.(profile, now)
-    return {
-      peerActivity: peerActivityText({ shown, more: others.length - shown.length }),
-      ...(reading === undefined
-        ? {}
-        : {
-            savedMethods: [`## ${SAVED_METHODS_HEADING}`, ...savedMethodsParagraphs(reading)].join(
-              '\n\n',
-            ),
-          }),
+    const notes = this.deps.store.currentOwnNotesOf(profile)?.current
+    const rules = this.currentRulesOf(profile)
+    const plugins = pluginInstructionSection(readPluginInstructions(this.deps.plugins))
+    const starter = this.promptStarter(this.slots.get(session.id)?.spawnedBy ?? null)
+    const roster = this.profilePeers(profile, session.id)
+    const peers = peerActivityText(roster)
+    const peerNames = roster.shown.map(({ id, title }) => [id, title])
+    const promptUpdates: PromptUpdate[] = [
+      {
+        key: 'peers',
+        revision: sha256Hex(Buffer.from(JSON.stringify(peerNames))),
+        description: '',
+        text: peers || 'There are no other conversations of this profile.',
+        at: now,
+        untimed: true,
+        empty: peers === '',
+      },
+      {
+        key: 'plugins',
+        revision: sha256Hex(Buffer.from(plugins ?? '')),
+        description: 'Plugin information',
+        text: plugins ?? 'There are no plugin instructions.',
+        empty: plugins === null,
+        at: now,
+        observed: true,
+      },
+      {
+        key: 'starter',
+        revision: starter ?? '',
+        description: 'Who started this conversation',
+        text: starter ?? 'A person started this conversation.',
+        empty: starter === null,
+        at: now,
+        observed: true,
+      },
+    ]
+    if (notes !== null && notes !== undefined) {
+      promptUpdates.push({
+        key: 'notes',
+        revision: String(notes.version),
+        description: 'Your own notes',
+        text: notes.text || 'Your own notes are empty.',
+        at: notes.writtenAt,
+      })
     }
+    if (rules !== null && rules !== undefined) {
+      promptUpdates.push({
+        key: 'rules',
+        revision: String(rules.version),
+        description: 'Your own instructions',
+        text: rules.text || 'Your own instructions were cleared.',
+        at: rules.writtenAt,
+      })
+    }
+    const reading = this.deps.readSavedMethodsFor?.(profile, now)
+    if (reading !== undefined) {
+      const text = [`## ${SAVED_METHODS_HEADING}`, ...savedMethodsParagraphs(reading)].join('\n\n')
+      promptUpdates.push({
+        key: 'methods',
+        revision: sha256Hex(Buffer.from(text)),
+        description: 'Saved methods',
+        text,
+        at: now,
+        observed: true,
+      })
+    }
+    return { promptUpdates }
   }
 
   private factsForTheTurnBlock(
@@ -23076,8 +23188,9 @@ export class RuntimeHost implements LiveHost {
         theMessagesOf(event).map((one) => one.text),
       )
       if (sent !== undefined && session.pendingTurnBlock?.words === sent) {
-        session.pluginsAsLastSaid = session.pendingTurnBlock.plugins
         session.turnBlockSnapshot = session.pendingTurnBlock.next
+        if (session.turnBlockSnapshot.promptUpdates !== undefined)
+          event.promptUpdates = session.turnBlockSnapshot.promptUpdates
         session.pendingTurnBlock = null
       }
       if (sent !== undefined && event.sent === undefined) {
@@ -23097,7 +23210,10 @@ export class RuntimeHost implements LiveHost {
       session.wordsItWasHandedFor = []
       session.leadJustHandedOver = null
     }
-    if (event.type === 'launched' && session.launchGave !== null) event.given = session.launchGave
+    if (event.type === 'launched') {
+      if (session.launchGave !== null) event.given = session.launchGave
+      if (session.promptStart !== undefined) event.promptStart = session.promptStart
+    }
     const written = this.recordOurs(session, event, at)
     const committedTurn = written.event
     if (committedTurn.type === 'user_turn' && personalHandover === session.personalHandover) {
@@ -24285,12 +24401,9 @@ export class RuntimeHost implements LiveHost {
     const store = this.deps.store
     const reading = store.newestOfType?.(sessionId, 'context_reading')
     if (reading?.event.type !== 'context_reading') return null
-    for (let before: number | undefined; ;) {
-      const compaction = store.newestOfType?.(sessionId, 'compaction', before, reading.ordinal + 1)
-      if (compaction == null) return reading.event.reading
-      if (compactionClearsContext(compaction.event)) return { kind: 'unknown' }
-      before = compaction.ordinal
-    }
+    return hasCompactionAfter(store, sessionId, reading.ordinal, compactionClearsContext)
+      ? { kind: 'unknown' }
+      : reading.event.reading
   }
 
   stateOfARecordedMessage(owner: string, id: string): SendRecipientState {
@@ -35955,6 +36068,7 @@ export class RuntimeHost implements LiveHost {
    */
   private theVersionRenderedIn(context: InstructionContext): number | null {
     if (context.profileSlug === null) return null
+    if (context.rulesVersion !== undefined) return context.rulesVersion || null
     const rendered = context.configured?.trim() ?? ''
     const versions = this.deps.store.ownInstructionsOf(context.profileSlug).versions
     if (rendered === '') {
@@ -37751,10 +37865,8 @@ export class RuntimeHost implements LiveHost {
     // conversation reopened between 056 and now came back without the workspace instructions it was
     // started with, because `optionsFor` was handed `undefined` and `ResumeOptions` had no field.
     //
-    // ⚑ **Re-READ here, not replayed from the row.** Nothing about the hint is persisted, and that
-    // is the live-profile semantic 158 §2 ruled: a profile is an identity the user edits, so a
-    // reopen must pick up the edit. The cwd is the RECORDED one, so a conversation started in
-    // another repo comes back with that repo's instructions rather than today's.
+    // The profile's shared native file can take current rules, while the conversation keeps
+    // its original leading text until a model switch or a compaction calls for a new start.
     // One reading of a text pack for the whole launch, as at a start.
     const pack = this.deps.readTextPack?.()
     const builtInSkills = await this.theSkillsForALaunch(
@@ -37764,18 +37876,35 @@ export class RuntimeHost implements LiveHost {
       row.profileId,
       pack,
     )
-    const instructions = this.deps.readInstructions?.(
+    const kept = promptStartFor(this.deps.store, sessionId, model, this.now())
+    const currentInstructions = this.readLaunchInstructions(
       row.provider,
       row.cwd,
       providerHome,
-      // ⚑ **The same context a fresh launch gets, from the LEDGER** (377). ⛔ `slot.spawnedBy` here
-      // rather than a second `parentOf` read: `attachSession` derived it from that row a few
-      // lines before the reservation, and asking the database twice is how two readings of one fact
-      // come apart. ⚠️ **`row.profileId` is nullable** — an adopted row carries none — and a
-      // conversation whose identity this app cannot name gets no grants rather than a guessed one.
-      this.instructionContext(row.profileId, row.cwd, slot.spawnedBy, sessionId),
+      row.profileId,
+      slot.spawnedBy,
+      sessionId,
       pack,
     )
+    const instructions =
+      kept === null || currentInstructions === undefined
+        ? currentInstructions
+        : {
+            ...currentInstructions,
+            systemHint: kept.start.systemHint,
+            firstTurnLead: kept.start.firstTurnLead,
+            instructions: {
+              ...currentInstructions.instructions,
+              ...(kept.start.injected === undefined ? {} : { injected: [...kept.start.injected] }),
+              composed: kept.start.systemHint ?? kept.start.firstTurnLead ?? null,
+              thisConversation: kept.given?.thisConversation
+                ? {
+                    text: kept.given.thisConversation.text,
+                    spans: kept.given.thisConversation.sections,
+                  }
+                : undefined,
+            },
+          }
     // One toolset for the launch and its record, as at a start.
     const agentTools = this.agentToolsForSession(sessionId)
     // …and bounded as in `startSession` (102). Same bound for both: a reopen that never settles is
@@ -37870,7 +37999,7 @@ export class RuntimeHost implements LiveHost {
       await this.handBack(slot, handle)
       throw new Error(BUILT_IN_SKILLS_FAILURE)
     }
-    const launchGave = this.whatALaunchGave(
+    const readGave = this.whatALaunchGave(
       row.provider,
       sessionId,
       agentTools,
@@ -37880,6 +38009,23 @@ export class RuntimeHost implements LiveHost {
       handle.launchSettings,
       builtInSkills,
     )
+    const retained = kept?.given
+    const launchGave =
+      retained == null || readGave === null
+        ? readGave
+        : {
+            ...readGave,
+            thisConversation: retained.thisConversation,
+            ownNotesVersion: retained.ownNotesVersion,
+            ...(kept?.start.systemHint === undefined
+              ? {}
+              : {
+                  build: retained.build,
+                  profileFile: retained.profileFile,
+                  files: retained.files,
+                  ownInstructionsVersion: retained.ownInstructionsVersion,
+                }),
+          }
     const session = this.register(slot, {
       id: sessionId,
       provider: row.provider,
@@ -37887,6 +38033,8 @@ export class RuntimeHost implements LiveHost {
       providerHome,
       profileId,
       launchGave,
+      promptStart: kept === null ? this.keptStart(instructions, model) : { from: kept.ordinal },
+      promptUpdates: kept === null ? undefined : promptUpdatesFor(this.deps.store, sessionId, kept),
       createdApprovalMode: approvalMode,
       handle,
       sink,
@@ -37922,8 +38070,7 @@ export class RuntimeHost implements LiveHost {
       },
       instructions: instructions?.instructions,
       ...(builtInSkills ? { builtInSkills } : {}),
-      // ⚑ **D-024 · R1 — every life owes its own**, as it stood at this launch — ⚑ **W4.179** and on
-      // Codex only what its thread does not already hold ({@link theLeadAReopenOwes}).
+      // The frozen lead is owed only if the native thread no longer holds it.
       ...(instructions?.firstTurnLead === undefined
         ? {}
         : {
@@ -38958,6 +39105,8 @@ export class RuntimeHost implements LiveHost {
       leadOwed?: { readonly text: string; readonly is: LeadInFront['is'] } | null
 
       launchGave?: WhatALaunchGave | null
+      promptStart?: KeptPromptStart
+      promptUpdates?: PromptUpdateBaseline
       onRegistered?: (session: HostedSession) => void
     },
   ): HostedSession {
@@ -39030,6 +39179,7 @@ export class RuntimeHost implements LiveHost {
       lifeLead: options.firstTurnLead ?? null,
 
       launchGave: options.launchGave ?? null,
+      promptStart: options.promptStart,
       wordsJustHandedOver: null,
       wordsItWasHandedFor: [],
       latestContext: null,
@@ -39052,19 +39202,14 @@ export class RuntimeHost implements LiveHost {
       moveRequestRowPending: false,
       moveRequestHandoff: null,
       aPersonLastWroteAt: options.continuesARecording ? this.whenAPersonLastWroteIn(id) : null,
-      pluginsAsLastSaid: (() => {
-        // Claude receives the current section in its freshly rendered system prompt.
-        // Codex must replace any live metadata updates retained in its thread.
-        if (
-          options.continuesARecording &&
-          providerDescriptor(provider).contextPlacement === 'first-message'
-        )
-          return null
-        const composed = options.instructions?.thisConversation
-        const span = composed?.spans.find((span) => span.heading === PLUGINS_HEADING)
-        return composed && span ? composed.text.slice(span.start, span.end).trimEnd() : null
-      })(),
-      turnBlockSnapshot: EMPTY_TURN_BLOCK,
+      turnBlockSnapshot: {
+        ...EMPTY_TURN_BLOCK,
+        promptUpdates:
+          options.promptUpdates ??
+          (options.promptStart && 'updates' in options.promptStart
+            ? options.promptStart.updates
+            : undefined),
+      },
       pendingTurnBlock: null,
       finishedSinceItsLastTurn: [],
       lastStopEnded: [],
@@ -41394,11 +41539,9 @@ export class RuntimeHost implements LiveHost {
       event.type === 'compaction' ||
       (event.type === 'turn' && event.state === 'failed' && event.wordOf === 'this-app')
     ) {
-      session.pluginsAsLastSaid = null
       session.turnBlockSnapshot = {
         ...session.turnBlockSnapshot,
-        peerActivity: undefined,
-        savedMethods: undefined,
+        promptUpdates: undefined,
       }
       session.firstTurnLead = session.lifeLead
       session.firstTurnLeadIs = 'whole'

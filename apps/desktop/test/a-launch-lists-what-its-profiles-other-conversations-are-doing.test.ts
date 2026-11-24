@@ -32,7 +32,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
-import { WHAT_CHANGED_HEADER } from '../src/main/runtime/codex-lead'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { readSavedMethods } from '../src/main/saved-methods'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -43,8 +42,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
 
 /** ⚑ The heading of the list, as `thisConversationSpans` writes it. */
-const LIST_HEADING =
-  '- Other conversations of this profile, most recent first (list_agents shows more):'
+const LIST_HEADING = '- Other conversations of this profile, newest first (list_agents shows more):'
 
 /** ⚑ The header the reader puts above this conversation's own text — see `composeSystemHint`. */
 const THIS_CONVERSATION_HEADER = 'Composed by BroCrew for this conversation at this launch:'
@@ -240,13 +238,14 @@ describe('§3 · launch instructions and changing turn facts', () => {
           providerHome,
           bundle,
           bundleComposed: composed,
-          thisConversation: thisConversationSpans(ctx),
+          thisConversation: thisConversationSpans(ctx, undefined, provider),
         })
         return {
           instructions: read.instructions,
           systemHint: read.systemHint ?? undefined,
           ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
           memoryLoaded: null,
+          context: ctx,
         }
       },
     })
@@ -317,11 +316,14 @@ describe('§3 · launch instructions and changing turn facts', () => {
     return ctx
   }
 
-  const sectionOf = (ctx: InstructionContext): string => thisConversationSpans(ctx).text
+  const sectionOf = (ctx: InstructionContext, provider: Provider): string =>
+    thisConversationSpans(ctx, undefined, provider).text
   /** The quit a person's ⌘Q is, and the next launch over the same ledger. */
   const quitAndRelaunch = async (beforeLoad?: () => void): Promise<void> => {
     for (const built of hosts) await built.closeAll()
     beforeLoad?.()
+    db.close()
+    db = fixtureDatabase(userData)
     store = createSessionStore(db, tick)
     host = buildHost()
     seen = []
@@ -372,8 +374,11 @@ describe('§3 · launch instructions and changing turn facts', () => {
   // ── the tests ──────────────────────────────────────────────────────────────
 
   it('keeps the Claude prompt byte-identical as peer activity and saved methods change across reopen', async () => {
-    const target = await personOpens('ali', { approvalMode: 'auto' })
     const peer = await personOpens('ali', { approvalMode: 'auto' })
+    await host.send(peer.id, 'Fictional peer title', window)
+    await waitFor(() => providerHeard(peer.id).length === 1, 'the peer opening to be recorded')
+    const target = await personOpens('ali', { approvalMode: 'auto' })
+    const creation = toldAt(-1)
     await host.send(target.id, 'warm up', window)
     await waitFor(() => providerHeard(target.id).length === 1, 'the launch to be recorded')
 
@@ -388,16 +393,18 @@ describe('§3 · launch instructions and changing turn facts', () => {
     await host.resumeSession(target.id, window)
     const initial = toldAt(-1)
     expect(initial).toContain('## This conversation')
-    expect(initial).not.toContain(LIST_HEADING)
+    expect(initial).toBe(creation)
+    expect(initial).toContain(LIST_HEADING)
+    expect(initial).not.toContain(' — last active ')
     expect(initial).not.toContain('## Saved methods')
     await host.send(target.id, 'before the minute boundary', window)
     await waitFor(() => providerHeard(target.id).length === 2, 'the first compared turn')
     const firstTurn = providerHeard(target.id)[1] ?? ''
     const activityLine = (turn: string) =>
       turn.split('\n').find((line) => /^ {2}- conversation .+ — last active /.test(line))
-    const firstActivity = activityLine(firstTurn)
+    const firstActivity = activityLine(providerHeard(target.id)[0] ?? '')
     expect(firstTurn).toContain('This app adds what follows')
-    expect(firstTurn).toContain(LIST_HEADING)
+    expect(firstTurn).not.toContain(LIST_HEADING)
     expect(firstActivity).toBeDefined()
     expect(firstTurn).toContain('Rotate the fictional logs')
 
@@ -407,7 +414,7 @@ describe('§3 · launch instructions and changing turn facts', () => {
     clock += 120_000
     await host.resumeSession(peer.id, window)
     await host.send(peer.id, 'change peer activity', window)
-    await waitFor(() => providerHeard(peer.id).length === 1, 'the peer activity to be recorded')
+    await waitFor(() => providerHeard(peer.id).length === 2, 'the peer activity to be recorded')
     expect(lastActivity() - earlier).toBeGreaterThanOrEqual(60_000)
     writeFileSync(join(folder, 'backup.md'), '# Another fictional method\n')
     writeFileSync(
@@ -422,11 +429,133 @@ describe('§3 · launch instructions and changing turn facts', () => {
     await waitFor(() => providerHeard(target.id).length === 3, 'the reopened turn')
     const nextTurn = providerHeard(target.id)[2] ?? ''
     expect(nextTurn).toContain('This app adds what follows')
-    expect(nextTurn).toContain(LIST_HEADING)
-    expect(activityLine(nextTurn)).toBeDefined()
-    expect(activityLine(nextTurn)).not.toBe(firstActivity)
+    expect(nextTurn).not.toContain(LIST_HEADING)
     expect(nextTurn).toContain('Check the fictional backup')
+
+    const added = await personOpens('ali', { approvalMode: 'auto' })
+    const addedName = host.nameByItsWork(added.id)
+    await host.send(target.id, 'after adding a peer', window)
+    await waitFor(() => providerHeard(target.id).length === 4, 'the new roster')
+    const roster = providerHeard(target.id)[3] ?? ''
+    expect(roster).toContain(LIST_HEADING)
+    expect(activityLine(roster)).toContain(addedName)
   })
+
+  it.each(['claude', 'codex'] as const)(
+    'keeps the %s conversation start through rule and note changes until a compaction relaunch',
+    async (provider) => {
+      const peer = await personOpens('ali', { provider, approvalMode: 'auto' })
+      const target = await personOpens('ali', { provider, approvalMode: 'auto' })
+      const initial = ledger(target.id).find((event) => event.type === 'launched')
+      expect(initial?.type).toBe('launched')
+      if (
+        initial?.type !== 'launched' ||
+        initial.promptStart === undefined ||
+        'from' in initial.promptStart
+      )
+        throw new Error('missing creation prompt')
+      const firstStart = initial.promptStart.systemHint ?? initial.promptStart.firstTurnLead
+      expect(firstStart).toContain(LIST_HEADING)
+      expect(firstStart).not.toContain(' — last active ')
+      await host.send(target.id, 'first message', window)
+      await waitFor(() => providerHeard(target.id).length === 1, 'the first message')
+
+      const rules = 'Keep the fictional ledger sorted.\nRecord corrections.'
+      const notes = 'The notes now name the violet ledger.\nUse its latest page.'
+      const writtenAt = Date.UTC(2030, 0, 1, 0, 30)
+      clock = writtenAt
+      expect(host.instructAgent('ali', rules, undefined, window)).not.toBeNull()
+      expect(
+        host.saveOwnNotes('ali', { expectedVersion: 0, text: notes, why: 'Fixture note.' }, window),
+      ).not.toBeNull()
+      await quitAndRelaunch()
+      await host.resumeSession(peer.id, window)
+      await host.send(peer.id, 'later peer activity', window)
+      await waitFor(() => providerHeard(peer.id).length === 1, 'later peer activity')
+      await host.resumeSession(target.id, window)
+      const reopened = ledger(target.id)
+        .filter((event) => event.type === 'launched')
+        .at(-1)
+      expect(reopened?.promptStart).toEqual({ from: expect.any(Number) })
+      if (provider === 'claude') expect(toldAt(-1)).toBe(firstStart)
+      await host.send(target.id, 'after app restart', window)
+      await waitFor(() => providerHeard(target.id).length === 2, 'new instructions in the footer')
+      const after = providerHeard(target.id)[1]
+      expect(after).toContain(rules)
+      expect(after).toContain(notes)
+      expect(after).toMatch(/changed at 2030-01-01T00:30:00[.][0-9]+Z/)
+      expect(after?.indexOf(rules)).toBeGreaterThan(
+        after?.indexOf('This app adds what follows') ?? 0,
+      )
+      expect(after?.indexOf(notes)).toBeGreaterThan(
+        after?.indexOf('This app adds what follows') ?? 0,
+      )
+
+      await host.send(target.id, 'the unchanged next turn', window)
+      await waitFor(() => providerHeard(target.id).length === 3, 'the accepted unchanged turn')
+      expect(providerHeard(target.id)[2]).not.toContain(rules)
+      expect(providerHeard(target.id)[2]).not.toContain(notes)
+
+      launches.at(-1)?.handle.simulateCompaction(provider === 'claude' ? { after: 123 } : {})
+      await waitFor(
+        () => ledger(target.id).some((event) => event.type === 'compaction'),
+        'the compaction mark',
+      )
+      await quitAndRelaunch()
+      await host.resumeSession(target.id, window)
+      const rebuilt = ledger(target.id)
+        .filter((event) => event.type === 'launched')
+        .at(-1)?.promptStart
+      expect(rebuilt).not.toHaveProperty('from')
+      const nextStart =
+        rebuilt && !('from' in rebuilt) ? (rebuilt.systemHint ?? rebuilt.firstTurnLead) : undefined
+      expect(nextStart).not.toBe(firstStart)
+      expect(nextStart).toContain('violet ledger')
+      if (provider === 'claude') expect(nextStart).toContain(rules)
+    },
+  )
+
+  it.each(['claude', 'codex'] as const)(
+    'replays at 59 minutes and refreshes at 61 minutes after a %s provider turn',
+    async (provider) => {
+      const target = await personOpens('ali', { provider, approvalMode: 'auto' })
+      await host.send(target.id, 'finish after provider work', window)
+      await waitFor(
+        () => store.newestOfType?.(target.id, 'turn')?.event.type === 'turn',
+        'the recorded provider ending',
+      )
+      const end = store.newestOfType?.(target.id, 'turn')
+      if (end?.event.type !== 'turn' || end.event.state !== 'completed') {
+        throw new Error('the provider did not record a completed turn')
+      }
+      const getStart = () =>
+        ledger(target.id)
+          .filter((event) => event.type === 'launched')
+          .at(-1)?.promptStart
+      const original = getStart()
+      const notes = 'Include the latest fictional report.'
+      expect(
+        host.saveOwnNotes('ali', { expectedVersion: 0, text: notes, why: 'Fixture.' }, window),
+      ).not.toBeNull()
+
+      await quitAndRelaunch()
+      clock = end.at + 59 * 60_000
+      await host.resumeSession(target.id, window)
+      expect(getStart()).toEqual({ from: expect.any(Number) })
+
+      await quitAndRelaunch()
+      clock = end.at + 61 * 60_000
+      await host.resumeSession(target.id, window)
+      const refreshed = getStart()
+      expect(refreshed).not.toEqual(original)
+      expect(refreshed).not.toHaveProperty('from')
+      if (refreshed === undefined || 'from' in refreshed) throw new Error('no refreshed prompt')
+      expect(refreshed.systemHint ?? refreshed.firstTurnLead).toContain(notes)
+      await host.send(target.id, 'continue after the rebuild', window)
+      await waitFor(() => providerHeard(target.id).length === 2, 'the first rebuilt turn')
+      expect(providerHeard(target.id)[1]).not.toContain('Your own notes (changed at')
+    },
+  )
 
   it('writes the profile’s file as the same bytes for every conversation of it, carrying nothing of this one', async () => {
     const leaf = join(userData, 'provider-homes', 'ali', 'claude', BUNDLE_LEAF.claude)
@@ -447,7 +576,8 @@ describe('§3 · launch instructions and changing turn facts', () => {
 
     // The paired positive: the same facts went with the launch, in the words it was handed.
     expect(atAli2.startedBy).not.toBeNull()
-    expect(toldAli2).not.toContain(LIST_HEADING)
+    expect(toldAli2).toContain(LIST_HEADING)
+    expect(toldAli2).not.toContain(' — last active ')
     expect(toldAli2).toContain(`This conversation was started by ${atAli2.startedBy ?? ''}.`)
     expect(toldAli2).toContain('## This conversation')
   })
@@ -456,8 +586,8 @@ describe('§3 · launch instructions and changing turn facts', () => {
 
   describe('§4 · where the conversation’s own text rides', () => {
     /** The lead a Codex life owes, as the reader composes it for a launch's context. */
-    const leadFor = (ctx: InstructionContext): string =>
-      composeSystemHint([], { text: sectionOf(ctx) }) ?? ''
+    const leadFor = (ctx: InstructionContext, provider: Provider = 'codex'): string =>
+      composeSystemHint([], { text: sectionOf(ctx, provider) }) ?? ''
 
     const codexOpens = (profileId = 'ali') =>
       personOpens(profileId, { provider: 'codex', approvalMode: 'auto' })
@@ -501,7 +631,7 @@ describe('§3 · launch instructions and changing turn facts', () => {
       // The control, one fact over: the same on Claude, where it is the system prompt's last block
       // and no message carries it.
       const claude = await personOpens('ali', { provider: 'claude', approvalMode: 'auto' })
-      const block = leadFor(lastContext())
+      const block = leadFor(lastContext(), 'claude')
       const hint = launches.at(-1)?.handle.systemHint
       expect(hint?.endsWith(block)).toBe(true)
       await host.send(claude.id, 'hello', window)
@@ -565,7 +695,7 @@ describe('§3 · launch instructions and changing turn facts', () => {
       expect(withoutWhatThisAppAdds(framed ?? '').endsWith('\n\n/usage')).toBe(true)
     })
 
-    it('owes a reopened life what changed in the text as that reopen composed it', async () => {
+    it('keeps the original Codex lead and reports a new peer in the footer after restart', async () => {
       const c1 = await codexOpens()
       const firstLife = handleJustLaunched()
       const firstLead = leadFor(lastContext())
@@ -577,7 +707,6 @@ describe('§3 · launch instructions and changing turn facts', () => {
 
       await quitAndRelaunch()
       await host.resumeSession(c1.id, window)
-      const atReopen = lastContext()
       // The resume's start options carry no system hint either.
       expect(launches.at(-1)?.kind).toBe('resume')
       expect(launches.at(-1)?.handle.systemHint).toBeUndefined()
@@ -585,14 +714,10 @@ describe('§3 · launch instructions and changing turn facts', () => {
       await waitFor(() => providerHeard(c1.id).length === 2, 'the resumed life to hear it')
       const heard = providerHeard(c1.id)
       expect(heard[0]?.startsWith(`${firstLead}\n\n`)).toBe(true)
-      const reopenLead = leadFor(atReopen)
-      expect(reopenLead).not.toContain(LIST_HEADING)
-      // The work label is first known after creation. Only that changed section is owed.
-      expect(heard[1]?.startsWith(`${WHAT_CHANGED_HEADER}\n\n## This conversation\n`)).toBe(true)
-      expect(heard[1]).toContain("Your conversation's work is")
+      expect(heard[1]?.startsWith(A_PERSON_SENT_IT)).toBe(true)
+      expect(heard[1]).toContain(LIST_HEADING)
       expect(heard[1]).not.toContain('## The brobot tools')
       expect(heard[1]).not.toContain('## What you may do')
-      // …and it is that reopen's own, never the first life's.
       expect(heard[1]).not.toContain(firstLead)
     })
 

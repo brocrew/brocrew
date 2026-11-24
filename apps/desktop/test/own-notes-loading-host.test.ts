@@ -219,7 +219,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   })
 
   it.each(['claude', 'codex'] as const)(
-    'reads current notes once at start and reloads edits and clears at resume on %s',
+    'records the original notes at launch and delivers later edits and clears once on %s',
     async (provider) => {
       const seed = await start(provider)
       await host.close(seed, window)
@@ -249,25 +249,24 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       await vi.waitFor(() =>
         expect(store.events(me).some(({ event }) => event.type === 'turn')).toBe(true),
       )
-      if (provider === 'codex') {
-        expect(turns(me)[0]?.sent).toContain('> First page.')
-        expect(turns(me)[0]?.sent).not.toContain('> Second page.')
-      }
+      const updated = turns(me)[0]?.sent
+      if (provider === 'codex') expect(updated).toContain('> First page.')
+      expect(updated).toContain('Your own notes (changed at')
+      expect(updated).toContain('Second page.')
+      expect(updated).not.toContain('> Second page.')
+
       await host.close(me, window)
       await host.resumeSession(me, window)
       const resumed = reads.at(-1)!
       expect(resumed.context).toMatchObject({ ownNotes: { version: 2, text: 'Second page.' } })
-      expect(launches(me).at(-1)?.given).toMatchObject({ ownNotesVersion: 2 })
-      expect(
-        provider === 'claude' ? options.at(-1)?.systemHint : resumed.read.firstTurnLead,
-      ).toContain('> Second page.')
+      expect(launches(me).at(-1)?.given).toMatchObject({ ownNotesVersion: 1 })
+      expect(launches(me).at(-1)?.promptStart).toEqual({ from: expect.any(Number) })
+      if (provider === 'claude') expect(options.at(-1)?.systemHint).toBe(initiallySent)
       await host.send(me, 'Continue with the current notes.', window)
       await vi.waitFor(() => expect(turns(me)).toHaveLength(2))
-      if (provider === 'codex') {
-        expect(turns(me)[1]?.lead?.is).toBe('what-changed')
-        expect(turns(me)[1]?.sent).toContain('> Second page.')
-        expect(turns(me)[1]?.sent).not.toContain('## The brobot tools')
-      }
+      expect(turns(me)[1]?.lead).toBeUndefined()
+      expect(turns(me)[1]?.sent).not.toContain('Second page.')
+      expect(turns(me)[1]?.sent).not.toContain('## The brobot tools')
       await vi.waitFor(() =>
         expect(store.events(me).filter(({ event }) => event.type === 'turn')).toHaveLength(2),
       )
@@ -276,17 +275,16 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       await host.resumeSession(me, window)
       const clear = reads.at(-1)!
       expect(clear.context).toMatchObject({ ownNotes: { version: 3, text: '' } })
-      expect(launches(me).at(-1)?.given).toMatchObject({ ownNotesVersion: 3 })
-      if (provider === 'claude') expect(clear.read.systemHint).not.toContain('## Your own notes')
-      else expect(clear.read.firstTurnLead).toContain('Your own notes are empty.')
+      expect(launches(me).at(-1)?.given).toMatchObject({ ownNotesVersion: 1 })
+      expect(launches(me).at(-1)?.promptStart).toEqual({ from: expect.any(Number) })
+      if (provider === 'claude') expect(options.at(-1)?.systemHint).toBe(initiallySent)
       await host.send(me, 'Continue after clearing the page.', window)
       await vi.waitFor(() => expect(turns(me)).toHaveLength(3))
-      if (provider === 'codex') {
-        expect(turns(me)[2]?.lead?.is).toBe('what-changed')
-        expect(turns(me)[2]?.sent).toContain('Your own notes are empty.')
-        expect(turns(me)[2]?.sent).not.toContain('> Second page.')
-        expect(turns(me)[2]?.sent).not.toContain('## The brobot tools')
-      }
+      expect(turns(me)[2]?.lead).toBeUndefined()
+      expect(turns(me)[2]?.sent).toContain('Your own notes (changed at')
+      expect(turns(me)[2]?.sent).toContain('Your own notes are empty.')
+      expect(turns(me)[2]?.sent).not.toContain('Second page.')
+      expect(turns(me)[2]?.sent).not.toContain('## The brobot tools')
     },
   )
 

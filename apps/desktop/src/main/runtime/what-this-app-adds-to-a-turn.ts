@@ -84,11 +84,13 @@ export type CurrentWorkInTheTurn =
   | { readonly kind: 'none' | 'unavailable' }
 
 interface OtherConversation {
+  readonly id: string
+  readonly title: string | null
   readonly line: string
   readonly lastActiveAt: number | null
 }
 
-interface OtherConversations {
+export interface OtherConversations {
   readonly shown: readonly OtherConversation[]
   readonly more: number
 }
@@ -120,18 +122,19 @@ function anotherConversationLine(other: OtherConversation): string {
 
 export const OTHER_CONVERSATIONS_SHOWN = 5
 
-export function peerActivityText(others: OtherConversations): string {
+export function peerActivityText(others: OtherConversations, includeTimes = true): string {
   if (others.shown.length === 0) return ''
   return [
-    '- Other conversations of this profile, most recent first (list_agents shows more):',
-    ...others.shown.map(anotherConversationLine),
+    '- Other conversations of this profile, newest first (list_agents shows more):',
+    ...others.shown.map((other) =>
+      includeTimes ? anotherConversationLine(other) : `  - ${other.line}`,
+    ),
     ...(others.more > 0 ? [`  - and ${String(others.more)} more.`] : []),
   ].join('\n')
 }
 
 export interface ExtraTurnFacts {
-  readonly peerActivity?: string
-  readonly savedMethods?: string
+  readonly profileChanges?: readonly string[]
   readonly helpers?: {
     readonly rows: readonly AHelperInTheTurn[]
     readonly more: number
@@ -346,7 +349,6 @@ export function whatThisAppAddsToATurn(turn: {
     ...(turn.questions === null ? [] : itsOpenQuestions(turn.questions, now)),
     ...(turn.waiting === null ? [] : whoWaitsOnIt(turn.waiting, now)),
     ...extraLines(turn.extra ?? {}, now),
-    ...(turn.extra?.peerActivity ? [turn.extra.peerActivity] : []),
-    ...(turn.extra?.savedMethods ? [turn.extra.savedMethods] : []),
+    ...(turn.extra?.profileChanges ?? []),
   ].join('\n')
 }

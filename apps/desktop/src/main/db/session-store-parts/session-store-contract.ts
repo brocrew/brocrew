@@ -185,6 +185,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   /** Replace the external MCP servers one identity is associated with; false: no such identity. */
   setExternalMcpServers(profileSlug: string, externalMcpServerIds: readonly string[]): boolean
   ownInstructionsOf(profileSlug: string): OwnInstructions
+  currentOwnInstructionsOf?(profileSlug: string): OwnInstructionsVersion | null
   configuredLayerFor(profileSlug: string): string | null
   writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
   undoOwnInstructions(

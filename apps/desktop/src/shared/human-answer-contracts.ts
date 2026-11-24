@@ -18,6 +18,10 @@ export interface HumanAnswers {
   active: HumanFinalContext | null
 }
 
+export type PromptUpdateBaseline = Readonly<
+  Partial<Record<'rules' | 'notes' | 'plugins' | 'starter' | 'peers' | 'methods', string>>
+>
+
 /**
  * A turn this app sent, in the same ordered stream as the provider's events.
  *
@@ -27,6 +31,8 @@ export interface HumanAnswers {
  * It is deliberately NOT a `RuntimeEvent`: nothing said it, we did.
  */
 export interface UserTurnEvent {
+  /** The profile changes this accepted input accounted for. */
+  promptUpdates?: PromptUpdateBaseline
   /** Positive observation at the window-caller boundary. Missing on legacy/imported rows. */
   humanInitiated?: boolean
   /** The original person message forwarded by a Move press. */
@@ -438,4 +444,5 @@ export type UserTurnPart = Omit<
   | 'carriedOnAfterAccountChange'
   | 'sent'
   | 'lead'
+  | 'promptUpdates'
 >

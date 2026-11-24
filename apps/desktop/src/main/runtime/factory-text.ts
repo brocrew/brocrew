@@ -485,6 +485,8 @@ export interface InstructionContext {
    * profile rather than one conversation, and a display name alone is non-unique.
    */
   readonly startedBy: string | null
+  readonly peerRoster?: string
+  readonly rulesVersion?: number
   /** A service gets the service text after the core. */
   readonly isAService?: true
   /**
@@ -549,6 +551,7 @@ function dynamicLayer(context: InstructionContext): string[] {
         : `- Your conversation's work is ${context.root}. If untitled, name it with update_work after the person's request.`,
     )
   }
+  if (context.peerRoster) lines.push(context.peerRoster)
   return lines
 }
 

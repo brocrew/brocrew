@@ -4485,6 +4485,7 @@ export function createSessionStore(
     },
 
     ownInstructionsOf: knowledgeHistory.ownInstructionsOf,
+    currentOwnInstructionsOf: knowledgeHistory.currentOwnInstructionsOf,
     configuredLayerFor: knowledgeHistory.configuredLayerFor,
     writeOwnInstructions(said, at) {
       return knowledgeHistory.writeOwnInstructions(this, said, at)

@@ -42,6 +42,7 @@ interface KnowledgeHistoryReceiver {
 
 interface AgentKnowledgeHistory {
   ownInstructionsOf(profileSlug: string): OwnInstructions
+  currentOwnInstructionsOf(profileSlug: string): OwnInstructionsVersion | null
   configuredLayerFor(profileSlug: string): string | null
   writeOwnInstructions(
     receiver: KnowledgeHistoryReceiver,
@@ -353,6 +354,12 @@ export function createAgentKnowledgeHistory(
     })()
   }
 
+  function currentOwnInstructionsOf(profileSlug: string): OwnInstructionsVersion | null {
+    const row = ownInstructionSql().newestOf.get(agentIdentityRowId(profileSlug)) as
+      OwnInstructionRow | undefined
+    return row === undefined ? null : ownInstructionFrom(row)
+  }
+
   return {
     ownInstructionsOf(profileSlug) {
       const identity = foldProfileName(profileSlug)
@@ -362,15 +369,13 @@ export function createAgentKnowledgeHistory(
       return { identity, versions: rows.map(ownInstructionFrom) }
     },
 
+    currentOwnInstructionsOf,
+
     configuredLayerFor(profileSlug) {
-      const row = ownInstructionSql().newestOf.get(agentIdentityRowId(profileSlug)) as
-        OwnInstructionRow | undefined
-      return row === undefined
+      const current = currentOwnInstructionsOf(profileSlug)
+      return current === null
         ? null
-        : configuredLayerOf({
-            identity: foldProfileName(profileSlug),
-            versions: [ownInstructionFrom(row)],
-          })
+        : configuredLayerOf({ identity: foldProfileName(profileSlug), versions: [current] })
     },
 
     writeOwnInstructions(receiver, said, at) {

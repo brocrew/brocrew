@@ -310,17 +310,13 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
   }
 
   /**
-   * ⚑ One app: its own store and folders, Codex on the scripted app-server, and `main/index.ts`'s own
-   * instruction wiring — unless a test hands it another reader.
-   */
-  /**
    * How the window's reader answers a reopen's leads read: with the store's own rows at once, after
    * a delay, never, or with a failure. Absent: there is no window reader, and the host reads the
    * store itself.
    */
   type LeadsAnswer = 'at-once' | 'never' | 'fails' | { readonly afterMs: number }
 
-  const anApp = (reader?: Reader, leads?: LeadsAnswer): App => {
+  const anApp = (reader?: Reader, leads?: LeadsAnswer, now = Date.now): App => {
     const userData = mkdtempSync(join(tmpdir(), 'brobot2-w4205-lead-'))
     const root = mkdtempSync(join(tmpdir(), 'brobot2-w4205-lead-root-'))
     const db: AppDatabase = openDatabase(join(userData, 'brobot2.sqlite'))
@@ -353,6 +349,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     const host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
+      now,
       createRuntime: (provider: Provider) => {
         if (provider !== 'codex') throw new Error(`this rig opens Codex only, not ${provider}`)
         return new CodexRuntime(
@@ -475,11 +472,13 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
   // ── §1 ───────────────────────────────────────────────────────────────────
 
   it('🔴 §1 · ⛔ after a reopen that owed only what changed, a turn this app failed owes the WHOLE again and its row says whole — ⚑ the reopen’s own first message said what-changed', async () => {
-    const app = anApp()
+    let now = Date.now()
+    const app = anApp(undefined, undefined, () => now)
     const c1 = await aCodexConversation(app)
     await saying(app, c1, 'one')
-    // The recorded work label changes c1's "This conversation" section on its first reopen.
+    // An expired cache lets the new launch compose the current section.
     await aCodexConversation(app)
+    now += 61 * 60_000
     const reopened = await reopen(app, c1)
     const block = wholeLeadOf(reopened)
 
@@ -487,10 +486,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     await saying(app, c1, 'two')
     await saying(app, c1, 'three')
     const [two, three] = messagesAfter(app, c1, reopened.ordinal)
-    // ⚑ The control: the reopen's first message carried what changed, and said so.
     expect(two?.event.lead?.is).toBe('what-changed')
     expect(two?.event.sent?.startsWith(`${WHAT_CHANGED_HEADER}\n\n`)).toBe(true)
-    // Premise: its turn was this app's failure, and it ended after the message's row.
     const failed = turnRows(app, c1).at(-2)
     expect(failed).toMatchObject({ type: 'turn', state: 'failed', wordOf: 'this-app' })
     // ⛔ The next message carries the WHOLE lead — and its row must say `whole`, not the
@@ -896,7 +893,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     expect(first?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
     expect(first?.event.lead).toEqual({ is: 'whole', chars: block.length })
 
-    // The new method is sent in the reopened turn's addendum.
     const SECOND = 'Check the fictional backup qx4'
     writeFileSync(join(folder, 'backup.md'), '# Another fictional method\n')
     writeFileSync(
@@ -909,13 +905,12 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     await reopen(app, id)
     await saying(app, id, 'again')
     expect(sentTo(atReopen)).toContain(SECOND)
-    // Two methods: the lines hold a newline, so the echo's JSON copy holds them escaped.
     const ledgerNow = rowsBesideTheLaunches(app, id)
     expect(ledgerNow).toContain(TITLE)
     expect(ledgerNow).toContain(SECOND)
   })
 
-  const aReopenThatOwesWhatChanged = async (app: App) => {
+  const reopenAfterAPeerArrives = async (app: App) => {
     const c1 = await aCodexConversation(app)
     await saying(app, c1, 'one')
     await aCodexConversation(app)
@@ -927,19 +922,18 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     return { c1, reopened, tookMs, two, block: wholeLeadOf(reopened) }
   }
 
-  it('§5 · a leads read answered at once still owes only what changed', async () => {
+  it('§5 · a leads read answered at once keeps the original lead and sends the new peer in the footer', async () => {
     const app = anApp(undefined, 'at-once')
-    const { c1, two } = await aReopenThatOwesWhatChanged(app)
+    const { c1, two } = await reopenAfterAPeerArrives(app)
     expect(leadsAsked).toContain(c1)
-    expect(two?.event.lead?.is).toBe('what-changed')
-    expect(two?.event.sent?.startsWith(`${WHAT_CHANGED_HEADER}\n\n`)).toBe(true)
+    expect(two?.event.lead).toBeUndefined()
+    expect(two?.event.sent).toContain('Other conversations of this profile')
   })
 
   it('§5 · a leads read that never answers does not hold the reopen: the whole text is owed', async () => {
     const app = anApp(undefined, 'never')
-    const { c1, tookMs, two, block } = await aReopenThatOwesWhatChanged(app)
+    const { c1, tookMs, two, block } = await reopenAfterAPeerArrives(app)
     expect(leadsAsked).toContain(c1)
-    // The reopen waited out the grace (60 ms here), not the read.
     expect(tookMs).toBeLessThan(2_000)
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
     expect(two?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
@@ -947,9 +941,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
 
   it('§5 · a leads read that answers after its grace is dropped, and no later turn takes it', async () => {
     const app = anApp(undefined, { afterMs: 300 })
-    const { c1, reopened, two, block } = await aReopenThatOwesWhatChanged(app)
+    const { c1, reopened, two, block } = await reopenAfterAPeerArrives(app)
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
-    // The late answer arrives; the next message carries no lead at all.
     await new Promise((resolve) => setTimeout(resolve, 400))
     await saying(app, c1, 'three')
     const [, three] = messagesAfter(app, c1, reopened.ordinal)
@@ -960,7 +953,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
 
   it('§5 · a leads read that fails owes the whole text, as before', async () => {
     const app = anApp(undefined, 'fails')
-    const { two, block } = await aReopenThatOwesWhatChanged(app)
+    const { two, block } = await reopenAfterAPeerArrives(app)
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
   })
 
@@ -977,6 +970,12 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     )
     const c1 = await aCodexConversation(app)
     await saying(app, c1, 'one')
+    const added = 'Reconcile the fictional report kw4'
+    writeFileSync(join(folder, 'report.md'), '# A fictional report method\n')
+    writeFileSync(
+      join(folder, 'index.md'),
+      `- ${added} | weekly | verified 2026-10-13 | report.md\n`,
+    )
     const atReopen = madeTransports
       .flatMap((one) => one.requests)
       .filter((one) => one.method === 'turn/start').length
@@ -989,10 +988,11 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
         .slice(atReopen)
         .map((request) => request.params),
     )
-    expect(sent).toContain(TITLE)
+    expect(sent).toContain(added)
+    expect(sent).not.toContain(TITLE)
     const [two] = messagesAfter(app, c1, reopened.ordinal)
     expect(two?.event.lead?.is).toBe('whole')
-    expect(two?.event.sent).toContain(TITLE)
+    expect(two?.event.sent).toContain(added)
     expect(rowsBesideTheLaunches(app, c1)).toContain(TITLE)
   })
 })

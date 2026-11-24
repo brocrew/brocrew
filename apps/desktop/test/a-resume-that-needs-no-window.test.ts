@@ -469,8 +469,10 @@ describe('652 · a resume that needs no window', () => {
       expect(handed.resumes.at(-1)?.approvalMode).toBe('auto')
     })
 
-    it('⚑ §2.4 the instructions are READ AGAIN for the reopen, from the recorded folder — `told.ts` promises the person as much', async () => {
+    it('⚑ §2.4 a windowless reopen reads the recorded folder and sends its saved prompt', async () => {
       const { worker } = await aPmAndItsWorker()
+      const originalHint = (handed.handles.at(-1) as FakeSessionHandle | undefined)?.systemHint
+      expect(originalHint).toBeDefined()
       await relaunch()
       const readsBefore = reads.length
 
@@ -478,9 +480,7 @@ describe('652 · a resume that needs no window', () => {
 
       expect(reads.length).toBe(readsBefore + 1)
       expect(reads.at(-1)).toEqual({ provider: 'claude', cwd: root })
-      expect(handed.resumes.at(-1)?.systemHint).toBe(
-        `the instructions as read at launch #${reads.length}`,
-      )
+      expect(handed.resumes.at(-1)?.systemHint).toBe(originalHint)
     })
 
     it("⛔ §2.5 a woken conversation says NOBODY is behind it — what it sends is not on a person's behalf", async () => {
