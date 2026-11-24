@@ -235,7 +235,7 @@ jobs:
       - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
-        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/the-jobs-a-beta-made-are-carried-through-an-upgrade.test.mjs scripts/test/skill-catalogue-upgrade-evidence.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
       - &withdrawn-artifacts
         name: Download the withdrawn predecessor's original release artifacts
@@ -372,7 +372,7 @@ jobs:
       - uses: ./.github/actions/setup-desktop
 
       - name: The check's own rules fail what they should
-        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
+        run: pnpm exec vitest run --project scripts scripts/test/upgrade-path.test.mjs scripts/test/the-jobs-a-beta-made-are-carried-through-an-upgrade.test.mjs scripts/test/skill-catalogue-upgrade-evidence.test.mjs scripts/test/upgrade-candidate-evidence.test.mjs
 
       - *withdrawn-artifacts
       - *withdrawn-byte-check
