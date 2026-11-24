@@ -101,12 +101,24 @@ describe('lifecycleTable (402 §3.3)', () => {
   })
 })
 
+/**
+ * The stage as one source: `lifecycle-stage.smoke.ts` and every module it imports from its own
+ * folder, which hold the steps it performs, the rows they write and the bounds they spend.
+ */
+const readTheStage = (here) => {
+  const read = (file) => readFileSync(join(here, '../../apps/desktop/smoke', file), 'utf8')
+  const files = ['lifecycle-stage.smoke.ts']
+  for (const file of files) {
+    for (const [, name] of read(file).matchAll(/from '\.\/([\w-]+)'/g)) {
+      if (!files.includes(`${name}.ts`)) files.push(`${name}.ts`)
+    }
+  }
+  return files.map(read).join('\n')
+}
+
 describe('the roster and the observations are one list (402 §3)', () => {
   const here = dirname(fileURLToPath(import.meta.url))
-  const stage = readFileSync(
-    join(here, '../../apps/desktop/smoke/lifecycle-stage.smoke.ts'),
-    'utf8',
-  )
+  const stage = readTheStage(here)
   const runner = readFileSync(join(here, '../lifecycle-runner.mjs'), 'utf8')
 
   /**
@@ -218,10 +230,7 @@ describe('the roster and the observations are one list (402 §3)', () => {
  */
 describe('669 · R17 — the lifecycle stage performs the product as it ships', () => {
   const here = dirname(fileURLToPath(import.meta.url))
-  const stage = readFileSync(
-    join(here, '../../apps/desktop/smoke/lifecycle-stage.smoke.ts'),
-    'utf8',
-  )
+  const stage = readTheStage(here)
   const codeOf = (source) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
