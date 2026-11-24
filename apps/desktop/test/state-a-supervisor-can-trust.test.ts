@@ -1418,7 +1418,7 @@ describe('484 · state a supervisor can trust', () => {
         (handle) => holdingAWorkingTurn(handle, itsWord),
         words,
       )
-      expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
+      expect(await host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
       await waitFor(
         () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
         'the deliberately held provider turn to be working',
@@ -1482,7 +1482,7 @@ describe('484 · state a supervisor can trust', () => {
         ['pm-g', 'Ada'],
         ['worker-g', 'Bob'],
       ] as const) {
-        expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
+        expect(await host.setAgentDisplayName(slug, name), slug).not.toBeNull()
       }
       const bossTools = agentToolsFor(host, boss)
       // Each give starts the conversation below it, its brief the first turn.
@@ -1641,7 +1641,7 @@ describe('484 · state a supervisor can trust', () => {
       })
       // ⚑ **The name is read per answer** (`729`'s review): renamed, the next look says the new name —
       // a memo that outlived one answer would say *Grace* for the life of the app.
-      expect(host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
+      expect(await host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
       const renamed = host.stalledWorkForAPerson().rows.find((one) => one.piece === piece)
       expect(renamed?.askedToStop?.askerName).toBe(theConversationCalled('Gina', itsWork))
     })

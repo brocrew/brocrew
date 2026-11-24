@@ -283,7 +283,7 @@ describe('a work wait is reconciled without a window', () => {
       { provider: 'claude', profileId: 'fictional-grace', approvalMode: 'auto', cwd: root },
       window,
     )
-    expect(host.setAgentDisplayName('fictional-grace', 'Grace')).not.toBeNull()
+    expect(await host.setAgentDisplayName('fictional-grace', 'Grace')).not.toBeNull()
     await host.close(grace, window)
     const children: { holder: string; piece: string }[] = []
     for (let n = 0; n < 3; n++) {
@@ -350,7 +350,7 @@ describe('a work wait is reconciled without a window', () => {
     expect(lines.some((line) => line.includes('you asked it to stop'))).toBe(true)
     expect(lines.every((line) => !line.includes('(the owner of'))).toBe(true)
 
-    expect(host.setAgentDisplayName('fictional-grace', 'Gina')).not.toBeNull()
+    expect(await host.setAgentDisplayName('fictional-grace', 'Gina')).not.toBeNull()
     const fresh = reading
       .reconciliationReading()
       .rows.find((row) => pieceIds.has(row.piece) && row.stalledBy?.asker === grace)!
@@ -396,7 +396,7 @@ describe('a work wait is reconciled without a window', () => {
         definition_of_done: 'A checked result.',
       })
     ).structured as { agent: string; piece: string }
-    expect(host.setAgentDisplayName('fictional-known-holder', 'Bob')).not.toBeNull()
+    expect(await host.setAgentDisplayName('fictional-known-holder', 'Bob')).not.toBeNull()
     await waitFor(() => store.theOpenTurn(given.agent) !== null, 'the resumed holder turn')
     record(given.agent, {
       type: 'work_reconciliation',

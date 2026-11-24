@@ -87,11 +87,11 @@ describe('a link resolves only its recorded target', () => {
     expect(host.resolveLink('Old trip title')).toEqual(missing())
   })
 
-  it('uses an agent identity ID, never its slug or display name, and survives a rename', () => {
+  it('uses an agent identity ID, never its slug or display name, and survives a rename', async () => {
     const identity = world.store.agentIdentities().find((one) => one.slug === 'planner')!
     expect(identity.id).not.toBe('planner')
     for (const title of ['Planner', 'Travel adviser']) {
-      expect(host.setAgentDisplayName('planner', title)?.displayName).toBe(title)
+      expect((await host.setAgentDisplayName('planner', title))?.displayName).toBe(title)
       expect(host.resolveLink(agentLink(identity.id))).toEqual({
         state: 'available',
         kind: 'agent',
@@ -214,7 +214,7 @@ describe('a link resolves only its recorded target', () => {
   })
 
   it("names a service as the rail does without exposing one caller's piece as its title", async () => {
-    expect(host.setAgentDisplayName('service', 'Station assistant')?.displayName).toBe(
+    expect((await host.setAgentDisplayName('service', 'Station assistant'))?.displayName).toBe(
       'Station assistant',
     )
     const given = await world.gives(host, conversation, 'service', {

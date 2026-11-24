@@ -1041,7 +1041,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
     )
 
     // (b) A person renames the agent.
-    expect(host.setAgentDisplayName('worker', 'Hedda')).not.toBeNull()
+    expect(await host.setAgentDisplayName('worker', 'Hedda')).not.toBeNull()
     await waitFor(
       () =>
         JSON.stringify({ ...lastSaid(brobot), since: undefined }) ===

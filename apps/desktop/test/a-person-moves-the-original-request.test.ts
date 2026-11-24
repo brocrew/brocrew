@@ -60,7 +60,7 @@ describe('a person moves the stored request', () => {
 
   it('accepts exact original text, carries person provenance and does not wake the source', async () => {
     const requestId = await offer()
-    host.setAgentDisplayName('target', 'Destination ] new)')
+    await host.setAgentDisplayName('target', 'Destination ] new)')
     const before = sourceWords().length
     const ack = await host.decideMoveRequest(
       { sessionId: source, requestId, decision: 'move' },
@@ -103,7 +103,7 @@ describe('a person moves the stored request', () => {
   })
 
   it('two simultaneous presses and a later retry share the one durable receipt', async () => {
-    host.setAgentDisplayName('target', 'Destination')
+    await host.setAgentDisplayName('target', 'Destination')
     const requestId = await offer()
     const input = { sessionId: source, requestId, decision: 'move' as const }
     const [first, second] = await Promise.all([
@@ -124,7 +124,7 @@ describe('a person moves the stored request', () => {
     )
     await expect.poll(() => targetWords().length).toBe(1)
     expect(world.ledger(target).filter((one) => one.type === 'message_queued')).toHaveLength(1)
-    host.setAgentDisplayName('target', 'Renamed after moving')
+    await host.setAgentDisplayName('target', 'Renamed after moving')
     expect(await host.decideMoveRequest(input, world.window)).toEqual(first)
     expect(
       world.ledger(source).filter((one) => one.type === 'user_decision' && one.movedTo),

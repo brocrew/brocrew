@@ -243,6 +243,10 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   externalMcpServersFor(profileSlug: string): readonly ExternalMcpServerRow[]
   setAgentProvider(profileSlug: string, provider: Provider | null): boolean
   setAgentDisplayName(profileSlug: string, displayName: string | null): boolean
+  renameAgentDisplayName(
+    profileSlug: string,
+    displayName: string | null,
+  ): Promise<AgentIdentity | null>
   modelChoiceOf(profileSlug: string): AgentModelChoice | null
   setModelChoice(profileSlug: string, choice: AgentModelChoice | null): boolean
   handAddedModels(provider: Provider): readonly string[]

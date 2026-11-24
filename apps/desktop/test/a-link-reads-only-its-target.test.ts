@@ -165,8 +165,8 @@ describe('a link reads only its target', () => {
     const serving = await world.gives(host, giver, 'service')
     expect(serving.ok).toBe(true)
     if (!given.ok || !serving.ok) throw new Error('fictional give failed')
-    host.setAgentDisplayName('helper', 'Fictional helper')
-    host.setAgentDisplayName('service', 'Fictional service')
+    await host.setAgentDisplayName('helper', 'Fictional helper')
+    await host.setAgentDisplayName('service', 'Fictional service')
     const targets = [link(giver), link(given.owner), serving.label]
     const expected = targets.map((target) => fullRead(world, host, target))
     expect(expected[2]?.title).toBe('Fictional service')
@@ -178,7 +178,7 @@ describe('a link reads only its target', () => {
     expect(roster).not.toHaveBeenCalled()
   })
 
-  it('refreshes contents while canonical routing facts stay unchanged and work stamps advance', () => {
+  it('refreshes contents while canonical routing facts stay unchanged and work stamps advance', async () => {
     const root = create('fictional-card')
     host.resolveLink(link('fictional-card'))
     const before = sample({ kind: 'routes' })!
@@ -188,7 +188,7 @@ describe('a link reads only its target', () => {
     expect(world.store.routedRequestsOf('fictional-card')).toEqual(routing)
     expect(host.resolveLink(link('fictional-card')).title).toBe('Renamed plan')
     expect(host.resolveLink('brocrew://agent/aid%3Afictional').title).toBe('Ada')
-    host.setAgentDisplayName('fictional', 'Fictional adviser')
+    await host.setAgentDisplayName('fictional', 'Fictional adviser')
     expect(world.store.routedRequestsOf('fictional-card')).toEqual(routing)
     expect(host.resolveLink('brocrew://agent/aid%3Afictional').title).toBe('Fictional adviser')
     append('fictional-card', {

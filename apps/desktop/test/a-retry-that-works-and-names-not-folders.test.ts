@@ -400,7 +400,7 @@ describe('732 · a retry that works, and names, not folders', () => {
       ['pm-g', 'Ada'],
       ['worker-g', 'Bob'],
     ] as const) {
-      expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
+      expect(await host.setAgentDisplayName(slug, name), slug).not.toBeNull()
     }
     const givenPm = await callOn(boss, 'give_work', {
       to: 'new',
@@ -541,8 +541,8 @@ describe('732 · a retry that works, and names, not folders', () => {
       // ⚠️ A memo that outlived one answer would say *Bob* and *Ada* for the life of the app.
       const rig = await graceAdaAndBob('interrupted', '732-renamed')
       await graceStopsBobWhileAdaIsClosed(rig)
-      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
-      expect(host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
+      expect(await host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      expect(await host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
       const row = host.stalledWorkForAPerson().rows.find((one) => one.piece === rig.piece)
       expect({ holder: row?.ownerName, giver: row?.giverName }).toEqual({
         holder: 'Ben',
@@ -633,7 +633,7 @@ describe('732 · a retry that works, and names, not folders', () => {
       expect(
         (await callOn(rig.boss, 'interrupt_agent', { agent: rig.worker, reason: 'why' })).outcome,
       ).toBe('ok')
-      expect(host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
+      expect(await host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
       expect(asksIn(rig.worker)).toEqual([
         {
           type: 'work_interrupted',

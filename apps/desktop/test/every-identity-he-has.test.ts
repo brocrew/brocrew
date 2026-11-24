@@ -4,10 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import { createAppLifetime } from '../src/main/app-lifetime'
+import { closeDatabase } from '../src/main/db/close-database'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -18,6 +20,7 @@ import {
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand, refusedDuringAQuit } from '../src/main/runtime/ipc'
+import { deferred } from './helpers/quit-open-list-cases'
 import {
   DEFAULT_PROFILE_ID,
   RUNTIME_CHANGE_SUBJECTS,
@@ -151,7 +154,7 @@ describe('558 · every identity he has', () => {
     // will open.
     gate?.release()
     await host.closeAll()
-    db.close()
+    if (db.open) db.close()
     rmSync(userData, { recursive: true, force: true })
     rmSync(work, { recursive: true, force: true })
   })
@@ -905,10 +908,10 @@ describe('558 · every identity he has', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the rename', () => {
-    it('🔴 a name written at creation can be corrected, which is what `538` said was impossible', () => {
+    it('🔴 a name written at creation can be corrected, which is what `538` said was impossible', async () => {
       host.createAgent({ slug: 'worker', displayName: 'Wrkr', provider: null })
       expect(identityOf('worker').displayName).toBe('Wrkr')
-      expect(host.setAgentDisplayName('worker', 'Worker')?.displayName).toBe('Worker')
+      expect((await host.setAgentDisplayName('worker', 'Worker'))?.displayName).toBe('Worker')
       expect(identityOf('worker').displayName).toBe('Worker')
     })
 
@@ -934,7 +937,9 @@ describe('558 · every identity he has', () => {
       // corrects here is the app's decision to say nothing.
       await personOpens(DEFAULT_PROFILE_ID)
       expect(identityOf(DEFAULT_PROFILE_ID).displayName).toBeNull()
-      expect(host.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Planner')?.displayName).toBe('Planner')
+      expect((await host.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Planner'))?.displayName).toBe(
+        'Planner',
+      )
       expect(identityOf(DEFAULT_PROFILE_ID).displayName).toBe('Planner')
 
       // ⚑ **The other arm: a name the app ASSIGNED, which nobody typed either.** A launch as a slug
@@ -944,9 +949,9 @@ describe('558 · every identity he has', () => {
       // ⚠️ **Read rather than spelled**: the pool's order is `HUMAN_NAMES`' and this file is not the
       // place that pins it — `seed-one-name-the-rest.test.ts` §3 is.
       expect(identityOf(PROJECT_MANAGER_PROFILE_ID).displayName).not.toBeNull()
-      expect(host.setAgentDisplayName(PROJECT_MANAGER_PROFILE_ID, 'Scheduler')?.displayName).toBe(
-        'Scheduler',
-      )
+      expect(
+        (await host.setAgentDisplayName(PROJECT_MANAGER_PROFILE_ID, 'Scheduler'))?.displayName,
+      ).toBe('Scheduler')
       expect(identityOf(PROJECT_MANAGER_PROFILE_ID).displayName).toBe('Scheduler')
     })
 
@@ -962,32 +967,155 @@ describe('558 · every identity he has', () => {
       await personOpens(PROJECT_MANAGER_PROFILE_ID)
       // ⚑ The premise: this app really did name it, so there is something to have been written back.
       expect(identityOf(PROJECT_MANAGER_PROFILE_ID).displayName).not.toBeNull()
-      host.setAgentDisplayName(PROJECT_MANAGER_PROFILE_ID, 'Planner')
+      await host.setAgentDisplayName(PROJECT_MANAGER_PROFILE_ID, 'Planner')
       const second = await personOpens(PROJECT_MANAGER_PROFILE_ID)
       await host.close(second, window)
       expect(identityOf(PROJECT_MANAGER_PROFILE_ID).displayName).toBe('Planner')
     })
 
     /** ⚠️ `null` is *nobody has named this identity*, and a blank string is the same answer. */
-    it('⚑ a name can be cleared, and a blank clears it too', () => {
+    it('⚑ a name can be cleared, and a blank clears it too', async () => {
       host.createAgent({ slug: 'worker', displayName: 'Worker', provider: null })
-      expect(host.setAgentDisplayName('worker', null)?.displayName).toBeNull()
-      host.setAgentDisplayName('worker', 'Worker')
-      expect(host.setAgentDisplayName('worker', '   ')?.displayName).toBeNull()
+      expect((await host.setAgentDisplayName('worker', null))?.displayName).toBeNull()
+      await host.setAgentDisplayName('worker', 'Worker')
+      expect((await host.setAgentDisplayName('worker', '   '))?.displayName).toBeNull()
     })
 
     /** ⛔ Criterion 12: a slug with no row is not renamed into existence. */
-    it('⛔ a name with no row answers null rather than creating one', () => {
-      expect(host.setAgentDisplayName('nobody-minted-this', 'Somebody')).toBeNull()
+    it('⛔ a name with no row answers null rather than creating one', async () => {
+      expect(await host.setAgentDisplayName('nobody-minted-this', 'Somebody')).toBeNull()
       expect(host.agentIdentities().identities.map((one) => one.slug)).not.toContain(
         'nobody-minted-this',
       )
     })
 
     /** ⚑ Folded, so `Worker` and `worker` are the same identity to rename (238). */
-    it('⚑ the slug is folded, so a capitalised spelling renames the same row', () => {
+    it('⚑ the slug is folded, so a capitalised spelling renames the same row', async () => {
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
-      expect(host.setAgentDisplayName('Worker', 'Worker')?.slug).toBe('worker')
+      expect((await host.setAgentDisplayName('Worker', 'Worker'))?.slug).toBe('worker')
+    })
+
+    it('returns the committed point result and drains the accepted rename before closing SQLite', async () => {
+      let measuring = false
+      const reads: { sql: string; bindings: unknown[]; inTransaction: boolean }[] = []
+      const prepare = db.prepare.bind(db)
+      vi.spyOn(db, 'prepare').mockImplementation((sql) => {
+        const statement = prepare(sql)
+        if (!/^SELECT .* FROM (?:agent_identity|external_mcp_server_grant)\b/s.test(sql))
+          return statement
+        const capture = (bindings: unknown[]): void => {
+          if (measuring) reads.push({ sql, bindings, inTransaction: db.inTransaction })
+        }
+        const get = statement.get.bind(statement)
+        vi.spyOn(statement, 'get').mockImplementation((...bindings) => {
+          capture(bindings)
+          return get(...bindings)
+        })
+        const all = statement.all.bind(statement)
+        vi.spyOn(statement, 'all').mockImplementation((...bindings) => {
+          capture(bindings)
+          return all(...bindings)
+        })
+        return statement
+      })
+
+      host.createAgent({ slug: 'worker', displayName: 'Worker', provider: null }, window)
+      const server = store.registerExternalMcpServer({
+        name: 'notes',
+        url: 'http://127.0.0.1:4310/mcp',
+        reach: 'restricted',
+      })!
+      const before = host.setExternalMcpServers('worker', [server.id])!
+      const expected = { ...before, displayName: 'Planner' }
+      expect(before.createdBy).toEqual({ by: 'a-person' })
+      expect(before.externalMcpServerIds).toEqual([server.id])
+      said.length = 0
+
+      const captured = deferred()
+      const release = deferred()
+      const rename = store.renameAgentDisplayName.bind(store)
+      vi.spyOn(store, 'renameAgentDisplayName').mockImplementationOnce(async (...args) => {
+        measuring = true
+        const result = await rename(...args)
+        measuring = false
+        captured.resolve()
+        await release.promise
+        return result
+      })
+
+      const order: string[] = []
+      const lifetime = createAppLifetime({
+        announceClosing: () => {},
+        recordOpenSessions: () => host.recordOpenForQuit(),
+        stopArchiveWork: () => host.stopSweeping(),
+        closeAllSessions: () => host.closeAll(),
+        drainArchiveWork: () => host.drainArchiveWork(),
+        closeDatabase: () => {
+          closeDatabase(db)
+          order.push('close')
+        },
+        quit: () => {},
+        exit: () => {},
+        log: () => {},
+        armLastResort: () => {},
+        now: tick,
+      })
+      const reply = executeRuntimeCommand(host, window, {
+        kind: 'setAgentDisplayName',
+        profileId: 'Worker',
+        displayName: 'Planner',
+      }).then((result) => {
+        order.push('reply')
+        return result
+      })
+
+      try {
+        await Promise.race([captured.promise, reply])
+        const other = openDatabase(db.name, { fileMustExist: true })
+        try {
+          expect(createSessionStore(other, tick).agentIdentityOf('worker')).toEqual(expected)
+          expect(reads.map(({ bindings, inTransaction }) => ({ bindings, inTransaction }))).toEqual(
+            [
+              { bindings: [before.id], inTransaction: true },
+              { bindings: [before.id], inTransaction: true },
+            ],
+          )
+          const plans = reads.map(({ sql, bindings }) =>
+            (other.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...bindings) as { detail: string }[])
+              .map(({ detail }) => detail)
+              .join('\n'),
+          )
+          expect(plans[0]).toMatch(/SEARCH agent_identity USING INDEX .* \(id=\?\)/)
+          expect(plans[1]).toMatch(
+            /SEARCH external_mcp_server_grant USING (?:COVERING )?INDEX .* \(identity_id=\?\)/,
+          )
+          console.info('Display-name identity and grant lookup plans', plans)
+        } finally {
+          other.close()
+        }
+        lifetime.beforeQuit({ preventDefault() {} })
+        await new Promise<void>((done) => setImmediate(done))
+        expect(db.open).toBe(true)
+        expect(order).toEqual([])
+        expect(said).toEqual([])
+        for (const sink of [window, new AnonymousSink('agent:colleague')]) {
+          await expect(
+            executeRuntimeCommand(host, sink, {
+              kind: 'setAgentDisplayName',
+              profileId: 'worker',
+              displayName: 'Too late',
+            }),
+          ).rejects.toThrow(refusedDuringAQuit('setAgentDisplayName'))
+        }
+      } finally {
+        release.resolve()
+        await lifetime.shuttingDown
+      }
+
+      expect(await reply).toEqual(expected)
+      expect(said).toEqual([{ what: 'agents' }])
+      expect(order).toEqual(['reply', 'close'])
+      expect(db.open).toBe(false)
     })
   })
 
@@ -1050,13 +1178,16 @@ describe('558 · every identity he has', () => {
      * a subject nothing reads). ⚑ The vocabulary is asserted by VALUE here as well as by the
      * announcements below, so a third member would go red in this file too.
      */
-    it('⚑ a rename and a removal both announce `agents`, and the vocabulary is still two words', () => {
+    it('⚑ a rename and a removal both announce `agents`, and the vocabulary is still two words', async () => {
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
       expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
       said.length = 0
-      host.setAgentDisplayName('worker', 'Worker')
+      await host.setAgentDisplayName('worker', 'Worker')
+      expect(said).toEqual([{ what: 'agents' }])
+      said.length = 0
+      await host.setAgentDisplayName('worker', 'Worker')
       expect(said).toEqual([{ what: 'agents' }])
       said.length = 0
       host.removeAgent('worker')
@@ -1075,7 +1206,7 @@ describe('558 · every identity he has', () => {
     it('⛔ a refused rename and a refused removal announce nothing', async () => {
       await personOpens(DEFAULT_PROFILE_ID)
       said.length = 0
-      expect(host.setAgentDisplayName('nobody-minted-this', 'Somebody')).toBeNull()
+      expect(await host.setAgentDisplayName('nobody-minted-this', 'Somebody')).toBeNull()
       expect(host.removeAgent('nobody-minted-this')).toEqual({ ok: false, rail: 'no-such-agent' })
       const held = host.removeAgent(DEFAULT_PROFILE_ID)
       expect(held.ok === false && held.rail).toBe('it-is-still-held')
@@ -1087,8 +1218,9 @@ describe('558 · every identity he has', () => {
      * ⛔ Both writes report that nothing happened, which is `setExternalMcpServers`' `false` in the
      * two shapes these verbs answer in.
      */
-    it('⚑ a host with no ledger renames nothing and removes nothing, and says so', () => {
+    it('⚑ a host with no ledger renames nothing and removes nothing, and says so', async () => {
       expect(NULL_SESSION_STORE.setAgentDisplayName('worker', 'Worker')).toBe(false)
+      expect(await NULL_SESSION_STORE.renameAgentDisplayName('worker', 'Worker')).toBeNull()
       expect(NULL_SESSION_STORE.removeAgentIdentity('worker')).toBe(false)
       expect(NULL_SESSION_STORE.conversationsPerIdentity()).toEqual([])
     })

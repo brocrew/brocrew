@@ -60,6 +60,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   externalMcpServersFor: () => [],
   setAgentProvider: () => false,
   setAgentDisplayName: () => false,
+  renameAgentDisplayName: async () => null,
   modelChoiceOf: () => null,
   setModelChoice: () => false,
   handAddedModels: () => [],

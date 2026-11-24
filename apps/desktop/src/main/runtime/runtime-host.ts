@@ -35729,6 +35729,15 @@ export class RuntimeHost implements LiveHost {
     session.lastReported = key
   }
 
+  private readonly agentKnowledgeOperations = new Set<Promise<unknown>>()
+
+  private trackAgentKnowledge<T>(operation: Promise<T>): Promise<T> {
+    this.agentKnowledgeOperations.add(operation)
+    const finished = () => this.agentKnowledgeOperations.delete(operation)
+    void operation.then(finished, finished)
+    return operation
+  }
+
   /**
    * 🔴 **Correct what an identity is CALLED** (558, `HO-063` gap 2) — the rename, and the reason
    * `538`'s refusal no longer binds.
@@ -35747,9 +35756,7 @@ export class RuntimeHost implements LiveHost {
    *
    * ⛔ ***"The app may seed a default at creation; it never re-grants what a person removed."*** ⚑
    * The app's two writers are `ensureIdentityRow`'s `INSERT OR IGNORE`, which cannot touch a row
-   * that exists; this one is reached only from the window wire, behind `requireAPerson`. 🔴 **So no
-   * seed can land on top of a rename, and that is a property of the statement shapes** — not of an
-   * ordering anybody has to remember, and not of a guard that could be walked around.
+   * that exists. A seed cannot overwrite a rename because of those statement shapes.
    *
    * ⚑ **Read back rather than echoed**, which is {@link setAgentProvider}'s shape and 339's rule:
    * the store folds a blank to null, so what comes back is what the column now says rather than
@@ -35764,11 +35771,16 @@ export class RuntimeHost implements LiveHost {
    * told*:** the window that pressed this re-reads anyway, and an exception carved out for the
    * caller this door happens to have today is the rule that produced `534`.
    */
-  setAgentDisplayName(profileSlug: string, displayName: string | null): AgentIdentity | null {
-    if (!this.deps.store.setAgentDisplayName(profileSlug, displayName)) return null
-    this.theWorldMoved('agents')
-    const folded = foldProfileName(profileSlug)
-    return this.deps.store.agentIdentities().find(({ slug }) => slug === folded) ?? null
+  setAgentDisplayName(
+    profileSlug: string,
+    displayName: string | null,
+  ): Promise<AgentIdentity | null> {
+    return this.trackAgentKnowledge(
+      this.deps.store.renameAgentDisplayName(profileSlug, displayName).then((identity) => {
+        if (identity !== null) this.theWorldMoved('agents')
+        return identity
+      }),
+    )
   }
 
   /**
@@ -39495,6 +39507,8 @@ export class RuntimeHost implements LiveHost {
       if (this.startupAdvance !== undefined) await Promise.allSettled([this.startupAdvance])
       for (const result of await readersClosed)
         if (result.status === 'rejected') failures.push(result.reason)
+      while (this.agentKnowledgeOperations.size > 0)
+        await Promise.allSettled(this.agentKnowledgeOperations)
       await this.flushInFlight
     }
     if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')

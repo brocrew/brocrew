@@ -515,6 +515,7 @@ export function createSessionStore(
     countIdentities: AppStatement
     ensureIdentityRow: AppStatement
     identityNameById: AppStatement
+    identityById: AppStatement
     identityBySlug: AppStatement
     namesInUse: AppStatement
     writeProvider: AppStatement
@@ -548,6 +549,7 @@ export function createSessionStore(
       ),
       namesInUse: db.prepare(`SELECT slug, display_name AS displayName FROM agent_identity`),
       identityBySlug: db.prepare(`SELECT ${IDENTITY_COLUMNS} FROM agent_identity WHERE slug = ?`),
+      identityById: db.prepare(`SELECT ${IDENTITY_COLUMNS} FROM agent_identity WHERE id = ?`),
       identityNameById: db.prepare(
         'SELECT id, slug, display_name AS displayName FROM agent_identity WHERE id = ?',
       ),
@@ -700,6 +702,9 @@ export function createSessionStore(
       externalMcpServerIds: grantedServerIds(row.id),
     }
   }
+
+  const writeAgentDisplayName = (id: string, displayName: string | null): boolean =>
+    spawnSql().writeDisplayName.run(blankToNull(displayName), id).changes > 0
 
   type SaidAtCreation = {
     displayName: string | null
@@ -4603,10 +4608,16 @@ export function createSessionStore(
     },
 
     setAgentDisplayName(profileSlug, displayName) {
-      return (
-        spawnSql().writeDisplayName.run(blankToNull(displayName), agentIdentityRowId(profileSlug))
-          .changes > 0
-      )
+      return writeAgentDisplayName(agentIdentityRowId(profileSlug), displayName)
+    },
+
+    async renameAgentDisplayName(profileSlug, displayName) {
+      const id = agentIdentityRowId(profileSlug)
+      return this.atomically(() => {
+        if (!writeAgentDisplayName(id, displayName)) return null
+        const row = spawnSql().identityById.get(id) as IdentityRow | undefined
+        return row === undefined ? null : identityFrom(row)
+      })
     },
 
     modelChoiceOf(profileSlug) {
