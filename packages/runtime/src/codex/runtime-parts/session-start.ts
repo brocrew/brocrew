@@ -89,6 +89,7 @@ export function grantKeptTools(
 }
 
 import { AuthUnavailableError, type AuthHealth } from '../../internal/auth'
+import { createSpawnTransportFactory } from '../codex-transport'
 
 export function assertAuthHealthy(
   providerHome: string,
@@ -100,3 +101,7 @@ export function assertAuthHealthy(
     throw new AuthUnavailableError('codex', health.reason ?? 'managed Codex credential unavailable')
   }
 }
+
+const defaultTransport = createSpawnTransportFactory()
+
+export { defaultTransport }

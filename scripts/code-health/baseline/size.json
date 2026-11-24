@@ -150,7 +150,7 @@
   "packages/runtime/smoke/tool-calls-as-the-cli-probe.smoke.ts": 1069,
   "packages/runtime/src/claude/claude-session-handle.ts": 1856,
   "packages/runtime/src/claude/normalize.ts": 2038,
-  "packages/runtime/src/codex/codex-runtime.ts": 6988,
+  "packages/runtime/src/codex/codex-runtime.ts": 1994,
   "packages/runtime/src/codex/normalize.ts": 2568,
   "packages/runtime/src/fake-runtime.ts": 1685,
   "packages/runtime/src/internal/provider-home.ts": 1017,

@@ -35,8 +35,9 @@ export interface CodexTurn {
   bindsAtItsStart?: true
 }
 
-import { isRecord, readString } from './wire-values'
+import { isRecord, readString, readOptionalString } from './wire-values'
 import { SUB_AGENT_USES, TOOL_USES } from './notification-scope'
+import { type ProviderTurnFailure } from '../../events'
 
 export function noteTurnMovedOn(method: string, params: unknown, turn: CodexTurn | null): void {
   if (method !== 'item/started' || turn === null) return
@@ -58,3 +59,13 @@ export function newCodexTurn(localId: number): CodexTurn {
     commandsEnding: Promise.resolve(),
   }
 }
+
+function observedTurnFailure(error: unknown, code?: string): ProviderTurnFailure | undefined {
+  const message = readOptionalString(error, 'message')
+  if (message === undefined || code === 'unauthorized' || code === 'usageLimitExceeded') {
+    return undefined
+  }
+  return code === undefined ? { message } : { message, code }
+}
+
+export { observedTurnFailure }

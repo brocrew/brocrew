@@ -395,3 +395,10 @@ export function launchSettingsFor(
     ),
   )
 }
+
+export const CODEX_TOOLS_TURNED_OFF: readonly string[] = [
+  'request_user_input',
+  'request_user_input_async',
+]
+
+export const CODEX_TOOLS_LEFT_ON: readonly string[] = []

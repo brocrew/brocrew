@@ -16,6 +16,7 @@ import {
   COMPACTION_START_TIMEOUT_MS,
   A_COMPACTION_IS_STILL_OUTSTANDING,
   type CodexTurn,
+  observedTurnFailure,
 } from './runtime-parts/turn-state'
 import {
   restatedPlan,
@@ -33,6 +34,7 @@ import {
   openingParams,
   assertPromptingProfile,
   grantKeptTools,
+  defaultTransport,
 } from './runtime-parts/session-start'
 import { answerPermission, answerUserInput } from './runtime-parts/permission-responses'
 import {
@@ -81,6 +83,8 @@ import {
   turnInterruptParams,
   type WorkspaceWritePolicy,
   type PlanPhase,
+  CODEX_TOOLS_TURNED_OFF,
+  CODEX_TOOLS_LEFT_ON,
 } from './runtime-parts/request-params'
 import {
   type AgentRuntime,
@@ -187,12 +191,7 @@ import { CodexSubAgents } from './sub-agents'
 import type { ThreadCompactStartParams } from './protocol/v2/ThreadCompactStartParams'
 import type { ThreadResumeParams } from './protocol/v2/ThreadResumeParams'
 import type { ThreadStartParams } from './protocol/v2/ThreadStartParams'
-import {
-  CodexRequestRefused,
-  type CodexTransport,
-  type TransportFactory,
-  createSpawnTransportFactory,
-} from './codex-transport'
+import { CodexRequestRefused, type CodexTransport, type TransportFactory } from './codex-transport'
 import {
   MODEL_LIST_PAGE_LIMIT,
   MODEL_PROBE_TIMEOUT_MS,
@@ -212,23 +211,6 @@ export {
   CODEX_PLAN_TOOL_CONFIG,
   CODEX_QUESTION_TOOL_CONFIG,
 } from './runtime-parts/request-params'
-
-const defaultTransport = createSpawnTransportFactory()
-
-export const CODEX_TOOLS_TURNED_OFF: readonly string[] = [
-  'request_user_input',
-  'request_user_input_async',
-]
-
-export const CODEX_TOOLS_LEFT_ON: readonly string[] = []
-
-function observedTurnFailure(error: unknown, code?: string): ProviderTurnFailure | undefined {
-  const message = readOptionalString(error, 'message')
-  if (message === undefined || code === 'unauthorized' || code === 'usageLimitExceeded') {
-    return undefined
-  }
-  return code === undefined ? { message } : { message, code }
-}
 
 export class CodexSessionHandle implements SessionHandle {
   private readonly provider = 'codex' as const
