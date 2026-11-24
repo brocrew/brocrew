@@ -1,16 +1,12 @@
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { fixtureHostPaths, fixtureProviderConfig } from './lib/host-fixture'
+import { hostsOverAScratchDatabase } from './lib/hosts-over-a-scratch-database'
+import { mkdtempSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type DigestRow, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import type { DigestRow, SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { distil } from '../src/main/runtime/digest'
 import {
   DIGEST_EVENT_TYPES,
@@ -41,9 +37,6 @@ import {
  * criteria name.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsDir = join(here, '../src/main/db/migrations')
-
 const HOUR = 3_600_000
 const TO = 1_800_000_000_000
 const FROM = TO - 12 * HOUR
@@ -51,19 +44,12 @@ const FROM = TO - 12 * HOUR
 const INSIDE = TO - HOUR
 
 let dir: string
-let db: AppDatabase
 let store: SessionStore
 
+const scratch = hostsOverAScratchDatabase('brobot2-438-')
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'brobot2-438-'))
-  db = openDatabase(join(dir, 'db.sqlite'))
-  applyMigrations(db, migrationsDir)
-  store = createSessionStore(db)
-})
-
-afterEach(() => {
-  db.close()
-  rmSync(dir, { recursive: true, force: true })
+  dir = scratch.dir
+  store = scratch.store
 })
 
 /** A conversation an agent of this app holds, so the digest's join can reach it. */
@@ -723,26 +709,16 @@ describe('§7 · the read is scoped to agents’ conversations, the generation, 
  */
 describe('§8 · RuntimeHost.digest composes the reading', () => {
   function aHost(): RuntimeHost {
-    const userData = mkdtempSync(join(tmpdir(), 'brobot2-438-host-'))
+    // Each host keeps its own fresh root, inside the scratch folder so it goes with it.
+    const userData = mkdtempSync(join(scratch.dir, 'host-'))
     const sessions = new FakeProviderSessions()
     let counter = 0
-    return new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => join(userData, 'resources'),
+    return scratch.host({
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_host_${String(++counter)}`,
       now: () => TO,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   }
 

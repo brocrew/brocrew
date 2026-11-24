@@ -119,8 +119,9 @@ describe('empty authoritative assistant messages', () => {
     expect(state.items.some((item) => item.kind === 'memoryRecall')).toBe(true)
   })
 
-  it('projects legacy diagnostics in bounded history windows without rewriting stored events', () => {
+  it('projects legacy diagnostics in bounded history windows without rewriting stored events', async () => {
     const db = openDatabase(':memory:')
+    let host: RuntimeHost | undefined
     try {
       applyMigrations(db, fileURLToPath(new URL('../src/main/db/migrations', import.meta.url)))
       const store = createSessionStore(db)
@@ -141,7 +142,7 @@ describe('empty authoritative assistant messages', () => {
       const future = { ...legacy, provider: 'fictional-future-provider' }
       store.append('fictional-history', 2, future, 1002)
       const before = store.events('fictional-history')
-      const host = new RuntimeHost({
+      host = new RuntimeHost({
         store,
         discoverSessions: NO_DISCOVERY,
         nativeTranscriptPath: () => null,
@@ -173,6 +174,7 @@ describe('empty authoritative assistant messages', () => {
       expect(store.events('fictional-history')).toEqual(before)
       expect(before.find((entry) => entry.event.type === 'unknown')?.event).toEqual(legacy)
     } finally {
+      await host?.closeAll()
       db.close()
     }
   })

@@ -65,14 +65,15 @@ describe('a realistic profile', () => {
     expect(profile.counts['question_asked']).toBe(size.questions)
   })
 
-  it('writes every conversation as one that has started and can be resumed', () => {
+  it('writes every conversation as one that has started and can be resumed', async () => {
     expect(store.resumable().length).toBe(profile.live.length + profile.expected.archived.length)
     expect(store.unresumable()).toEqual([])
     // A host settles what its start finds open, so it reads its own copy of the same profile.
     const copy = aRealisticProfile(join(directory, 'host.sqlite'), size, 7)
     const other = openDatabase(copy.file)
+    let host: RuntimeHost | undefined
     try {
-      const host = aHostOver(createSessionStore(other), copy, directory)
+      host = aHostOver(createSessionStore(other), copy, directory)
       expect(
         host
           .resumableSessions()
@@ -80,16 +81,18 @@ describe('a realistic profile', () => {
           .sort(),
       ).toEqual([...copy.live].sort())
     } finally {
+      await host?.closeAll()
       other.close()
     }
   })
 
-  it('at the extreme size, a host lists only the live conversations while the archived ones keep their routed history', () => {
+  it('at the extreme size, a host lists only the live conversations while the archived ones keep their routed history', async () => {
     const extreme = aRealisticProfile(join(directory, 'extreme.sqlite'), scaled(EXTREME, 0.02), 3)
     const other = openDatabase(extreme.file)
+    let host: RuntimeHost | undefined
     try {
       const its = createSessionStore(other)
-      const host = aHostOver(its, extreme, directory)
+      host = aHostOver(its, extreme, directory)
       expect(extreme.expected.archived.length).toBeGreaterThan(0)
       expect(
         host
@@ -100,6 +103,7 @@ describe('a realistic profile', () => {
       const askers = new Set(its.whoRoutedToWhom().map((one) => one.asker))
       expect(extreme.expected.archived.some((id) => askers.has(id))).toBe(true)
     } finally {
+      await host?.closeAll()
       other.close()
     }
   })

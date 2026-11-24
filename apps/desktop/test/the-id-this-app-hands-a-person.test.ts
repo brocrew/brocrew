@@ -1,17 +1,14 @@
 import { newConversationGive } from './lib/give-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
@@ -19,12 +16,8 @@ import { derivePieces } from '../src/shared/tasks'
 import { theResourcesAReportNames } from '../src/renderer/src/lib/the-document-a-report-names'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { type ResourceReading } from '../src/shared/runtime-ipc'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureHostPaths, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import { hostsOverAScratchDatabase } from './lib/hosts-over-a-scratch-database'
 
 /**
  * # 🔴 510 · the id this app hands a person and cannot open
@@ -63,9 +56,6 @@ import {
  * provider.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 /** One ledger entry, as `derivePieces` reads them. */
 const at = (event: TranscriptEvent, ordinal: number): PersistedEventInfo =>
   ({ sessionId: 'sess_child', ordinal, at: 1_000 + ordinal, event }) as PersistedEventInfo
@@ -89,36 +79,25 @@ describe('510 · the id this app hands a person', () => {
   let window: RecordingSink
   const tick = (): number => clock++
   const kept = (): string => resourcesRoot(userData)
+  const scratch = hostsOverAScratchDatabase('brobot2-510-', { now: tick })
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-510-'))
-    work = mkdtempSync(join(tmpdir(), 'brobot2-510-work-'))
-    outside = mkdtempSync(join(tmpdir(), 'brobot2-510-outside-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = scratch.dir
+    db = scratch.db
+    store = scratch.store
+    work = scratch.folder('brobot2-510-work-')
+    outside = scratch.folder('brobot2-510-outside-')
     clock = Date.UTC(2030, 0, 1)
-    store = createSessionStore(db, tick)
     counter = 0
     sessions = new FakeProviderSessions()
-    host = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => userData),
-      resourcesRoot: () => resourcesRoot(userData),
+    host = scratch.host({
+      ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
-  })
-
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, work, outside]) rmSync(dir, { recursive: true, force: true })
   })
 
   const personOpens = async (cwd = work): Promise<string> => {
@@ -324,9 +303,7 @@ describe('510 · the id this app hands a person', () => {
       // 🔴 **The distinction `readResource` words as a rail.** A person has nothing to enumerate
       // that is not already theirs, and *this app keeps no resources tree* is a different thing to
       // be told than *there is no such resource*.
-      const blind = new RuntimeHost({
-        store,
-        ...neutralHostDeps(() => userData),
+      const blind = scratch.host({
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
         prepareProviderHome: () => join(userData, 'provider-homes', 'default', 'claude'),
         providerHomePath: () => join(userData, 'provider-homes', 'claude'),

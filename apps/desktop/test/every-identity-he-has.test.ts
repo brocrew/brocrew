@@ -1,21 +1,15 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig } from './lib/host-fixture'
+import { hostsOverAScratchDatabase } from './lib/hosts-over-a-scratch-database'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import {
-  createSessionStore,
-  NULL_SESSION_STORE,
-  type SessionStore,
-} from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { AppDatabase } from '../src/main/db/connection'
+import { NULL_SESSION_STORE, type SessionStore } from '../src/main/db/session-store'
+import type { RuntimeEventSink, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand, refusedDuringAQuit } from '../src/main/runtime/ipc'
 import {
@@ -40,9 +34,6 @@ import {
  * slug is a name somebody CREATES, which is what this file drives it as.
  */
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚠️ This file is about the roster, and never about what a launch is told. */
 const NOTHING_INJECTED: SessionInstructions = {
@@ -88,6 +79,7 @@ describe('558 · every identity he has', () => {
   let said: RuntimeChangeMessage[]
   let gate: FakeLaunchGate | null
   const tick = (): number => clock++
+  const scratch = hostsOverAScratchDatabase('brobot2-558-', { now: tick })
 
   /** ⚑ Poll a condition with a bound — standing rule 13: every wait in a test has a deadline. */
   const waitFor = async (until: () => boolean, what: string): Promise<void> => {
@@ -99,9 +91,8 @@ describe('558 · every identity he has', () => {
   }
 
   const buildHost = (): RuntimeHost =>
-    new RuntimeHost({
+    scratch.host({
       store,
-      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         // ⚑ **The gate is read at LAUNCH rather than captured at construction**, so a test can hold
         // one launch open without building a second host.
@@ -117,13 +108,7 @@ describe('558 · every identity he has', () => {
       now: tick,
       // `persons` comes from the store's record of each commit, and is pinned in its own file.
       announce: (change) => void (change.what !== 'persons' && said.push(change)),
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => ({
         instructions: NOTHING_INJECTED,
         systemHint: undefined,
@@ -132,12 +117,11 @@ describe('558 · every identity he has', () => {
     })
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-558-'))
-    work = mkdtempSync(join(tmpdir(), 'brobot2-558-work-'))
-    db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    userData = scratch.dir
+    db = scratch.db
+    store = scratch.store
+    work = scratch.folder('brobot2-558-work-')
     clock = 5_000_000
-    store = createSessionStore(db, tick)
     counter = 0
     sessions = new FakeProviderSessions()
     said = []
@@ -146,14 +130,10 @@ describe('558 · every identity he has', () => {
     window = new Sink('webContents:1')
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     // ⛔ **Released before the quit**, or a held launch makes `closeAll` wait for a gate nobody
     // will open.
     gate?.release()
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
   })
 
   const personOpens = async (profileId: string, provider: Provider = 'codex'): Promise<string> => {
