@@ -657,11 +657,12 @@ const CLAUDE_FIRSTS = {
   crash: CRASH_FIRST_TEXT,
 }
 
-const JOB_PROMPTS = [
-  ...Object.values(CLAUDE_JOBS).map((job) => job.prompt),
-  DUE_JOB_PROMPT,
-  CRASH_JOB_PROMPT,
-]
+const CLAUDE_JOB_PROMPTS = {
+  claude: Object.values(CLAUDE_JOBS).map((job) => job.prompt),
+  due: [DUE_JOB_PROMPT],
+  crash: [CRASH_JOB_PROMPT],
+}
+const JOB_PROMPTS = Object.values(CLAUDE_JOB_PROMPTS).flat()
 
 const CLAUDE_ROUTE =
   os === 'windows'
@@ -702,7 +703,7 @@ function answerClaude(request, response) {
       url: path,
       id,
       auth,
-      of: conversationOf(texts, CLAUDE_FIRSTS),
+      of: conversationOf(texts, CLAUDE_FIRSTS, CLAUDE_JOB_PROMPTS),
       tools: (body?.tools ?? []).map((tool) => tool?.name).filter(Boolean),
       answered: [...toolResultsIn(body)],
       notices: texts

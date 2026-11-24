@@ -147,13 +147,21 @@ export function stampingOf(receipts) {
 }
 
 /**
- * Which of the lane's conversations a request is of, by the first words each was asked: the key
- * in `firsts` whose words a person's side of the request holds, or `null` for none or several.
+ * Attribute first words or a uniquely owned quoted job notice. A notice can distinguish several
+ * retained first texts, but cannot contradict the first-text owners or another job's owner.
  */
-export function conversationOf(texts, firsts) {
+export function conversationOf(texts, firsts, jobs = {}) {
   const of = Object.entries(firsts ?? {}).filter(([, first]) =>
     (texts ?? []).some((text) => String(text).includes(first)),
   )
+  const named = Object.entries(jobs).filter(([, prompts]) =>
+    (texts ?? []).some((text) => prompts.some((prompt) => namesTheJob(text, prompt))),
+  )
+  if (named.length > 1) return null
+  if (named.length === 1) {
+    const owner = named[0][0]
+    return of.length === 0 || of.some(([key]) => key === owner) ? owner : null
+  }
   return of.length === 1 ? of[0][0] : null
 }
 

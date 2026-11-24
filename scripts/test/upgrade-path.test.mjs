@@ -1913,6 +1913,8 @@ describe('each start the candidate owes, told apart from the others', () => {
     'Your scheduled jobs (“A fictional repeating job of the upgrade path”) and (“A fictional job of the upgrade path”) run at times this app cannot tell, so once this conversation stops this app will not start it for those jobs.'
   const dueWords =
     'Your scheduled job (“A fictional job that comes due while the app is closed”) runs at a time this app cannot tell, so once this conversation stops this app will not start it for that job.'
+  const dueStoppedWords =
+    'Your scheduled job for 02:59 AM (“A fictional job that comes due while the app is closed”) was due while this conversation was stopped. This app cannot tell whether it ran: check whether its work is still needed.'
   const request = (id, of, notices, extra = {}) => ({
     id,
     stage: 'candidate-first',
@@ -1934,6 +1936,76 @@ describe('each start the candidate owes, told apart from the others', () => {
     expect(conversationOf([DUE, 'more'], firsts)).toBe('due')
     expect(conversationOf(['A title request'], firsts)).toBeNull()
     expect(conversationOf([FIRST, DUE], firsts)).toBeNull()
+  })
+
+  it('attributes a uniquely named job when first words are missing or retained for several conversations', () => {
+    const jobs = { claude: firstJobs, due: dueJobs }
+    for (const texts of [[dueStoppedWords], [FIRST, DUE, dueStoppedWords]]) {
+      const of = conversationOf(texts, firsts, jobs)
+      expect(of).toBe('due')
+      expect(
+        evidence(
+          [request('due-notice', of, [dueStoppedWords])],
+          started('sess_due'),
+          'sess_due',
+          'due',
+          dueJobs,
+        ),
+      ).toMatchObject({ started: 1, told: ['due-notice'], outcome: 'told' })
+    }
+  })
+
+  it('keeps conflicting first words and ambiguous job ownership unattributed', () => {
+    const jobs = { claude: firstJobs, due: dueJobs }
+    expect(conversationOf([FIRST, dueWords], firsts, jobs)).toBeNull()
+    expect(conversationOf([DUE, firstWords], firsts, jobs)).toBeNull()
+    expect(conversationOf([firstWords, dueWords], firsts, jobs)).toBeNull()
+    expect(conversationOf([dueWords], firsts, { claude: dueJobs, due: dueJobs })).toBeNull()
+    expect(conversationOf(['An unrelated title'], firsts, jobs)).toBeNull()
+    expect(conversationOf([dueJobs[0]], firsts, jobs)).toBeNull()
+  })
+
+  it('does not use a uniquely attributed notice from the second open, wrong key or wrong conversation', () => {
+    const jobs = { claude: firstJobs, due: dueJobs }
+    const of = conversationOf([dueWords], firsts, jobs)
+    const requests = [
+      request('second-open', of, [dueWords], { stage: 'candidate-second' }),
+      request('wrong-key', of, [dueWords], { auth: 'other' }),
+      request('wrong-conversation', conversationOf([firstWords], firsts, jobs), [firstWords]),
+      request('ambiguous', conversationOf([firstWords, dueWords], firsts, jobs), [dueWords]),
+    ]
+    expect(evidence(requests, started('sess_due'), 'sess_due', 'due', dueJobs)).toMatchObject({
+      started: 1, told: [], outcome: 'pending',
+    })
+  })
+
+  it('retains duplicate starts and ledger notices so they cannot satisfy the once-only checks', () => {
+    const of = conversationOf([dueStoppedWords], firsts, { due: dueJobs })
+    const twice = evidence(
+      [request('due-notice', of, [dueStoppedWords])],
+      [started('sess_due'), started('sess_due')].join('\n'),
+      'sess_due',
+      'due',
+      dueJobs,
+    )
+    expect(twice).toMatchObject({ started: 2, outcome: 'told' })
+    const row = (ordinal, type) => ({
+      session_id: 'sess_due',
+      ordinal,
+      type,
+      payload: JSON.stringify({ text: dueStoppedWords, authorship: { appNotice: JOB_NOTICE } }),
+    })
+    const once = [row(1, 'message_queued'), row(2, 'user_turn')]
+    expect(jobNoticesIn(once, 'sess_due')).toMatchObject({
+      queued: [dueStoppedWords],
+      said: [dueStoppedWords],
+    })
+    const duplicated = jobNoticesIn(
+      [...once, row(3, 'message_queued'), row(4, 'user_turn')],
+      'sess_due',
+    )
+    expect(duplicated.queued).toHaveLength(2)
+    expect(duplicated.said).toHaveLength(2)
   })
 
   it('reads a job as named only where its prompt stands in quotes, as the app’s words put it', () => {
