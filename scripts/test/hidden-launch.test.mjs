@@ -121,9 +121,9 @@ describe('every Electron launcher under scripts/', () => {
       'lane-geometry-probe.mjs',
       'lib/mac-native-upgrade.mjs',
       'lib/mac-update-test.mjs',
+      'lib/upgrade-run/system.mjs',
       'mac-signed-upgrade-contract.mjs',
       'mac-update-now-rehearsal.mjs',
-      'upgrade-path.mjs',
     ])
     expect(verdictOf(readFileSync(join(SCRIPTS, 'mac-update-test.mjs'), 'utf8'))).toBe('visible')
     expect(by('own-main')).toEqual([
