@@ -538,8 +538,7 @@ import {
   writeNativeExport,
   type SessionBundle,
 } from '../archive/export-session'
-import { isTheProvidersRecord, readLines } from '../archive/native-file'
-import { readingATurn, type TurnAsked } from '../archive/turn-as-sent'
+import { readLines } from '../archive/native-file'
 import type { TurnAsSent } from '../../shared/turn-as-sent'
 // ⚑ **633 · the writer for the one export kind the RENDERER composes** — see that module for why
 // this host writes bytes for it rather than folding a second transcript of its own.
@@ -925,7 +924,7 @@ import type {
   WhatTheModelGot,
   WhatThisAgentWasGiven,
 } from '../../shared/what-this-agent-was-given'
-import { takesAContextMessage, type SnapshotAnswer } from '../../shared/provider-snapshots'
+import type { SnapshotAnswer } from '../../shared/provider-snapshots'
 import type {
   AgentRulesReading,
   AgentRulesReceipt,
@@ -982,13 +981,7 @@ import { usageForDisplay } from '../providers/usage-display'
 import { warningWindow } from '../providers/usage-period'
 import { limitsForDisplay } from '../providers/limit-meaning'
 import type { KnownAccount } from '../provider-accounts-file'
-import {
-  HISTORICAL_LEADS_OPEN_WITH,
-  LEADS_OPEN_WITH,
-  leadRowsFrom,
-  theLeadOwed,
-  whatTheThreadHolds,
-} from './codex-lead'
+import { LEADS_OPEN_WITH, leadRowsFrom, theLeadOwed, whatTheThreadHolds } from './codex-lead'
 import { identityUse, whatHoldsIt } from '../../shared/agent-roster'
 import type { AgentRemoved, IdentityUse, ItsProvider } from '../../shared/agent-roster'
 import {
@@ -1141,8 +1134,8 @@ import {
 } from './host-split/server-requests'
 import {
   CONTEXT_LOOKBACK_ROWS,
+  ConversationInspection,
   noPageBefore,
-  TURN_AS_SENT_PAGE,
 } from './host-split/conversation-inspection'
 import {
   type WhatTheGateDecided,
@@ -2169,6 +2162,7 @@ export class RuntimeHost implements LiveHost {
   private readonly workReads: WorkReads
   private readonly giveWorkRunner: GiveWork
   private readonly schedulePlanning: SchedulePlanning
+  private readonly conversationInspection: ConversationInspection
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -2176,6 +2170,11 @@ export class RuntimeHost implements LiveHost {
       ...deps,
       store: this.windowRoutingReads.store(this.windowIncidentReads.store(deps.store)),
     }
+    this.conversationInspection = new ConversationInspection(this.deps, {
+      providerHomeFor: (row) => this.providerHomeFor(row),
+      liveSessionForHistory: (id) => this.slots.get(id)?.session,
+      freshWindowQuery: (query, compose, signal) => this.freshWindowQuery(query, compose, signal),
+    })
     this.schedulePlanning = new SchedulePlanning(this.deps, {
       itsCalendar: () => this.itsCalendar(),
       itsEvidence: (conversation) => this.itsEvidence(conversation),
@@ -12996,35 +12995,12 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  private async readThreadLeads(
+  private readThreadLeads(
     sessionId: string,
     before: number,
     signal?: AbortSignal,
   ): Promise<readonly ThreadLeadRow[] | null> {
-    if (this.deps.windowReader === undefined) {
-      return (
-        this.deps.store.threadLeadRows?.(
-          sessionId,
-          LEADS_OPEN_WITH,
-          before,
-          HISTORICAL_LEADS_OPEN_WITH,
-        ) ?? null
-      )
-    }
-    return this.freshWindowQuery(
-      {
-        kind: 'leads',
-        sessionId,
-        before,
-        opening: LEADS_OPEN_WITH,
-        historicalOpening: HISTORICAL_LEADS_OPEN_WITH,
-      },
-      (result) => {
-        if (result.kind !== 'leads') throw new WindowReadUnavailable()
-        return result.rows
-      },
-      signal,
-    )
+    return this.conversationInspection.readThreadLeads(sessionId, before, signal)
   }
 
   /** The person's questions, shared at the current version of the person's queue. */
@@ -31175,167 +31151,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    */
   async turnAsSent(sessionId: string, ordinal: number): Promise<TurnAsSent> {
     try {
-      return await this.readTurnAsSent(sessionId, ordinal)
+      return await this.conversationInspection.readTurnAsSent(sessionId, ordinal)
     } catch (error) {
       return { found: false, why: `The provider’s record could not be read: ${String(error)}` }
-    }
-  }
-
-  private async readTurnAsSent(sessionId: string, ordinal: number): Promise<TurnAsSent> {
-    const row = this.deps.store.find(sessionId)
-    if (row === null) {
-      return {
-        found: false,
-        why: 'This conversation has no record with its provider yet, or is not in this app.',
-      }
-    }
-    const yieldNow = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
-
-    // ⚑ Which provider conversation each turn was in. ⚠️ Claude names the conversation AFTER the
-    // first turn of it is handed over (its `system/init` raises the `session` or `conversation_reset`
-    // event), so a turn is settled into a conversation by the first of: the conversation named
-    // before its turn ended, or the one in force when it ended.
-    interface Turn {
-      readonly ordinal: number
-      /**
-       * What finds it in the provider's record: the text handed over, exactly — or, for a turn this
-       * app read from that record, the text its importer took from it; `null` when there is neither.
-       */
-      readonly key: { readonly by: TurnAsked['by']; readonly text: string } | null
-      /** Its words, as the ledger keeps them. */
-      readonly words: string
-      life: string | null
-      settled: boolean
-    }
-    const turns: Turn[] = []
-    let life: string | null = null
-    /** Whether the ledger named any provider conversation at all. */
-    let named = false
-    let target: Turn | null = null
-    /**
-     * ⚑ Settle every turn not yet in a conversation into `into`. ⚑ **W4.204 · a turn read from the
-     * provider's own record waits for the first conversation the ledger names** (`untilNamed`): a
-     * ledger derived from that record names none, and a reopen's `reopened` and `launched` rows come
-     * before the provider names the one it resumed — which, a resume being checked against it, is
-     * the one the record came from.
-     */
-    const settle = (into: string | null, untilNamed = false): void => {
-      for (const turn of turns) {
-        if (turn.settled) continue
-        if (untilNamed && !named && turn.key?.by === 'its-own-record') continue
-        turn.life = into
-        turn.settled = true
-      }
-    }
-    walk: for (let from = 0; ;) {
-      const page = this.deps.store.eventsFrom(sessionId, from, TURN_AS_SENT_PAGE)
-      if (page.length === 0) break
-      for (const entry of page) {
-        const event = entry.event
-        if (
-          (event.type === 'session' && event.state !== 'ended') ||
-          event.type === 'conversation_reset'
-        ) {
-          life = event.ref.sessionId
-          named = true
-          settle(life)
-        } else if (event.type === 'turn' || event.type === 'launched') {
-          // ⚑ A turn's end — or a new launch, after a quit that left a turn without one.
-          settle(life, true)
-        } else if (event.type === 'user_turn' && target === null) {
-          const stored: unknown = event.sent
-          const turn: Turn = {
-            ordinal: entry.ordinal,
-            key:
-              typeof stored === 'string'
-                ? { by: 'handed-over', text: stored }
-                : event.attribution === 'provider_transcript'
-                  ? { by: 'its-own-record', text: event.text }
-                  : null,
-            words: event.text,
-            life,
-            settled: false,
-          }
-          turns.push(turn)
-          if (entry.ordinal === ordinal) target = turn
-        }
-        // ⚑ Settled — and, for a turn in no conversation, read on until the ledger names one, if it does.
-        if (target?.settled === true && (target.life !== null || named)) break walk
-        // ⚑ Past the place with no message there: nothing to settle.
-        if (target === null && entry.ordinal >= ordinal) break walk
-      }
-      from = (page.at(-1)?.ordinal ?? from) + 1
-      await yieldNow()
-    }
-    if (target === null) return { found: false, why: 'There is no message at that place.' }
-    // ⚑ A turn whose conversation was never named after it: the one in force.
-    settle(life)
-    // ⛔ A turn that reached no provider conversation (a send that failed before one began) is in
-    // no provider's file: never matched in some other conversation's.
-    if (target.life === null && named) {
-      return { found: false, why: 'This message reached no provider conversation.' }
-    }
-    const { key } = target
-    if (key === null) {
-      return {
-        found: false,
-        why:
-          providerDefinitions[row.provider].transcripts.noModelMessageReason?.(target.words) ??
-          'This app kept no copy of the text it handed over for this message — it was sent before this app kept one, or keeping it failed — so it cannot be matched exactly in the provider’s own record.',
-      }
-    }
-    const of = target
-    const before = turns.filter((turn) => turn.ordinal < of.ordinal && turn.life === of.life)
-    // ⛔ An earlier message with the same words and nothing to match it by may be the one the file
-    // holds first: which of the two this is cannot be told.
-    if (before.some((turn) => turn.key === null && turn.words === of.words)) {
-      return {
-        found: false,
-        why: 'An earlier message of this conversation had the same words and no copy of what was handed over with it, so which of the two this one is cannot be told.',
-      }
-    }
-    const asked: TurnAsked = {
-      ...key,
-      life: of.life,
-      // ⚑ **W4.204 · every earlier message with the same text, whichever way each is found** — a
-      // record read from the provider's own file and one this app handed over can carry the same
-      // text, so each takes its own record first ({@link TurnAsked.before}).
-      before: before.flatMap((turn) =>
-        turn.key !== null && turn.key.text === key.text ? [turn.key.by] : [],
-      ),
-    }
-
-    const home = this.providerHomeFor(row)
-    // ⚑ The file of the provider conversation the turn was in: an earlier one keeps its own.
-    const ref = of.life === null ? row.ref : { ...row.ref, sessionId: of.life }
-    let path: string | null
-    try {
-      const found = this.deps.nativeTranscriptPath(row.provider, home, ref)
-      path = found !== null && isTheProvidersRecord(row.provider, home, found) ? found : null
-    } catch {
-      path = null
-    }
-    const gone: TurnAsSent = {
-      found: false,
-      why: 'The provider’s own record of this message is gone, and the app kept no copy of it.',
-    }
-    if (path === null) return gone
-    try {
-      const reading = readingATurn(row.provider, asked, {
-        hasAContextMessage: (model) =>
-          takesAContextMessage(this.deps.providerSnapshot?.(row.provider, model)),
-      })
-      for (let offset = 0; ;) {
-        const chunk = readLines(path, offset, TURN_AS_SENT_PAGE)
-        const done = chunk.lines.some((line) => reading.line(line) === 'done')
-        if (done || chunk.done) break
-        offset = chunk.offset
-        await yieldNow()
-      }
-      return reading.answer()
-    } catch {
-      // ⚑ A file that went between finding it and reading it.
-      return gone
     }
   }
 
@@ -31387,20 +31205,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     input: ChildWorkInput,
     unread?: RowsUnread,
   ): { agents: string[]; taskId: string | null } | null {
-    if (input.part === 'transcript') {
-      const taskId = this.deps.store.workflowAgentTask(sessionId, input.agentId, unread)
-      if (taskId !== null) return { agents: [input.agentId], taskId }
-      // ⚑ **The other children (115).** A plain `Task` child and a Codex child thread are in no
-      // run, so no roster names either of them — their whole announcement is a `sub_agent` event.
-      // The boundary does not move: it is still "an agent THIS session's own ledger recorded",
-      // asked of the same table. `taskId` is null because there genuinely is no run, and inventing
-      // one would be a name for an absence (086/104).
-      return this.deps.store.reportedSubAgent(sessionId, input.agentId, unread)
-        ? { agents: [input.agentId], taskId: null }
-        : null
-    }
-    const agents = this.deps.store.workflowAgentIds(sessionId, input.taskId, unread)
-    return agents.length === 0 ? null : { agents, taskId: input.taskId }
+    return this.conversationInspection.childCandidates(sessionId, input, unread)
   }
 
   /**
@@ -31545,35 +31350,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // ⚑ 697 · `676` §5: one count per answer, on every arm — the ledger's reads happen in the
     // candidate lookup, and whatever the file read then says, the count says what they passed over.
     const unread = rowsUnreadOnce()
-    return { ...this.childWorkRead(sessionId, input, unread), rowsUnread: unread.count }
-  }
-
-  private childWorkRead(
-    sessionId: string,
-    input: ChildWorkInput,
-    unread: RowsUnread,
-  ): ChildWorkResult {
-    const session = this.deps.store.find(sessionId)
-    if (session === null || session.ref === null) return { ok: false, reason: 'unknown-agent' }
-    // THE LEDGER FIRST, and nothing about a filesystem — or about what exists — until it has
-    // answered.
-    //
-    // ⚠️ **The shape check used to sit ABOVE this, and review was right that it read wrong**: it
-    // answered "a thread has no journal" for a task id this session had never heard of, which is a
-    // confident statement about a run we do not know. `unknown-agent` is the true sentence there,
-    // and it is the one the allowlist gives.
-    const found = this.childCandidates(sessionId, input, unread)
-    if (found === null) return { ok: false, reason: 'unknown-agent' }
-
-    return providerDefinitions[session.provider].transcripts.readChild({
-      ref: session.ref,
-      updatedAt: session.updatedAt,
-      part: input.part,
-      agents: found.agents,
-      taskId: found.taskId,
-      home: () => this.providerHomeFor(session),
-      pathForChild: (home, ref) => this.deps.nativeTranscriptPath(session.provider, home, ref),
-    })
+    return {
+      ...this.conversationInspection.childWorkRead(sessionId, input, unread),
+      rowsUnread: unread.count,
+    }
   }
 
   /**
@@ -31600,111 +31380,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     sessionId: string,
     options: { before?: number; turns?: number },
   ): HistoryWindow {
-    const provider = this.deps.store.recordedOne(sessionId)?.provider
-    const window = this.deps.store.turnWindow(sessionId, {
-      turns: options.turns ?? HISTORY_WINDOW_TURNS,
-      maxEvents: HISTORY_WINDOW_MAX_EVENTS,
-      ...(options.before === undefined ? {} : { before: options.before }),
-    })
-    const first = window.entries[0]
-    const last = window.entries.at(-1)
-    const live = options.before === undefined ? this.slots.get(sessionId)?.session : undefined
-    const cached = live?.ancestrySeed
-    const ancestryContext =
-      cached?.from === window.from && cached.through === (last?.ordinal ?? -1)
-        ? cached.context
-        : this.deps.store.ancestryContext(
-            sessionId,
-            window.entries,
-            last?.ordinal ?? -1,
-            HISTORY_WINDOW_MAX_EVENTS,
-          )
-    const pageOrdinals = new Set(window.entries.map((row) => row.ordinal))
-    let ancestryPosition = 0
-    const projected = ancestryContext.epochs.map((epoch, index) => {
-      const rows: (typeof window.entries)[number][] = []
-      while (
-        ancestryPosition < window.entries.length &&
-        window.entries[ancestryPosition]!.ordinal <= epoch.through
-      ) {
-        rows.push(window.entries[ancestryPosition++]!)
-      }
-      const contextRows = epoch.entries.filter((row) => !pageOrdinals.has(row.ordinal))
-      const ancestryRows = [
-        ...new Map([...epoch.entries, ...rows].map((row) => [row.ordinal, row])).values(),
-      ].sort((a, b) => a.ordinal - b.ordinal)
-      const ancestry = new WorkAncestryRead()
-      ancestry.seed(
-        ancestryRows.map((row) => row.event),
-        epoch,
-      )
-      return {
-        first: rows[0]?.ordinal,
-        reading: {
-          ...ancestry.read(),
-          after: epoch.after,
-          ...(index > 0 || rows[0]?.event.type === 'conversation_reset'
-            ? { reset: true as const }
-            : {}),
-        },
-        contextRows,
-        ancestryRows,
-        epoch,
-      }
-    })
-    const final = projected.at(-1)
-    if (live !== null && live !== undefined && final !== undefined) {
-      if (live.workAncestryAfter !== final.epoch.after) live.workAncestry.clear()
-      live.workAncestry.seedRows(final.ancestryRows, final.epoch)
-      live.workAncestry.beginDelivery()
-      live.workAncestryAfter = final.epoch.after
-      live.ancestrySeed = {
-        from: window.from,
-        through: last?.ordinal ?? -1,
-        context: ancestryContext,
-      }
-    }
-    const firstReadings = new Map(projected.map((one) => [one.first, one]))
-    const workAncestry = projected[0]?.reading ?? new WorkAncestryRead().read()
-    const humanFinals =
-      first === undefined || last === undefined
-        ? new Map()
-        : this.deps.store.humanFinalsInWindow(sessionId, first.ordinal, last.ordinal)
-    return {
-      workAncestry,
-      entries: window.entries.map((entry) => ({
-        ...transcriptMessageForDisplay(entry, provider),
-        ...(firstReadings.has(entry.ordinal)
-          ? {
-              workAncestry: firstReadings.get(entry.ordinal)!.reading,
-              ancestryContext: firstReadings.get(entry.ordinal)!.contextRows,
-            }
-          : {}),
-        ...(entry.event.type === 'assistant_message'
-          ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
-          : {}),
-      })),
-      from: window.from,
-      hasOlder: window.hasOlder,
-      turnAligned: window.turnAligned,
-      ...(options.before === undefined
-        ? { humanAnswers: this.deps.store.latestHumanAnswers(sessionId) }
-        : {}),
-      // ⚑ **D-035** — on every page, so a hand-over, a page back and a jump to the latest all begin
-      // with the tools the conversation had there.
-      ...(window.toolsInForce === undefined
-        ? {}
-        : {
-            toolsInForce: {
-              ordinal: window.toolsInForce.ordinal,
-              at: window.toolsInForce.at,
-              event:
-                window.toolsInForce.event.type === 'tool_inventory'
-                  ? transcriptMessageForDisplay(window.toolsInForce, provider).event
-                  : window.toolsInForce.event,
-            },
-          }),
-    }
+    return this.conversationInspection.historyWindow(sessionId, options)
   }
 
   /**
