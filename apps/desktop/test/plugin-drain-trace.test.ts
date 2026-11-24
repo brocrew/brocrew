@@ -22,7 +22,7 @@ afterEach(async () => {
   await captured?.close()
   captured = undefined
 }, 30_000)
-it('logs actual drain stages and a failed-write errno, then closes after one attempt', async () => {
+it('logs actual drain stages and a failed-write errno, then closes when the drain ends', async () => {
   parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-trace-')),
   )
@@ -41,23 +41,24 @@ it('logs actual drain stages and a failed-write errno, then closes after one att
     },
   })
   const write = SupervisorStorage.prototype.write
-  let denied = false
   vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
     this: SupervisorStorage,
     value,
   ) {
-    if (value.phase === 'stopped' && !denied) {
-      denied = true
+    if (value.phase === 'stopped')
       throw Object.assign(new Error('Bearer fictional-secret /fictional/private-path'), {
         code: 'EBUSY',
       })
-    }
     return write.call(this, value)
   })
   // Recovery handles a refused stopped-record write after the owner closes.
   await owner.shutdown()
   await owner.closed
-  expect(events).toMatchObject([
+  const failed = events.filter((e) => e.stage === 'stopped-write' && e.state === 'failed')
+  expect(failed.every((e) => e.errno === 'EBUSY')).toBe(true)
+  expect(failed.map((e) => e.attempt)).toEqual(failed.map((_, i) => i + 1))
+  expect(events.at(-1)).toMatchObject({ stage: 'closed', state: 'complete' })
+  expect(events.slice(0, 8)).toMatchObject([
     { stage: 'drain', state: 'waiting', epoch: expect.any(String), reason: 'shutdown' },
     { stage: 'invalidation', state: 'waiting' },
     { stage: 'child-proofs', state: 'waiting' },
@@ -72,13 +73,90 @@ it('logs actual drain stages and a failed-write errno, then closes after one att
       errno: 'EBUSY',
       cause: expect.stringContaining('Bearer fictional-secret'),
     },
-    { stage: 'closed', state: 'complete' },
   ])
   const log = (await captured.lines(9)).join('\n')
   expect(log).toMatch(/\[error\]\s+\(drain\) stopped-write .*state: 'failed'.*errno: 'EBUSY'/)
   expect(log).toContain("reason: 'shutdown'")
   expect(log).toContain('epoch:')
   expect(log).toContain('Error code=EBUSY: Bearer fictional-secret')
+})
+it('writes the stopped record once a reader that held it lets go, within the drain', async () => {
+  parent = await realpath(
+    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-held-')),
+  )
+  const root = join(parent, 'plugins')
+  const events: DrainTrace[] = []
+  owner = await PluginSupervisor.start({
+    root,
+    workspaceRoots: [],
+    drainWithin: 10_000,
+    traceDrain: (event) => events.push(event),
+  })
+  const write = SupervisorStorage.prototype.write
+  let refusals = 0
+  vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
+    this: SupervisorStorage,
+    value,
+  ) {
+    // What Windows answers a replacement while another process reads the record.
+    if (value.phase === 'stopped' && refusals < 2) {
+      refusals++
+      throw Object.assign(new Error('fictional held record'), { code: 'EPERM' })
+    }
+    return write.call(this, value)
+  })
+  expect(await owner.shutdown()).toBe(true)
+  await owner.closed
+  owner = undefined
+  expect(events.filter((e) => e.stage === 'stopped-write')).toMatchObject([
+    { state: 'waiting', attempt: 1 },
+    { state: 'failed', attempt: 1, errno: 'EPERM' },
+    { state: 'waiting', attempt: 2 },
+    { state: 'failed', attempt: 2, errno: 'EPERM' },
+    { state: 'waiting', attempt: 3 },
+    { state: 'complete', attempt: 3 },
+  ])
+  const storage = new SupervisorStorage(root, [], false)
+  try {
+    expect(storage.read()?.phase).toBe('stopped')
+  } finally {
+    storage.close()
+  }
+})
+it('starts no further stopped-record try once a whole pause no longer fits in the drain', async () => {
+  parent = await realpath(
+    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-end-')),
+  )
+  const events: DrainTrace[] = []
+  const supervisor = await PluginSupervisor.start({
+    root: join(parent, 'plugins'),
+    workspaceRoots: [],
+    drainWithin: 10_000,
+    traceDrain: (event) => events.push(event),
+  })
+  owner = supervisor
+  // The first refused try leaves 60 ms of the drain, as a long inner retry would.
+  const now = performance.now.bind(performance)
+  let skew = 0
+  vi.spyOn(performance, 'now').mockImplementation(() => now() + skew)
+  const write = SupervisorStorage.prototype.write
+  let tries = 0
+  vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
+    this: SupervisorStorage,
+    value,
+  ) {
+    if (value.phase !== 'stopped') return write.call(this, value)
+    if (++tries === 1) skew += supervisor.remainingDrainMs() - 60
+    throw Object.assign(new Error('fictional held record'), { code: 'EPERM' })
+  })
+  await supervisor.shutdown()
+  await supervisor.closed
+  owner = undefined
+  expect(events.filter((e) => e.stage === 'stopped-write')).toMatchObject([
+    { state: 'waiting', attempt: 1 },
+    { state: 'failed', attempt: 1, errno: 'EPERM' },
+  ])
+  expect(tries).toBe(1)
 })
 it('records a legacy restart-required phase diagnostic without prescribing a reboot', () => {
   const text = ownerDiagnosticLine({

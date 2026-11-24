@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { lstatSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
+import { setTimeout as delay } from 'node:timers/promises'
+import { isBrieflyHeld } from '@brobot2/runtime/atomic-write'
 import { PluginFence } from '../state/fence'
 import { SupervisorStorage } from './storage'
 import type { DrainTrace } from './drain-trace'
@@ -120,6 +122,9 @@ async function stopAndProveChild(
   return child.proveEmptyGroups ? (await child.proveEmptyGroups()) === true : false
 }
 
+/** Between tries of a held stopped record. Another try starts only while a whole pause still fits
+ * in the drain, since each try already retries briefly inside. */
+const HELD_RECORD_PAUSE_MS = 100
 function drainWriteErrno(error: unknown): string {
   try {
     const code = (error as NodeJS.ErrnoException | null)?.code
@@ -646,19 +651,26 @@ export class PluginSupervisor {
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
       this.trace({ stage: 'server.close', state: 'complete' })
-      // Recovery handles a failed stopped-record write; trace it once.
-      try {
-        this.trace({ stage: 'stopped-write', state: 'waiting', attempt: 1 })
-        this.storage.write({ ...this.record, phase: 'stopped' })
-        this.trace({ stage: 'stopped-write', state: 'complete', attempt: 1 })
-      } catch (error) {
-        this.trace({
-          stage: 'stopped-write',
-          state: 'failed',
-          attempt: 1,
-          errno: drainWriteErrno(error),
-          cause: pluginFailureCause(error),
-        })
+      // On Windows a reader holding the record open refuses its replacement, so the write goes
+      // on while that lasts and the drain does. Recovery handles a record that stays unwritten.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          this.trace({ stage: 'stopped-write', state: 'waiting', attempt })
+          this.storage.write({ ...this.record, phase: 'stopped' })
+          this.trace({ stage: 'stopped-write', state: 'complete', attempt })
+          break
+        } catch (error) {
+          this.trace({
+            stage: 'stopped-write',
+            state: 'failed',
+            attempt,
+            errno: drainWriteErrno(error),
+            cause: pluginFailureCause(error),
+          })
+          if (!isBrieflyHeld(error) || this.remainingDrainMs() <= HELD_RECORD_PAUSE_MS) break
+          await delay(HELD_RECORD_PAUSE_MS)
+          if (this.remainingDrainMs() === 0) break
+        }
       }
       clearInterval(this.timer)
       this.record.phase = 'stopped'

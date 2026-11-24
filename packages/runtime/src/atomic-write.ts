@@ -32,7 +32,7 @@ export type AtomicWriteData =
 const BRIEFLY_HELD = new Set(['EBUSY', 'EPERM', 'EACCES'])
 
 /** Whether `error` is one a file held briefly by another program gives. */
-function isBrieflyHeld(error: unknown): boolean {
+export function isBrieflyHeld(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
   return code !== undefined && BRIEFLY_HELD.has(code)
 }
