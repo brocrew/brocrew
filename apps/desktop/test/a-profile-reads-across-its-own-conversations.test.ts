@@ -238,7 +238,11 @@ describe('D-024 · a profile reads across its own conversations', () => {
     const ali2 = await personOpens('ali')
     const bob = await personOpens('bob')
     const pm = await personOpens('pm')
+    const peerTitle = 'Release planning'
     await aPersonSays(ali1, 'draft the release note')
+    expect(
+      await host.renameConversation({ conversation: ali1, title: peerTitle }, { kind: 'person' }),
+    ).toMatchObject({ ok: true, title: peerTitle })
     await aPersonSays(ali2, 'check the invoices')
     await aPersonSays(bob, 'plan the offsite')
     // ⚑ The third Ali is a CHILD of the PM: it holds a piece the PM gave it.
@@ -282,6 +286,10 @@ describe('D-024 · a profile reads across its own conversations', () => {
     const symmetric = await callFull(ali1, 'read_transcript', { agent: ali2 })
     expect(symmetric.structured, symmetric.text).toMatchObject({ outcome: 'ok', agent: ali2 })
     expect(symmetric.text).toContain('check the invoices')
+    const peerLine = symmetric.text
+      .split('\n')
+      .find((line) => line.startsWith('  - conversation ') && line.includes(peerTitle))
+    expect(peerLine).toContain(' — last active ')
     expect(symmetric.text).not.toContain('draft the release note')
 
     // ⚑ The chain arm survives the widening: the PM still reads the child it gave work to.

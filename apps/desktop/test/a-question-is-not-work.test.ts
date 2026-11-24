@@ -457,12 +457,16 @@ describe('415 · a question is not work', () => {
         text.split(/(?<=[.!?])\s+/).filter((one) => /\bstall(s|ed|ing)?\b/i.test(one))
       const aRemedy =
         /give_work|\bgive\b[^.]*\bagain\b|new (piece|work)|follow[ -]?up|message_agent|withdraw|take_on_work/i
+      const agreedCheck =
+        'Keep agreed follow-up active, and use work records or agreed checks to notice stalls.'
       const offered = (text: string): string[] =>
-        aboutAStall(text).filter((sentence) => aRemedy.test(sentence))
+        aboutAStall(text).filter((sentence) => sentence !== agreedCheck && aRemedy.test(sentence))
+      expect(aboutAStall(said)).toContain(agreedCheck)
       expect(offered(said)).toEqual([])
       // The controls: a stall sentence that offers new work is caught, and only the word counts.
       expect(offered(`${said}\nA piece stalled; give it again with give_work.`)).toHaveLength(1)
       expect(offered(`${said}\nFor a stall, give the work again.`)).toHaveLength(1)
+      expect(offered(`${said}\nFor a stall, create a follow-up.`)).toHaveLength(1)
       expect(aboutAStall('Use an installed skill.')).toEqual([])
       expect(AGENT_MESSAGE_KINDS).toContain('follow-up')
     })

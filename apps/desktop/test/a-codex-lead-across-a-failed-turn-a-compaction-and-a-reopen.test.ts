@@ -885,7 +885,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
       expect(rows.length).toBeGreaterThan(0)
       expect(JSON.stringify(rows)).toContain(TITLE)
     }
-    // What holds no index is kept as it came: the agent's own answer.
     expect(
       ledger(app, id).some((event) => event.type === 'assistant_message' && event.text === 'ok'),
     ).toBe(true)
@@ -893,7 +892,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     expect(first?.event.sent).toContain(TITLE)
     expect(rowsBesideTheLaunches(app, id)).toContain(TITLE)
     expect(JSON.stringify(newestLaunch(app, id))).not.toContain(TITLE)
-    // The row's lead is the kept text, at its kept length, so a later life reads it back whole.
     const block = wholeLeadOf(newestLaunch(app, id))
     expect(first?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
     expect(first?.event.lead).toEqual({ is: 'whole', chars: block.length })
@@ -991,11 +989,9 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
         .slice(atReopen)
         .map((request) => request.params),
     )
-    // The whole lead and the saved-method addendum both reach the model.
     expect(sent).toContain(TITLE)
     const [two] = messagesAfter(app, c1, reopened.ordinal)
     expect(two?.event.lead?.is).toBe('whole')
-    // …and every row keeps the marker in their place.
     expect(two?.event.sent).toContain(TITLE)
     expect(rowsBesideTheLaunches(app, c1)).toContain(TITLE)
   })
