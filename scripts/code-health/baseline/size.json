@@ -116,7 +116,7 @@
   "apps/desktop/test/schedule-receipts-clean-room.test.ts": 1104,
   "apps/desktop/test/session-library.test.ts": 1322,
   "apps/desktop/test/session-persistence.test.ts": 1440,
-  "apps/desktop/test/session-store.test.ts": 3187,
+  "apps/desktop/test/session-store.test.ts": 1797,
   "apps/desktop/test/state-a-supervisor-can-trust.test.ts": 1650,
   "apps/desktop/test/the-act-inside-the-cut.test.ts": 1218,
   "apps/desktop/test/the-bridge-that-clones-nothing.test.ts": 1491,
