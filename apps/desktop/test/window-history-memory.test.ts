@@ -19,55 +19,62 @@ it('lists a large fictional workspace with resolved question history at the prod
   const store = createSessionStore(db)
   const conversations = 1960
   const questionsPerConversation = 40
-  const insert = db.prepare(
-    'INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
-  )
   const words =
     'The fictional review compares the recorded task with the proposed implementation. '.repeat(24)
+  // Every conversation holds the same history, written for all of them by one statement: a call
+  // per row took about half of the fixture's time on macOS.
+  const history = Array.from({ length: questionsPerConversation }, (_, q) => {
+    const requestId = `question-${q}`
+    return [
+      {
+        type: 'question_asked',
+        requestId,
+        prompt: words,
+        context: words,
+        questions: [
+          { id: 'choice', prompt: 'Which fictional option?', options: ['Keep', 'Change'] },
+        ],
+      },
+      { type: 'request_routed', requestId, to: 'a-person', parent: null },
+      { type: 'request_resolved', id: requestId },
+    ]
+  })
+    .flat()
+    .map((event, ordinal) => ({ ordinal, type: event.type, payload: JSON.stringify(event) }))
+  // This disposable fixture needs no crash durability while it is built, so its writes skip the
+  // disk syncs that took seconds on Linux. It is still written and checkpointed before the reader
+  // starts, and the setting is restored then.
+  const synchronous = db.pragma('synchronous', { simple: true })
+  db.pragma('synchronous = OFF')
   db.transaction(() => {
     for (let owner = 0; owner < conversations; owner++) {
-      const id = `fictional-history-${owner}`
       store.create({
-        id,
+        id: `fictional-history-${owner}`,
         provider: 'codex',
         profileId: 'brobot',
         ...(owner < 8 ? {} : { parentSessionId: `fictional-history-${owner % 8}` }),
         cwd: directory,
         approvalMode: 'ask',
       })
-      for (let q = 0; q < questionsPerConversation; q++) {
-        const requestId = `question-${q}`
-        const events = [
-          {
-            type: 'question_asked',
-            requestId,
-            prompt: words,
-            context: words,
-            questions: [
-              { id: 'choice', prompt: 'Which fictional option?', options: ['Keep', 'Change'] },
-            ],
-          },
-          { type: 'request_routed', requestId, to: 'a-person', parent: null },
-          { type: 'request_resolved', id: requestId },
-        ]
-        for (const [offset, event] of events.entries()) {
-          const ordinal = q * 3 + offset
-          insert.run(
-            `${id}-${ordinal}`,
-            id,
-            ordinal,
-            event.type,
-            JSON.stringify(event),
-            1000 + ordinal,
-          )
-        }
-      }
     }
+    db.prepare(
+      `WITH RECURSIVE owner(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM owner WHERE n < @last),
+       event AS (
+         SELECT json_extract(value, '$.ordinal') AS ordinal, json_extract(value, '$.type') AS type,
+                json_extract(value, '$.payload') AS payload
+           FROM json_each(@history)
+       )
+       INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+       SELECT 'fictional-history-' || n || '-' || ordinal, 'fictional-history-' || n, 0, ordinal,
+              type, payload, 1000 + ordinal
+         FROM owner CROSS JOIN event ORDER BY n, ordinal`,
+    ).run({ last: conversations - 1, history: JSON.stringify(history) })
   })()
   db.prepare(
     'UPDATE provider_session SET profile_id = NULL, agent_identity_id = NULL WHERE id = ?',
   ).run('fictional-history-0')
   db.pragma('wal_checkpoint(TRUNCATE)')
+  db.pragma(`synchronous = ${synchronous}`)
   console.log(
     'Window history fixture',
     JSON.stringify({
