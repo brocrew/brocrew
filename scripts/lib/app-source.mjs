@@ -26,7 +26,7 @@ const DECLARED_IN = {
   CODEX_INSTRUCTIONS_FILE: 'src/main/providers/codex/layout.mjs',
   DEFAULT_PROVIDER: '../../packages/shared/src/providers.ts',
   ASKED_TO_STOP: 'src/shared/how-work-stopped.ts',
-  DEFAULT_PROFILE_ID: 'src/shared/runtime-ipc.ts',
+  DEFAULT_PROFILE_ID: 'src/shared/profile-name.ts',
   PROVIDER_HOMES_DIRNAME: 'src/main/connections/homes.ts',
   HOME_FOLDER: 'src/main/connections/homes.ts',
 }
