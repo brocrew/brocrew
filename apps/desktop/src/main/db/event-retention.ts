@@ -29,7 +29,6 @@ export interface EventTrimResult {
   readonly longestSelectionMs: number
   readonly largestCandidateListRows: number
   readonly peakHeapBytes: number
-  readonly longestCheckpointMs: number
   readonly incrementalSteps: number
   readonly reclaimedPages: number
   readonly longestIncrementalLockMs: number
@@ -50,7 +49,6 @@ export interface EventTrimBatch {
 export interface EventTrimWrite {
   readonly changed: number | null
   readonly durationMs: number
-  readonly checkpointMs: number
 }
 
 /** Apply the worker's bounded selection on the connection that records ordinary commits. */
@@ -74,10 +72,7 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
   return (batch) => {
     const began = performance.now()
     const changed = write.immediate(batch)
-    const durationMs = performance.now() - began
-    const checkpointBegan = performance.now()
-    if (changed !== null) db.pragma('wal_checkpoint(PASSIVE)')
-    return { changed, durationMs, checkpointMs: performance.now() - checkpointBegan }
+    return { changed, durationMs: performance.now() - began }
   }
 }
 
@@ -117,7 +112,6 @@ export async function trimOldEvents(
   let longestSelectionMs = 0
   let largestCandidateListRows = 0
   let peakHeapBytes = 0
-  let longestCheckpointMs = 0
   let deferredConversations = 0
   let reads = 0
   const result = (interrupted: boolean): EventTrimResult => ({
@@ -127,7 +121,6 @@ export async function trimOldEvents(
     longestSelectionMs,
     largestCandidateListRows,
     peakHeapBytes,
-    longestCheckpointMs,
     incrementalSteps: 0,
     reclaimedPages: 0,
     longestIncrementalLockMs: 0,
@@ -170,7 +163,6 @@ export async function trimOldEvents(
         try {
           const applied = await write(batch)
           longestBatchMs = Math.max(longestBatchMs, applied.durationMs)
-          longestCheckpointMs = Math.max(longestCheckpointMs, applied.checkpointMs)
           if (applied.changed === null) {
             deferredConversations += 1
             return false

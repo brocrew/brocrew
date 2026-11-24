@@ -11,7 +11,7 @@ import * as logging from '../src/main/logging/log'
 import { startEventRetention } from '../src/main/storage/event-retention'
 
 vi.mock('../src/main/db/event-retention', () => ({
-  eventTrimWriter: () => () => ({ changed: 200, durationMs: 1, checkpointMs: 0 }),
+  eventTrimWriter: () => () => ({ changed: 200, durationMs: 1 }),
 }))
 vi.mock('../src/main/db/compact', () => ({ incrementallyCompact: vi.fn() }))
 
@@ -23,7 +23,6 @@ const result = (removed: number): EventTrimResult => ({
   longestSelectionMs: 0,
   largestCandidateListRows: 0,
   peakHeapBytes: 0,
-  longestCheckpointMs: 0,
   incrementalSteps: 0,
   reclaimedPages: 0,
   longestIncrementalLockMs: 0,

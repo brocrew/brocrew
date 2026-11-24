@@ -24,7 +24,6 @@ export async function incrementallyCompact(
     steps += 1
     const after = Number(db.pragma('freelist_count', { simple: true }))
     reclaimedPages += Math.max(0, before - after)
-    db.pragma('wal_checkpoint(PASSIVE)')
     if (after === 0 || after >= before) break
     await pause(25)
   }

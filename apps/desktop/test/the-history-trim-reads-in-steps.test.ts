@@ -232,7 +232,7 @@ it('reads each conversation in steps and selects exactly the rows the one query 
       () => false,
       async (batch) => {
         selected.push(...batch.ids)
-        return { changed: batch.ids.length, durationMs: 0, checkpointMs: 0 }
+        return { changed: batch.ids.length, durationMs: 0 }
       },
       NOW,
     )
