@@ -175,6 +175,5 @@
   "scripts/resume-live-smoke.mjs": 1603,
   "scripts/test/owned-process.test.mjs": 1216,
   "scripts/test/upgrade-path.test.mjs": 2462,
-  "scripts/ui-live-smoke.mjs": 25441,
-  "scripts/upgrade-path.mjs": 3190
+  "scripts/ui-live-smoke.mjs": 25441
 }
