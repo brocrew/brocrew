@@ -1,4 +1,4 @@
-import { WorkAncestryRead } from '../work-ancestry'
+import type { LiveHistoryState } from './conversation-inspection'
 import type { ProviderFailureEpisode } from '../../db/session-store'
 import {
   sessionDisclosures,
@@ -17,7 +17,6 @@ import { type SessionLiveness } from '../../../shared/runtime-ipc'
 import type { LeadInFront } from '../../../shared/human-answer-contracts'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { KeptPromptStart, SessionInstructions } from '../../../shared/instruction-contracts'
-import type { SessionStore } from '../../db/session-store'
 import { type AQuestionAStopEnded } from '../turn-origin'
 import { type TurnBlockSnapshot } from '../turn-block-changes'
 import type { AgentMessageKind } from '../../../shared/task-contracts'
@@ -78,14 +77,7 @@ interface ProviderHandover {
   noteInputRecorded?(): void
 }
 
-interface HostedSession {
-  readonly workAncestry: WorkAncestryRead
-  workAncestryAfter: number
-  ancestrySeed?: {
-    from: number
-    through: number
-    context: ReturnType<SessionStore['ancestryContext']>
-  }
+interface HostedSession extends LiveHistoryState {
   readonly currentProviderLimits: () => ProviderLimitDisclosure
   readonly id: string
   readonly provider: Provider
