@@ -330,7 +330,6 @@ const runtime: RuntimeBridge = Object.freeze({
   /** Both halves of the listing as one stamped publication. */
   listConversations: (): Promise<ListingAnswer> => command({ kind: 'listConversations' }),
   listRecentConversations: () => command({ kind: 'listRecentConversations' }),
-  firstListPainted: (): Promise<void> => command({ kind: 'firstListPainted' }),
   /** Work whose holder stopped with it, its giver told: to look at or hand back. */
   stoppedWorkForAPerson: (): Promise<LedgerWalk<StoppedWorkForAPerson>> =>
     command({ kind: 'stoppedWorkForAPerson' }),

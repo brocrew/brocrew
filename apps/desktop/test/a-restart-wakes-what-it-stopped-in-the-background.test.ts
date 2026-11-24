@@ -1,4 +1,3 @@
-import { setImmediate as afterIO } from 'node:timers/promises'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -96,7 +95,7 @@ describe('a restart wakes what it stopped in the background', () => {
   const buildHost = (listening = true, deferred = false): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      deferStartupUntilListPaint: deferred,
+      deferStartupUntilFirstList: deferred,
       ...fixtureHostPaths(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
       newSessionId: () => `sess_${++counter}`,
@@ -196,7 +195,7 @@ describe('a restart wakes what it stopped in the background', () => {
   const restartsAt = (moment: number, listening = true, deferred = false): RuntimeHost => {
     clock = moment
     host = buildHost(listening, deferred)
-    if (deferred) host.firstListPainted()
+    if (deferred) void host.listConversations()
     return host
   }
 
@@ -211,7 +210,7 @@ describe('a restart wakes what it stopped in the background', () => {
       restartsAt(local(9, 28, 12, 0), true, deferred)
       if (deferred) {
         expect(noticesIn(a)).toHaveLength(0)
-        await afterIO()
+        await waitFor(() => noticesIn(a).length > 0, 'the startup the first list begins')
       }
       // Held, at once, in its own words, as the app's own notice; the conversation is not started yet.
       const held = noticesIn(a)

@@ -294,7 +294,7 @@ export async function composeRuntimeHost(
     savedMethods: methodKnowledge,
     memoryKnowledge,
     afterFirstWindowLoad: firstWindowLoad,
-    deferStartupUntilListPaint: true,
+    deferStartupUntilFirstList: true,
     workSearchReader: startWorkSearch(database.name),
     pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),

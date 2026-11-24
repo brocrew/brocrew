@@ -476,8 +476,6 @@ export async function executeRuntimeCommand(
       // A read, and it takes no sink and no owner, as the eight reads it gathers. It sends what
       // they send, under one stamp.
       return host.personsQueue() satisfies Answer<'personsQueue'>
-    case 'firstListPainted':
-      return host.firstListPainted() satisfies Answer<'firstListPainted'>
     case 'listConversations':
       // A read, and it takes no sink and no owner, as the two halves it gathers. It sends what
       // they send, under one stamp.
