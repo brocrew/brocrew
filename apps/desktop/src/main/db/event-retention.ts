@@ -36,6 +36,8 @@ export interface EventTrimResult {
   readonly budgetReached: boolean
   readonly interrupted: boolean
   readonly deferredConversations: number
+  /** Selections made, each after a check for a stop: how far a stopped sweep got (404). */
+  readonly reads: number
 }
 
 export interface EventTrimBatch {
@@ -117,6 +119,7 @@ export async function trimOldEvents(
   let peakHeapBytes = 0
   let longestCheckpointMs = 0
   let deferredConversations = 0
+  let reads = 0
   const result = (interrupted: boolean): EventTrimResult => ({
     removed,
     batches,
@@ -131,12 +134,14 @@ export async function trimOldEvents(
     budgetReached: removed >= ROWS_PER_SWEEP,
     interrupted,
     deferredConversations,
+    reads,
   })
   /** One timed read, after the worker has seen its messages; null once it is asked to stop. */
   const read = async <T>(run: () => T): Promise<T | null> => {
     await seeMessages()
     if (stopped()) return null
     const began = performance.now()
+    reads += 1
     const value = run()
     longestSelectionMs = Math.max(longestSelectionMs, performance.now() - began)
     return value

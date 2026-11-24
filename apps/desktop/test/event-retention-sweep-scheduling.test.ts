@@ -30,6 +30,7 @@ const result = (removed: number): EventTrimResult => ({
   budgetReached: removed >= 100_000,
   interrupted: false,
   deferredConversations: 0,
+  reads: 0,
 })
 
 class SweepWorker extends EventEmitter {

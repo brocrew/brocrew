@@ -52,7 +52,14 @@ export default defineConfig({
      * batch, the archive frame batch, the history window ceiling — are asserted directly, by tests
      * that count the widest read a path ever makes. This only stops the clock becoming a fourth
      * assertion nobody wrote, about a machine nobody measured.
+     *
+     * **Hooks get the same bound, for the same reason** (406). A test's own cleanup closes its
+     * sessions and its SQLite file and removes its folders, which is the same real-filesystem work
+     * on the same loaded machine. On hosted Windows one synchronous `db.close()` took 10.9 s while
+     * the whole runner stalled, and it was killed at vitest's default 10 s hook limit even though
+     * every step finished.
      */
     testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 })

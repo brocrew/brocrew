@@ -509,28 +509,49 @@ describe('the recovery copy is checked off the main thread', () => {
     db.transaction(() => {
       for (let n = 0; n < 100_000; n++) insert.run(String(n), n, payload, Date.now())
     })()
+    /**
+     * ⚠️ **Judged by reads, not by the clock** (404). Both wall-clock totals include starting the
+     * worker, opening SQLite and the thread's exit, which a stop cannot shorten. On a loaded
+     * Windows runner those costs alone took a stopped sweep past the whole one. So the stop is
+     * still asked a quarter of the way through the whole sweep's time, but what is compared is
+     * how far each sweep read. The stopped worker's own result is read here, because the app
+     * drops it once it has asked the worker to stop.
+     */
     const sweep = (stopAfterMs?: number) => {
-      const { result, done, failed } = trimCompletion<number>()
+      const { result, done, failed } = trimCompletion<{ ms: number; trim: EventTrimResult }>()
       const began = performance.now()
+      let said: EventTrimResult | undefined
       const retention = startEventRetention(
         db,
-        () => new Worker(storageBundle, { workerData: { maintenance: { kind: 'trim', file } } }),
-        async () => done(performance.now() - began),
+        () => {
+          const worker = new Worker(storageBundle, {
+            workerData: { maintenance: { kind: 'trim', file } },
+          })
+          worker.on('message', (message: { ok?: boolean; value?: EventTrimResult }) => {
+            if (message.ok === true) said = message.value
+          })
+          return worker
+        },
+        async (trim) => done({ ms: performance.now() - began, trim }),
         failed,
       )
       retention.firstListAccepted(-600_000)
       if (stopAfterMs !== undefined)
         setTimeout(() => {
-          void retention.stop().then(() => done(performance.now() - began), failed)
+          void retention.stop().then(() => {
+            if (said === undefined) failed(new Error('the stopped worker reported no result'))
+            else done({ ms: performance.now() - began, trim: said })
+          }, failed)
         }, stopAfterMs)
       return { result, retention }
     }
     try {
       const whole = sweep()
-      const wholeMs = await whole.result
+      const wholeRun = await whole.result
       await whole.retention.stop()
-      const stopped = sweep(wholeMs / 4)
-      expect(await stopped.result).toBeLessThan((wholeMs * 3) / 4)
+      const stopped = (await sweep(wholeRun.ms / 4).result).trim
+      expect(stopped.interrupted).toBe(true)
+      expect(stopped.reads).toBeLessThan((wholeRun.trim.reads * 3) / 4)
       expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 100_000 })
     } finally {
       db.close()
