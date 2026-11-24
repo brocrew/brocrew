@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
   aCodexSignInIsKept,
+  codexAccountIn,
   codexAuthHealth,
   codexSignInIsKeptAsAFile,
   makeRoomForACodexSignIn,
@@ -124,6 +125,13 @@ async function bringTheCodexKeyToNow(
     return 'the-key'
   }
   if (stamp === null) return 'its-login'
+  // A stamp left by a key removal that did not finish, over a sign-in to an account: the sign-in
+  // stays, and only the stamp goes.
+  const account = await codexAccountIn(home)
+  if (account !== null && account !== 'api-key') {
+    await retireCodexKeyStamp(home)
+    return 'its-login'
+  }
   // The logout ends this home's key login, never the sign-in its account's agents share.
   const putBack = await makeRoomForACodexSignIn(home)
   const done = await codexKey.change(home, { to: 'no-key' })
@@ -131,6 +139,17 @@ async function bringTheCodexKeyToNow(
   if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
   await rm(join(home, CODEX_KEY_STAMP), { force: true })
   return 'its-login'
+}
+
+/** Remove a key stamp a sign-in has made obsolete; one that cannot go now changes nothing. */
+async function retireCodexKeyStamp(home: string): Promise<void> {
+  try {
+    await rm(join(home, CODEX_KEY_STAMP), { force: true })
+  } catch (error) {
+    console.warn(
+      `could not remove an obsolete Codex API-key stamp: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
 }
 
 /** Put a home on its account's one sign-in; see {@link shareCodexSignIn}. */
@@ -253,6 +272,8 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       return {
         authUrl: start.authUrl,
         completed: login.completed().then(async (outcome) => {
+          // A sign-in that worked ends any key login this home had, and with it the key's stamp.
+          if (outcome.success) await retireCodexKeyStamp(providerHome)
           await shared()
           return outcome
         }),
