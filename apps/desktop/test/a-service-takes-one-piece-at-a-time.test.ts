@@ -213,8 +213,8 @@ describe('a service takes one piece at a time', () => {
       await closing
       expect(world.ledger(one.owner).some((row) => row.type === 'message_unqueued')).toBe(false)
       expect(stateOf(one.owner, one.piece)).toBe('waiting')
-      const next = world.aHost({ deferStartupUntilListPaint: deferred })
-      if (deferred) next.firstListPainted()
+      const next = world.aHost({ deferStartupUntilFirstList: deferred })
+      if (deferred) await next.listConversations()
       await handedOver(one.owner, one.piece)
       for (const spy of quiet) spy.mockRestore()
       expect(handedOverIn(one.owner)).toEqual([one.piece])
@@ -510,8 +510,8 @@ describe('a service takes one piece at a time', () => {
             .map((row) => row.type),
         ).not.toContain('message_queued')
         expect(stateOf(service, two.piece)).toBe('waiting')
-        const next = world.aHost({ deferStartupUntilListPaint: deferred })
-        if (deferred) next.firstListPainted()
+        const next = world.aHost({ deferStartupUntilFirstList: deferred })
+        if (deferred) await next.listConversations()
         await handedOver(service, two.piece)
         for (const spy of quiet) spy.mockRestore()
         expect(handedOverIn(service)).toEqual([one.piece, two.piece])
@@ -844,8 +844,8 @@ describe('a service takes one piece at a time', () => {
       async (deferred) => {
         const { service, pieces } = aQueueLeftBehind('nothing')
         const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-        const next = world.aHost({ deferStartupUntilListPaint: deferred })
-        if (deferred) next.firstListPainted()
+        const next = world.aHost({ deferStartupUntilFirstList: deferred })
+        if (deferred) await next.listConversations()
         await handedOver(service, pieces[0] ?? '')
         info.mockRestore()
         expect(stateOf(service, pieces[1] ?? '')).toBe('waiting')
@@ -858,8 +858,8 @@ describe('a service takes one piece at a time', () => {
       async (deferred) => {
         const { service, pieces } = aQueueLeftBehind('for-its-next-start')
         const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-        const next = world.aHost({ deferStartupUntilListPaint: deferred })
-        if (deferred) next.firstListPainted()
+        const next = world.aHost({ deferStartupUntilFirstList: deferred })
+        if (deferred) await next.listConversations()
         await handedOver(service, pieces[0] ?? '')
         info.mockRestore()
         expect(handedOverIn(service)).toEqual([pieces[0]])

@@ -332,7 +332,6 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // ⛔ `refused`, for the listing pair's reason; answered at its stamp, as the queue is.
   listConversations: 'refused',
   listRecentConversations: 'refused',
-  firstListPainted: 'answered',
   // Answered: it reads nothing but what this run is called.
   currentEpoch: 'answered',
   // ⛔ `refused`, for its neighbour's reason: a store walk, over rows the next launch reads again.

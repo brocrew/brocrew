@@ -21,7 +21,7 @@ function backgroundWork(world: F093World, owner: string, at: number): void {
   )
 }
 
-it('delivers the restart background notice on a life resumed locally before the first paint', async () => {
+it('delivers the restart background notice on a life resumed locally before the first list', async () => {
   const world = new F093World()
   worlds.push(world)
   let clock = Date.UTC(2026, 9, 10, 12)
@@ -33,7 +33,7 @@ it('delivers the restart background notice on a life resumed locally before the 
   const host = world.buildHost(false, {
     now: () => clock,
     statesMoved: () => {},
-    deferStartupUntilListPaint: true,
+    deferStartupUntilFirstList: true,
     afterFirstWindowLoad: new Promise<void>(() => {}),
     startGapMs: 1,
   })
@@ -48,7 +48,7 @@ it('delivers the restart background notice on a life resumed locally before the 
   await host.resumeSession(owner, world.window)
   expect(world.launchesOf(owner)).toHaveLength(2)
   expect(notices()).toHaveLength(0)
-  host.firstListPainted()
+  await host.listConversations()
   await waitFor(
     () => notices().some((event) => event.type === 'user_turn'),
     'the restart notice to reach the locally resumed life',
@@ -97,7 +97,7 @@ it.each([false, true])(
     const host = world.buildHost(false, {
       now: () => at + 1_000,
       statesMoved: () => {},
-      deferStartupUntilListPaint: true,
+      deferStartupUntilFirstList: true,
       afterFirstWindowLoad: new Promise<void>(() => {}),
       turnsTheAppCut: cuts,
       accountWaitMs: 1,
@@ -105,7 +105,7 @@ it.each([false, true])(
     })
     await host.resumeSession(owner, world.window)
     expect(cuts.read().cuts[owner]?.state).toBe('pending')
-    host.firstListPainted()
+    await host.listConversations()
     await waitFor(
       () => typeof cuts.read().cuts[owner]?.state === 'object',
       'the continuation to make its account decision on the local life',
@@ -139,14 +139,14 @@ it('does not promote an older quit after the newest owner resumes before the rem
   const host = world.buildHost(false, {
     now: () => at + 1_000,
     statesMoved: () => {},
-    deferStartupUntilListPaint: true,
+    deferStartupUntilFirstList: true,
     afterFirstWindowLoad: new Promise<void>(() => {}),
     startGapMs: 1,
   })
   expect(world.store.whatTheNewestQuitClosed(at - 2_000)).toEqual([newest])
   await host.resumeSession(newest, world.window)
   expect(world.store.whatTheNewestQuitClosed(at - 2_000)).toEqual([older])
-  host.firstListPainted()
+  await host.listConversations()
   await waitFor(
     () =>
       world.turnsOf(newest).some((turn) => turn.appNotice === 'background-work-a-restart-stopped'),

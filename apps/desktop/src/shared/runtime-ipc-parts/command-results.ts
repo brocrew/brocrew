@@ -279,7 +279,6 @@ export interface RuntimeCommandResults {
   personsQueue: PersonsQueueAnswer
   listConversations: ListingAnswer
   listRecentConversations: readonly RecentConversation[]
-  firstListPainted: void
   stoppedWorkForAPerson: LedgerWalk<StoppedWorkForAPerson>
   workIncidentsForAPerson: LedgerWalk<WorkIncident>
   /**
