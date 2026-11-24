@@ -80,7 +80,6 @@
   "apps/desktop/test/a-task-you-can-see.test.ts": 1254,
   "apps/desktop/test/a-time-the-app-says-is-the-time-on-the-macs-clock.test.ts": 1477,
   "apps/desktop/test/a-to-do-for-a-person.test.ts": 1141,
-  "apps/desktop/test/a-turn-the-app-cut-is-continued-once.test.ts": 2213,
   "apps/desktop/test/a-usage-limit-is-named-and-waited-out.test.ts": 1118,
   "apps/desktop/test/adopt-sessions.test.ts": 1304,
   "apps/desktop/test/agent-state.test.ts": 1523,
