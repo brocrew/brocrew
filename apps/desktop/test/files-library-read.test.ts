@@ -341,7 +341,12 @@ it('pages unique groups across interleaved keeps and preserves an immutable popu
   let page = first
   const seen = first.files.map((one) => one.file.sha256)
   while (page.next !== null) {
-    page = files(f.engine.read({ operation: 'page', cursor: page.next, size: 17 }, libraryContext))
+    page = files(
+      f.engine.read(
+        { operation: 'page', cursor: page.next, size: 17 },
+        { ...libraryContext, hostRevision: '1' },
+      ),
+    )
     expect(page.stale).toBe(true)
     expect(page.totalFiles).toBeLessThanOrEqual(125)
     seen.push(...page.files.map((one) => one.file.sha256))

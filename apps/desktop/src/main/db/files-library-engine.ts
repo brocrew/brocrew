@@ -65,7 +65,6 @@ type Snapshot = {
   context: LibraryReadContext
   readAt: number
   touchedAt: number
-  version: number
   metrics: Metrics
 }
 type FileSnapshot = Snapshot & {
@@ -300,9 +299,6 @@ export class FilesLibraryEngine {
     this.trace?.(sql, bindings)
     for (const row of this.db.prepare(sql).iterate(...bindings)) yield this.counted(row as T)
   }
-  private version(): number {
-    return this.db.pragma('data_version', { simple: true }) as number
-  }
   private transaction<T>(build: () => T): T {
     this.db.exec('BEGIN')
     this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'work_resource'").get()
@@ -317,7 +313,6 @@ export class FilesLibraryEngine {
       context: { ...context, givers: [...context.givers].sort() },
       readAt: this.now(),
       touchedAt: this.now(),
-      version: this.version(),
       metrics: {
         rows: this.visited,
         bytes: this.nativeBytes + this.workingBytes + this.residentBytes,
@@ -369,7 +364,6 @@ export class FilesLibraryEngine {
       metrics: snapshot.metrics,
       stale:
         snapshot.context.hostRevision !== context.hostRevision ||
-        snapshot.version !== this.version() ||
         JSON.stringify(snapshot.context.givers) !== JSON.stringify([...context.givers].sort()),
     }
   }

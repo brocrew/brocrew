@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import { Worker } from 'node:worker_threads'
-import { FilesLibraryWindows } from '../src/main/db/files-library-windows'
+import { FilesLibraryWindows, filesLibraryRevision } from '../src/main/db/files-library-windows'
+import { eventTrimWriter } from '../src/main/db/event-retention'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { FilesLibraryLifetime } from '../src/main/db/files-library-reader'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -236,6 +238,67 @@ it('shows a search and a task list as an earlier reading while a writer moves du
       await host.filesLibraryForWindow({ operation: 'tasks', query: '', parent: null }, sink),
     ).toMatchObject({ type: 'tasks', stale: true, total: 4 })
     expect(read).toHaveBeenCalledTimes(4)
+  } finally {
+    await host.closeAll()
+    f.close()
+  }
+})
+
+it('keeps a reading fresh through unrelated writes and marks it stale when what it reads changes', async () => {
+  const f = filesLibraryFixture()
+  f.example()
+  const say = (event: TranscriptEvent) =>
+    f.store.append('jae', f.store.nextOrdinal('jae'), event, Date.now())
+  say({ type: 'thinking', phase: 'delta', text: 'fictional old stream' })
+  const old = f.db.prepare("SELECT id FROM events WHERE type = 'thinking'").get() as { id: string }
+  const trim = eventTrimWriter(f.db)
+  let during = (): void => {}
+  const read = vi.fn(async (...args: Parameters<FilesLibraryReader['read']>) => {
+    during()
+    return f.engine.read(...args)
+  })
+  const host = aLibraryHost(f.directory, {
+    store: f.store,
+    filesLibraries: new FilesLibraryWindows(() => ({ read, close: async () => {} })),
+    filesLibraryRevision: filesLibraryRevision(f.db, () => true),
+  })
+  try {
+    let trimmed: number | null = null
+    during = () => {
+      say({ type: 'status', state: 'working' })
+      say({ type: 'work_status_set', piece: 't16', line: 'Fictional progress', by: 'jae' })
+      trimmed ??= trim({
+        session: 'jae',
+        active: 0,
+        ids: [old.id],
+        before: Number.MAX_SAFE_INTEGER,
+      }).changed
+    }
+    const first = await host.filesLibraryForWindow(
+      { operation: 'query', query: workspaceQuery, size: 5 },
+      sink,
+    )
+    expect(trimmed).toBe(1)
+    expect(first).toMatchObject({ type: 'files', stale: false })
+    expect(read).toHaveBeenCalledTimes(1)
+    if (first.type !== 'files' || first.next === null) throw new Error(JSON.stringify(first))
+    expect(
+      await host.filesLibraryForWindow({ operation: 'page', cursor: first.next, size: 5 }, sink),
+    ).toMatchObject({ type: 'files', stale: false })
+    expect(
+      await host.filesLibraryForWindow({ operation: 'tasks', query: '', parent: null }, sink),
+    ).toMatchObject({ type: 'tasks', stale: false })
+
+    let kept = 0
+    during = () => f.keep(`fictional-later-${kept++}`, 't16', 'f'.repeat(64))
+    expect(
+      await host.filesLibraryForWindow({ operation: 'query', query: workspaceQuery }, sink),
+    ).toMatchObject({ type: 'files', stale: true })
+    during = () =>
+      say({ type: 'work_retitled', piece: 't16', title: `Fictional ${kept++}`, by: 'jae' })
+    expect(
+      await host.filesLibraryForWindow({ operation: 'tasks', query: '', parent: null }, sink),
+    ).toMatchObject({ type: 'tasks', stale: true })
   } finally {
     await host.closeAll()
     f.close()

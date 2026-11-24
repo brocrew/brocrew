@@ -27,7 +27,7 @@ import { windowWriterSampler } from './db/window-writer-stamp'
 import { startLimitsReader } from './db/start-limits-reader'
 import { startWindowReader } from './db/start-window-reader'
 import { startFilesLibrary } from './db/start-files-library'
-import { FilesLibraryWindows } from './db/files-library-windows'
+import { FilesLibraryWindows, filesLibraryRevision } from './db/files-library-windows'
 import { TeamProfileGraphWindows } from './db/team-profile-graph-windows'
 import { startTeamProfileGraph } from './db/start-team-profile-graph'
 import { startWorkSearch } from './db/start-work-search'
@@ -299,15 +299,10 @@ export async function composeRuntimeHost(
     pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),
     filesLibraries: new FilesLibraryWindows(() => startFilesLibrary(database.name)),
-    filesLibraryRevision: () => {
-      if (store.canReadFreshSnapshot?.() !== true) return null
-      const stamp = database
-        .prepare(
-          'SELECT total_changes() AS writes, data_version AS version FROM pragma_data_version',
-        )
-        .get()
-      return JSON.stringify(stamp)
-    },
+    filesLibraryRevision: filesLibraryRevision(
+      database,
+      () => store.canReadFreshSnapshot?.() === true,
+    ),
     teamProfileGraphs: new TeamProfileGraphWindows((admission, failure) =>
       startTeamProfileGraph(database.name, admission, failure),
     ),
