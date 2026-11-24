@@ -261,7 +261,7 @@ describe('one app per data folder', () => {
       expect(store.ledgerStatus('sess_abandoned').derived).not.toBe('rebuilding')
     })
 
-    it('keeps foreign turns and rebuilds untouched through the deferred paint repair', async () => {
+    it('keeps foreign turns and rebuilds untouched through the repair deferred to the first list', async () => {
       crashedMidTurn('sess_live')
       crashedMidTurn('sess_stranded')
       adopted('sess_building')
@@ -269,10 +269,10 @@ describe('one app per data folder', () => {
       store.beginGeneration('sess_building')
       store.beginGeneration('sess_abandoned')
       anotherHostRunning('sess_live', 'sess_building')
-      const host = buildHost({ deferStartupUntilListPaint: true })
+      const host = buildHost({ deferStartupUntilFirstList: true })
       try {
         expect(statusOf('sess_stranded')).toBe('working')
-        host.firstListPainted()
+        await host.listConversations()
         await new Promise<void>((resolve) => setImmediate(resolve))
         expect(statusOf('sess_live')).toBe('working')
         expect(store.turns('sess_live')[0]?.endReason).toBeNull()

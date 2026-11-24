@@ -284,7 +284,6 @@ export const conversationCommands = [
   z.object({ kind: z.literal('personsQueue') }),
   z.object({ kind: z.literal('listConversations') }),
   z.object({ kind: z.literal('listRecentConversations') }),
-  z.object({ kind: z.literal('firstListPainted') }),
   // Open work no other list shows: no fields, as its neighbour.
   z.object({ kind: z.literal('workIncidentsForAPerson') }),
   // ⚑ **F097** · no fields, and the same census answer as its siblings. ⚑ Its own verb rather than a

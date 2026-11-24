@@ -372,7 +372,6 @@ export interface RuntimeBridge {
   /** Both halves of the listing as one stamped publication. */
   listConversations(): Promise<ListingAnswer>
   listRecentConversations(): Promise<readonly RecentConversation[]>
-  firstListPainted(): Promise<void>
   stoppedWorkForAPerson(): Promise<LedgerWalk<StoppedWorkForAPerson>>
   /** The open pieces no other list shows a person, with what is wrong with each. */
   workIncidentsForAPerson(): Promise<LedgerWalk<WorkIncident>>
