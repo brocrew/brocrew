@@ -204,7 +204,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     }
   }
 
-  const starts = (moment: number, stops: Stops = {}, deferred = false, paint = deferred): Life => {
+  const starts = (moment: number, stops: Stops = {}, deferred = false, listed = deferred): Life => {
     clock = moment
     const folder = userData
     const db = fixtureDatabase(folder)
@@ -219,7 +219,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       startedAt,
       host: new RuntimeHost({
         store,
-        deferStartupUntilListPaint: deferred,
+        deferStartupUntilFirstList: deferred,
         ...fixtureHostPaths(() => folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfALife(provider, stops, asked, startedAt),
@@ -264,7 +264,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       }),
     }
     lives.push(life)
-    if (paint) life.host.firstListPainted()
+    if (listed) void life.host.listConversations()
     now = life
     return life
   }
@@ -400,7 +400,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       { type: 'user_turn', text: 'Newer work before the deferred activation' },
       tick(),
     )
-    now.host.firstListPainted()
+    await now.host.listConversations()
     await settle()
     expect(askedFor(now, conversation)).toBe(0)
     expect(continuations(conversation)).toEqual([])

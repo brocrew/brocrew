@@ -181,7 +181,7 @@ describe('scheduled jobs across a crash', () => {
   }
 
   /** The app starts at this moment: a new life over the same database file. */
-  const starts = (moment: number, stops: Stops = {}, deferred = false, paint = deferred): Life => {
+  const starts = (moment: number, stops: Stops = {}, deferred = false, listed = deferred): Life => {
     clock = moment
     // ⚠️ Its own folder, taken now: a life left behind may still write when a timer of its fires.
     const folder = userData
@@ -197,7 +197,7 @@ describe('scheduled jobs across a crash', () => {
       asked,
       host: new RuntimeHost({
         store,
-        deferStartupUntilListPaint: deferred,
+        deferStartupUntilFirstList: deferred,
         ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) => new ProviderOfALife(provider, stops, asked),
@@ -231,7 +231,7 @@ describe('scheduled jobs across a crash', () => {
       }),
     }
     lives.push(life)
-    if (paint) life.host.firstListPainted()
+    if (listed) void life.host.listConversations()
     now = life
     return life
   }
@@ -394,7 +394,7 @@ describe('scheduled jobs across a crash', () => {
       { type: 'scheduled_work', jobs: [], source: 'test' },
       tick(),
     )
-    now.host.firstListPainted()
+    await now.host.listConversations()
     await settle()
     expect(askedFor(now, conversation)).toBe(0)
     expect(heldWords(conversation)).toEqual([])
