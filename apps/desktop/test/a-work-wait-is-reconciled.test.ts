@@ -2,6 +2,7 @@ import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping
 import { neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { registerProviderFailureFallbackCases } from './helpers/provider-failure-fallback-cases'
+import { registerPacedReminderQuitCase } from './helpers/paced-reminder-quit-case'
 import {
   countSqlReads,
   settle,
@@ -253,8 +254,12 @@ describe('a work wait is reconciled without a window', () => {
     waiting,
     store: () => store,
     build: () => build(),
+    startGap: (ms: number) => {
+      startGap = ms
+    },
   }
   registerPersistedWaitRevisionCase(waitContext)
+  registerPacedReminderQuitCase(waitContext)
   registerProviderFailureFallbackCases(waitContext, tick, cycle, (owner) => notices(owner).length)
 
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {

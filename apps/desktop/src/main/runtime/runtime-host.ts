@@ -14023,25 +14023,31 @@ export class RuntimeHost implements LiveHost {
     )
     if (current === undefined || ['waiting', 'ended', 'unknown'].includes(current.disposition))
       return false
-    const kept = await new Promise<boolean>((resolve) =>
-      this.holdUntilItStarts(
-        target,
-        this.reconciliationWords(piece, receipt),
-        {
-          appNotice: 'a-work-wait-needs-attention',
-          aboutPiece: { piece: piece.piece, label: piece.label },
-        },
-        'notice',
-        (where) => resolve(where !== 'nowhere'),
-        receipt.messageId,
-      ),
-    )
+    const kept =
+      this.deps.store
+        .messagesWaitingIn(target)
+        .some((one) => one.messageId === receipt.messageId) ||
+      (await new Promise<boolean>((resolve) =>
+        this.holdUntilItStarts(
+          target,
+          this.reconciliationWords(piece, receipt),
+          {
+            appNotice: 'a-work-wait-needs-attention',
+            aboutPiece: { piece: piece.piece, label: piece.label },
+          },
+          'notice',
+          (where) => resolve(where !== 'nowhere'),
+          receipt.messageId,
+        ),
+      ))
     if (!kept) return false
     if (this.runsNow(target) && !this.startsInFlight.has(target)) return true
     const accepted = await this.wakeReconciliationRecipient(target, () =>
       this.reconciliationNoticeStillGoes(target, receipt.messageId!, piece.piece),
     )
     if (!accepted) {
+      // The quit refused this start, not the holder: the reminder stays queued for the next launch.
+      if (this.launches.closed) return false
       const progress = this.deps.store.reconciliationDelivery(target, receipt.messageId)
       if (progress === 'running' || progress === 'turn-ended') return true
       this.retractReconciliationNotice(target, receipt.messageId)
@@ -36788,6 +36794,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     this.recordWhatTheQuitClosed(closing)
     this.keepTheUsage()
     this.launches.closeAdmission()
+    this.workReconciler?.close()
   }
 
   private quitRecorded = false
@@ -36826,7 +36833,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       this.windowListingKept = undefined
       this.windowIncidentsKept = undefined
       this.windowFoldKept = undefined
-      this.workReconciler?.close()
       clearInterval(this.reconciliationTimer)
       this.launches.closeAdmission()
       if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)

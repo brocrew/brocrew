@@ -78,7 +78,12 @@ export class WorkReconciler {
   private readonly delivering = new Set<string>()
   private readonly watching = new Map<string, Set<string>>()
 
-  constructor(private readonly reads: ReconciliationReads) {}
+  /** When this life began: a step planned before it was cut short by an earlier one. */
+  private readonly began: number
+
+  constructor(private readonly reads: ReconciliationReads) {
+    this.began = reads.now()
+  }
 
   close(): void {
     this.closed = true
@@ -207,6 +212,12 @@ export class WorkReconciler {
       if (receipt.step === 'person' || this.delivering.has(`${receipt.incident}:${receipt.step}`))
         continue
       const progress = receipt.outcome === 'failed' ? 'not-delivered' : this.reads.progress(receipt)
+      // A step an earlier life planned and never delivered, as a quit or a crash leaves it: its
+      // words still wait in the ledger, so this life delivers them.
+      if (receipt.outcome === 'planned' && progress === 'pending' && receipt.at < this.began) {
+        this.dispatch(piece, receipt)
+        continue
+      }
       if (!unresolved(piece.disposition, progress)) continue
       if (
         progress === 'not-delivered' &&
@@ -258,6 +269,9 @@ export class WorkReconciler {
     } catch {
       /* The failed step is recorded below. */
     }
+    // A quit is not an answer: a delivery its owner's close cut short records no outcome, so the
+    // next launch finds the step as it was left.
+    if (this.closed) return
     const latest = currentIncident(this.reads.receipts(piece.piece)).at(-1)
     if (latest?.incident === receipt.incident && latest.step === receipt.step)
       this.reads.keep(piece.holder, { ...receipt, outcome: accepted ? 'delivered' : 'failed' })
