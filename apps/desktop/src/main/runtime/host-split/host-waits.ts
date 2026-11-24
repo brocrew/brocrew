@@ -82,6 +82,19 @@ const DEFAULT_DELIVERY_WAIT_MS = 15_000
  */
 const DEFAULT_COMMAND_LIST_WAIT_MS = 5_000
 
+/** True if `promise` settled within `ms`. Never rejects — the caller only needs the fact. */
+async function settledWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<false>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms)
+  })
+  try {
+    return await Promise.race([promise.then(() => true).catch(() => true), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export {
   DEFAULT_CLOSE_DRAIN_TIMEOUT_MS,
   DEFAULT_COMMAND_LIST_WAIT_MS,
@@ -89,4 +102,5 @@ export {
   DEFAULT_INTERRUPT_WAIT_MS,
   DEFAULT_REOPEN_LEADS_GRACE_MS,
   RESOURCE_SAMPLE_MS,
+  settledWithin,
 }
