@@ -196,16 +196,16 @@
       },
       "signIn": {
         "state": "available",
-        "note": "Signs in every Codex agent on this account."
+        "note": "Signs in every Codex agent in this workspace."
       },
       "reprovisionAuth": {
         "state": "absent",
-        "reason": "Codex agents share one sign-in per account, so there is nothing to copy.",
+        "reason": "Codex agents share one sign-in per workspace, so there is nothing to copy.",
         "checkedAgainst": "`codex/shared-sign-in.ts`: every Codex home links to its account’s one `auth.json`, which Codex 0.167.1 renews in place through the link (`login/src/auth/storage_file.rs`)."
       },
       "homeCredential": {
         "state": "available",
-        "note": "Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers."
+        "note": "Every Codex agent in this workspace uses the one sign-in on the Codex card in Providers, or the API key saved there."
       },
       "ultracode": {
         "state": "absent",

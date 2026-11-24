@@ -13,7 +13,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as codex from '@brobot2/runtime/codex'
 import { stopKeepingCodexSignInsInStep } from '../../../packages/runtime/src/codex/shared-sign-in'
-import { bringTheCodexKeyTo, createCodexModule } from '../src/main/providers/codex'
+import { bringTheCodexKeyTo } from '../src/main/providers/codex'
+import { aCodexWorkspace, aFakeNativeSignIn } from './lib/codex-workspace-fixture'
 
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>()
@@ -66,68 +67,8 @@ function fixture(noLinks = true) {
     return { ok: true as const, authMethod: null }
   })
   const key = { current: vi.fn(() => null), isSaved: () => false, change }
-  const module = createCodexModule(
-    {
-      managedRoot: root,
-      defaultProfile: 'brobot',
-      homeOf,
-      profiles: () => ['brobot', 'fern', 'moss'],
-      assertMayOpen: () => {},
-    },
-    {
-      runtime: { command: () => 'fictional-not-started' },
-      home: {
-        provisionHome: (_root, target) => {
-          mkdirSync(target, { recursive: true })
-        },
-        key,
-      },
-      auth: { command: () => 'fictional-not-started', key },
-    },
-  )
-  const nativeSignIn = (success = true) => {
-    const originalStart = codex.startCodexLogin
-    vi.spyOn(codex, 'startCodexLogin').mockImplementation(async (_factory, target, cwd, signal) => {
-      let arrived!: () => void
-      const completion = new Promise<void>((done) => {
-        arrived = done
-      })
-      const transport: codex.CodexTransport = {
-        async request(method) {
-          if (method === 'account/login/start') {
-            if (success) writeFileSync(join(target, 'auth.json'), b)
-            arrived()
-            return {
-              loginId: 'fictional-login',
-              authUrl: 'https://login.example.invalid/fictional',
-            }
-          }
-          if (method === 'getAuthStatus')
-            return {
-              authMethod: success ? 'chatgpt' : null,
-              authToken: null,
-              requiresOpenaiAuth: true,
-            }
-          if (method === 'account/read')
-            return {
-              account: success
-                ? { type: 'chatgpt', email: 'fictional@example.invalid', planType: 'pro' }
-                : null,
-            }
-          return {}
-        },
-        notify() {},
-        respond() {},
-        respondError() {},
-        close() {},
-        async *incoming() {
-          await completion
-          yield { kind: 'notification', method: 'account/login/completed', params: { success } }
-        },
-      }
-      return originalStart(() => transport, target, cwd, signal)
-    })
-  }
+  const module = aCodexWorkspace(root, homeOf, ['brobot', 'fern', 'moss'], key)
+  const nativeSignIn = (success = true) => aFakeNativeSignIn(success ? b : null)
   const unchangedSiblings = () => {
     expect(readFileSync(join(homeOf('brobot'), 'auth.json'), 'utf8')).toBe(a)
     expect(readFileSync(join(homeOf('moss'), 'auth.json'), 'utf8')).toBe(c)
@@ -136,24 +77,25 @@ function fixture(noLinks = true) {
 }
 
 for (const noLinks of [true, false]) {
-  it(`a completed ${noLinks ? 'Windows no-link' : 'linked'} manual sign-in retires the previous key stamp`, async () => {
+  it(`a ${noLinks ? 'Windows no-link' : 'linked'} manual sign-in from an agent signs in the workspace’s one, which the agent then joins`, async () => {
     const f = fixture(noLinks)
     f.nativeSignIn()
     const started = await f.module.auth.signIn('fern')
     expect((await started.completed).success).toBe(true)
+    await f.module.home.prepare('fern')
+    // Its own stamped key login is logged out natively, then it reads the workspace's B.
+    expect(f.change).toHaveBeenCalledExactlyOnceWith(f.home, { to: 'no-key' })
     expect(existsSync(join(f.home, stamp))).toBe(false)
     expect(lstatSync(join(f.home, 'auth.json')).isSymbolicLink()).toBe(!noLinks)
-    await f.module.home.prepare('fern')
     expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(f.b)
-    expect(f.change).not.toHaveBeenCalled()
-    f.unchangedSiblings()
+    expect(readFileSync(join(f.homeOf('brobot'), 'auth.json'), 'utf8')).toBe(f.b)
   })
 
-  it(`launch preserves account B with a stale stamp ${noLinks ? 'without Windows links' : 'after an interrupted Mac sign-in'}`, async () => {
+  it(`launch never logs out account B behind a stale stamp, and puts the agent on the workspace’s sign-in ${noLinks ? 'without Windows links' : 'after an interrupted Mac sign-in'}`, async () => {
     const f = fixture(noLinks)
     writeFileSync(join(f.home, 'auth.json'), f.b)
     await f.module.home.prepare('fern')
-    expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(f.b)
+    expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(account('acct-fictional-a'))
     expect(existsSync(join(f.home, stamp))).toBe(false)
     expect(f.change).not.toHaveBeenCalled()
     f.unchangedSiblings()
@@ -198,17 +140,16 @@ async function holdStamp(home: string): Promise<void> {
   )
 }
 
-it('a successful native sign-in still shares B when its old stamp is held open', async () => {
+it('a sign-in from an agent still reaches it when its old stamp is held open', async () => {
   const f = fixture()
   f.nativeSignIn()
   await holdStamp(f.home)
   const started = await f.module.auth.signIn('fern')
   expect((await started.completed).success).toBe(true)
-  expect(existsSync(join(f.home, stamp))).toBe(true)
   await f.module.home.prepare('fern')
+  expect(existsSync(join(f.home, stamp))).toBe(true)
   expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(f.b)
-  expect(f.change).not.toHaveBeenCalled()
-  f.unchangedSiblings()
+  expect(f.change).toHaveBeenCalledExactlyOnceWith(f.home, { to: 'no-key' })
 })
 
 it('a confirmed account can start while its obsolete stamp is held open', async () => {
@@ -217,7 +158,7 @@ it('a confirmed account can start while its obsolete stamp is held open', async 
   await holdStamp(f.home)
   await f.module.home.prepare('fern')
   expect(existsSync(join(f.home, stamp))).toBe(true)
-  expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(f.b)
+  expect(readFileSync(join(f.home, 'auth.json'), 'utf8')).toBe(account('acct-fictional-a'))
   expect(f.change).not.toHaveBeenCalled()
   f.unchangedSiblings()
 })

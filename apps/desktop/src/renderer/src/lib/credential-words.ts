@@ -27,8 +27,8 @@
  * 🔒 Nothing here is a credential, a token or an account name — these are labels on buttons.
  */
 
-/** Sign in separately for this agent, when its provider supports that action. */
-export const SIGN_IN_HERE = 'Sign in for this agent'
+/** Sign in once for every agent on this provider, when it supports that action. */
+export const SIGN_IN_HERE = 'Sign in for all agents'
 
 /**
  * The panel's fast, temporary remedy — offered when the provider declares `reprovisionAuth`

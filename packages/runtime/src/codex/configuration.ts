@@ -37,7 +37,7 @@ export const CODEX_CONFIG_LAYOUT: ProviderConfigLayout = {
   files: [
     {
       name: 'auth.json',
-      note: 'the credential this profile runs on — copied from ~/.codex, or minted here by "Sign in for this agent"',
+      note: 'the credential this profile runs on — the workspace\u2019s one Codex sign-in, or a key login',
     },
     {
       name: 'config.toml',

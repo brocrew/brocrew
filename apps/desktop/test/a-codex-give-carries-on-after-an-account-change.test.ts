@@ -156,10 +156,10 @@ describe('a Codex give refused after its profile changed account carries on once
     rmSync(userData, { recursive: true, force: true })
   })
 
+  /** The workspace's sign-in, which every Codex agent runs on, written as Settings would. */
   function aHelperHolding(copy: string): void {
     mkdirSync(helperHome(), { recursive: true, mode: 0o700 })
-    const path = join(helperHome(), 'auth.json')
-    rmSync(path, { force: true })
+    const path = join(ownHome(), 'auth.json')
     writeFileSync(path, copy, { mode: 0o600 })
     const refreshed = Date.parse((JSON.parse(copy) as { last_refresh: string }).last_refresh) / 1000
     utimesSync(path, refreshed, refreshed)

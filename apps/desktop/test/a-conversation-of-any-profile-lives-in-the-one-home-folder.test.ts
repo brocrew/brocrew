@@ -69,8 +69,9 @@ describe('a credential gesture is keyed by the home it writes (D-016a)', () => {
     createProviderAuthOps(userData, { codexCommand: () => join(userData, 'no-such-codex') })
 
   it('the credential key of a gesture is the home under the one folder, for either provider and for the default profile too', async () => {
+    // Every Codex agent's sign-in is the workspace's one, in BroBot's own home.
     expect(ops().credentialHome('codex', 'developer')).toBe(
-      join(userData, 'provider-homes', 'default', 'developer', 'codex'),
+      join(userData, 'provider-homes', 'default', DEFAULT_PROFILE_ID, 'codex'),
     )
     expect(ops().credentialHome('claude', 'developer')).toBe(
       join(userData, 'provider-homes', 'default', 'developer', 'claude'),
