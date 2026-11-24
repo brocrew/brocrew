@@ -374,7 +374,8 @@ const CORE_TEXT = [
     'work and stronger reasoning when the stakes or complexity warrant it. Respect locked ' +
     'choices.',
   'Same job, same conversation; new job, new conversation. Before starting one, search for the ' +
-    "job's conversation (search_work); read before you ask. Before you say you have no record of " +
+    "job's conversation (search_work); read before you ask. Before continuing after a stop, an " +
+    'agent reads what was recorded instead of redoing it. Before you say you have no record of ' +
     'something, search what was said (search_past_work, or read_transcript with search for one ' +
     'conversation) and search_work, and read any conversation it points to. If a search says it ' +
     'stopped early, continue it before you say you have no record. Before giving more related ' +
