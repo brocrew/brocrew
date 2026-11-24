@@ -6,6 +6,7 @@ import {
   formOfName,
   type DocumentContent,
   type DocumentForm,
+  type ResourceRole,
 } from '../../shared/documents'
 import type {
   AgentIdentity,
@@ -35,7 +36,15 @@ import {
   resourceTitle,
   resourceTitleBeforeFrontMatter,
   type ResourceRefusal,
+  keepResource,
+  resolveResource,
+  readOfferedFile,
+  sha256Hex,
+  type OfferedFile,
+  type OfferedFileBytes,
 } from '../resources/resources'
+import type { ReplyRefusal } from './reply-rails'
+import { keepPlainSendFile, type SendOverflow } from './send-overflow'
 import {
   inFoundOrder,
   wordsOutsideTheText,
@@ -59,6 +68,8 @@ interface KeptFilesDeps {
     | 'retitleResource'
     | 'conversationBinding'
     | 'filesKept'
+    | 'recordedOne'
+    | 'addResource'
   >
   resourcesRoot?(): string
   windowReader?: WindowStoreReader
@@ -516,5 +527,137 @@ export class KeptFiles {
       files: result.tree.map((row) => this.operations.keptFileOf(row, result.roster)),
       added: result.added.map((row) => this.operations.keptFileOf(row, result.roster)),
     }
+  }
+
+  recordOverflow(
+    piece: string,
+    { file: { name, title, sha256, bytes } }: SendOverflow,
+    sender: string,
+    at: number,
+    role: ResourceRole = 'made',
+  ): ResourceRow {
+    return this.deps.store.addResource(
+      { piece, role, name, title, summary: null, sha256, bytes, addedBy: sender },
+      at,
+    )
+  }
+
+  recordMadeFiles(
+    piece: string,
+    files: readonly (OfferedFile & { readonly title: string })[],
+    addedBy: string,
+    at: number,
+  ): ResourceRow[] {
+    return files.map((file) =>
+      this.deps.store.addResource(
+        {
+          piece,
+          role: 'made',
+          title: file.title,
+          summary: null,
+          name: file.name,
+          sha256: file.sha256,
+          bytes: file.bytes.length,
+          addedBy,
+        },
+        at,
+      ),
+    )
+  }
+
+  /**
+   * 🔴 **D-016 · the files a conversation hands over, read, hashed and KEPT** — or the first
+   * refusal, with nothing kept for a call that is refused. ⚑ **Three doors**: a reply's resources,
+   * a give's inputs and `update_work`'s files.
+   *
+   * ⛔ **Every file is read and checked before any is kept**, so a call refused on its third file
+   * leaves nothing of the first two behind. ⚑ A relative path is read from the calling
+   * conversation's own folder — from its ROW, not its slot: the row is what the launch recorded, and
+   * a conversation the provider never named still has one (`recordedOne`). ⚠️ A conversation this
+   * host holds no row for refuses as `resource-unreadable`: there is no folder to read a relative
+   * path against.
+   *
+   * ⚑ **Synchronous, every call it makes**, so a give asks it inside its one synchronous stretch.
+   * ⚠️ **Kept files are not rows yet.** A call that then fails to record leaves a kept file nothing
+   * names, which is harmless: nothing reads a resource except through its row.
+   *
+   * 🔴 **D-026 · R2 — and each gets its title here, from the bytes in hand** ({@link resourceTitle}),
+   * so the three doors write the one they are handed.
+   */
+  keptFor<T extends ReplyRefusal = never>(
+    conversation: string,
+    spelled: readonly string[],
+    admitFiles?: (files: readonly OfferedFile[]) => T | null,
+  ):
+    | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal | T } {
+    if (spelled.length === 0) return { ok: true, files: [] }
+    const offered = this.filesForKeeping(conversation, spelled)
+    if (!offered.ok) return offered
+    const { root } = offered
+    const files = offered.files.map((file) => ({ ...file, sha256: sha256Hex(file.bytes) }))
+    const refused = admitFiles?.(files)
+    if (refused != null) return { ok: false, refusal: refused }
+    for (const [index, file] of files.entries()) {
+      const kept = keepResource(root, file)
+      if (!kept.ok) {
+        return {
+          ok: false,
+          refusal: refuseResource('resource-could-not-be-kept', {
+            problem: kept.problem,
+            path: spelled[index],
+          }),
+        }
+      }
+    }
+    return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
+  }
+
+  filesForKeeping(conversation: string, spelled: readonly string[]) {
+    const root = this.deps.resourcesRoot?.()
+    if (root === undefined) {
+      return { ok: false, refusal: refuseResource('resource-store-unavailable') } as const
+    }
+    const folder = this.deps.store.recordedOne(conversation)?.cwd ?? null
+    const offered = this.readFilesOfferedIn(folder, spelled)
+    return offered.ok ? { ...offered, root } : offered
+  }
+
+  private readFilesOfferedIn(
+    folder: string | null,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly OfferedFileBytes[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    const files: OfferedFileBytes[] = []
+    for (const path of spelled) {
+      if (folder === null)
+        return { ok: false, refusal: refuseResource('resource-unreadable', { path }) }
+      const placed = resolveResource(folder, path)
+      if (!placed.ok) return placed
+      const read = readOfferedFile(placed.realPath, path)
+      if (!read.ok) return read
+      files.push(read)
+    }
+    return { ok: true, files }
+  }
+
+  keepFilesForSend(
+    conversation: string,
+    spelled: readonly string[],
+  ):
+    | { readonly ok: true; readonly files: readonly (OfferedFile & { readonly title: string })[] }
+    | { readonly ok: false; readonly refusal: ResourceRefusal } {
+    if (spelled.length === 0) return { ok: true, files: [] }
+    const offered = this.filesForKeeping(conversation, spelled)
+    if (!offered.ok) return offered
+    const { root } = offered
+    const files: (OfferedFile & { readonly title: string })[] = []
+    for (const file of offered.files) {
+      const kept = keepPlainSendFile(root, file.name, file.bytes)
+      if (!kept.ok) return kept
+      files.push({ ...file, sha256: kept.key, title: resourceTitle(file) })
+    }
+    return { ok: true, files }
   }
 }
