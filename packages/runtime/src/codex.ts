@@ -64,15 +64,19 @@ export {
   NoCodexSignInOnThisComputerError,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
-  aNewerCodexSignInIsAvailable,
-  isTheSameCodexCopy,
-  type CodexCopyIdentity,
   provisionCodexAuth,
-  replaceARefusedCodexCopy,
   reprovisionCodexAuth,
   codexAuthHealth,
   personalCodexAuthPath,
   codexAccountIn,
+  codexSignInTagIn,
 } from './codex/auth'
+
+export {
+  aCodexSignInIsKept,
+  codexSignInIsKeptAsAFile,
+  makeRoomForACodexSignIn,
+  shareCodexSignIn,
+} from './codex/shared-sign-in'
 
 export { CODEX_LAUNCH_SETTING_KEYS } from './codex/launch-setting-keys'

@@ -57,34 +57,29 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
   },
   /**
    * `account/login/start` with `type: 'chatgpt'` returns an `authUrl` and `account/login/cancel` cancels it, both
-   * run against the bundled binary. The note is about the consequence: a separate login does not share a token with
-   * the machine's CLI.
+   * run against the bundled binary. The sign-in becomes its account's one sign-in (`codex/shared-sign-in.ts`).
    */
   signIn: {
     state: 'available',
-    note: 'Signs this profile into its own Codex account. Unlike copying your machine sign-in, it does not share a token with the codex CLI, so neither one can expire the other.',
+    note: 'Signs in every Codex agent on this account.',
   },
   /**
-   * `reprovisionCodexAuth` is the one function allowed to overwrite a profile credential, reached only by an
-   * explicit gesture. The note says what it does not do, because a person weighs it against `signIn`.
+   * `absent`: a Codex sign-in is never copied, from the codex CLI or from another profile. A copy shares its
+   * renewal key with the file it came from, and whichever renews first spends the other's.
    */
   reprovisionAuth: {
-    state: 'available',
-    note: 'Copies the sign-in from your machine`s codex CLI again. Quick, but the two keep sharing one token, so the next renewal by either will expire the other.',
+    state: 'absent',
+    reason: 'Codex agents share one sign-in per account, so there is nothing to copy.',
+    checkedAgainst:
+      '`codex/shared-sign-in.ts`: every Codex home links to its account’s one `auth.json`, which Codex 0.167.1 renews in place through the link (`login/src/auth/storage_file.rs`).',
   },
   /**
-   * `prepareProviderHome` calls `provisionCodexAuth` for every Codex home, which copies the content of
-   * `~/.codex/auth.json` once, at `0600`, through an `O_EXCL|O_NOFOLLOW` temp and a no-clobber link, never as a
-   * symlink and never over an existing file; it throws `AuthUnavailableError` when the machine has no credential.
-   * The note says what is in the folder, not what to do about it: the shared-token consequence belongs to
-   * `signIn` and `reprovisionAuth`, where a person chooses between remedies.
+   * `prepareProviderHome` puts every Codex home on its account's one sign-in (`shareCodexSignIn`): the home's
+   * `auth.json` is a link to `codex-sign-ins/<account>/auth.json` under the managed root.
    */
   homeCredential: {
     state: 'available',
-    // "Where your machine has one": the copy only happens when `~/.codex/auth.json` exists, and a login started
-    // from the profile mints a credential that was never the machine's. The minting gesture is named by
-    // `SignInPanel`, not here.
-    note: 'This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once and is never replaced on its own.',
+    note: 'Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers.',
   },
   /**
    * `absent`: Codex folded proactive multi-agent behaviour into the reasoning axis. `multiAgentMode` is deprecated

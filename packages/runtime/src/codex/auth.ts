@@ -12,7 +12,7 @@ import {
   statSync,
   unlinkSync,
 } from 'node:fs'
-import { lstat, readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { AuthUnavailableError, type AuthHealth, type ReprovisionOutcome } from '../internal/auth'
@@ -24,6 +24,7 @@ import {
   withProviderHomeLock,
 } from '../internal/provider-home'
 import { transientSetupFailureOf } from '../runtime'
+import { nativeAccountTag } from './account-identity'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -531,8 +532,8 @@ const CODEX_AUTH_FILE_MAX = 1024 * 1024
 export async function codexAccountIn(providerHome: string): Promise<string | null> {
   try {
     const file = join(providerHome, CODEX_AUTH_FILE)
-    // Only a regular file: a link or a pipe in a home is not read.
-    const found = await lstat(file)
+    // Only a regular file, or a link to one: a home's sign-in is a link to its account's one.
+    const found = await stat(file)
     if (!found.isFile() || found.size > CODEX_AUTH_FILE_MAX) return null
     return codexAccountOf(await readFile(file, 'utf8'))
   } catch {
@@ -544,7 +545,7 @@ export async function codexAccountIn(providerHome: string): Promise<string | nul
 export function codexAccountInNow(providerHome: string): string | null {
   try {
     const file = join(providerHome, CODEX_AUTH_FILE)
-    const found = lstatSync(file)
+    const found = statSync(file)
     if (!found.isFile() || found.size > CODEX_AUTH_FILE_MAX) return null
     return codexAccountOf(readFileSync(file, 'utf8'))
   } catch {
@@ -552,8 +553,14 @@ export function codexAccountInNow(providerHome: string): string | null {
   }
 }
 
+/** The sign-in a home holds, named as a running conversation's `signInTag`; null for a key or none. */
+export function codexSignInTagIn(providerHome: string): string | null {
+  const account = codexAccountInNow(providerHome)
+  return account === null || account === 'api-key' ? null : nativeAccountTag(account)
+}
+
 /** The account a Codex `auth.json`'s text names, by the kind of login Codex's own `auth_mode` says. */
-function codexAccountOf(text: string): string | null {
+export function codexAccountOf(text: string): string | null {
   let json: unknown
   try {
     json = JSON.parse(text)
@@ -579,7 +586,7 @@ function codexAccountOf(text: string): string | null {
  * date Codex writes beside the tokens at a sign-in and at every renewal. Null when the file names
  * none. Not the file's own date on disk, which for a copy is when it was copied.
  */
-function codexRefreshedAt(text: string): number | null {
+export function codexRefreshedAt(text: string): number | null {
   let json: unknown
   try {
     json = JSON.parse(text)
@@ -591,8 +598,8 @@ function codexRefreshedAt(text: string): number | null {
   return Number.isFinite(at) ? at : null
 }
 
-/** `lstat` or null (path missing) — never throws for a missing path. */
-function statOrNull(path: string): Stats | null {
+/** `stat` or null (path missing) — never throws for a missing path. */
+export function statOrNull(path: string): Stats | null {
   try {
     return statSync(path)
   } catch {
@@ -600,7 +607,7 @@ function statOrNull(path: string): Stats | null {
   }
 }
 
-function lstatOrNull(path: string): Stats | null {
+export function lstatOrNull(path: string): Stats | null {
   try {
     return lstatSync(path)
   } catch {

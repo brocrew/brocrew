@@ -109,19 +109,13 @@ describe('provider authentication policy facts', () => {
     expect(account).not.toHaveBeenCalled()
   })
 
-  it('compares opaque copies without treating a missing copy as equal', () => {
+  it('keeps no copy of a sign-in to replace on either provider', () => {
     const copy = { dev: 1n, ino: 2n, size: 3n, mtimeNs: 4n }
     const own = policies().codex.copy
     expect(own.carriesAcceptedAfterAccountChange).toBe(true)
     expect(policies().claude.copy.carriesAcceptedAfterAccountChange).toBe(false)
-    expect(own.same(copy, { ...copy })).toBe(true)
-    for (const field of ['dev', 'ino', 'size', 'mtimeNs'] as const)
-      expect(own.same(copy, { ...copy, [field]: copy[field] + 1n }), field).toBe(false)
-    expect(own.same(null, null)).toBe(false)
-    expect(own.same(copy, null)).toBe(false)
-    expect(own.same(undefined, copy)).toBe(false)
-    expect(own.refused(new Error('fictional failure'))).toBeNull()
-    expect(own.refused(new CodexRefusedItsSignInError('fictional refusal', copy))).toBe(copy)
+    expect(own.same(copy, { ...copy })).toBe(false)
+    expect(own.refused(new CodexRefusedItsSignInError('fictional refusal', copy))).toBeNull()
     expect(policies().claude.copy.same(copy, copy)).toBe(false)
     expect(
       policies().claude.copy.refused(new CodexRefusedItsSignInError('fictional', copy)),

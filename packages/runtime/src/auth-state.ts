@@ -85,6 +85,8 @@ export type AuthState =
        * `false` means no eligible backing login was found. Absent when unknown or running on a login.
        */
       readonly loginBehindTheKey?: boolean
+      /** One short line the provider adds about this sign-in, shown under its standing. */
+      readonly hint?: string
     }
   | {
       readonly state: 'absent'

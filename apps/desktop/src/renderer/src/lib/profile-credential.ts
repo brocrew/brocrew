@@ -7,9 +7,9 @@ import type { CapabilityStatus } from '../../../shared/runtime-ipc'
  *
  * `328` launched the app into a fresh `--user-data-dir`, sent nothing, and five seconds later found
  * a copy of the machine's Codex credential inside the default profile's folder. A second copy
- * appeared when it created a named profile in the launcher. ⚠️ **The behaviour is intended** — 085
- * chose per-profile folders, `prepareProviderHome` creates one on first use and `provisionCodexAuth`
- * copies once at `0600` and never overwrites — and none of that is touched here.
+ * appeared when it created a named profile in the launcher. Since then a Codex profile's folder
+ * holds its account's one shared sign-in (`shareCodexSignIn`) instead of a copy; none of that is
+ * touched here.
  *
  * 🔴 **The defect was WHERE it was disclosed.** The launcher's own line said a profile is *"an
  * agent's own home: the sessions and sign-in kept there…"*, which a reader takes as a place their
@@ -76,18 +76,18 @@ export interface ProfileCredential {
 }
 
 /**
- * When the copy happens, in the launcher's own terms.
+ * When the sign-in is set up, in the launcher's own terms.
  *
- * ⛔ **Neither branch claims the copy HAS happened.** `009`: a surface may not imply a state it has
+ * ⛔ **Neither branch claims it HAS happened.** `009`: a surface may not imply a state it has
  * not established, and this function has established nothing — the probe can be refused during a
- * quit, and `provisionCodexAuth` throws rather than copying when the machine has no credential. Both
+ * quit, and `shareCodexSignIn` refuses where the workspace has no Codex sign-in yet. Both
  * sentences state the rule and the earliest moment, which is what a person deciding needs and is
  * true either way.
  */
 function timing(when: CredentialWhen): string {
   return when === 'new'
-    ? 'It is copied when the conversation starts — nothing has been written for this name yet.'
-    : 'It is copied the first time this app opens the profile: starting a conversation does it, and ' +
+    ? 'It is set up when the conversation starts — nothing has been written for this name yet.'
+    : 'It is set up the first time this app opens the profile: starting a conversation does it, and ' +
         'so does this screen asking the provider which models it can run.'
 }
 

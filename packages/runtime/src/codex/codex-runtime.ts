@@ -114,6 +114,7 @@ import {
 import { assertNotCancelled, cancelWith, withDeadline, withTimeout } from '../internal/bounded'
 import { codexNoLongerHasTheThread } from './lost-thread'
 import { beginCodexHomeBoot } from './home-boot'
+import { catchUpCodexSignIn } from './shared-sign-in'
 import { ensureCodexMemoryConfig, type CodexMemoryConfigResult } from './memory-config'
 import { removeStaleCodexPermissionConfig } from './stale-permission-config'
 import { elicitationCard } from './runtime-parts/request-cards'
@@ -1399,8 +1400,10 @@ export class CodexSessionHandle implements SessionHandle {
     }
     if (this.rateLimits.awaitingTheProvidersWord()) this.readRateLimitBaseline()
     this.startAfterManagedPlugins(localId, () => {
-      const send = () =>
-        this.transport.request(
+      const send = () => {
+        // Where this home holds its account's sign-in as a file, it starts on the newest one.
+        catchUpCodexSignIn(this.providerHome)
+        return this.transport.request(
           'turn/start',
           turnStartParams(
             this._ref!.sessionId,
@@ -1413,6 +1416,7 @@ export class CodexSessionHandle implements SessionHandle {
             askedModel,
           ),
         )
+      }
       const request = this.sharedSkillsRoot
         ? Promise.resolve()
             .then(() => this.beforeSkillDiscovery?.())

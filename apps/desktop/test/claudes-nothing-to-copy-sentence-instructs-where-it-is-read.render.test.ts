@@ -60,8 +60,12 @@ describe('Claude’s “nothing to copy” sentence', () => {
       }),
     )
     expect(textOf(html, 'sign-in-no-copy')).toBe(NOTHING_TO_COPY)
-    // ⚑ The control: where a copy IS offered, the line is not drawn at all.
-    const codex = capabilitiesFor('codex')
+    // ⚑ The control: where a copy IS offered, the line is not drawn at all. No provider offers
+    // one today, so a fictional declaration stands in.
+    const codex = {
+      signIn: capabilitiesFor('codex').signIn,
+      reprovisionAuth: { state: 'available', note: 'A fictional copy remedy.' } as const,
+    }
     const offered = await renderToString(
       createSSRApp({
         render: () =>
