@@ -309,3 +309,35 @@ it('deletes a batch by seeking each id, without reading the rest of its conversa
     db.close()
   }
 })
+
+it('sees a stop at exactly the next read, wherever in the sweep it comes', async () => {
+  const file = join(folder, 'stopped.sqlite')
+  const db = openDatabase(file)
+  applyMigrations(db, migrations)
+  db.prepare(
+    `INSERT INTO provider_session
+    (id, provider, cwd, status, created_at, updated_at) VALUES ('long', 'claude', '/', 'idle', 0, 0)`,
+  ).run()
+  const event = db.prepare(`INSERT INTO events (id, session_id, ordinal, type, payload, created_at)
+    VALUES (?, 'long', ?, 'activity', '{"type":"activity"}', ?)`)
+  db.transaction(() => {
+    for (let n = 0; n < 3_000; n++) event.run(`long-${n}`, n, NEW)
+  })()
+  db.close()
+  const write = async (): Promise<never> => {
+    throw new Error('nothing here is old enough to trim')
+  }
+  const whole = await trimOldEvents(file, () => false, write, NOW)
+  expect(whole.interrupted).toBe(false)
+  expect(whole.reads).toBeGreaterThan(12)
+  for (const k of [0, 1, Math.floor(whole.reads / 4), whole.reads - 1]) {
+    let asked = 0
+    const stopped = await trimOldEvents(file, () => ++asked > k, write, NOW)
+    expect({ k, interrupted: stopped.interrupted, reads: stopped.reads, asked }).toEqual({
+      k,
+      interrupted: true,
+      reads: k,
+      asked: k + 1,
+    })
+  }
+})

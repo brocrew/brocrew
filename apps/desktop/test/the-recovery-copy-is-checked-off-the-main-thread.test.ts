@@ -516,16 +516,16 @@ describe('the recovery copy is checked off the main thread', () => {
       for (let n = 0; n < 100_000; n++) insert.run(String(n), n, payload, Date.now())
     })()
     /**
-     * ⚠️ **Judged by reads, not by the clock** (404). Both wall-clock totals include starting the
-     * worker, opening SQLite and the thread's exit, which a stop cannot shorten. On a loaded
-     * Windows runner those costs alone took a stopped sweep past the whole one. So the stop is
-     * still asked a quarter of the way through the whole sweep's time, but what is compared is
-     * how far each sweep read. The stopped worker's own result is read here, because the app
-     * drops it once it has asked the worker to stop.
+     * ⚠️ **No clock, in the trigger or the check** (404). Timing a stop against a share of the
+     * whole sweep's wall time measured the runner twice: once in worker start-up, and again when a
+     * stalled whole sweep made the trigger late enough for the stopped one to read 349 of 461. So
+     * the quit is asked as soon as the worker is running, and the check is how far it read. That
+     * the stop is seen at exactly the next read, wherever it comes, is `trimOldEvents`' own test in
+     * `the-history-trim-reads-in-steps.test.ts`. The stopped worker's own result is read here,
+     * because the app drops it once it has asked the worker to stop.
      */
-    const sweep = (stopAfterMs?: number) => {
-      const { result, done, failed } = trimCompletion<{ ms: number; trim: EventTrimResult }>()
-      const began = performance.now()
+    const sweep = (stop: boolean) => {
+      const { result, done, failed } = trimCompletion<EventTrimResult>()
       let said: EventTrimResult | undefined
       const retention = startEventRetention(
         db,
@@ -536,28 +536,28 @@ describe('the recovery copy is checked off the main thread', () => {
           worker.on('message', (message: { ok?: boolean; value?: EventTrimResult }) => {
             if (message.ok === true) said = message.value
           })
+          if (stop)
+            worker.once('online', () => {
+              void retention.stop().then(() => {
+                if (said === undefined) failed(new Error('the stopped worker reported no result'))
+                else done(said)
+              }, failed)
+            })
           return worker
         },
-        async (trim) => done({ ms: performance.now() - began, trim }),
+        async (trim) => done(trim),
         failed,
       )
       retention.firstListAccepted(-600_000)
-      if (stopAfterMs !== undefined)
-        setTimeout(() => {
-          void retention.stop().then(() => {
-            if (said === undefined) failed(new Error('the stopped worker reported no result'))
-            else done({ ms: performance.now() - began, trim: said })
-          }, failed)
-        }, stopAfterMs)
       return { result, retention }
     }
     try {
-      const whole = sweep()
+      const whole = sweep(false)
       const wholeRun = await whole.result
       await whole.retention.stop()
-      const stopped = (await sweep(wholeRun.ms / 4).result).trim
+      const stopped = await sweep(true).result
       expect(stopped.interrupted).toBe(true)
-      expect(stopped.reads).toBeLessThan((wholeRun.trim.reads * 3) / 4)
+      expect(stopped.reads).toBeLessThan(wholeRun.reads)
       expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 100_000 })
     } finally {
       db.close()
