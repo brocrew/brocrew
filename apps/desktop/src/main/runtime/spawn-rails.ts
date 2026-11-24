@@ -14,6 +14,7 @@ import {
   foldProfileName,
   isPathSegment,
 } from '../../shared/runtime-ipc'
+import { isTheDefaultProfile } from '../../shared/profile-name'
 import type { ItsProvider, StartedOn } from '../../shared/agent-roster'
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
 import { aConversationTitle } from '../../shared/conversation-title'
@@ -582,8 +583,10 @@ export interface WhatItRunsOn {
 
 /** The start plan returned after the normal give/replacement eligibility checks. */
 export interface AdmittedSpawn {
-  /** The conversation that gives the work, and so the new conversation's parent. */
-  readonly parentSessionId: string
+  /** The conversation that gives the work. */
+  readonly giverSessionId: string
+  /** The giver, as the new conversation's parent; `null` when the new one stands at the top level. */
+  readonly parentSessionId: string | null
   readonly profileId: string
   readonly provider: Provider
   readonly cwd: string
@@ -667,10 +670,6 @@ export interface GiveFacts {
    * (D-027), or no turn this app sent is open.
    */
   readonly drivenByTheTurn: () => string | null
-  /**
-   * Whether the caller is a helper: a conversation another one started, whose own root holds only
-   * what a person asked it directly.
-   */
   readonly agentExists: (profileSlug: string) => boolean
   /** The conversation an address names, its agent and the provider it runs on; `null` if none. */
   readonly conversationAt: (address: string) => AddressedConversation | null
@@ -909,17 +908,19 @@ export function admitGive(
     if (named === undefined) return no('no-piece-you-hold-by-that-name', { piece: asked.under })
     under = named
   } else {
-    // 🔴 **D-022 · R4 — only a piece whose brief has reached it counts**: the ONE such piece; of
-    // several, the one the turn it is in drives; with none, its root (commit 6 · R2); else
-    // ambiguous, naming them. ⚑ A root owner that took work on hangs what it gives under that work.
+    // Left unnamed, the piece is the one the turn it is in drives; else the one piece held whose
+    // brief has reached it; else, holding none, its own root. Several, none driven, is ambiguous
+    // and names them.
     const received = held.filter((one) => !one.root && one.received)
-    const drives = received.length > 1 ? facts.drivenByTheTurn() : null
+    const drives = facts.drivenByTheTurn()
+    const driven = drives === null ? undefined : held.find((one) => one.piece === drives)
     const inferred =
-      received.length === 1
+      driven ??
+      (received.length === 1
         ? received[0]
         : received.length > 1
-          ? received.find((one) => one.piece === drives)
-          : held.find((one) => one.root)
+          ? undefined
+          : held.find((one) => one.root))
     if (inferred === undefined) {
       const choices = received.length > 1 ? received : held
       return choices.length === 0
@@ -1064,7 +1065,10 @@ export function admitGive(
   if (!folder.ok) return no('folder-unusable', { folderReason: folder.reason })
 
   const start: AdmittedSpawn = {
-    parentSessionId: giving.sessionId,
+    giverSessionId: giving.sessionId,
+    // The default profile's conversations stand at the top level, with a root of their own; the
+    // task still names this giver.
+    parentSessionId: isTheDefaultProfile(asked.profile) ? null : giving.sessionId,
     // An existing agent starts under the spelling the give used, which `provider_session.profile_id`
     // keeps (187).
     profileId: asked.profile,

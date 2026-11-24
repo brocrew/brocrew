@@ -381,7 +381,7 @@ describe('591 · a question does not expire on a clock', () => {
       expect(code).not.toContain('aTurnIsWaiting')
       const agentAnswer = bodyOf(code, 'async answerQuestion(').replace(/\s+/g, '')
       expect(agentAnswer).toContain(
-        'consttold=this.deliverAnswer(words,request.requestId,speaking,said,null,null,stopAs,files.files,)',
+        'consttold=this.deliverAnswer(decisionForStoppedAsker===undefined?words:{...words,decisionForStoppedAsker},request.requestId,speaking,said,null,null,stopAs,files.files,)',
       )
       expect(bodyOf(code, 'async respondUserInput(')).toContain(
         'return await this.aPersonAnswersAQuestionThisAppAsked(',

@@ -615,7 +615,7 @@ export function createGetAgentStatusTool(
     // `list_agents`' it was not describing a payload that had stopped matching it. The first
     // clause gains the fact the card gained; nothing else here moved.
     description:
-      "One conversation's status, by any of its labels or its id: conversation <address> · <title>, its profile, whether it is working or idle (and what it is waiting on: the person, another conversation's answer, work it gave, a schedule, or something running in the background), whether it owes an answer, its provider, model and effort (and what the provider last reported, when that differs), its context size, the tasks it holds, and when it was last active.",
+      "One conversation's status, by any of its labels or its id: conversation <address> · <title>, its profile, whether it is working or idle (and what it is waiting on: the person, another conversation's answer, work it gave, a schedule, or something running in the background), whether it owes an answer, its provider, model and effort (and what the provider last reported, when that differs), its context size, the tasks it holds, and when it was last active. For a service, it also shows how many tasks are waiting, or says if its queue could not be read.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *

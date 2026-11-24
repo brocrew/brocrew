@@ -290,7 +290,10 @@ export class GiveWork {
         label: giving.label,
         owner,
         targetKind: 'continued',
-        lastActiveAt,
+        lastActiveAt:
+          cannotRun?.cause.code === 'could-not-start' && owner !== goes.conversation
+            ? null
+            : lastActiveAt,
         found: goes.conversation,
         profile: asked.profile,
         delivery: sent ? 'sent' : 'held',

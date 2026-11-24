@@ -136,6 +136,8 @@ export interface AdoptedSessionRecord {
 
 export interface SessionSnapshot {
   session: AdoptedSessionRecord
+  sourceSessionId?: string
+  sourceSessionIds?: readonly string[]
   /** How many of the provider's lines the ledger was read from, as the bundle carried them. */
   derivedThrough: number
   /** The conversation, with the ordinals and times it was exported under. */

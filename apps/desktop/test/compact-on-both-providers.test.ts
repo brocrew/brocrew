@@ -348,6 +348,91 @@ describe('713 §1 · R59 — the host, over the REAL Codex adapter', () => {
     },
   )
 
+  const personCompactNotice = 'The person compacted this conversation: no reason given.'
+  const personCompactNotices = (id: string) =>
+    app
+      .ledger(id)
+      .filter((event) => 'appNotice' in event && event.appNotice === 'a-conversation-was-compacted')
+  const personCompacts = async (id: string, entrance: 'button' | 'typed') => {
+    if (entrance === 'button') await app.host.compactForAPerson(id)
+    else await app.host.send(id, '/compact keep the test plan', app.window)
+  }
+
+  it.each(['button', 'typed'] as const)(
+    'person Compact %s carries one notice on the next ordinary input after confirmation',
+    async (entrance) => {
+      const { id, codex } = await aPersonOpensCodex()
+      const confirmation = deferred<void>()
+      codex.compactionMayFinish = confirmation.promise
+      try {
+        await personCompacts(id, entrance)
+        expect(codex.asked('thread/compact/start')).toBe(1)
+        expect(compactionsIn(app.ledger(id))).toEqual([])
+        expect(personCompactNotices(id)).toEqual([])
+        expect(codex.turnTexts()).toEqual([])
+      } finally {
+        confirmation.resolve()
+      }
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 1, 'Compact to complete')
+      expect(compactionsIn(app.ledger(id))).toHaveLength(1)
+      expect(codex.turnTexts()).toEqual([])
+      expect(personCompactNotices(id)).toHaveLength(1)
+
+      await app.host.send(id, 'Check the next step', app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 2, 'the next input to end')
+      expect(codex.turnTexts()).toHaveLength(1)
+      expect(codex.turnTexts()[0]).toContain('Check the next step')
+      expect(codex.turnTexts()[0]?.split(personCompactNotice)).toHaveLength(2)
+
+      await app.host.send(id, 'List the remaining tasks', app.window)
+      await waitFor(() => turnsEnded(app.ledger(id), 'completed') === 3, 'the later input to end')
+      expect(codex.turnTexts()).toHaveLength(2)
+      expect(codex.turnTexts()[1]).toContain('List the remaining tasks')
+      expect(codex.turnTexts()[1]).not.toContain(personCompactNotice)
+      expect(personCompactNotices(id).map((event) => event.type)).toEqual([
+        'message_queued',
+        'message_unqueued',
+      ])
+    },
+  )
+
+  it.each([
+    { entrance: 'button', outcome: 'failed' },
+    { entrance: 'typed', outcome: 'interrupted' },
+  ] as const)(
+    'person Compact $entrance gives no notice when $outcome',
+    async ({ entrance, outcome }) => {
+      const { id, codex } = await aPersonOpensCodex()
+      codex.compactionInterrupted = outcome === 'interrupted'
+      const request = codex.request.bind(codex)
+      const scripted = vi.spyOn(codex, 'request').mockImplementation((method, params) => {
+        if (method === 'thread/compact/start' && outcome === 'failed') {
+          return Promise.reject(new Error('scripted compaction failed'))
+        }
+        return request(method, params)
+      })
+      try {
+        await personCompacts(id, entrance)
+        await waitFor(() => turnsEnded(app.ledger(id), outcome) === 1, 'Compact to end')
+      } finally {
+        scripted.mockRestore()
+      }
+      expect(compactionsIn(app.ledger(id))).toEqual([])
+      expect(personCompactNotices(id)).toEqual([])
+      expect(codex.turnTexts()).toEqual([])
+
+      await app.host.send(id, 'Resume the ordinary work', app.window)
+      await waitFor(
+        () => turnsEnded(app.ledger(id), 'completed') === 1,
+        'the ordinary input to end',
+      )
+      expect(codex.turnTexts()).toHaveLength(1)
+      expect(codex.turnTexts()[0]).toContain('Resume the ordinary work')
+      expect(codex.turnTexts()[0]).not.toContain(personCompactNotice)
+      expect(personCompactNotices(id)).toEqual([])
+    },
+  )
+
   it('keeps the notice when Codex stops before dispatching its carrying input', async () => {
     awaitManagedPlugin = true
     const { id, codex } = await aPersonOpensCodex()

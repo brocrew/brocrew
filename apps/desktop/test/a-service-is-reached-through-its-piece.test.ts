@@ -2059,8 +2059,18 @@ describe('a service is reached through the piece it is on', () => {
           rail: 'not-a-piece-a-service-is-on',
         })
       }
-      expect(await host.takeBackForAPerson(two.label, world.window)).toMatchObject({ ok: true })
+      expect(await host.takeBackForAPerson(two.label, world.window)).toEqual({
+        ok: true,
+        piece: two.piece,
+        label: two.label,
+        briefNeverDelivered: true,
+        askedItsTurnToStop: false,
+      })
       expect(stateOf(service, two.piece)).toBe('withdrawn')
+      expect(world.stopsAsked).toEqual([])
+      expect(rows(service, 'message_queued')).not.toContainEqual(
+        expect.objectContaining({ appNotice: 'a-piece-a-person-took-back' }),
+      )
     })
 
     it('takes back open work from a normal worker and after service metadata becomes unreadable', async () => {

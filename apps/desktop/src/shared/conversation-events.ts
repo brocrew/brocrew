@@ -1,3 +1,9 @@
+import type {
+  AskHandoffAttempted,
+  AskHandoffNotAccepted,
+  AskProvenanceUnresolved,
+  TheQuestionItAsks,
+} from './ask-delivery-contracts'
 import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
@@ -49,6 +55,7 @@ import type { PermissionDecision, RuntimeEvent } from '@brobot2/runtime'
 
 export type { InstructionProposedEvent, InstructionSettledEvent } from './own-instructions'
 export type { McpServerRequestedEvent, McpServerRequestSettledEvent } from './mcp-server-requests'
+export type { TheQuestionItAsks } from './ask-delivery-contracts'
 
 /**
  * A decision this app sent for a request card — which button was pressed. Ours for the same
@@ -117,16 +124,6 @@ export interface UserDecisionEvent {
    * said it did.
    */
   stopsNothing?: true
-}
-
-/**
- * ⚑ **The question a notice of a question asks** — the conversation that asked it, and the request
- * id it is answered by. ⚑ Held with the notice so one whose question has stopped waiting is taken
- * back unread rather than sent.
- */
-export interface TheQuestionItAsks {
-  readonly asker: string
-  readonly requestId: string
 }
 
 /**
@@ -1329,6 +1326,9 @@ export interface PendingCompactionEvent {
 }
 
 export type TranscriptEvent =
+  | AskHandoffAttempted
+  | AskHandoffNotAccepted
+  | AskProvenanceUnresolved
   | PendingCompactionEvent
   | WorkReconciliationEvent
   | ProviderFailureReconciliationEvent

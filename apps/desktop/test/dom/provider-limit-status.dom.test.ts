@@ -548,7 +548,7 @@ describe('A narrow rail folds facts even when AgentState is unchanged', () => {
       state: { is: 'idle' },
       named: null,
       running: 'not-running',
-      profileId: null,
+      profileId: 'menu-worker',
       reasoningEffort: null,
       model: null,
       planMode: null,

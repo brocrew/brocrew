@@ -168,6 +168,19 @@ describe('the Take back press on a service’s current piece', () => {
     })
     await press(quiet.m)
     expect(read(quiet.m.q('outgoing-taken-back'))).toBe('Taken back.')
+    unmountAll()
+
+    const neverReached = await pane(true, {
+      ok: true,
+      piece: 'work_554',
+      label: 'W4.554',
+      askedItsTurnToStop: false,
+      briefNeverDelivered: true,
+    })
+    await press(neverReached.m)
+    const receipt = neverReached.m.q('outgoing-taken-back')
+    expect(read(receipt)).toBe('Taken back. Its brief never reached the holder.')
+    assertDrawn(receipt, 'the receipt for a brief that never reached the holder')
   })
 
   it('says each refusal in its own words, in place, drawn whole', async () => {

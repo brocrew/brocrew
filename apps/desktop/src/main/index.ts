@@ -1,3 +1,4 @@
+import { closeStartedHostAfterFailedStart } from './failed-start-cleanup'
 import { withWorkerMemory } from './worker-memory'
 import { closeDatabase } from './db/close-database'
 import electronLog from 'electron-log/main'
@@ -1090,7 +1091,11 @@ async function whatAFailedStartEndsOn(
 
 function stopWhatTheStartStarted(): Promise<void> {
   stoppingTheStart ??= (async () => {
-    await stopProviderSetup?.()
+    try {
+      await stopProviderSetup?.()
+    } catch (error) {
+      sayAtOnce(`BroCrew failed to stop provider setup after its failed start: ${inspect(error)}`)
+    }
     stopThemeIpc?.()
     stopThemeIpc = undefined
     stopStorageIpc?.()
@@ -1105,17 +1110,7 @@ function stopWhatTheStartStarted(): Promise<void> {
       await pluginSupervisor.quit()
       return
     }
-    for (const [what, step] of [
-      ['stop its archive work', () => started.stopSweeping()],
-      ['close its conversations', () => started.closeAll()],
-      ['drain its archive work', () => started.drainArchiveWork()],
-    ] as const) {
-      try {
-        await step()
-      } catch (error) {
-        sayAtOnce(`BroCrew failed to ${what} after its failed start: ${inspect(error)}`)
-      }
-    }
+    await closeStartedHostAfterFailedStart(started, sayAtOnce)
     await pluginController.close()
     await pluginSupervisor.quit()
   })()
@@ -1722,7 +1717,7 @@ const lifetime = createAppLifetime({
   stopArchiveWork: () => {
     void eventRetention?.stop()
     void stopRecoveryWork()
-    void stopProviderSetup?.()
+    if (stoppingTheStart === null) void stopProviderSetup?.()
     updates?.stop()
     host?.stopSweeping()
     stopThemeIpc?.()
@@ -1737,7 +1732,7 @@ const lifetime = createAppLifetime({
   drainArchiveWork: async () => {
     await eventRetention?.stop()
     await stopRecoveryWork()
-    await stopProviderSetup?.()
+    await (stoppingTheStart ?? stopProviderSetup?.())
     await updates?.drain()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()

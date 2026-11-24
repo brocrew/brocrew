@@ -238,10 +238,16 @@ export function isMailboxKind(kind: unknown): kind is MailboxKind {
 
 export function theQuestionItAsks(stored: unknown): { readonly asks: TheQuestionItAsks } | null {
   if (typeof stored !== 'object' || stored === null) return null
-  const { asker, requestId } = stored as Record<string, unknown>
+  const { asker, requestId, originalOpening } = stored as Record<string, unknown>
   if (typeof asker !== 'string' || asker.length === 0) return null
   if (typeof requestId !== 'string' || requestId.length === 0) return null
-  return { asks: { asker, requestId } }
+  return {
+    asks: {
+      asker,
+      requestId,
+      ...(typeof originalOpening === 'string' ? { originalOpening } : {}),
+    },
+  }
 }
 
 export function providerFailureHolderStoredOn(

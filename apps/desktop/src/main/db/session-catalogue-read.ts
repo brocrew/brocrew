@@ -9,7 +9,6 @@ import { NORMALIZER_VERSION } from '../archive/normalizer'
 type TurnEndReason = TurnEnding
 
 export interface ResumableSession {
-  readonly personStarted?: boolean
   sessionId: string
   provider: Provider
   /** The parsed provider ref — a row without one is not returned at all. */
@@ -52,7 +51,6 @@ export interface LiveSessionRow {
 }
 
 export interface UnresumableSession {
-  readonly personStarted?: boolean
   sessionId: string
   provider: Provider
   cwd: string
@@ -91,7 +89,6 @@ export interface RecordedSession {
 }
 
 interface SessionRow {
-  person_started?: number
   id: string
   provider: string
   external_ref: string | null
@@ -190,7 +187,6 @@ function reopenRefusalOf(row: ReopenFacts): string | null {
 function describeRow(row: SessionRow): Omit<UnresumableSession, 'reason'> {
   return {
     sessionId: row.id,
-    ...personStartOf(row),
     provider: row.provider as Provider,
     cwd: row.cwd,
     status: row.status as SessionStatus,
@@ -271,17 +267,12 @@ function safeSessionRef(external: string): ReturnType<typeof parseSessionRef> | 
   }
 }
 
-function personStartOf(row: SessionRow): { readonly personStarted?: boolean } {
-  return row.person_started === undefined ? {} : { personStarted: row.person_started === 1 }
-}
-
 function toResumable(row: SessionRow): ResumableSession | null {
   const ref = readableRef(row)
   if (ref === null) return null
   try {
     return {
       sessionId: row.id,
-      ...personStartOf(row),
       provider: row.provider as Provider,
       ref,
       cwd: row.cwd,

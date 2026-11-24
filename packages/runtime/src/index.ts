@@ -42,6 +42,7 @@ export {
 
 export { AnswerRefused, answerRefusalOf, type AnswerRefusal } from './answer-refused'
 
+export { endsOnlyProviderWork } from './turn-ending-ownership'
 export { TurnInProgress, TURN_REFUSED } from './turn-in-progress'
 export { RejectedSessionLaunch } from './rejected-session-launch'
 

@@ -551,17 +551,27 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
     const host_ = codeOf('main/runtime/runtime-host.ts')
     const at = host_.indexOf('private publishOurs(')
     // ⚑ The method's own closing brace — the first line at its indent that is only `}`.
-    const body = host_.slice(at, host_.indexOf('\n  }\n', at))
+    const ourBody = host_.slice(at, host_.indexOf('\n  }\n', at))
+    // ⚑ The append happens in `publishOurs`, which hands each written row to `publishRecordedOurs`;
+    // that method emits it and runs the one compare.
+    const recordedAt = host_.indexOf('private publishRecordedOurs(')
+    const body = host_.slice(recordedAt, host_.indexOf('\n  }\n', recordedAt))
 
     it('⛔ nothing in it announces directly — no `theWorldMoved`, no other announcing read', () => {
       expect(at, 'publishOurs not found').toBeGreaterThan(0)
       // ⚑ **THE POSITIVE CONTROL for the negatives below**: the slice is the method, whole —
       // its append and the compare after it.
-      expect(body).toContain('const written = this.recordOurs(session, event, at)')
-      expect(body).toContain('this.emitOurs(session, written)')
-      expect(body.indexOf('this.emitOurs(session, written)')).toBeGreaterThan(
-        body.indexOf('const written = this.recordOurs(session, event, at)'),
+      expect(recordedAt, 'publishRecordedOurs not found').toBeGreaterThan(0)
+      // ⚑ Both ways of appending hand the row they wrote to the one method that emits it.
+      const handoffs = ourBody.replace(/\s+/g, '')
+      expect(handoffs).toContain(
+        'this.publishRecordedOurs(session,this.recordOurs(session,event,at),moveHandoff,personalHandover,)',
       )
+      expect(handoffs).toContain(
+        'this.publishRecordedOurs(session,result.turn,moveHandoff,personalHandover)',
+      )
+      expect(handoffs).toContain('constresult=this.recordAcceptedAsk(session,event,askReceipt)')
+      expect(body).toContain('this.emitOurs(session, written)')
       expect(body).toContain('this.sayWhenItsWorkMoved(')
       // ⛔ Every ledger append passes here (`work-moved-and-nothing-announced-it` §5): an
       // announcement of its own would make each one announce.
@@ -572,7 +582,8 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
         'tellWhoeverGaveTheWork(',
         'sayWhetherALevelMovedItsWork(',
       ]) {
-        expect(body, `publishOurs calls ${announcer}`).not.toContain(announcer)
+        expect(ourBody, `publishOurs calls ${announcer}`).not.toContain(announcer)
+        expect(body, `publishRecordedOurs calls ${announcer}`).not.toContain(announcer)
       }
     })
 
@@ -585,6 +596,7 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
       )
       expect(flag, 'the compare lost its guard').toBeGreaterThan(append)
       expect(compare, 'the compare is not behind its guard').toBeGreaterThan(flag)
+      expect(ourBody).not.toContain('this.sayWhenItsWorkMoved(')
       expect(body.split('this.sayWhenItsWorkMoved(').length - 1).toBe(1)
       // ⚑ And cleared as it is read, so one turn compares once.
       expect(body.slice(flag, compare)).toContain('session.itsWorkWasReadBeforeItsWords = false')

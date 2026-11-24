@@ -729,7 +729,7 @@ describe('give_work goes to the conversation the giver names', () => {
       },
     })
     expect(failure.receipt.text).toContain(
-      `Task ${recorded.label} is recorded in conversation ${recorded.label} · Lisbon trip, but it could not start`,
+      `Task ${recorded.label} is recorded in a new conversation ${recorded.label} · Lisbon trip, but it could not start`,
     )
 
     const retry = vi.fn()

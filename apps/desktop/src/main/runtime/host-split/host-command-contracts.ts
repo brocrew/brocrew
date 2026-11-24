@@ -47,6 +47,8 @@ export type TakeBackOutcome =
       /** Whether a held brief or rebrief was actually removed with the piece. */
       readonly tookBackTheMessage: boolean
 
+      readonly briefNeverDelivered?: true
+
       /** Questions that actually ended with this take-back; zero is an ordinary result. */
       readonly endedQuestions: number
 

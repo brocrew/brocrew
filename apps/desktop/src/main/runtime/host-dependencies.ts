@@ -68,6 +68,8 @@ export interface RuntimeHostDeps {
   savedMethods?: SavedMethodService
   savedMethodsFolderFor?(profile: string): string
   readSavedMethodsFor?(profile: string, at: number): SavedMethodsReading
+  readCurrentAgentRules?: SessionStore['readCurrentAgentRules']
+  writeDirectAgentRules?: SessionStore['writeDirectAgentRules']
   skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>

@@ -30,6 +30,7 @@ import type {
 } from '../../../shared/agent-rules'
 import { THE_APP_DID_IT, type ActedBy } from '../../../shared/who-did-it'
 import type { IdentityCreator } from '../../../shared/agent-identity-contracts'
+import type { OwnInstructionsCommit } from '../../db/agent-knowledge-history'
 import type { SessionStore } from '../../db/session-store'
 import { foldProfileName } from '../../db/identity'
 import { newInstructionAskId } from '../../db/ids'
@@ -58,6 +59,8 @@ interface InstructionDecisionOperations {
     | 'undoOwnInstructions'
     | 'markInstructionsSeen'
   >
+  readCurrentAgentRules: SessionStore['readCurrentAgentRules']
+  writeDirectAgentRules: SessionStore['writeDirectAgentRules']
   rulesAuthor(me: string, by: Caller): RulesAuthor | null
   /** Capture the current live session; invoke the returned publisher synchronously at the write. */
   instructionPublisher(
@@ -264,7 +267,11 @@ export class InstructionDecisions {
     return { ok: true, wrote: 'a-request', askId }
   }
 
-  readAgentRules(me: string, about: string, by: Caller): AgentRulesOutcome<AgentRulesReading> {
+  async readAgentRules(
+    me: string,
+    about: string,
+    by: Caller,
+  ): Promise<AgentRulesOutcome<AgentRulesReading>> {
     if (this.ops.rulesAuthor(me, by) === null)
       return {
         ok: false,
@@ -272,13 +279,14 @@ export class InstructionDecisions {
         detail: { you: null },
       }
     const profile = foldProfileName(about)
-    if (this.ops.store().agentIdentityOf(profile) === null)
+    const rules = await this.ops.readCurrentAgentRules(profile)
+    if (rules === null)
       return {
         ok: false,
         rail: 'no-such-agent',
         detail: { agent: profile },
       }
-    const newest = this.ops.store().ownInstructionsOf(profile).versions[0]
+    const newest = rules.current
     return {
       ok: true,
       result: {
@@ -292,11 +300,11 @@ export class InstructionDecisions {
     }
   }
 
-  writeAgentRules(
+  async writeAgentRules(
     me: string,
     said: AgentRulesWrite,
     by: Caller,
-  ): AgentRulesOutcome<AgentRulesReceipt> {
+  ): Promise<AgentRulesOutcome<AgentRulesReceipt>> {
     const author = this.ops.rulesAuthor(me, by)
     if (author === null) return { ok: false, rail: 'may-not-write-rules', detail: { you: null } }
     const profile = foldProfileName(said.about)
@@ -337,34 +345,8 @@ export class InstructionDecisions {
           ],
         },
       }
-    const previous = this.ops.store().ownInstructionsOf(profile).versions[0]
-    if ((previous?.version ?? 0) !== said.expectedVersion)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['the rules changed; read them again before replacing them'] },
-      }
-    const written = this.ops.store().writeOwnInstructions(
-      {
-        profileSlug: profile,
-        text: said.text,
-        whoWroteIt: 'an-agent-direct',
-        author,
-        by: whoDidIt(by),
-        conversation: me,
-        said: said.why.trim(),
-        broughtBack: null,
-        expectedVersion: said.expectedVersion,
-      },
-      this.ops.now(),
-    )
-    if (written === null)
-      return {
-        ok: false,
-        rail: 'malformed-request',
-        detail: { problems: ['the rules changed; read them again before replacing them'] },
-      }
-    const receipt: AgentRulesReceipt = {
+    const actor = whoDidIt(by)
+    const receiptOf = ({ previous, written }: OwnInstructionsCommit): AgentRulesReceipt => ({
       profile,
       conversation: me,
       version: written.version,
@@ -374,12 +356,34 @@ export class InstructionDecisions {
         previous?.whoWroteIt === 'a-person' || previous?.whoWroteIt === 'an-agents-proposal'
           ? previous.version
           : null,
-    }
-    this.supersedeInstructionAsks(profile, whoDidIt(by))
-    const publish = this.ops.instructionPublisher(me)
-    if (publish !== null) publish({ type: 'instruction_changed', ...receipt })
-    this.ops.theWorldMoved('agents')
-    return { ok: true, result: receipt }
+    })
+    const commit = await this.ops.writeDirectAgentRules(
+      {
+        profileSlug: profile,
+        text: said.text,
+        whoWroteIt: 'an-agent-direct',
+        author,
+        by: actor,
+        conversation: me,
+        said: said.why.trim(),
+        broughtBack: null,
+        expectedVersion: said.expectedVersion,
+      },
+      this.ops.now(),
+      (committed) => {
+        this.supersedeInstructionAsks(profile, actor)
+        const publish = this.ops.instructionPublisher(me)
+        if (publish !== null) publish({ type: 'instruction_changed', ...receiptOf(committed) })
+        this.ops.theWorldMoved('agents')
+      },
+    )
+    if (commit === null)
+      return {
+        ok: false,
+        rail: 'malformed-request',
+        detail: { problems: ['the rules changed; read them again before replacing them'] },
+      }
+    return { ok: true, result: receiptOf(commit) }
   }
 
   agentInstructions(profileSlug: string): AgentInstructionsReading {

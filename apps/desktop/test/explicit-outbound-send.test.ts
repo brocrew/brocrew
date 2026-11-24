@@ -9,7 +9,9 @@ import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { describeConversation } from '../src/main/runtime/conversation-address'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { anOutboundWorld } from './helpers/an-outbound-world'
 import { deferred } from './helpers/quit-open-list-cases'
+import { theAsk } from './helpers/the-ask'
 import { waitFor } from './lib/f093-host'
 import { expectNoQuestionWake } from './lib/question-wake'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
@@ -22,15 +24,7 @@ describe('explicit outbound sends', () => {
 
   beforeEach(async () => {
     world = aServiceWorld()
-    world.anAgent('giver', 'normal')
-    world.anAgent('outbound-sender', 'normal')
-    world.anAgent('outbound-target', 'normal')
-    host = world.aHost()
-    const giver = await world.aPersonOpens(host, 'giver')
-    sender = await world.aRecordedWorker(giver, 'outbound-sender')
-    await host.resumeSession(sender, world.window)
-    target = await world.aPersonOpens(host, 'outbound-target')
-    await host.setApprovalMode(target, 'auto', world.window)
+    ;({ host, sender, target } = await anOutboundWorld(world))
   })
 
   afterEach(async () => world.cleanUp())
@@ -162,7 +156,7 @@ describe('explicit outbound sends', () => {
       )
       const [heldMessage, heldQuestion] = world.store.messagesWaitingIn(target)
       expect(heldMessage?.messageId).toBe(messageReceipt.recorded.id)
-      expect(heldQuestion?.asks).toEqual({ asker: sender, requestId: askReceipt.recorded.id })
+      expect(heldQuestion?.asks).toEqual(theAsk(world.store, sender, askReceipt.recorded.id))
       expectNoQuestionWake(world.ledger(target))
       world.turnsWait = batch.promise
       gate.resolve()
@@ -273,8 +267,12 @@ describe('explicit outbound sends', () => {
       expect(delivered()).toMatchObject({
         text: expect.stringContaining(`asks you ${id} in your ${line}.`),
       })
+      expect(original.asks).toEqual(theAsk(world.store, sender, id))
       expect(world.ledger(successor)).toContainEqual(
-        expect.objectContaining({ type: 'message_queued', asks: { asker: sender, requestId: id } }),
+        expect.objectContaining({
+          type: 'message_queued',
+          asks: theAsk(world.store, sender, id),
+        }),
       )
       expect(original.text).toContain(`in your conversation ${receipt.recipient.address} ·`)
       expect(delivered()).toMatchObject({ text: expect.stringContaining(copy.path) })

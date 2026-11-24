@@ -35,7 +35,6 @@ import { waitOnSays } from './work-waits'
 
 /** One conversation the host lists, as the rail and the palette draw it. */
 export interface ListedConversation extends ProviderBlockFacts {
-  readonly personStarted?: boolean
   readonly worker?: WorkerBindingReading
   /** The piece it holds waiting on purpose, with its status line — the host's. */
   readonly waitingOnPurpose?: PieceWaitingOnPurpose
@@ -100,7 +99,6 @@ export function conversationList(input: ConversationListInput): ListedConversati
       ...(row.worker ? { worker: row.worker } : {}),
       ...(row.waitingOnPurpose ? { waitingOnPurpose: row.waitingOnPurpose } : {}),
       sessionId: row.sessionId,
-      ...(row.personStarted === undefined ? {} : { personStarted: row.personStarted }),
       provider: row.provider,
       label: agentName(row.profileId, identities),
       identity: foldProfileName(row.profileId ?? DEFAULT_PROFILE_ID),

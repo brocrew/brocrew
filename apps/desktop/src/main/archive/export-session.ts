@@ -37,6 +37,7 @@ export function reassembleNativeFile(frames: string[]): string {
 /** Everything an export needs to know about a session, read off its row. */
 export interface ExportableSession {
   sessionId: string
+  sourceSessionIds?: readonly string[]
   provider: Provider
   ref: SessionRef
   cwd: string

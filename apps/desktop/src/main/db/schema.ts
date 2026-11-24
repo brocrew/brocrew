@@ -171,6 +171,7 @@ export const providerSession = sqliteTable(
     connectionId: text('connection_id').references(() => providerConnection.id),
     // Provider thread/session ref used to resume; unknown until the session starts.
     externalRef: text('external_ref'),
+    sourceSessionIds: text('source_session_ids'),
     launchedAs: text('launched_as'),
     cwd: text('cwd').notNull(),
     status: text('status').notNull().default('idle'),

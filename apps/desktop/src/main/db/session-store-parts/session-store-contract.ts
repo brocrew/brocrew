@@ -26,6 +26,7 @@ import type {
 import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { MoveReceipt } from '../../../shared/move-contracts'
 import type { AgentModelChoice, ModelAndEffort } from '../../../shared/model-choice-contracts'
+import type { OwnInstructionsCommit } from '../agent-knowledge-history'
 import type { ThreadLeadRow } from '../thread-lead-reader'
 import type {
   HumanAnswers,
@@ -186,8 +187,16 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   setExternalMcpServers(profileSlug: string, externalMcpServerIds: readonly string[]): boolean
   ownInstructionsOf(profileSlug: string): OwnInstructions
   currentOwnInstructionsOf?(profileSlug: string): OwnInstructionsVersion | null
+  readCurrentAgentRules(
+    profileSlug: string,
+  ): Promise<{ current: OwnInstructionsVersion | null } | null>
   configuredLayerFor(profileSlug: string): string | null
   writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
+  writeDirectAgentRules(
+    said: OwnInstructionsWrite,
+    at: number,
+    afterCommit: (commit: OwnInstructionsCommit) => void,
+  ): Promise<OwnInstructionsCommit | null>
   undoOwnInstructions(
     profileSlug: string,
     expectedVersion: number,
@@ -710,6 +719,19 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     at: number,
   ): boolean
   importSnapshot(snapshot: SessionSnapshot): void
+  sourceSessionIds(sessionId: string): readonly string[]
+  sessionForSourceId(sourceId: string): string | null
+  acceptedAskHandoff(
+    sessionId: string,
+    generation: number,
+    afterOrdinal: number,
+    attempt: string,
+  ): PersistedEvent | null
+  associateBundleSource(
+    sessionId: string,
+    sourceIds: readonly string[],
+    ledger: SessionSnapshot['ledger'],
+  ): void
   nextOrdinal(sessionId: string): number
   lastOrdinalWrite(sessionId: string): LedgerWriteStamp | undefined
 }

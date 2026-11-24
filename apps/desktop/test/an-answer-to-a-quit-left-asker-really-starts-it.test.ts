@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -139,4 +139,95 @@ describe('an answer to an asker the quit left open really starts it', () => {
     await waitFor(() => stateOf(ada)?.is === 'needs-you', 'the answer’s turn to reach the asker')
     expect(stateOf(ada)).toEqual({ is: 'needs-you' })
   })
+
+  it.each([
+    { case: 'failed hold', failHold: true },
+    { case: 'saved hold', failHold: false },
+  ])(
+    'reads the decision and words after a $case and ordinary stopped Answer',
+    async ({ failHold }) => {
+      const asker = await personOpens('default')
+      const answerer = await personOpens('reviewer')
+      const asked = await callOn(asker, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: answerer,
+        question: 'Which schema do you use?',
+      })
+      expect(asked).toMatchObject({ outcome: 'ok', question: expect.any(String) })
+      const question = asked.question as string
+      await host.closeAll()
+      store = createSessionStore(db, tick)
+      host = buildHost()
+      await host.resumeSession(answerer, window)
+      expect(host.sessionIds).not.toContain(asker)
+      expect(stateOf(asker)).toMatchObject({ is: 'waiting-on-an-answer' })
+      expect(host.tookItsPlace(asker)).toBeNull()
+
+      const words = 'Use the schema in the archive'
+      const append = store.append.bind(store)
+      const holdError = new Error('fictional answer queue write failed')
+      const resumeError = new Error('fictional ordinary resume failure')
+      let heldWrites = 0
+      const hold = vi.spyOn(store, 'append').mockImplementation((sessionId, ordinal, event, at) => {
+        if (sessionId === asker && event.type === 'message_queued' && event.text.includes(words)) {
+          heldWrites += 1
+          if (failHold) throw holdError
+        }
+        append(sessionId, ordinal, event, at)
+      })
+      const resume = vi.spyOn(FakeRuntime.prototype, 'resume').mockRejectedValueOnce(resumeError)
+      let result: Record<string, unknown> | undefined
+      let error: unknown
+      try {
+        result = await callOn(answerer, 'answer_question', {
+          question,
+          asked_by: asker,
+          answers: [{ part: 'answer', answer: [words] }],
+        })
+      } catch (caught) {
+        error = caught
+      } finally {
+        hold.mockRestore()
+      }
+      const resumeAttempts = resume.mock.calls.length
+      resume.mockRestore()
+      expect(heldWrites).toBe(1)
+
+      // Use a new SQLite connection, without a Host that could supply the in-memory queue.
+      const reopened = openDatabase(join(userData, 'brobot2.sqlite'))
+      try {
+        const fresh = createSessionStore(reopened, tick)
+        const state = fresh.routedRequestsOf(asker).find((row) => row.requestId === question)?.state
+        const decisions = fresh
+          .events(asker)
+          .filter(({ event }) => event.type === 'user_decision' && event.requestId === question)
+        const waiting = fresh.messagesWaitingIn(asker).filter((row) => row.text.includes(words))
+        const durable = { state, decisions: decisions.length, answers: waiting.length }
+        const call = {
+          resumeAttempts,
+          outcome: result?.outcome,
+          kept: result?.kept,
+          error: error instanceof Error ? error.message : error,
+        }
+
+        if (failHold) {
+          expect(durable, JSON.stringify(call)).toEqual({ state: 'open', decisions: 0, answers: 0 })
+          expect(resumeAttempts).toBe(0)
+          expect(result?.outcome).not.toBe('ok')
+          expect(result?.kept).toBeUndefined()
+        } else {
+          expect(durable).toEqual({ state: 'answered', decisions: 1, answers: 1 })
+          expect(resumeAttempts).toBe(1)
+          expect(result).toMatchObject({
+            outcome: 'ok',
+            kept: expect.stringMatching(
+              /^The answer is recorded and kept .*It could not be started now/,
+            ),
+          })
+        }
+      } finally {
+        reopened.close()
+      }
+    },
+  )
 })

@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { DEFAULT_PROFILE_ID, type ResumableSessionInfo } from '../../src/shared/runtime-ipc'
+import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, visible } from './harness'
 
@@ -155,7 +155,7 @@ describe('§3 · F6 · the conversation the notice is about is there to open', (
       cwd: '/tmp/alpha',
       status: 'errored',
       approvalMode: null,
-      profileId: DEFAULT_PROFILE_ID,
+      profileId: 'recipe-worker',
       reasoningEffort: null,
       model: null,
       planMode: null,
