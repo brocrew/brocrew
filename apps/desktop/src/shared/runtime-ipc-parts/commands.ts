@@ -232,8 +232,6 @@ export type RuntimeCommand =
   /** Both halves of the listing as one stamped publication ({@link ListingAnswer}). No arguments. */
   | { kind: 'listConversations' }
   | { kind: 'listRecentConversations' }
-  /** The first accepted conversation list has passed a renderer paint. */
-  | { kind: 'firstListPainted' }
   /**
    * The open pieces no other list shows a person, with what is wrong with each
    * ({@link WorkIncident}). ⚑ No arguments, for its siblings' reason.

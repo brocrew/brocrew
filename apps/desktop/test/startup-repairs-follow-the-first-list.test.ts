@@ -36,7 +36,7 @@ function waitingConversations(
   const repair = vi.spyOn(world.store, 'settleStrandedMessagesInSteps')
   const host = aLibraryHost(world.directory, {
     store: world.store,
-    deferStartupUntilListPaint: deferred,
+    deferStartupUntilFirstList: deferred,
     now: () => 100,
     afterFirstWindowLoad: new Promise<void>(() => {}),
   })
@@ -55,15 +55,11 @@ function waitingConversations(
 
 it('returns its first list without repairing history, then yields between bounded batches', async () => {
   const { ids, repair, host, abandoned } = waitingConversations(51)
-  const list = await host.listConversations()
+  const [list] = await Promise.all([host.listConversations(), host.listConversations()])
   if ('refused' in list) throw new Error(list.refused)
   expect(list.resumable.length + list.unresumable.length).toBe(51)
   expect(repair).not.toHaveBeenCalled()
-  await afterIO()
   expect(ids.map(abandoned)).toEqual(ids.map(() => 0))
-  host.firstListPainted()
-  host.firstListPainted()
-  expect(repair).not.toHaveBeenCalled()
   let previous = 0
   let writesOnDifferentTicks = 0
   for (let tick = 0; tick < 20 && previous < ids.length; tick += 1) {
@@ -78,6 +74,20 @@ it('returns its first list without repairing history, then yields between bounde
   expect(ids.map(abandoned)).toEqual(ids.map(() => 1))
 })
 
+it('begins nothing on a refused list, and begins on the next one served', async () => {
+  const { ids, repair, host, world, abandoned } = waitingConversations(3)
+  vi.spyOn(world.store, 'checkCommitted').mockImplementationOnce(() => {
+    throw new Error('fixture refused listing')
+  })
+  const refused = await host.listConversations()
+  expect('refused' in refused).toBe(true)
+  for (let tick = 0; tick < 5; tick += 1) await afterIO()
+  expect(repair).not.toHaveBeenCalled()
+  await host.listConversations()
+  await waitFor(() => ids.every((id) => abandoned(id) === 1), 'the repairs after the served list')
+  expect(repair).toHaveBeenCalledTimes(1)
+})
+
 it('repairs the canonical earlier message prefix before opening, without applying it twice', async () => {
   const { ids, repair, host, abandoned } = waitingConversations(26)
   const opened = ids[25]!
@@ -85,17 +95,17 @@ it('repairs the canonical earlier message prefix before opening, without applyin
   expect(repair).toHaveBeenCalledTimes(1)
   expect(abandoned(opened)).toBe(1)
   expect(abandoned(ids[0]!)).toBe(1)
-  host.firstListPainted()
+  await host.listConversations()
   await afterIO()
   expect(repair).toHaveBeenCalledTimes(1)
   expect(ids.map(abandoned)).toEqual(ids.map(() => 1))
 })
 
-it('keeps a foreground message added after paint while owner repairs remain', async () => {
+it('keeps a foreground message added after the first list while owner repairs remain', async () => {
   const { ids, world, host, abandoned } = waitingConversations(51)
   const work = vi.spyOn(world.store, 'settleRestartedWork')
   const opened = ids[0]!
-  host.firstListPainted()
+  await host.listConversations()
   for (let tick = 0; tick < 20 && abandoned(opened) === 0; tick += 1) await afterIO()
   expect(abandoned(opened)).toBe(1)
   await host.look(opened, new RecordingSink('window'), false)
@@ -104,7 +114,7 @@ it('keeps a foreground message added after paint while owner repairs remain', as
   expect(repaired.length).toBeLessThan(ids.length)
   const message = {
     type: 'message_queued' as const,
-    messageId: 'foreground-after-paint',
+    messageId: 'foreground-after-the-first-list',
     text: 'New work while the sweep still has owners to repair',
     kind: 'work' as const,
   }
@@ -124,14 +134,14 @@ it('keeps a foreground message added after paint while owner repairs remain', as
 
 it('cancels the queued remainder before shutdown releases the store', async () => {
   const { ids, repair, host, abandoned } = waitingConversations(51)
-  host.firstListPainted()
+  await host.listConversations()
   for (let tick = 0; tick < 10 && abandoned(ids[0]!) === 0; tick += 1) await afterIO()
   const beforeClose = ids.map(abandoned)
   expect(beforeClose.reduce((a, b) => a + b, 0)).toBeGreaterThan(0)
   expect(beforeClose.at(-1)).toBe(0)
   await host.closeAll()
   await afterIO()
-  host.firstListPainted()
+  await host.listConversations()
   await afterIO()
   expect(repair).toHaveBeenCalledTimes(1)
   expect(ids.map(abandoned)).toEqual(beforeClose)
@@ -187,7 +197,7 @@ it('keeps canonical message, request and work repair results and their per-owner
   const before = waitingConversations(2, false, seed)
   const after = waitingConversations(2, true, seed)
   expect(after.repair).not.toHaveBeenCalled()
-  after.host.firstListPainted()
+  await after.host.listConversations()
   await afterIO()
   for (const owner of before.ids) {
     const events = (world: typeof before.world) =>
@@ -257,7 +267,7 @@ it.each([
     const after = waitingConversations(3, true, seed)
     if (foreground) await after.host.look('conversation-0', new RecordingSink('window'), false)
     else {
-      after.host.firstListPainted()
+      await after.host.listConversations()
       await afterIO()
     }
     expect(warnings.mock.calls).toEqual(originalWarnings)
@@ -291,7 +301,7 @@ it('retains quit-preserved queues and torn endings with the same unread diagnost
   warnings.mockClear()
   const after = waitingConversations(3, true, seed)
   expect(warnings).not.toHaveBeenCalled()
-  after.host.firstListPainted()
+  await after.host.listConversations()
   await afterIO()
   expect(warnings.mock.calls).toEqual(originalWarnings)
   expect(originalWarnings.length).toBeGreaterThan(0)
@@ -324,13 +334,13 @@ it('keeps a failed pre-use step pending and does not report a failed background 
   const work = vi.spyOn(world.store, 'settleRestartedWork').mockImplementationOnce(() => {
     throw new Error('fixture background repair failure')
   })
-  host.firstListPainted()
+  await host.listConversations()
   await waitFor(() => errors.mock.calls.length > 0, 'the failed deferred repair to be reported')
   expect(errors).toHaveBeenCalledWith(
     'startup repairs did not finish: fixture background repair failure',
   )
   const calls = work.mock.calls.length
-  host.firstListPainted()
+  await host.listConversations()
   await afterIO()
   expect(work).toHaveBeenCalledTimes(calls)
   expect(ids.map(abandoned)).toEqual(ids.map(() => 1))
