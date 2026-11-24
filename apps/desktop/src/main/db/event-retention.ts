@@ -106,7 +106,12 @@ export async function trimOldEvents(
   write: (batch: EventTrimBatch) => Promise<EventTrimWrite>,
   now: number = Date.now(),
 ): Promise<EventTrimResult> {
+  const measureEntered = performance.now()
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 })
+  const measureOpened = performance.now()
+  let measureReads = 0
+  let measureFirstRead = -1
+  let measureStopSeenAt = -1
   observeDatabaseMemory(db, 'event-retention')
   const before = now - KEEP_DAYS * 86_400_000
   let removed = 0
@@ -118,6 +123,15 @@ export async function trimOldEvents(
   let longestCheckpointMs = 0
   let deferredConversations = 0
   const result = (interrupted: boolean): EventTrimResult => ({
+    // MEASURE-404 (throwaway): worker-relative clock (ms since the worker thread started).
+    ...({
+      measureEntered,
+      measureOpened,
+      measureReads,
+      measureFirstRead,
+      measureStopSeenAt,
+      measureReturned: performance.now(),
+    } as object),
     removed,
     batches,
     longestBatchMs,
@@ -135,8 +149,13 @@ export async function trimOldEvents(
   /** One timed read, after the worker has seen its messages; null once it is asked to stop. */
   const read = async <T>(run: () => T): Promise<T | null> => {
     await seeMessages()
-    if (stopped()) return null
+    if (stopped()) {
+      measureStopSeenAt = performance.now()
+      return null
+    }
     const began = performance.now()
+    if (measureFirstRead < 0) measureFirstRead = began
+    measureReads += 1
     const value = run()
     longestSelectionMs = Math.max(longestSelectionMs, performance.now() - began)
     return value

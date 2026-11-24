@@ -105,7 +105,7 @@ jobs:
 
   dom:
     name: dom groups ${{ matrix.part }}/4 (Windows)
-    if: github.repository == 'brocrew/brocrew'
+    if: false # MEASURE (throwaway): only the four test shards
     runs-on: windows-2022
     timeout-minutes: 60
     strategy:
@@ -191,7 +191,7 @@ jobs:
 
   chrome-native-birth:
     name: Chrome native process birth (Windows)
-    if: github.repository == 'brocrew/brocrew'
+    if: false # MEASURE (throwaway): only the four test shards
     runs-on: windows-2022
     timeout-minutes: 30
     env:

@@ -39689,6 +39689,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     )
     const failures: unknown[] = []
     let confirmed = false
+    const measureT0 = performance.now()
+    const mark = (step: string): void =>
+      console.warn(`[MEASURE-406] closeAll ${step} at=${(performance.now() - measureT0).toFixed(1)}`)
     try {
       this.startupSteps = undefined
       this.startupStep = undefined
@@ -39717,28 +39720,46 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       )
       for (const result of signInsClosed)
         if (result.status === 'rejected') failures.push(result.reason)
+      mark(`signIns(${signIns.length}) settled`)
       // ⚑ **D-029 · no wake-up outlives the quit** — the next launch reads the ledger again. ⚠️ One
       // that fires first already starts nothing: admission closed on the first line.
       for (const conversation of [...this.wakeUps.keys()]) this.forgetItsWakeUp(conversation)
       // ⚑ **F074 — nor a reset's timer**: the next launch reads the walls again.
       for (const { timer } of this.theResets.values()) clearTimeout(timer)
       this.theResets.clear()
-      const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
+      mark(
+        `drain begins: launches=${this.launches.size} subjects=[${[...this.launches.subjects()].join(',')}] ` +
+          `slots=${this.slots.size}`,
+      )
+      const pendingLaunches = this.launches.pending()
+      void pendingLaunches.then(() => mark('launches.pending() resolved'))
+      const terminated = settledWithin(pendingLaunches, this.closeDrainTimeoutMs * 2)
       const sessionsClosed = await Promise.allSettled(
-        [...this.slots.keys()].map((id) => this.close(id, THE_APP_ITSELF)),
+        [...this.slots.keys()].map((id) => {
+          const began = performance.now()
+          return this.close(id, THE_APP_ITSELF).finally(() =>
+            mark(`session ${id} closed in ${(performance.now() - began).toFixed(1)}ms`),
+          )
+        }),
       )
       for (const result of sessionsClosed)
         if (result.status === 'rejected') failures.push(result.reason)
+      mark('sessions closed')
       confirmed = await terminated
+      mark(`drain ${confirmed ? 'settled' : 'BOUND FIRED'} launches=${this.launches.size} subjects=[${[...this.launches.subjects()].join(',')}]`)
     } catch (error) {
       failures.push(error)
     } finally {
       if (this.startupAdvance !== undefined) await Promise.allSettled([this.startupAdvance])
+      mark('startupAdvance settled')
       for (const result of await readersClosed)
         if (result.status === 'rejected') failures.push(result.reason)
+      mark('readers closed')
       while (this.agentKnowledgeOperations.size > 0)
         await Promise.allSettled(this.agentKnowledgeOperations)
+      mark('agentKnowledgeOperations settled')
       await this.flushInFlight
+      mark('flushInFlight settled')
     }
     if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not

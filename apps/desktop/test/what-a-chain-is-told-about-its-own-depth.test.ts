@@ -151,10 +151,30 @@ describe('what a chain is told about its own depth', () => {
   }
 
   afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
+    // MEASURE-406 (throwaway): per-step timing, with a 60 s hook limit so the full cost shows.
+    const t0 = performance.now()
+    const at = (): string => (performance.now() - t0).toFixed(1)
+    const size = (built: RuntimeHost): number =>
+      (built as unknown as { launches: { size: number } }).launches.size
+    for (const [index, built] of hosts.entries()) {
+      const before = size(built)
+      const began = performance.now()
+      await built.closeAll()
+      console.warn(
+        `[MEASURE-406] host ${index} closeAll ${(performance.now() - began).toFixed(1)}ms ` +
+          `launches before=${before} after=${size(built)} at=${at()}`,
+      )
+    }
+    let began = performance.now()
     db.close()
-    for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
-  })
+    console.warn(`[MEASURE-406] db.close ${(performance.now() - began).toFixed(1)}ms at=${at()}`)
+    for (const dir of [userData, work]) {
+      began = performance.now()
+      rmSync(dir, { recursive: true, force: true })
+      console.warn(`[MEASURE-406] rmSync ${(performance.now() - began).toFixed(1)}ms at=${at()}`)
+    }
+    console.warn(`[MEASURE-406] hook total ${at()}ms`)
+  }, 60_000)
 
   const personOpens = async (profileId: string): Promise<string> => {
     const { sessionId } = await host.createSession(

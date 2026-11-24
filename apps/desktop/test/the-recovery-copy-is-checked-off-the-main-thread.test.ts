@@ -512,16 +512,52 @@ describe('the recovery copy is checked off the main thread', () => {
     const sweep = (stopAfterMs?: number) => {
       const { result, done, failed } = trimCompletion<number>()
       const began = performance.now()
+      // MEASURE-404 (throwaway): main-thread milestones, relative to `began`.
+      const label = stopAfterMs === undefined ? 'whole' : 'stopped'
+      const since = (): string => (performance.now() - began).toFixed(1)
+      const marks: string[] = []
+      const report = (end: string): void =>
+        console.warn(`[MEASURE-404] ${label} ${marks.join(' ')} ${end}=${since()}`)
       const retention = startEventRetention(
         db,
-        () => new Worker(storageBundle, { workerData: { maintenance: { kind: 'trim', file } } }),
-        async () => done(performance.now() - began),
+        () => {
+          marks.push(`spawn=${since()}`)
+          const worker = new Worker(storageBundle, {
+            workerData: { maintenance: { kind: 'trim', file } },
+          })
+          worker.once('online', () => marks.push(`online=${since()}`))
+          worker.on('message', (message: { ok?: boolean; value?: Record<string, unknown> }) => {
+            if (message.ok && message.value)
+              marks.push(
+                `result=${since()} worker=${JSON.stringify(
+                  Object.fromEntries(
+                    Object.entries(message.value).filter(
+                      ([key]) =>
+                        key.startsWith('measure') ||
+                        key === 'interrupted' ||
+                        key === 'longestSelectionMs',
+                    ),
+                  ),
+                )}`,
+              )
+          })
+          worker.once('exit', () => marks.push(`exit=${since()}`))
+          return worker
+        },
+        async () => {
+          report('published')
+          done(performance.now() - began)
+        },
         failed,
       )
       retention.firstListAccepted(-600_000)
       if (stopAfterMs !== undefined)
         setTimeout(() => {
-          void retention.stop().then(() => done(performance.now() - began), failed)
+          marks.push(`stopCalled=${since()}`)
+          void retention.stop().then(() => {
+            report('stopResolved')
+            done(performance.now() - began)
+          }, failed)
         }, stopAfterMs)
       return { result, retention }
     }
