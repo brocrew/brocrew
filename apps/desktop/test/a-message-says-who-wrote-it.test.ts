@@ -8,12 +8,12 @@ import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
-  RuntimeHost,
   nameTheConversation,
   whoseConversationIs,
-} from './helpers/giver-notice-host'
+} from '../src/main/runtime/host-split/whose-words'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {

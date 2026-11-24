@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { backgroundTheRestartStoppedText } from '../src/main/runtime/runtime-host'
+import { backgroundTheRestartStoppedText } from '../src/main/runtime/host-split/wakes-and-restarts'
 import { theStoppedWork, whatStoppedWithIt } from '../src/main/runtime/reply-rails'
 import { clockTime } from '../src/shared/clock'
 

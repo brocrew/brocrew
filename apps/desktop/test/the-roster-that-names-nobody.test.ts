@@ -12,12 +12,14 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
-  AN_IDENTITY_THIS_APP_CANNOT_NAME,
   RuntimeHost,
-  whoseConversationIs,
   type AgentCard,
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
+import {
+  AN_IDENTITY_THIS_APP_CANNOT_NAME,
+  whoseConversationIs,
+} from '../src/main/runtime/host-split/whose-words'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   THIS_APP_CANNOT_NAME_IT,

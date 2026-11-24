@@ -15,12 +15,8 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  aPersonTypedIt,
-  whoseWordsTheseAre,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF, aPersonTypedIt } from '../src/main/runtime/runtime-host'
+import { whoseWordsTheseAre } from '../src/main/runtime/host-split/whose-words'
 import type { Caller } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import {

@@ -12,11 +12,8 @@ import { type CodexLoginOutcome } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import {
-  RuntimeHost,
-  signInNotChecked,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { signInNotChecked } from '../src/main/runtime/host-split/sign-ins'
 import type { CodexSignIn } from '../src/main/providers/codex/types'
 import type { ProviderAuthOps } from '../src/main/connections/homes'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'

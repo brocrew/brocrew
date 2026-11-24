@@ -16,8 +16,8 @@ import {
   RuntimeHost,
   THE_APP_ITSELF,
   type RuntimeEventSink,
-  type UnclaimedSession,
 } from '../src/main/runtime/runtime-host'
+import { type UnclaimedSession } from '../src/main/runtime/host-split/unclaimed-sessions'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { agentStateWords } from '../src/shared/agent-state'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'

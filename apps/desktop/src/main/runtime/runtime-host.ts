@@ -33,7 +33,6 @@ import {
   SchedulePlanning,
   WAKE_LEAD_MS,
   THE_ONE_CLOCK_ERA,
-  type RunOwed,
   type OwedToItsJobs,
   type PlannedWake,
 } from './host-split/schedule-planning'
@@ -150,11 +149,7 @@ import {
   type SendOverflow,
 } from './send-overflow'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
-import type {
-  NewSessionRecord,
-  ProviderFailureEpisode,
-  ProviderFailureEvidence,
-} from '../db/session-store'
+import type { NewSessionRecord, ProviderFailureEvidence } from '../db/session-store'
 import type {
   ItsLedger,
   StateLedger,
@@ -195,7 +190,6 @@ import {
   instructionsFor,
   describeApprovalMode,
   aRefusedLoginStoppedText,
-  type BackgroundWorkEnded,
   type WhatAFailedTurnWasFor,
   type HeldGrant,
   type ProviderLimitDisclosure,
@@ -214,7 +208,6 @@ export { scheduleNoticesText, type NoticeAboutAJob } from './schedule-notices'
 
 import {
   conversationDirectoryPage,
-  type WhoseConversation,
   type AgentsListed,
   type DirectoryPageInput,
   type ArchivedListed,
@@ -223,7 +216,6 @@ import {
   type AgentCard,
 } from './agent-directory'
 export type {
-  WhoseConversation,
   AgentsListed,
   ArchivedListed,
   PieceOnTheCard,
@@ -262,7 +254,7 @@ export type { RuntimeEventSink, CallerIdentity, Caller } from './conversation-ca
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/index'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/index'
-import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
+import type { IdentityFact } from '../providers/auth-policy'
 import {
   providerDefinitions,
   providerCatalogue as registeredProviderCatalogue,
@@ -362,31 +354,15 @@ import {
   capabilitiesFor,
   childInputRefusal,
   type ChildThreadState,
-  // ⚑ **516 · the one place this app speaks MCP as a client, and the shape a launch is handed.**
   discoverExternalMcpTools,
-  ExternalMcpDiscoveryError,
-  type ExternalMcpReach,
   resolveReasoningEffort,
   SUPPORTED_PROVIDERS,
-  // ⚑ **657 · the one half of a refused turn that clears on its own** — `queueMessage` holds it.
   TurnInProgress,
-  // ⚑ **692 · a provider that no longer has the conversation** — a start that can NEVER succeed.
-  ResumeError,
-  // ⚑ **708 · each provider's command prefix, known before any list is** (`R42`).
   PROVIDER_COMMAND_PREFIX,
-  // ⚑ **710 · R52 — a machine that ran short**, by the errno's code, at a person's own launch.
   transientSetupFailureOf,
-  // A wait that ran out, told apart from work that failed.
   didNotAnswerInTime,
-  // What an unanswered sign-in check says.
-  A_CHECK_NOT_ANSWERED_SAYS,
-  signInNotCheckedInTime,
-  // ⚑ **716 · R66 — a folder a person must fix**, by the errno's code, at the same two doors.
   folderAPersonMustFixOf,
-  // ⚑ **724 · `717` F-2 — the spawn's own code**, read by R51's reader and never off the text.
   spawnNoWaitClearsOf,
-  // ⚑ **D-039 · R2 — a provider that refused the start, or whose start failed otherwise**, by type,
-  // at a person's two doors.
   startRefusalOf,
   startFailureOf,
   withDeadline,
@@ -401,7 +377,6 @@ import {
   providerSchema,
   type Provider,
   type ProviderConnection,
-  type SessionStatus,
 } from '@brobot2/shared'
 import { signInKey, signInHeldBy } from '../providers/sign-in-reservation-facts'
 import { assetUrl } from '../../shared/asset-url'
@@ -412,7 +387,7 @@ import {
   providerFilesOf,
   removeFromHome,
 } from '../conversation-files'
-import type { TiedOutside, TreeDeleted } from '../db/conversation-tree'
+import type { TreeDeleted } from '../db/conversation-tree'
 import type {
   ArchiveOutcome,
   DeleteOutcome,
@@ -458,7 +433,6 @@ import {
 import type {
   AgentIdentities,
   AgentIdentity,
-  AgentIdentityName,
   CwdVerdict,
   NewAgent,
   ProviderSignInResult,
@@ -488,7 +462,6 @@ import {
   unavailableContextOf,
   unavailableOf,
   whatAFolderRefused,
-  type Unavailable,
 } from './session-unavailable'
 import { filesystemSpelling, folderIsGone } from './scratch-cwd'
 import {
@@ -531,7 +504,6 @@ import {
 } from '../../shared/piece-called'
 import {
   MADE_FILES_LISTED,
-  formOfName,
   type DocumentContent,
   type DocumentForm,
   type ResourceRole,
@@ -547,170 +519,6 @@ import {
   type OfferedFileBytes,
   type ResourceRefusal,
 } from '../resources/resources'
-
-/**
- * How long a sign-in may stay open before the host gives up on it (098).
- *
- * Five minutes is the OAuth flow's own comfortable ceiling — open a browser, sign in, approve — and
- * the bound exists for the person who closes the tab and walks away: without it, the app-server
- * holding the loopback redirect port would live for the rest of the app's run.
- */
-const SIGN_IN_TIMEOUT_MS = 5 * 60_000
-
-/**
- * How long a credential CHECK may take before it is reported as unaskable (098, review finding 14).
- *
- * For Codex the check spawns a real app-server — measured at ~0.6 s — so ten seconds is generous.
- * The bound is not about speed: without it a wedged spawn leaves the renderer's buttons disabled on
- * a promise that can never settle, which is a worse answer than "could not ask".
- */
-const AUTH_CHECK_TIMEOUT_MS = 10_000
-
-/**
- * What a sign-in check the host could not get an answer to says. A check that ran out of time is
- * said apart from one that failed: it may only have waited its turn behind other starts.
- */
-export function signInNotChecked(tooSlow: boolean): string {
-  return tooSlow
-    ? signInNotCheckedInTime(null)
-    : `BroCrew could not ask about this sign-in, so it was not checked. ${A_CHECK_NOT_ANSWERED_SAYS} Check again.`
-}
-
-/**
- * 🔴 **516 · the external MCP servers a launch may reach — and the PROVIDER is half the answer**
- * (HO-040 §4.2, `HO-090` §1).
- *
- * ## ⛔ Asked of the PROVIDER's own declaration, never of its name
- *
- * ⛔ **This gate withheld every Codex grant from `516` until `605`**, on `HO-042` §3: *"stage 2 is
- * gated on authoritative call identity, not scoped to work around its absence. Until it exists:
- * no Codex grants."* ⚑ **The PO has WITHDRAWN that ruling** (`HO-090` §1) and `605` built the card
- * it was waiting on, so Codex's entry is `available` and this line now passes for both providers.
- *
- * ⚠️ **Not one byte of this function changed to do it, and that is the whole argument for asking
- * the table.** ⛔ **The question is `capabilitiesFor(provider).externalMcpServers`, and this
- * function spells no provider's name** — `039`'s rule, which `provider-neutrality.test.ts` holds
- * the renderer to and which is just as true here: *"If you find yourself writing `provider ===
- * 'claude'` to decide whether to show something, the answer is a new entry"* in the capability
- * table. ⚑ **The sheet reads the same entry**, so the control a person meets and the launch they
- * then make cannot come to disagree — and the day an entry moves, both move with it and neither
- * file is edited. ⚠️ **That day arrived and this is the receipt.**
- *
- * ## 🔴 524 · what this resolves is no longer *the grants*, and the difference IS the ruling
- *
- * `store.externalMcpServersFor` includes every server available to all and this identity's explicit grants, including for an identity never granted anything. Each tool still passes through provider permissions, and `reservedToolNames` is derived for every included server.
- *
- * ⛔ **`profileSlug === null` was NOT widened, and the guard below is the decision.** An
- * available-to-all server is available to every IDENTITY; an adopted conversation is running as
- * nobody, and handing tool servers to a row whose owner this app cannot name is not what
- * *everyone's* means.
- *
- * ⚑ **`605` · the projection is no longer empty for anybody, and the paragraph that stood here
- * described a world with one wired provider in it.** A grant was never destroyed and never refused
- * at the door — it is a durable fact about an IDENTITY, and an identity's provider is a mutable
- * default for its next conversation. ⚠️ **Refusing the WRITE on today's provider would still be
- * the wrong shape**: a person who granted on one provider and moved the identity would find a
- * grant they could no longer edit. ⛔ **That is why the guard is HERE and not on the write**, and
- * it is what will still be true the next time a provider's entry is not `available`.
- *
- * ## ⚑ The reserved roster travels with the servers
- *
- * ⛔ **`TOOL_NAMES` is handed over rather than read by the adapter**, because `packages/runtime`
- * cannot see this app's inventory and must not restate it (brief §3.2). ⚠️ It is what the adapter
- * derives Claude's `disallowedTools` from — the race backstop the PO accepted in place of a proxy.
- *
- * ## ⚠️ Absent when there is nothing, so nothing changes for a launch nobody granted anything
- *
- * ⛔ **An empty grant returns `{}` and not `{ externalMcp: { servers: [], … } }`.** The two are
- * equivalent downstream by construction — `claudeMcpServersFor` and `forbiddenExternalSpellings`
- * both treat an empty list as nothing — and returning the object anyway would make every existing
- * launch's options differ from what they were, for no fact.
- */
-function externalMcpContext(
-  store: SessionStore,
-  provider: Provider,
-  profileSlug: string | null,
-): { externalMcp?: ExternalMcpReach } {
-  if (capabilitiesFor(provider).externalMcpServers.state !== 'available') return {}
-  if (profileSlug === null) return {}
-  const servers = store.externalMcpServersFor(profileSlug)
-  if (servers.length === 0) return {}
-  return {
-    externalMcp: {
-      servers: servers.map((one) => ({ name: one.name, url: one.url })),
-      reservedToolNames: TOOL_NAMES,
-    },
-  }
-}
-
-/**
- * How long to wait for a sign-in to acknowledge its own cancellation (098, review findings 12/13).
- *
- * `account/login/cancel` is a request to the very app-server that may have stopped answering, and a
- * `finally` that waited on it forever would defeat the deadline it runs after. Short, because the
- * process is reaped by the transport's own bounded teardown regardless of whether it replies.
- */
-const SIGN_IN_CANCEL_TIMEOUT_MS = 3_000
-
-/**
- * The reservation held in {@link RuntimeHost.signIns} between claiming a profile's key and the real
- * {@link ProviderSignIn} existing (098, review finding 5).
- *
- * A value rather than a nullable, so the map's presence check means one thing — "this profile is
- * busy" — whether or not a process has been spawned yet.
- *
- * ⛔ **It used to cancel nothing, on the grounds that there was nothing yet to cancel** (185, from
- * 182 H2). That was false the moment `CodexLogin.start` reached its transport factory: from there
- * on a detached `codex app-server` exists, and this reservation is the ONLY thing either Cancel or
- * quit can find for it — the real handle does not arrive until the handshake has answered, which is
- * exactly the interval where a wedged app-server never returns one. Measured at 5/5: Cancel was a
- * no-op, quit was a no-op, the child outlived both.
- *
- * So the reservation now carries the launch's abort controller, and cancelling it aborts. What that
- * reaches is `cancelWith` inside `CodexLogin.start`, which closes the transport — the same mechanism
- * a session launch has used since 070, rather than a second one invented here.
- *
- * ⛔ **The controller is the LAUNCH REGISTRY's, since 202** (191 H1/H2). It used to be a private
- * `AbortController` this method made, which meant a quit could only reach it through a snapshot
- * `closeAll` took by hand — and anything that started after that snapshot was reachable by nothing.
- * `withdraw` is now `LaunchRegistry.cancel(launch)`, so Cancel and quit abort the same object by the
- * same route, and the route is the one door the module already owns.
- */
-function pendingSignIn(withdraw: () => void): ProviderSignIn {
-  return {
-    authUrl: '',
-    completed: new Promise<never>(() => {}),
-    cancel: async () => withdraw(),
-  }
-}
-
-/**
- * The two keys the process-wide registry knows, spelled in one place (293 §2).
- *
- * ⚠️ **Namespaced, because one flat map now holds both** — a credential home is an absolute path and
- * a sign-in key is `codex` or `claude:<profile>`, so a collision needs a profile called after a
- * directory. Prefixing costs nothing and removes the argument.
- */
-function oauthPortKey(provider: Provider, profileId: string): string {
-  return `oauth:${signInKey(provider, profileId)}`
-}
-
-function credentialHomeKey(home: string): string {
-  return `credential:${home}`
-}
-
-/** A switch belongs to one home even when OAuth ports are shared. */
-function profileSignInKey(provider: Provider, profileId: string): string {
-  return `${provider}:${profileId}`
-}
-
-/**
- * ⚑ **W4.203 · how far back a conversation's ledger is looked through for its newest context
- * reading, the first time a read names it** (`RuntimeHost.lastContextOf`). A conversation this app
- * runs records one with every reply its provider makes, so its newest sits within the last few
- * dozen rows; the bound is what keeps a ledger that holds none from being walked whole.
- */
-const CONTEXT_LOOKBACK_ROWS = 2_000
 
 import type { UserHomeDiscovery } from '../adopt/user-homes'
 import {
@@ -815,11 +623,7 @@ import {
   MAX_TURN_PARTS,
   theMessagesOf,
 } from '../../shared/runtime-ipc'
-import type {
-  LeadInFront,
-  TurnAuthorship,
-  UserTurnEvent,
-} from '../../shared/human-answer-contracts'
+import type { LeadInFront, UserTurnEvent } from '../../shared/human-answer-contracts'
 import type {
   SessionSettingChanged,
   WhatAPickBecame,
@@ -880,11 +684,9 @@ import {
 import { rowsUnreadOnce } from '../db/rows-unread'
 import { type Committed, type CommittedRow, type WholeChange } from '../db/committed-changes'
 import type {
-  KeptFileRow,
   LeftRunning,
   LiveSessionRow,
   OpenTurn,
-  TurnAsItEnded,
   RecordedSession,
   ResumableSession,
   ResourceRow,
@@ -936,12 +738,7 @@ import {
   type CurrentWorkInTheTurn,
   type WhoWaitsOnIt,
 } from './what-this-app-adds-to-a-turn'
-import {
-  type PromptUpdate,
-  EMPTY_TURN_BLOCK,
-  turnBlockChanges,
-  type TurnBlockSnapshot,
-} from './turn-block-changes'
+import { type PromptUpdate, EMPTY_TURN_BLOCK, turnBlockChanges } from './turn-block-changes'
 
 import {
   ACommandTakesNoAttachments,
@@ -1268,21 +1065,13 @@ import {
   scheduleHeld,
   somethingRunning,
 } from '../../shared/agent-state'
-import type {
-  AgentState,
-  BackgroundCommand,
-  BackgroundLevel,
-  ScheduleLevel,
-} from '../../shared/agent-state-contracts'
+import type { AgentState, ScheduleLevel } from '../../shared/agent-state-contracts'
 // ⚑ **D-029 · a job's time, with its day where that is not today** — {@link scheduleNoticesText}.
 import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'
 import { type CalendarSource } from '../../shared/schedule-wake'
 import { type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
-import {
-  recordScheduleAdmission,
-  type WakeAdmissionPlan,
-} from '../../shared/schedule-wake-admission'
+import { recordScheduleAdmission } from '../../shared/schedule-wake-admission'
 import {
   MAX_ATTEMPTS_A_CONVERSATION,
   NO_ATTEMPTS_KEPT,
@@ -1306,7 +1095,6 @@ import {
   newNoticeId,
   NO_CUTS_KEPT,
   withoutOldCuts,
-  type CutKind,
   type CutRecord,
   type CutState,
   type KeptCuts,
@@ -1320,45 +1108,212 @@ import {
   heldUntil,
   ScheduleEvidence,
 } from './schedule-evidence'
-
-/**
- * 🔴 **713 · `708` H-4 — what a gate decided about a person's command, carried to the next door.**
- *
- * ⚑ `R42`'s answer ({@link aPersonsCommand}): the command these words are, or `null` for words that
- * are not one — they go with their frame, or, for a person's `/compact` on a handle that compacts on
- * request, to that request (`R59`, which the handover asks before it reads this). ⛔ **Returned by
- * every gate, and CARRIED on one path**: interrupt-and-send, whose first gate answers before the
- * running turn is stopped and whose second gate and handover come after it. See
- * {@link RuntimeHost.runSendInterrupting}. ⚠️ **Not onto its lost-race HOLD**: `queueAs` asks the
- * queue's gates again against the conversation as it then is (670), so on that arm a moved list can
- * still refuse after the stop — as that arm's one-work-message rule already could. Reported in 713.
- */
-interface WhatTheGateDecided {
-  readonly command: ReturnType<typeof aPersonsCommand>
-}
-
-/** What a turn gate is asked about: the words, and what an earlier gate decided of them. */
-interface WhatTheGateIsAsked {
-  text: string
-  attached: number
-  /**
-   * 🔴 **708 · who these words are from** — the same `from` {@link handToProvider} will be
-   * handed, so the command this gate refuses is the command that door would have sent bare.
-   * ⛔ **Required**, for {@link handToProvider}'s own reason: a caller that could omit it would
-   * be a door whose person's commands the gate never looks at.
-   */
-  from: TurnOrigin | null
-  /**
-   * 🔴 **713 · `708` H-4 — what an EARLIER gate decided about these same words**, when there
-   * was one. ⚑ Present on ONE call: interrupt-and-send's second gate, which comes after the
-   * running turn was stopped — so a list that moved while the interrupt waited cannot make it
-   * refuse, after the stop, a command its first gate let through (`R42`'s refusal comes before
-   * the stop or not at all). ⚠️ **Absent everywhere else, and that is not a default a path
-   * forgets**: every other door decides here — the lost-race hold included, which asks the
-   * queue's gates again by design (670; {@link WhatTheGateDecided}).
-   */
-  decided?: WhatTheGateDecided
-}
+import {
+  SIGN_IN_TIMEOUT_MS,
+  AUTH_CHECK_TIMEOUT_MS,
+  signInNotChecked,
+  SIGN_IN_CANCEL_TIMEOUT_MS,
+  pendingSignIn,
+  oauthPortKey,
+  credentialHomeKey,
+  profileSignInKey,
+  ItsSignInMovedOn,
+  refusedLoginKey,
+} from './host-split/sign-ins'
+import {
+  externalMcpContext,
+  ServerNotReached,
+  theAddressOf,
+  ItsAskerIsStarting,
+  type ApprovalCommitted,
+  type RequestSettled,
+  A_DECISION_WAITS_FOR_A_START_MS,
+  AN_ENDING_WAITS_OUT_STARTS,
+  type PassedUpCopies,
+  ANSWERED_FIRST,
+  ITS_ASKER_IS_STARTING,
+  THE_ASKER_WAS_NOT_TOLD,
+  takenDownSays,
+  A_PERSON_DID_IT,
+  TOLD_ABOUT_A_SERVER_REQUEST,
+  ASKS_SAID_CHARS,
+  NO_LONGER_WAITING,
+} from './host-split/server-requests'
+import {
+  CONTEXT_LOOKBACK_ROWS,
+  noPageBefore,
+  TURN_AS_SENT_PAGE,
+} from './host-split/conversation-inspection'
+import {
+  type WhatTheGateDecided,
+  type WhatTheGateIsAsked,
+  WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS,
+  workFoldersIn,
+  grantOf,
+  whoseWordsTheseAre,
+  theSenderItsAuthorshipNames,
+  aPersonsOwn,
+  ownerName,
+  whoseConversationIs,
+  nameTheConversation,
+  keptFileOf,
+} from './host-split/whose-words'
+import {
+  type UnclaimedSession,
+  NO_SURFACE,
+  CHECKING_A_FOLDER,
+} from './host-split/unclaimed-sessions'
+import {
+  ITS_PIECE_HAD_ENDED,
+  isANoticeForItsNextInput,
+  isRunnableHeldMessage,
+  somethingRunnableIsHeld,
+  noticesThatRideThisInput,
+  A_PERSON_ASKED,
+  NO_REASON_GIVEN,
+  reasonSaid,
+  aReasonGiven,
+  ItsPlaceWasTaken,
+  notTold,
+  deliveryOf,
+  NO_PIECE_STOPPED,
+  type OwedQuestion,
+  type OwedBy,
+  type WhoOwesIt,
+  type IntoItsLedger,
+  type TheHeldMessagesCarrying,
+  ItStoppedUnderTheDelivery,
+  ItEndedBeforeItsNewBrief,
+  type WhatAGiverHolds,
+  type AnswerDelivery,
+  type WhereAReplyWent,
+  type WhereHeldWordsWait,
+  whyItWasNotDelivered,
+  ITS_RECORD_WOULD_NOT_TAKE_IT,
+  anAnswerKeptForItsStart,
+  aQuestionKey,
+  type Startable,
+  type HowItWasTakenBack,
+} from './host-split/deliveries'
+import {
+  notedInBoth,
+  COPY_SLICE_ROWS,
+  COPY_SLICE_BYTES,
+  COPY_SLICE_TARGET_MS,
+  COPY_BUSY_WAIT_MS,
+  SAY_COPY_PROGRESS_EVERY_MS,
+  handBackTheMainProcess,
+  type CardReads,
+  type OneLook,
+  type ListingReadFloor,
+} from './host-split/answer-reads'
+import {
+  WindowReadMissed,
+  whyTheWorkerMissed,
+  A_FAILED_WINDOW_READ_WAITS_MS,
+  A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS,
+  REMEMBERED_WINDOW_READ_MISSES,
+} from './host-split/window-query-coordination'
+import {
+  type ItsToolsMoved,
+  type WordsForTheNextStart,
+  type RecordedProviderFailure,
+  type ProviderFailureRecipient,
+  type TheTurnOnAPiece,
+  type WhoseTurnItIs,
+  type ProviderHandover,
+  type HostedSession,
+  TOOL_CALLS_REMEMBERED,
+  livenessFor,
+  TURN_ENDINGS,
+  NO_INSTRUCTIONS,
+} from './host-split/hosted-session'
+import {
+  type WhatAReopenWaitsFor,
+  REOPEN_LOOP_GUARD_MS,
+  A_REOPEN_WAITS_FOR,
+  theSignInChanged,
+  A_TURN_THAT_DID_NOTHING_HOLDS,
+  WHAT_A_REOPEN_ADDS,
+  compactionClearsContext,
+  aRefusedGiveOnlyHeardHousekeeping,
+  aGiveReopenOnlyHeardHousekeeping,
+  THE_ROWS_A_REFUSED_TURN_IS_READ_IN,
+  type RefusedInputReference,
+  theProviderLostIt,
+  itCanNeverBeReopened,
+  whyNoSettingForItsNextStart,
+  type SetAsideFor,
+  SET_ASIDE_FOR,
+  type BringingBack,
+  tieInWords,
+} from './host-split/reopens'
+import {
+  RESOURCE_SAMPLE_MS,
+  DEFAULT_INTERRUPT_WAIT_MS,
+  DEFAULT_CLOSE_DRAIN_TIMEOUT_MS,
+  DEFAULT_REOPEN_LEADS_GRACE_MS,
+  DEFAULT_DELIVERY_WAIT_MS,
+  DEFAULT_COMMAND_LIST_WAIT_MS,
+} from './host-split/host-waits'
+import {
+  type ScheduleLevelsAtTheLaunch,
+  WAKE_BRIEF_HOLD_MS,
+  SCHEDULES_HELD,
+  WAKE_CHECK_MS,
+  WAKE_RETRY_MAX_MS,
+  ITS_JOB_MESSAGES_WERE_NOT_DELIVERED,
+  IT_COULD_NOT_WAKE,
+  NEWER_WORDS_ABOUT_ITS_JOBS,
+  NEWER_WORDS_ABOUT_ITS_JOBS_NOW,
+  NEWER_WORDS_AFTER_THE_ARCHIVE,
+  NEWER_WORDS_AFTER_A_DELETE,
+  FIRST_BRIEF_OBSERVATION_MS,
+  RESTART_WAKE_GAP_MS,
+  WALLS_READ_FOR_MS,
+  AFTER_THE_RESET_MS,
+  LOOK_AT_THE_LIMIT_AGAIN_MS,
+  RESTART_STOPPED_WITHIN_MS,
+  NEWER_WORDS_ABOUT_WHAT_THE_RESTART_STOPPED,
+  ITS_REOPEN_ON_THE_NEW_LOGIN_FAILED,
+  ITS_START_AFTER_THE_RESTART_FAILED,
+  backgroundTheRestartStoppedText,
+  A_CUT_TURN_IS_CONTINUED_WITHIN_MS,
+  A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS,
+  A_LIMIT_IS_WAITED_FOR_AT_MOST_MS,
+  AUTOMATIC_CONTINUATIONS_IN_A_ROW,
+  continuationsInARow,
+  LIMIT_WAKES_APART_MS,
+  ACCOUNT_WAIT_MS,
+  ACCOUNT_LOOK_EVERY_MS,
+  aTurnTheAppCutText,
+  theTurnWasCut,
+  AT_ONCE_START_GAPS,
+  NOTHING_DONE_FOR_ITS_JOBS,
+  type WakeUp,
+  sayTheSweep,
+} from './host-split/wakes-and-restarts'
+import {
+  CONVERSATIONS_ON_A_RECORD,
+  PIECES_ON_A_RECORD,
+  FILES_ON_A_RECORD,
+  RULES_BEGIN_CHARS,
+  NOT_THE_ONLY_APP,
+  NOT_STARTED_A_SERVICE,
+  QUEUED_NEVER_TOLD,
+  MAY_FREE_A_SERVICE,
+  A_SERVICE_IT_MAY_BE,
+  A_SERVICE_IT_STAYS,
+  NOT_REMOVED_UNREADABLE,
+  NOT_REMOVED_OPEN_TWICE,
+  NOT_REMOVED_NOT_SAVED,
+} from './host-split/services-and-records'
+import {
+  type SessionSlot,
+  type TheWordsOfAQuestion,
+  onItsWayOut,
+  stillStarting,
+} from './host-split/session-slot'
 
 /**
  * The main-process runtime host: it owns every live provider session, drives them
@@ -1369,2838 +1324,6 @@ interface WhatTheGateIsAsked {
  * {@link RuntimeHostDeps.createRuntime} — and it never renders anything. Its whole
  * job is lifecycle: create, pump, address, tear down.
  */
-
-/**
- * 🔴 **D-010 · what a message the app or a person sends counts as** — `note`, which opens nothing.
- * ⚑ `says` is RECORDED only for an agent's message (`whoseWordsTheseAre`), and `message_agent`
- * always declares one; this is the host door's value for every other sender, which is never asked
- * to say. ⛔ No message opens a piece of work: only `give_work` gives one (D-016).
- */
-const WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS: AgentMessageKind = 'note'
-
-/** What is true of one session this host is running that nobody owns (336 §2.4). */
-interface UnclaimedBase {
-  readonly sessionId: string
-  /** When the slot was reserved, epoch ms — how long it has been nobody's. */
-  readonly since: number
-  /**
-   * 🔴 **Who may already be giving this conversation work** (349, HO-006 §4.5) — or `null`
-   * for one nobody was given command of.
-   *
-   * ⛔ **340 named its own gap here and left it**: *"`commandedBy` is not on `UnclaimedSession`, and
-   * a person taking a session over is not told an agent can still drive it."* ⚡ **Unowned is not
-   * the same as unattended**, and this list existed to stop the first from reading as a hang. A
-   * session nobody owns can still be one an agent is actively driving, and a caller choosing what
-   * to offer a person cannot tell those apart without this field.
-   *
-   * ⚠️ **On the BASE, so both states carry it**, and a reservation whose provider has not arrived
-   * carries it too — `commandedBy` is fixed at reservation ({@link SessionSlot.commandedBy}), so it
-   * is known strictly before there is anything else to say about the session.
-   *
-   * ⚠️ **An id, and this list is where an id is the right answer.** It reports to the main process,
-   * beside a `sessionId`; nothing puts it on a screen. The person-facing half of §4.5 is
-   * `CreatedSession.hasACommander`, which is a fact and not an identity — see `runtime-ipc.ts`.
-   */
-  readonly commandedBy: string | null
-}
-
-/**
- * 🔴 **A session nobody owns, in the two states one can be in.**
- *
- * ⛔ **A union rather than optional fields**, because *"there is no provider yet"* and *"the
- * provider is not waiting on anybody"* are different answers and an `undefined` would be one word
- * for both — 074's rule, which this app has now paid for in four places.
- */
-export type UnclaimedSession =
-  | (UnclaimedBase & {
-      /** Reserved; the provider has not arrived. There is nothing to describe and nobody to ask. */
-      readonly running: false
-    })
-  | (UnclaimedBase & {
-      readonly running: true
-      readonly provider: Provider
-      readonly cwd: string
-      /**
-       * 🔴 **It has stopped and is waiting for a person, and there is no person** (336 §2.4).
-       *
-       * ⚠️ **This is the state, and naming it is what stops it being a hang.** The turn is not
-       * wedged and nothing is lost: the request is on the ledger with its ordinal, the session
-       * machine holds `waiting_permission` until it is answered, and a claim replays the card to
-       * whoever takes the conversation over. What was missing was any way to find out.
-       */
-      readonly waitingForAHuman: boolean
-    })
-
-/** ⚑ **W4.189** — a launch's work folders, absent when there are none. */
-const workFoldersIn = (folders: readonly string[]): { readonly workFolders?: readonly string[] } =>
-  folders.length === 0 ? {} : { workFolders: folders }
-
-/** ⚑ **W4.189** — a piece's grant, as {@link ThePieceATurnCarries.grant} spells it. */
-const grantOf = (
-  given: GivenFolder | null | undefined,
-): { readonly grant?: string; readonly outputFolder?: string } => ({
-  ...(given?.use === 'grant' ? { grant: given.folder } : {}),
-  ...(given?.output === true ? { outputFolder: given.folder } : {}),
-})
-
-/**
- * 🔴 **Whose words a turn is, and what it is about — computed once, for every door** (413).
- *
- * ## ⛔ One writer for all three keys, which is `406`'s rule widened rather than copied
- *
- * ⚠️ **`406` wrote `attribution` and `work` in one spread so neither could travel without the
- * other**, and then had to mark each producer by hand. ⛔ **`410` counted what hand-marking
- * missed** — *"1 unattributed turn on Codex, 2 on Claude"* — and only one of the two was the
- * producer `406` had named. ⚑ **So the marking stopped being per-producer.** Every path that
- * publishes a `user_turn` asks this function, and a producer added tomorrow is app-authored by
- * forgetting.
- *
- * ## ⚠️ `report` is not what decides the attribution any more, and that is a widening
- *
- * ⛔ **A report still forces the marking** — a turn carrying `work` and no `attribution` would
- * render as the person's own bubble with the facts attached, which is `406`'s stated hazard — but
- * it is no longer the only thing that does. ⚑ The first clause is a belt: no caller passes a
- * report from a window today, and if one ever does, the turn is marked rather than credited to
- * the person.
- *
- * ## 🔴 `relayedFrom` comes from the CALLER, except where BroBot is carrying for somebody else
- *
- * ⚠️ **`message_agent` is derived** — {@link sessionSpeakingAs} names the conversation whose model
- * wrote the words, so nothing at that call site has to remember. ⛔ **An `ask_question` delivery
- * passes it**, because there the caller is {@link THE_APP_ITSELF} and the conversation the words
- * belong to is the one that asked, which no property of the caller can name.
- *
- * ## 🔴 545 · and the IDENTITY behind that conversation, written in the same expression
- *
- * ⛔ **`HO-054` §3 reversed `413` §4's second half and left its first half standing**: *"a turn
- * attributed to the app is not a turn attributed to a named agent unless the ledger holds that
- * name"* — so the ledger holds the name. ⚑ **{@link identityOf} is a PARAMETER and not a default**,
- * for {@link handToProvider}'s `from` reason exactly: a producer that may omit the relayer is a
- * producer that will, and the symptom would be a row silently falling back to
- * `AN_UNNAMED_RELAYER` on a hop this app could have named. 🔴 `a-default-no-call-site-reaches`,
- * pointed the same way — the default that would be silent is the wrong one, so there is no
- * default.
- *
- * ⚠️ **Resolved HERE rather than in the renderer, because the renderer cannot.** {@link agentName}
- * takes an identity slug; {@link UserTurnEvent.relayedFrom} is a `sess_…` handle; and no surface
- * that draws a transcript holds a conversation-to-identity map — a relayer is routinely a
- * conversation this window has never opened. ⛔ **The one place that can
- * answer is the door.**
- *
- * ⚑ **The two keys cannot travel apart**, which is this function's whole reason one field over:
- * they are set in one expression, off one value, and the held rows carry the value whole (687).
- */
-export function whoseWordsTheseAre(
-  by: Caller,
-  /**
-   * ⛔ **How a conversation is turned into the identity behind it** (545) — `SessionStore.identityOf`'s
-   * `profileSlug`, or `null` when that conversation has no identity.
-   *
-   * ⚠️ **A function and not a store**, so this stays the pure expression `413` made it: the three
-   * host doors pass {@link RuntimeHost.profileOf} and the tests pass a map, and neither can reach
-   * anything else through it.
-   */
-  identityOf: (conversation: string) => string | null,
-  /**
-   * ⛔ **A `Pick`, and the keys it leaves out are the statement** (414). {@link TurnFacts.giving}
-   * and {@link TurnFacts.rebriefing} say what work a turn hands over and {@link TurnFacts.aboutPiece}
-   * what a message names; none says anything about whose words these are, and a signature that
-   * accepted them could be read as though it might.
-   */
-  facts: Pick<TurnFacts, 'report' | 'carriedFor' | 'appNotice' | 'answeredQuestion'> = {},
-  /**
-   * 🔴 **What the caller said these words are** (687 · `678` H1) — {@link UserTurnEvent.says}.
-   *
-   * ⛔ **Written only when the caller is an AGENT's conversation** — `sessionSpeakingAs(by)` — so
-   * what a window or {@link THE_APP_ITSELF} passes is inert. ⚑ A brief `give_work` sent passes none:
-   * it says what it is by the piece it names. ⚠️ **Not `wroteIt`**:
-   * a routed question is CARRIED for a child (`carriedFor`) and nobody declared it anything.
-   *
-   * ⚑ **A parameter and not a {@link TurnFacts} key**, because {@link RuntimeHost.queueMessage}
-   * already takes it as its own argument and a second place to state it would be a second
-   * spelling; only `queueAs` passes it, to both of its branches.
-   */
-  says?: AgentMessageKind,
-): TurnAuthorship {
-  const { report, carriedFor, appNotice, answeredQuestion } = facts
-  const wroteIt = carriedFor ?? sessionSpeakingAs(by) ?? undefined
-  // ⚑ **624 · a third subject in the same conjunction, and it is a BELT for {@link report}'s
-  // reason** — no caller passes a notice from a window today, and if one ever does the turn is
-  // marked rather than credited to the person. ⛔ **The dangerous default is the one that credits
-  // a person with words they never wrote** (413 §3), and this clause is where a fourth subject
-  // added tomorrow has to be named or a window's turn will swallow it.
-  if (
-    report === undefined &&
-    wroteIt === undefined &&
-    appNotice === undefined &&
-    aPersonTypedIt(by)
-  )
-    return { humanInitiated: true }
-  // ⚑ **545 · asked only when there IS a relayer**, so a person's turn and a go-ahead cost no
-  // ledger read at all — {@link RuntimeHost.originOf}'s own rule one method over. ⛔ **`?? undefined`
-  // and never `?? ''`**: an identity this app cannot name is the ABSENCE of the key, which is what
-  // the renderer's fallback is keyed on, and an empty string would be a name nobody can read.
-  const named = wroteIt === undefined ? undefined : (identityOf(wroteIt) ?? undefined)
-  return {
-    attribution: 'app_authored',
-    ...(report === undefined ? {} : { work: report }),
-    ...(wroteIt === undefined ? {} : { relayedFrom: wroteIt }),
-    ...(named === undefined ? {} : { relayedFromProfile: named }),
-    // ⚑ **624 · the fifth key, in the same one spread** — see {@link TurnFacts.appNotice}. ⛔
-    // Spread and never assigned, so a turn that is not a notice carries no such key at all and
-    // the absence goes on meaning *the plan go-ahead*, which is what every app-authored row in
-    // every ledger written before `624` is.
-    ...(appNotice === undefined ? {} : { appNotice }),
-    ...(answeredQuestion === undefined ? {} : { answeredQuestion }),
-    // ⚑ **687 · the sixth key, and the only one a CALLER declares** — see the parameter. ⛔ Asked of
-    // `by` and never of `wroteIt`, so a question BroBot carries for a child says nothing.
-    ...(says === undefined || sessionSpeakingAs(by) === null ? {} : { says }),
-  }
-}
-
-/**
- * ⚠️ **How a refusal spells an owner that is not there** (336, and 074's rule about a third state).
- *
- * Interpolating `null` gives *"held for null"*, which reads as a bug in the sentence rather than as
- * a fact about the session. The two states are told apart because they are different: a session held
- * for a window that is not you, and a session held for nobody, are refused for different reasons and
- * a person acts differently on each.
- */
-/**
- * ⚑ **D-017 · R3 — who sent a held message, read back off its authorship** —
- * {@link whoseWordsTheseAre} the other way: a person's words carry none, an agent's carry the kind it
- * declared beside the conversation that wrote them, and this app's own words have no sender line.
- * ⚑ **D-016 · a brief or a new brief declares no kind and names its piece**: its giver wrote it, so
- * it keeps its sender line across a quit.
- */
-function theSenderItsAuthorshipNames(
-  authorship: TurnAuthorship,
-  /** ⚑ Whether the held message delivers a piece — a brief, or a new brief. */
-  carriesAPiece: boolean,
-  aPersonIsAt: (conversation: string) => boolean,
-): TurnOrigin | null {
-  if (authorship.attribution === undefined) return THE_PERSON_AT_A_WINDOW
-  if (authorship.relayedFrom === undefined) return null
-  if (authorship.says === undefined && !carriesAPiece) return null
-  return {
-    who: 'a-caller-with-an-id',
-    caller: authorship.relayedFrom,
-    profile: authorship.relayedFromProfile ?? null,
-    aPersonIsBehindIt: aPersonIsAt(authorship.relayedFrom),
-  }
-}
-
-/** ⚑ **F074 — a held message a person wrote**: its origin says so ({@link TurnOrigin}). */
-function aPersonsOwn(queued: QueuedMessage): boolean {
-  return queued.origin?.who === 'a-person'
-}
-
-/** Why held words are ended unsent once the piece they carried, or reached through, has ended. */
-const ITS_PIECE_HAD_ENDED = {
-  reason: 'abandoned',
-  detail: 'the piece it carried had already ended',
-} as const
-
-function ownerName(ownerId: string | null): string {
-  // ⚠️ **652 · "no surface asked for it", which is true of both doors.** It read *"it was created
-  // without a surface"*, which was exact while `createSession` was the only door that reserved
-  // under nobody — and is false of a reopen with no sink, which reserves the same way.
-  return ownerId ?? 'nobody — no surface asked for it'
-}
-
-/**
- * `own`, whose notes also reach `answer`: a read that decides from what it alone could not read,
- * and is part of an answer that says how much it could not read.
- */
-function notedInBoth(own: RowsUnread, answer: RowsUnread): RowsUnread {
-  return {
-    in: (sessionId) => {
-      const mine = own.in(sessionId)
-      const theirs = answer.in(sessionId)
-      return (ordinal) => {
-        mine(ordinal)
-        theirs(ordinal)
-      }
-    },
-    get count() {
-      return own.count
-    },
-    get ledgersSkipped() {
-      return own.ledgersSkipped
-    },
-  }
-}
-
-/**
- * Why the worker did not serve a window read: every caller permit was held; the writer moved under
- * both tries, or could not be sampled; the worker's read failed; the worker is gone; or it needs
- * a restart. The failed read is reported to its caller.
- */
-type WindowReadMiss =
-  | 'callers-full'
-  | 'writer-moved'
-  | 'writer-unsampled'
-  | 'worker-read-failed'
-  | 'worker-busy'
-  | 'worker-gone'
-  | 'worker-needs-restart'
-
-/** A window read the worker did not serve, and why; any other refusal stands. */
-class WindowReadMissed extends WindowReadUnavailable {
-  constructor(
-    readonly missed: WindowReadMiss,
-    cause?: string,
-  ) {
-    super(missed === 'worker-needs-restart' ? 'restart' : 'unavailable', undefined, cause)
-  }
-}
-
-/**
- * What a failed wait for the worker says: a miss, or the error itself when it is no refusal.
- * ⛔ A caller's own abort is no miss: it stands.
- */
-function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): unknown {
-  if (signal?.aborted === true || !(error instanceof WindowReadUnavailable)) return error
-  if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart', error.message)
-  if (error.why === 'busy') return new WindowReadMissed('worker-busy', error.message)
-  return new WindowReadMissed(
-    error.why === 'failed' ? 'worker-read-failed' : 'worker-gone',
-    error.message,
-  )
-}
-
-/**
- * How long a failed read is remembered
- * before the worker is asked again at the same writer stamp: doubled after each further failure
- * there, up to the most. A write that moves the stamp asks again at once.
- */
-const A_FAILED_WINDOW_READ_WAITS_MS = 1_000
-
-const A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS = 30_000
-/**
- * The worker's misses remembered at a stamp: a read that failed there. A busy worker is asked
- * again by the next caller, and a gone one is its lifetime's to restart.
- */
-const REMEMBERED_WINDOW_READ_MISSES: ReadonlySet<WindowReadMiss> = new Set<WindowReadMiss>([
-  'worker-read-failed',
-])
-
-/** Each slice filling question copies visits at most this many ledger rows, starting at `first`. */
-const COPY_SLICE_ROWS = { first: 200, least: 50, most: 2000 } as const
-/** And stops once it has visited this many payload bytes; the row that crosses it is its last. */
-const COPY_SLICE_BYTES = 256 * 1024
-/** What a slice aims to take; the row bound halves or doubles toward it. Not a preemption. */
-const COPY_SLICE_TARGET_MS = 4
-const COPY_BUSY_WAIT_MS = { least: 10, most: 1000 } as const
-const SAY_COPY_PROGRESS_EVERY_MS = 60_000
-
-/** The page a start nobody hands on carries: nothing, and everything before `next` still to read. */
-function noPageBefore(next: number): HistoryWindow {
-  return { entries: [], from: next, hasOlder: next > 0, turnAligned: true }
-}
-
-/**
- * 🔴 **Where a session's events go when nothing is listening** (336 §2).
- *
- * ⛔ **It is a discard, not an owner.** {@link SessionSlot.ownerId} carries `null` for these
- * sessions and every gate reads the SLOT, so nothing consults this object's identity; the field
- * exists because {@link RuntimeEventSink} declares it, and the value is the one string no
- * `sinkOwnerId` can mint — see `ipc.ts`, which prefixes every real one with `webContents:`.
- *
- * ⚠️ **Never hand it to {@link RuntimeHost.claimSession} as the claimer.** It satisfies the type, and
- * a claim made with it would set `ownerId` to the string above — an owner no window can present and
- * {@link mayClaim} will never see as free again, so the conversation would be stranded exactly the
- * way 182 H5 stranded one. The only caller of the claim path is the IPC boundary, which always has a
- * window's own sink; this is written down because the type cannot say it.
- *
- * ⚑ **The mechanism this app already had, and it is 320's split.** *"The ordinal is taken and the
- * row written whether or not anyone is listening"* — `deliver` and {@link emitOurs} both append
- * first and then return early on a dead sink. So a session with no surface records its entire
- * conversation and delivers none of it, on exactly the path a session whose window was closed
- * already takes. ⚠️ **Nothing new carries these events; the claim replays them out of the ledger**,
- * which is what 303 measured as lossless.
- *
- * ⛔ **`alive: false` is the honest declaration, not the load-bearing part — measured.** Flipping it
- * to `true` changes no observable behaviour, because `send` and `sendLiveness` below are no-ops: the
- * events would be handed to a function that drops them instead of being kept from a function that
- * would. ⚠️ **So there is no mutation row for that field**, and this paragraph is why — a row on it
- * would record as a survivor and mean nothing (074's rule about a guard that is deliberately
- * uncovered). What it buys is that every `if (!sink.alive) return` in this class takes the branch it
- * already takes for a window that has gone, so no existing line had to learn about a new state.
- *
- * ## 🔴 The sentence above is TRUE and it was read one word too wide (396 §1, from `395` §6)
- *
- * ⛔ **It is true of every line that DELIVERS TO A SURFACE, and `deliver` had one line under that
- * gate that delivers to nothing of the kind** — {@link RuntimeHost.flushQueued}, which hands work to
- * a PROVIDER. ⚠️ So *"no existing line had to learn about a new state"* was a claim about the lines
- * as they were classified, and one of them was classified wrong: a message queued to a busy child
- * nobody was watching was never sent, on exactly the conversations a mailbox exists for.
- *
- * ⚑ **The gate is now a BLOCK rather than a `return`**, so what is conditional on attention is
- * conditional by decision rather than by position, and a line added below it does not silently
- * inherit the branch. ⛔ **The rule this leaves is the one to read the paragraph above by:**
- * *`sink.alive` answers "is anyone looking?", and a gate about attention decides nothing about
- * whether work happens.*
- */
-const NO_SURFACE: RuntimeEventSink = {
-  ownerId: 'no surface asked for this session',
-  // ⛔ **`false`, because there is no surface at all here** (349) — the same sentence
-  // {@link THE_APP_ITSELF} is refused at the answer door for: *nobody* is behind it.
-  //
-  // ⚠️ **And, like `alive` above, no gate reads THIS object's copy.** The three places that record
-  // an owner's personhood — {@link RuntimeHost.createSession}'s reservation,
-  // {@link RuntimeHost.resumeSession}'s, and {@link RuntimeHost.attachHeldSession}'s claim — read
-  // the CALLER's sink or answer `false` for the absence of one; this constant is only ever
-  // installed as a session's sink after the fact, and nothing asks it this question.
-  //
-  // ⛔ **A mutation row on it is still red, and NOT because a gate reads it.** `349`'s census
-  // asserts that exactly one thing under `src/main` declares a person, so flipping this to `true`
-  // is caught as a second declaration rather than as a wrong answer — the belt catching what the
-  // braces cannot. See `M21`.
-  aPersonIsBehindIt: false,
-  alive: false,
-  send() {},
-  sendLiveness() {},
-}
-
-/**
- * The session id {@link RuntimeHost.checkCwd} passes, because `resolveCwd` takes one and there is no
- * session (203). It is never used: the only branch that reads the id is the blank-path one, which
- * `checkCwd` short-circuits before it gets here. Named rather than `''` so a stub that echoes its
- * arguments produces something a reader can place.
- */
-const CHECKING_A_FOLDER = 'checking-a-folder'
-
-/**
- * ⚑ **The turn gate's refusal of a Claude conversation holding a sign-in the machine has moved on
- * from** ({@link RuntimeHost.assertSignInCurrent}) — a class, so a delivery can tell it from every
- * other refusal and be held for a reopen instead ({@link RuntimeHost.reopenForWhatWaits}).
- */
-class ItsSignInMovedOn extends Error {}
-
-/**
- * A server to be registered could not be asked what it offers, so nothing was registered. A class,
- * so a person's approval of an agent's request can keep the request open to be approved again.
- */
-class ServerNotReached extends Error {
-  constructor(url: string, cause: unknown) {
-    const kind = cause instanceof ExternalMcpDiscoveryError ? cause.kind : 'unreadable'
-    const status = cause instanceof ExternalMcpDiscoveryError ? cause.status : null
-    const words =
-      kind === 'unreachable'
-        ? `Couldn't reach the server at ${url}. Check that it's running and try again.`
-        : kind === 'timeout'
-          ? `The server at ${url} didn't answer in time. Nothing was registered.`
-          : kind === 'refused'
-            ? `The server at ${url} refused the MCP check${status === null ? '' : ` (HTTP ${status})`}. Nothing was registered.`
-            : `Couldn't read the server's MCP reply at ${url}. Nothing was registered.`
-    super(words)
-  }
-}
-
-/**
- * One server's address as a key, so two spellings of one address compare equal: every loopback
- * host as one, the default port filled in, and no fragment. As stored when it is not a URL.
- */
-function theAddressOf(url: string): string {
-  try {
-    const at = new URL(url.trim())
-    const host =
-      at.hostname === 'localhost' || at.hostname === '[::1]' || /^127\./u.test(at.hostname)
-        ? 'loopback'
-        : at.hostname
-    const port = at.port !== '' ? at.port : at.protocol === 'https:' ? '443' : '80'
-    return `${at.protocol}//${host}:${port}${at.pathname}${at.search}`
-  } catch {
-    return url
-  }
-}
-
-/** Inside an approval's transaction: the asking conversation is starting, so it is rolled back. */
-class ItsAskerIsStarting extends Error {}
-
-/** What an approval's one transaction came to ({@link RuntimeHost.commitAnApproval}). */
-type ApprovalCommitted =
-  | { readonly is: 'gone' }
-  | { readonly is: 'starting' }
-  | { readonly is: 'taken'; readonly why: string }
-  | { readonly is: 'superseded' }
-  | {
-      readonly is: 'approved'
-      readonly row: ExternalMcpServerRow
-      readonly granted: readonly string[] | null
-      readonly notGiven: readonly string[]
-    }
-
-/**
- * What settling one request came to ({@link RuntimeHost.settleNow}): the ending written, and
- * whether its asker's words were kept.
- */
-type RequestSettled =
-  | { readonly is: 'settled'; readonly as: McpServerRequestEnding; readonly told: boolean }
-  | { readonly is: 'gone' }
-  | { readonly is: 'starting' }
-
-/** How long a decision waits, at most, for a start of the asking conversation already under way. */
-const A_DECISION_WAITS_FOR_A_START_MS = 5_000
-
-/** How many starts in a row a piece's ending waits out, at most, for the copies it ends. */
-const AN_ENDING_WAITS_OUT_STARTS = 3
-
-/** The open copies passed up of questions about a piece, each with the conversation holding it. */
-type PassedUpCopies = readonly { readonly passer: string; readonly requestId: string }[]
-
-/** A press on a request that has already ended. */
-const ANSWERED_FIRST: AnswerAck = {
-  outcome: 'refused',
-  reason: 'somebody answered that request first',
-  stillOpen: false,
-}
-
-/** A press while the asking conversation is still starting: nothing was written. */
-const ITS_ASKER_IS_STARTING: AnswerAck = {
-  outcome: 'refused',
-  reason:
-    'the conversation that asked is starting right now, so nothing was decided. Press it again in a moment.',
-  stillOpen: true,
-}
-
-/** Added to a press's answer when the asking conversation could not be told. */
-const THE_ASKER_WAS_NOT_TOLD = 'BroCrew could not tell the conversation that asked.'
-
-/** A press's answer when the person registered the request's name themselves meanwhile. */
-function takenDownSays(name: string): AnswerAck {
-  return {
-    outcome: 'refused',
-    reason: `A server called “${name}” is already registered, so this request was taken down instead.`,
-    stillOpen: false,
-  }
-}
-
-/**
- * The actor of a registration made at the person's Add form: that door is behind `requireAPerson`
- * on the window wire.
- */
-const A_PERSON_DID_IT: ActedBy = { who: 'a-person' }
-
-/** What a conversation's words say, as this app's notice, when a request of its was decided. */
-const TOLD_ABOUT_A_SERVER_REQUEST = { appNotice: 'an-mcp-server-request-decided' } as const
-
-/** The words for a conversation reopened so an MCP server a person approved reaches it. */
-interface ItsToolsMoved {
-  /** When it is reopened for the server. */
-  readonly reopened: string
-  /** When background work or planning a reopen would end keeps it from being reopened now. */
-  readonly notReopened: (because: 'its-background-work' | 'its-planning') => string
-}
-
-/**
- * ⚑ **What a reopen on the current sign-in waits for** ({@link RuntimeHost.whatAReopenWaitsFor}) —
- * each a state in which reopening would lose something: a turn or a start of one, a card a person
- * answers, work running in the background, or planning.
- */
-type WhatAReopenWaitsFor = 'its-turn' | 'a-person' | 'its-background-work' | 'its-planning'
-
-/**
- * ⚑ **How soon after a reopen on the current sign-in a moved sign-in means the reopen did not help**
- * — the loop guard's window ({@link HostedSession.reopenedForWhatWaited}). ⚑ A Claude access token
- * lives 8 hours, so a renewal inside ten minutes of a launch is no renewal: the launch's credential
- * and the machine's are being read differently, and reopening again would loop. ⚠️ Past it, at most
- * one reopen per conversation per window, with something held each time.
- */
-const REOPEN_LOOP_GUARD_MS = 10 * 60_000
-
-/**
- * ⚑ **Why words held for a conversation wait for its reopen, in an agent's words** — after
- * {@link theSignInChanged} ({@link RuntimeHost.whyItWaitsForItsSignIn}). ⚑ `nothing`: the reopen
- * is under way. ⚑ `reopens` says when it is reopened, `then` when what is held goes in with no usage
- * limit in the way, and `sooner` what a person can do first.
- *
- * 🔴 **W4.172 · F095 — at a usage limit, `then` is left out, never added to** (W1 read *"goes in as
- * it starts"* on words that waited for a limit): the reopen is the same, and what is held then waits
- * for the limit in the reopened conversation ({@link RuntimeHost.whyItWaitsForItsSignIn}).
- */
-const A_REOPEN_WAITS_FOR: Readonly<
-  Record<
-    WhatAReopenWaitsFor | 'nothing' | 'a-person-to-reopen-it',
-    { readonly reopens: string; readonly then?: string; readonly sooner?: string }
-  >
-> = {
-  nothing: {
-    reopens: 'This app is reopening it on the current one',
-    then: ', and what is held for it goes in as it starts',
-  },
-  // ⚑ **W4.172** — for the loop guard's window only ({@link RuntimeHost.itsReopenDidNotHelp}):
-  // past it, this app may reopen it again, so the words say how long a person is the only way.
-  'a-person-to-reopen-it': {
-    reopens: `This app reopened it on the current one moments ago, and it read as moved on again before it ever read as current, so this app does not reopen it again within ${String(REOPEN_LOOP_GUARD_MS / 60_000)} minutes of that reopen; until then, what is held for it waits for a person to reopen it`,
-  },
-  'its-turn': {
-    reopens: 'This app reopens it on the current one once its turn ends',
-    then: ', and what is held for it goes in then',
-    sooner: 'A person can stop that turn and reopen it sooner.',
-  },
-  'a-person': {
-    reopens:
-      'This app reopens it on the current one once the question or permission it is waiting on is answered',
-    then: ', and what is held for it goes in then',
-  },
-  'its-background-work': {
-    reopens:
-      'This app reopens it on the current one once the work it runs in the background has finished, since a reopen would stop that work',
-    then: '; what is held for it goes in then',
-    sooner: 'A person can reopen it sooner.',
-  },
-  'its-planning': {
-    reopens:
-      'This app reopens it on the current one once a person ends its planning, since a reopen would end that',
-    then: '; what is held for it goes in then',
-    sooner: 'A person can reopen it sooner.',
-  },
-}
-
-/** How much of a request's own words an agent is told: one line, the card holds the rest. */
-const ASKS_SAID_CHARS = 80
-
-/** ⚑ The first sentence of every {@link A_REOPEN_WAITS_FOR}. */
-const theSignInChanged = (provider: Provider): string =>
-  `Its ${PROVIDER_NAME[provider]} sign-in changed after it started.`
-
-/**
- * ⚑ **How often the agents' processes may be measured, at most** — the Providers screen asks while
- * it is open, and an ask inside this is answered with the last measurement
- * ({@link RuntimeHost.providerResources}). ⚑ One process listing each time, and none while nobody
- * asks.
- */
-const RESOURCE_SAMPLE_MS = 5_000
-
-/** The sender and files of a message recorded before the recipient starts. */
-interface WordsForTheNextStart {
-  readonly by: Caller
-  /** What the caller said they are; absent for a new brief, which names its piece. */
-  readonly says?: AgentMessageKind
-  readonly attachments: readonly HandedPath[]
-  /** A new brief: the piece it names again, which its next start's flush reads the brief of. */
-  readonly rebriefs?: { readonly piece: string; readonly label: string }
-}
-
-type RecordedProviderFailure = Exclude<ProviderFailureEpisode, string>
-
-interface ProviderFailureRecipient {
-  readonly pieces: Map<string, string>
-  readonly questions: Set<string>
-}
-
-/** A service's turn working on a piece: the life it runs in, and how many of its turns had ended. */
-interface TheTurnOnAPiece {
-  readonly life: HostedSession
-  readonly turnsEnded: number
-}
-
-/**
- * Whose a turn is, as the words handed over for it say: whether a person wrote any of them, and
- * every piece they name ({@link thePiecesTheTurnNames}).
- */
-interface WhoseTurnItIs {
-  readonly aPersons: boolean
-  readonly names: readonly string[]
-}
-
-interface ProviderHandover {
-  readonly accepted: Promise<void>
-  noteInputRecorded?(): void
-}
-
-/**
- * App notices that never start a turn of their own: each is recorded at once and rides the
- * conversation's next ordinary input (§8: who ended, stopped or compacted its work, and why).
- */
-const NOTICES_FOR_ITS_NEXT_INPUT: ReadonlySet<AppNotice> = new Set<AppNotice>([
-  'a-conversation-was-compacted',
-  'a-queued-message-was-cancelled',
-  'a-piece-closed',
-  'a-piece-a-person-closed',
-  'a-piece-taken-back',
-  'a-piece-a-person-took-back',
-  'a-piece-it-gave-closed',
-  'a-piece-it-gave-a-person-closed',
-  'a-piece-it-gave-taken-back',
-  'a-piece-it-gave-a-person-took-back',
-])
-
-function isANoticeForItsNextInput(message: Pick<QueuedMessage, 'authorship'>): boolean {
-  const notice = message.authorship.appNotice
-  return notice !== undefined && NOTICES_FOR_ITS_NEXT_INPUT.has(notice)
-}
-
-/**
- * Whether held words drive a turn of their own. A notice for the next input does not, and neither
- * does a new brief: it waits in the mailbox and goes with the next ordinary input.
- */
-function isRunnableHeldMessage(message: Pick<QueuedMessage, 'authorship' | 'rebrief'>): boolean {
-  return !isANoticeForItsNextInput(message) && message.rebrief !== true
-}
-
-/** Whether anything held in its mailbox would drive a turn. */
-function somethingRunnableIsHeld(session: Pick<HostedSession, 'mailbox'>): boolean {
-  return session.mailbox.some(isRunnableHeldMessage)
-}
-
-/** A work-wait reminder can carry held notices that do not require ordinary input. */
-function noticesThatRideThisInput(
-  held: readonly QueuedMessage[],
-  inputs: readonly Pick<QueuedMessage['authorship'], 'appNotice'>[],
-): QueuedMessage[] {
-  if (inputs.some((input) => input.appNotice === undefined)) return held.slice()
-  if (!inputs.some((input) => input.appNotice === 'a-work-wait-needs-attention')) return []
-  return held.filter((notice) => notice.authorship.appNotice !== 'a-queued-message-was-cancelled')
-}
-
-/** Who a compaction a person asked for says it came from: nobody is told. */
-const A_PERSON_ASKED = 'a-person'
-
-/** The reason a notice says when its sender gave none. */
-const NO_REASON_GIVEN = 'no reason given'
-
-/** The reason slot of a notice: the reason given, or {@link NO_REASON_GIVEN}. */
-function reasonSaid(reason: string | undefined): string {
-  const given = aReasonGiven(reason)
-  return given === null ? `Reason: ${NO_REASON_GIVEN}.` : `Reason: ${given}`
-}
-
-/** A reason as given, or `null` for none or only blanks. */
-function aReasonGiven(reason: string | undefined): string | null {
-  const trimmed = reason?.trim()
-  return trimmed === undefined || trimmed === '' ? null : trimmed
-}
-
-interface HostedSession {
-  readonly workAncestry: WorkAncestryRead
-  workAncestryAfter: number
-  ancestrySeed?: {
-    from: number
-    through: number
-    context: ReturnType<SessionStore['ancestryContext']>
-  }
-  readonly currentProviderLimits: () => ProviderLimitDisclosure
-  readonly id: string
-  readonly provider: Provider
-  /**
-   * 🔴 **W4.189 · the grants its open pieces hold, as last read** ({@link RuntimeHost.grantsOf}) —
-   * `undefined` until read, and again once a row that gives or ends one of its pieces is written
-   * ({@link GRANTS_MAY_MOVE}). ⚑ What a window is shown; ⛔ never what a turn carries, which is read
-   * afresh at its handover ({@link RuntimeHost.theWorkFoldersFor}).
-   */
-  grants?: readonly HeldGrant[]
-  /**
-   * **What this session was launched with** (158) — recorded here because it is a fact about the
-   * LAUNCH, not about the files as they are now.
-   *
-   * ⚠️ Read once, at start or at resume, and never refreshed. Re-reading it for a disclosure would
-   * show today's `CLAUDE.md` beside a conversation the model is having with the one it was given,
-   * which is the same lie in the other direction. The provider's own half is not stored: it comes
-   * off the handle at disclosure time, where it is always current.
-   */
-  readonly instructions: SessionInstructions
-  readonly builtInSkills?: PreparedBuiltInSkills
-  readonly cwd: string
-  readonly providerHome: string
-  /**
-   * ⚑ **The identity this session is RUNNING as** (341) — the profile slug, resolved once at launch
-   * and never re-derived.
-   *
-   * ⚠️ **Not parsed back out of {@link providerHome}.** The path is built FROM this, and a reader
-   * that took it apart again would be a second answer to *"which profile"* — free to disagree the
-   * day the derivation changes, which is 149's shape.
-   */
-  readonly profileId: string
-  /**
-   * What this session was CREATED with (078). Kept only as provenance: since 034 the user can
-   * change the mode mid-conversation, so the live answer is `handle.approval` and this field must
-   * never be used to describe what the session is doing now.
-   */
-  readonly createdApprovalMode: 'ask' | 'auto'
-  /** The last agent descriptor pushed, so a reroute publishes once and a repeat does not (081). */
-  lastAgentInfo: string
-  /** ⚑ **D-042 · R5** — the last report kept on its row (`recordWhatItReportsRunning`). */
-  lastReported: string
-  /**
-   * ⚑ **D-042 · R5 — what its row held as last reported when this life began**, or `null` — what
-   * the open conversation's settings say until the provider speaks in this life
-   * (`settingsDisclosure`), as the rail and its card already say it.
-   */
-  readonly reportedBefore: ReportedModel | null
-  /** The same dedupe for the approval disclosure, which moves when a turn adopts a change (034). */
-  lastDisclosures: string
-  /**
-   * 🔴 **740 · R99 (`736` F-8) — the plan phase the LEDGER holds for this life**: planning (`true`)
-   * or not. Seeded from the handle at registration, which the launch built from the row (a start's
-   * `planMode`, a resume's `plan_mode`/`plan_ended_at` pair), and moved only by the doors that write
-   * the row — {@link RuntimeHost.recordPlanPhase} and the two a person's plan control goes through.
-   * ⚑ It is what {@link RuntimeHost.recordPlanPhase} compares the handle against, so a plan the
-   * ADAPTER settles with no card — the model's own `EnterPlanMode` — is written down once.
-   */
-  planAsRecorded: boolean
-  readonly handle: SessionHandle
-  /**
-   * The launch that produced this session's provider, still owned (070).
-   *
-   * ⚠️ **Not finished when the handle arrives.** A launch owns the PROCESS, and the process is alive
-   * for exactly as long as the session is — so it is given back in {@link RuntimeHost.runFinalize},
-   * with the termination promise, and not a moment earlier. Registering used to be treated as the
-   * end of the launch, which is how a stop that timed out could free the id for a resume while the
-   * first provider was still running (068 finding 2).
-   */
-  readonly launch: Launch
-  /**
-   * Where this session's events go — **no longer `readonly`** (100).
-   *
-   * It was bound once in {@link RuntimeHost.register} and never reassigned, which was correct while
-   * a session could only ever be handed to the surface that started it. Attaching a live session
-   * back to a surface that lost it ({@link RuntimeHost.attachHeldSession}) is the same session
-   * meeting a new sink, and the sink that asked is the one that should be written to.
-   *
-   * ⚠️ **Every reader must go through `session.sink`, not through a captured local.** The liveness
-   * callback below used to close over `register`'s `sink` argument, so a rebind here would have
-   * moved the events and left the liveness line publishing to the sink that no longer wanted it —
-   * silent, and visible only as a header that stopped updating.
-   */
-  sink: RuntimeEventSink
-  /**
-   * The provider stop, UNBOUNDED — the fact, as opposed to {@link stopping}, which is how long we
-   * were prepared to wait for it (070). Null until the first stop begins.
-   *
-   * The pair is the point: a quit must not hang on one wedged adapter, and it also must not conclude
-   * from its own impatience that the process is gone. `stopping` releases the waiter; this releases
-   * the ownership.
-   *
-   * ⛔ **And until 233 this field did not hold what this comment says, for Claude** (229 H1). The
-   * promise assigned here was `handle.close()`, whose Claude implementation awaits
-   * `withTimeout(query.return(), 5 s)` over an SDK `performCleanup()` that itself races
-   * `transport.waitForExit()` against 2 000 ms — every layer of which always resolves. So the fact
-   * and the bound were **one promise**, and this comment's own distinction had no code behind it:
-   * `runFinalize` read timely settlement as *stopped*, 222's
-   * `stopped ? 'ended' : 'unknown'` could never reach `unknown`, `launches.finish` freed the id and
-   * `closeAll()` had nothing to warn about — while the SDK's transport had SIGTERM scheduled 2 s out
-   * and SIGKILL 5 s after that, both `unref`'d. A reopen in that window starts a second writer
-   * against a live process.
-   *
-   * ⚑ **What is assigned now is `Promise.all([the teardown, the process exit])`**, where the second
-   * is {@link SessionHandle.awaitProcessExit} — a promise that settles only on a kernel-delivered
-   * `'exit'` for a child this app spawned, or never. Both halves, because {@link Launch.settled}
-   * promises *"this launch is over AND everything it created is confirmed down"*, and the teardown
-   * is the first half of that sentence.
-   *
-   * ⚠️ **An adapter with no such fact still assigns the teardown alone** — the pre-233 behaviour,
-   * kept deliberately rather than upgraded by assumption. It is weaker, and it is supposed to look
-   * weaker; see {@link RuntimeHost.doStopProvider}.
-   */
-  terminated: Promise<void> | null
-  /** Per-session sequence number stamped on every forwarded event. */
-  ordinal: number
-  /**
-   * 🔴 **The ordinal this LIFE began at, when it follows an earlier one in this ledger** (653) —
-   * `null` for a conversation whose first life this is.
-   *
-   * ⛔ **{@link ordinal} starts here and then MOVES, which is why this field exists.** A reopen
-   * seeds the counter with `nextOrdinal` and the first event of the new life takes it, so by the
-   * time anybody hands the conversation over the start is gone. ⚑ A hand-over whose window reaches
-   * back past this point is showing two lives, and the renderer can only tell where one ends and
-   * the other begins if it is told. ⚠️ Until `673` the ledger wrote no row at the seam
-   * (`closeOpenTurn` and `reopenTx` touch columns, and Claude's own `session: resumed` waits for
-   * the first turn); since then the host's `reopened` is the first row of every reopened life, AT
-   * this ordinal. ⚑ The field still carries the seam — a renderer that looked for the row would be
-   * a second answer to one question, and `653` crosses the number.
-   *
-   * ⚠️ **Fixed at {@link RuntimeHost.register} and never written again**, like the slot's birth
-   * facts: a life does not move its own start.
-   */
-  readonly liveFrom: number | null
-  /**
-   * ⚑ **When this life began, epoch ms** — its slot's reservation ({@link HostedSession.launch}'s
-   * moment): the sign-in it holds is the Mac's of then. ⚑ So a life that began before this app last
-   * saw its provider's sign-in change reports that same change, not a new one
-   * ({@link RuntimeHost.aSignInChanged}).
-   */
-  readonly lifeSince: number
-  /** Resolves when the event stream has ended. See {@link RuntimeHost.finalize} for what follows. */
-  pump: Promise<void>
-  /** The single teardown every concurrent closer joins; null until the first one starts. */
-  closing: Promise<void> | null
-  /**
-   * The single provider stop every path joins — the host's own, not the adapter's (051). Resolves
-   * to whether it stopped within the bound.
-   */
-  stopping: Promise<boolean> | null
-  /** The single finalization every path joins; null until the first one starts (051). */
-  finalizing: Promise<void> | null
-  /**
-   * ⚠️ **Set once a fenced pump has dropped something** (293 §3) — so the fact reaches a log and a
-   * stuck iterator still yielding into a finalized life does not produce one warning per event. It
-   * is a diagnostic and nothing reads it: see {@link RuntimeHost.isCurrentLife} for the fence.
-   */
-  staleEventReported: boolean
-  /**
-   * 🔴 **708 · the commands this life's provider answers to, as it last said — or `null`** (`R42`).
-   *
-   * ⚑ **Written by the provider, never by this app**: the `provider_commands` level {@link
-   * RuntimeHost.deliver} sees, which REPLACES (`279`), or the answer to {@link
-   * RuntimeHost.theCommandsItAnswersTo}'s ask. ⛔ **Per LIFE, because a `HostedSession` is one**: a
-   * reopened conversation is a new child, which publishes its own list, and a list the last child
-   * published says nothing about what this one will run.
-   *
-   * ⚠️ **`null` is *"nobody has told us"*, never *"no commands"*** — the palette's own distinction
-   * (`provider-commands.ts`). {@link RuntimeHost.handToProvider} reads `null` as `R42`'s
-   * *"the list cannot be had"*.
-   */
-  commands: ProviderCommandAnswer | null
-  /**
-   * ⚑ **708 · the ask for {@link commands} this life has in flight, or `null`** — see
-   * `RuntimeHost.theCommandsItAnswersTo`. Kept after a success; forgotten after a failure.
-   */
-  askingForCommands: Promise<ProviderCommandAnswer> | null
-  /**
-   * 🔴 **D-024 · R1 — what this life's first turn carries in front of its words, until a turn has**
-   * — or `null`: nothing is owed, or it went. ⚑ **On Codex, this conversation's own text**
-   * (`SessionLaunchRead.firstTurnLead`): a Codex thread keeps the developer text it STARTED with —
-   * a resume's never reaches the model — and a mode switch overrides that, so the conversation's
-   * own facts ride the first message of every life, where neither reaches them. ⛔ **Per LIFE**, {@link commands}' reason: each launch composes its
-   * own, as it stood then. ⚑ Taken by {@link RuntimeHost.withWhatThisLifeOwes}, at the first turn
-   * {@link RuntimeHost.handToProvider} hands over as words — every caller's turn and every held
-   * message. ⚠️ A person's command (`R42`) and a go-ahead sent straight (BroBot's own sentence,
-   * 414) go without it and leave it owed to the next.
-   *
-   * 🔴 **D-039 · owed AGAIN where the model may no longer hold it** ({@link lifeLead}): after a
-   * compaction, which rewrites the history it rode in, and after a turn this app ended as `failed`
-   * (`wordOf: 'this-app'`: its provider never began it, or died under it) — see
-   * `RuntimeHost.deliver`. ⚑ On Codex the tools' instructions ride it alone — its catalogue cannot
-   * hold them — so a life that lost it would run on without them. ⚠️ A send the adapter refuses
-   * before it begins a turn still takes it unless the adapter proves top-level StoppedBeforeSend;
-   * that exact handover restores its consumed lead through sendOrdinaryInput.
-   */
-  firstTurnLead: string | null
-  explicitCompaction?: CompactionRequest
-  compactionWhenIdle?: CompactionRequest
-  /** Notices that ride its next ordinary input instead of driving their own turn. */
-  readonly noticesForItsNextInput: QueuedMessage[]
-  /**
-   * ⚑ **W4.179 — what {@link firstTurnLead} is**: the whole of this conversation's text, or only the
-   * sections that changed since its Codex thread got it (`codex-lead.ts`).
-   */
-  firstTurnLeadIs: LeadInFront['is']
-
-  leadJustHandedOver: LeadInFront | null
-
-  readonly lifeLead: string | null
-
-  readonly launchGave: WhatALaunchGave | null
-  readonly promptStart?: KeptPromptStart
-
-  wordsJustHandedOver: string | null
-  /**
-   * ⚑ **F093 · R2 — whose words {@link wordsJustHandedOver} framed**: the words of each message the
-   * last hand-over carried, so a turn's row takes that text only when its own words are exactly these.
-   */
-  wordsItWasHandedFor: readonly string[]
-  /** ⚑ **F093 · how full its context is: the latest `context_reading` of this life**, or `null`. */
-  latestContext: ContextReading | null
-  /**
-   * 🔴 **Where this session's asked-for memory notes land, or `null` when nothing is watched** (318).
-   *
-   * ⚠️ **Derived once, at registration**, because it cannot change: the provider home is fixed at
-   * launch and the layout is a constant of the provider. `null` is the ordinary state for a provider
-   * that reports its own memory writes — see `memory-notes.ts` for why that is a ruling.
-   */
-  readonly memoryNoteDir: string | null
-  /**
-   * The note names in that store as of the last look — the snapshot the next turn diffs against.
-   *
-   * ⛔ **Re-taken at the START of every turn**, not only at the end of one. A profile is the
-   * shared-memory boundary (085), so a note another session in this profile wrote between turns is
-   * not this turn's; snapshotting on the way in is what confines the window in which it could be
-   * mistaken for one to the turn itself.
-   */
-  memoryNotes: ReadonlySet<string>
-  /**
-   * ⛔ **Whether a turn THIS APP sent is open** — the guard on the memory-note claim (318).
-   *
-   * Set by the `user_turn` every turn of ours opens with, cleared by the ending that publishes the
-   * observation. Without it the row's sentence would be false on any ending that arrives with no
-   * turn before it, because the window it names would start at registration.
-   */
-  turnOpened: boolean
-  /**
-   * 🔴 **D-022 · R4 — what the turn of ours that is open drives**, off the `user_turn` that opened
-   * it ({@link theDriveOfTheTurn}): the one piece it names or drives, or `null` — it names none, and
-   * drives every open piece, or (D-027) the messages it delivered drive different pieces. ⛔ Read
-   * only while {@link turnOpened}: a turn its provider began by itself (a wake) has no row of ours,
-   * and drives nothing a give can be hung under.
-   */
-  itsTurnDrives: string | null
-  /**
-   * Whose the turn it runs is, as the words handed over for it say ({@link
-   * RuntimeHost.aTurnIsHandedOver}): written as they are handed over, and never by the turn's row,
-   * which can land after the next words are. A turn its provider began by itself is read as the
-   * one before it.
-   */
-  itsTurnIs: WhoseTurnItIs
-  /** New handovers and provider-started turns invalidate older personal anchors. */
-  personalHandover: number
-  /** The committed turn whose recorded parts contain the person's request. */
-  personalWorkTurn: string | null
-  /**
-   * Whether a person's own words opened the turn that runs — a message or a command a window sent,
-   * their plan go-ahead, or their answer carried to it: from whose the words are when they are
-   * handed over, then off the `user_turn` that opened it; cleared when a turn ends.
-   */
-  aPersonsWordsOpenedIt: boolean
-  /** The exact committed pure person turn; absent during a provider handoff. */
-  moveRequestTurn: { id: string } | null
-  moveRequestRowPending: boolean
-  moveRequestHandoff: object | null
-  /**
-   * How many of this life's turns have ended: a turn read as running is still the one running while
-   * this count holds.
-   */
-  turnsEnded: number
-  questionWakeDue?: { readonly at: number; readonly completed: boolean }
-  /**
-   * ⚑ **When a person last wrote in it**, as far as this life knows: noted as a turn their own
-   * words opened is recorded, and read off its ledger as a life that continues a recording begins
-   * (`SessionStore.whenAPersonLastWrote`). `null` is *not that this app knows of*.
-   */
-  aPersonLastWroteAt: number | null
-  turnBlockSnapshot: TurnBlockSnapshot
-  pendingTurnBlock: {
-    readonly next: TurnBlockSnapshot
-    readonly words: string
-  } | null
-  /**
-   * 🔴 **The highest ordinal this session has actually PUT ON THE WIRE**, or null before the first
-   * one (320).
-   *
-   * ⚠️ **Not `ordinal - 1`, and the difference is the whole point.** `ordinal` is what has been
-   * HANDED OUT; this is what has been SENT, and 320 is the dispatch that found out they are not the
-   * same sequence. It exists so {@link RuntimeHost.emit} can say so when they diverge.
-   */
-  sentOrdinal: number | null
-  /** Derives live / silent / ended / errored from this session's own stream. */
-  readonly liveness: LivenessTracker
-  /**
-   * 🔴 **Derives what this app has been TOLD it is doing, from the same stream** (575) — see
-   * {@link BeingDoneTracker}, which carries the whole argument.
-   *
-   * ⛔ **Beside the line above and not folded into it.** Liveness answers *is it still producing*
-   * and this answers *and what is it producing* — `509`'s own split, one question further on — and
-   * the two have different lifetimes: liveness FREEZES at a terminal state and this one does not
-   * need to, because a conversation that is over leaves the slot map and leaves this read with it.
-   */
-  readonly beingDone: BeingDoneTracker
-  /**
-   * ⚑ **D-017 · R11 — what it left running in the background, as its provider last stated the
-   * LEVEL** — `background_work.running` REPLACES it (`248`: a missed bookend must not wedge a stale
-   * indicator), and an event that carries only an ending leaves it alone. ⚑ Each row carries the
-   * command of the tool call that started it, when {@link toolCallsNamed} still holds that call.
-   * ⚠️ It lives in the process and goes with it: a conversation this app is not running has none.
-   */
-  background: BackgroundLevel
-  /**
-   * ⚑ **D-017 · R11 — what it has scheduled, as its provider last stated the LEVEL**
-   * (`scheduled_work.jobs`, the same REPLACE rule). ⚠️ In the process too: a stop takes its jobs
-   * with it, and they fire only once something starts it again — ⚑ D-029: its wake-up does
-   * ({@link RuntimeHost.armItsWakeUp}), and a start begins from what its plan lists until the
-   * provider states the level itself — or until those jobs are past their time with no word from
-   * it ({@link RuntimeHost.letGoOfJobsItNeverRestored}). ⚑ Read from the receipts of its scheduling
-   * calls and its provider's levels ({@link RuntimeHost.sayWhatIsScheduled}): a job leaves it when
-   * its cancellation is confirmed, in the turn that cancelled it, and each job carries its next
-   * minute where that is known ({@link ScheduledRow.nominalAt}).
-   */
-  scheduled: ScheduleLevel
-  /**
-   * The newest level this life wrote into its ledger — its provider's, or this app's — or `null`
-   * before any: this app writes a level of its own only when it says something else.
-   */
-  levelWritten: ScheduleLevel | null
-  /**
-   * Whether its provider has said anything of its jobs in this life — a level, or the receipt of
-   * a call that made or cancelled one — so what it holds is no longer only what its start was
-   * seeded with ({@link RuntimeHost.letGoOfJobsItNeverRestored}).
-   */
-  providerSpokeOfItsJobs: boolean
-  /**
-   * ⚑ **D-017 · R11 — the last tool calls this life made, by id: the tool's name and its summary**,
-   * so a background row names the command its card names (`251`). ⚠️ The first level frame of a
-   * piece of work carries no `toolCallId` (`248` §5), so its row says the provider's description
-   * for one frame. ⛔ **Bounded** ({@link TOOL_CALLS_REMEMBERED}): a long conversation makes tens of
-   * thousands of calls, and only the ones a level can name matter.
-   */
-  readonly toolCallsNamed: Map<string, BackgroundCommand>
-  /**
-   * The message waiting for the running turn to end (077), or null.
-   *
-   * ⚠️ **The queue is OURS, and holding it here rather than pushing it at the provider is the whole
-   * design.** ⛔ **277 re-measured both halves of the reason at today's pins and ONE OF THEM IS NO
-   * LONGER TRUE.** The design is unchanged and the ruling was re-affirmed; what moved is the
-   * evidence, and a stale measurement left standing as a design's justification is the failure this
-   * project keeps finding in its own comments. Replay: `pnpm run probe:steer`.
-   *
-   *  - **Claude** takes it into the SDK's own queue, where it runs as its own turn after the current
-   *    one — which is the right behaviour. ⚑ **And since `0.3.218` it CAN be taken back.**
-   *    `Query.cancelAsyncMessage(uuid)` is in the shipped bundle and **not** on the public `Query`
-   *    interface in `sdk.d.ts` — undeclared API, so reading it there was never going to find it.
-   *    277 §E called it against a genuinely in-flight turn: a uuid-stamped message pushed mid-turn
-   *    answered `true` and **never ran**, while an identical uncancelled message in the same session
-   *    **did** run. ⚠️ The second round is not decoration — without it *"the cancelled one did not
-   *    run"* is a claim a probe that noticed neither would also make. `interrupt()` now returns a
-   *    receipt that NAMES the queued uuid (`still_queued: ["…"]`) and the message it named went on
-   *    to run, exactly as the receipt promises. ⛔ **077 measured `still_queued: []` and concluded
-   *    "a message pushed there is gone". Both are stale.**
-   *  - **Codex** has `turn/steer`, and it is a different thing again: 277 §B measured the message
-   *    landing INSIDE the running turn — the same turn id handed back, the prompt arriving as a
-   *    `userMessage` item under that turn id (carrying our `clientUserMessageId` as `clientId`, so
-   *    it is attributable), answered after the in-flight reply, turn closing `completed`. Two
-   *    prompts, one turn, which 045's one-prompt-per-turn row cannot say.
-   *    ⚠️ **And it is SLOWER than this app's own interrupt-and-send.** The steer resolved at 7.4 s
-   *    and the prompt did not enter the turn until 15.7 s — it waits for the in-flight assistant
-   *    message to COMPLETE. Against the same command at the same moment, the two primitives
-   *    {@link RuntimeHost.sendInterrupting} composes closed the turn in **4 ms** (`turn/interrupt`
-   *    → `turn/completed`) and had the replacement turn open **207 ms** later. ⛔ Measured on the
-   *    adapter, not on this method: `sendInterrupting` adds its own gate and a bounded wait for
-   *    idle on top, so 207 ms is the floor rather than the figure a user sees.
-   *    ⚠️ There is no `turn/unsteer` anywhere in the pinned union — `steer` appears in exactly three
-   *    generated files (`TurnSteerParams`, `TurnSteerResponse`, `NonSteerableTurnKind`) and none of
-   *    them is a withdrawal. Once it resolves it cannot be recalled.
-   *
-   * Held here it is cancellable, persistable, and identical on both providers, and the message
-   * reaches the provider by the ordinary `send` path — in a turn of ours — at a moment we choose.
-   *
-   * ⚑ **277's ruling, with the table behind it in the response doc: keep this, build no steer.**
-   * Against the queue and against {@link RuntimeHost.sendInterrupting}, `turn/steer` ties or loses
-   * on every axis measured — it is slower, it cannot be withdrawn, it does not survive a restart, it
-   * exists on one provider, the `turn` table cannot record it, and it closes the turn `completed`
-   * over a tool call that was killed. The one thing it does that neither of ours does is avoid an
-   * `interrupted` bracket in the transcript, and that bracket is TRUE.
-   *
-   * 🔴 **A MAILBOX since `394`, and since D-010 it holds as many as are sent.**
-   *
-   * ⛔ **Ordered, and ledger order is delivery order.** A new entry goes on the end; 🔴 **D-027 ·
-   * a turn's end sends everything held, oldest first, as ONE turn** — up to a person's command,
-   * which goes alone ({@link RuntimeHost.theTurnItTakes}). ⚠️ The one-`work`-entry rule criterion 13
-   * wrote is gone: a second piece of WORK is refused by the open-work rail instead, because the
-   * first opened its task when it was held.
-   *
-   * ⚑ **Appended by a hold, put back in front by a start, and taken from by whoever ends a
-   * message** — the flush after its handover, a take-back, a teardown that empties it — and read by
-   * {@link holdsQueued}, which is what makes an ending decidable by whoever gets there first.
-   */
-  mailbox: QueuedMessage[]
-  /**
-   * 🔴 **Which pieces THIS conversation has already been told are not being driven** (400 as tasks,
-   * corrected by 404) — see {@link RuntimeHost.tellIfNobodyHasYet}.
-   *
-   * ⛔ **It belongs to the PARENT and it is seeded from the parent's OWN ledger**
-   * ({@link SessionStore.workReportedTo}) at registration. `400` kept it on the conversation the
-   * work was given to and seeded it from that conversation's task rows, which reads *carried into
-   * this slot* as *already told* — and those are opposites for {@link TaskStallCause.app_restarted},
-   * whose row is written at a launch with nothing running. ⚑ The durable answer is
-   * {@link WorkStallTold}; this is a per-slot cache of it so the push does not read a ledger on every
-   * provider event. ⚠️ **A notice this app takes back unread because a later fact made it false
-   * stays in both** — the ledger's receipt stands (the giver's own question or new brief told it,
-   * R69; a closed piece is owed nothing) — so the cache and the ledger agree by construction.
-   *
-   * ⚠️ **A piece goes in before the push is awaited, and nothing is ever taken out of it.** *Told
-   * once per piece*, by ruling (D-016c) and not because a piece stalls only once: `derivePieces`
-   * puts a stalled piece back to `working` when a turn of its owner's drives it (`drivenAgain`,
-   * D-005; per piece since D-016 · commit 6) or a message carrying it goes out, and a later drive
-   * can stall it again — that second episode tells nobody. Nor does a moved cause (`400`), and a stop or a start moves no piece and tells nobody
-   * (`05`).
-   */
-  toldAboutStall: Set<string>
-  /**
-   * 🔴 **The notices owed to this conversation, one after another** (404).
-   *
-   * ⛔ **Two notices delivered concurrently RACE, and it was measured rather than reasoned about.**
-   * `queueMessage` sends when `handle.status()` reads `idle` and holds otherwise; two calls started
-   * in one tick both read `idle`, both call `send`, and the provider refuses the second —
-   * *"cannot send: session is not active or a turn is in progress"*. ⚠️ **A launch is exactly where
-   * that happens**: one conversation can owe a parent several notices at once, and `settleStranded-
-   * Messages` and `settleRestartedWork` between them stall every open task of a crashed child.
-   *
-   * ⚑ **A chain rather than a lock**, {@link pump}'s shape one subject over: each delivery is
-   * appended to the last, and no step rejects — `tellOneParent` and the retractions each catch
-   * their own failures — so the chain cannot break.
-   */
-  telling: Promise<void>
-  /**
-   * The in-flight flush, so a second `idle` cannot start a second send of the same message.
-   *
-   * Needed because {@link RuntimeHost.deliver} is synchronous and the send it triggers is not: two
-   * `status: idle` events arriving before the first send resolved would both see a non-empty
-   * {@link mailbox} and both send its head.
-   */
-  flushing: Promise<void> | null
-  /**
-   * How many interrupt-and-send presses are driving a turn that the queue must not jump ahead of
-   * (077) — held while it is above zero.
-   *
-   * 🔴 **720 · `709` F-7 — a COUNT, and it was a boolean.** ⛔ A second press while the first was
-   * still running raised it again (it was already up), and the first press's `finally` lowered it
-   * UNDER the second — so the next `idle` let the queued message jump the second press's words,
-   * `670`'s defect one press later. ⚑ Each press raises it by one and lowers it by one; the readers
-   * ask whether it is non-zero, as they asked whether it was up.
-   *
-   * Set only by {@link RuntimeHost.sendInterrupting}, whose own `interrupt()` produces the very
-   * `status: idle` the flush listens for — so without this the message the user was replacing would
-   * be sent first, and the replacement second.
-   *
-   * ⚑ **670 · and it holds ARRIVALS too**, not only the flush: `queueAs` reads a latched
-   * conversation as busy, so a reply or a `message_agent` landing between the interrupt and the
-   * replacement's handover is held behind the replacement instead of taking the turn from it.
-   */
-  holdingQueue: number
-  /**
-   * 🔴 **723 · R81 — the permission cards whose Cancel asks no turn to stop**, by request id: those
-   * raised with `cancelStopsNothing` (since `736`, R97, every Codex elicitation card, and Claude's
-   * server form since `728`; from `723` until then only a Codex frame that named no turn), noted
-   * by {@link RuntimeHost.deliver}.
-   *
-   * ⚑ **Read by {@link RuntimeHost.respondPermission}, the one writer of a person's cancel**, so the
-   * row it writes says the press asked nothing — {@link UserDecisionEvent.stopsNothing} — and no
-   * fold reads it as an ask (R81: *"the host records no ask"*). ⛔ The host does not look a card up
-   * at answer time, and the handle's answer carries nothing back, so this is where the fact waits.
-   * An id leaves when its card is answered.
-   */
-  cancelsThatStopNothing: Set<string>
-  /**
-   * 🔴 **723 · R83 — an ask to stop the provider has not answered yet**, or `null`.
-   *
-   * ⚑ The ruling (`720` F-F): *"When Codex does not acknowledge a Stop within the bound, the
-   * conversation says so in words … and a second press does not queue a second ask behind the
-   * first."* ⚑ Set by the host doors that ask — a person's Stop, interrupt-and-send,
-   * `interrupt_agent`, and a stop asked for held words to be read now — to the ask each made (the
-   * newest wins), and cleared when that ask is answered or the turn it was about ENDS, whichever
-   * comes first: after either there is nothing left for a stop to be waiting on. ⛔ **A person's
-   * Stop and a stop for held words JOIN it**; interrupt-and-send and `interrupt_agent` keep their own
-   * waits and ask again, as `709` F-7 pins (`723`'s response). ⚠️ A card's Cancel asks from inside
-   * the adapter and neither sets nor reads it (`723`'s response).
-   */
-  stopStillAsked: Promise<void> | null
-  /**
-   * ⛔ **The queued messages that are ON THEIR WAY TO THE PROVIDER right now** — empty the rest of
-   * the time (234 §1, from the adversarial pass over this dispatch's own diff). ⚑ **D-027 · a turn's
-   * worth**: everything a flush hands over as one turn.
-   *
-   * ⚠️ **`flushing` is not this fact and the first version of `handOnWhatItHeld` read it as if it
-   * were.** `flushing` is set before {@link RuntimeHost.runFlush}'s FIRST await and spans two
-   * suspensions that precede the handover — the path re-check (`lstat`/`realpath`/`stat` per
-   * attachment) and the turn gate (a Keychain subprocess). A stream that ended in either window
-   * therefore published *"it may have reached the agent"* about a message that provably never
-   * reached `handle.send`, and that sentence was the ONLY ending the reader got.
-   *
-   * ⚑ **Set immediately before the handover and cleared in its `finally`**, so the window it names
-   * is exactly the window in which the answer is genuinely unknown. On both shipping adapters that
-   * window is one statement wide; the point is that the claim is made where the claim is true.
-   */
-  handingOver: readonly QueuedMessage[]
-  /**
-   * 🔴 **D-004 · R101 — this child died because the sign-in it was launched with was revoked**
-   * (`cause: 'auth_stale'`, fatal). Set by {@link RuntimeHost.deliver}, read once the teardown is
-   * done by {@link RuntimeHost.reopenOnARenewedSignIn}.
-   */
-  diedOnAStaleSignIn?: true
-  /**
-   * 🔴 **F076 — what the turn a refused login ended was for** — taken as the fatal error arrives,
-   * before that turn's ending clears what opened it ({@link turnOpened}): read by
-   * {@link RuntimeHost.reopenOnARenewedSignIn}, which tells the reopened conversation about it.
-   */
-  whatItsFailedTurnWasFor?: WhatAFailedTurnWasFor
-  /**
-   * ⚑ **F076 — the background work its provider said had finished since its last turn ended**,
-   * each ending as the provider stated it — what a turn the provider starts by itself (a wake) is
-   * for. ⚑ Emptied as a turn ends.
-   */
-  finishedSinceItsLastTurn: readonly BackgroundWorkEnded[]
-  /**
-   * ⚑ **F084 — what the stop of its last turn ended**, named, as that turn's ending said
-   * (`endedCommands`): what the giver's notice names when a stop stalled the piece. ⚑ Replaced at
-   * every turn ending, so a later stop that ended nothing never names an earlier stop's.
-   */
-  lastStopEnded: readonly string[]
-  /**
-   * ⚑ **F084 — what stops ended that the conversation has not been told yet** — said in front of its
-   * next turn that takes words ({@link RuntimeHost.withWhatThisLifeOwes}). ⚑ Kept past a turn that
-   * took no words of ours (a person's command), and taken off only when the turn that said them
-   * ends — 🔴 **D-039's reason**: not one this app ended `failed`, whose provider may never have
-   * begun it ({@link stopEndedSaid}). ⚠️ As with {@link firstTurnLead}: a send the adapter refuses
-   * after they were composed into it, and that a person's command beat to the turn, loses them when
-   * that command's turn ends.
-   */
-  stopEndedUntold: string[]
-  /** ⚑ **F084** — how many of {@link stopEndedUntold} the last words handed over said. */
-  stopEndedSaid: number
-  explicitStopNotice: ExplicitStopNotice | null
-  explicitStopSaid: ExplicitStopNotice | null
-  /**
-   * ⚑ **Its own questions that stops ended, which it has not been told of yet** — said in front of
-   * its next turn that takes words and taken off as {@link stopEndedUntold} is. ⚑ A life that
-   * continues a recording begins with what the stop of its last turn ended
-   * ({@link RuntimeHost.theQuestionsTheStopOfItsLastTurnEnded}).
-   */
-  questionsAStopEndedUntold: AQuestionAStopEnded[]
-  /** How many of {@link questionsAStopEndedUntold} the last words handed over said. */
-  questionsAStopEndedSaid: number
-  /**
-   * ⚑ **F084 — who waits for this life's next turn ending**, each handed what that ending says its
-   * stop ended: `interrupt_agent`'s answer, read once the stopped turn has ended.
-   */
-  readonly whenATurnEnds: ((ended: readonly string[]) => void)[]
-  /**
-   * ⚑ **What it holds was read at its turn's `working` status, before the words of a turn of ours
-   * landed** — on Claude a turn's `working` lands before its `user_turn` at every turn (`099`), and
-   * for as long as it takes to apply a model, effort or mode change; the read there finds every open
-   * piece driven until the words name one (`derivePieces`). On Codex the words land first. ⚑ So its
-   * `user_turn` compares again ({@link RuntimeHost.publishOurs}); ⚑ cleared there, and at the turn's
-   * end (a turn its provider began by itself has no words of ours).
-   */
-  itsWorkWasReadBeforeItsWords: boolean
-  /**
-   * ⚑ **This life's turn gate found that the machine's Claude sign-in moved on from the one it was
-   * launched with** — set by {@link RuntimeHost.assertSignInCurrent} as it refuses, and never
-   * cleared: the child cannot take another turn on what it holds. ⚑ What is held for it waits for
-   * {@link RuntimeHost.reopenForWhatWaits}.
-   */
-  itsSignInMovedOn?: true
-  /** Codex refused this life's copy of its sign-in, and a fresh copy of the same account replaced it. */
-  itsCopyWasReplaced?: true
-  /** A refused copy is considered for replacement only after this server has exited. */
-  copyToReplaceAfterExit?: { refused: unknown; replacement: Promise<boolean> | undefined }
-  /** This life's one turn was a carrying on after a repaired sign-in: its refusal is never carried on again. */
-  itCarriedOnAfterARepair?: true
-  /** This rejected turn may request one provider-owned renewal and safe carry-on. */
-  itRetriedRejectedLogin?: true
-  renewItsRejectedLogin?: true
-  rejectedLoginToRenew?: object
-  /**
-   * ⚑ **This app is closing it to start it again on the current sign-in, for what is held for it**
-   * ({@link RuntimeHost.reopenForWhatWaits}) — once per life; the start it asks for says why
-   * ({@link ReopenedEvent.because}).
-   */
-  reopeningOnTheCurrentSignIn?: true
-  /**
-   * A person approved an MCP server this conversation asked for and its own profile now gets, and
-   * this app reopens it so the server's tools reach it, once its turn and any card it waits on are
-   * done ({@link RuntimeHost.reopenWhenItsToolsMoved}). The words that tell it so, one for each
-   * server approved meanwhile.
-   */
-  itsToolsMoved?: readonly ItsToolsMoved[]
-  /** This app is closing it to start it again with the tools a person approved. */
-  reopeningForItsTools?: true
-  /**
-   * ⚑ **This life is one {@link RuntimeHost.reopenForWhatWaits} started — or the conversation that
-   * took the place of one it could not reopen — and its sign-in has not yet read as current**:
-   * dropped the first time its turn gate finds it current. ⛔ **The loop guard**: such a life found
-   * holding a sign-in that moved on too, within {@link REOPEN_LOOP_GUARD_MS} of its start, is not
-   * reopened again by this app within that window (`didNotHelp`) — a launch that reads as moved the
-   * moment it starts is no sign-in a second reopen fixes — and what is held waits for a person's
-   * Reopen. ⚑ Found later than that, it is a renewal of its own. 🔴 **W4.172 · decided as it is
-   * found** ({@link RuntimeHost.assertSignInCurrent}) — not when a reopen is next asked, which at a
-   * limit can be long after — ⛔ **and never noted as a change of sign-in**: what it reads is the
-   * launch read differently, and noting it would end every limit, again at each reopen. ⚑ `stopped`:
-   * the log has said so.
-   */
-  reopenedForWhatWaited?: { readonly at: number; stopped: boolean; didNotHelp?: true }
-  /**
-   * ⚑ **What its provider runs on changed after this life launched**
-   * ({@link RuntimeHost.providerLoginChanged}, and F096 {@link RuntimeHost.aSignInChanged}) — it
-   * keeps what it started with, so the usage it reads is an older login's and is not kept for the
-   * Providers screen.
-   */
-  runsOnAnOlderLogin?: true
-}
-
-/**
- * **What the host owns for one session id, from BEFORE the provider is asked for it** (062, from
- * 061 finding 2).
- *
- * Ownership used to begin when `start()` or `resume()` RESOLVED. In between — an external process
- * spawn, the slowest thing this app does — the provider existed and the host knew nothing about it.
- * `closeAll()` and the window's owner cleanup both walk the map, so a quit landing in that window
- * missed the provider entirely; the handle then arrived, registered into a host that was already
- * down, and wrote its first ledger row against a closed database and a dead renderer sink.
- * `resumeSession` was worse: it checked `sessions.has()`, awaited a spawn, and registered with a
- * blind `set`, so two resumes of the same record both passed the check, both spawned, one
- * overwrote the other in the map, and either one's finalizer would unregister the survivor.
- *
- * The slot is reserved FIRST, synchronously, and the three phases are what the interval needs:
- *
- *  - **`starting`** — reserved, nothing registered. The id is taken, so a second resume of the same
- *    record is refused before it can spawn anything.
- *  - **`live`** — the handle arrived and was claimed. This is the only phase with a `session`.
- *  - **`closing`** — somebody asked for this session to go away while it was still starting. The
- *    arriving handle is closed and handed straight back instead of being registered.
- *
- * ⚠️ **The `closing` check and `register` must stay in one synchronous block.** An `await` between
- * them re-opens the exact race this replaces: a close could mark the slot after the check and then
- * wait on {@link SessionSlot.arrived}, while the start registered a session nothing would ever
- * close.
- */
-/**
- * 🔴 **What one agent may be told about another** (347) — the shape `list_agents` and
- * `get_agent_status` answer with.
- *
- * ⛔ **Assembled from three sources on purpose, and each answers a different question.** The SLOT
- * knows what is live in this process, the LEDGER knows what was recorded (including provenance,
- * which is the half that survives a restart — criterion 8), and the HANDLE knows what the
- * conversation is doing right now. A card built from any one of them alone would be wrong in a way
- * that reads as true: the slot cannot say where a session came from, the ledger cannot say whether
- * it is thinking, and the handle does not exist until the provider has arrived.
- *
- * ⚠️ **Every field that can be unknown is `| null` rather than omitted**, because an absent key and
- * a null one read identically to a model and only one of them is a fact. `074`'s rule — absence is
- * not an outcome — at the width of a tool result.
- */
-/**
- * ⚑ **Why words about a piece went to nobody when its holder could never be reopened** — the
- * conversation in its place never held the piece, so they are not sent to it.
- */
-const ITS_PLACE_WAS_TAKEN =
-  'The conversation that held it could never be reopened, and the one that took its place never held it.'
-
-/**
- * ⚑ **Words about a piece that reached the conversation in its holder's place** — found only as the
- * tell starts the holder, so the words are refused there ({@link RuntimeHost.toItsHolderAlone}).
- */
-class ItsPlaceWasTaken extends Error {
-  constructor(to: string, holder: string, label: string) {
-    super(`${to} took the place of ${holder}, which holds ${label}`)
-  }
-}
-
-/**
- * ⚑ **A tell that failed**, said in words: its holder replaced, wherever in the cause chain that was
- * found, else {@link whyItWasNotDelivered}.
- */
-function notTold(error: unknown): Told {
-  let seen: unknown = error
-  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
-    if (seen instanceof ItsPlaceWasTaken) {
-      return { delivery: 'not-delivered', whyNotTold: ITS_PLACE_WAS_TAKEN }
-    }
-    seen = (seen as { cause?: unknown }).cause
-  }
-  return { delivery: 'not-delivered', whyNotTold: whyItWasNotDelivered(error) }
-}
-
-/**
- * ⚑ **D-022 · R3** — a tell's delivery in the verbs' words; `null`: another conversation took its
- * place.
- */
-function deliveryOf(delivered: QueueOutcome | null): Told {
-  return delivered === null
-    ? { delivery: 'not-delivered', whyNotTold: ITS_PLACE_WAS_TAKEN }
-    : { delivery: delivered.outcome === 'sent' ? 'sent' : 'held' }
-}
-
-/** ⚑ **The arm that carries nothing, as a constant** — see {@link whoseConversationIs}. */
-export const AN_IDENTITY_THIS_APP_CANNOT_NAME: WhoseConversation = {
-  is: 'an-identity-this-app-cannot-name',
-}
-
-/**
- * 🔴 **Name the identity a conversation names, and NOTHING otherwise** (610 · HO-092 §2).
- *
- * ## ⛔ A POSITIVE test, and it is the conversation's own field rather than the ledger's
- *
- * ⚠️ **The brief asked for `foundInUserHome` in front of {@link agentName}, and that predicate is
- * the WRONG one here — narrower and wider than the question at once.** ⛔ Narrower: it answers
- * *"was this row swept out of the user's own folder"*, and says nothing about a reservation whose
- * identity has not arrived, which is the other way {@link AgentCard} reaches this function. ⛔
- * Wider: it is a LEDGER read, one per card, and {@link RuntimeHost.agentsVisibleTo} already states
- * its price as *"two ledger reads per slot the caller did not start"*.
- *
- * ⚑ **The renderer's own call site is the derivation, and what it does is NOT restate the
- * predicate.** `conversation-list.ts` drops `foundInUserHome` rows before the fold and says why in as
- * many words: *"The predicate is not restated here — the store computed it and the row carries the
- * answer (`032`)"*, and on its other half, *"Re-checking here would mean `ResumableSessionInfo`
- * carrying a flag whose only true value is unreachable, which is a second answer to a question
- * already settled one process away."*
- *
- * 🔴 **Here the answer is already carried too, by the SLOT.** A swept conversation reaches a slot
- * with `profileId: null` — `resumeSession` reserves it from `find(sessionId)?.profileId ?? null`
- * — and `reopenSession` then refuses it by `row.homeRefusal`, which is
- * `foundInUserHome(row) || restoredFromBundle(row)`. ⚠️ **So the slot field answers a strictly
- * WIDER question than the ledger predicate**, covering the swept row and every other slot that
- * cannot name its identity, and it is the honest bound for a surface that must still LIST the row
- * rather than drop it.
- *
- * ## ⚠️ `null` is TWO facts here and BOTH of them refuse a name
- *
- * ⛔ **{@link profileLabel}'s docblock separates them:** the pre-profiles row's `null` really did
- * run in the default profile, so labelling it is a report; the swept row's `null` is the absence of
- * any profile, so labelling it invents one. ⚑ **At this payload they are one answer**, because the
- * only moment a card carries `null` at all is a RESUME IN FLIGHT — after registration the session
- * carries `row.profileId ?? DEFAULT_PROFILE_ID`, so the pre-profiles row is named from the
- * identity it really ran as. ⚠️ **A card that cannot yet tell the two apart may not pick one**, and
- * this is the arm that says so.
- *
- * @param profile the slug this conversation names, or `null` for a slot that cannot name one.
- * @param roster the identities, or `null` before the read lands and on a host with no database —
- *   {@link agentName}'s own parameter, passed through unchanged.
- */
-export function whoseConversationIs(
-  profile: string | null,
-  roster: readonly AgentIdentityName[] | null,
-): WhoseConversation {
-  if (profile === null) return AN_IDENTITY_THIS_APP_CANNOT_NAME
-  return { is: 'an-identity-this-app-holds', profile, name: agentName(profile, roster) }
-}
-
-/**
- * 🔴 **The word a SENTENCE gets for a conversation** (624, `HO-095` §5.3) — the union folded to
- * one string, so a composer can be handed a word instead of a union it would have to branch on.
- *
- * ## ⛔ The whole of it is that the second arm is not the handle
- *
- * ⚠️ **`HO-095` §5.3: *"Task #1 (`task_…`) with `sess_a2d504f1…`. That is Ada. Say Ada."*** ⛔ A
- * repair that named the agent when it could and fell back to `sess_…` when it could not would
- * leave the defect alive on exactly the rows nobody tests. ⚑ {@link AN_AGENT_THIS_APP_CANNOT_NAME}
- * is a CATEGORY, which is `relayed-turn.ts`' `AN_UNNAMED_RELAYER` and `413` §4's surviving clause:
- * *a turn attributed to the app is not a turn attributed to a named agent unless the ledger holds
- * that name.*
- *
- * ⚑ **A free function and not a method**, so both arms are reachable from a test without a store:
- * the arm this app meets least often is the one a private method would leave unmeasured
- * (`a-guard-that-only-a-live-run-can-trip-is-dark-by-default`).
- */
-export function nameTheConversation(whose: WhoseConversation): string {
-  return whose.is === 'an-identity-this-app-holds' ? whose.name : AN_AGENT_THIS_APP_CANNOT_NAME
-}
-
-/**
- * 🔴 **D-026 · R1 — a kept file as a window draws it** ({@link KeptFile}) — the door's row and the
- * push's, from this one mapper, so a file folded in off `runtime:states` is the row the door would
- * have answered.
- *
- * ⚑ Its adder is named as every row in the window names a conversation's agent
- * ({@link whoseConversationIs}, {@link nameTheConversation}), and its form is derived from its name
- * ({@link formOfName}), as a reading's is: one derivation each.
- */
-function keptFileOf(kept: KeptFileRow, roster: readonly AgentIdentity[] | null): KeptFile {
-  const { resource, addedByIdentity } = kept
-  return {
-    ...(kept.group === undefined ? {} : { group: kept.group }),
-    ...(kept.mainResult === true ? { mainResult: true as const } : {}),
-    resourceId: resource.resource,
-    // ⚑ **D-026 · R2 — a file kept before titles were taken carries none**, and its name is the
-    // rule's own *or else*.
-    title: resource.title ?? resource.name,
-    name: resource.name,
-    form: formOfName(resource.name),
-    bytes: resource.bytes,
-    role: resource.role,
-    keptAt: resource.createdAt,
-    sha256: resource.sha256,
-    addedBy:
-      resource.addedBy === null
-        ? null
-        : {
-            conversation: resource.addedBy,
-            name: nameTheConversation(whoseConversationIs(addedByIdentity, roster)),
-            identity: addedByIdentity,
-          },
-    piece: resource.piece,
-    label: kept.label,
-    pieceTitle: kept.pieceTitle,
-  }
-}
-
-/**
- * The rows a turn refused on its sign-in may hold and still have done nothing: how it went, what
- * its provider said of itself, and the recorded job title and task. Any other row, a word
- * of a reply or a tool call among them, means it did something, and then it is not carried on.
- */
-const A_TURN_THAT_DID_NOTHING_HOLDS: ReadonlySet<TranscriptEvent['type']> = new Set([
-  'pending_compaction',
-  'titled',
-  'work_given',
-  'status',
-  'error',
-  'turn',
-  'provider_usage',
-  'provider_limit_clear',
-  'context_reading',
-  'provider_commands',
-  'tool_inventory',
-  'session',
-])
-
-/**
- * The rows that may follow a refused turn's ending and still mean nothing has come since: what its
- * provider says of itself, and what a reopen writes. Any other row is something newer, a turn's
- * ending, a turn its provider began by itself, an error or work given among them.
- */
-const WHAT_A_REOPEN_ADDS: ReadonlySet<TranscriptEvent['type']> = new Set([
-  'status',
-  'provider_usage',
-  'provider_limit_clear',
-  'context_reading',
-  'provider_commands',
-  'tool_inventory',
-  'session',
-  'reopened',
-  'launched',
-  'work_recovery',
-  'pending_compaction',
-])
-
-function compactionClearsContext(event: TranscriptEvent): boolean {
-  return (
-    event.type === 'compaction' && event.after === undefined && event.parentToolCallId === undefined
-  )
-}
-
-/** Unrecognized protocol origins never supply housekeeping evidence. */
-function authPolicyForNotice(event: TranscriptEvent): ProviderAuthPolicy | undefined {
-  if (event.type !== 'unknown') return undefined
-  const provider = SUPPORTED_PROVIDERS.find((one) => one === event.provider)
-  return provider === undefined ? undefined : providerAuthPolicies[provider]
-}
-
-/** The provider may echo the input, but no output, tool progress or other echo proves no effects. */
-function aRefusedGiveOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
-  return authPolicyForNotice(event)?.protocol.refusedGive(event) ?? false
-}
-
-/** An explicit, complete empty terminal level is startup state, not a job that ran or ended. */
-function aGiveReopenOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
-  return SUPPORTED_PROVIDERS.some((provider) =>
-    providerAuthPolicies[provider].protocol.reopenedGive(event),
-  )
-}
-
-/** How many rows past a refused turn's words are read to decide; more, and it is not carried on. */
-const THE_ROWS_A_REFUSED_TURN_IS_READ_IN = 400
-
-/** A retained input, never a second copy of its words. A piece restricts recovery to its first give. */
-interface RefusedInputReference {
-  readonly opened: number
-  readonly drives: string | null
-  readonly piece: string | null
-}
-
-/**
- * ⚑ **D-037 · hand the main process back** between pages of a search — `setImmediate` and not
- * `await null`, `sweep.ts`'s reason: a resolved promise runs before anything else waiting does.
- */
-function handBackTheMainProcess(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve))
-}
-
-/**
- * ⚑ **D-017 · R11 — what every card in one answer is read against** — see
- * `RuntimeHost.cardReads`: the roster that names each conversation, and the conversations whose
- * asks against their rules wait on a person.
- */
-interface CardReads {
-  readonly roster: readonly AgentIdentity[]
-  readonly askingForRules: ReadonlySet<string>
-  /** Rows of the asks against agents' rules the read could not take: a reading that skipped any is short. */
-  readonly asksUnread: number
-  readonly nameOf?: (conversation: string) => string
-}
-
-/** No piece a conversation gave has stopped: what `RuntimeHost.whoOwesIt` leaves out by default. */
-const NO_PIECE_STOPPED: ReadonlySet<string> = new Set()
-
-/** Every conversation's newest schedule level, as the launch reads it once. */
-type ScheduleLevelsAtTheLaunch = ReturnType<SessionStore['newestScheduleLevels']>
-
-/**
- * ⚑ **F036 · one question a conversation owes an answer to** — its routing, and ⚑ **F033** the
- * piece its asker asked it under (`RaisedQuestion.piece`), or `null`: what names that asker on the
- * line that says it waits.
- */
-interface OwedQuestion extends RoutedRequest {
-  readonly piece: string | null
-}
-
-/**
- * ⚑ **F036 · the questions a conversation owes an answer to, by the conversation asked about** —
- * see `RuntimeHost.oneOwedReadPerAnswer`. ⚠️ Read from the ASKERS' ledgers, as {@link WorkOutOf}
- * is read from the holders': other rows move it.
- */
-type OwedBy = (id: string) => readonly OwedQuestion[]
-
-/** ⚑ **D-017 · R11 · R19** — see `RuntimeHost.whoOwesIt`. */
-interface WhoOwesIt {
-  /** A person's answer is waiting in it. */
-  readonly needsYou: boolean
-  /** The conversation a question it asked went to, as it stands now, or `null`. */
-  readonly askedOf: string | null
-  /** What to call {@link askedOf}, or `null`. */
-  readonly waitingOnTheAnswerOf: string | null
-  /** When it asked the question {@link askedOf} owes it, epoch ms, or `null`. */
-  readonly waitingOnTheAnswerSince: number | null
-  /**
-   * ⚑ **D-036 · the conversations holding open work it gave**, each once, in the order of its
-   * oldest open give.
-   */
-  readonly workIsWith: readonly string[]
-  /** ⚑ **D-036** — what to call each of {@link workIsWith}, as {@link waitingOnTheAnswerOf} is. */
-  readonly waitingOnTheWorkOf: readonly string[]
-  /** When it gave out the oldest of that open work, epoch ms, or `null`. */
-  readonly waitingOnTheWorkSince: number | null
-  /**
-   * ⚑ **F036 · the conversations that asked it a question it still owes an answer to**, as they
-   * asked (the ledger each question is in), each once, in the order of its oldest such question.
-   */
-  readonly owedTo: readonly string[]
-  /** ⚑ **F036** — what to call each of {@link owedTo}, as it stands now, named as above. */
-  readonly owesAnAnswerTo: readonly string[]
-  /** When the oldest question it owes an answer to was put to it, epoch ms, or `null`. */
-  readonly owesAnAnswerSince: number | null
-  readonly owedQuestions: readonly OwedQuestion[]
-}
-
-/** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
-const CONVERSATIONS_ON_A_RECORD = 10
-
-/** ⚑ **F009 · the most of an agent's pieces its record lists**, the newest given first. */
-const PIECES_ON_A_RECORD = 10
-
-/** ⚑ **F009 · the most of the files an agent made its record lists**, newest first. */
-const FILES_ON_A_RECORD = 5
-
-/** ⚑ **F009 · the most of its standing rules' first line an agent's record quotes.** */
-const RULES_BEGIN_CHARS = 200
-
-interface SessionSlot {
-  readonly id: string
-  /** Fixed before the launch awaits, so provider-specific gives share only their own reservation. */
-  readonly provider: Provider | null
-  /**
-   * The surface that asked for this session, carried on the RESERVATION rather than read from the
-   * registered sink — because for the whole starting interval there is no registered sink to read
-   * it from, and that interval is precisely when a window can go away.
-   *
-   * 🔴 **`null` means nobody owns this session** (336). It was created without a surface — or,
-   * since `652`, REOPENED without one, which {@link RuntimeHost.resumeSession} reserves under the
-   * same `null` for the same reason — so no window may control it, {@link closeSessionsForOwner} names no owner it belongs to, and the only
-   * {@link Caller} that gets past {@link mayControl} is {@link THE_APP_ITSELF} — which is right:
-   * the quit must still end it and the finalizer must still finalize it.
-   *
-   * ⚠️ **No longer `readonly`, and it changes at exactly two moments, both synchronous:**
-   *
-   *  - a surface CLAIMS it — {@link attachHeldSession} with `how: 'claim'`, in the same block that
-   *    swaps the sink, so an event cannot land between gaining the owner and gaining the stream;
-   *  - it goes back to nobody — {@link release}, which puts it to `null` rather than closing it.
-   *
-   * ⚑ **Two moments, and since `523` the second of them has TWO triggers.** The write is still one
-   * line in one method; what changed is who asks for it. `closeSessionsForOwner` asks when the owner
-   * is gone and the session was {@link bornWithoutASurface}, as it has since `336`;
-   * {@link RuntimeHost.releaseSession} asks when the owner says so while still there, on the same
-   * population, which is `519` item 3 and HO-045 §1's *doing so is REVERSIBLE*. ⛔ **This bullet read
-   * *"that surface goes away"* until `523`** — a description of the only caller there was, which
-   * hardened into the rule (standing rule 19).
-   *
-   * ⛔ **Nothing else may write it.** In particular a claim never REPLACES an owner: `mayClaim` is
-   * false for every non-null value, so the transition is `null → id → null` and never `id → id`.
-   */
-  ownerId: string | null
-  /**
-   * 🔴 **Is the owner above a surface with a PERSON behind it?** (349, HO-005 Q2.)
-   *
-   * ⛔ **The second half of what {@link ownerId} used to be asked alone, and the whole of this
-   * dispatch.** *"Who may answer for a person"* was `slot.ownerId === by.ownerId` — which reads
-   * personhood off a string that never said anything about persons. Any caller able to present a
-   * {@link RuntimeEventSink} could take that string for itself through
-   * {@link RuntimeHost.claimSession} and inherit the answer. This field is
-   * {@link RuntimeEventSink.aPersonIsBehindIt}, copied from the sink that took ownership, and
-   * {@link mayAnswerAsAHuman} reads it instead of inferring it.
-   *
-   * ⚠️ **It moves with {@link ownerId} and only with it**, in the same three places and the same
-   * synchronous blocks: {@link RuntimeHost.reserve} takes both from one `held` bag,
-   * {@link RuntimeHost.attachHeldSession}'s claim writes both on adjacent lines with no `await`
-   * between them, and {@link RuntimeHost.release} clears both. ⚡ **A stale `true` cannot admit
-   * anybody on its own** — the predicate is a conjunction with `slot.ownerId === by.ownerId`, and a
-   * released slot's `null` owner already refuses every caller — so the reset in `release` is
-   * hygiene rather than the guard. The guard is that a claim always writes it.
-   *
-   * ⛔ **NOT `readonly`, unlike {@link commandedBy}, and the asymmetry is 340's.** Command is fixed
-   * at reservation because a claim must not take it away; the watching half moves, and this is a
-   * fact about whoever is watching NOW.
-   *
-   * ⚠️ **`false` for a session nobody owns**, which is the same value it holds for a session owned
-   * by something with no person behind it. The two ARE different states, and {@link ownerId} is
-   * what tells them apart — this field answers one question and is not asked to answer that one.
-   */
-  ownerIsAPerson: boolean
-  /**
-   * 🔴 **Was this conversation born without a surface — as far as THIS reservation can say?** —
-   * the birth fact, and it is what decides what a departing owner's gesture means (336 §2.3).
-   *
-   * ⛔ **Two ways to be true, and since `661` they are one field** (`656` F2):
-   *
-   *  - ⚑ **no surface asked for this life** — a create with no sink (every spawn), or a reopen with
-   *    none (`652`), even for a conversation a person started in a window;
-   *  - ⚑ **an AGENT asked for the conversation** — the spawn token at a create, the provenance row
-   *    at a resume — **whoever reopened it**. ⛔ Until `661` a window's reopen reserved an agent's
-   *    child as that window's own (`false` since `523`), so after a quit — when reopening is the only
-   *    way back — closing the window ENDED a conversation its parent still commands. `418` §2.3
-   *    named it (*"reopening a spawned child silently moves it into the blast radius"*) and deferred
-   *    it to a persisted fact; `341`'s provenance row is that fact.
-   *
-   * ⚠️ **What stays `false`**: a conversation a PERSON created, reopened by a window — its window's
-   * departure ends it, which is `523` Q3's *"its slot was born owned"*.
-   *
-   * ⛔ **A window going away closes the sessions it STARTED and releases the ones it CLAIMED**, and
-   * without this field those two are the same slot with the same `ownerId` and nothing to tell them
-   * apart. Closing a claimed one would mean that peeking at a session nobody asked for — the whole
-   * point of the door — kills it when you close the window; releasing a started one would leave a
-   * provider running for a surface that no longer exists, which is 062's defect exactly.
-   *
-   * ⚠️ **Fixed at reservation and never written again**, so it survives every claim and release: a
-   * session that was born with no surface is still one after it has been claimed twice.
-   *
-   * 🔴 **And since `523` it decides what the OWNER may do as well as what its departure means.**
-   * {@link mayHandBack} reads it beside `ownerId`, so *"a claim can be given back"* is true of
-   * exactly the population *"a departure releases rather than closes"* is true of — one field, one
-   * answer, at both moments. ⛔ Two fields would be two populations that agree until they do not.
-   * ⚑ **It reaches a person now**, as `ResumedSession.startedWithoutAWindow`: `519`'s item 3 asked
-   * for the ORIGIN to be exposed, and this is the only certain answer to it this app holds for the
-   * LIFE being handed over — `CreatedSession.hasACommander` is false after a restart by its own
-   * contract, and `SessionSlot.spawnedBy` dies with the process.
-   */
-  readonly bornWithoutASurface: boolean
-  /**
-   * ⚑ **D-017 · R5 — did a DELIVERY start this life with no window?** ({@link
-   * RuntimeHost.ensureRunning}, for a message, an answer, a notice or what a stop left held) — the one
-   * life a person's window may take by writing, answering or reopening
-   * ({@link RuntimeHost.aPersonsWindowMayTakeIt}).
-   *
-   * ⛔ **Not every life born with no owner.** A conversation a door deliberately holds for no window
-   * (`336`'s create with no sink, a spawn, `652`'s reopen with none) is still taken
-   * only by a person's own gesture ({@link RuntimeHost.claimSession}) — R5 widens the delivery's
-   * start, nothing else. ⚠️ Fixed at reservation, like {@link bornWithoutASurface} above it.
-   */
-  readonly aDeliveryStartedItWithNoWindow: boolean
-  /**
-   * ⚑ **W4.175 — on a first launch from a give, the piece its starter starts it from**: the
-   * giver's own piece the given one sits under ({@link Giving.parent}), or `null`. ⛔ That launch
-   * composes before the give is written down (`recordTheGive`, after the brief), so this is how it
-   * names its starter by that piece ({@link RuntimeHost.theStarterCalled}). ⚠️ Fixed at
-   * reservation, like the one above it.
-   */
-  readonly startedFrom: string | null
-  /**
-   * 🔴 **The identity this slot is going to be, known from the moment it is taken** (347).
-   *
-   * ⛔ **Without it, a lookup could only see identities that had already ARRIVED**, and a launch in
-   * flight was invisible to the next one. ⚑ **`428` keyed the question to the parent, and D-016
-   * made it `give_work`'s lookup** — {@link GiveFacts.helperAs}: the one conversation a giver has
-   * with an agent, over its reservations in flight and its rows — **and this field is half of the
-   * key**; what follows is why it is a birth fact.
-   *
-   * ⚠️ **Why it is a birth fact and not a lookup.** {@link admitGive} is synchronous and
-   * {@link RuntimeHost.createSession} reserves before its first `await`, so ONE give's
-   * admit-and-reserve is already atomic. What was missing was for the reservation to leave a
-   * TRACE the next admission could read — and a field written after the launch (on the registered
-   * session) is written on the far side of exactly the gap that matters.
-   *
-   * ⛔ **`null` means "this slot cannot name its identity", never "it has none."** A resumed row
-   * that was adopted out of a provider home carries no `profile_id`, and the honest answer for such
-   * a slot is to stay out of the question rather than to guess a default and refuse a stranger.
-   *
-   * ⚠️ **Fixed at reservation and never written again**, like {@link bornWithoutASurface} and
-   * {@link spawnedBy} above and below it — a session does not change identity, and a field that
-   * cannot move is a rule nobody has to keep.
-   */
-  readonly profileId: string | null
-  /**
-   * 🔴 **Who may give this session work, when that is not who owns it** (340).
-   *
-   * ⛔ **A second axis, not a second owner.** {@link ownerId} answers three questions at once — who
-   * may command, who is receiving, whose departure ends it. A caller with no surface answers YES to
-   * the first and NO to the other two, and there is no value of `ownerId` that says that: putting
-   * the spawner there would hand it the stream and take the session down with it. So the first
-   * question moved to its own field and {@link mayCommand} is the only thing that reads it.
-   *
-   * ⚠️ **`readonly`, and that is what makes 340 §3's orthogonality structural rather than a rule
-   * somebody has to keep.** `ownerId` moves — `null → id → null`, on a claim and on a release —
-   * and this field is fixed at reservation and never written again, so *"a window claiming a
-   * session must not take away the spawner's ability to command it"* is not a clause anywhere. It is
-   * true because no line exists that could make it false. The same reasoning
-   * {@link bornWithoutASurface} is written under, for the same kind of birth fact.
-   *
-   * ⛔ **Runtime-only, and `db/` is still deliberately untouched.** No owner of any kind is
-   * persisted — `ownerId` appears nowhere in a migration — and this field dies with the process
-   * exactly as it always has.
-   *
-   * 🔴 **What 373 changed is that a RESUME re-derives it instead of leaving it null**, for a
-   * conversation another conversation asked for. See {@link RuntimeHost.resumeSession}: the
-   * provenance triple 341 writes names the parent, {@link agentCallerId} turns that name into the
-   * identity the parent's own toolset presents, and the field is written once at reservation as it
-   * always was. ⚑ **340 §3's `readonly` rule is untouched** — its property is *never written again
-   * after reservation*, and this is a reservation.
-   *
-   * ⚠️ **A commander that was NOT the parent still comes back as nobody.** `mcp:…` and
-   * `webContents:…` are written down nowhere, and a window id could not be trusted across a restart
-   * even if they were: `webContents:3` names whatever window is third THIS time. ⚑ So 340 §0's
-   * sentence survives the change verbatim — *"a restart can never hand command of a session to an
-   * agent that did not ask for it"* — because the parent is precisely the one that asked.
-   */
-  readonly commandedBy: string | null
-  /**
-   * 🔴 **The conversation that asked for this one** (341) — its session id, or null for one nobody
-   * spawned.
-   *
-   * ⛔ **A THIRD field rather than a third meaning for one of the two above, for the reason 340
-   * split `ownerId` in the first place.** `commandedBy` answers *who may drive this*, and a spawn's
-   * parent is usually that caller — but not always, and never necessarily: `THE_APP_ITSELF` may ask
-   * on a conversation's behalf, and the child is then commanded by nobody while still having a
-   * parent. One field cannot hold both without one of the two questions being answered by accident.
-   *
-   * ⚠️ **That divergence is a LIVE-only answer since 373, and saying so is the price of the
-   * derivation.** A row records the PARENT and nothing about who commanded the child, so a reopened
-   * conversation is commanded by its parent whatever the live answer was: an app-spawn's child
-   * gains a commander it did not have, and a `mcp:…` caller's child loses one it did. ⛔ **The rule
-   * is uniform and is stated once** — *the commander a resume derives is the parent, always* — and
-   * both directions of that are stood up in `a-parent-that-survives-a-restart.test.ts` §2.
-   *
-   * ⚑ **What reads it is `give_work`'s lookup and the chain**: {@link GiveFacts.helperAs} asks
-   * which of one giver's children, in flight or running, is a given identity (D-016 · R2), and a
-   * conversation still starting walks its chain through it ({@link RuntimeHost.ancestorsAsItWillRun}).
-   * ⛔ **It is deliberately NOT what the ledger reads.** The durable answer to *"who started this"*
-   * is `provider_session.parent_session_id`, written in the transaction that writes the row; this
-   * field is the LIVE half, and dies with the process exactly as `commandedBy` does.
-   *
-   * 🔴 **A resume RE-DERIVES it from the ledger, like `commandedBy` and on the line beside it**
-   * (373). ⛔ The parent may drive that conversation again the moment it is reopened, so a reopened
-   * child is found by its parent's lookup as its child, as it was before the restart.
-   */
-  readonly spawnedBy: string | null
-  /**
-   * When this slot was reserved, epoch ms — so a refusal can say HOW LONG (100).
-   *
-   * Only `starting` exposes this timestamp. A second gesture can report how long the launch has been pending, helping the person decide whether to keep waiting.
-   *
-   * ⚠️ It is no longer the phase with **no way out** (102): {@link DEFAULT_LAUNCH_TIMEOUT_MS} ends
-   * a launch that cannot complete, and {@link RuntimeHost.cancelLaunch} lets the user end it first.
-   */
-  readonly since: number
-  /**
-   * What the WINDOW calls this launch, or null when it did not say (102).
-   *
-   * ⚠️ **It exists because a create has no session id to cancel by.** The host mints the id inside
-   * `createSession`, and the renderer only ever learns it from the promise that resolves when the
-   * launch is over — which is precisely the promise that never resolves in the case a Cancel is for.
-   * So the key travels the other way: the surface names its own gesture, and
-   * {@link RuntimeHost.cancelLaunch} looks the slot up by that name and the owner together.
-   *
-   * ⚠️ **Never rendered.** It is a correlation token on the wire, not something a person reads —
-   * 085's rule is about what reaches a screen, and nothing puts this there.
-   */
-  readonly launchKey: string | null
-  phase: SlotPhase
-  /**
-   * **The provider this slot asked for, owned from before it exists** (070, from 068 finding 2).
-   *
-   * The slot owns the ID; the launch owns the PROCESS. 062 gave the interval a name but nothing to
-   * act with: a close during it could mark the slot and wait, and that was all — there was no way to
-   * TERMINATE a spawn whose handshake never answered, and Codex creates its detached child before
-   * that handshake. {@link Launch.signal} is what reaches it.
-   */
-  readonly launch: Launch
-  /** The registered session; null for the whole `starting` phase. */
-  session: HostedSession | null
-  /**
-   * Settles when the start or resume that reserved this slot has FINISHED — registered, refused, or
-   * handed back. It is what shutdown waits on to know there is no provider still on its way.
-   */
-  readonly arrived: Promise<void>
-  /** Called by the reserver on every exit path, in a `finally`. */
-  readonly settle: () => void
-}
-
-type SlotPhase = 'starting' | 'live' | 'closing'
-
-/**
- * 🔴 **659 · is this conversation on its way out? — one question, asked in one place.**
- *
- * ⛔ **There are two doors into teardown and only one of them touches the phase.** `close()` marks
- * `slot.phase = 'closing'` before it does anything else; a provider stream that stops by itself
- * reaches `finalize()` from the pump's `finally`, which assigns `session.finalizing` and leaves the
- * phase exactly where it was. ⚠️ **So *"is `slot.phase === 'closing'`"* answers for one door**, and
- * until `659` four readers asked only that: `end_agent` and `interruptAgent` handed their rails the
- * provider's own status for a conversation already finalizing, the spawn door's `liveParent` let a
- * finalizing conversation spawn — its own comment said it excluded *"a slot mid-teardown"* — and
- * `cardFor` (`656`) had asked about the session before the phase (`650` F3), so a reservation being
- * closed read `'starting'`.
- *
- * ⚑ **`reserve` already knew** — *"Torn down through EITHER door"* — and so did `runningStateOf`,
- * `attachHeldSession`, `whyNotClaimed` and `releaseSession`, each spelling the three facts inline.
- * 🔴 **One question spelled six times drifts in the copies that were written before the second
- * door was found**, which is exactly where it drifted. `the-question-every-teardown-asks.test.ts`
- * holds every phase comparison in this file to this function.
- *
- * ## ⚠️ What it does NOT answer, stated
- *
- *  - ⛔ **`phase === 'live'`** — *is there a registered session to record into* — is a different
- *    question, and a finalizing session still is one: `runFinalize` writes `message_never_sent`
- *    into it. The readers that ask it are named in that test rather than routed here.
- *  - ⛔ **`assertAcceptsMessages` asks only the session's two facts**, and does not need the phase:
- *    `close()` sets the phase on the line before it assigns `session.closing`, so the one moment the
- *    phase is set and `closing` is not is `close()`'s own synchronous prefix, where no send can run.
- *  - ⚠️ **A session-less slot answers by its phase alone**, which is the reservation readers' whole
- *    question — `whyNotOurs`, `cancelLaunch`, `settleTeardown`, `sessionFor` and `takeBackPiece`'s
- *    launch-in-flight arm (`657`, routed here by `666`) — so they ask it here too rather than
- *    keeping a second spelling for the one case the other clauses are false in.
- */
-/**
- * ⚑ **D-009 · the words of a question this app asked**, read off its asker's `question_asked` row —
- * {@link RuntimeHost.theWordsOf}.
- */
-interface TheWordsOfAQuestion {
-  readonly move?: MoveOffer
-  /** It asked a person to do something, with these files (`request_action`). */
-  readonly action?: ActionAsked
-  readonly asked: string
-  /** ⚑ **D-016** — the piece the question was about, as `question_asked` named it, or `null`. */
-  readonly piece: string | null
-  readonly parts: readonly string[]
-  readonly prompt: string
-}
-
-/**
- * ⚑ **D-017 · the rows {@link RuntimeHost.writeIntoItsLedger} writes into a conversation whatever
- * state it is in.**
- */
-type IntoItsLedger =
-  | WorkReconciliationEvent
-  | ProviderFailureReconciliationEvent
-  | WorkRecoveryEvent
-  | ReplyUndeliveredEvent
-  | UserDecisionEvent
-  | WorkTakenBackEvent
-  // ⚑ **D-016 · `update_work`'s rows** — a piece's title, status line, new brief and close, written
-  // into its OWNER's ledger whatever state that conversation is in ({@link RuntimeHost.updateWork}).
-  | WorkRetitledEvent
-  | WorkStatusSetEvent
-  | WorkRebriefedEvent
-  | WorkClosedEvent
-  // ⚑ **D-047** — what a conversation gave, in its own ledger: a call can answer inside its stop.
-  | WorkSentEvent
-  | MessageSentEvent
-  | UnqueuedMessageEvent
-  // ⚑ **D-017 · R1** — a message held for a conversation's next start ({@link
-  // RuntimeHost.holdUntilItStarts}).
-  | QueuedMessageEvent
-  // A question whose recipient was deleted ends in its asker's ledger, whatever state that is in.
-  | QuestionRecipientEndedEvent
-  // A question passed up ends in the ledger that passed it up when its piece ends.
-  | QuestionEndedWithItsPieceEvent
-  // An agent's restore says so in each conversation it brought back, before any of them starts.
-  | RestoredFromTheArchiveEvent
-
-/**
- * ⚑ **D-016 · the held messages that carry one piece, where each waits** —
- * {@link RuntimeHost.theHeldMessagesCarrying}'s answer, which a take-back and a close refuse on and
- * then take back.
- */
-interface TheHeldMessagesCarrying {
-  /** The running conversation holding the piece, or `null` when this app is not running it. */
-  readonly session: HostedSession | null
-  /** In its mailbox, where a turn's end sends them. */
-  readonly inTheMailbox: readonly QueuedMessage[]
-  /** What a stop in flight handed on to its next start. */
-  readonly handedOn: readonly QueuedMessage[]
-  /** For a conversation this app is not running: the ids of what waits for its next start. */
-  readonly waiting: readonly string[]
-}
-
-/**
- * ⚑ **D-017 · R1 — the conversation a queue-door delivery went straight into stopped under it
- * before its words were handed over** — {@link RuntimeHost.queueAs} catches it and starts the
- * conversation again for them. ⛔ Never reaches a caller.
- */
-class ItStoppedUnderTheDelivery extends Error {
-  constructor() {
-    super('the conversation stopped before these words were handed over')
-  }
-}
-
-/**
- * ⚑ **D-022 · R2 — the piece a new brief was on its way to had ended when the words reached its
- * holder** — {@link RuntimeHost.tellItsOwnerItsNewBrief} catches it. ⛔ Never reaches a caller.
- */
-class ItEndedBeforeItsNewBrief extends Error {
-  constructor() {
-    super('the piece had ended before its new brief reached the conversation holding it')
-  }
-}
-
-/**
- * ⚑ **D-017 · R3 — what a giver still holds, as the 703 take-back reads it**: a running one's
- * session, or — for one on its way out or stopped — what waits for its next start.
- */
-type WhatAGiverHolds = Pick<HostedSession, 'mailbox' | 'handingOver'>
-
-type AnswerDelivery = { readonly to: string; readonly taskLabel: string | null } & (
-  | { readonly kind: 'sent' }
-  | { readonly kind: 'held'; readonly queueId: string }
-  | Extract<SendRecipientState, { kind: 'cannot-run' }>
-)
-
-/**
- * ⚑ **D-030 — what became of a reply's words**: one that landed in a turn or a mailbox has nothing
- * to explain; one kept for its giver's next start, or that reached nobody, says why.
- */
-type WhereAReplyWent = { readonly to: string } & (
-  | { readonly delivered: 'sent'; readonly why: null }
-  | { readonly delivered: 'held'; readonly why: null; readonly queueId?: string }
-  | {
-      readonly delivered: 'kept' | 'not-delivered'
-      readonly why: string
-      readonly state: Extract<SendRecipientState, { kind: 'cannot-run' }>
-    }
-)
-
-/**
- * ⚑ **D-030 — where words held for a conversation wait** ({@link RuntimeHost.holdUntilItStarts}):
- * its mailbox, for a turn of this life; its ledger, for its next start; or nowhere — its record
- * would not take them, and nothing else holds them for that start.
- */
-type WhereHeldWordsWait = 'its-mailbox' | 'its-ledger' | 'nowhere'
-
-/**
- * ⚑ **D-030 · the refusals {@link whyItWasNotDelivered} reads down the cause chain**, each said in
- * this app's own words: a quit, a close or a Cancel while it opened, a wait for its provider that
- * ran out, its last session still being put away. ⛔ Not
- * `nothing-names-a-model`: its sentence can quote its provider's own diagnostic, and a model reads
- * this (D-039). ⛔ Nor `still-opening`: a delivery's start meets it only from another start that
- * took the reservation first, and passes it on only once that start failed or is being closed
- * ({@link RuntimeHost.startForADelivery}) — so *it opens by itself* would be false.
- */
-const REFUSALS_IN_THIS_APPS_OWN_WORDS: ReadonlySet<Unavailable> = new Set<Unavailable>([
-  'its-session-is-gone',
-  'shutting-down',
-  'cancelled',
-  'lost-its-place',
-  'took-too-long',
-  'still-closing',
-  'not-confirmed-stopped',
-])
-
-/**
- * ⚑ **D-017 · R14 — why a delivery that starts its recipient did not happen, in words a person or a
- * model reads.** ⛔ Never the diagnostic — it names ids and paths, and it goes to the log.
- *
- * ⚑ A refusal that knows its reason says it ({@link describeUnavailable}, as a reopen's); a failure
- * the wake classifier knows ({@link aWakeThatDidNotHappen}) is said in a clause of its own, with no
- * remedy — the reader may be a model whose only act left is the one that failed. ⚑ **D-030 · and a
- * refusal down the cause chain** says it too, in this app's own words
- * ({@link REFUSALS_IN_THIS_APPS_OWN_WORDS}). ⚠️ Anything else is one fixed sentence, true of a giver
- * that runs and of one that does not.
- */
-function whyItWasNotDelivered(error: unknown): string {
-  const cause = error instanceof AStartThatDidNotHappen ? error.cause : error
-  const reason = unavailableOf(cause)
-  if (reason !== null) {
-    return describeUnavailable(reason, { ...unavailableContextOf(cause), reopening: true })
-  }
-  const unwoken = aWakeThatDidNotHappen(cause)
-  if (unwoken?.rail === 'that-conversation-could-not-be-woken-just-now') {
-    return describeUnavailable('machine-ran-short', { reopening: true, shortage: unwoken.because })
-  }
-  if (unwoken?.what === 'program') {
-    return 'This conversation did not start: this machine could not run its provider’s program — it may be missing or not runnable.'
-  }
-  if (unwoken?.what === 'folder') {
-    return 'This conversation did not start: BroCrew could not make or write a folder it needs.'
-  }
-  if (unwoken?.what === 'no-sign-in-to-copy') {
-    return 'This conversation did not start: there is no Codex sign-in for that agent to start on.'
-  }
-  if (unwoken?.what === 'gone-folder') {
-    return 'This conversation did not start: the folder it ran in is no longer there.'
-  }
-  // 🔴 **D-039 · R2 — its provider refused the start** (F055): until D-039 the arm below said it,
-  // guessing at a sign-in or a lost conversation and naming neither. ⛔ **Never in the provider's
-  // words**: a model reads this, and they can name a path in its home (`A_PROVIDER_REFUSED_THE_START`).
-  if (unwoken?.what === 'provider-refused') {
-    return 'This conversation did not start: its provider refused to start it.'
-  }
-  if (unwoken?.provider !== undefined && unwoken.what === 'sign-in') {
-    return `This conversation did not start: its ${PROVIDER_NAME[unwoken.provider]} sign-in could not be used.`
-  }
-  if (unwoken?.provider !== undefined && unwoken.what === 'settings') {
-    return `This conversation did not start: the ${PROVIDER_NAME[unwoken.provider]} settings in its profile could not be used.`
-  }
-  if (unwoken?.rail === 'that-conversation-could-not-be-resumed') {
-    return 'This conversation did not start: its provider could not bring it back — it may need signing in again, or may no longer have it.'
-  }
-  // ⚑ **D-030 · the refusal a reopen met, read down the cause chain** as {@link itCanNeverBeReopened}
-  // reads it: it reaches here wrapped in its person-read sentence
-  // ({@link RuntimeHost.refusalTranslated}), so the first arm never sees it. ⚑ The outermost refusal
-  // decides, and one not in {@link REFUSALS_IN_THIS_APPS_OWN_WORDS} is the fixed sentence below.
-  let seen: unknown = cause
-  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
-    const refused = unavailableOf(seen)
-    if (refused !== null) {
-      if (!REFUSALS_IN_THIS_APPS_OWN_WORDS.has(refused)) break
-      return describeUnavailable(refused, { ...unavailableContextOf(seen), reopening: true })
-    }
-    seen = (seen as { cause?: unknown }).cause
-  }
-  return 'This conversation could not be reached just now, for a reason BroCrew records only in its log.'
-}
-
-/**
- * ⚑ **D-030 · why a reply's words could not even be kept** — its giver's record would not take them,
- * so nothing holds them for its next start. ⛔ The store's own message goes to the log.
- */
-const ITS_RECORD_WOULD_NOT_TAKE_IT = 'BroCrew could not write it into that conversation’s record.'
-
-/**
- * ⚑ **D-017 · R1 — what whoever answered is told when the answer is kept for its asker's next
- * start**: that it is recorded and kept, where it goes, and why it did not go now. ⚑ The asker is
- * named once, by the piece it owns (D-016 · commit 7 · R3), and then called *that conversation*.
- */
-function anAnswerKeptForItsStart(asker: string, why: string): string {
-  return `The answer is recorded and kept for ${asker}: it goes to that conversation first when it next starts, or later if its provider’s usage limit holds then. It could not be started now — ${why}`
-}
-
-/** ⚑ **D-017 · R6** — {@link RuntimeHost.answeredInThisRun}'s key: a request id is the asker's own. */
-function aQuestionKey(askedBy: string, requestId: string): string {
-  return `${askedBy}\u0000${requestId}`
-}
-
-/**
- * ⚑ **D-017 · R2 — a conversation this app is not running, described as the start a delivery would
- * give it** — see {@link RuntimeHost.startable}, its one maker.
- *
- * ⚑ **`ownerId` and `commandedBy` are the two fields {@link mayCommand} reads**, spelled exactly as
- * {@link RuntimeHost.resumeSession} would reserve them for a start with no window.
- */
-interface Startable {
-  readonly id: string
-  readonly ownerId: null
-  readonly commandedBy: string | null
-  /** The conversation that started it — `null` for a person's conversation (D-016: the parent alone). */
-  readonly parent: string | null
-  readonly profileId: string | null
-  readonly provider: Provider
-}
-
-/**
- * Did a reopen fail because its provider no longer has the session? A `ResumeError` its adapter
- * marked `noSuchSession`, read down the cause chain because the reopen's refusal wraps what it met.
- * ⛔ Nothing else: a deleted folder, a damaged transcript and a provider that could not start are
- * failures of this attempt, and a later one can succeed.
- */
-function theProviderLostIt(error: unknown): boolean {
-  let seen: unknown = error
-  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
-    if (seen instanceof ResumeError && seen.noSuchSession) return true
-    seen = (seen as { cause?: unknown }).cause
-  }
-  return false
-}
-
-/**
- * ⚑ **D-017 · R10 — can the conversation never be reopened?** — its provider no longer has it
- * ({@link theProviderLostIt}), or never named it (`never-started`).
- */
-function itCanNeverBeReopened(error: unknown): boolean {
-  if (theProviderLostIt(error)) return true
-  let seen: unknown = error
-  for (let depth = 0; depth < 8 && seen instanceof Error; depth += 1) {
-    if (unavailableOf(seen) === 'never-started') return true
-    seen = (seen as { cause?: unknown }).cause
-  }
-  return false
-}
-
-/** Why the file of which agents are services is not changed: another app may be running on it. */
-const NOT_THE_ONLY_APP = 'Not changed: the app may be open twice.'
-
-/** A start refused: the agent is a service, whose one conversation no other start may replace. */
-const NOT_STARTED_A_SERVICE = 'Not started: it’s a service.'
-
-/** Why a service is not told of a change to a queued piece, after "‹it› could not be told. ". */
-const QUEUED_NEVER_TOLD = 'The piece was queued and had not reached it, so nothing was sent.'
-
-/** Rows in a service's ledger after which it may be free for its next piece. */
-const MAY_FREE_A_SERVICE: ReadonlySet<TranscriptEvent['type']> = new Set([
-  'status',
-  'turn',
-  'work_given',
-  'work_replied',
-  'work_taken_back',
-  'work_closed',
-  'message_unqueued',
-  'background_work',
-  'scheduled_work',
-])
-
-/** A delete refused because which agents are services can't be read. */
-const A_SERVICE_IT_MAY_BE =
-  'This may be a service’s conversation, and which agents are services can’t be read, so ' +
-  'nothing was deleted.'
-
-/** A service's conversation whose delete could not be noted first, so nothing was deleted. */
-const A_SERVICE_IT_STAYS = 'Not deleted: the services list could not be saved.'
-
-/** An agent not removed: which agents are services can't be read. Why goes to the log. */
-const NOT_REMOVED_UNREADABLE = 'Not removed: services list unreadable.'
-
-/** An agent not removed: another app may be running on this data. */
-const NOT_REMOVED_OPEN_TWICE = 'Not removed: the app may be open twice.'
-
-/** An agent not removed: its entry could not be marked before the removal. */
-const NOT_REMOVED_NOT_SAVED = 'Not removed: services list not saved.'
-
-/**
- * ⚑ **D-017b · why a setting changed on a conversation nothing runs would not reach it**, or `null`
- * when its next start takes it: one an earlier version replaced has a conversation in its place,
- * and one no message continues has no next start. ⛔ Read by the recorded view
- * (`settingsFixed`) and by the door that writes a setting, so the controls a view offers are the
- * ones the host takes.
- */
-function whyNoSettingForItsNextStart(
-  row: RecordedSession,
-  replacedBy: ReadonlyMap<string, string>,
-  canFirstStart: boolean,
-): string | null {
-  if (replacedBy.has(row.sessionId)) {
-    return 'Its messages go to the conversation continuing its job, so settings changed here would not reach it. Change the settings there.'
-  }
-  if (!canFirstStart && row.unresumableReason !== null) {
-    return 'no message continues this conversation, so a setting changed here would not reach it'
-  }
-  return null
-}
-
-function onItsWayOut(slot: SessionSlot): boolean {
-  if (slot.phase === 'closing') return true
-  const session = slot.session
-  return (
-    session !== null &&
-    (session.closing !== null ||
-      session.finalizing !== null ||
-      session.handle.isRetiring?.() === true)
-  )
-}
-
-/**
- * 🔴 **724 · `714` F-4 — a reservation whose provider has not arrived, and that is not on its way
- * out** — {@link AgentCard.state}'s `'starting'`, the same two facts {@link RuntimeHost.cardFor}
- * reads for it.
- *
- * ⚠️ **Spelled off the session and not off `phase`**: registration sets the session and `'live'`
- * together, so the two spellings agree — and `the-question-every-teardown-asks.test.ts` §5 allows no
- * phase comparison outside {@link onItsWayOut} but `'live'`, read by name.
- */
-function stillStarting(slot: SessionSlot): boolean {
-  return slot.session === null && !onItsWayOut(slot)
-}
-
-/**
- * ⚑ **D-017 · R11 — how many of a life's tool calls it keeps the words of**, for a background row to
- * name its command ({@link HostedSession.toolCallsNamed}). ⚠️ A command started more calls ago than
- * this says the provider's description instead.
- */
-const TOOL_CALLS_REMEMBERED = 256
-
-/**
- * 🔴 **How long an AGENT's interrupt waits for the provider before answering** (395) — **and, since
- * `709`, how long interrupt-and-send waits on its own** (`704` H-8).
- *
- * ⛔ **Two seconds, and it is the number both adapters already chose for this exact wait.** Claude
- * bounds its own ack at `INTERRUPT_ACK_TIMEOUT_MS = 2000` and forces the terminal itself; Codex
- * bounds nothing on this path — it awaits the ANSWER to its `turn/interrupt` request, which a wedged
- * app-server may never send (709, correcting *"a `turn/completed` that may never arrive"*). ⚑ So this
- * bound is a no-op on Claude — the call has already resolved — and is the whole of the guarantee on
- * Codex, which is why it exists at all.
- *
- * ⚠️ **It releases the WAITER, not the work** (185). The interrupt stays in flight; what is bounded
- * is how long a parent's turn is held open by a child's provider — how long a person's
- * interrupt-and-send, with the queue it holds, is held by the provider of the conversation it is in
- * — and, since `720` (`709` F-6), how long a person's Stop, and the window's `record.busy` with it, is.
- *
- * 🔴 **742 · and how long a person's answer to a provider's card waits before the door answers
- * `unacknowledged`** (`739` F-6) — {@link RuntimeHost.answerTheProvider}. ⚠️ Not the number either
- * adapter chose for it: both take an answer synchronously, so on `main`'s providers this bound never
- * passes; it is the whole of the guarantee for an adapter whose answer does not settle.
- */
-/**
- * ⛔ **616 + 612 · `positiveWindow` stood here and has NO window left to guard.**
- *
- * ⚑ **`398` §6 wrote it, and the rule it enforced is worth keeping in words**: zero and negative
- * are not short windows, they are windows that have always elapsed — a guard widened for a test's
- * convenience, failing OPEN while reading like a tightening. ⚠️ **And it threw rather than
- * clamping**, because a clamp would let a call site pass `0` and get the default back, so the
- * number in force would stop being the number anybody wrote.
- *
- * 🔴 **Its own note argued for its survival and that argument has expired.** It read *"one caller
- * since `400`, and it stays a function… a guard inlined at its last call site is a guard the next
- * deadline will be written without."* ⛔ **There is no last call site now**: the constructor
- * resolves no window at all — see the list where it used to. ⚠️ A guard with no caller is not a
- * guard, and a lint error is the honest form of that fact.
- *
- * ⚑ **What a future deadline owes**: this rule, re-written at the moment it has something to
- * guard — never restored as a function nothing calls.
- */
-
-const DEFAULT_INTERRUPT_WAIT_MS = 2_000
-const DEFAULT_CLOSE_DRAIN_TIMEOUT_MS = 5_000
-
-/**
- * How long a reopen waits, once its provider has answered, for the read of what its Codex thread
- * already holds. The read runs alongside the resume and only decides how much of this
- * conversation's text is owed, so a late one costs tokens, never the reopen.
- */
-const DEFAULT_REOPEN_LEADS_GRACE_MS = 1_000
-
-/**
- * 🔴 **657 · the bound on waiting for work already on its way** (standing rule 13).
- *
- * ⛔ **What is waited for is somebody else's handover**: a work message handed to the provider and
- * not yet written down as a task, or a held message being flushed. Both are bounded underneath —
- * the Keychain read, the settings acknowledgement, the path check — and none of those bounds was
- * written for THIS wait, so this one is its own. ⚠️ **On expiry the message decides anyway**, and
- * the worst it can do is what every message could do before `657`: be held beside a task that
- * nobody had recorded yet. The same number as a launch, because it is the same order of patience.
- */
-const DEFAULT_DELIVERY_WAIT_MS = 15_000
-
-/**
- * 🔴 **708 · the bound on asking a provider which commands it has** (`R42`, standing rule 13).
- *
- * ⚑ **What is waited on is usually the CLI handshake**: the host asks only when this life holds no
- * list — a child that has not finished starting, or one whose own list read failed — and `279`
- * measured the handshake's list at **1 918 ms**, and `supportedCommands()` at **0 ms** once it has
- * answered.
- * ⚠️ **A person is waiting on this, pressing Send**, so it is shorter than the adapter's own 15 s
- * bound (`COMMAND_READ_TIMEOUT_MS`, sized for the handshake's read, which nothing waits on): five
- * seconds is ~2.6× the measured handshake. ⛔ **On expiry the message decides without a list**, which `R42` rules: a message
- * shaped like a command goes out as typed.
- */
-const DEFAULT_COMMAND_LIST_WAIT_MS = 5_000
-
-/**
- * How long a life started for its jobs holds one whose minute has already come, when its provider
- * states no level: a provider restores its jobs, and runs what is due, within seconds
- * ({@link WAKE_LEAD_MS}).
- */
-const WAKE_BRIEF_HOLD_MS = 2 * 60_000
-
-/** The most conversations whose scheduling evidence is held in memory at once. */
-const SCHEDULES_HELD = 200
-
-/**
- * ⚑ **D-029 · the longest a wake-up's timer waits before it reads the wall clock again** — the
- * provider fires on the wall clock, checked every second, while a timer counts a clock that may not
- * advance while the Mac sleeps (not measured here). ⚠️ It also keeps every delay under
- * `setTimeout`'s 2³¹−1 ms: a yearly one-shot is months away. ⚑ And a start that failed is tried
- * again this long after it, first.
- */
-const WAKE_CHECK_MS = 60_000
-
-/**
- * ⚑ **D-029 · the longest a wake-up waits to try a start again after one failed** — each retry waits
- * twice as long as the one before, from {@link WAKE_CHECK_MS}, up to the half hour the provider
- * itself may fire a repeating job past its time (`recurringCapMs`): a provider that cannot start is
- * not spawned every minute, and one that recovers is started within that half hour.
- */
-const WAKE_RETRY_MAX_MS = 30 * 60_000
-
-const ITS_JOB_MESSAGES_WERE_NOT_DELIVERED =
-  'This conversation could not run, so these scheduled-job messages were not delivered. Its record stays readable.'
-
-const IT_COULD_NOT_WAKE =
-  'This conversation could not wake: its provider session file is missing. Nothing ran.'
-
-/**
- * ⚑ **D-029 · why the words about a conversation's own jobs are ended at a launch** — that launch
- * tells its jobs again, from its ledger, in words true now ({@link RuntimeHost.armItsWakeUp}).
- * ⛔ A durable row names no conversation.
- */
-const NEWER_WORDS_ABOUT_ITS_JOBS =
-  'newer words about this conversation’s jobs took their place when this app started again'
-
-/** Why words about its jobs end when a later plan of them takes their place. */
-const NEWER_WORDS_ABOUT_ITS_JOBS_NOW = 'newer words about this conversation’s jobs took their place'
-
-/** Why words about its jobs ended when a conversation came back from the archive. */
-const NEWER_WORDS_AFTER_THE_ARCHIVE =
-  'newer words about this conversation’s jobs took their place when it came back from the archive'
-
-/** Why words about its jobs ended when a delete stopped a conversation and kept its records. */
-const NEWER_WORDS_AFTER_A_DELETE =
-  'newer words about this conversation’s jobs took their place when a delete stopped it'
-
-/**
- * 🔴 **How long a launch waits before each conversation it starts because the restart stopped its
- * background work** ({@link RuntimeHost.wakeWhatTheRestartStopped}) — and the same again between
- * one such start and the next. ⚑ One start at a time: a busy restart with many of them spreads them
- * over this, never spawning them all at once while the window is still opening.
- */
-const FIRST_BRIEF_OBSERVATION_MS = 120_000
-const RESTART_WAKE_GAP_MS = 5_000
-
-/**
- * ⚑ **F074 — how long one read of the providers' walls answers the hold** ({@link
- * RuntimeHost.theResetItWaitsFor}) — the limits warning's own five-second look. ⚑ A row that can
- * move a wall drops it sooner ({@link RuntimeHost.deliver}).
- */
-const WALLS_READ_FOR_MS = 5_000
-
-/**
- * ⚑ **F074 — how long after a provider's stated reset what waited for it goes** — the provider's
- * clock and this Mac's are not the same clock, and a turn sent a moment early only meets the limit
- * again.
- */
-const AFTER_THE_RESET_MS = 30_000
-
-/**
- * ⚑ **F074 — the longest one wait for a limit's reset runs before the hold looks again** — a
- * limit can move (a later wall, or one the provider cleared), and a timer longer than Node's
- * 24.8-day maximum fires at once.
- */
-const LOOK_AT_THE_LIMIT_AGAIN_MS = 10 * 60_000
-
-/**
- * ⚑ **How old the newest quit may be for its stopped background work to wake anybody** — a launch
- * the next morning still wakes last night's; a stamp left from a quit long before, on a
- * conversation nothing reopened since, does not.
- */
-const RESTART_STOPPED_WITHIN_MS = 24 * 60 * 60_000
-
-/** ⚑ Why earlier words about stopped background work are ended: this launch's take their place. */
-const NEWER_WORDS_ABOUT_WHAT_THE_RESTART_STOPPED =
-  'newer words about the background work a restart stopped took their place when this app started again'
-
-/** ⚑ **F076** — why the words about a turn a refused login stopped are ended: its reopen failed. */
-const ITS_REOPEN_ON_THE_NEW_LOGIN_FAILED =
-  'this app could not reopen this conversation on the current login, so these words were not sent'
-
-/** ⚑ Why the words about stopped background work are ended: the start they waited for failed. */
-const ITS_START_AFTER_THE_RESTART_FAILED =
-  'this app could not start this conversation again after the restart, so these words were not sent'
-
-/**
- * 🔴 **What a conversation is told when the app's restart stopped its background work** — the
- * time, on this Mac's clock (with its day when that is not today), and what was running, by what
- * its provider called it. ⚑ It asks nothing of it but to decide.
- */
-export function backgroundTheRestartStoppedText(
-  stopped: readonly string[],
-  endedAt: number,
-  now: number,
-): string {
-  return (
-    `The app restarted at ${clockTimeFrom(endedAt, now)} and stopped your background work: ` +
-    `${theStoppedWork(stopped)}. Start it again if it’s still needed.`
-  )
-}
-
-/** How long before a launch a turn this app cut may have been cut, for the launch to continue it. */
-const A_CUT_TURN_IS_CONTINUED_WITHIN_MS = 60 * 60_000
-
-/** How long after a conversation's program stopped mid-turn it is started again, once. */
-const A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS = 60_000
-
-/** The furthest reset a turn a usage limit cut waits for, from its cut. */
-const A_LIMIT_IS_WAITED_FOR_AT_MOST_MS = 24 * 60 * 60_000
-
-/**
- * How many automatic continuations of one conversation may come in a row, whatever cut each turn:
- * a third cut waits for a person.
- */
-const AUTOMATIC_CONTINUATIONS_IN_A_ROW = 2
-
-/**
- * How many automatic continuations came just before a cut, in a row: none when the cut turn was not
- * itself a continuation; else one more than the cut it continued, once that continuation was sent,
- * or one when what came before it is not known.
- */
-function continuationsInARow(before: CutRecord | undefined, aContinuation: boolean): number {
-  if (!aContinuation) return 0
-  return before?.state === 'sent' ? (before.inARow ?? 0) + 1 : 1
-}
-
-/** How far apart a provider's limit continuations go after its reset. */
-const LIMIT_WAKES_APART_MS = 2 * 60_000
-
-/** How long a woken life's account is waited for, as its provider's own account read is bounded. */
-const ACCOUNT_WAIT_MS = 15_000
-
-/** How often a woken life is asked whether its account is known yet, while it is waited for. */
-const ACCOUNT_LOOK_EVERY_MS = 50
-
-/**
- * 🔴 **What a conversation is told when this app continues a turn that was cut** — on this Mac's
- * clock, with its day when that is not today. ⚑ A crash leaves no moment of its own, so its words
- * name the last thing this app recorded, never a time it stopped.
- */
-export function aTurnTheAppCutText(
-  kind: CutKind,
-  cutAt: number,
-  now: number,
-  provider: Provider,
-): string {
-  const at = clockTimeFrom(cutAt, now)
-  const then = 'Check what already happened, then continue.'
-  switch (kind) {
-    case 'quit':
-      return `The app restarted at ${at} during your turn. ${then}`
-    case 'crash':
-      return `The app stopped unexpectedly during your turn (last seen at ${at}). ${then}`
-    case 'program':
-      return `${providerDescriptor(provider).programName} stopped unexpectedly at ${at} during your turn. ${then}`
-    case 'limit':
-      return `Your turn stopped at ${at} when the usage limit was reached. The limit has reset. ${then}`
-  }
-}
-
-/**
- * ⚑ Whether a turn's own rows still say what cut it, in the cut's generation, with no stop asked:
- * a quit's ended in this app's word or unseen, a crash's unseen; a program's failed in this app's
- * word, or unseen, with no limit; a limit's named one. ⛔ Never a refused login or bill.
- */
-function theTurnWasCut(kind: CutKind, turn: TurnAsItEnded, generation: number): boolean {
-  if (turn.generation !== generation || turn.stopAsked) return false
-  switch (kind) {
-    case 'quit':
-      return turn.ending === 'unknown' || (turn.ending === 'interrupted' && turn.theAppsWord)
-    case 'crash':
-      return turn.ending === 'unknown'
-    case 'program':
-      return (
-        !turn.refused &&
-        !turn.endedOnALimit &&
-        (turn.ending === 'unknown' || (turn.ending === 'failed' && turn.theAppsWord))
-      )
-    case 'limit':
-      return !turn.refused && turn.endedOnALimit
-  }
-}
-
-/**
- * How many times the gap between two starts in the line a start due at once waits out: it has no
- * minute to meet, and many can be due together at a launch.
- */
-const AT_ONCE_START_GAPS = 4
-
-/** Nothing done yet for a conversation's jobs. */
-const NOTHING_DONE_FOR_ITS_JOBS: ConversationAttempts = {
-  attempts: [],
-  admittedAt: null,
-  told: [],
-  runs: {},
-  notStartedSaid: {},
-  at: 0,
-}
-
-/**
- * ⚑ **D-029 · one stopped conversation's wake-up** — see {@link RuntimeHost.wakeUps}.
- */
-interface WakeUp {
-  /**
-   * The jobs its plan lists — what its state says while it is stopped, and what its next life is
-   * seeded with. ⚑ Planned again as any start begins ({@link RuntimeHost.judgeItsWakeUpAgain}).
-   */
-  level: ScheduleLevel
-  /** What its plan asks a start for, each with whether that start was already made. */
-  admission: WakeAdmissionPlan
-  /** The runs of its repeating jobs a start is owed for ({@link RuntimeHost.planItsWake}). */
-  runs: readonly RunOwed[]
-  /**
-   * Until when a life started for it holds these jobs if its provider states no level
-   * ({@link RuntimeHost.letGoOfJobsItNeverRestored}); `null` is until it states one.
-   */
-  holdFor: number | null
-  /** When to start it. */
-  startAt: number
-  /**
-   * Whether it was armed for a time ahead — a job's run — rather than due at once: in the line its
-   * start waits in, it goes before those ({@link RuntimeHost.itsTimeCame}).
-   */
-  readonly forATimeAhead: boolean
-  /** How many of its starts have failed — each retry waits longer ({@link WAKE_RETRY_MAX_MS}). */
-  failed: number
-  /**
-   * The provider whose saved key its start could not read, while it waits for that key to be saved
-   * again or removed ({@link RuntimeHost.waitForItsKey}); `null` otherwise.
-   */
-  waitingForItsKey: Provider | null
-  /** Its timer, while one is set. */
-  timer: ReturnType<typeof setTimeout> | null
-  /** Its last life's provider going: the launch registry refuses the id until then. */
-  readonly lastLifeEnded: Promise<unknown>
-}
-
-/**
- * ⚑ **One window's look at a conversation nothing runs** — see {@link RuntimeHost.lookingAtItsRecord}.
- * A look takes back only its own, so it is an object of its own even for the same window.
- */
-interface OneLook {
-  readonly sink: RuntimeEventSink
-}
-
-/**
- * **What a session's liveness IS on the wire** (149) — the tracker's state plus everything
- * {@link sessionDisclosures} adds to it. One projection, for every way a surface can be told.
- *
- * ⛔ **There were four spellings of this and two of them were short, which is 148 H5.** The live
- * publications merged the disclosures in; the two hand-over paths passed `session.liveness.current`
- * bare. So a renderer that reloaded — HMR, `cmd+R`, a window that lost its list — was handed a
- * liveness with no `signInSuperseded` in it, read absent as false, and lost the amber bar while the
- * handle's latch was still true and every message still refused. The remedy became invisible on the
- * exact gesture a user makes when something looks stuck.
- *
- * ⚠️ **And the tracker's own callback was the third spelling, missing `queued`.** It called
- * `sessionDisclosures({provider, handle})` — without the session — and the parameter is optional, so
- * it published `queued: []` on every silence transition. `acceptLiveness` folds a non-undefined
- * `queued` straight onto `meta`, so a message waiting behind a long turn had its banner and its
- * Cancel taken away by the very silence that made the wait worth watching. Found while fixing the
- * other two; the shape is identical and so is the fix.
- *
- * The rule that replaces the four: nothing outside this function decides what a liveness contains.
- *
- * ⚠️ **`disclosures` is a parameter so {@link publishStateIfChanged} can key and publish from ONE
- * read.** Its own note is why: the dedupe key and the message must be the same object, or the key can
- * come to describe something other than what was sent. Every other caller lets it default.
- */
-function livenessFor(
-  session: HostedSession,
-  disclosures = sessionDisclosures(session),
-): SessionLiveness {
-  return { ...session.liveness.current, ...disclosures }
-}
-
-/**
- * **A session that was told nothing extra.** The one value that means "we appended nothing", so a
- * host with no reader and a launch that found no files disclose the same thing — and the UI, which
- * renders nothing for an empty list, cannot tell them apart because there is nothing to tell.
- */
-/**
- * ⛔ **Every status that ENDS a turn** (318) — the boundary the memory-note observation is keyed on.
- *
- * ⚠️ **Three, not one, and `session-store.ts` already knew that.** Its `appendTx` closes the open
- * turn row on `turn` and on `status` of `ended`/`errored`, because a child that dies mid-turn never
- * publishes an `idle` at all. An observation keyed on `idle` alone is an observation that is lost
- * exactly when something went wrong — and, for this one, lost permanently, since the next turn
- * retakes the snapshot it would have been measured against.
- *
- * ⚑ **`waiting_permission` and `working` are deliberately not here**: they are a turn continuing.
- */
-const TURN_ENDINGS: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
-  'idle',
-  'ended',
-  'errored',
-])
-
-const NO_INSTRUCTIONS: SessionInstructions = {
-  injected: [],
-  // 165: no agent memory either. ⚠️ **An empty LIST since 317**, and still never `undefined` — the
-  // renderer normalises whatever it is handed precisely because an older shape with the field
-  // missing, or holding 165's single object, would otherwise have rendered an empty block.
-  agentMemory: [],
-  provider: [],
-  refused: [],
-  note: '',
-  // ⛔ **`false` because we do not know, and that is the SAFE direction of the flag** (319 §2.1).
-  // Every other field here means *"we appended nothing"*; this one means *"say nothing about where a
-  // recall would show up"*. A host with no reader has no provider answer either, and `true` would
-  // put a promise on the panel for a session nobody measured — which is exactly the shape `308` was
-  // dispatched for. See the field: `false` is only a MEASURED fact where a reader set it.
-  recallsReported: false,
-  // ⛔ **`false` for its neighbour's reason** (330 §4): a host with no reader has no provider answer,
-  // and the flag's job is to decide whether the panel says an extra sentence at all.
-  writesReported: false,
-  // ⛔ **`null` because nothing was appended, which is the same statement every field above
-  // makes** (442). A host with no instruction reader composed nothing, and `null` is *"we appended
-  // nothing"* rather than *"we did not say"* — there is no third value here and none is wanted:
-  // the empty `injected` beside it is the same fact from the other side.
-  composed: null,
-}
-
-/**
- * ⚑ **690 · the two ways a held message is TAKEN BACK** — {@link RuntimeHost}'s `takeQueuedBack`.
- * ⛔ `cancelled` is a person's or an agent's own act; `retracted` is this app's, and carries the
- * sentence saying what made its own notice false (R32).
- */
-type HowItWasTakenBack =
-  { readonly reason: 'cancelled' } | { readonly reason: 'retracted'; readonly detail: string }
-
-/**
- * ⚑ **D-017 · R8 — one launch sweep's console line**, said when it settled anything or skipped a
- * ledger, with how many ledgers it skipped.
- */
-function sayTheSweep(settled: number, skipped: RowsUnread, line: string): void {
-  if (settled === 0 && skipped.ledgersSkipped === 0) return
-  console.info(
-    skipped.ledgersSkipped === 0
-      ? line
-      : `${line}; ${String(skipped.ledgersSkipped)} ledger(s) skipped`,
-  )
-}
-
-/** How many lines, ledger rows or archived frames one page of a turn's reading takes (W4.164). */
-const TURN_AS_SENT_PAGE = 2_000
-
-/** A person's answer to a request nobody is waiting on any more, in the provider's case and ours. */
-const NO_LONGER_WAITING = 'the agent is no longer waiting for an answer to this'
-
-/** What an archive or a delete is stopping a conversation for: all of it, or its transcript. */
-type SetAsideFor = 'archive' | 'delete' | 'its-files'
-
-/** What is being done to a conversation set aside, as words that follow "This conversation". */
-const SET_ASIDE_FOR: Readonly<Record<SetAsideFor, string>> = {
-  archive: ' is being archived',
-  delete: ' is being deleted',
-  'its-files': '’s transcript is being deleted',
-}
-
-/** A start bringing a conversation back from the archive ({@link RuntimeHost.bringingBack}). */
-interface BringingBack {
-  /** The rest of its archived tree, which carries on once the start has succeeded. */
-  readonly others: readonly string[]
-  /** When each conversation of the tree was archived, to put back if the start fails. */
-  readonly archivedAt: ReadonlyMap<string, number>
-  readonly saying: string
-}
-
-/** What ties `here`, a conversation of a tree, to `other` outside it, as a clause. */
-function tieInWords(how: TiedOutside['how'], here: string, other: string): string {
-  switch (how) {
-    case 'gave-it-work':
-      return `${other} gave work to ${here}`
-    case 'holds-work-it-gave':
-      return `${other} holds work that ${here} gave it`
-    case 'wrote-to-it':
-      return `${other} wrote to ${here}`
-    case 'asked-it':
-      return `${other} asked ${here} a question`
-    case 'added-files-to-its-work':
-      return `${here} added files to ${other}’s work`
-    case 'gave-it-a-piece-below':
-      return `${other} holds work that hangs below ${here}’s`
-  }
-}
-
-type ListingReadFloor = {
-  readonly epoch: PublicationEpoch
-  readonly seq: number
-  readonly read: number
-}
-
-/** One remembered refusal: a provider and the login refused, '' where only one is told apart. */
-function refusedLoginKey(provider: Provider, login: string): string {
-  return `${provider}\u0000${login}`
-}
 
 export class RuntimeHost implements LiveHost {
   /**

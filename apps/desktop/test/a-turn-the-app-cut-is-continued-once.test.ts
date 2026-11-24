@@ -26,7 +26,8 @@ import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
-import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import { aTurnTheAppCutText } from '../src/main/runtime/host-split/wakes-and-restarts'
 import {
   readKeptAccounts,
   writeKeptAccounts,
