@@ -60,6 +60,7 @@ export {
 
 export {
   claudeLoginRenewer,
+  claudeLoginNeedsRenewal,
   probeClaudeCodeLogin,
   type ClaudeLoginRenewal,
 } from './claude/login-renewal'

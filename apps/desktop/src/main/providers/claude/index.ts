@@ -20,6 +20,7 @@ import {
   claudeKeychainTokenProvider,
   claudeKeychainTokenProviderForALaunch,
   claudeLoginNotRenewed,
+  claudeLoginNeedsRenewal,
   claudeCommandIn,
   defaultKeychainReaderForALaunch,
   claudeKeychainTokenProviderAsync,
@@ -192,8 +193,18 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
         }
         const keyed = status === undefined ? await apiKey?.() : null
         if (keyed) return await stateOnTheKey(signal)
-        const login = await defaultKeychainReaderForALaunch()
-
+        let login = await defaultKeychainReaderForALaunch()
+        // An expired access token is renewed here as a launch renews it, so a login Claude Code
+        // can renew reads as ready and only one it could not renew asks for a sign-in.
+        if (seams.renewLogin !== undefined && claudeLoginNeedsRenewal(login, Date.now())) {
+          const renewal = await seams.renewLogin()
+          if (renewal === 'not-renewed' || renewal === 'not-installed') {
+            const platform = seams.platform ?? process.platform
+            const reason = claudeLoginNotRenewed(renewal, platform, claudeCommandFor(seams)())
+            return { state: 'absent', reason, why: 'expired' }
+          }
+          login = await defaultKeychainReaderForALaunch()
+        }
         return claudeLoginState(
           () => login,
           undefined,
@@ -271,6 +282,9 @@ export function createClaudeModule(
         throw error
       }
       const selectedKey = () => key
+      // A model list reads through here too, so an expired login is renewed first, as a
+      // conversation start renews it; one already renewed reads as not needing it.
+      if (key === null) await seams.auth.renewLogin?.()
       const readLogin = seams.home.login ?? claudeKeychainTokenProviderForALaunch()
       let login: Promise<string | null> | undefined
       const selectedLogin = () => (login ??= readLogin())

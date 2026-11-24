@@ -36,6 +36,8 @@ import {
 
 const NOW = Date.now()
 const HOUR = 60 * 60 * 1000
+/** How long a login a run could not renew waits before it is tried again. */
+const RETRY_WAIT = 5 * 60 * 1000
 
 let home: string
 beforeEach(() => {
@@ -399,6 +401,31 @@ describe('one renewal at a time', () => {
     expect(await renew()).toBe('not-renewed')
     expect(await renew()).toBe('not-renewed')
     expect(runs).toBe(1)
+  })
+
+  it('🔴 a login a run could not renew is tried again by a start after the retry wait', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    try {
+      let runs = 0
+      const renew = claudeLoginRenewer({
+        findProgram: () => '/stand-in/claude',
+        readLogin: async () => login('expired', NOW - 1),
+        run: async () => {
+          runs++
+          return ended(1)
+        },
+      })
+      expect(await renew()).toBe('not-renewed')
+      vi.setSystemTime(NOW + RETRY_WAIT - 1)
+      expect(await renew()).toBe('not-renewed')
+      expect(runs).toBe(1)
+      vi.setSystemTime(NOW + RETRY_WAIT)
+      expect(await renew()).toBe('not-renewed')
+      expect(runs).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a login that does not need renewing runs nothing, and a read that throws is not renewed', async () => {

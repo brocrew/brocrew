@@ -42,6 +42,12 @@ export const CLAUDE_RENEWAL_ARGS: readonly string[] = [
 /** How long the run may take before it is asked to stop. */
 export const CLAUDE_RENEWAL_TIME_LIMIT_MS = 60_000
 
+/**
+ * How long a login a run could not renew waits before a later check or start tries it again, so a
+ * passing failure, such as a network not back after the Mac wakes, does not read as signed out.
+ */
+const CLAUDE_RENEWAL_RETRY_MS = 5 * 60_000
+
 /** How long a run asked to stop gets before it is killed, and the folder it ran in is let go. */
 const STOP_GRACE_MS = 5_000
 
@@ -320,8 +326,7 @@ export async function renewClaudeCodeLogin(
  * One renewal at a time for the whole app: starts that find the login expired together wait for the
  * same run. A provider rejection can request the same renewal before local expiry. It renewed only
  * when the login reads afterwards as a current one other than before. A login a run could not renew
- * is not run for again; the next try is for the next login,
- * one the person renews or signs in to by hand.
+ * is not run for again until {@link CLAUDE_RENEWAL_RETRY_MS} has passed, or a new login replaces it.
  */
 export function claudeLoginRenewer(
   seams: ClaudeRenewalSeams & {
@@ -330,7 +335,10 @@ export function claudeLoginRenewer(
   },
 ): (reason?: 'rejected') => Promise<ClaudeLoginRenewal> {
   let running: Promise<ClaudeLoginRenewal> | null = null
-  let notRenewed: string | null = null
+  let notRenewed: { readonly token: string; readonly at: number } | null = null
+  const failed = (token: string): void => {
+    notRenewed = { token, at: Date.now() }
+  }
   const renewal = async (reason?: 'rejected'): Promise<ClaudeLoginRenewal> => {
     if (seams.signal?.aborted) return 'not-renewed'
     const before = await seams.readLogin()
@@ -342,7 +350,12 @@ export function claudeLoginRenewer(
     )
       return 'not-needed'
     const token = tokenOf(before)?.token ?? ''
-    if (token === notRenewed) return 'not-renewed'
+    if (
+      notRenewed !== null &&
+      token === notRenewed.token &&
+      Date.now() - notRenewed.at < CLAUDE_RENEWAL_RETRY_MS
+    )
+      return 'not-renewed'
     let ran: 'ran' | 'not-installed'
     try {
       ran = await renewClaudeCodeLogin(seams)
@@ -351,7 +364,7 @@ export function claudeLoginRenewer(
       console.warn(
         `Claude Code could not be run to renew its login: ${error instanceof Error ? error.name : 'an error'}`,
       )
-      notRenewed = token
+      failed(token)
       return 'not-renewed'
     }
     if (ran === 'not-installed') return 'not-installed'
@@ -362,7 +375,7 @@ export function claudeLoginRenewer(
       return 'renewed'
     }
     console.warn('Claude Code ran without replacing the login BroCrew could not use.')
-    notRenewed = token
+    failed(token)
     return 'not-renewed'
   }
   return function renew(reason?: 'rejected'): Promise<ClaudeLoginRenewal> {
