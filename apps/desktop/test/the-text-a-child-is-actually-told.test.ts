@@ -425,7 +425,7 @@ describe('§1 · one instruction set', () => {
 describe('§2 · the common rules reach every agent', () => {
   it('⚠️ every common rule applies to every agent, because none of them is about being a worker', () => {
     const unknown = composeProfileBundle(context())
-    expect(unknown).toContain('Address the actual reader.')
+    expect(unknown).toContain('Write to the person as a thoughtful colleague would:')
     expect(unknown).toContain('Keep finished files on the piece so agents can find them.')
     expect(unknown).toContain('Use the assigned folder; create one only for saved work.')
     expect(unknown).not.toMatch(/Work inside your working directory/)
