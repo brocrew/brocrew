@@ -109,7 +109,6 @@
   "apps/desktop/test/plugin-production.test.ts": 1807,
   "apps/desktop/test/process-ownership.test.ts": 1160,
   "apps/desktop/test/provider-auth.test.ts": 1008,
-  "apps/desktop/test/recovery/checkpoint.test.ts": 2192,
   "apps/desktop/test/recovery/coordinator.test.ts": 1296,
   "apps/desktop/test/recovery/restore.test.ts": 1912,
   "apps/desktop/test/request-mcp-server.test.ts": 1374,
