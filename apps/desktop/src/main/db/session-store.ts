@@ -1012,40 +1012,42 @@ export function createSessionStore(
       WHERE ${FOLD_TERM} AND session_id = ? AND type = 'status'
       ORDER BY generation DESC, ordinal DESC LIMIT 1`,
   )
+  // The walk keeps each row's kind, not its payload: SQLite writes a materialized walk to a temp file
+  // once it outgrows its cache, and 20,001 payloads, launch rows among them, made that ~100 MB a read.
   const selectScheduleEvidenceRows = db.prepare(
     `WITH walk AS MATERIALIZED (
-       SELECT ordinal, created_at, type, payload, generation
+       SELECT rowid AS row, ordinal, created_at, type, generation,
+              CASE WHEN type NOT IN ('scheduled_work', 'launched', 'status') THEN NULL
+                   WHEN type = 'launched' THEN 'life'
+                   WHEN NOT json_valid(payload) THEN NULL
+                   WHEN type = 'scheduled_work' AND json_extract(payload, '$.reset') = 1
+                     THEN 'life'
+                   WHEN type = 'status'
+                     THEN CASE WHEN json_extract(payload, '$.state') IN ('ended', 'errored')
+                               THEN 'life' END
+                   WHEN json_extract(payload, '$.receipt.tool') IN ('CronCreate', 'CronDelete')
+                     THEN 'receipt'
+                   WHEN json_type(payload, '$.receipt') IS NOT NULL THEN NULL
+                   WHEN json_extract(payload, '$.source') LIKE 'app/%'
+                     OR json_extract(payload, '$.source') LIKE 'this app%' THEN NULL
+                   ELSE 'level' END AS kind
          FROM events INDEXED BY events_fold_idx
         WHERE ${FOLD_TERM} AND session_id = ?
         ORDER BY generation DESC, ordinal DESC
         LIMIT ?)
-     SELECT ordinal, created_at, type, payload, generation, NULL AS walked FROM (
-       SELECT ordinal, created_at, type, payload, generation,
+     SELECT row, ordinal, created_at, type, generation, NULL AS walked FROM (
+       SELECT row, ordinal, created_at, type, generation,
               row_number() OVER (PARTITION BY kind
                                  ORDER BY created_at DESC, generation DESC,
                                           ordinal DESC) AS newest
-         FROM (SELECT ordinal, created_at, type, payload, generation,
-                      CASE WHEN type = 'launched' THEN 'life'
-                           WHEN NOT json_valid(payload) THEN NULL
-                           WHEN type = 'scheduled_work' AND json_extract(payload, '$.reset') = 1
-                             THEN 'life'
-                           WHEN type = 'status'
-                             THEN CASE WHEN json_extract(payload, '$.state') IN ('ended', 'errored')
-                                       THEN 'life' END
-                           WHEN json_extract(payload, '$.receipt.tool') IN ('CronCreate', 'CronDelete')
-                             THEN 'receipt'
-                           WHEN json_type(payload, '$.receipt') IS NOT NULL THEN NULL
-                           WHEN json_extract(payload, '$.source') LIKE 'app/%'
-                             OR json_extract(payload, '$.source') LIKE 'this app%' THEN NULL
-                           ELSE 'level' END AS kind
-                 FROM walk
-                WHERE type IN ('scheduled_work', 'launched', 'status'))
+         FROM walk
         WHERE kind IS NOT NULL)
       WHERE newest <= ?
      UNION ALL
      SELECT NULL, NULL, NULL, NULL, NULL, count(*) FROM walk
      ORDER BY created_at, ordinal, generation DESC`,
   )
+  const selectEventPayloadByRow = db.prepare('SELECT payload FROM events WHERE rowid = ?')
   const selectOne = db.prepare(
     `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
        FROM provider_session ${GENERATION_JOIN} WHERE provider_session.id = ?`,
@@ -6431,10 +6433,10 @@ export function createSessionStore(
         MAX_SCHEDULE_HISTORY_WALKED + 1,
         MAX_SCHEDULE_EVIDENCE_ROWS,
       ) as {
+        row: number
         ordinal: number
         created_at: number
         type: string
-        payload: string
         walked: number | null
       }[]
       const walked = answered.find((row) => row.walked !== null)?.walked ?? 0
@@ -6445,7 +6447,8 @@ export function createSessionStore(
       const kept = rows.flatMap((row): ScheduleEvidenceRow[] => {
         let payload: unknown
         try {
-          payload = JSON.parse(row.payload) as unknown
+          const stored = selectEventPayloadByRow.get(row.row) as { payload: string } | undefined
+          payload = JSON.parse(stored?.payload ?? '') as unknown
         } catch {
           return []
         }
