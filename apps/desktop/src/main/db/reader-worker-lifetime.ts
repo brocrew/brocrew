@@ -214,9 +214,13 @@ export class ReaderWorkerLifetime<Request, Context, Result> {
       return
     }
     const message = incoming as Record<string, unknown>
+    // A worker that has just become ready has made progress: the read's idle window starts again.
     if (message.type === 'ready' && Object.keys(message).length === 1 && !owned.ready) {
       owned.ready = true
-      if (this.active !== undefined) this.post(this.active, owned)
+      const job = this.active
+      if (job === undefined) return
+      if (Atomics.load(job.flag, 0) === 0) this.watch(job, owned)
+      this.post(job, owned)
       return
     }
     if (
