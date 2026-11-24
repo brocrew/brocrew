@@ -108,11 +108,11 @@ function assembleReceipt(
   const cause = state.cause.reason
     .replace(/^This conversation did not start: /, '')
     .replace(/\.$/, '')
+  const activity =
+    facts.targetKind === 'continued' && lastActive === ''
+      ? ', last active time unknown'
+      : lastActive
   if (state.cause.code === 'provider-file-missing') {
-    const activity =
-      facts.targetKind === 'continued' && lastActive === ''
-        ? ', last active time unknown'
-        : lastActive
     const giveAgain =
       facts.targetKind === 'new'
         ? 'give it again with to: "new"'
@@ -125,7 +125,7 @@ function assembleReceipt(
   const person = state.needsPerson === true ? ' Ask the person to fix it, with request_action.' : ''
   return {
     receipt,
-    said: `${task} is recorded in ${conversation}, but it could not start: ${cause}. The work is kept. Once the cause is fixed, send a message to this address to try starting it again.${person}`,
+    said: `${task} is recorded in ${target} ${conversation}${activity}, but it could not start: ${cause}. The work is kept. Once the cause is fixed, send a message to this address to try starting it again.${person} ${contextInTheReceipt(facts.context)}`,
   }
 }
 

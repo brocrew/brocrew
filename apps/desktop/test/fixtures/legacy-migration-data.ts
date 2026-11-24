@@ -20,8 +20,9 @@ export function legacyConversation(
     cwd: string
     approvalMode: 'ask' | 'auto'
   },
+  createIdentity = true,
 ): void {
-  legacyIdentity(db, input.profileId, input.provider)
+  if (createIdentity) legacyIdentity(db, input.profileId, input.provider)
   db.prepare(
     `INSERT INTO provider_session
     (id,provider,cwd,status,approval_mode,profile_id,agent_identity_id,created_at,updated_at)
@@ -42,15 +43,16 @@ export function legacyEvents(
   sessionId: string,
   events: readonly TranscriptEvent[],
   firstAt: number,
+  firstOrdinal = 0,
 ): void {
   const insert = db.prepare(
     'INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at) VALUES (?, ?, 0, ?, ?, ?, ?)',
   )
   for (const [ordinal, event] of events.entries())
     insert.run(
-      `${sessionId}-${ordinal}`,
+      `${sessionId}-${firstOrdinal + ordinal}`,
       sessionId,
-      ordinal,
+      firstOrdinal + ordinal,
       event.type,
       JSON.stringify(event),
       firstAt + ordinal,

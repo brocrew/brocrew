@@ -379,7 +379,7 @@ describe('707 · R39, extended — a spawn that ran short', () => {
       )
       expect(noticesOf(pm).some((text) => text.startsWith('refused: give_work'))).toBe(false)
       expect(answer.text).toContain(
-        `Task ${kept.recorded.taskLabel} is recorded in conversation ${kept.recipient.address} · The work, but it could not start:`,
+        `Task ${kept.recorded.taskLabel} is recorded in a new conversation ${kept.recipient.address} · The work, but it could not start:`,
       )
       expect(answer.text).toContain('send a message to this address to try starting it again.')
       expect(answer.text).not.toContain('Ask the person to fix it')

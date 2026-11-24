@@ -1,3 +1,4 @@
+import { rememberJoinedAppTurnEnding } from '../turn-ending-ownership'
 import type { SessionStatus } from '@brobot2/shared'
 import type { ProviderTurnFailure, RuntimeEvent, TurnLimit } from '../events'
 import type { SessionRef } from '../session-ref'
@@ -211,30 +212,21 @@ export class SessionMachine {
   /**
    * Emit one event, marked as OURS for as long as the caller is delivering it.
    *
-   * ⛔ **`emit` re-enters this class, synchronously, and that is how 123's first draft rebuilt 122's
-   * stranding on the most ordinary path in the app** — a turn that streams text and completes:
-   *
-   * ```
-   * status:working | assistant_delta | turn:completed        …and handle.status() === 'working'
-   * ```
-   *
-   * The mechanism, found in review and reproduced end to end: {@link completeTurn} detaches the turn
-   * BEFORE it emits the terminal (110's ordering, deliberately). The adapter's `emit` feeds a
-   * `DeltaCoalescer`, whose contract is that buffered deltas are flushed *before* any non-delta
-   * event — so emitting the `turn` re-enters the adapter's `deliver`, which calls
-   * {@link noteProviderWork} for the flushed delta, which finds `this.turn` already null and latches
-   * a burst. The derivation then says `working` forever, and {@link sync} publishes nothing because
-   * `working` was already out there. Nothing on the wire even hints at it.
+   * `emit` re-enters this class when the coalescer flushes old deltas before a terminal.
+   * The turn is already detached. Treating those deltas as new work would latch a burst
+   * and leave the session working after its terminal.
    *
    * ⚑ **The invariant this restores, stated positively:** content delivered as a side effect of the
    * machine announcing a boundary was produced BEFORE that boundary — the coalescer says so in its
    * own doc — so it is not evidence about what the provider is doing now.
    */
-  private say(event: RuntimeEvent): void {
+  private say(event: RuntimeEvent, ended?: TrackedTurn | null): void {
     const wasSpeaking = this.speaking
     this.speaking = true
     try {
-      this.emit(this.withWhatTheBurstsStopEnded(event))
+      const marked = this.withWhatTheBurstsStopEnded(event)
+      if (marked.type === 'turn' && ended?.joinedABurst) rememberJoinedAppTurnEnding(marked)
+      this.emit(marked)
     } finally {
       this.speaking = wasSpeaking
     }
@@ -621,7 +613,7 @@ export class SessionMachine {
       refused,
       providerFailure,
     ))
-      this.say(event)
+      this.say(event, ended)
     this.sync()
   }
 
@@ -663,16 +655,22 @@ export class SessionMachine {
     }
     // ⚑ **720 · R71: the word is this machine's — the provider never began the turn.**
     if (interrupted) {
-      this.say({ type: 'turn', state: 'interrupted', wordOf: 'this-app', ...endingMarksOf(ended) })
+      this.say(
+        { type: 'turn', state: 'interrupted', wordOf: 'this-app', ...endingMarksOf(ended) },
+        ended,
+      )
     } else {
       this.say({ type: 'error', message, fatal: false })
-      this.say({
-        type: 'turn',
-        state: 'failed',
-        wordOf: 'this-app',
-        ...(said.providerFailure === undefined ? {} : { providerFailure: said.providerFailure }),
-        ...endingMarksOf(ended),
-      })
+      this.say(
+        {
+          type: 'turn',
+          state: 'failed',
+          wordOf: 'this-app',
+          ...(said.providerFailure === undefined ? {} : { providerFailure: said.providerFailure }),
+          ...endingMarksOf(ended),
+        },
+        ended,
+      )
     }
     this.sync()
   }
@@ -713,7 +711,10 @@ export class SessionMachine {
     if (this.turn) {
       this.turn.interruptRequested = true
       const ended = this.takeTurn()
-      this.say({ type: 'turn', state: 'interrupted', wordOf: 'this-app', ...endingMarksOf(ended) })
+      this.say(
+        { type: 'turn', state: 'interrupted', wordOf: 'this-app', ...endingMarksOf(ended) },
+        ended,
+      )
       this.foreignTerminal = expectTerminal
       this.sync()
       return
@@ -878,16 +879,19 @@ export class SessionMachine {
     said: RefusedLoginSaid = {},
   ): void {
     if (endedTurn) {
-      this.say({
-        type: 'turn',
-        state: endedTurn.interruptRequested ? 'interrupted' : 'failed',
-        wordOf: 'this-app',
-        ...(!endedTurn.interruptRequested && said.loginRefused === true
-          ? { loginRefused: true }
-          : {}),
-        ...(!endedTurn.interruptRequested && this.endedOnARefusedKey ? { onAKey: true } : {}),
-        ...endingMarksOf(endedTurn),
-      })
+      this.say(
+        {
+          type: 'turn',
+          state: endedTurn.interruptRequested ? 'interrupted' : 'failed',
+          wordOf: 'this-app',
+          ...(!endedTurn.interruptRequested && said.loginRefused === true
+            ? { loginRefused: true }
+            : {}),
+          ...(!endedTurn.interruptRequested && this.endedOnARefusedKey ? { onAKey: true } : {}),
+          ...endingMarksOf(endedTurn),
+        },
+        endedTurn,
+      )
     } else if (this.unbidden) {
       // 🔴 **F080** — a burst the fault ended ends as a turn too, as a turn would: `interrupted`
       // when a stop was asked of it first.

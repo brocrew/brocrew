@@ -21,6 +21,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { undrivenWorkText } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -102,6 +103,7 @@ interface HowItStops {
   readonly quietAfterTheFirst?: boolean
   /** `false`: the turn does not end on the stop — its ending is not in within the host's wait. */
   readonly endsTheTurn?: boolean
+  readonly onStopAsked?: () => void
   /** The provider lists a command an earlier turn left running. */
   readonly anEarlierCommand?: boolean
 }
@@ -174,6 +176,7 @@ function aWorkerWhoseStopEndsItsCommands(how: HowItStops = {}) {
           return async (): Promise<void> => {
             worker.stops += 1
             machine.requestInterrupt()
+            how.onStopAsked?.()
             if (how.endsTheTurn === false) return
             const n = String(worker.words.length)
             const open = machine.openTurnId
@@ -540,6 +543,78 @@ describe('F084 · a stop says which commands it ended, and what still runs', () 
   })
 
   describe('§2 · message_agent with interrupt — a stop that makes way for words', () => {
+    it('does not claim handoff when Cancel takes the same held message before the stop ends', async () => {
+      let markStopAsked = (): void => {}
+      const stopAsked = new Promise<void>((resolve) => {
+        markStopAsked = resolve
+      })
+      const { pm, worker, pmTools, its, label } = await aPmAndItsWorker({
+        endsTheTurn: false,
+        onStopAsked: markStopAsked,
+      })
+      const words = 'Read this after the stop.'
+      const pending = callOn(pmTools, 'message_agent', {
+        agent: label,
+        kind: 'note',
+        text: words,
+        interrupt: true,
+      })
+      let replied = false
+      const markReplied = () => {
+        replied = true
+      }
+      void pending.then(markReplied, markReplied)
+      await stopAsked
+      const queued = ledger(worker).find(
+        (row) => row.type === 'message_queued' && row.text === words,
+      )
+      if (queued?.type !== 'message_queued')
+        throw new Error('the recipient never recorded the hold')
+      const { messageId, messageAct } = queued
+      if (messageId === undefined) throw new Error('the held message has no durable ID')
+      expect(messageAct).toEqual(expect.any(String))
+      expect(store.whatBecameOfAMessage(worker, messageId)).toBe('waiting')
+
+      const otherWindow = new RecordingSink('webContents:2')
+      await executeRuntimeCommand(host, otherWindow, {
+        kind: 'cancelQueuedMessage',
+        sessionId: worker,
+        messageId,
+      })
+      expect(replied).toBe(false)
+      expect(store.whatBecameOfAMessage(worker, messageId)).toBe('ended')
+      its.machine.completeTurn('interrupted')
+      const said = await pending
+      await waitFor(
+        () => ledger(worker).some((row) => row.type === 'turn' && row.state === 'interrupted'),
+        'the provider ending to be recorded',
+      )
+
+      expect(its.words).toHaveLength(1)
+      expect(
+        ledger(worker).filter(
+          (row) => row.type === 'message_unqueued' && row.messageId === messageId,
+        ),
+      ).toMatchObject([{ reason: 'cancelled' }])
+      expect(
+        ledger(pm).filter((row) => row.type === 'message_sent' && row.messageAct === messageAct),
+      ).toMatchObject([{ to: worker, messageId, delivery: 'queued' }])
+      expect(said.structured).toMatchObject({
+        outcome: 'ok',
+        messageAct,
+        receipt: { recorded: { id: messageId }, recipient: { id: worker } },
+      })
+      expect({
+        delivery: said.structured.delivery,
+        receipt: said.structured.receipt,
+        proseClaimsHandoffOrHold: /^(Delivered to|Held for) /.test(said.text),
+      }).toMatchObject({
+        delivery: 'unknown',
+        receipt: { recipient: { state: { kind: 'delivery-unknown' } } },
+        proseClaimsHandoffOrHold: false,
+      })
+    })
+
     it('🔴 the receipt names only the command the turn waited on, and the receiver reads it in front of the words', async () => {
       const { pmTools, handle, its, label } = await aPmAndItsWorker()
       const said = await callOn(pmTools, 'message_agent', {

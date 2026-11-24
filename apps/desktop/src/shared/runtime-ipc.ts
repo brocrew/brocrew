@@ -746,6 +746,7 @@ export const USER_TURN_PART_KEYS = [
   'piece',
   'label',
   'drives',
+  'originalOpening',
 ] as const satisfies readonly (keyof UserTurnPart)[]
 
 /** ⛔ Compiles only while {@link USER_TURN_PART_KEYS} names every key of {@link UserTurnPart}. */

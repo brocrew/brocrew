@@ -1,26 +1,27 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { RecordingSink } from './lib/host-fixture'
+import { policyHostDeps, policySessionOpener } from './helpers/policy-session'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  FakeRuntime,
   FakeProviderSessions,
   type AgentToolset,
   type StartOptions,
   type ResumeOptions,
-  type SessionRef,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { createAppLifetime } from '../src/main/app-lifetime'
+import { closeDatabase } from '../src/main/db/close-database'
+import { deferred } from './helpers/quit-open-list-cases'
+import { stopFailedStart } from './helpers/stop-failed-start'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { AgentInstructionsReading } from '../src/shared/own-instructions'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -39,7 +40,7 @@ type PolicyHost = {
     },
     by: Caller,
   ): { ok: true; askId: string } | { ok: false }
-  readAgentRules(me: string, profile: string, by: Caller): { ok: boolean }
+  readAgentRules(me: string, profile: string, by: Caller): Promise<{ ok: boolean }>
   writeAgentRules(
     me: string,
     said: Baseline & {
@@ -48,7 +49,7 @@ type PolicyHost = {
       why: string
     },
     by: Caller,
-  ): { ok: boolean }
+  ): Promise<{ ok: boolean }>
   undoAgentRules(
     profile: string,
     expectedVersion: number,
@@ -68,50 +69,13 @@ type PolicyCommand =
   | { kind: 'undoAgentRules'; profileId: string; expectedVersion: number }
   | { kind: 'markAgentRulesSeen'; profileId: string; throughVersion: number }
 
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = 'webContents:1'
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-class ToolRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    private readonly launches: (StartOptions | ResumeOptions)[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    this.launches.push(options)
-    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    this.launches.push(options)
-    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('standing-rule authority belongs to the host and changes remain attributable', () => {
   let root: string
   let work: string
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let window: Window
+  let window: RecordingSink
   let handed: AgentToolset[]
   let launches: (StartOptions | ResumeOptions)[]
   let providerSessions: FakeProviderSessions
@@ -140,49 +104,28 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     providerSessions = new FakeProviderSessions()
     tools = new Map()
     store = createSessionStore(db, tick)
-    const home = (provider: Provider, profile?: string | null) =>
-      join(root, 'homes', profile ?? 'default', provider)
     host = new RuntimeHost({
       store,
-      ...neutralHostDeps(() => root),
-      createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
-      prepareProviderHome: (provider, profile) => {
-        const path = home(provider, profile)
-        mkdirSync(path, { recursive: true })
-        return path
-      },
-      providerHomePath: home,
-      resolveCwd: (id, requested) => resolveSessionCwd(root, id, requested),
-      newSessionId: () => `session-${++sequence}`,
-      now: tick,
-      readProviderConfig: (_provider, path) => ({
-        home: path,
-        homeEnv: 'CODEX_HOME',
-        model: 'm',
-        authNote: null,
-        files: [],
+      ...policyHostDeps({
+        root,
+        providerSessions,
+        launches,
+        handed,
+        newSessionId: () => `session-${++sequence}`,
+        now: tick,
       }),
     })
-    window = new Window()
+    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
     await host.closeAll()
-    db.close()
+    if (db.open) db.close()
     rmSync(root, { recursive: true, force: true })
     rmSync(work, { recursive: true, force: true })
   })
 
-  const start = async (profile: string, provider: Provider = 'codex'): Promise<string> => {
-    const created = await host.createSession(
-      { provider, profileId: profile, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    const toolset = handed.at(-1)
-    if (toolset === undefined) throw new Error('no tools handed to the runtime')
-    tools.set(created.sessionId, toolset)
-    return created.sessionId
-  }
+  const start = policySessionOpener(() => ({ host, window, work, handed, tools }))
   const propose = (me: string, text = 'Proposed rules', expectedVersion = 0) =>
     policy().proposeAgentRules(
       me,
@@ -201,12 +144,14 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       },
       caller(me),
     )
-  const call = async (me: string, name: string, args: Record<string, unknown>) => {
+  const toolReply = (me: string, name: string, args: Record<string, unknown>) => {
     const tool = tools.get(me)?.tools.find((one) => one.name === name)
     expect(tool, `registered tool ${name}`).toBeDefined()
     if (tool === undefined) throw new Error('unreachable missing tool')
-    return (await tool.call(args)).structured as Record<string, unknown>
+    return tool.call(args)
   }
+  const call = async (me: string, name: string, args: Record<string, unknown>) =>
+    (await toolReply(me, name, args)).structured as Record<string, unknown>
 
   const recruit = (by: Caller, slug = 'lark') =>
     host.createAgent({ slug, displayName: null, provider: null }, by)
@@ -248,9 +193,9 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const other = await start('finch')
     store.setAgentDisplayName('wren', 'Wren')
     store.setAgentDisplayName('finch', 'Wren')
-    expect(replace(other)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
+    expect(await replace(other)).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
     expect(
-      policy().writeAgentRules(
+      await policy().writeAgentRules(
         creator,
         {
           about: 'lark',
@@ -261,8 +206,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
         caller(other),
       ),
     ).toMatchObject({ ok: false, rail: 'may-not-write-rules' })
-    expect(policy().readAgentRules(creator, 'lark', window).ok).toBe(false)
-    expect(policy().readAgentRules('absent', 'lark', caller('absent')).ok).toBe(false)
+    expect((await policy().readAgentRules(creator, 'lark', window)).ok).toBe(false)
+    expect((await policy().readAgentRules('absent', 'lark', caller('absent'))).ok).toBe(false)
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
@@ -295,7 +240,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     recruit(caller(creator))
     const sibling = await start('wren')
     expect(sibling).not.toBe(creator)
-    expect(replace(sibling)).toMatchObject({ ok: true, result: { conversation: sibling } })
+    expect(await replace(sibling)).toMatchObject({ ok: true, result: { conversation: sibling } })
   })
 
   it('refuses a profile that did not create the agent, naming its creator', async () => {
@@ -389,10 +334,13 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       if (!given.ok) throw new Error(`give refused: ${given.refusal.rail}`)
       const helper = given.owner
       expect(helper).not.toBe(primary)
-      await vi.waitFor(() =>
-        expect(policy().readAgentRules(helper, 'lark', caller(helper)).ok).toBe(true),
+      await vi.waitFor(async () =>
+        expect((await policy().readAgentRules(helper, 'lark', caller(helper))).ok).toBe(true),
       )
-      expect(store.parentOf(helper)).toBe(giver)
+      // A new conversation of the default profile stands at the top level; its task names the giver.
+      expect(store.parentOf(helper)).toBeNull()
+      expect(store.rootOf(helper)).not.toBeNull()
+      expect(store.workById(given.piece)?.givenBy).toBe(giver)
       expect(store.recordedOne(helper)?.provider).toBe(provider)
       const helperNames = handed.at(-1)!.tools.map((one) => one.name)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
@@ -407,8 +355,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       expect(handed).toHaveLength(count + 1)
       expect(handed.at(-1)!.tools.map((one) => one.name)).toEqual(helperNames)
       expect(launches.at(-1)?.externalMcp?.reservedToolNames).toEqual(TOOL_NAMES)
-      expect(replace(giver).ok).toBe(false)
-      expect(replace(helper)).toMatchObject({ ok: true, result: { conversation: helper } })
+      expect((await replace(giver)).ok).toBe(false)
+      expect(await replace(helper)).toMatchObject({ ok: true, result: { conversation: helper } })
     },
   )
 
@@ -476,8 +424,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const me = await start(DEFAULT_PROFILE_ID)
     recruit(caller(me))
     policy().instructAgent('lark', 'Person rules', undefined, window)
-    expect(replace(me).ok).toBe(false)
-    const written = replace(me, { expectedVersion: 1 })
+    expect((await replace(me)).ok).toBe(false)
+    const written = await replace(me, { expectedVersion: 1 })
     expect(written).toMatchObject({
       ok: true,
       result: { version: 2, previousVersion: 1, replacedPersonVersion: 1 },
@@ -495,7 +443,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(receipt).toMatchObject({ type: 'instruction_changed', profile: 'lark', version: 2 })
     expect(receipt).not.toHaveProperty('text')
     const reader = await start('wren')
-    expect(policy().readAgentRules(reader, 'lark', caller(reader))).toMatchObject({
+    expect(await policy().readAgentRules(reader, 'lark', caller(reader))).toMatchObject({
       ok: true,
       result: {
         version: 2,
@@ -578,6 +526,208 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(store.ownInstructionsOf('lark').versions).toEqual([])
   })
 
+  it('reads the newest saved rules with both answer encodings and distinguishes no identity from version zero', async () => {
+    const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
+    store.setAgentDisplayName(DEFAULT_PROFILE_ID, 'Coordinator')
+    const current = vi.spyOn(store, 'readCurrentAgentRules')
+    const history = vi.spyOn(store, 'ownInstructionsOf')
+    expect(await host.readAgentRules(me, 'lark', window)).toMatchObject({
+      ok: false,
+      rail: 'may-not-write-rules',
+    })
+    expect(current).not.toHaveBeenCalled()
+    expect(await call(me, 'read_agent_rules', { agent: 'Absent' })).toMatchObject({
+      outcome: 'refused',
+      rail: 'no-such-agent',
+      detail: { agent: 'absent' },
+    })
+    const empty = await toolReply(me, 'read_agent_rules', { agent: 'Lark' })
+    const zero = { profile: 'lark', version: 0, text: '', whoWroteIt: null, reason: null }
+    expect(empty.structured).toEqual({ outcome: 'ok', ...zero })
+    expect(JSON.parse(empty.text)).toEqual(zero)
+    expect(history).not.toHaveBeenCalled()
+
+    expect(await replace(me)).toMatchObject({ ok: true })
+    expect(await replace(me, { text: 'Newest rules', expectedVersion: 1 })).toMatchObject({
+      ok: true,
+    })
+    history.mockClear()
+    const reply = await toolReply(me, 'read_agent_rules', { agent: 'Lark' })
+    const newest = {
+      profile: 'lark',
+      version: 2,
+      text: 'Newest rules',
+      whoWroteIt: 'an-agent-direct',
+      author: { profile: DEFAULT_PROFILE_ID, name: 'Coordinator' },
+      reason: 'Clarify the work',
+    }
+    expect(reply.structured).toEqual({ outcome: 'ok', ...newest })
+    expect(JSON.parse(reply.text)).toEqual(newest)
+    expect(current.mock.calls).toEqual([['absent'], ['lark'], ['lark']])
+    expect(history).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['normal quit', 'read_agent_rules'],
+    ['failed startup', 'read_agent_rules'],
+    ['normal quit', 'write_agent_rules'],
+    ['failed startup', 'write_agent_rules'],
+  ] as const)(
+    'joins the accepted Rules tool answer before closing its original writer on %s (%s)',
+    async (route, name) => {
+      const me = await start(DEFAULT_PROFILE_ID)
+      recruit(caller(me))
+      expect(await replace(me)).toMatchObject({ ok: true })
+      const pending = name === 'write_agent_rules' ? propose(me, 'Pending proposal', 1) : undefined
+      if (pending !== undefined) expect(pending.ok).toBe(true)
+      const held = deferred()
+      const release = deferred()
+      const sessionClosed = deferred()
+      const order: string[] = []
+      async function holdAnswer<T>(result: Promise<T>): Promise<T> {
+        const outcome = await result
+        held.resolve()
+        await release.promise
+        return outcome
+      }
+      const args =
+        name === 'read_agent_rules'
+          ? { agent: 'lark' }
+          : { agent: 'lark', current_version: 1, rules: 'Committed rules', why: 'Write evidence' }
+      if (name === 'read_agent_rules') {
+        const read = host.readAgentRules.bind(host)
+        vi.spyOn(host, 'readAgentRules').mockImplementationOnce((...args) =>
+          holdAnswer(read(...args)),
+        )
+      } else {
+        const write = host.writeAgentRules.bind(host)
+        vi.spyOn(host, 'writeAgentRules').mockImplementationOnce((...args) =>
+          holdAnswer(write(...args)),
+        )
+      }
+      const closeSession = host.close.bind(host)
+      vi.spyOn(host, 'close').mockImplementation(async (...args) => {
+        const stopped = await closeSession(...args)
+        sessionClosed.resolve()
+        return stopped
+      })
+      const closeWriter = db.close.bind(db)
+      const close = vi.spyOn(db, 'close').mockImplementation(() => {
+        order.push('close')
+        return closeWriter()
+      })
+
+      const reading = toolReply(me, name, args).then((reply) => {
+        order.push('answer')
+        return reply
+      })
+      await Promise.race([held.promise, reading])
+      const stopping =
+        route === 'failed startup'
+          ? stopFailedStart(host, new Error('fictional earlier stop failed'))
+          : undefined
+      const lifetime = createAppLifetime({
+        announceClosing: () => {},
+        recordOpenSessions: () => host.recordOpenForQuit(),
+        stopArchiveWork: () => host.stopSweeping(),
+        closeAllSessions: () => stopping ?? host.closeAll(),
+        drainArchiveWork: () => host.drainArchiveWork(),
+        closeDatabase: () => closeDatabase(db),
+        quit: () => {},
+        exit: () => {},
+        log: () => {},
+        armLastResort: () => {},
+        now: tick,
+      })
+      lifetime.beforeQuit({ preventDefault() {} })
+      try {
+        await Promise.race([sessionClosed.promise, stopping ?? lifetime.shuttingDown])
+        await new Promise<void>((done) => setImmediate(done))
+        expect(db.open).toBe(true)
+        expect(close).not.toHaveBeenCalled()
+        if (pending?.ok) {
+          const events = window.messages
+            .map((message) => message.event)
+            .filter(
+              (event) =>
+                event.type === 'instruction_settled' || event.type === 'instruction_changed',
+            )
+          expect(events.slice(-2)).toEqual([
+            expect.objectContaining({
+              type: 'instruction_settled',
+              askId: pending.askId,
+              ending: 'superseded',
+            }),
+            expect.objectContaining({ type: 'instruction_changed', profile: 'lark', version: 2 }),
+          ])
+        }
+        if (name === 'write_agent_rules') {
+          expect(store.ownInstructionsOf('lark').versions[0]?.text).toBe('Committed rules')
+        }
+        expect(await call(me, name, args)).toMatchObject({
+          outcome: 'refused',
+          rail: 'may-not-write-rules',
+        })
+      } finally {
+        release.resolve()
+        await lifetime.shuttingDown
+        await stopping
+      }
+      const reply = await reading
+      if (name === 'read_agent_rules') {
+        expect(reply.structured).toMatchObject({ outcome: 'ok', version: 1, text: 'New rules' })
+        expect(JSON.parse(reply.text)).toMatchObject({ version: 1, text: 'New rules' })
+      } else {
+        expect(reply.structured).toMatchObject({ outcome: 'ok', version: 2, previousVersion: 1 })
+        expect(reply.text).toContain('Saved rules for lark as version 2.')
+        expect(reply.text).toContain('replacing version 1.')
+      }
+      expect(order).toEqual(['answer', 'close'])
+      expect(close).toHaveBeenCalledOnce()
+      expect(db.open).toBe(false)
+    },
+  )
+
+  it('refuses a competing baseline at the native write without a full history read or publication', async () => {
+    const me = await start(DEFAULT_PROFILE_ID)
+    recruit(caller(me))
+    const nativeWrite = store.writeDirectAgentRules.bind(store)
+    vi.spyOn(store, 'writeDirectAgentRules').mockImplementationOnce((...args) => {
+      expect(
+        store.writeOwnInstructions(
+          {
+            profileSlug: 'lark',
+            text: 'Competing edit',
+            whoWroteIt: 'a-person',
+            by: { who: 'a-person' },
+            conversation: null,
+            said: null,
+            broughtBack: null,
+            expectedVersion: 0,
+          },
+          tick(),
+        )?.version,
+      ).toBe(1)
+      return nativeWrite(...args)
+    })
+    const history = vi.spyOn(store, 'ownInstructionsOf')
+    const outcome = await call(me, 'write_agent_rules', {
+      agent: 'lark',
+      current_version: 0,
+      rules: 'Losing edit',
+      why: 'Test the final baseline',
+    })
+    expect(outcome).toMatchObject({ outcome: 'refused', rail: 'malformed-request' })
+    expect(history).not.toHaveBeenCalled()
+    expect(store.ownInstructionsOf('lark').versions.map((row) => row.text)).toEqual([
+      'Competing edit',
+    ])
+    expect(window.messages.map((entry) => entry.event)).not.toContainEqual(
+      expect.objectContaining({ type: 'instruction_changed' }),
+    )
+  })
+
   it('does not let a stale tool read replace a newer person save', async () => {
     const me = await start(DEFAULT_PROFILE_ID)
     recruit(caller(me))
@@ -624,7 +774,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   it('keeps rule Undo person-only while colleagues acknowledge, and Undo supersedes proposals', async () => {
     const me = await start(DEFAULT_PROFILE_ID)
     recruit(caller(me))
-    expect(replace(me).ok).toBe(true)
+    expect((await replace(me)).ok).toBe(true)
     expect(propose(me, 'Waiting replacement', 1).ok).toBe(true)
     expect(policy().undoAgentRules('lark', 1, caller(me))).toBeNull()
     expect(policy().markAgentRulesSeen('lark', 1, caller(me))).toBe(true)

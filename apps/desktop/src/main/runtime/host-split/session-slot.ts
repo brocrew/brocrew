@@ -2,6 +2,7 @@ import type { MoveOffer } from '../../../shared/move-contracts'
 import { type Provider } from '@brobot2/shared'
 import { type Launch } from '../launch-registry'
 import type { ActionAsked } from '../../../shared/question-contracts'
+import type { UserInputQuestion } from '@brobot2/runtime'
 import { type HostedSession } from './hosted-session'
 
 interface SessionSlot {
@@ -299,6 +300,7 @@ interface TheWordsOfAQuestion {
   readonly piece: string | null
   readonly parts: readonly string[]
   readonly prompt: string
+  readonly questions: readonly UserInputQuestion[]
 }
 
 function onItsWayOut(slot: SessionSlot): boolean {

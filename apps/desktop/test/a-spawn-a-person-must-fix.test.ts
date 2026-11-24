@@ -325,7 +325,9 @@ describe('710 · R51 — a spawn a person must fix', () => {
       gate.startFails = () => produced
       const answer = await giveWithWords(pm)
       const kept = aKeptGive(answer.structured as Record<string, unknown>)
-      expect(answer.text).toContain(`recorded in conversation ${kept.recipient.address} · The work`)
+      expect(answer.text).toContain(
+        `recorded in a new conversation ${kept.recipient.address} · The work`,
+      )
       expect(answer.text).toContain(programFailure)
       expect(answer.text).toContain('Ask the person to fix it, with request_action.')
       expect(answer.text).not.toMatch(/in a moment|usually clears/)

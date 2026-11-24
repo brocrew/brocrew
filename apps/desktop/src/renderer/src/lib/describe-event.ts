@@ -594,6 +594,12 @@ export function describeEvent(event: TranscriptEvent): string {
         `${event.piece === undefined ? '' : ` · about ${event.piece}`}` +
         `${event.onBehalfOfAPerson ? ' · a person is at this conversation' : ''} (ours)`
       )
+    case 'ask_handoff_attempted':
+      return 'Ask delivery attempted'
+    case 'ask_handoff_not_accepted':
+      return 'Ask delivery stopped before acceptance'
+    case 'ask_provenance_unresolved':
+      return 'Ask delivery history unresolved'
     case 'work_reconciliation':
       return 'Work wait step recorded'
     case 'work_recovery':

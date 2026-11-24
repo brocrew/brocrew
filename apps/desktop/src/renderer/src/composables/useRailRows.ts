@@ -197,7 +197,7 @@ export function useRailRows(
         row: {
           ...(worker ? { worker } : {}),
           sessionId: record.sessionId,
-          brobot: host?.personStarted === true && railSectionOf(host.identity) === 'brobot',
+          brobot: railSectionOf(host?.identity) === 'brobot',
           activityAt: host?.updatedAt,
           provider: record.meta?.provider ?? null,
           facets,
@@ -233,7 +233,7 @@ export function useRailRows(
         row: {
           ...(host.worker ? { worker: host.worker } : {}),
           sessionId: host.sessionId,
-          brobot: host.personStarted === true && railSectionOf(host.identity) === 'brobot',
+          brobot: railSectionOf(host.identity) === 'brobot',
           activityAt: host.updatedAt,
           provider: host.provider,
           facets,
@@ -254,9 +254,7 @@ export function useRailRows(
         at: row.updatedAt,
         row: {
           sessionId: row.sessionId,
-          brobot:
-            row.personStarted === true &&
-            railSectionOf(row.profileId ?? DEFAULT_PROFILE_ID) === 'brobot',
+          brobot: railSectionOf(row.profileId ?? DEFAULT_PROFILE_ID) === 'brobot',
           ...(row.identity === null ? {} : { initialIdentity: row.identity }),
           activityAt: row.updatedAt,
           provider: row.provider,

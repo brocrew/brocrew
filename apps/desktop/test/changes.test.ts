@@ -568,6 +568,20 @@ const APP_EVENTS: Record<
     identityCreatedAt: 123,
   },
   user_turn: { type: 'user_turn', text: 'go' },
+  ask_handoff_attempted: {
+    type: 'ask_handoff_attempted',
+    attempt: '["sess_recipient",0,1]',
+    originals: [{ opening: '["sess_asker",0,1]', inputIndex: 0 }],
+  },
+  ask_handoff_not_accepted: {
+    type: 'ask_handoff_not_accepted',
+    attempt: '["sess_recipient",0,1]',
+  },
+  ask_provenance_unresolved: {
+    type: 'ask_provenance_unresolved',
+    outgoingGeneration: 0,
+    coverage: 'unprepared',
+  },
   user_decision: { type: 'user_decision', requestId: 'r', outcome: 'answered' },
   message_queued: { type: 'message_queued', text: 'later' },
   message_unqueued: { type: 'message_unqueued', reason: 'sent', text: 'later' },

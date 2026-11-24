@@ -335,6 +335,9 @@ it.each([
     applyMigrations(db, through(folder, last))
     plant(db, last)
     db.pragma(enabled ? 'foreign_keys = ON' : 'foreign_keys = OFF')
+    const columns = (db.pragma('table_info(provider_session)') as { name: string }[]).map(
+      (column) => column.name,
+    )
     const before = rows(db, 'provider_session')
     const journal = rows(db, '__drizzle_migrations')
     const broken = through(folder, 29)
@@ -350,7 +353,11 @@ it.each([
     expect(exists(db, 'provider_session_next')).toBe(false)
     expect(db.pragma('foreign_keys', { simple: true })).toBe(enabled ? 1 : 0)
     applyMigrations(db, migrations)
-    expect(rows(db, 'provider_session')).toEqual(before)
+    expect(rows(db, 'provider_session', columns)).toEqual(before)
+    expect(rows(db, 'provider_session', ['id', 'source_session_ids'])).toEqual([
+      { id: 'birch', source_session_ids: null },
+      { id: 'cedar', source_session_ids: null },
+    ])
     expect(db.pragma('foreign_keys', { simple: true })).toBe(enabled ? 1 : 0)
   },
 )

@@ -128,10 +128,19 @@ describe('a failed write is one failed operation', () => {
 
   it('a failed question is not delivered, then the next question is answerable', async () => {
     const given = accepted(await world.gives(host, giver, 'helper'))
-    const append = world.store.append.bind(world.store)
-    const write = vi.spyOn(world.store, 'append').mockImplementation((id, ordinal, event, at) => {
-      if (event.type === 'request_routed') throw busy()
-      append(id, ordinal, event, at)
+    const appendMany = world.store.appendMany.bind(world.store)
+    const refused = new Set<string>()
+    const write = vi.spyOn(world.store, 'appendMany').mockImplementation((id, entries) => {
+      const routed = entries.flatMap(({ event }) =>
+        event.type === 'request_routed' ? [event] : [],
+      )
+      if (routed.length > 0) {
+        routed
+          .filter(({ requestId }) => requestId.startsWith('req_'))
+          .forEach(({ requestId }) => refused.add(requestId))
+        throw busy()
+      }
+      appendMany(id, entries)
     })
     const question = () =>
       host.raiseAQuestion(
@@ -145,7 +154,17 @@ describe('a failed write is one failed operation', () => {
         { ownerId: agentCallerId(given.owner) },
       )
     await expect(question()).rejects.toThrow(/could not save/)
-    expect(world.store.questionsRoutedTo(giver)).toHaveLength(0)
+    // The provider's own permission card (not a `req_` id) may be routed to the giver meanwhile;
+    // only the failed Ask's ID must have no opening, route or delivery, and every rolled-back
+    // attempt carries that one ID.
+    expect(refused.size).toBe(1)
+    const [failed = ''] = refused
+    expect(failed).not.toBe('')
+    expect(world.store.questionsRoutedTo(giver).map(({ requestId }) => requestId)).not.toContain(
+      failed,
+    )
+    expect(JSON.stringify(world.ledger(given.owner))).not.toContain(failed)
+    expect(world.sent.some(({ words }) => words.includes('Which room?'))).toBe(false)
     write.mockRestore()
     const asked = await question()
     expect(asked.ok).toBe(true)

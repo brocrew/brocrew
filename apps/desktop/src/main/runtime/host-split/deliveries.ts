@@ -92,7 +92,7 @@ function noticesThatRideThisInput(
   return held.filter((notice) => notice.authorship.appNotice !== 'a-queued-message-was-cancelled')
 }
 
-/** Who a compaction a person asked for says it came from: nobody is told. */
+/** The requester recorded for compaction that a person asked for. */
 const A_PERSON_ASKED = 'a-person'
 
 /** The reason a notice says when its sender gave none. */

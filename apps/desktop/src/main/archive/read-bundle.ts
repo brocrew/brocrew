@@ -64,6 +64,7 @@ export const MAX_BUNDLE_BYTES = 128 * 1024 * 1024
  */
 const metaSchema = z.object({
   sessionId: z.string().min(1),
+  sourceSessionIds: z.array(z.string().min(1)).optional(),
   provider: providerSchema,
   /**
    * ⛔ **Held to `sessionRefSchema`'s OWN rules, not to weaker ones.** `insertAdoptedRow` calls

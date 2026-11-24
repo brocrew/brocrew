@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { answerOn } from './helpers/call-tool'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { settleFixtureTurns, waitFor } from './lib/host-fixture'
@@ -76,14 +77,15 @@ it('tells the actual giver when the first brief stays held after a failed handof
   }
 })
 
-it.each([
-  ['conversation', false],
-  ['person', false],
-  ['conversation', true],
-  ['person', true],
-] as const)(
-  'returns a close receipt without telling a stopped holder (%s, abandoned: %s)',
-  async (closer, abandoned) => {
+const stoppedFirstBriefCases = (['close', 'withdraw'] as const).flatMap((act) =>
+  (['conversation', 'person'] as const).flatMap((caller) =>
+    [false, true].map((abandoned) => ({ act, caller, abandoned })),
+  ),
+)
+
+it.each(stoppedFirstBriefCases)(
+  'returns a $act receipt without telling a stopped holder ($caller, abandoned: $abandoned)',
+  async ({ act, caller, abandoned }) => {
     const world = aServiceWorld()
     try {
       world.anAgent('worker', 'normal')
@@ -116,31 +118,68 @@ it.each([
         )
       }
 
-      if (closer === 'person') {
-        expect(await host.closeForAPerson(given.piece, world.window)).toMatchObject({
+      const endedState = act === 'close' ? 'closed' : 'withdrawn'
+      const endingType = act === 'close' ? 'work_closed' : 'work_taken_back'
+      const notice = act === 'close' ? 'closed' : 'took-back'
+      world.resumesAreGoneFor = null
+      const resumesBefore = world.resumesAsked
+      const workerStarts = () => world.startedAs.filter((profile) => profile === 'worker').length
+      const startsBefore = workerStarts()
+      if (caller === 'person') {
+        const kind = act === 'close' ? 'closeWork' : 'takeBackWork'
+        const receipt = await executeRuntimeCommand(host, world.window, {
+          kind,
+          piece: given.piece,
+        })
+        expect(receipt).toEqual({
           ok: true,
           piece: given.piece,
           label: given.label,
+          askedItsTurnToStop: false,
           briefNeverDelivered: true,
         })
       } else {
         const observer = await world.aPersonOpens(host, 'observer')
-        const receipt = await answerOn(agentToolsFor(host, observer), 'update_work', {
+        const verb = act === 'close' ? 'update_work' : 'withdraw_task'
+        const receipt = await answerOn(agentToolsFor(host, observer), verb, {
           piece: given.label,
-          close: true,
+          ...(act === 'close' ? { close: true } : {}),
         })
         expect(receipt.structured).toMatchObject({
           outcome: 'ok',
-          state: 'closed',
+          state: endedState,
           tookBackTheMessage: !abandoned,
           delivery: 'not-delivered',
         })
-        expect(receipt.text).toContain(`${given.label} is closed`)
+        expect(receipt.text).toContain(
+          `${given.label} is ${act === 'close' ? 'closed' : 'taken back'}`,
+        )
         expect(receipt.text).toContain('had not reached it')
       }
 
-      expect(world.ledger(holder)).toContainEqual(
-        expect.objectContaining({ type: 'work_closed', piece: given.piece }),
+      const giverNotice =
+        act === 'withdraw' && caller === 'conversation'
+          ? 'a-piece-it-gave-taken-back'
+          : `a-piece-it-gave-${caller === 'person' ? 'a-person-' : ''}${notice}`
+      await waitFor(
+        () =>
+          world
+            .ledger(giver)
+            .some(
+              (event) =>
+                event.type === 'message_queued' &&
+                event.appNotice === giverNotice &&
+                event.text.includes(given.label),
+            ),
+        'the actual giver to receive its separate notice',
+      )
+      expect(
+        world
+          .ledger(holder)
+          .filter((event) => event.type === endingType && event.piece === given.piece),
+      ).toHaveLength(1)
+      expect(world.store.piecesOwnedBy(holder)).toContainEqual(
+        expect.objectContaining({ piece: given.piece, state: endedState }),
       )
       expect(world.store.messagesWaitingIn(holder)).not.toContainEqual(
         expect.objectContaining({ piece: given.piece }),
@@ -148,9 +187,11 @@ it.each([
       expect(world.ledger(holder)).not.toContainEqual(
         expect.objectContaining({
           type: 'message_queued',
-          appNotice: closer === 'person' ? 'a-piece-a-person-closed' : 'a-piece-closed',
+          appNotice: caller === 'person' ? `a-piece-a-person-${notice}` : `a-piece-${notice}`,
         }),
       )
+      expect(world.resumesAsked).toBe(resumesBefore)
+      expect(workerStarts()).toBe(startsBefore)
     } finally {
       await world.cleanUp()
     }
@@ -404,28 +445,75 @@ it('keeps a real busy hold without a failure notice and delivers it afterward', 
   }
 })
 
-it('returns the start failure to the giver without dropping a newly recorded task', async () => {
-  const world = aServiceWorld()
-  try {
-    world.anAgent('worker', 'normal')
-    const host = world.aHost()
-    const giver = await world.aPersonOpens(host, 'giver')
-    world.startsFail = true
+it.each(['new', 'continued'] as const)(
+  'returns the generic %s Give failure without dropping the recorded task',
+  async (kind) => {
+    const world = aServiceWorld()
+    try {
+      world.anAgent('worker', 'normal')
+      const host = world.aHost()
+      const giver = await world.aPersonOpens(host, 'giver')
+      const holder = kind === 'continued' ? await world.aRecordedWorker(giver, 'worker') : null
+      if (holder === null) {
+        world.startsFail = true
+      } else {
+        world.store.append(
+          holder,
+          world.store.nextOrdinal(holder),
+          {
+            type: 'context_reading',
+            reading: { kind: 'tokens', used: 5000 },
+            source: 'message_start',
+          },
+          world.clock++,
+        )
+        world.clock += 5 * 60_000
+        world.resumesFailFor = 'worker'
+      }
 
-    const give = await world.gives(host, giver, 'worker')
-    if (!give.ok) throw new Error('the task was not recorded')
-    expect(give.recipientState).toMatchObject({
-      kind: 'cannot-run',
-      cause: { code: 'could-not-start' },
-    })
-    expect(world.store.messagesWaitingIn(give.owner)).toContainEqual(
-      expect.objectContaining({ piece: give.piece }),
-    )
-    expect(failureNotices(world, giver)).toEqual([])
-  } finally {
-    await world.cleanUp()
-  }
-})
+      const give = await answerOn(agentToolsFor(host, giver), 'give_work', {
+        profile: 'worker',
+        ...(holder === null
+          ? { to: 'new', conversation_title: 'Room booking' }
+          : { to: host.addressOf(holder) }),
+        title: 'Book the room',
+        brief: 'Book the meeting room for Tuesday.',
+        definition_of_done: 'The room is booked.',
+      })
+      const structured = give.structured
+      if (typeof structured?.agent !== 'string') throw new Error('the task was not recorded')
+      const { agent, piece, label } = structured
+      expect(give.structured).toMatchObject({
+        outcome: 'ok',
+        delivery: 'held',
+        receipt: {
+          recorded: { id: piece, taskLabel: label },
+          recipient: {
+            id: agent,
+            state: { kind: 'cannot-run', cause: { code: 'could-not-start' } },
+          },
+        },
+      })
+      expect(world.store.messagesWaitingIn(agent)).toContainEqual(
+        expect.objectContaining({ piece }),
+      )
+      expect(give.text).toContain('The work is kept.')
+      expect(give.text).toContain('send a message to this address to try starting it again.')
+      expect(give.text).toContain('Context: no current reading.')
+      if (holder === null) {
+        expect(give.text).toContain('recorded in a new conversation')
+        expect(give.text).not.toContain('last active')
+        expect(failureNotices(world, giver)).toEqual([])
+      } else {
+        expect(agent).toBe(holder)
+        expect(give.text).toContain('recorded in the existing conversation')
+        expect(give.text).toContain('last active 5 minutes ago')
+      }
+    } finally {
+      await world.cleanUp()
+    }
+  },
+)
 
 it.each([
   'setup',

@@ -249,11 +249,16 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
 
   describe('§2 · F4 — long answers retain their full text', () => {
     /** ⚑ The worker's own question about its own piece — the HELD branch (`437`/`591`). */
-    const workerAsks = async (workerTools: AgentToolset, piece: string): Promise<string> => {
+    const workerAsks = async (
+      workerTools: AgentToolset,
+      piece: string,
+      options?: string[],
+    ): Promise<string> => {
       const asked = await call(workerTools, 'ask_question', {
         who_answers: 'the-parent',
         piece,
         question: 'what should it say?',
+        ...(options === undefined ? {} : { options }),
       })
       expect(asked.structured.outcome, JSON.stringify(asked.structured)).toBe('ok')
       return asked.structured.question as string
@@ -272,6 +277,100 @@ describe('676 · the rest of R18, and the answer with no bound', () => {
       ledger(worker).filter(
         (event) => event.type === 'user_decision' && event.requestId === question,
       ).length
+
+    it.each([
+      { options: undefined, answers: [{ part: 'answer', answer: [] }] },
+      { options: undefined, answers: [{ part: 'answer', answer: [' ', '\n\t'] }] },
+      { options: ['A', 'B'], answers: [{ part: 'answer', answer: ['A', 'B'] }] },
+      {
+        options: ['A', 'B'],
+        answers: [
+          { part: 'answer', answer: ['A'] },
+          { part: 'answer', answer: ['B'] },
+        ],
+      },
+    ])('keeps the question open for unusable answers $answers', async ({ options, answers }) => {
+      const { worker, pmTools, workerTools, workerHandle, task } = await aPmAndItsWorker()
+      const question = await workerAsks(workerTools, task.piece, options)
+      const before = ledger(worker)
+      const stop = vi.spyOn(workerHandle, 'interrupt')
+
+      const refused = await call(pmTools, 'answer_question', { question, answers, interrupt: true })
+      expect(refused.structured).toMatchObject({
+        outcome: 'refused',
+        rail: 'that-answer-cannot-be-sent',
+      })
+      expect(refused.text).toMatch(/^Not sent: /)
+      expect(ledger(worker)).toEqual(before)
+      expect(stop).not.toHaveBeenCalled()
+      const listed = await call(pmTools, 'list_questions', {})
+      expect(listed.structured.questions).toContainEqual(
+        expect.objectContaining({ question, state: 'open' }),
+      )
+    })
+
+    it.each(['A', '  Other words  '])(
+      'delivers one choice or Other verbatim (%j)',
+      async (value) => {
+        const { worker, pmTools, workerTools, task } = await aPmAndItsWorker()
+        const question = await workerAsks(workerTools, task.piece, ['A', 'B'])
+        const answered = await call(pmTools, 'answer_question', {
+          question,
+          answers: [{ part: 'answer', answer: [value] }],
+          interrupt: false,
+        })
+        expect(answered.structured.outcome).toBe('ok')
+        await letTheTurnFinish(worker)
+        await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+        expect(answerTurns(worker)[0]).toContain(`answer: ${value}`)
+      },
+    )
+
+    it('delivers every part of a recorded multipart question with a multi-select', async () => {
+      const { pm, worker, pmTools, task } = await aPmAndItsWorker()
+      const question = 'req_historic_parts'
+      store.append(
+        worker,
+        store.nextOrdinal(worker),
+        {
+          type: 'question_asked',
+          requestId: question,
+          piece: task.piece,
+          label: task.label,
+          prompt: 'Which regions, and why?',
+          questions: [
+            {
+              id: 'regions',
+              prompt: 'Which regions?',
+              options: [{ label: 'EU' }, { label: 'US' }],
+              multiSelect: true,
+            },
+            { id: 'why', prompt: 'Why?', options: [] },
+          ],
+        },
+        tick(),
+      )
+      store.append(
+        worker,
+        store.nextOrdinal(worker),
+        { type: 'request_routed', requestId: question, to: 'the-parent', parent: pm },
+        tick(),
+      )
+      const answered = await call(pmTools, 'answer_question', {
+        question,
+        answers: [
+          { part: 'regions', answer: ['EU', 'US'] },
+          { part: 'why', answer: ['Both serve readers'] },
+        ],
+        interrupt: false,
+      })
+      expect(answered.structured.outcome).toBe('ok')
+      expect(decisionsOn(worker, question)).toBe(1)
+      await letTheTurnFinish(worker)
+      await waitFor(() => answerTurns(worker).length > 0, 'the answer to reach the worker')
+      expect(answerTurns(worker)[0]).toContain('regions: EU, US')
+      expect(answerTurns(worker)[0]).toContain('why: Both serve readers')
+    })
 
     const attachmentOf = (answerer: string, full: string): string => {
       const root = store.rootOf(answerer)

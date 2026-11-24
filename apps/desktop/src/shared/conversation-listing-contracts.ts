@@ -43,8 +43,6 @@ export interface PieceWaitingOnPurpose {
  * `ask` (or the reverse) would silently change what the agent may do.
  */
 export interface ResumableSessionInfo {
-  /** Parentless, non-adopted conversation with its own structural root; absent when unknown. */
-  readonly personStarted?: boolean
   /** Stable normal-worker identity, absent when its binding is unavailable. */
   readonly worker?: WorkerBindingReading
   /** Current has an explicit value or null; unavailable does not renew a kept value. */
@@ -157,8 +155,6 @@ export interface ResumableSessionInfo {
  * there is nothing to resume from and no Resume button to press.
  */
 export interface UnresumableSessionInfo {
-  /** Parentless, non-adopted conversation with its own structural root; absent when unknown. */
-  readonly personStarted?: boolean
   /** Stable normal-worker identity, absent when its binding is unavailable. */
   readonly worker?: WorkerBindingReading
   /** Current has an explicit value or null; unavailable does not renew a kept value. */

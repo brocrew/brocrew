@@ -438,7 +438,6 @@ describe('Service lifecycle', () => {
         const { host, created, conversation } = rootedFetcher()
         const address = host.addressOf(conversation)
         expect(world.store.recorded().find((row) => row.sessionId === conversation)).toMatchObject({
-          personStarted: false,
           hasTranscript: false,
           neverStarted: true,
         })

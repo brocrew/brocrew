@@ -1,3 +1,4 @@
+import type { AgentToolAnswer } from '@brobot2/runtime'
 import type { SendRecipientState } from '../../../shared/tool-outcome'
 import type { PreparedSendFiles, PreparedSendText } from '../send-overflow'
 import type {
@@ -282,18 +283,23 @@ export interface AgentToolHost {
         readonly older: boolean
       }
   requestMcpServer(me: string, said: McpServerAsked): McpServerRequestOutcome
+  runAgentKnowledgeTool(run: () => Promise<AgentToolAnswer>): Promise<AgentToolAnswer>
   readOwnNotes(
     me: string,
     about: string | undefined,
     by: Caller,
   ): AgentOwnNotesOutcome<AgentOwnNotesReading>
   writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): AgentOwnNotesOutcome<OwnNotesReceipt>
-  readAgentRules(me: string, about: string, by: Caller): AgentRulesOutcome<AgentRulesReading>
+  readAgentRules(
+    me: string,
+    about: string,
+    by: Caller,
+  ): Promise<AgentRulesOutcome<AgentRulesReading>>
   writeAgentRules(
     me: string,
     said: AgentRulesWrite,
     by: Caller,
-  ): AgentRulesOutcome<AgentRulesReceipt>
+  ): Promise<AgentRulesOutcome<AgentRulesReceipt>>
   proposeAgentRules(
     me: string,
     said: {

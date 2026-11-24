@@ -465,34 +465,136 @@ describe('a queued compaction keeps its place across repair reopens and interrup
     expect(notices(sessionId)).toHaveLength(1)
   })
 
-  it('a provider turn during the preamble does not cancel the compaction', async () => {
+  it('keeps typed person Compact across a provider-only terminal during command lookup', async () => {
     const host = buildHost()
     const sessionId = await firstTurn(host)
-    await host.close(sessionId, sink)
-    await askToCompact(host, sessionId, { ok: true, queued: true })
+    const query = launches[0]!
     catalogueGate = gate()
-    const next = host.send(sessionId, 'the next request', sink)
-    await waitFor(() => launches.length === 2, 'the resume')
-    const resumed = resumedOn(1)
-    await waitFor(() => catalogueAsked, 'the held command list')
-    expect(resumed.sent).toHaveLength(0)
-    const handle = handleOf(host, sessionId)
-    expect(handle).toBeDefined()
-    handle!.emit({
-      type: 'turn',
-      state: 'interrupted',
-      wordOf: 'this-app',
-      startedBy: 'the-provider',
-    } as RuntimeEvent)
-    handle!.emit({ type: 'status', state: 'idle' } as RuntimeEvent)
-    catalogueGate.open()
-    // The request was asked for, so it runs, and the input goes after it.
-    await waitFor(() => resumed.sent.length === 1, 'the compaction')
-    expect(resumed.texts()[0]).toBe(`/compact ${REASON}`)
-    confirmCompaction(resumed)
-    await next
-    await waitFor(() => resumed.sent.length === 2, 'the next request')
-    expect(resumed.texts()[1]).toContain('the next request')
-    expectTheRequestCleared(sessionId)
+    const typed = host.send(sessionId, '/compact keep the settled plan', sink)
+    try {
+      await waitFor(() => catalogueAsked, 'the held command list')
+      expect(query.texts()).toHaveLength(1)
+      const handle = handleOf(host, sessionId)
+      if (handle === undefined) throw new Error('missing Claude handle')
+      handle.emit({
+        type: 'turn',
+        state: 'interrupted',
+        wordOf: 'this-app',
+        startedBy: 'the-provider',
+      } as RuntimeEvent)
+      await waitFor(
+        () =>
+          eventsOf(sessionId).some(
+            (event) =>
+              event.type === 'turn' &&
+              event.state === 'interrupted' &&
+              event.startedBy === 'the-provider',
+          ),
+        'the unrelated terminal to reach the ledger',
+      )
+      expect(notices(sessionId)).toEqual([])
+    } finally {
+      catalogueGate.open()
+    }
+    await typed
+    await waitFor(() => query.texts().length === 2, 'the typed Compact request')
+    expect(query.texts()[1]).toBe('/compact keep the settled plan')
+    expect(notices(sessionId)).toEqual([])
+    confirmCompaction(query)
+    const notice = 'The person compacted this conversation: no reason given.'
+    await waitFor(
+      () =>
+        notices(sessionId).length === 1 &&
+        eventsOf(sessionId).filter((event) => event.type === 'turn' && event.state === 'completed')
+          .length === 2,
+      'confirmed person Compact to end',
+    )
+    expect(query.texts()).toHaveLength(2)
+    expect(notices(sessionId)).toEqual([expect.objectContaining({ text: notice })])
+
+    await host.send(sessionId, 'continue the work', sink)
+    await waitFor(() => query.texts().length === 3, 'the next ordinary input')
+    expect(query.texts()[2]?.split(notice)).toHaveLength(2)
+    expect(query.texts()[2]).toContain('continue the work')
+    query.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
   })
+
+  it.each(['confirmed', 'interrupted', 'interrupted after joining provider work'] as const)(
+    'keeps an explicit compaction across a provider-started terminal when it is %s',
+    async (outcome) => {
+      const host = buildHost()
+      const sessionId = await firstTurn(host)
+      await host.close(sessionId, sink)
+      await askToCompact(host, sessionId, { ok: true, queued: true })
+      catalogueGate = gate()
+      const next = host.send(sessionId, 'the next request', sink)
+      await waitFor(() => launches.length === 2, 'the resume')
+      const resumed = resumedOn(1)
+      await waitFor(() => catalogueAsked, 'the held command list')
+      expect(resumed.sent).toHaveLength(0)
+      const handle = handleOf(host, sessionId)
+      expect(handle).toBeDefined()
+      handle!.emit({
+        type: 'turn',
+        state: 'interrupted',
+        wordOf: 'this-app',
+        startedBy: 'the-provider',
+      } as RuntimeEvent)
+      handle!.emit({ type: 'status', state: 'idle' } as RuntimeEvent)
+      const joinsProviderWork = outcome === 'interrupted after joining provider work'
+      if (joinsProviderWork) {
+        resumed.emit(
+          frame({
+            type: 'assistant',
+            message: {
+              role: 'assistant',
+              model: '<synthetic>',
+              content: [{ type: 'text', text: 'A provider update before Compact.' }],
+            },
+          }),
+        )
+        await waitFor(
+          () => eventsOf(sessionId).some((event) => event.type === 'provider_turn'),
+          'the open provider turn',
+        )
+      }
+      catalogueGate.open()
+      await waitFor(() => resumed.sent.length === 1, 'the compaction')
+      expect(resumed.texts()[0]).toBe(`/compact ${REASON}`)
+      expect(notices(sessionId)).toEqual([])
+      if (outcome === 'confirmed') confirmCompaction(resumed)
+      else {
+        await host.interrupt(sessionId, sink)
+        const ended = eventsOf(sessionId)
+          .filter((event) => event.type === 'turn')
+          .at(-1)
+        expect(ended).toMatchObject({ type: 'turn', state: 'interrupted' })
+        if (joinsProviderWork) expect(ended).toHaveProperty('startedBy', 'the-provider')
+        else expect(ended).not.toHaveProperty('startedBy')
+        // The CLI can still answer the interrupted request before it answers the next input.
+        resumed.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      }
+      await next
+      await waitFor(() => resumed.sent.length === 2, 'the next request')
+      const input = resumed.texts()[1]
+      expect(input).toContain('the next request')
+      if (outcome === 'confirmed') {
+        const caller = host.whatToCallTheConversation(sessionId)
+        const address = ledger.firstTaskOf(sessionId)?.label
+        expect(address).toBeDefined()
+        expect(input).toContain(`${caller}, conversation ${address} ·`)
+        expect(input).toContain(`compacted this conversation: ${REASON}.`)
+        expect(notices(sessionId)).toHaveLength(1)
+      } else {
+        expect(input).not.toContain(REASON)
+        expect(notices(sessionId)).toEqual([])
+      }
+      resumed.emit(frame({ type: 'result', subtype: 'success', is_error: false }))
+      await host.send(sessionId, 'one more request', sink)
+      await waitFor(() => resumed.sent.length === 3, 'another ordinary input')
+      expect(resumed.texts()[2]).toContain('one more request')
+      expect(resumed.texts()[2]).not.toContain(REASON)
+      expectTheRequestCleared(sessionId)
+    },
+  )
 })

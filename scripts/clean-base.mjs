@@ -59,9 +59,10 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * `a-new-durable-write-under-userdata-owes-clean-base-a-decision`. Migrations that create a table
  * empty (`0001_the_model_list`: hand-added models and the last pick; `0003_the_api_keys`: saved,
  * sealed API keys) make the sentence name what is gone. The rest only drop columns or rows or add
- * indexes (`0002`, `0004` to `0009`, `0011`), so the sentence names nothing more.
+ * indexes, or add a nullable column to a table the sentence already names (`0002`, `0004` to `0009`,
+ * `0011`, `0033`), so the sentence names nothing more.
  */
-const MIGRATIONS = 33
+const MIGRATIONS = 34
 
 const FLAGS = new Set([
   '--dry-run',

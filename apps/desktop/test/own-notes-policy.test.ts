@@ -1,19 +1,17 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { RecordingSink } from './lib/host-fixture'
+import { policyHostDeps, policySessionOpener } from './helpers/policy-session'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import {
-  FakeRuntime,
   FakeProviderSessions,
   type AgentToolset,
   type StartOptions,
   type ResumeOptions,
-  type SessionRef,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { agentIdentityRowId } from '../src/main/db/identity'
@@ -26,8 +24,7 @@ import {
   type Caller,
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../src/shared/own-notes'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -50,50 +47,13 @@ type NotesCommand =
   | { kind: 'undoOwnNotes'; profileId: string; expectedVersion: number }
   | { kind: 'markOwnNotesSeen'; profileId: string; throughVersion: number }
 
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = 'webContents:1'
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-class ToolRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    private readonly launches: (StartOptions | ResumeOptions)[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    this.launches.push(options)
-    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    this.launches.push(options)
-    if (options.agentTools !== undefined) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('own notes tools bind to their caller and person controls stay in the window', () => {
   let root: string
   let work: string
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  let window: Window
+  let window: RecordingSink
   let handed: AgentToolset[]
   let launches: (StartOptions | ResumeOptions)[]
   let providerSessions: FakeProviderSessions
@@ -127,31 +87,19 @@ describe('own notes tools bind to their caller and person controls stay in the w
     providerSessions = new FakeProviderSessions()
     tools = new Map()
     store = createSessionStore(db, tick)
-    const home = (provider: Provider, profile?: string | null) =>
-      join(root, 'homes', profile ?? 'default', provider)
     host = new RuntimeHost({
       store,
-      announce,
-      ...neutralHostDeps(() => root),
-      createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
-      prepareProviderHome: (provider, profile) => {
-        const path = home(provider, profile)
-        mkdirSync(path, { recursive: true })
-        return path
-      },
-      providerHomePath: home,
-      resolveCwd: (id, requested) => resolveSessionCwd(root, id, requested),
-      newSessionId: () => `session-${++sequence}`,
-      now: tick,
-      readProviderConfig: (_provider, path) => ({
-        home: path,
-        homeEnv: 'CODEX_HOME',
-        model: 'm',
-        authNote: null,
-        files: [],
+      ...policyHostDeps({
+        root,
+        announce,
+        providerSessions,
+        launches,
+        handed,
+        newSessionId: () => `session-${++sequence}`,
+        now: tick,
       }),
     })
-    window = new Window()
+    window = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {
@@ -161,16 +109,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     rmSync(work, { recursive: true, force: true })
   })
 
-  const start = async (profile: string, provider: Provider = 'codex'): Promise<string> => {
-    const created = await host.createSession(
-      { provider, profileId: profile, cwd: work, approvalMode: 'ask' },
-      window,
-    )
-    const toolset = handed.at(-1)
-    if (toolset === undefined) throw new Error('no tools handed to the runtime')
-    tools.set(created.sessionId, toolset)
-    return created.sessionId
-  }
+  const start = policySessionOpener(() => ({ host, window, work, handed, tools }))
 
   const call = async (me: string, name: string, args: Record<string, unknown>) => {
     const tool = tools.get(me)?.tools.find((one) => one.name === name)

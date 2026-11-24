@@ -40,15 +40,29 @@ interface KnowledgeHistoryReceiver {
   writeOwnInstructions(said: OwnInstructionsWrite, at: number): OwnInstructionsVersion | null
 }
 
+export interface OwnInstructionsCommit {
+  previous: Pick<OwnInstructionsVersion, 'version' | 'whoWroteIt'> | null
+  written: OwnInstructionsVersion
+}
+
 interface AgentKnowledgeHistory {
   ownInstructionsOf(profileSlug: string): OwnInstructions
   currentOwnInstructionsOf(profileSlug: string): OwnInstructionsVersion | null
+  readCurrentAgentRules(
+    profileSlug: string,
+  ): Promise<{ current: OwnInstructionsVersion | null } | null>
   configuredLayerFor(profileSlug: string): string | null
   writeOwnInstructions(
     receiver: KnowledgeHistoryReceiver,
     said: OwnInstructionsWrite,
     at: number,
   ): OwnInstructionsVersion | null
+  writeDirectAgentRules(
+    receiver: KnowledgeHistoryReceiver,
+    said: OwnInstructionsWrite,
+    at: number,
+    afterCommit: (commit: OwnInstructionsCommit) => void,
+  ): Promise<OwnInstructionsCommit | null>
   undoOwnInstructions(
     receiver: KnowledgeHistoryReceiver,
     profileSlug: string,
@@ -169,6 +183,11 @@ export function createAgentKnowledgeHistory(
       ...(author === undefined ? {} : { author }),
     }
   }
+
+  const currentAgentRules = db.transaction((profileSlug: string) => {
+    if (identityBySlug().get(foldProfileName(profileSlug)) === undefined) return null
+    return { current: currentOwnInstructionsOf(profileSlug) }
+  })
 
   let memoryAmendmentStatements: {
     amendmentsOf: AppStatement
@@ -360,6 +379,87 @@ export function createAgentKnowledgeHistory(
     return row === undefined ? null : ownInstructionFrom(row)
   }
 
+  function commitOwnInstructions(
+    receiver: KnowledgeHistoryReceiver,
+    said: OwnInstructionsWrite,
+    at: number,
+  ): OwnInstructionsCommit | null {
+    const rowId = agentIdentityRowId(said.profileSlug)
+    return db.transaction((): OwnInstructionsCommit | null => {
+      if (identityBySlug().get(foldProfileName(said.profileSlug)) === undefined) {
+        return null
+      }
+      const newest = ownInstructionSql().newestOf.get(rowId) as OwnInstructionRow | undefined
+      if (said.whoWroteIt === 'a-person' && said.by.who !== 'a-person') return null
+      if (said.expectedVersion !== undefined && said.expectedVersion !== (newest?.version ?? 0))
+        return null
+      let text = said.text
+      if (said.broughtBack !== null) {
+        if (said.by.who !== 'a-person' || said.whoWroteIt !== 'a-person') return null
+        if (said.broughtBack < 1 || said.broughtBack >= (newest?.version ?? 0) + 1) return null
+        const historical = ownInstructionSql().versionOf.get(rowId, said.broughtBack) as
+          { text: string } | undefined
+        if (historical === undefined) return null
+        if (said.text !== '' && said.text !== historical.text) return null
+        text = historical.text
+      }
+      if (
+        said.whoWroteIt === 'an-agent-direct' &&
+        (said.by.who !== 'an-agent' ||
+          said.author === undefined ||
+          said.said === null ||
+          said.said.trim() === '' ||
+          said.text.length > OWN_INSTRUCTIONS_CHARS ||
+          said.said.length > OWN_INSTRUCTIONS_CHARS ||
+          said.expectedVersion === undefined)
+      )
+        return null
+      if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
+        const identity = receiver.identityOf(said.by.agent)
+        if (identity === null || said.conversation !== said.by.agent) return null
+        const named = identityNameById().get(agentIdentityRowId(identity.profileSlug)) as
+          AgentIdentityName | undefined
+        if (
+          named === undefined ||
+          said.author?.profile !== named.slug ||
+          said.author.name !== agentName(named.slug, [named])
+        )
+          return null
+      }
+      const version = (newest?.version ?? 0) + 1
+      ownInstructionSql().insertVersion.run(
+        ownInstructionsRowId(said.profileSlug, version),
+        rowId,
+        version,
+        text,
+        said.whoWroteIt,
+        said.author === undefined ? null : JSON.stringify(said.author),
+        JSON.stringify(said.by),
+        said.conversation,
+        said.said,
+        said.broughtBack,
+        at,
+      )
+      return {
+        previous:
+          newest === undefined
+            ? null
+            : { version: newest.version, whoWroteIt: foldWhoWroteIt(newest.wrote_it) },
+        written: {
+          version,
+          text,
+          whoWroteIt: said.whoWroteIt,
+          by: said.by,
+          conversation: said.conversation,
+          said: said.said,
+          broughtBack: said.broughtBack,
+          writtenAt: at,
+          ...(said.author === undefined ? {} : { author: said.author }),
+        },
+      }
+    })()
+  }
+
   return {
     ownInstructionsOf(profileSlug) {
       const identity = foldProfileName(profileSlug)
@@ -370,6 +470,9 @@ export function createAgentKnowledgeHistory(
     },
 
     currentOwnInstructionsOf,
+    async readCurrentAgentRules(profileSlug) {
+      return currentAgentRules(profileSlug)
+    },
 
     configuredLayerFor(profileSlug) {
       const current = currentOwnInstructionsOf(profileSlug)
@@ -379,74 +482,13 @@ export function createAgentKnowledgeHistory(
     },
 
     writeOwnInstructions(receiver, said, at) {
-      const rowId = agentIdentityRowId(said.profileSlug)
-      return db.transaction((): OwnInstructionsVersion | null => {
-        if (identityBySlug().get(foldProfileName(said.profileSlug)) === undefined) {
-          return null
-        }
-        const newest = ownInstructionSql().newestOf.get(rowId) as OwnInstructionRow | undefined
-        if (said.whoWroteIt === 'a-person' && said.by.who !== 'a-person') return null
-        if (said.expectedVersion !== undefined && said.expectedVersion !== (newest?.version ?? 0))
-          return null
-        let text = said.text
-        if (said.broughtBack !== null) {
-          if (said.by.who !== 'a-person' || said.whoWroteIt !== 'a-person') return null
-          if (said.broughtBack < 1 || said.broughtBack >= (newest?.version ?? 0) + 1) return null
-          const historical = ownInstructionSql().versionOf.get(rowId, said.broughtBack) as
-            { text: string } | undefined
-          if (historical === undefined) return null
-          if (said.text !== '' && said.text !== historical.text) return null
-          text = historical.text
-        }
-        if (
-          said.whoWroteIt === 'an-agent-direct' &&
-          (said.by.who !== 'an-agent' ||
-            said.author === undefined ||
-            said.said === null ||
-            said.said.trim() === '' ||
-            said.text.length > OWN_INSTRUCTIONS_CHARS ||
-            said.said.length > OWN_INSTRUCTIONS_CHARS ||
-            said.expectedVersion === undefined)
-        )
-          return null
-        if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
-          const identity = receiver.identityOf(said.by.agent)
-          if (identity === null || said.conversation !== said.by.agent) return null
-          const named = identityNameById().get(agentIdentityRowId(identity.profileSlug)) as
-            AgentIdentityName | undefined
-          if (
-            named === undefined ||
-            said.author?.profile !== named.slug ||
-            said.author.name !== agentName(named.slug, [named])
-          )
-            return null
-        }
-        const version = (newest?.version ?? 0) + 1
-        ownInstructionSql().insertVersion.run(
-          ownInstructionsRowId(said.profileSlug, version),
-          rowId,
-          version,
-          text,
-          said.whoWroteIt,
-          said.author === undefined ? null : JSON.stringify(said.author),
-          JSON.stringify(said.by),
-          said.conversation,
-          said.said,
-          said.broughtBack,
-          at,
-        )
-        return {
-          version,
-          text,
-          whoWroteIt: said.whoWroteIt,
-          by: said.by,
-          conversation: said.conversation,
-          said: said.said,
-          broughtBack: said.broughtBack,
-          writtenAt: at,
-          ...(said.author === undefined ? {} : { author: said.author }),
-        }
-      })()
+      return commitOwnInstructions(receiver, said, at)?.written ?? null
+    },
+
+    async writeDirectAgentRules(receiver, said, at, afterCommit) {
+      const commit = commitOwnInstructions(receiver, said, at)
+      if (commit !== null) afterCommit(commit)
+      return commit
     },
 
     undoOwnInstructions(receiver, profileSlug, expectedVersion, by, at) {

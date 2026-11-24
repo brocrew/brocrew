@@ -50,7 +50,7 @@ function row(id: string, named: ResumableSessionInfo['named']): ResumableSession
     state: { is: 'idle' },
     named,
     approvalMode: 'ask',
-    profileId: META.profileId,
+    profileId: 'recipe-worker',
     reasoningEffort: null,
     model: null,
     planMode: null,
@@ -533,7 +533,7 @@ it.each([
     const batch = vi.fn<RuntimeBridge['readConversationIdentities']>(async () => [identity])
     window.api.runtime.readConversationIdentity = read
     window.api.runtime.readConversationIdentities = batch
-    const listed = { ...row(sessionId, null), personStarted: brobot, profileId: 'brobot' }
+    const listed = { ...row(sessionId, null), profileId: brobot ? 'brobot' : 'recipe-worker' }
     const m = await mountWith([listed])
     await expect.poll(() => m.q('conversation-title').textContent?.trim()).toBe('BroBot')
     await expect

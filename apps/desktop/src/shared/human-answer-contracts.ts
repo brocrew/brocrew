@@ -1,3 +1,4 @@
+import type { AskLedgerReference } from './ask-delivery-contracts'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
 import type { MoveOrigin } from './move-contracts'
@@ -46,6 +47,8 @@ export type PromptUpdateBaseline = Readonly<
 export interface UserTurnEvent {
   /** The profile changes this accepted input accounted for. */
   promptUpdates?: PromptUpdateBaseline
+  originalOpening?: AskLedgerReference
+  askHandoffAttempt?: AskLedgerReference
   /** Positive observation at the window-caller boundary. Missing on legacy/imported rows. */
   humanInitiated?: boolean
   /** The original person message forwarded by a Move press. */
@@ -458,4 +461,5 @@ export type UserTurnPart = Omit<
   | 'sent'
   | 'lead'
   | 'promptUpdates'
+  | 'askHandoffAttempt'
 >

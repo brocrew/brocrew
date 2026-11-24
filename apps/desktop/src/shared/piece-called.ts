@@ -199,8 +199,8 @@ export const PERSON_TAKE_BACK_RAILS = [
 export type PersonTakeBackRail = (typeof PERSON_TAKE_BACK_RAILS)[number]
 
 /**
- * What a person's take-back answers: the piece taken back, and whether the turn working on it was
- * asked to stop with it — or the rail that refused it.
+ * What a person's take-back answers: the piece taken back, whether its first brief reached its
+ * holder, and whether its turn was asked to stop. A refusal names its rail instead.
  */
 export type WorkTakenBackByAPerson =
   | {
@@ -208,6 +208,7 @@ export type WorkTakenBackByAPerson =
       readonly piece: string
       readonly label: string
       readonly askedItsTurnToStop: boolean
+      readonly briefNeverDelivered?: true
     }
   | { readonly ok: false; readonly rail: PersonTakeBackRail }
 
