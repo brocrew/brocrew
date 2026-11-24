@@ -1,6 +1,7 @@
 import { savedMethodLine, savedMethodsHelp, savedMethodsRefusalNotice } from '../saved-methods'
 import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
+import { WorkspaceAnswers, everyRowWasRead } from './host-split/workspace-answers'
 import { AgentCreation } from './agent-creation'
 import type {
   WaitOnAsked,
@@ -1658,11 +1659,6 @@ export class RuntimeHost implements LiveHost {
         readonly complete: boolean
       }
     | undefined
-  /** What each conversation waits on, and the forest, each kept at the listing's version. */
-  private readonly listingAnswersKept = new Map<
-    string,
-    { readonly at: number; readonly value: unknown }
-  >()
   /**
    * The person's queue's version: advanced by every announcement — which a commit holding a row
    * the queue reads makes — and every state move, so an answer kept at one version is the answer at
@@ -1686,7 +1682,6 @@ export class RuntimeHost implements LiveHost {
    * it, the next ask moves the queue's version and the sequence, so what it composes is newer.
    */
   private nextTimeBoundary = Number.POSITIVE_INFINITY
-  private readonly personsKept = new Map<string, { readonly at: number; readonly value: unknown }>()
   /** Stops {@link heardACommit} being called, once this host closes. */
   private stopHearingCommits: () => void = () => undefined
 
@@ -2169,6 +2164,7 @@ export class RuntimeHost implements LiveHost {
   private readonly workReads: WorkReads
   private readonly giveWorkRunner: GiveWork
   private readonly schedulePlanning: SchedulePlanning
+  private readonly workspaceAnswers: WorkspaceAnswers
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -2176,6 +2172,12 @@ export class RuntimeHost implements LiveHost {
       ...deps,
       store: this.windowRoutingReads.store(this.windowIncidentReads.store(deps.store)),
     }
+    this.workspaceAnswers = new WorkspaceAnswers({
+      checkCommitted: () => this.deps.store.checkCommitted(),
+      overtaken: () => this.composingAnOvertakenSnapshot,
+      personsVersion: () => this.personsVersion,
+      listingVersion: () => this.listingVersion,
+    })
     this.schedulePlanning = new SchedulePlanning(this.deps, {
       itsCalendar: () => this.itsCalendar(),
       itsEvidence: (conversation) => this.itsEvidence(conversation),
@@ -12609,13 +12611,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private forAPerson<T>(name: string, compose: () => T, complete?: (value: T) => boolean): T {
-    return this.keptUntilItMoves(
-      this.personsKept,
-      () => this.personsVersion,
-      name,
-      compose,
-      complete,
-    )
+    return this.workspaceAnswers.forAPerson(name, compose, complete)
   }
 
   /**
@@ -12623,36 +12619,7 @@ export class RuntimeHost implements LiveHost {
    * shared by every caller at that version, like {@link forAPerson}.
    */
   private atTheListing<T>(name: string, compose: () => T, complete?: (value: T) => boolean): T {
-    return this.keptUntilItMoves(
-      this.listingAnswersKept,
-      () => this.listingVersion,
-      name,
-      compose,
-      complete,
-    )
-  }
-
-  /**
-   * `compose`'s answer, kept in `kept` at the version it was composed at and reused until that
-   * version moves. Another connection's commit is checked for first. An answer that skipped rows it
-   * could not read, or a composition that moved the version, is not kept.
-   */
-  private keptUntilItMoves<T>(
-    kept: Map<string, { readonly at: number; readonly value: unknown }>,
-    version: () => number,
-    name: string,
-    compose: () => T,
-    complete: (value: T) => boolean = everyRowWasRead,
-  ): T {
-    this.deps.store.checkCommitted()
-    if (this.composingAnOvertakenSnapshot) return compose()
-    const one = kept.get(name)
-    if (one !== undefined && one.at === version()) return one.value as T
-    const at = version()
-    const value = compose()
-    if (version() === at && complete(value)) kept.set(name, { at, value })
-    else kept.delete(name)
-    return value
+    return this.workspaceAnswers.atTheListing(name, compose, complete)
   }
 
   /** The asks against agents' rules still waiting, read once per version of the person's queue. */
@@ -36752,7 +36719,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       `routedToKeys=${this.routedTo?.size ?? 0} ` +
       `listingResumableRows=${this.listingKept?.resumable.length ?? 0} ` +
       `listingUnresumableRows=${this.listingKept?.unresumable.length ?? 0} ` +
-      `listingAnswerEntries=${this.listingAnswersKept.size} pendingWindowReads=${pendingWindowReads}`
+      `listingAnswerEntries=${this.workspaceAnswers.listingAnswerEntries} pendingWindowReads=${pendingWindowReads}`
     )
   }
 
@@ -39243,7 +39210,6 @@ function toHomeConversation(session: UserHomeDiscovery['found'][number]): HomeCo
   }
 }
 
-/** Whether an answer read every row it walked: a walk that counted rows unread or skipped none. */
 /** An incidents reading, with what it is exact at. */
 interface StampedIncidents {
   readonly walk: LedgerWalk<WorkIncident>
@@ -39286,15 +39252,6 @@ function overflowsKept(kept: readonly (readonly [SendOverflow | null, ResourceRo
     one === null || row === null ? [] : [{ ...one, file: { ...one.file, resource: row.resource } }],
   )
   return overflow.length === 0 ? {} : { overflow }
-}
-
-function everyRowWasRead(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) return true
-  const walk = value as { rowsUnread?: unknown; ledgersSkipped?: unknown }
-  return (
-    (typeof walk.rowsUnread !== 'number' || walk.rowsUnread === 0) &&
-    (typeof walk.ledgersSkipped !== 'number' || walk.ledgersSkipped === 0)
-  )
 }
 
 /** True if `promise` settled within `ms`. Never rejects — the caller only needs the fact. */
