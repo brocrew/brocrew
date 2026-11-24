@@ -10,6 +10,7 @@ import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { sameWindowWriter } from '../src/main/db/window-routing-reads'
 import { withWindowWriteFence } from '../src/main/db/window-write-fence'
 import { usageKeptIn } from '../src/main/provider-usage-file'
+import { eventTrimWriter } from '../src/main/db/event-retention'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const routes = { kind: 'routes' as const }
@@ -108,6 +109,19 @@ describe('window writer revisions follow the selected facts', () => {
     const inserted = sample(routes)
     db.prepare('DELETE FROM events WHERE id = ?').run(newId)
     expect(sameWindowWriter(inserted, sample(routes))).toBe(false)
+  })
+
+  it('a trimmed history row no window reading reads leaves the complete fence; a fold row moves it', () => {
+    const activity = row('activity', '{"type":"activity"}')
+    const before = sample(routes)
+    expect(
+      eventTrimWriter(db)({ session: 'alpha', active: 0, ids: [activity], before: 2000 }),
+    ).toMatchObject({ changed: 1 })
+    expect(sameWindowWriter(before, sample(routes))).toBe(true)
+    const launched = row('launched', '{"type":"launched"}')
+    const kept = sample(routes)
+    db.prepare('DELETE FROM events WHERE id = ?').run(launched)
+    expect(sameWindowWriter(kept, sample(routes))).toBe(false)
   })
 
   it('leads ignore other sessions, above-bound rows and timestamp-only updates', () => {

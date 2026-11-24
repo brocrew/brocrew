@@ -2,7 +2,8 @@ import type Database from 'better-sqlite3'
 import type { WindowReadQuery } from './window-read-protocol'
 import { ROUTED_REQUEST_EVENT_TYPES, THREAD_LEAD_EVENT_TYPES } from './session-store'
 import { setWindowWriteFence } from './window-write-fence'
-import { FOLD_TYPE_LIST } from './fold-index'
+import { FOLD_EVENT_TYPES, FOLD_TYPE_LIST } from './fold-index'
+import { HISTORY_TYPES } from './event-retention-policy'
 
 export interface WindowWriterStamp {
   readonly writer: object
@@ -29,6 +30,10 @@ const generationTriggers = operations.map((operation) => `window_read_generation
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
 const streamTypes = ['assistant_delta', 'thinking', 'text']
+// History trimming deletes only rows no window reading reads; a deleted fold row still counts.
+const deletedUnread = [
+  ...new Set([...streamTypes, ...HISTORY_TYPES.filter((type) => !FOLD_EVENT_TYPES.includes(type))]),
+]
 // Kept folds read fold rows, generations and, of a conversation's own row, only its provider. A new
 // row has no ledger yet, so only a changed provider or a deleted row marks its conversation.
 const PROVIDER_ROW_READ = ['id', 'provider']
@@ -136,7 +141,8 @@ export function windowWriterSampler(
         'turn_id',
         'id',
       ])
-      const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(streamTypes)})`).join(' OR ')}))`
+      const unread = operation === 'DELETE' ? deletedUnread : streamTypes
+      const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(unread)})`).join(' OR ')}))`
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
         WHEN ${snapshotChanged} OR (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
