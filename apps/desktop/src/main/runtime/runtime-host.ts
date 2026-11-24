@@ -738,7 +738,12 @@ import {
   type CurrentWorkInTheTurn,
   type WhoWaitsOnIt,
 } from './what-this-app-adds-to-a-turn'
-import { type PromptUpdate, EMPTY_TURN_BLOCK, turnBlockChanges } from './turn-block-changes'
+import {
+  type PromptCollectionPrefix,
+  type PromptUpdate,
+  EMPTY_TURN_BLOCK,
+  turnBlockChanges,
+} from './turn-block-changes'
 
 import {
   ACommandTakesNoAttachments,
@@ -17659,6 +17664,7 @@ export class RuntimeHost implements LiveHost {
     const rules = profileSlug === null ? null : this.currentRulesOf(profileSlug)
     const methodsFolder =
       profileSlug === null ? undefined : this.deps.savedMethodsFolderFor?.(profileSlug)
+    const peers = profileSlug === null ? null : this.profilePeers(profileSlug, conversation)
     return {
       // ⛔ **`null` is passed on rather than folded to the default**, found reviewing this diff.
       // `reopenSession` DOES fold it that way one line up — for the DIRECTORY, because an adopted
@@ -17676,10 +17682,8 @@ export class RuntimeHost implements LiveHost {
       cwd,
       savedMethodsHelp: methodsFolder === undefined ? undefined : savedMethodsHelp(methodsFolder),
       sharedSkillsDirectory: this.deps.readPromptSkills?.()?.root,
-      peerRoster:
-        profileSlug === null
-          ? undefined
-          : peerActivityText(this.profilePeers(profileSlug, conversation), false),
+      peerRoster: peers === null ? undefined : peerActivityText(peers, false),
+      peerRevision: peers?.shown.length ? peers.revision : undefined,
       startedBy: this.promptStarter(parentSessionId),
       // 🔴 **D-016 · its own root, when a person started it** (plan §3.10) — the label, or
       // `'not-yet-numbered'` on a first launch: the root is written with the conversation's row, by
@@ -17741,6 +17745,7 @@ export class RuntimeHost implements LiveHost {
       rules: String(context.rulesVersion ?? 0),
       plugins: sha256Hex(Buffer.from(pluginInstructionSection(context.plugins ?? null) ?? '')),
       starter: context.startedBy ?? '',
+      ...(context.peerRevision === undefined ? {} : { peers: context.peerRevision }),
       ...Object.fromEntries(
         (this.deps.readPromptSkills?.()?.entries ?? []).map(({ id, revision }) => [
           `skill:${id}`,
@@ -19315,7 +19320,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     })
   }
 
-  private profilePeers(profile: string, id: string | null): OtherConversations {
+  private profilePeers(
+    profile: string,
+    id: string | null,
+  ): OtherConversations & { readonly revision: string } {
     const itself = id === null ? [] : this.theIdsItStandsFor(id)
     const others = this.deps.store
       .conversationsOf(profile)
@@ -19330,11 +19338,14 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       const { line, title } = this.conversationForRead(one.conversation)
       return { id: one.conversation, title, line, lastActiveAt: one.lastActiveAt }
     })
-    return { shown, more: others.length - shown.length }
+    const revision = sha256Hex(
+      Buffer.from(JSON.stringify(shown.map(({ id, title }) => [id, title]))),
+    )
+    return { shown, more: others.length - shown.length, revision }
   }
 
   private profileFactsAtHand(session: HostedSession, now: number) {
-    const readCollections: ('method:' | 'skill:')[] = []
+    const readCollections: PromptCollectionPrefix[] = []
     const profileId = this.slots.get(session.id)?.profileId
     if (profileId == null) return {}
     const profile = foldProfileName(profileId)
@@ -19344,11 +19355,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const starter = this.promptStarter(this.slots.get(session.id)?.spawnedBy ?? null)
     const roster = this.profilePeers(profile, session.id)
     const peers = peerActivityText(roster)
-    const peerNames = roster.shown.map(({ id, title }) => [id, title])
     const promptUpdates: PromptUpdate[] = [
       {
         key: 'peers',
-        revision: sha256Hex(Buffer.from(JSON.stringify(peerNames))),
+        revision: roster.revision,
         description: '',
         text: peers || 'There are no other conversations of this profile.',
         at: now,
@@ -19438,7 +19448,27 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         })
       }
     }
-    return { promptUpdates, readCollections }
+    const editableMemoryFolders: string[] = []
+    for (const provider of SUPPORTED_PROVIDERS) {
+      const own = provider === session.provider
+      const home = own ? session.providerHome : this.deps.providerHomePath(provider, profileId)
+      const memory = providerKnowledge[provider].memory
+      editableMemoryFolders.push(...memory.layout.editableFolders(home))
+      const entries = memory.listRevisions(home)
+      if (entries === null) continue
+      const prefix = `memory:${provider}:` as const
+      readCollections.push(prefix)
+      for (const { id, title, path, revision } of entries)
+        promptUpdates.push({
+          key: `${prefix}${id}`,
+          revision,
+          description: 'Memory changed',
+          text: own ? title : `\`${path}\``,
+          at: now,
+          observed: true,
+        })
+    }
+    return { promptUpdates, readCollections, editableMemoryFolders }
   }
 
   private factsForTheTurnBlock(
@@ -35259,7 +35289,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       profileId,
       launchGave,
       promptStart: kept === null ? this.keptStart(instructions, model) : { from: kept.ordinal },
-      promptUpdates: kept === null ? undefined : promptUpdatesFor(this.deps.store, sessionId, kept),
+      restorePromptUpdates: true,
+      retainedPromptBaseline:
+        kept === null ? undefined : { ordinal: kept.ordinal, updates: kept.start.updates },
       createdApprovalMode: approvalMode,
       handle,
       sink,
@@ -36331,11 +36363,19 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
       launchGave?: WhatALaunchGave | null
       promptStart?: KeptPromptStart
-      promptUpdates?: PromptUpdateBaseline
+      restorePromptUpdates?: boolean
+      retainedPromptBaseline?: HostedSession['promptStartBaseline']
       onRegistered?: (session: HostedSession) => void
     },
   ): HostedSession {
     const { id, provider, handle, sink } = options
+    const promptStartBaseline = options.retainedPromptBaseline ?? {
+      ordinal: options.startingOrdinal - 1,
+      updates:
+        options.promptStart && 'updates' in options.promptStart
+          ? options.promptStart.updates
+          : undefined,
+    }
     const noteDir = memoryNoteDir(provider, options.providerHome)
     // 🔴 **What this conversation has already been TOLD, off its own ledger** (404) — see
     // {@link HostedSession.toldAboutStall} and {@link WorkStallTold}.
@@ -36405,6 +36445,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
       launchGave: options.launchGave ?? null,
       promptStart: options.promptStart,
+      promptStartBaseline,
       wordsJustHandedOver: null,
       wordsItWasHandedFor: [],
       latestContext: null,
@@ -36429,11 +36470,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       aPersonLastWroteAt: options.continuesARecording ? this.whenAPersonLastWroteIn(id) : null,
       turnBlockSnapshot: {
         ...EMPTY_TURN_BLOCK,
-        promptUpdates:
-          options.promptUpdates ??
-          (options.promptStart && 'updates' in options.promptStart
-            ? options.promptStart.updates
-            : undefined),
+        promptUpdates: options.restorePromptUpdates
+          ? promptUpdatesFor(this.deps.store, id, promptStartBaseline)
+          : promptStartBaseline.updates,
       },
       pendingTurnBlock: null,
       finishedSinceItsLastTurn: [],
@@ -38767,14 +38806,20 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // hold it** — see {@link HostedSession.firstTurnLead}: a compaction rewrote the history it rode
     // in, or a turn this app ended as `failed` may have taken it to a provider that never began it.
     // ⚑ Redundant at worst: a lead the model still holds is read twice.
-    if (
-      event.type === 'compaction' ||
-      (event.type === 'turn' && event.state === 'failed' && event.wordOf === 'this-app')
-    ) {
+    const contextRebuilt =
+      event.type === 'conversation_reset' ||
+      (event.type === 'compaction' && event.parentToolCallId === undefined)
+    const rejected =
+      event.type === 'turn' && event.state === 'failed' && event.wordOf === 'this-app'
+    if (contextRebuilt || (rejected && session.turnOpened)) {
       session.turnBlockSnapshot = {
         ...session.turnBlockSnapshot,
-        promptUpdates: undefined,
+        promptUpdates: contextRebuilt
+          ? session.promptStartBaseline.updates
+          : promptUpdatesFor(this.deps.store, session.id, session.promptStartBaseline, true),
       }
+    }
+    if (event.type === 'compaction' || rejected) {
       session.firstTurnLead = session.lifeLead
       session.firstTurnLeadIs = 'whole'
     }

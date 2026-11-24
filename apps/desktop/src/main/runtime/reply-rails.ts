@@ -1,4 +1,5 @@
 import type { SendReceipt } from '../../shared/tool-outcome'
+import { workStateWord } from '../../shared/work-state-words'
 import type { SendOverflow } from './send-overflow'
 import type {
   PieceRow,
@@ -1156,12 +1157,15 @@ export function undrivenWorkText(
   // sentence is not lost from the row (`HO-095` §6.4: *keep ids reachable for diagnosis… and out of
   // the sentence*).
   //
-  // ⚑ **D-016 · the LABEL names the piece, beside its title** ({@link pieceLine}): it is the one
-  // name a person says, and `list_tasks` takes it back — the imperative below names it again.
-  // 🔴 **F074 — a limit is not *not being worked on***: the turn ended because the provider refused
-  // it, and the words say that and when it resets — measured: a giver told *"not being worked on"*
-  // about a helper the five-hour limit had stopped could only guess it was broken.
-  const notWorkedOn = cause === 'provider_limited' ? '' : ' is not being worked on'
+  // The label matches the name accepted by list_tasks.
+  // A provider-limit notice uses the provider's cause and reset time.
+  const stateWord = workStateWord('stalled', cause)
+  const notWorkedOn =
+    cause === 'provider_limited'
+      ? ''
+      : cause === 'turn_ended'
+        ? ` has ${stateWord}`
+        : ` is ${stateWord}`
   const lines = [`${pieceLine(piece.label, piece.title)} with ${holder}${notWorkedOn}: ${said}`]
   // ⚑ **…and what a message sent to it meanwhile does**: the app holds it until the reset
   // (`RuntimeHost.itWaitsForItsLimit`), which only a known reset can end.

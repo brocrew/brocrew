@@ -402,10 +402,9 @@ describe('§3 · launch instructions and changing turn facts', () => {
     const firstTurn = providerHeard(target.id)[1] ?? ''
     const activityLine = (turn: string) =>
       turn.split('\n').find((line) => /^ {2}- conversation .+ — last active /.test(line))
-    const firstActivity = activityLine(providerHeard(target.id)[0] ?? '')
+    expect(providerHeard(target.id)[0]).not.toContain(LIST_HEADING)
     expect(firstTurn).toContain('This app adds what follows')
     expect(firstTurn).not.toContain(LIST_HEADING)
-    expect(firstActivity).toBeDefined()
     expect(firstTurn).toContain('Rotate the fictional logs')
 
     const lastActivity = () =>

@@ -1,8 +1,8 @@
 import type { MemoryPolicy as PortablePolicy } from '@brobot2/runtime/provider-module'
 import type { DesktopProviderValues } from './desktop-values'
 import type { InjectedInstruction, RefusedInstruction } from '../../shared/instruction-contracts'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 import type { AgentMemoryPage, MemoryCandidate, MemoryStoreLayout } from './instruction-types'
 import {
@@ -13,6 +13,7 @@ import {
 import { readMemoryStore, realPath, sizeOnDisk } from './instruction-io'
 
 interface MemoryLayout {
+  editableFolders(home: string): readonly string[]
   entryOrigin(
     kind: InjectedInstruction['kind'],
   ): import('../../shared/what-this-agent-was-given').GivenOrigin
@@ -32,6 +33,7 @@ export function createMemoryPolicy(
   source: MemoryLayout,
 ): MemoryPolicy {
   const layout: MemoryStoreLayout = {
+    editableFolders: source.editableFolders,
     fixedFiles: (home) => source.fixed(home, home).map((file) => file.path),
     notesFolder: source.notesFolder,
     listNotes: source.listNotes,
@@ -82,6 +84,25 @@ export function createMemoryPolicy(
     }
   }
   return {
+    listRevisions(home) {
+      const folder = layout.notesFolder(home)
+      const listed = source.listNotes(folder)
+      if (listed.refused !== null) return null
+      const files = [
+        ...layout.fixedFiles(home).map((path) => ({ id: basename(path), path })),
+        ...listed.names.map((name) => ({ id: `notes/${name}`, path: join(folder, name) })),
+      ]
+      try {
+        return files.flatMap(({ id, path }) => {
+          const stat = statSync(path, { bigint: true, throwIfNoEntry: false })
+          if (!stat?.isFile()) return []
+          const revision = [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':')
+          return [{ id, title: basename(path).replace(/\s+/g, ' '), path, revision }]
+        })
+      } catch {
+        return null
+      }
+    },
     readStore,
     layout,
     readPage,

@@ -2,6 +2,7 @@ import type { SendRecipientState, ToolOutcome } from '../../shared/tool-outcome'
 import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
 import type { TaskStallCause } from '../../shared/task-contracts'
 import { WORK_FIELD_WORDS } from '../../shared/work-fields'
+import { workStateWord } from '../../shared/work-state-words'
 import { refusalReason } from '../../shared/refusals'
 import { isAbsolute, join } from 'node:path'
 import type { GivenFolder } from '../../shared/work-folders'
@@ -289,8 +290,15 @@ export interface AStallAGiveNames {
 export function stalledPiecesSaid(stalled: readonly AStallAGiveNames[]): string {
   if (stalled.length === 0) return ''
   const them = stalled.length > 1 ? 'them' : 'it'
-  const named = labelsSaid(stalled.map((one) => `${one.label} (${undrivenSentence(one.cause)})`))
-  return `It still holds ${named} from you, not being worked on: follow ${them} up with message_agent , or take ${them} back with withdraw_task.`
+  const named = labelsSaid(
+    stalled.map(({ label, cause }) => {
+      const reason = undrivenSentence(cause)
+      return cause === 'turn_ended'
+        ? `${label} (${workStateWord('stalled', cause)}, ${reason})`
+        : `${label} (${reason})`
+    }),
+  )
+  return `It still holds ${named} from you: follow ${them} up with message_agent , or take ${them} back with withdraw_task.`
 }
 
 /**

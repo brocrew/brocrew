@@ -121,9 +121,11 @@ function fernModule(): ProviderModule<FernValues> {
       },
     },
     memory: {
+      listRevisions: () => [],
       entryOrigin: () => 'fern',
       readStore: () => ({ entries: [] }),
       layout: {
+        editableFolders: () => [],
         fixedFiles: () => [],
         notesFolder: (home) => home,
         listNotes: () => ({ names: [] }),

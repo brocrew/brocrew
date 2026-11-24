@@ -115,6 +115,7 @@ describe('the survivors the tree landing left', () => {
       // of them this app's own words for a call that IS worth repeating.
       expect('Make the same call again in a moment.').toMatch(A_PROMISE_TO_RETRY)
       expect('nothing was given. Or try again once it has finished.').toMatch(A_PROMISE_TO_RETRY)
+      expect('Wait until it has finished.').toMatch(A_PROMISE_TO_RETRY)
 
       for (const labels of [['W1.1'], ['W1.2', 'W1.3']]) {
         const stalled = labels.map((label) => ({ label, cause: 'turn_ended' as const }))
@@ -125,7 +126,7 @@ describe('the survivors the tree landing left', () => {
         for (const label of labels) expect(said).toContain(label)
         expect(said.endsWith('back with withdraw_task.')).toBe(true)
         // ⛔ …and it promises nothing about waiting.
-        expect(said).not.toMatch(A_PROMISE_TO_RETRY)
+        expect(said.replaceAll('no wait set', '')).not.toMatch(A_PROMISE_TO_RETRY)
       }
       // ⚑ A give that found no stall says nothing of one.
       expect(stalledPiecesSaid([])).toBe('')
@@ -134,7 +135,11 @@ describe('the survivors the tree landing left', () => {
     it('⚑ F146 · every stall cause is named, in the words list_tasks already says it in', () => {
       for (const cause of TASK_STALL_CAUSES) {
         const said = stalledPiecesSaid([{ label: 'W1.1', cause }])
-        expect(said, cause).toContain(`W1.1 (${undrivenSentence(cause)})`)
+        const words =
+          cause === 'turn_ended'
+            ? `no wait set, ${undrivenSentence(cause)}`
+            : undrivenSentence(cause)
+        expect(said, cause).toContain(`W1.1 (${words})`)
       }
       // ⚑ Two pieces, each beside its own cause.
       expect(
@@ -143,7 +148,7 @@ describe('the survivors the tree landing left', () => {
           { label: 'W1.2', cause: 'app_restarted' },
         ]),
       ).toContain(
-        `W1.1 (${undrivenSentence('turn_ended')}) and W1.2 (${undrivenSentence('app_restarted')}) from you`,
+        `W1.1 (no wait set, ${undrivenSentence('turn_ended')}) and W1.2 (${undrivenSentence('app_restarted')}) from you`,
       )
     })
   })

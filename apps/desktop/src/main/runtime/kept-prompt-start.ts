@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { SessionStore } from '../db/session-store'
+import type { PromptUpdateBaseline } from '../../shared/human-answer-contracts'
 
 type PromptLedger = Pick<SessionStore, 'newestOfType' | 'eventsFrom'>
 const PROMPT_IDLE_MS = 60 * 60 * 1000
@@ -41,19 +42,38 @@ export function promptStartFor(store: PromptLedger, id: string, model: string | 
   return { start, ordinal: row.ordinal, given: row.event.given }
 }
 
+/** Recover the last handed-over snapshot the provider could have received in this context. */
 export function promptUpdatesFor(
   store: PromptLedger,
   id: string,
-  kept: NonNullable<ReturnType<typeof promptStartFor>>,
-) {
-  const turn = store.newestOfType?.(id, 'user_turn', undefined, kept.ordinal + 1)
-  if (turn?.event.type !== 'user_turn') return kept.start.updates
-  const ending = store.newestOfType?.(id, 'turn', undefined, turn.ordinal + 1)
-  if (
-    ending?.event.type === 'turn' &&
-    ending.event.state === 'failed' &&
-    ending.event.wordOf === 'this-app'
-  )
-    return undefined
-  return turn.event.promptUpdates ?? kept.start.updates
+  start: { ordinal: number; updates?: PromptUpdateBaseline },
+  rejecting = false,
+): PromptUpdateBaseline | undefined {
+  let end = store.newestOfType?.(id, 'turn')
+  for (let before: number | undefined; ;) {
+    const turn = store.newestOfType?.(id, 'user_turn', before)
+    if (
+      turn?.event.type !== 'user_turn' ||
+      store.newestOfType?.(id, 'conversation_reset', undefined, turn.ordinal + 1) != null ||
+      hasCompactionAfter(store, id, turn.ordinal)
+    )
+      return start.updates
+    const ended = end?.event
+    const rejected =
+      end != null &&
+      end.ordinal > turn.ordinal &&
+      ended?.type === 'turn' &&
+      ended.state === 'failed' &&
+      ended.wordOf === 'this-app'
+    if (turn.event.promptUpdates !== undefined && !rejected && !rejecting) {
+      // A recomposed start still resumes the same native context. It refreshes its own facts,
+      // while the last accepted footer remains the baseline for facts carried only there.
+      return turn.ordinal <= start.ordinal
+        ? { ...turn.event.promptUpdates, ...start.updates }
+        : turn.event.promptUpdates
+    }
+    rejecting = false
+    before = turn.ordinal
+    end = store.newestOfType?.(id, 'turn', before)
+  }
 }

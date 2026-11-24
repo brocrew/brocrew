@@ -84,6 +84,7 @@ function claudeMemoryTopics(dir: string): {
 }
 
 export const memory = createMemoryPolicy(readClaudeAgentMemory, {
+  editableFolders: (home) => [claudeAutoMemoryDir(home)],
   entryOrigin: () => 'an-agent',
   root: claudeAutoMemoryDir,
   fixed: (home, realHome) => [

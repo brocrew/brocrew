@@ -806,22 +806,25 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(firstPage?.slice(0, open.length).map((row) => row.piece)).toEqual(
         open.map((row) => row.piece).reverse(),
       )
+      const recentlyChanged = open[2]!
+      const ordinary = open.filter((row) => row !== recentlyChanged)
+      for (const { owner, piece } of [...ordinary, recentlyChanged])
+        store.append(
+          owner,
+          store.nextOrdinal(owner),
+          { type: 'work_status_set', piece, line: 'Update', by: owner },
+          tick(),
+        )
+      const shown = (footer: string) =>
+        [...footer.matchAll(/^[-] conversation .* · task (\S+) · /gm)].map((match) => match[1])
       const first = render()
       expect(first).toContain('Work you gave, still open:')
       expect(first).toContain(
         'and 7 more: list_tasks\nCheck this work and make any needed updates.',
       )
-      const second = render()
-      expect(second).toContain('and 7 more: list_tasks')
-      const third = render()
-      for (const row of open) {
-        const shown = [first, second, third].some((block) =>
-          block.includes('task ' + row.label + ' · '),
-        )
-        expect(shown).toBe(true)
-      }
-      expect(render()).toContain('and 7 more: list_tasks')
-      const [stalled, person] = [open[0]!, open[1]!]
+      expect(shown(first)).toEqual(ordinary.slice(0, 5).map((row) => row.label))
+      expect(shown(render())).toEqual(shown(first))
+      const [stalled, person] = [open[10]!, open[11]!]
       store.append(
         stalled.owner,
         store.nextOrdinal(stalled.owner),
@@ -842,7 +845,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       )
       for (let i = 0; i < 2; i++) {
         const urgent = render()
-        expect(urgent).toContain(`${stalled.label} · Ali · not being worked on`)
+        expect(shown(urgent)).toEqual(
+          [stalled, person, ...ordinary.slice(0, 3)].map((row) => row.label),
+        )
+        expect(urgent).toContain(`${stalled.label} · Ali · no wait set`)
         expect(urgent).toContain(`${person.label} · Ali · waiting on the person`)
         expect(urgent).not.toContain("Helpers' status is not fully available")
       }

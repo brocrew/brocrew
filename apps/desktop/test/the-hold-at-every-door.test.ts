@@ -1062,9 +1062,7 @@ describe('670 §6 · the plan go-ahead tells its two cases apart', () => {
     const turn = eventsOf().find(
       (event) => event.type === 'user_turn' && event.text === GO_AHEAD_MESSAGE,
     )
-    // 🔴 **`app_authored` and nothing else** — the row the direct go-ahead writes by hand.
-    // ⚑ **F093 · R2 — and the whole text it was handed**, which for the go-ahead is its words.
-    // ⚑ …which ends with the block this app adds to every turn, cut here.
+    // The go-ahead's row carries its authorship and the footer snapshot. Strip footer text below.
     expect(
       turn?.type === 'user_turn'
         ? { ...turn, sent: withoutWhatThisAppAdds(turn.sent ?? '') }
@@ -1074,6 +1072,7 @@ describe('670 §6 · the plan go-ahead tells its two cases apart', () => {
       text: GO_AHEAD_MESSAGE,
       attribution: 'app_authored',
       sent: GO_AHEAD_MESSAGE,
+      promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
     })
     await answerEveryCard(sessionId)
     await waitFor(() => handle.status() === 'idle', 'the go-ahead’s turn to end')

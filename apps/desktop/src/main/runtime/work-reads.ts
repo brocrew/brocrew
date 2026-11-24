@@ -1,4 +1,4 @@
-import { WORK_STATE_WORD } from '../../shared/work-state-words'
+import { workStateWord } from '../../shared/work-state-words'
 import { errorMessage } from './session-disclosures'
 import { questionKey } from './question-rails'
 import {
@@ -582,7 +582,7 @@ export class WorkReads {
           state:
             row.state === 'waiting-on-the-person-who-wrote'
               ? TURN_BLOCK_WORDS.waitingOnThePerson
-              : (WORK_STATE_WORD[row.state] ?? null),
+              : (workStateWord(row.state, row.stalledBecause) ?? null),
           givenAt: row.givenAt,
           changedAt:
             row.state === rawStates.get(row.piece) ? (row.lastRecordedChangeAt ?? null) : null,

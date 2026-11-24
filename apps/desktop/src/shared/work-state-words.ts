@@ -1,4 +1,4 @@
-import type { TaskState } from './task-contracts'
+import type { TaskStallCause, TaskState } from './task-contracts'
 
 /** Work state words for views and tools. */
 export const WORK_STATE_WORD: Readonly<Record<TaskState, string>> = {
@@ -14,4 +14,8 @@ export const WORK_STATE_WORD: Readonly<Record<TaskState, string>> = {
   closed: 'closed',
   'waiting-on-the-person-who-wrote': 'waiting on you',
   'waiting-on-purpose': 'waiting on purpose',
+}
+
+export function workStateWord(state: TaskState, cause: TaskStallCause | null): string {
+  return state === 'stalled' && cause === 'turn_ended' ? 'no wait set' : WORK_STATE_WORD[state]
 }

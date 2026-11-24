@@ -8,7 +8,10 @@ import {
 
 export const TURN_HELPER_OWNERS = 32
 export const TURN_HELPER_PIECES = 256
-const TURN_HELPER_LINES = 5
+const TURN_LIST_LINES = 5
+const MEMORY_PREFIX = 'memory:'
+
+export type PromptCollectionPrefix = 'method:' | 'skill:' | `memory:${string}:`
 
 export interface PromptUpdate {
   readonly key: keyof PromptUpdateBaseline
@@ -24,13 +27,13 @@ export interface PromptUpdate {
 
 export interface TurnBlockSnapshot {
   readonly promptUpdates?: PromptUpdateBaseline
-  readonly rotation: number
+  readonly memoryNudged: boolean
   readonly personWait: { readonly signature: string; readonly at: number } | null
   readonly hintedTurn: string | null
 }
 
 export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
-  rotation: 0,
+  memoryNudged: false,
   personWait: null,
   hintedTurn: null,
 }
@@ -38,7 +41,8 @@ export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
 export function turnBlockChanges(
   input: {
     readonly promptUpdates?: readonly PromptUpdate[]
-    readonly readCollections?: readonly ('method:' | 'skill:')[]
+    readonly readCollections?: readonly PromptCollectionPrefix[]
+    readonly editableMemoryFolders?: readonly string[]
     readonly now: number
     readonly person: boolean
     readonly helpers: readonly AHelperInTheTurn[]
@@ -61,19 +65,38 @@ export function turnBlockChanges(
   let baselineChanged = false
   const profileChanges: string[] = []
   const grouped = new Map<string, string[]>()
+  const memoryTitles: string[] = []
+  const newMemoryStores: string[] = []
   const updates = input.promptUpdates ?? []
   if (input.readCollections?.length) {
     const present = new Set(updates.map(({ key }) => key))
     for (const key of Object.keys(promptUpdates) as (keyof PromptUpdateBaseline)[]) {
-      if (input.readCollections.some((prefix) => key.startsWith(prefix)) && !present.has(key)) {
+      if (
+        input.readCollections.some((prefix) => key !== prefix && key.startsWith(prefix)) &&
+        !present.has(key)
+      ) {
         delete promptUpdates[key]
         baselineChanged = true
       }
+    }
+    for (const prefix of input.readCollections) {
+      if (prefix === 'method:' || prefix === 'skill:' || promptUpdates[prefix] !== undefined)
+        continue
+      newMemoryStores.push(prefix)
+      promptUpdates[prefix] = 'seen'
+      baselineChanged = true
     }
   }
   for (const update of updates) {
     const seen = promptUpdates[update.key]
     if (seen === update.revision || (seen === undefined && update.empty)) continue
+    promptUpdates[update.key] = update.revision
+    baselineChanged = true
+    if (update.key.startsWith(MEMORY_PREFIX)) {
+      if (!newMemoryStores.some((prefix) => update.key.startsWith(prefix)))
+        memoryTitles.push(update.text)
+      continue
+    }
     const when = new Date(update.at).toISOString()
     const timing = update.observed ? `observed at ${when}` : `changed at ${when}`
     const heading = `${update.description} (${timing}).`
@@ -82,23 +105,29 @@ export function turnBlockChanges(
       if (lines === undefined) grouped.set(heading, [update.text])
       else lines.push(update.text)
     } else profileChanges.push(update.untimed ? update.text : `${heading}\n\n${update.text}`)
-    promptUpdates[update.key] = update.revision
-    baselineChanged = true
   }
   for (const [heading, lines] of grouped) profileChanges.push(`${heading}\n\n${lines.join('\n')}`)
+  if (memoryTitles.length > 0) {
+    const titles = memoryTitles.slice(0, TURN_LIST_LINES).join(', ')
+    const more = memoryTitles.length - TURN_LIST_LINES
+    profileChanges.push(
+      `Memory changed (observed at ${new Date(input.now).toISOString()}): ${titles}${more > 0 ? ` and ${more} more` : ''}.`,
+    )
+  }
+  const memoryFolders = input.editableMemoryFolders ?? []
+  const nudgeMemory = memoryFolders.length > 0 && (memoryTitles.length > 0 || !before.memoryNudged)
+  if (nudgeMemory) {
+    const locations = memoryFolders.map((folder) => `\`${folder}\``).join(', ')
+    profileChanges.push(`Fix or remove outdated memory in ${locations}.`)
+  }
   if (profileChanges.length > 0) extra.profileChanges = profileChanges
   const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
-    left.givenAt - right.givenAt || left.label.localeCompare(right.label)
+    Number(right.urgent) - Number(left.urgent) ||
+    (left.changedAt ?? Infinity) - (right.changedAt ?? Infinity) ||
+    left.givenAt - right.givenAt ||
+    left.label.localeCompare(right.label)
   const eligible = input.helpers.filter((row) => row.state !== null).sort(order)
-  const urgent = eligible.filter((row) => row.urgent)
-  const allUrgentFit = urgent.length <= TURN_HELPER_LINES
-  const fixed = allUrgentFit ? urgent : []
-  const rotatable = allUrgentFit ? eligible.filter((row) => !row.urgent) : urgent
-  const slots = TURN_HELPER_LINES - fixed.length
-  const offset = before.rotation % Math.max(1, rotatable.length)
-  const rotating = rotatable.slice(offset).concat(rotatable.slice(0, offset)).slice(0, slots)
-  const rows = [...fixed, ...rotating]
-  const rotation = rotatable.length > slots ? (offset + rotating.length) % rotatable.length : 0
+  const rows = eligible.slice(0, TURN_LIST_LINES)
   const latestFailure = new Map<string, number>()
   for (const row of rows) {
     const failure = row.providerTurnFailure
@@ -142,7 +171,7 @@ export function turnBlockChanges(
     extra,
     next: {
       promptUpdates: baselineChanged ? promptUpdates : before.promptUpdates,
-      rotation,
+      memoryNudged: before.memoryNudged || nudgeMemory,
       personWait:
         input.personWait === null
           ? before.personWait

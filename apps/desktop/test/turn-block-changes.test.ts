@@ -24,7 +24,7 @@ const helper = (id: number, urgent = false): AHelperInTheTurn => ({
   owner: `worker-${id}`,
   conversation: `conversation W1.${id} · Fictional job`,
   name: `worker-${id}`,
-  state: urgent ? 'not being worked on' : 'being worked on',
+  state: urgent ? 'no wait set' : 'being worked on',
   givenAt: 0,
   changedAt: null,
   urgent,
@@ -178,7 +178,7 @@ describe('turn block changes', () => {
     }
   })
 
-  it('caps rows at five, rotates persistent urgent helpers, and leaves overflow changes eligible', () => {
+  it('keeps five urgent helpers and the same overflow on successive turns', () => {
     const rows = Array.from({ length: 8 }, (_, i) => helper(i + 1, true))
     const first = turnBlockChanges({ ...input, helpers: rows }, EMPTY_TURN_BLOCK)
     expect(first.extra.helpers?.rows.map((row) => row.label)).toEqual([
@@ -190,26 +190,16 @@ describe('turn block changes', () => {
     ])
     expect(first.extra.helpers?.more).toBe(3)
     const second = turnBlockChanges({ ...input, helpers: rows }, first.next)
-    expect(second.extra.helpers?.rows.slice(0, 3).map((row) => row.label)).toEqual([
-      'W1.6',
-      'W1.7',
-      'W1.8',
-    ])
+    expect(second.extra.helpers?.rows).toEqual(first.extra.helpers?.rows)
     expect(block(first.extra)).toContain('and 3 more: list_tasks')
     const ordinary = rows.map((row) => ({ ...row, urgent: false }))
     const ordinaryFirst = turnBlockChanges({ ...input, helpers: ordinary }, EMPTY_TURN_BLOCK)
     const ordinarySecond = turnBlockChanges({ ...input, helpers: ordinary }, ordinaryFirst.next)
-    expect(ordinarySecond.extra.helpers?.rows.map((row) => row.label)).toEqual([
-      'W1.6',
-      'W1.7',
-      'W1.8',
-      'W1.1',
-      'W1.2',
-    ])
+    expect(ordinarySecond.extra.helpers?.rows).toEqual(ordinaryFirst.extra.helpers?.rows)
     expect(block(ordinarySecond.extra)).toContain('and 3 more: list_tasks')
   })
 
-  it('retains the diagnosis for the visible task until rotation shows a newer failure', () => {
+  it('retains the diagnosis for the visible task until another row becomes older', () => {
     const helpers = [
       { ...helper(1), providerTurnFailure: { turnOrdinal: 3, message: 'Visible provider error.' } },
       helper(2),
@@ -218,17 +208,19 @@ describe('turn block changes', () => {
       helper(5),
       {
         ...helper(6),
+        changedAt: 1,
         owner: 'worker-1',
         conversation: 'conversation W1.1 · Fictional job',
-        providerTurnFailure: { turnOrdinal: 7, message: 'Rotated provider error.' },
+        providerTurnFailure: { turnOrdinal: 7, message: 'Previously hidden provider error.' },
       },
-    ]
+    ].map((row) => ({ ...row, changedAt: row.changedAt ?? 0 }))
     const first = turnBlockChanges({ ...input, helpers }, EMPTY_TURN_BLOCK)
-    const second = turnBlockChanges({ ...input, helpers }, first.next)
+    const updated = helpers.map((row) => (row.label === 'W1.1' ? { ...row, changedAt: 2 } : row))
+    const second = turnBlockChanges({ ...input, helpers: updated }, first.next)
     expect(first.extra.helpers?.rows).toHaveLength(5)
     expect(block(first.extra)).toContain('Visible provider error.')
-    expect(block(first.extra)).not.toContain('Rotated provider error.')
-    expect(block(second.extra)).toContain('Rotated provider error.')
+    expect(block(first.extra)).not.toContain('Previously hidden provider error.')
+    expect(block(second.extra)).toContain('Previously hidden provider error.')
     expect(block(second.extra)).not.toContain('Visible provider error.')
   })
 
@@ -279,9 +271,8 @@ describe('turn block changes', () => {
     const rendered = block(
       turnBlockChanges({ ...input, now: 180_000, helpers: rows }, EMPTY_TURN_BLOCK).extra,
     )
-    expect(rendered).toContain(
-      'Work you gave, still open:\n- conversation W1.1 · Fictional job · task W1.1 · worker-1 · being worked on\n',
-    )
+    expect(rendered).toContain('Work you gave, still open:\n- conversation W1.2')
+    expect(rendered).toContain('task W1.1 · worker-1 · being worked on\n')
     // The formatter's clock is input.now (60,000); givenAt must never supply an age.
     expect(rendered).toContain('W1.2 · worker-2 · being worked on · state updated just now')
     expect(rendered).not.toContain('given ')

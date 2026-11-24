@@ -595,7 +595,13 @@ describe('the host and the renderer cannot disagree about what is running (100)'
       // ⚑ **F093 · R2 — and the block lives in `sent`**, the whole text the provider was handed.
       const typed = typedByHand(sessionId)
       expect(typed.map(({ sent, ...row }) => (void sent, row))).toEqual([
-        { type: 'user_turn', text: '', attachments, humanInitiated: true },
+        {
+          type: 'user_turn',
+          text: '',
+          attachments,
+          humanInitiated: true,
+          promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
+        },
       ])
       expect(typed[0]?.sent).toContain('Attached by the user')
       store.dispose()

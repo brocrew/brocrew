@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   CodexRuntime,
+  codexMemorySummary,
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
@@ -58,28 +59,10 @@ import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 /**
  * # adc4232b · a Codex thread carries BroBot's lead once, then only what changed — over the host
  *
- * The record's read is pinned on its own in `what-a-codex-thread-holds-read-from-its-record.test.ts`.
- * This file pins the host's half: what it WRITES for that read, and what it sends a life after it.
- * The devs' tests run on `FakeRuntime`, which cannot fail a turn as this app's word, and none of them
- * reopens a thread after a failed turn or a compaction; the one that reads `user_turn.lead` reads a
- * reopen that owed what changed, and nothing after it.
- *
- *  - §1 · 🔴 after a reopen that owed only what changed, a turn this app failed owes the WHOLE again
- *    (D-039, `firstTurnLeadIs = 'whole'`), and the next message's row says `whole` — so a later
- *    reopen does not read a whole lead as a partial one. ⚑ The reopen's own first message said
- *    `what-changed`.
- *  - §2 · 🔴 a reopen reads the record end to end, through the store's own query: ⛔ a life whose
- *    only lead went with a turn this app failed, or whose history a `/compact` rewrote, leaves the
- *    thread holding none, so the reopen sends the whole. ⚑ The same life with its turn completed and
- *    no compaction does not.
- *  - §3 · ⛔ a lead that does not open with this conversation's line is not recorded as one
- *    (`sent.startsWith(LEADS_OPEN_WITH)`). ⚑ The product's own lead is, with its length.
- *
- * ⚑ A real host on a real SQLite ledger over the REAL `CodexRuntime`, its app-server scripted from
- * the shapes the adapter reads (copied from `the-tools-reach-codex-in-its-lead-…test.ts`, with a
- * thread id per conversation so a reopen resumes its own), and `main/index.ts`'s instruction wiring
- * (copied from `what-this-agent-was-given.test.ts`). ⛔ Every folder is a `mkdtemp` one, removed
- * after; the reader is handed `home: userData`, so nothing reads a real home.
+ * The real Host and SQLite ledger run over CodexRuntime with a scripted app-server and isolated
+ * homes. The script reports a distinct thread per conversation and can reject a turn before it runs.
+ * These tests check the saved row and the next handoff after a partial lead, an app-rejected turn,
+ * a compaction, or a successful control turn. A lead row records only text with the expected header.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -803,8 +786,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
   const rowsBesideTheLaunches = (app: App, id: string) =>
     JSON.stringify(app.store.events(id).filter((one) => one.event.type !== 'launched'))
 
-  it.each(['failed turn', 'compaction'] as const)(
-    'sends the current saved methods and peers again after a %s',
+  it.each(['failed turn', 'failed turn and reopen', 'compaction'] as const)(
+    'restores the right footer baseline after a %s',
     async (loss) => {
       const app = anApp()
       const id = await aCodexConversation(app)
@@ -827,6 +810,10 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
       expect(latestSent()).not.toContain(title)
       expect(latestSent()).not.toContain(peerHeading)
 
+      const summary = codexMemorySummary(join(app.userData, 'provider-homes', 'ali', 'codex'))
+      mkdirSync(dirname(summary), { recursive: true })
+      writeFileSync(summary, 'A fictional summary.')
+      const memoryNotice = 'Memory changed (observed at '
       if (loss === 'compaction') {
         await saying(app, id, '/compact')
         expect(ledger(app, id).some((event) => event.type === 'compaction')).toBe(true)
@@ -834,10 +821,21 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
         script.rejectTurnStarts = 1
         await saying(app, id, 'fail to reach the provider')
         expect(turnRows(app, id).at(-1)).toMatchObject({ state: 'failed', wordOf: 'this-app' })
+        expect(latestSent()).toContain(memoryNotice)
+        if (loss === 'failed turn and reopen') await reopen(app, id)
       }
       await saying(app, id, 'next accepted turn')
-      expect(latestSent()).toContain(title)
-      expect(latestSent()).toContain(peerHeading)
+      if (loss === 'compaction') {
+        expect(latestSent()).toContain(title)
+        expect(latestSent()).toContain(peerHeading)
+        expect(latestSent()).not.toContain(memoryNotice)
+      } else {
+        expect(latestSent()).not.toContain(title)
+        expect(latestSent()?.split('This app adds what follows')[1]).not.toContain(peerHeading)
+        expect(latestSent()).toContain(memoryNotice)
+      }
+      await saying(app, id, 'same facts after recovery')
+      expect(latestSent()).not.toContain(memoryNotice)
     },
   )
 

@@ -156,12 +156,14 @@ export interface InstructionPolicy<H extends ProviderHostValues> {
 }
 
 export interface MemoryStoreLayout {
+  readonly editableFolders: (home: string) => readonly string[]
   readonly fixedFiles: (home: string) => readonly string[]
   readonly notesFolder: (home: string) => string
   readonly listNotes: (folder: string) => { names: string[] }
   readonly acceptsNote: (name: string) => boolean
 }
 export interface MemoryPolicy<H extends ProviderHostValues> {
+  listRevisions(home: string): readonly MemoryEntryRevision[] | null
   entryOrigin(kind: H['instruction']['kind']): H['origin']
   readonly readStore: (home: string) => H['memoryStore']
   readonly layout: MemoryStoreLayout
@@ -169,6 +171,12 @@ export interface MemoryPolicy<H extends ProviderHostValues> {
   readPage(home: string, offset: number, limit: number): H['memoryPage']
   select(home: string, entry: string): H['instruction'] | undefined
   noteDirectory(home: string): string | null
+}
+interface MemoryEntryRevision {
+  readonly id: string
+  readonly title: string
+  readonly path: string
+  readonly revision: string
 }
 export interface SkillPolicy<H extends ProviderHostValues> {
   asGiven(listed: ListedSkills | null, builtIn: boolean): H['givenSkills']

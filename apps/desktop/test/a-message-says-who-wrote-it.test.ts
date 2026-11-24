@@ -754,7 +754,7 @@ describe('624 · a message says who wrote it', () => {
       // ⛔ **The opening line is the description** — `HO-095` §5.3's *"That is Ada. Say Ada."* ⚑
       // D-016 · the piece by its label and title.
       expect(lines[0]).toBe(
-        'W1.2 · plan the world-clock page with Ada is not being worked on: its turn ended with this work still open.',
+        'W1.2 · plan the world-clock page with Ada has no wait set: its turn ended with this work still open.',
       )
       expect(lines[0]).not.toContain('sess_')
       expect(lines[0]).not.toContain('work_')
@@ -837,7 +837,7 @@ describe('624 · a message says who wrote it', () => {
       // ⛔ **And the unnameable arm still reads as a sentence**, which is the thing a category has
       // to do that a handle does not.
       expect(notice(AN_AGENT_THIS_APP_CANNOT_NAME)).toContain(
-        `W1.2 · plan the world-clock page with ${AN_AGENT_THIS_APP_CANNOT_NAME} is not being worked on`,
+        `W1.2 · plan the world-clock page with ${AN_AGENT_THIS_APP_CANNOT_NAME} has no wait set`,
       )
     })
   })

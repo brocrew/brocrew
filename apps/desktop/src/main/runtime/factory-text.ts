@@ -486,6 +486,7 @@ export interface InstructionContext {
    */
   readonly startedBy: string | null
   readonly peerRoster?: string
+  readonly peerRevision?: string
   readonly savedMethodsHelp?: string
   readonly sharedSkillsDirectory?: string
   readonly builtInSkillGuide?: string

@@ -632,10 +632,11 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
   })
 
   it('⚑ the same text twice: the second message is the file’s second', async () => {
-    const { sessionId, places, life } = await conversation('claude', [FIRST, FIRST], 'Release plan')
-    const sent = handedOver(sessionId, places[0])
-    // ⚑ The premise: both were handed over with the same text.
-    expect(handedOver(sessionId, places[1])).toBe(sent)
+    // The warm-up takes the first-turn reminder before the byte-identical pair.
+    const words = ['Warm up.', FIRST, FIRST]
+    const { sessionId, places, life } = await conversation('claude', words, 'Release plan')
+    const sent = handedOver(sessionId, places[1])
+    expect(handedOver(sessionId, places[2])).toBe(sent)
     nativeFile = join(userData, 'provider-homes', 'claude', 'projects', 'p', 'transcript.jsonl')
     mkdirSync(dirname(nativeFile), { recursive: true })
     const claude = rewritten(
@@ -650,7 +651,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     const answered = claude.findIndex((line) => line.includes('"type":"assistant"'))
     const file = [...claude.slice(0, answered + 1), again, ...claude.slice(answered + 1)]
     writeFileSync(nativeFile, `${file.join('\n')}\n`)
-    const second = await host.turnAsSent(sessionId, places[1] ?? -1)
+    const second = await host.turnAsSent(sessionId, places[2] ?? -1)
     if (!second.found) throw new Error(second.why)
     // ⚑ The second one's turn: only what followed it.
     expect(second.parts.map((part) => part.author)).toEqual(['the-message'])

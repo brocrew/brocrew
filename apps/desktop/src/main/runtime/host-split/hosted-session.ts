@@ -14,7 +14,7 @@ import { type Provider, type SessionStatus } from '@brobot2/shared'
 import type { ReportedModel } from '../../../shared/model-choice-contracts'
 import { type Launch } from '../launch-registry'
 import { type SessionLiveness } from '../../../shared/runtime-ipc'
-import type { LeadInFront } from '../../../shared/human-answer-contracts'
+import type { LeadInFront, PromptUpdateBaseline } from '../../../shared/human-answer-contracts'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { KeptPromptStart, SessionInstructions } from '../../../shared/instruction-contracts'
 import type { SessionStore } from '../../db/session-store'
@@ -299,6 +299,10 @@ interface HostedSession {
 
   readonly launchGave: WhatALaunchGave | null
   readonly promptStart?: KeptPromptStart
+  readonly promptStartBaseline: {
+    readonly ordinal: number
+    readonly updates?: PromptUpdateBaseline
+  }
 
   wordsJustHandedOver: string | null
   /**

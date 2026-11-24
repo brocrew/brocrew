@@ -20,15 +20,19 @@ import {
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { PromptUpdateBaseline } from '../src/shared/human-answer-contracts'
 
-/**
- * Sessions have to outlive the process that ran them. Until now the tables existed
- * and nothing wrote to them — the start screen has said `0 persisted sessions` since
- * Step 0. These drive the real host against a real (temp-file) database, because the
- * thing being tested is whether the rows are actually there afterwards.
- */
-
+// A real host and temporary database prove which rows survive the process that wrote them.
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
+
+function typedTurn(text: string, baseline?: PromptUpdateBaseline) {
+  return {
+    type: 'user_turn',
+    text,
+    humanInitiated: true,
+    promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen', ...baseline },
+  }
+}
 
 /** Records what the renderer was told, and when — so ordering against the DB is checkable. */
 class RecordingSink implements RuntimeEventSink {
@@ -358,7 +362,7 @@ describe('session persistence', () => {
     expect(ours).toHaveLength(1)
     // ⚑ **F093 · R2** — the row also keeps the whole text the provider was handed.
     const { sent, ...row } = JSON.parse(String(ours[0]?.payload)) as { sent?: string }
-    expect(row).toEqual({ type: 'user_turn', text: 'write the file', humanInitiated: true })
+    expect(row).toEqual(typedTurn('write the file'))
     expect(sent).toContain('write the file')
   })
 
@@ -910,7 +914,7 @@ describe('resume', () => {
         .map((h) => h.event)
         .filter((e) => e.type === 'user_turn')
         .map(({ sent, ...row }) => (void sent, row)),
-    ).toEqual([{ type: 'user_turn', text: 'hello', humanInitiated: true }])
+    ).toEqual([typedTurn('hello')])
     // …and which button we pressed, so an allowed card does not come back looking unanswered.
     expect(
       resumed.history.entries.map((h) => h.event).filter((e) => e.type === 'user_decision'),
@@ -1207,16 +1211,11 @@ describe('resume', () => {
         .filter((event) => event.type === 'user_turn')
         .map(({ sent, ...row }) => (void sent, row))
     expect(turnsOf(planning.created.sessionId)).toEqual([
-      { type: 'user_turn', text: 'hello', humanInitiated: true },
+      typedTurn('hello'),
       { type: 'user_turn', text: 'Go ahead with this plan.', attribution: 'app_authored' },
     ])
     expect(turnsOf(untouched.created.sessionId)).toEqual([
-      {
-        type: 'user_turn',
-        text: 'hello',
-        humanInitiated: true,
-        promptUpdates: { peers: expect.stringMatching(/^[0-9a-f]{64}$/) },
-      },
+      typedTurn('hello', { peers: expect.stringMatching(/^[0-9a-f]{64}$/) }),
     ])
 
     // ⚠️ BOTH fields reach the adapter, and both are needed: `planMode` alone cannot distinguish a

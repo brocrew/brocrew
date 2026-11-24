@@ -1,6 +1,6 @@
-import type { TaskState } from '../src/shared/task-contracts'
+import type { TaskStallCause, TaskState } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { WORK_STATE_WORD } from '../src/shared/work-state-words'
+import { workStateWord } from '../src/shared/work-state-words'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -168,13 +168,16 @@ describe('one task, one reading, in every place it is drawn', () => {
       .helpers?.find((row) => row.piece === piece)?.state,
   })
 
-  const everywhere = (state: TaskState): Record<string, string> => ({
+  const everywhere = (
+    state: TaskState,
+    cause: TaskStallCause | null = null,
+  ): Record<string, string> => ({
     'the giver’s drawer': state,
     'the receiver’s line': state,
     'the Team forest': state,
     'the agent’s list_tasks': state,
     'the person’s Work tab': state,
-    'the agent turn block': WORK_STATE_WORD[state],
+    'the agent turn block': workStateWord(state, cause),
   })
 
   describe('one task waiting on a person, and the same task once nothing is outstanding', () => {
@@ -201,7 +204,12 @@ describe('one task, one reading, in every place it is drawn', () => {
         'the holder’s turn to end',
       )
       expect(aPersonOwesAnAnswerIn(store.routedRequestsOf(holder))).toBe(false)
-      expect(await readingsOf(giver, holder, piece)).toEqual(everywhere('stalled'))
+      expect(store.piecesOwnedBy(holder).find((row) => row.piece === piece)?.stalledBecause).toBe(
+        'turn_ended',
+      )
+      const reading = await readingsOf(giver, holder, piece)
+      expect(reading).toEqual(everywhere('stalled', 'turn_ended'))
+      expect(reading['the agent turn block']).toBe('no wait set')
     })
   })
 })

@@ -7,7 +7,7 @@ import { parse as parseToml } from 'smol-toml'
  * live in `instructions.ts`. Paths live here, beside the adapter, because the directory scheme is a
  * fact about Codex.
  *
- * Memory v1 holds `memory_summary.md` (injected into every request), `MEMORY.md` (consolidated
+ * Memory v1 holds `memory_summary.md` (injected once per context window), `MEMORY.md` (consolidated
  * handbook), `raw_memories.md`, `rollout_summaries/` and ad-hoc notes under
  * `extensions/ad_hoc/notes/`. Memory v2 keeps the summary, notes and rollout summaries in
  * `memories_v2/` with no `MEMORY.md` or `raw_memories.md`; {@link codexMemoryDir} picks the folder.
@@ -46,7 +46,7 @@ function configuredMemories(providerHome: string): Record<string, unknown> {
   }
 }
 
-/** The compressed summary Codex injects into every request. */
+/** The compressed summary Codex injects once per context window. */
 export const CODEX_MEMORY_SUMMARY = 'memory_summary.md'
 
 /** Memory v1's consolidated handbook the agent searches. Claude's index has the same name. */
@@ -93,7 +93,7 @@ export const CODEX_MEMORY_STORE_FILES: readonly CodexMemoryStoreFile[] = [
   {
     at: [CODEX_MEMORY_SUMMARY],
     reach: 'prompt',
-    what: 'the compressed summary Codex puts in front of the model on every turn',
+    what: 'the compressed summary Codex puts in front of the model once per context window',
   },
   {
     at: [CODEX_MEMORY_INDEX],

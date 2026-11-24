@@ -28,7 +28,8 @@ export type PromptUpdateBaseline = Readonly<
       | 'peers'
       | 'methods-availability'
       | `method:${string}`
-      | `skill:${string}`,
+      | `skill:${string}`
+      | `memory:${string}`,
       string
     >
   >
