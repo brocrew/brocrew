@@ -301,7 +301,6 @@ export class TeamProfileGraphEngine {
     return offset
   }
   private build(context: TeamProfileGraphReadContext): Reading {
-    const version = this.db.pragma('data_version', { simple: true })
     this.db.exec('BEGIN')
     if (this.db.prepare('SELECT rowid FROM agent_identity ORDER BY rowid LIMIT 1').get())
       this.visited++
@@ -671,7 +670,7 @@ export class TeamProfileGraphEngine {
       snapshot: randomUUID(),
       readAt,
       expiresAt,
-      stale: version !== this.db.pragma('data_version', { simple: true }),
+      stale: false,
       semanticsVersion: 1,
       timezone: context.timezone,
       todaySince,

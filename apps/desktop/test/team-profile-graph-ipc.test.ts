@@ -3,7 +3,13 @@ import { Worker } from 'node:worker_threads'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, registerRuntimeIpc } from '../src/main/runtime/ipc'
 import type { IpcMainInvokeEvent } from 'electron'
-import { TeamProfileGraphWindows } from '../src/main/db/team-profile-graph-windows'
+import {
+  TeamProfileGraphWindows,
+  teamProfileGraphRevision,
+} from '../src/main/db/team-profile-graph-windows'
+import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
+import { eventTrimWriter } from '../src/main/db/event-retention'
+import { graphCutoff, graphOracle } from './fixtures/team-profile-graph-oracle'
 import { TeamProfileGraphLifetime } from '../src/main/db/team-profile-graph-reader'
 import { graphUnavailable } from '../src/shared/team-profile-graph'
 import { FakeRuntime } from '@brobot2/runtime'
@@ -210,6 +216,65 @@ it('refuses agent, quit and unavailable-metadata reads while release still drain
     await host.closeAll()
     expect(await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)).toMatchObject({
       cause: 'closed',
+    })
+  } finally {
+    await host.closeAll()
+    f.close()
+  }
+})
+
+it('keeps a reading fresh through a history trim and marks it stale when what it reads changes', async () => {
+  const f = graphFixture()
+  f.seed()
+  const store = createSessionStore(f.db)
+  const [first] = graphOracle.sessions
+  const generation = first!.generation ?? 0
+  f.event(first!.id, 'activity', '{}', generation, graphCutoff - 10 * 86_400_000)
+  const old = f.db.prepare("SELECT id FROM events WHERE type = 'activity'").get() as { id: string }
+  const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
+  let during = (): void => {}
+  const graphs = new TeamProfileGraphWindows(() => ({
+    read: async (request, context) => {
+      during()
+      return engine.read(request, context)
+    },
+    close: async () => engine.close(),
+  }))
+  const host = hostFor(
+    f,
+    graphs,
+    teamProfileGraphRevision(f.db, () => true),
+    { store },
+  )
+  try {
+    let trimmed: number | null = null
+    during = () => {
+      trimmed ??= eventTrimWriter(f.db)({
+        session: first!.id,
+        active: generation,
+        ids: [old.id],
+        before: Number.MAX_SAFE_INTEGER,
+      }).changed
+    }
+    const fresh = await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)
+    expect(trimmed).toBe(1)
+    expect(fresh).toMatchObject({ type: 'snapshot', stale: false })
+    if (fresh.type !== 'snapshot') throw new Error(JSON.stringify(fresh))
+    expect(
+      await host.teamProfileGraphForWindow({ operation: 'nodes', snapshot: fresh.snapshot }, sink),
+    ).toMatchObject({ type: 'nodes', stale: false })
+
+    // A status row moves the conversation's status and last update, which the graph shows.
+    during = () =>
+      store.append(
+        first!.id,
+        store.nextOrdinal(first!.id),
+        { type: 'status', state: 'working' },
+        graphCutoff - 1,
+      )
+    expect(await host.teamProfileGraphForWindow({ operation: 'snapshot' }, sink)).toMatchObject({
+      type: 'snapshot',
+      stale: true,
     })
   } finally {
     await host.closeAll()

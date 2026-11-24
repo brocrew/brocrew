@@ -6,6 +6,27 @@ import {
   type TeamProfileGraphRequest,
   type TeamProfileGraphResult,
 } from '../../shared/team-profile-graph'
+import { changesWhatIsRead, committedRevision } from './committed-revision'
+import type { AppDatabase } from './connection'
+
+/** What a team graph reading reads, a conversation's status and last update among it. */
+const changesWhatTheGraphReads = changesWhatIsRead(
+  new Set([
+    'agent_identity',
+    'provider_session',
+    'derived_generation',
+    'work',
+    'turn',
+    'profile_execution',
+    'profile_execution_state',
+  ]),
+  new Set(['message_sent', 'request_routed', 'service_registered', 'worker_registered']),
+)
+
+/** A revision that moves when what the graph reads changed, or when another connection commits. */
+export const teamProfileGraphRevision = (db: AppDatabase, canRead: () => boolean) =>
+  committedRevision(db, canRead, changesWhatTheGraphReads)
+
 type Window = {
   serial: number
   reader: TeamProfileGraphReader
