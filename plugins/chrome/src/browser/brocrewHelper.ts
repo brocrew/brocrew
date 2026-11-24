@@ -264,9 +264,12 @@ export class BrocrewHelper implements TabPlacer {
           return this.current
         }
         this.recheck()
+        const copying = this.now()
         this.folder = copyHelper(this.o.source, this.o.profileDir, this.o.helperDir)
-        const worker = await this.load(session, this.folder, deadline)
-        await this.answers(worker, deadline)
+        // The budget is Chrome's time to answer; a slow local disk does not spend it.
+        const answerBy = deadline + (this.now() - copying)
+        const worker = await this.load(session, this.folder, answerBy)
+        await this.answers(worker, answerBy)
         this.recheck()
         this.o.remember(false)
         return this.set('ready')

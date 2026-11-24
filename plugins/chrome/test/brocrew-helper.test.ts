@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import vm from 'node:vm'
 import type { BrowserContext } from 'playwright-core'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BrocrewHelper,
   HELPER_FILES,
@@ -368,6 +368,32 @@ describe('installing the helper', () => {
     fixture.on('serviceworker', () => (allowed = false))
     expect(await helper.install(1000)).toBe('unavailable')
   })
+  it.each([
+    ['an install', (helper: BrocrewHelper) => helper.install(300), {}],
+    ['a Turn on after a restart', (helper: BrocrewHelper) => helper.turnOn(300), { off: true }],
+  ])(
+    'a disk that stalls while the files are copied does not use up the time Chrome has to answer, %s',
+    async (_, start, opts) => {
+      const { helper } = setup(opts)
+      const mkdtemp = fs.mkdtempSync
+      let stalls = 0
+      // The disk blocks longer than the whole budget, as one did on a busy hosted Windows runner.
+      const stall = vi.spyOn(fs, 'mkdtempSync').mockImplementation(((
+        ...args: Parameters<typeof fs.mkdtempSync>
+      ) => {
+        stalls++
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400)
+        return mkdtemp(...args)
+      }) as typeof fs.mkdtempSync)
+      try {
+        expect(await start(helper)).toBe('ready')
+      } finally {
+        stall.mockRestore()
+      }
+      expect(stalls).toBe(1)
+      expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
+    },
+  )
 })
 
 describe('placing a tab with the helper', () => {
