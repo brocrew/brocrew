@@ -22299,14 +22299,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       .some((one) => one.piece === piece && one.briefHandedOver === true)
   }
 
-  private completeWorkerTerminal(birth: string): string {
-    const terminal = this.deps.store.workerInItsPlace(birth)
-    if (!this.workerTerminalAgreesWithRouting(birth, terminal)) {
-      throw new Error('worker ownership is unreadable')
-    }
-    return terminal
-  }
-
   private workerTerminalAgreesWithRouting(birth: string, terminal: string): boolean {
     return [birth, terminal].every(
       (seen) => !this.replacedBy.has(seen) || this.theOneInItsPlace(seen) === terminal,
