@@ -157,7 +157,6 @@
   "packages/runtime/src/permission.ts": 1008,
   "packages/runtime/test/claude-normalize.test.ts": 2169,
   "packages/runtime/test/claude-runtime.test.ts": 10290,
-  "packages/runtime/test/codex-normalize.test.ts": 2536,
   "packages/runtime/test/codex-runtime.test.ts": 1907,
   "packages/runtime/test/managed-plugin-session.test.ts": 1508,
   "plugins/chrome/src/browser/chromeBrowser.ts": 1017,
