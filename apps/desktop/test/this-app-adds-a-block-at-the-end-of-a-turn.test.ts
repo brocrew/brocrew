@@ -690,15 +690,19 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   )
 
   describe('the new closing facts', () => {
-    it('lists current helpers after hundreds of ended pieces, then summarizes unchanged work', () => {
-      const pm = 'fictional-giver'
-      store.create({ id: pm, provider: 'claude', cwd: root, approvalMode: 'ask', profileId: 'pm' })
+    it.each(['claude', 'codex'] as const)(
+      '%s lists current helpers after hundreds of ended pieces',
+      checkGivenWorkFooter,
+    )
+
+    async function checkGivenWorkFooter(provider: Provider) {
+      const pm = await personOpens('pm', provider)
       const parent = store.rootOf(pm)!
       const owners = Array.from({ length: 15 }, (_, i) => `fictional-owner-${i}`)
       for (const owner of owners)
         store.create({
           id: owner,
-          provider: 'claude',
+          provider,
           cwd: root,
           approvalMode: 'ask',
           profileId: 'worker',
@@ -804,7 +808,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       )
       const first = render()
       expect(first).toContain('Work you gave, still open:')
-      expect(first).toContain('and 7 more: list_tasks')
+      expect(first).toContain(
+        'and 7 more: list_tasks\nCheck this work and make any needed updates.',
+      )
       const second = render()
       expect(second).toContain('and 7 more: list_tasks')
       const third = render()
@@ -815,9 +821,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(shown).toBe(true)
       }
       expect(render()).toContain('and 7 more: list_tasks')
-
-      const stalled = open[0]!
-      const person = open[1]!
+      const [stalled, person] = [open[0]!, open[1]!]
       store.append(
         stalled.owner,
         store.nextOrdinal(stalled.owner),
@@ -858,7 +862,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const after = render()
       expect(after).toContain('and 6 more: list_tasks')
       expect(after).not.toContain('task ' + ended.label + ' · ')
-    })
+      const empty = composedEndOfTheCurrentLife(await personOpens('worker', provider))
+      expect(empty).not.toContain('Check this work and make any needed updates.')
+    }
 
     it('omits the unreadable given task and leaves the work list incomplete', async () => {
       const { pm, worker } = await aWorkerHoldingWork()

@@ -116,7 +116,7 @@ describe('turn block changes', () => {
     expect(partial.next.personWait).toBeNull()
   })
 
-  it('keeps a partial helper remainder unknown while retaining known questions', () => {
+  it('reports a lower bound for partial work while retaining known questions', () => {
     const helpers = Array.from({ length: 8 }, (_, i) => helper(i + 1, true))
     const partial = turnBlockChanges(
       { ...input, helpers, helpersIncomplete: true, personWait: null, nobodyWaiting: false },
@@ -135,7 +135,9 @@ describe('turn block changes', () => {
     expect(rendered.split('\n').filter((line) => line.startsWith('- conversation '))).toHaveLength(
       5,
     )
-    expect(rendered).toContain('list_tasks shows the work you gave.')
+    expect(rendered).toContain(
+      'and at least 3 more: list_tasks\nCheck this work and make any needed updates.',
+    )
     expect(rendered).not.toContain('and 3 more: list_tasks')
     expect(rendered).not.toContain(TURN_BLOCK_WORDS.nobody)
     expect(rendered).toContain('req-known')
@@ -238,7 +240,7 @@ describe('turn block changes', () => {
     expect(shown.extra.helpers?.rows).toHaveLength(5)
     expect(rendered).not.toContain('W1.2')
     expect(rendered).not.toContain('and 2 more: list_tasks')
-    expect(rendered).toContain('list_tasks shows the work you gave.')
+    expect(rendered).toContain('and at least 1 more: list_tasks')
   })
 
   it('hints once per eligible reply, and never hints while somebody is waiting', () => {
@@ -283,7 +285,9 @@ describe('turn block changes', () => {
     // The formatter's clock is input.now (60,000); givenAt must never supply an age.
     expect(rendered).toContain('W1.2 · worker-2 · being worked on · state updated just now')
     expect(rendered).not.toContain('given ')
-    expect(block({ helpers: { rows: [], more: 0 } })).not.toContain('Work you gave')
+    const noList = block({ helpers: { rows: [], more: 0 } })
+    expect(noList).not.toContain('Work you gave')
+    expect(noList).not.toContain('Check this work and make any needed updates.')
   })
 
   it('tracks state changes and status revisions without inventing an age from a give or an unrelated event', () => {
@@ -346,7 +350,7 @@ describe('turn block changes', () => {
         status: 'status\n' + 'y'.repeat(1000),
       },
     })
-    expect(rendered.split('\n')).toHaveLength(6)
+    expect(rendered.split('\n')).toHaveLength(7)
     expect(rendered).toContain('…')
     expect([...rendered].length).toBeLessThan(3000)
     expect(

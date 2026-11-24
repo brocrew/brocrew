@@ -54,7 +54,9 @@ export const TURN_BLOCK_WORDS = {
     context: number | null,
   ): string =>
     `${conversation} · task ${label} · ${name} · ${state}${age === null ? '' : ` · state updated ${age}`}${context === null ? '' : ` · context ${String(context)}%`}`,
-  more: (count: number): string => `and ${String(count)} more: list_tasks`,
+  more: (count: number, incomplete = false): string =>
+    `and ${incomplete ? 'at least ' : ''}${String(count)} more: list_tasks`,
+  updateGivenWork: 'Check this work and make any needed updates.',
   current: (label: string, title: string, status: string, conversation: string): string =>
     `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}. If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,
 } as const
@@ -186,8 +188,9 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
       }),
     )
     const overflow = more + Math.max(0, rows.length - 5)
-    if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
-    else if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow))
+    if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow, facts.helpers.incomplete === true))
+    else if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
+    if (rows.length > 0) lines.push(TURN_BLOCK_WORDS.updateGivenWork)
   }
   if (facts.nobodyWaiting === true) lines.push(TURN_BLOCK_WORDS.nobody)
   if (facts.replyQuestion === true) lines.push(TURN_BLOCK_WORDS.replyQuestion)
