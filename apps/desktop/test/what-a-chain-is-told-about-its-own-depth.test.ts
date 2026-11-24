@@ -150,10 +150,20 @@ describe('what a chain is told about its own depth', () => {
     return built
   }
 
+  /**
+   * ⚑ **No launch left unconfirmed** (406). The hook's limit is the test's own now, so a closeAll
+   * whose launch drain runs out would only warn. Measured on Windows, every launch here confirms
+   * its end within the close, so one still held after it is a launch that never settled.
+   */
   afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
+    const unconfirmed: number[] = []
+    for (const built of hosts) {
+      await built.closeAll()
+      unconfirmed.push((built as unknown as { launches: { readonly size: number } }).launches.size)
+    }
     db.close()
     for (const dir of [userData, work]) rmSync(dir, { recursive: true, force: true })
+    expect(unconfirmed).toEqual(hosts.map(() => 0))
   })
 
   const personOpens = async (profileId: string): Promise<string> => {

@@ -519,10 +519,12 @@ describe('the recovery copy is checked off the main thread', () => {
      * ⚠️ **No clock, in the trigger or the check** (404). Timing a stop against a share of the
      * whole sweep's wall time measured the runner twice: once in worker start-up, and again when a
      * stalled whole sweep made the trigger late enough for the stopped one to read 349 of 461. So
-     * the quit is asked as soon as the worker is running, and the check is how far it read. That
-     * the stop is seen at exactly the next read, wherever it comes, is `trimOldEvents`' own test in
-     * `the-history-trim-reads-in-steps.test.ts`. The stopped worker's own result is read here,
-     * because the app drops it once it has asked the worker to stop.
+     * the quit is posted the moment the worker is spawned, before it can read anything, and the
+     * check is how far it read. Measured 60 times, it made exactly one read (the first runs before
+     * the worker's first message is handled) against 461 for the whole sweep; two leaves one turn
+     * of slack. That the stop is seen at exactly the next read, wherever it comes, is
+     * `trimOldEvents`' own test in `the-history-trim-reads-in-steps.test.ts`. The stopped worker's
+     * own result is read here, because the app drops it once it has asked the worker to stop.
      */
     const sweep = (stop: boolean) => {
       const { result, done, failed } = trimCompletion<EventTrimResult>()
@@ -537,7 +539,7 @@ describe('the recovery copy is checked off the main thread', () => {
             if (message.ok === true) said = message.value
           })
           if (stop)
-            worker.once('online', () => {
+            queueMicrotask(() => {
               void retention.stop().then(() => {
                 if (said === undefined) failed(new Error('the stopped worker reported no result'))
                 else done(said)
@@ -557,7 +559,8 @@ describe('the recovery copy is checked off the main thread', () => {
       await whole.retention.stop()
       const stopped = await sweep(true).result
       expect(stopped.interrupted).toBe(true)
-      expect(stopped.reads).toBeLessThan(wholeRun.reads)
+      expect(wholeRun.reads).toBeGreaterThan(2)
+      expect(stopped.reads).toBeLessThanOrEqual(2)
       expect(db.prepare('SELECT count(*) AS n FROM events').get()).toEqual({ n: 100_000 })
     } finally {
       db.close()
