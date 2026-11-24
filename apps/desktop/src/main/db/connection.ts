@@ -17,6 +17,9 @@ export function openDatabase(
   file: string,
   options?: { readonly fileMustExist: boolean },
 ): AppDatabase {
+  // Keep better-sqlite3's 5 s busy wait for the main-thread writer. A longer synchronous wait would
+  // block the window longer. The transaction retry shares this budget. Revisit the wait when the
+  // writer moves off main.
   const db = new Database(file, options)
   if (Number(db.pragma('page_count', { simple: true })) === 0) {
     db.pragma('auto_vacuum = INCREMENTAL')
