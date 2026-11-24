@@ -127,7 +127,8 @@ describe('bound provider home modules', () => {
     const state = fixture()
     const auth = providerAuthFromModules(state.modules)
     expect(auth.credentialHome('claude', 'willow')).toBe('/fictional/homes/default/willow/claude')
-    expect(auth.credentialHome('codex', 'willow')).toBe('/fictional/homes/default/willow/codex')
+    // Every Codex agent's sign-in is the workspace's one, in the default profile's home.
+    expect(auth.credentialHome('codex', 'willow')).toBe('/fictional/homes/default/fern/codex')
     for (const paths of Object.values(state.paths))
       expect(paths.assertMayOpen).not.toHaveBeenCalled()
     expect(state.provision).not.toHaveBeenCalled()

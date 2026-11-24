@@ -144,7 +144,7 @@ describe('§2 · the Codex card says what a profile holds while a key is saved',
     const codex = allProviderCapabilities().codex
     const note = String((codex.homeCredential as { note?: unknown }).note ?? '')
     expect(note).toBe(
-      'Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers.',
+      'Every Codex agent in this workspace uses the one sign-in on the Codex card in Providers, or the API key saved there.',
     )
   })
 })

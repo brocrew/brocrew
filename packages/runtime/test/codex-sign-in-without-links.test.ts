@@ -65,13 +65,13 @@ class RunningCodex {
 }
 
 /**
- * # Codex agents on one account share one sign-in where this computer refuses links
+ * # Codex agents in a workspace share its one sign-in where this computer refuses links
  *
  * Windows makes a link only with Developer Mode or admin rights. Without them, each agent holds its
  * account's sign-in as a file of its own, and a renewal one agent's Codex writes reaches the others
  * before they renew, so they take it instead of spending the key again.
  */
-describe('Codex agents on one account share one sign-in where this computer refuses links', () => {
+describe('Codex agents in a workspace share its one sign-in where this computer refuses links', () => {
   let root: string
   const { homeOf, keyIn } = codexHomesUnder(() => root)
   const share = (who: string) =>
@@ -130,13 +130,13 @@ describe('Codex agents on one account share one sign-in where this computer refu
     expect(codexSignInIsKeptAsAFile(homeOf('ilse'), root)).toBe(!linked)
   })
 
-  it('🔴 a new agent joins its account’s sign-in rather than being refused', async () => {
+  it('🔴 a new agent joins the workspace’s sign-in rather than being refused', async () => {
     holding('brobot', signIn('acct-fictional-one', 'key-one', '2026-11-20T08:00:00.000Z'))
     await expect(share('farah')).resolves.toBe('joined')
     expect(keyIn('farah')).toBe('key-one')
   })
 
-  it('⚑ a sign-in started in one agent reaches every agent on its account', async () => {
+  it('⚑ a renewal in one agent’s copy reaches every agent in the workspace', async () => {
     holding('brobot', signIn('acct-fictional-one', 'key-dead', '2026-11-20T08:00:00.000Z'))
     await share('farah')
     await share('ilse')
@@ -148,16 +148,16 @@ describe('Codex agents on one account share one sign-in where this computer refu
     expect(keyIn('brobot')).toBe('key-fresh')
   })
 
-  it('🔴 a sign-in put in its account’s place at once still reaches the other agents', async () => {
+  it('🔴 a Settings sign-in made the workspace’s at once still reaches the other agents', async () => {
     holding('brobot', signIn('acct-fictional-one', 'key-dead', '2026-11-20T08:00:00.000Z'))
     await share('farah')
     await share('ilse')
     stopKeepingCodexSignInsInStep()
-    // What a finished sign-in leaves, then shared before any watch has looked at it.
-    holding('farah', signIn('acct-fictional-one', 'key-fresh', '2026-11-24T01:00:00.000Z'))
+    // What a finished sign-in leaves in BroBot's own home, shared before any watch has looked.
+    holding('brobot', signIn('acct-fictional-one', 'key-fresh', '2026-11-24T01:00:00.000Z'))
+    await share('brobot')
     await share('ilse')
-    await share('farah')
-    await vi.waitFor(() => expect(keyIn('ilse')).toBe('key-fresh'))
+    expect(keyIn('ilse')).toBe('key-fresh')
   })
 
   it('🔴 a renewal no watch passed on is taken before the next turn, and never undone', async () => {
@@ -175,8 +175,8 @@ describe('Codex agents on one account share one sign-in where this computer refu
     expect(keyIn('ilse')).toBe('key-one-renewed')
     expect(ilse.renews('2026-11-24T01:00:01.000Z')).toBe('took-the-renewal-on-disk')
     expect(refused).toEqual([])
-    // Another account is never taken, and a catch-up never brings an older one back.
-    expect(keyIn('kofi')).toBe('key-kofi')
+    // An agent's own account never stays, and a catch-up never brings an older one back.
+    expect(keyIn('kofi')).toBe('key-one-renewed')
     catchUpCodexSignIn(homeOf('farah'))
     expect(keyIn('farah')).toBe('key-one-renewed')
   })
@@ -270,7 +270,7 @@ describe('Codex agents on one account share one sign-in where this computer refu
     }
   })
 
-  it('⛔ an older sign-in in a home never replaces its account’s newer one', async () => {
+  it('⛔ an older sign-in in a home never replaces the workspace’s newer one', async () => {
     holding('brobot', signIn('acct-fictional-one', 'key-new', '2026-11-24T08:00:00.000Z'))
     await share('ilse')
     holding('farah', signIn('acct-fictional-one', 'key-old', '2026-11-01T08:00:00.000Z'))
@@ -279,21 +279,22 @@ describe('Codex agents on one account share one sign-in where this computer refu
     expect(keyIn('ilse')).toBe('key-new')
   })
 
-  it('⚑ agents on another account are left alone', async () => {
+  it('🔴 an agent’s copy of another account is replaced, never made the workspace’s', async () => {
     holding('brobot', signIn('acct-fictional-one', 'key-one', '2026-11-20T08:00:00.000Z'))
-    holding('farah', signIn('acct-fictional-two', 'key-two', '2026-11-20T08:00:00.000Z'))
+    holding('farah', signIn('acct-fictional-two', 'key-two', '2026-11-24T08:00:00.000Z'))
     await share('farah')
     await share('ilse')
+    expect(keyIn('farah')).toBe('key-one')
     const renewed = signIn('acct-fictional-one', 'key-one-renewed', '2026-11-24T01:00:00.000Z')
     writeFileSync(join(homeOf('ilse'), '.auth-fictional'), JSON.stringify(renewed))
     renameSync(join(homeOf('ilse'), '.auth-fictional'), join(homeOf('ilse'), 'auth.json'))
+    await vi.waitFor(() => expect(keyIn('farah')).toBe('key-one-renewed'))
     await share('brobot')
-    await vi.waitFor(() => expect(keyIn('brobot')).toBe('key-one-renewed'))
-    expect(keyIn('farah')).toBe('key-two')
+    expect(keyIn('brobot')).toBe('key-one-renewed')
   })
 })
 
-describe('a sign-in that writes nothing leaves a home on the account it was on', () => {
+describe('a key login that writes nothing leaves a home on the workspace’s sign-in', () => {
   let root: string
   const { homeOf } = codexHomesUnder(() => root)
   const accountIn = (who: string) =>
@@ -305,14 +306,14 @@ describe('a sign-in that writes nothing leaves a home on the account it was on',
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'brobot2-put-back-'))
     for (const who of ['brobot', 'kofi']) mkdirSync(homeOf(who), { recursive: true })
-  })
-  afterEach(() => rmSync(root, { recursive: true, force: true }))
-
-  it('🔴 an agent on another account stays on it after a cancelled sign-in', async () => {
     writeFileSync(
       join(homeOf('brobot'), 'auth.json'),
       JSON.stringify(signIn('acct-fictional-one', 'key-own', '2026-11-20T08:00:00.000Z')),
     )
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('🔴 an agent is back on the workspace’s sign-in after a key login wrote nothing', async () => {
     writeFileSync(
       join(homeOf('kofi'), 'auth.json'),
       JSON.stringify(signIn('acct-fictional-two', 'key-kofi', '2026-11-21T08:00:00.000Z')),
@@ -322,22 +323,16 @@ describe('a sign-in that writes nothing leaves a home on the account it was on',
     const putBack = await makeRoomForACodexSignIn(homeOf('kofi'))
     await putBack()
     await share('kofi')
-    expect(accountIn('kofi')).toBe('acct-fictional-two')
+    expect(accountIn('kofi')).toBe('acct-fictional-one')
   })
 
-  it('⚑ a sign-in that wrote a file of its own keeps it, and nothing is put back', async () => {
-    writeFileSync(
-      join(homeOf('kofi'), 'auth.json'),
-      JSON.stringify(signIn('acct-fictional-two', 'key-kofi', '2026-11-21T08:00:00.000Z')),
-    )
+  it('⚑ a key login that wrote a file keeps it, and nothing is put back', async () => {
     await share('kofi')
     const putBack = await makeRoomForACodexSignIn(homeOf('kofi'))
-    writeFileSync(
-      join(homeOf('kofi'), 'auth.json'),
-      JSON.stringify(signIn('acct-fictional-three', 'key-new', '2026-11-24T08:00:00.000Z')),
-    )
+    const keyLogin = JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: 'fictional-key' })
+    writeFileSync(join(homeOf('kofi'), 'auth.json'), keyLogin)
     await putBack()
     await share('kofi')
-    expect(accountIn('kofi')).toBe('acct-fictional-three')
+    expect(readFileSync(join(homeOf('kofi'), 'auth.json'), 'utf8')).toBe(keyLogin)
   })
 })

@@ -137,7 +137,8 @@ async function bringTheCodexKeyToNow(
   const done = await codexKey.change(home, { to: 'no-key' })
   await putBack()
   if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
-  await rm(join(home, CODEX_KEY_STAMP), { force: true })
+  // Logged out: a stamp left now only asks for the same logout again.
+  await retireCodexKeyStamp(home)
   return 'its-login'
 }
 
@@ -220,12 +221,19 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     await provisionProviderHome(paths.managedRoot, home)
     return home
   }
+  /** Every Codex agent in a workspace runs on the sign-in BroBot's own home holds. */
+  const theSettingsHome = (profileId: string): Promise<string> => {
+    paths.assertMayOpen(profileId)
+    return homeFor(paths.defaultProfile)
+  }
   return {
     credentialHome(profileId) {
-      return paths.homeOf(profileId)
+      // The profile's own name is still checked; the sign-in it uses is the workspace's.
+      paths.homeOf(profileId)
+      return paths.homeOf(paths.defaultProfile)
     },
     async check(profileId, signal) {
-      const providerHome = await homeFor(profileId)
+      const providerHome = await theSettingsHome(profileId)
 
       const state = await probeCodexAuthInHome(transports(), providerHome, providerHome, signal)
       if (state.state !== 'usable' || signal?.aborted) return state
@@ -247,16 +255,16 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     },
     async signIn(profileId, signal) {
       refuseWhileAKeyIsSaved()
-      const providerHome = await homeFor(profileId)
-      // The sign-in writes a file of its own here, which then becomes its account's one sign-in.
-      // One that writes nothing leaves the home on the account it was on.
+      // From any agent, the sign-in is the workspace's one, in BroBot's own home. It writes a file
+      // there, which then becomes the workspace's; one that writes nothing leaves it as it was.
+      const providerHome = await theSettingsHome(profileId)
       const putBack = await makeRoomForACodexSignIn(providerHome)
       const shared = (): Promise<unknown> =>
         putBack()
           .then(() => share(paths, providerHome))
           .catch((error: unknown) => {
             console.warn(
-              `could not put a Codex sign-in in its account's place: ${
+              `could not make a Codex sign-in the workspace's: ${
                 error instanceof Error ? error.message : String(error)
               }`,
             )
@@ -280,7 +288,7 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
         cancel: () => login.cancel(),
       }
     },
-    // One sign-in per account is shared, never copied: a refused one is signed in again.
+    // One sign-in per workspace is shared, never copied: a refused one is signed in again.
     replaceARefusedCopy: () => Promise.resolve('not-tried'),
     async bringTheKeyToItsHomes() {
       const codexKey = seams.key

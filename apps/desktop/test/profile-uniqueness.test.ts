@@ -435,10 +435,11 @@ describe('a profile name is unique at the boundary — since 417, the only place
       await ops()
         .check('codex', 'developer')
         .catch(() => undefined)
-      expect(existsSync(join(userData, 'provider-homes', HOME_FOLDER, 'developer', 'codex'))).toBe(
-        true,
-      )
-      expect(spellings()).toEqual(['developer'])
+      // Every Codex agent's sign-in is the workspace's one: the check reads BroBot's own home.
+      expect(
+        existsSync(join(userData, 'provider-homes', HOME_FOLDER, DEFAULT_PROFILE_ID, 'codex')),
+      ).toBe(true)
+      expect(spellings()).toEqual([DEFAULT_PROFILE_ID, 'developer'])
     })
 
     it('⛔ the host says WHY, instead of reporting it as a provider that would not answer', async () => {

@@ -2,14 +2,14 @@ import {
   type FSWatcher,
   mkdirSync,
   readFileSync,
-  readdirSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   symlinkSync,
   unlinkSync,
   watch,
 } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import { writeAtomicallySync } from '../atomic-write'
 import { withProviderHomeLock } from '../internal/provider-home'
 import {
@@ -21,58 +21,65 @@ import {
 } from './auth'
 
 /**
- * One Codex sign-in per ChatGPT account in a workspace, which every Codex agent on that account
- * reads and renews.
+ * One Codex sign-in per workspace: the one BroBot's own profile holds, which Settings shows. Every
+ * other Codex home reads and renews that one file.
  *
- * Each agent's `auth.json` is a link to `<managed root>/codex-sign-ins/<account>/auth.json`.
- * Codex keeps the link when it renews: it resolves the link, writes the target by rename, takes
- * its commit lock beside the target, and reloads the file before it renews, so a renewal one agent
- * made is adopted by the others instead of spent again (codex-rs `login/src/auth/storage_file.rs`,
- * `storage_commit.rs`, `manager.rs` `refresh_token_with_reason`, at 0.167.1).
+ * Each agent's `auth.json` is a link to BroBot's own `auth.json`. Codex keeps the link when it
+ * renews: it resolves the link, writes the target by rename, takes its commit lock beside the
+ * target, and reloads the file before it renews, so a renewal one agent made is adopted by the
+ * others instead of spent again (codex-rs `login/src/auth/storage_file.rs`, `storage_commit.rs`,
+ * `manager.rs` `refresh_token_with_reason`, at 0.167.1).
  *
- * Where this computer refuses a link (Windows without Developer Mode or admin rights), a home holds
- * the account's sign-in as a file of its own, and every renewal Codex writes in one home is put in
- * the account's place and in its other homes at once. Codex reads the file again before it renews,
- * so the others take that renewal instead of spending the key again.
+ * An agent's own earlier sign-in, whatever account it names, is never read as a source: it is
+ * replaced. Where this computer refuses a link (Windows without Developer Mode or admin rights), a
+ * home holds a copy of the workspace's sign-in, and every renewal Codex writes in one home is put
+ * in the workspace's file and in the other homes at once. Codex reads the file again before it
+ * renews, so the others take that renewal instead of spending the key again.
  */
 
 const AUTH_FILE = 'auth.json'
 const AUTH_FILE_MAX = 1024 * 1024
 
-/** Where a workspace keeps its Codex sign-ins, one folder per ChatGPT account. */
-function codexSignInsFolder(managedRoot: string): string {
-  return join(managedRoot, 'codex-sign-ins')
+/**
+ * The workspace's one sign-in, which every Codex home links to: a file of its own beside the homes,
+ * so a key login or a sign-in under way in any home never touches it.
+ */
+function theWorkspaceSignIn(managedRoot: string): string {
+  return join(managedRoot, 'codex-sign-ins', 'workspace', AUTH_FILE)
 }
 
-/** The account id in hex, so any id is one plain folder name. */
-function signInOf(managedRoot: string, account: string): string {
-  return join(codexSignInsFolder(managedRoot), Buffer.from(account).toString('hex'), AUTH_FILE)
-}
-
-/** Whether this workspace keeps any Codex sign-in. */
-export function aCodexSignInIsKept(managedRoot: string): boolean {
-  return keptSignIns(managedRoot).length > 0
-}
-
-function keptSignIns(managedRoot: string): string[] {
-  let folders: string[]
+/** The file the workspace's sign-in is, behind any link; null while there is none. */
+function theWorkspaceFile(managedRoot: string): string | null {
   try {
-    folders = readdirSync(codexSignInsFolder(managedRoot))
+    return realpathSync(theWorkspaceSignIn(managedRoot))
   } catch {
-    return []
+    return null
   }
-  return folders
-    .map((folder) => join(codexSignInsFolder(managedRoot), folder, AUTH_FILE))
-    .filter((file) => statOrNull(file)?.isFile() === true)
 }
 
-/** Whether a home holds its account's sign-in as a file kept in step, for want of a link. */
+/** The account a sign-in's text names; null for none, or for an API key. */
+function accountOfASignIn(text: string): string | null {
+  const account = codexAccountOf(text)
+  return account === 'api-key' ? null : account
+}
+
+/** The account the workspace is signed in to; null while it has none. */
+function theWorkspaceAccount(managedRoot: string): string | null {
+  const file = theWorkspaceFile(managedRoot)
+  return file === null ? null : accountOfASignIn(readOrNull(file)?.toString('utf8') ?? '')
+}
+
+/** Whether this workspace keeps a Codex sign-in for its agents, by the file's presence alone. */
+export function aCodexSignInIsKept(managedRoot: string): boolean {
+  return statOrNull(theWorkspaceSignIn(managedRoot))?.isFile() === true
+}
+
+/** Whether a home holds the workspace's sign-in as a copy kept in step, for want of a link. */
 export function codexSignInIsKeptAsAFile(providerHome: string, managedRoot: string): boolean {
   const dest = join(providerHome, AUTH_FILE)
   if (lstatOrNull(dest)?.isFile() !== true) return false
-  const account = codexAccountOf(readOrNull(dest)?.toString('utf8') ?? '')
-  if (account === null || account === 'api-key') return false
-  return statOrNull(signInOf(managedRoot, account))?.isFile() === true
+  const account = accountOfASignIn(readOrNull(dest)?.toString('utf8') ?? '')
+  return account !== null && account === theWorkspaceAccount(managedRoot)
 }
 
 /** What {@link shareCodexSignIn} did to a home. */
@@ -103,16 +110,16 @@ function linked(link: LinkMaker, platform: NodeJS.Platform, target: string, path
 }
 
 /**
- * Put a Codex home on its account's one sign-in, under the home's lock.
+ * Put a Codex home on the workspace's one sign-in, under the home's lock.
  *
- * - A sign-in of its own (a regular file on a ChatGPT account) goes to its account's place, unless
- *   that place holds one Codex renewed later. Either way the home then reads the account's one.
- * - A home with none joins the sign-in BroBot's own profile uses, else the one renewed last. With
- *   none in the workspace it throws {@link NoCodexSignInOnThisComputerError}.
- * - An API-key login and a file that names no account are left as they are.
- *
- * `ownHome` is BroBot's own profile's home; its sign-in is put in place first, so a new agent
- * joins it rather than an older copy.
+ * - BroBot's own home (`ownHome`) holds the sign-in Settings shows. A sign-in of its own there that
+ *   the workspace's does not have yet (none kept, another account, or renewed later) becomes the
+ *   workspace's; that is how a sign-in reaches every agent.
+ * - Any other home is made a link to the workspace's, or where Windows refuses links a copy kept in
+ *   step. What it held before, whatever account it names, is replaced, never read.
+ * - An API-key login is left as it is.
+ * - With no sign-in in the workspace it throws {@link NoCodexSignInOnThisComputerError}, and the
+ *   home is left as it is.
  */
 export async function shareCodexSignIn(
   providerHome: string,
@@ -122,30 +129,130 @@ export async function shareCodexSignIn(
   const platform = opts.platform ?? process.platform
   const link = (target: string, path: string): boolean => linked(given, platform, target, path)
   const own = resolve(opts.ownHome)
-  if (resolve(providerHome) !== own && statOrNull(own)?.isDirectory() === true) {
-    await withProviderHomeLock(own, () => moveToItsAccount(own, opts.managedRoot, link))
+  const isOwn = resolve(providerHome) === own
+  const place = theWorkspaceSignIn(opts.managedRoot)
+  // An agent that starts before BroBot's own has: the workspace's sign-in comes from Settings.
+  if (!isOwn && theWorkspaceFile(opts.managedRoot) === null && statOrNull(own)?.isDirectory()) {
+    await withProviderHomeLock(own, () => takeTheSettingsSignIn(own, opts.managedRoot, link))
   }
   return await withProviderHomeLock(providerHome, () => {
-    const held = moveToItsAccount(providerHome, opts.managedRoot, link)
-    if (held !== 'none') return held === 'joined' ? 'joined' : 'unchanged'
-    const target = theSignInToJoin(own, opts.managedRoot)
-    if (target === null) {
+    const dest = join(providerHome, AUTH_FILE)
+    const was = lstatOrNull(dest)
+    const bytes = was?.isFile() === true && was.size <= AUTH_FILE_MAX ? readOrNull(dest) : null
+    if (codexAccountOf(bytes?.toString('utf8') ?? '') === 'api-key') return 'unchanged'
+    if (isOwn && takeTheSettingsSignIn(own, opts.managedRoot, link)) return 'joined'
+    // A link that leads nowhere is no sign-in.
+    if (lstatOrNull(dest)?.isSymbolicLink() === true && statOrNull(dest) === null) unlinkSync(dest)
+    const held = lstatOrNull(dest)
+    const target = relative(dirname(dest), place)
+    if (theWorkspaceAccount(opts.managedRoot) === null) {
       throw new NoCodexSignInOnThisComputerError('this workspace has no Codex sign-in yet')
     }
-    const dest = join(providerHome, AUTH_FILE)
-    if (!link(relative(dirname(dest), target), dest)) {
-      writeAtomicallySync(dest, readFileSync(target), { mode: 0o600 })
-      keepInStep(providerHome, opts.managedRoot)
+    if (held?.isSymbolicLink() === true && readlinkOrNull(dest) === target) return 'unchanged'
+    // The link is made beside the home's file first, so a computer that refuses links has lost
+    // nothing, and a running Codex never finds the file missing.
+    const staged = stagedLink(dest)
+    if (link(target, staged)) {
+      renameSync(staged, dest)
+      return 'joined'
     }
+    // No link here: the home holds a copy of the workspace's sign-in, kept in step with it. A copy
+    // kept in step in this run that Codex renewed is passed on first; any other is replaced.
+    if (keptInStep.has(resolve(providerHome))) passOnARenewal(resolve(providerHome))
+    const workspace = theWorkspaceFile(opts.managedRoot)
+    const kept = workspace === null ? null : readOrNull(workspace)
+    if (kept !== null && !(readOrNull(dest)?.equals(kept) ?? false)) {
+      writeAtomicallySync(dest, kept, { mode: 0o600 })
+    }
+    keepInStep(providerHome, opts.managedRoot, isOwn)
     return 'joined'
   })
 }
 
 /**
- * Leave a home with no link, so a sign-in started there writes a file of its own instead of
- * replacing the one its account's agents share. {@link shareCodexSignIn} then puts it in place.
- * Answers how to put the link back, which it does only while the home still holds no sign-in: a
- * sign-in cancelled, failed or that wrote nothing leaves the home on the account it was on.
+ * Under BroBot's own home's lock: make the sign-in Settings shows the workspace's. Says whether it
+ * moved one there and left the home linked to it. An API-key login there is left as it is.
+ */
+function takeTheSettingsSignIn(
+  own: string,
+  managedRoot: string,
+  link: (target: string, path: string) => boolean,
+): boolean {
+  const dest = join(own, AUTH_FILE)
+  const place = theWorkspaceSignIn(managedRoot)
+  const held = lstatOrNull(dest)
+  if (held === null) return false
+  if (held.isSymbolicLink()) {
+    if (statOrNull(dest) === null) {
+      // A link that leads nowhere is no sign-in.
+      unlinkSync(dest)
+      return false
+    }
+    // Kept by an earlier BroCrew as a link to an account's own place: that file becomes the
+    // workspace's, where the workspace keeps none yet.
+    const behind = realpathOrNull(dest)
+    if (theWorkspaceFile(managedRoot) === null && behind !== null) {
+      if (accountOfASignIn(readOrNull(behind)?.toString('utf8') ?? '') !== null) {
+        mkdirSync(dirname(place), { recursive: true, mode: 0o700 })
+        if (lstatOrNull(place) !== null) unlinkSync(place)
+        if (!link(relative(dirname(place), behind), place)) {
+          // No link here any more: the workspace's sign-in starts as that file's content.
+          const content = readOrNull(behind)
+          if (content !== null) writeAtomicallySync(place, content, { mode: 0o600 })
+        }
+      }
+    }
+    return false
+  }
+  if (!held.isFile() || held.size > AUTH_FILE_MAX) return false
+  const bytes = readOrNull(dest)
+  const text = bytes?.toString('utf8') ?? ''
+  if (
+    bytes === null ||
+    accountOfASignIn(text) === null ||
+    !itBeatsTheWorkspace(text, managedRoot)
+  ) {
+    return false
+  }
+  mkdirSync(dirname(place), { recursive: true, mode: 0o700 })
+  const into = theWorkspaceFile(managedRoot) ?? place
+  const staged = stagedLink(dest)
+  if (link(relative(dirname(dest), place), staged)) {
+    renameSync(dest, into)
+    renameSync(staged, dest)
+  } else {
+    writeAtomicallySync(into, bytes, { mode: 0o600 })
+    keepInStep(own, managedRoot, true)
+  }
+  return true
+}
+
+/** A free name beside a home's `auth.json` for a link made before it replaces the file. */
+function stagedLink(dest: string): string {
+  const staged = `${dest}.link`
+  if (lstatOrNull(staged) !== null) unlinkSync(staged)
+  return staged
+}
+
+/**
+ * Whether a sign-in in BroBot's own home is newer than the workspace's: the workspace keeps none,
+ * keeps another account's, or one Codex renewed earlier.
+ */
+function itBeatsTheWorkspace(text: string, managedRoot: string): boolean {
+  const workspace = theWorkspaceFile(managedRoot)
+  const kept = workspace === null ? '' : (readOrNull(workspace)?.toString('utf8') ?? '')
+  const keptAccount = accountOfASignIn(kept)
+  if (keptAccount === null || keptAccount !== accountOfASignIn(text)) return true
+  const at = codexRefreshedAt(text)
+  const keptAt = codexRefreshedAt(kept)
+  return at !== null && (keptAt === null || at > keptAt)
+}
+
+/**
+ * Leave a home with no link, so a sign-in or a key login started there writes a file of its own
+ * instead of replacing the one the workspace's agents share. Answers how to put the link back,
+ * which it does only while the home still holds no sign-in: one cancelled, failed or that wrote
+ * nothing leaves the home as it was.
  */
 export async function makeRoomForACodexSignIn(providerHome: string): Promise<() => Promise<void>> {
   const dest = join(providerHome, AUTH_FILE)
@@ -163,78 +270,23 @@ export async function makeRoomForACodexSignIn(providerHome: string): Promise<() 
   }
 }
 
-/** Under the home's lock: what the home held, after its own sign-in went to its account's place. */
-function moveToItsAccount(
-  providerHome: string,
-  managedRoot: string,
-  link: (target: string, path: string) => boolean,
-): 'joined' | 'shared' | 'none' | 'left' {
-  const dest = join(providerHome, AUTH_FILE)
-  const held = lstatOrNull(dest)
-  if (held === null) return 'none'
-  if (held.isSymbolicLink()) {
-    if (statOrNull(dest)?.isFile() === true) return 'shared'
-    // A link that leads nowhere is no sign-in.
-    unlinkSync(dest)
-    return 'none'
-  }
-  if (!held.isFile() || held.size > AUTH_FILE_MAX) return 'left'
-  const bytes = readFileSync(dest)
-  const account = codexAccountOf(bytes.toString('utf8'))
-  if (account === null || account === 'api-key') return 'left'
+/** Homes that hold the workspace's sign-in as a copy, by home, each with the watch on it. */
+const keptInStep = new Map<
+  string,
+  { readonly managedRoot: string; readonly isOwn: boolean; readonly watcher: FSWatcher }
+>()
 
-  const target = signInOf(managedRoot, account)
-  mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
-  const kept = readOrNull(target)
-  const keptAt = kept === null ? null : codexRefreshedAt(kept.toString('utf8'))
-  const heldAt = codexRefreshedAt(bytes.toString('utf8'))
-  const itsOwnIsNewer = keptAt === null || (heldAt !== null && heldAt > keptAt)
-  // The link is made beside the file first, so a computer that refuses links has lost nothing.
-  const staged = `${dest}.link`
-  if (lstatOrNull(staged) !== null) unlinkSync(staged)
-  if (!link(relative(dirname(dest), target), staged)) {
-    // No link here: the home keeps a file, kept in step with its account's.
-    keepInStep(providerHome, managedRoot)
-    passOnARenewal(providerHome)
-    return 'joined'
-  }
-  if (itsOwnIsNewer) renameSync(dest, target)
-  renameSync(staged, dest)
-  return 'joined'
-}
-
-/** The sign-in a home with none joins: BroBot's own profile's, else the one Codex renewed last. */
-function theSignInToJoin(ownHome: string, managedRoot: string): string | null {
-  const ownDest = join(ownHome, AUTH_FILE)
-  const ownAccount = codexAccountOf(readOrNull(ownDest)?.toString('utf8') ?? '')
-  if (ownAccount !== null && ownAccount !== 'api-key') {
-    const target = signInOf(managedRoot, ownAccount)
-    if (statOrNull(target)?.isFile() === true) return target
-  }
-  let newest: { file: string; at: number } | null = null
-  for (const file of keptSignIns(managedRoot)) {
-    const text = readOrNull(file)?.toString('utf8') ?? null
-    const account = text === null ? null : codexAccountOf(text)
-    if (text === null || account === null || account === 'api-key') continue
-    const at = codexRefreshedAt(text) ?? Number.NEGATIVE_INFINITY
-    if (newest === null || at > newest.at) newest = { file, at }
-  }
-  return newest?.file ?? null
-}
-
-/** Homes that hold their account's sign-in as a file, by home, each with the watch on it. */
-const keptInStep = new Map<string, { readonly managedRoot: string; readonly watcher: FSWatcher }>()
-
-/** One watch per workspace on its account places, which a linked agent's Codex renews directly. */
-const placesWatched = new Map<string, FSWatcher>()
+/** One watch per workspace on the folder its sign-in's file is in, which a linked Codex renews. */
+const workspacesWatched = new Map<string, FSWatcher>()
 
 /**
- * Watch a home whose sign-in is a file, so a renewal Codex writes there reaches the others; and
- * its workspace's account places, so a renewal a linked agent's Codex writes there reaches it.
- * Links stay once made, so linked and copied homes can stay mixed on one computer.
+ * Watch a home that holds a copy, so a renewal Codex writes there reaches the others; and the
+ * workspace's file, so a sign-in or a renewal written there reaches it. Links stay once made, so
+ * linked and copied homes can stay mixed on one computer. `isOwn` marks BroBot's own home, whose
+ * sign-in Settings shows.
  */
-function keepInStep(providerHome: string, managedRoot: string): void {
-  watchThePlaces(managedRoot)
+function keepInStep(providerHome: string, managedRoot: string, isOwn: boolean): void {
+  watchTheWorkspace(managedRoot)
   const home = resolve(providerHome)
   if (keptInStep.has(home)) return
   let timer: NodeJS.Timeout | undefined
@@ -248,17 +300,18 @@ function keepInStep(providerHome: string, managedRoot: string): void {
   // A watch that fails is closed, and the home stays kept in step: the check before each turn.
   watcher.on('error', () => watcher.close())
   watcher.unref()
-  keptInStep.set(home, { managedRoot, watcher })
+  keptInStep.set(home, { managedRoot, isOwn, watcher })
 }
 
-function watchThePlaces(managedRoot: string): void {
-  if (placesWatched.has(managedRoot)) return
-  const places = codexSignInsFolder(managedRoot)
+function watchTheWorkspace(managedRoot: string): void {
+  if (workspacesWatched.has(managedRoot)) return
+  const file = theWorkspaceFile(managedRoot)
+  if (file === null) return
   let timer: NodeJS.Timeout | undefined
   let watcher: FSWatcher
   try {
-    mkdirSync(places, { recursive: true, mode: 0o700 })
-    watcher = watch(places, { recursive: true }, () => {
+    watcher = watch(dirname(file), (_event, name) => {
+      if (name !== null && name !== basename(file)) return
       clearTimeout(timer)
       timer = setTimeout(() => {
         for (const [home, entry] of keptInStep) {
@@ -274,23 +327,22 @@ function watchThePlaces(managedRoot: string): void {
   // A watch that fails is closed; the check before each turn still covers every home.
   watcher.on('error', () => watcher.close())
   watcher.unref()
-  placesWatched.set(managedRoot, watcher)
+  workspacesWatched.set(managedRoot, watcher)
 }
 
 /** Stop every watch, between tests. The watches never hold the app open on their own. */
 export function stopKeepingCodexSignInsInStep(): void {
   for (const { watcher } of keptInStep.values()) watcher.close()
   keptInStep.clear()
-  for (const watcher of placesWatched.values()) watcher.close()
-  placesWatched.clear()
+  for (const watcher of workspacesWatched.values()) watcher.close()
+  workspacesWatched.clear()
 }
 
 /**
- * Before a turn: a home kept as a file takes its account's newest sign-in, in case a watch missed
- * a renewal. Every home kept in step on its account first passes on what it holds, so the
- * account's kept file is the newest any of them has; then this home takes it, where it is later
- * than its own. Never on a home that links (it reads the account's file already), never from
- * another account, and never an older sign-in over a newer one.
+ * Before a turn: a home holding a copy takes the workspace's newest sign-in, in case a watch
+ * missed a renewal. Every copy in the workspace first passes on what it holds, so the workspace's
+ * file is the newest any of them has; then this home takes it. Never on a home that links (it
+ * reads the workspace's file already), and never an older sign-in over a newer one.
  */
 export function catchUpCodexSignIn(providerHome: string): void {
   const home = resolve(providerHome)
@@ -302,48 +354,47 @@ export function catchUpCodexSignIn(providerHome: string): void {
 }
 
 /**
- * A home's sign-in changed: when Codex renewed it later than its account's, it becomes the
- * account's; and every other home kept in step on that account that holds an older one takes it,
- * also when the account's was brought up to date first. A home holding an older one than its
- * account's takes the account's.
+ * A copy changed, or the workspace's sign-in did. A copy Codex renewed later than the workspace's
+ * becomes the workspace's, as does a sign-in of another account in BroBot's own home; the other
+ * copies then take it. Any other copy that differs takes the workspace's: an agent's own account
+ * never wins.
  */
 function passOnARenewal(home: string): void {
   const entry = keptInStep.get(home)
   if (entry === undefined) return
   const dest = join(home, AUTH_FILE)
   if (lstatOrNull(dest)?.isFile() !== true) return
+  const workspace = theWorkspaceFile(entry.managedRoot)
+  const kept = workspace === null ? null : readOrNull(workspace)
+  const keptText = kept?.toString('utf8') ?? ''
+  const keptAccount = accountOfASignIn(keptText)
+  if (workspace === null || kept === null || keptAccount === null) return
   const bytes = readOrNull(dest)
   const text = bytes?.toString('utf8') ?? ''
   const account = codexAccountOf(text)
+  // An API key saved for this agent is its own login, and stays.
+  if (bytes === null || account === 'api-key' || bytes.equals(kept)) return
   const at = codexRefreshedAt(text)
-  if (bytes === null || account === null || account === 'api-key' || at === null) return
-  const target = signInOf(entry.managedRoot, account)
-  const kept = readOrNull(target)
-  const keptText = kept?.toString('utf8') ?? ''
-  const keptAt = codexAccountOf(keptText) === account ? codexRefreshedAt(keptText) : null
+  const keptAt = codexRefreshedAt(keptText)
+  const renewedLater = account === keptAccount && at !== null && (keptAt === null || at > keptAt)
+  const signedInHere = entry.isOwn && account !== null && account !== keptAccount
   try {
-    if (kept !== null && keptAt !== null && keptAt > at) {
-      // The account's is later: this home takes it, and has nothing newer to pass on.
+    if (!renewedLater && !signedInHere) {
       writeAtomicallySync(dest, kept, { mode: 0o600 })
       return
     }
-    if (keptAt === null || keptAt < at) {
-      mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
-      writeAtomicallySync(target, bytes, { mode: 0o600 })
-    }
+    writeAtomicallySync(workspace, bytes, { mode: 0o600 })
     for (const [other, { managedRoot }] of keptInStep) {
       if (other === home || managedRoot !== entry.managedRoot) continue
       const theirs = join(other, AUTH_FILE)
       if (lstatOrNull(theirs)?.isFile() !== true) continue
-      const held = readOrNull(theirs)?.toString('utf8') ?? ''
-      if (codexAccountOf(held) !== account) continue
-      if ((codexRefreshedAt(held) ?? Number.NEGATIVE_INFINITY) < at) {
-        writeAtomicallySync(theirs, bytes, { mode: 0o600 })
-      }
+      const held = readOrNull(theirs)
+      if (held === null || codexAccountOf(held.toString('utf8')) === 'api-key') continue
+      if (!held.equals(bytes)) writeAtomicallySync(theirs, bytes, { mode: 0o600 })
     }
   } catch (error) {
     console.warn(
-      `could not pass a Codex renewal to the other agents on its account: ${
+      `could not pass a Codex renewal to the workspace's other agents: ${
         error instanceof Error ? error.message : String(error)
       }`,
     )
@@ -353,6 +404,22 @@ function passOnARenewal(home: string): void {
 function readOrNull(path: string): Buffer | null {
   try {
     return readFileSync(path)
+  } catch {
+    return null
+  }
+}
+
+function realpathOrNull(path: string): string | null {
+  try {
+    return realpathSync(path)
+  } catch {
+    return null
+  }
+}
+
+function readlinkOrNull(path: string): string | null {
+  try {
+    return readlinkSync(path)
   } catch {
     return null
   }

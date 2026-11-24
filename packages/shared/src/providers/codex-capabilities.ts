@@ -61,7 +61,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
    */
   signIn: {
     state: 'available',
-    note: 'Signs in every Codex agent on this account.',
+    note: 'Signs in every Codex agent in this workspace.',
   },
   /**
    * `absent`: a Codex sign-in is never copied, from the codex CLI or from another profile. A copy shares its
@@ -69,7 +69,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
    */
   reprovisionAuth: {
     state: 'absent',
-    reason: 'Codex agents share one sign-in per account, so there is nothing to copy.',
+    reason: 'Codex agents share one sign-in per workspace, so there is nothing to copy.',
     checkedAgainst:
       '`codex/shared-sign-in.ts`: every Codex home links to its account’s one `auth.json`, which Codex 0.167.1 renews in place through the link (`login/src/auth/storage_file.rs`).',
   },
@@ -79,7 +79,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
    */
   homeCredential: {
     state: 'available',
-    note: 'Codex agents on one account share one sign-in, or the API key saved on the Codex card in Providers.',
+    note: 'Every Codex agent in this workspace uses the one sign-in on the Codex card in Providers, or the API key saved there.',
   },
   /**
    * `absent`: Codex folded proactive multi-agent behaviour into the reasoning axis. `multiAgentMode` is deprecated

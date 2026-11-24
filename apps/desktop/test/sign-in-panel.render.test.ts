@@ -151,7 +151,7 @@ describe('SignInPanel — the two ways out, and the difference between them (098
     // Paired: idle has no Cancel, so the presence above is about the state and not about the markup.
     const idle = await render({ ...base, state: STALE, busy: 'idle' })
     expect(idle).not.toContain('data-cy="sign-in-cancel"')
-    expect(idle).toContain('Sign in for this agent')
+    expect(idle).toContain('Sign in for all agents')
   })
 
   it('disables EVERY button while one gesture is in flight, and enables them when idle', async () => {

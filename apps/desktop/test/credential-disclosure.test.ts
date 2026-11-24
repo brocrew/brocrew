@@ -155,7 +155,7 @@ describe('what the Codex note claims, against `shareCodexSignIn` itself', () => 
   const SIGN_IN =
     '{"auth_mode":"chatgpt","tokens":{"account_id":"acct-fictional"},"last_refresh":"2026-11-20T09:00:00Z"}'
 
-  it('🔴 “agents on one account share one sign-in” — two agents read the very same file', async () => {
+  it('🔴 “every agent in this workspace uses the one sign-in” — two agents read the very same file', async () => {
     const root = temp('managed')
     const own = join(root, 'homes', 'brobot', 'codex')
     const farah = join(root, 'homes', 'farah', 'codex')
@@ -168,7 +168,7 @@ describe('what the Codex note claims, against `shareCodexSignIn` itself', () => 
     expect(realpathSync(join(farah, 'auth.json'))).toBe(kept)
     expect(realpathSync(join(ilse, 'auth.json'))).toBe(kept)
     expect(signInAt(kept)).toBe(digestOf(SIGN_IN))
-    expect(note()).toMatch(/share one sign-in/i)
+    expect(note()).toMatch(/uses the one sign-in/i)
   })
 
   it('⛔ the note names no file, no path and no folder of ours', () => {

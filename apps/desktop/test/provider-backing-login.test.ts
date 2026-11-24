@@ -102,7 +102,7 @@ describe('the login behind a saved key', () => {
     'counts only the workspace’s shared Codex sign-in, present=%s, never a key-written profile',
     async (present) => {
       if (present) {
-        const kept = join(root, 'managed', 'codex-sign-ins', 'fictional-account')
+        const kept = join(root, 'managed', 'codex-sign-ins', 'workspace')
         mkdirSync(kept, { recursive: true })
         writeFileSync(join(kept, 'auth.json'), 'fictional content that must not be opened')
       }

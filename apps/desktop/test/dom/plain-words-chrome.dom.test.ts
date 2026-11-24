@@ -148,7 +148,7 @@ it.each(['claude', 'codex'] as const)('names %s in each sign-in state', async (p
     )
     await settle()
     expect(m.q('sign-in-heading').textContent).toBe(words)
-    expect(m.q('sign-in-start').textContent?.trim()).toBe('Sign in for this agent')
+    expect(m.q('sign-in-start').textContent?.trim()).toBe('Sign in for all agents')
     expect(m.q('sign-in-caveat').textContent?.replace(/\s+/g, ' ').trim()).toBe(
       "Sign in here to keep this agent's login separate. Copying your computer's existing login is quicker, but either login may stop working when the other refreshes.",
     )

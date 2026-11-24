@@ -124,7 +124,7 @@ function holdersOf(root: string): Map<string, string[]> {
 }
 
 /**
- * # Codex agents on one account share one sign-in
+ * # Codex agents in a workspace share its one sign-in
  *
  * A copy of a Codex sign-in shares its renewal key with the file it came from, and whichever
  * renews first spends the other's. So every Codex agent on an account reads and renews one sign-in,
@@ -133,7 +133,7 @@ function holdersOf(root: string): Map<string, string[]> {
  * ⚑ A scratch data folder, fictional sign-ins and tokens, and a fictional home whose own Codex
  * sign-in is a fictional decoy: no real sign-in is read.
  */
-describe('Codex agents on one account share one sign-in', () => {
+describe('Codex agents in a workspace share its one sign-in', () => {
   const fictional = aFictionalHome()
   let userData: string
   let authority: FictionalTokenAuthority
@@ -233,30 +233,31 @@ describe('Codex agents on one account share one sign-in', () => {
     }
     expect(readFileSync(thisComputersOwn()).equals(computersBytes)).toBe(true)
 
-    // Each agent reads its own account's one sign-in.
+    // Every agent reads the workspace's one sign-in, whatever account it held before.
     const signInOf = (profileId: string) =>
       linked(profileId) ? realpathSync(join(homeOf(profileId), 'auth.json')) : keyIn(profileId)
-    expect(signInOf('farah')).toBe(signInOf(DEFAULT_PROFILE_ID))
-    expect(signInOf('ilse')).toBe(signInOf(DEFAULT_PROFILE_ID))
-    expect(signInOf('kofi')).not.toBe(signInOf(DEFAULT_PROFILE_ID))
+    for (const profileId of ['farah', 'ilse', 'kofi'])
+      expect(signInOf(profileId), profileId).toBe(signInOf(DEFAULT_PROFILE_ID))
   })
 
-  it('⚑ a sign-in started in one agent becomes its account’s one sign-in for every agent on it', async () => {
+  it('⚑ a sign-in becomes the workspace’s one sign-in for every agent', async () => {
     const dead = signIn('acct-fictional-one', 'key-dead', '2026-11-20T08:00:00Z')
     holding(DEFAULT_PROFILE_ID, dead)
     await prepare('farah')
     await prepare('ilse')
     const fresh = signIn('acct-fictional-one', 'key-fresh', '2026-11-24T01:00:00Z')
 
-    // A sign-in that could not start leaves the agent on its account's sign-in.
+    // A sign-in that could not start leaves the agent on the workspace's sign-in.
     const ops = createProviderAuthOps(userData, { codexCommand: () => join(userData, 'no-codex') })
     await expect(ops.signIn('codex', 'farah')).rejects.toThrow()
     expect(keyIn('farah')).toBe(keyIn(DEFAULT_PROFILE_ID))
-    // What Codex's own sign-in leaves in the home BroCrew made room in: a file of its own.
-    rmSync(join(homeOf('farah'), 'auth.json'))
-    writeFileSync(join(homeOf('farah'), 'auth.json'), JSON.stringify(fresh), { mode: 0o600 })
-    await prepare('farah')
+    // What Codex's own sign-in leaves in BroBot's own home, where every sign-in runs.
+    rmSync(join(homeOf(DEFAULT_PROFILE_ID), 'auth.json'))
+    writeFileSync(join(homeOf(DEFAULT_PROFILE_ID), 'auth.json'), JSON.stringify(fresh), {
+      mode: 0o600,
+    })
     await prepare(DEFAULT_PROFILE_ID)
+    await prepare('farah')
 
     for (const profileId of [DEFAULT_PROFILE_ID, 'farah', 'ilse']) {
       await vi.waitFor(() => expect(keyIn(profileId), profileId).toBe('key-fresh'))
@@ -264,7 +265,7 @@ describe('Codex agents on one account share one sign-in', () => {
     expect([...holdersOf(userData).keys()]).toEqual(['key-fresh'])
   })
 
-  it('🔴 a sign-in that could not start leaves an agent on the account it was on', async () => {
+  it('🔴 a sign-in that could not start leaves the workspace’s sign-in as it was', async () => {
     holding(DEFAULT_PROFILE_ID, signIn('acct-fictional-one', 'key-own', '2026-11-20T08:00:00Z'))
     holding('kofi', signIn('acct-fictional-two', 'key-kofi', '2026-11-21T08:00:00Z'))
     await prepare('kofi')
@@ -274,8 +275,8 @@ describe('Codex agents on one account share one sign-in', () => {
     const held = JSON.parse(
       readFileSync(join(homeOf('kofi'), 'auth.json'), 'utf8'),
     ) as FictionalSignIn
-    expect(held.tokens.account_id).toBe('acct-fictional-two')
-    expect(held.tokens.refresh_token).toBe('key-kofi')
+    expect(held.tokens.account_id).toBe('acct-fictional-one')
+    expect(held.tokens.refresh_token).toBe('key-own')
   })
 
   it('⚑ with no sign-in in the workspace, a new agent asks for one', async () => {
