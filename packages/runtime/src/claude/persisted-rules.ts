@@ -49,6 +49,9 @@ interface GitAnswer {
   readonly stderr: string
 }
 
+// No timer: a slow git still gives its answer, and a killed one would read as "carried" and drop
+// the folder's allow rules. Git's exit ends the wait; a git that never exits is a stalled launch,
+// which the launch's own progress watch cancels through `signal`.
 function gitTracks(folder: string, signal?: AbortSignal): Promise<GitAnswer> {
   return new Promise((done) => {
     execFile(
@@ -57,7 +60,6 @@ function gitTracks(folder: string, signal?: AbortSignal): Promise<GitAnswer> {
       {
         cwd: folder,
         encoding: 'utf8',
-        timeout: 2_000,
         windowsHide: true,
         ...(signal === undefined ? {} : { signal }),
         env: {
