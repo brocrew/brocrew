@@ -355,6 +355,12 @@ describe('the recovery copy is checked off the main thread', () => {
     15_000,
   )
 
+  /**
+   * ⚠️ **No limit of its own** (396). The sweep's incremental compaction runs 54 steps, each
+   * ending in a WAL checkpoint on this thread. On hosted Windows those checkpoints alone took
+   * 3–16 s, one step at a time and always moving, so the project's bound for real filesystem
+   * work applies here.
+   */
   it('worker selections commit on the ordinary writer without a foreign-write resync', async () => {
     const file = join(aRoot(), 'owned-trim.sqlite')
     const db = aHistory(file, 1402, 8192)
@@ -456,7 +462,7 @@ describe('the recovery copy is checked off the main thread', () => {
       unsubscribe()
       db.close()
     }
-  }, 15_000)
+  })
 
   it('quitting before a selected batch is applied joins the worker and leaves its rows', async () => {
     const file = join(aRoot(), 'stopped-trim.sqlite')
