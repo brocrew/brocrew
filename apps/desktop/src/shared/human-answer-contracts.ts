@@ -30,7 +30,7 @@ export type PromptUpdateBaseline = Readonly<
       | `method:${string}`
       | `skill:${string}`
       | `memory:${string}`,
-      string
+      string | { readonly revision: string; readonly path: string }
     >
   >
 >

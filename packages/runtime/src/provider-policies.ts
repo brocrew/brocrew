@@ -174,7 +174,6 @@ export interface MemoryPolicy<H extends ProviderHostValues> {
 }
 interface MemoryEntryRevision {
   readonly id: string
-  readonly title: string
   readonly path: string
   readonly revision: string
 }

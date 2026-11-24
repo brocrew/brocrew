@@ -65,7 +65,7 @@ export function turnBlockChanges(
   let baselineChanged = false
   const profileChanges: string[] = []
   const grouped = new Map<string, string[]>()
-  const memoryTitles: string[] = []
+  const memoryChanges: string[] = []
   const newMemoryStores: string[] = []
   const updates = input.promptUpdates ?? []
   if (input.readCollections?.length) {
@@ -75,6 +75,8 @@ export function turnBlockChanges(
         input.readCollections.some((prefix) => key !== prefix && key.startsWith(prefix)) &&
         !present.has(key)
       ) {
+        const previous = promptUpdates[key]
+        if (typeof previous === 'object') memoryChanges.push(`removed: \`${previous.path}\``)
         delete promptUpdates[key]
         baselineChanged = true
       }
@@ -89,14 +91,22 @@ export function turnBlockChanges(
   }
   for (const update of updates) {
     const seen = promptUpdates[update.key]
+    if (update.key.startsWith(MEMORY_PREFIX)) {
+      const path = update.text
+      if (typeof seen === 'object' && seen.revision === update.revision && seen.path === path)
+        continue
+      promptUpdates[update.key] = { revision: update.revision, path }
+      baselineChanged = true
+      if (
+        seen !== update.revision &&
+        !newMemoryStores.some((prefix) => update.key.startsWith(prefix))
+      )
+        memoryChanges.push(`\`${path}\``)
+      continue
+    }
     if (seen === update.revision || (seen === undefined && update.empty)) continue
     promptUpdates[update.key] = update.revision
     baselineChanged = true
-    if (update.key.startsWith(MEMORY_PREFIX)) {
-      if (!newMemoryStores.some((prefix) => update.key.startsWith(prefix)))
-        memoryTitles.push(update.text)
-      continue
-    }
     const when = new Date(update.at).toISOString()
     const timing = update.observed ? `observed at ${when}` : `changed at ${when}`
     const heading = `${update.description} (${timing}).`
@@ -107,15 +117,15 @@ export function turnBlockChanges(
     } else profileChanges.push(update.untimed ? update.text : `${heading}\n\n${update.text}`)
   }
   for (const [heading, lines] of grouped) profileChanges.push(`${heading}\n\n${lines.join('\n')}`)
-  if (memoryTitles.length > 0) {
-    const titles = memoryTitles.slice(0, TURN_LIST_LINES).join(', ')
-    const more = memoryTitles.length - TURN_LIST_LINES
+  if (memoryChanges.length > 0) {
+    const paths = memoryChanges.slice(0, TURN_LIST_LINES).join(', ')
+    const more = memoryChanges.length - TURN_LIST_LINES
     profileChanges.push(
-      `Memory changed (observed at ${new Date(input.now).toISOString()}): ${titles}${more > 0 ? ` and ${more} more` : ''}.`,
+      `Memory changed (observed at ${new Date(input.now).toISOString()}): ${paths}${more > 0 ? ` and ${more} more` : ''}.`,
     )
   }
   const memoryFolders = input.editableMemoryFolders ?? []
-  const nudgeMemory = memoryFolders.length > 0 && (memoryTitles.length > 0 || !before.memoryNudged)
+  const nudgeMemory = memoryFolders.length > 0 && (memoryChanges.length > 0 || !before.memoryNudged)
   if (nudgeMemory) {
     const locations = memoryFolders.map((folder) => `\`${folder}\``).join(', ')
     profileChanges.push(`Fix or remove outdated memory in ${locations}.`)

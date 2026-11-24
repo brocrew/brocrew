@@ -97,7 +97,7 @@ export function createMemoryPolicy(
           const stat = statSync(path, { bigint: true, throwIfNoEntry: false })
           if (!stat?.isFile()) return []
           const revision = [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':')
-          return [{ id, title: basename(path).replace(/\s+/g, ' '), path, revision }]
+          return [{ id, path, revision }]
         })
       } catch {
         return null

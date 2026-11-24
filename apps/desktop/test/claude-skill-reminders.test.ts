@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeAutoMemoryDir, claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import { codexAdHocNotesDir, codexMemorySummary } from '@brobot2/runtime/codex'
@@ -113,19 +113,17 @@ const memoryFixtures = [
     memoryDir: claudeAutoMemoryDir,
     indexPath: claudeAutoMemoryIndex,
     note: 'fictional-notebook.md',
-    index: 'MEMORY.md',
   },
   {
     provider: 'codex',
     memoryDir: codexAdHocNotesDir,
     indexPath: codexMemorySummary,
     note: '2026-11-24T15-05-00-fictional-notebook.md',
-    index: 'memory_summary.md',
   },
 ] as const
 
 it.each(memoryFixtures)(
-  '$provider sends changed memory titles once and restores the start baseline after compaction',
+  '$provider sends memory changes by path once and restores the start baseline after compaction',
   async (fixture) => {
     const world = new F093World()
     try {
@@ -167,9 +165,10 @@ it.each(memoryFixtures)(
       expect(quiet).not.toContain('Your own instructions (')
       for (const title of QUIET_AFTER_COMPACTION) expect(quiet).not.toContain(title)
 
-      writeFileSync(join(directory, fixture.note), 'Body stays out of the footer.')
-      const added = await turn('Read the changed memory title.')
-      expect(memoryLine(added)?.split('): ')[1]).toBe(`${fixture.note}.`)
+      const ownPath = join(directory, fixture.note)
+      writeFileSync(ownPath, 'Body stays out of the footer.')
+      const added = await turn('Read the changed memory path.')
+      expect(memoryLine(added)?.split('): ')[1]).toBe(`\`${ownPath}\`.`)
       expect(added).not.toContain('Body stays out')
       expect(await turn('The note is unchanged.')).not.toContain(MEMORY_LINE)
 
@@ -187,16 +186,30 @@ it.each(memoryFixtures)(
       expect(repeated).not.toContain(otherPath)
       expect(repeated).not.toContain(MEMORY_NUDGE)
 
+      for (const path of [ownPath, otherPath]) {
+        writeFileSync(path, 'This edit replaces the old body.')
+        expect(memoryLine(await turn('Read which note was edited.'))?.split('): ')[1]).toBe(
+          `\`${path}\`.`,
+        )
+        expect(await turn('The edit was already announced.')).not.toContain(MEMORY_LINE)
+
+        unlinkSync(path)
+        expect(memoryLine(await turn('Read which note was removed.'))?.split('): ')[1]).toBe(
+          `removed: \`${path}\`.`,
+        )
+        expect(await turn('The removal was already announced.')).not.toContain(MEMORY_LINE)
+      }
+
       writeFileSync(fixture.indexPath(home), 'A changed index, longer than before.')
       expect(memoryLine(await turn('Read which index changed.'))?.split('): ')[1]).toBe(
-        `${fixture.index}.`,
+        `\`${fixture.indexPath(home)}\`.`,
       )
       expect(await turn('The index is unchanged.')).not.toContain(MEMORY_LINE)
 
       const rule = 'Use the violet notebook for this fictional task.'
       expect(host.instructAgent(profile, rule, undefined, world.window)).not.toBeNull()
       expect(await turn('Read the new rule.')).toContain(rule)
-      writeFileSync(join(directory, fixture.note), 'A second version before compaction.')
+      writeFileSync(ownPath, 'A note recreated before compaction.')
       await compact()
       const after = await turn('After a compaction with one standing change.')
       expect(after).toContain(rule)

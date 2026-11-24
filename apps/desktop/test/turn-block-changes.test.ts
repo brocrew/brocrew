@@ -92,6 +92,28 @@ describe('turn block changes', () => {
     expect(block(withoutPeers.extra)).toContain('Check backups')
   })
 
+  it('learns paths from an older memory baseline and keeps them across an unavailable read', () => {
+    const prefix = 'memory:fictional:'
+    const key = `${prefix}notes/topic.md` as const
+    const path = '/fictional/memory/topic.md'
+    const legacy = { ...EMPTY_TURN_BLOCK, promptUpdates: { [prefix]: 'seen', [key]: 'revision' } }
+    const observed = turnBlockChanges(
+      {
+        ...input,
+        readCollections: [prefix],
+        promptUpdates: [{ key, revision: 'revision', description: '', text: path, at: input.now }],
+      },
+      legacy,
+    )
+    expect(observed.extra.profileChanges).toBeUndefined()
+    const unavailable = turnBlockChanges(input, observed.next)
+    expect(unavailable.extra.profileChanges).toBeUndefined()
+    const absent = turnBlockChanges({ ...input, readCollections: [prefix] }, unavailable.next)
+    expect(absent.extra.profileChanges).toEqual([
+      `Memory changed (observed at 1970-01-01T00:01:00.000Z): removed: \`${path}\`.`,
+    ])
+  })
+
   it('shows current work on both person-started and app-started turns', () => {
     const first = turnBlockChanges(input, EMPTY_TURN_BLOCK)
     expect(block(first.extra)).toContain(TURN_BLOCK_WORDS.nobody)

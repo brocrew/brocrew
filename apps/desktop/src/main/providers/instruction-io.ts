@@ -238,12 +238,13 @@ export function memoryDirNames(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {
-  let seen: Stats
+  let seen: Stats | undefined
   try {
-    seen = lstatSync(dir)
+    seen = lstatSync(dir, { throwIfNoEntry: false })
   } catch {
-    return { names: [], refused: null } // nothing written yet — the ordinary case, and it is silent
+    return { names: [], refused: { path: dir, reason: 'unreadable' } }
   }
+  if (seen === undefined) return { names: [], refused: null }
   if (seen.isSymbolicLink()) {
     const broken = brokenMemoryLink(dir)
     if (broken !== null) return { names: [], refused: broken }

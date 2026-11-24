@@ -19458,12 +19458,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       if (entries === null) continue
       const prefix = `memory:${provider}:` as const
       readCollections.push(prefix)
-      for (const { id, title, path, revision } of entries)
+      for (const { id, path, revision } of entries)
         promptUpdates.push({
           key: `${prefix}${id}`,
           revision,
           description: 'Memory changed',
-          text: own ? title : `\`${path}\``,
+          text: path,
           at: now,
           observed: true,
         })
