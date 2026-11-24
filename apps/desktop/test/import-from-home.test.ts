@@ -1,26 +1,13 @@
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
-import type { Provider } from '@brobot2/shared'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import type { SessionStore } from '../src/main/db/session-store'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import type { UserHomeDiscovery, UserHomeSession } from '../src/main/adopt/user-homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
 
 /**
  * Importing ONE conversation out of a user's provider home (Slice 2 · 047) — the button over 046's
@@ -35,52 +22,30 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CLAUDE_FIXTURE = join(here, 'fixtures/claude-transcript.jsonl')
-const migrations = join(here, '../src/main/db/migrations')
 
 describe('importing one conversation from a provider home', () => {
   let dir: string
-  let db: AppDatabase
   let store: SessionStore
   let discovery: UserHomeDiscovery
   let host: RuntimeHost
 
+  const scratch = hostsOverAScratchDatabase('brobot2-import-')
+
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-import-'))
+    dir = scratch.dir
+    store = scratch.store
     mkdirSync(join(dir, 'home'), { recursive: true })
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     discovery = { found: [], skipped: [] }
 
-    let counter = 0
-    host = new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
+    host = scratch.host({
       // The person's own file, wherever discovery found it — what a rebuild reads again.
       nativeTranscriptPath: (provider, _home, ref) =>
         discovery.found.find((one) => one.provider === provider && one.sessionId === ref.sessionId)
           ?.path ?? null,
-      exportDirectory: () => join(dir, 'exports'),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'X',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('X', 'm'),
       // The one seam both the import and the library read the homes through.
       userHomeSessions: () => discovery,
     })
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** A transcript on disk, copied from a committed fixture. */
@@ -285,7 +250,6 @@ describe('importing one conversation from a provider home', () => {
  */
 describe('one row, without reading a provider home (119)', () => {
   let dir: string
-  let db: AppDatabase
   let store: SessionStore
   let discovery: UserHomeDiscovery
   let host: RuntimeHost
@@ -296,47 +260,32 @@ describe('one row, without reading a provider home (119)', () => {
    */
   let readFails: (() => Error) | undefined
 
+  const scratch = hostsOverAScratchDatabase('brobot2-entry-')
+
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-entry-'))
+    dir = scratch.dir
+    store = scratch.store
     mkdirSync(join(dir, 'home'), { recursive: true })
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     discovery = { found: [], skipped: [] }
     readFails = undefined
 
-    let counter = 0
-    host = new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
+    host = scratch.host({
       // ⚠️ The REAL one here, unlike the suite above: an import that cannot find the provider's
       // file would report `skipped` for the wrong reason and every assertion would still pass.
       nativeTranscriptPath: (provider, home, ref) => {
         if (readFails !== undefined) throw readFails()
         return nativeTranscriptPath(provider, home, ref)
       },
-      exportDirectory: () => join(dir, 'exports'),
-      createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(dir, 'homes', profileId ?? 'none', provider),
       providerHomePath: (provider, profileId) => join(dir, 'homes', profileId ?? 'none', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'X',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('X', 'm'),
       userHomeSessions: () => discovery,
     })
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** An app-owned adopted child: found in a home we provisioned, so it carries a profile. */

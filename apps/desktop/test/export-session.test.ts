@@ -2,18 +2,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
-import { FakeRuntime } from '@brobot2/runtime'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -28,6 +24,11 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { recordedEntry } from '../src/main/library/session-library'
 import { discoverEveryHomeIn } from './helpers/discover-every-home'
+import {
+  homesPerProfileUnder,
+  hostsOverAScratchDatabase,
+  providerConfigOf,
+} from './lib/hosts-over-a-scratch-database'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 /**
@@ -59,6 +60,8 @@ describe('exporting a session', () => {
   let store: SessionStore
   let fixture: { sessionId: string; cwd: string; text: string }
 
+  const scratch = hostsOverAScratchDatabase('brobot2-export-')
+
   function plantFixture(): string {
     const home = join(userData, 'provider-homes', 'default', 'default', 'claude')
     const projectDir = join(home, 'projects', claudeProjectDirName(fixture.cwd))
@@ -72,26 +75,12 @@ describe('exporting a session', () => {
     overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
     ownStore: SessionStore = store,
   ) {
-    let counter = 0
-    return new RuntimeHost({
+    return scratch.host({
       store: ownStore,
       discoverSessions: () => discoverEveryHomeIn(userData),
-      exportDirectory: () => join(dir, 'exports'),
       nativeTranscriptPath,
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      ...homesPerProfileUnder(() => userData),
+      readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'programmatic'),
       ...overrides,
     })
   }
@@ -104,12 +93,11 @@ describe('exporting a session', () => {
   }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-export-'))
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     userData = join(dir, 'userData')
     mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
 
     const text = readFileSync(FIXTURE, 'utf8')
     const named = text
@@ -118,13 +106,6 @@ describe('exporting a session', () => {
       .map((line) => JSON.parse(line) as { sessionId?: string; cwd?: string })
       .find((record) => typeof record.cwd === 'string')
     fixture = { sessionId: named?.sessionId ?? '', cwd: named?.cwd ?? '', text }
-  })
-
-  const importedDatabases: AppDatabase[] = []
-  afterEach(() => {
-    for (const connection of importedDatabases.splice(0)) if (connection.open) connection.close()
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('writes back the very bytes the provider wrote', async () => {
@@ -321,7 +302,7 @@ describe('exporting a session', () => {
     expect(exported.resumable).toBe(false)
 
     // Somewhere else entirely: its own database, its own profile.
-    const elsewhereDb = openDatabase(join(dir, 'elsewhere.sqlite'))
+    const elsewhereDb = scratch.alsoClose(openDatabase(join(dir, 'elsewhere.sqlite')))
     applyMigrations(elsewhereDb, migrations)
     const elsewhere = createSessionStore(elsewhereDb)
     const host = buildHost({ store: elsewhere }, elsewhere)
@@ -341,7 +322,6 @@ describe('exporting a session', () => {
     await expect(host.exportSession({ sessionId: restored, exportKind: 'native' })).rejects.toThrow(
       'is gone, so there is nothing to export',
     )
-    elsewhereDb.close()
   })
 
   /**
@@ -358,7 +338,7 @@ describe('exporting a session', () => {
     const exported = await buildHost().exportSession({ sessionId: sessionId, exportKind: 'bundle' })
     const bundle = JSON.parse(readFileSync(exported.path, 'utf8')) as SessionBundle
 
-    const elsewhereDb = openDatabase(join(dir, 'null-profile.sqlite'))
+    const elsewhereDb = scratch.alsoClose(openDatabase(join(dir, 'null-profile.sqlite')))
     applyMigrations(elsewhereDb, migrations)
     const elsewhere = createSessionStore(elsewhereDb)
     const host = buildHost({ store: elsewhere }, elsewhere)
@@ -393,8 +373,6 @@ describe('exporting a session', () => {
     // unknown there — and `undefined` reaching the column would be a hole of a different kind.
     const legacy = host.importBundle(spelt(undefined, 'th_legacy'))
     expect(elsewhere.find(legacy.sessionId)?.profileId).toBe(DEFAULT_PROFILE_ID)
-
-    elsewhereDb.close()
   })
 
   it('takes back a bundle written before entries carried a time', async () => {
@@ -414,7 +392,7 @@ describe('exporting a session', () => {
       ledger: current.ledger.map(({ ordinal, event }) => ({ ordinal, event })),
     }
 
-    const elsewhereDb = openDatabase(join(dir, 'old-bundle.sqlite'))
+    const elsewhereDb = scratch.alsoClose(openDatabase(join(dir, 'old-bundle.sqlite')))
     applyMigrations(elsewhereDb, migrations)
     const elsewhere = createSessionStore(elsewhereDb)
     const { sessionId: restored } = buildHost({ store: elsewhere }, elsewhere).importBundle(
@@ -425,7 +403,6 @@ describe('exporting a session', () => {
     expect(events.length).toBe(current.ledger.length)
     // No time in the file, so they take the session's own — a stated stand-in, not a silent zero.
     expect(events.every((entry) => entry.at === current.meta.updatedAt)).toBe(true)
-    elsewhereDb.close()
   })
 
   /**
@@ -598,18 +575,11 @@ describe('exporting a session', () => {
    */
   describe('214 §1 · a bundle exported by this app can be brought back', () => {
     /** A second database, standing in for the other machine. */
-    const otherMachine = (
-      name: string,
-    ): { store: SessionStore; host: RuntimeHost; close: () => void } => {
-      const otherDb = openDatabase(join(dir, name))
-      importedDatabases.push(otherDb)
+    const otherMachine = (name: string): { store: SessionStore; host: RuntimeHost } => {
+      const otherDb = scratch.alsoClose(openDatabase(join(dir, name)))
       applyMigrations(otherDb, migrations)
       const other = createSessionStore(otherDb)
-      return {
-        store: other,
-        host: buildHost({ store: other }, other),
-        close: () => otherDb.close(),
-      }
+      return { store: other, host: buildHost({ store: other }, other) }
     }
 
     it('🔴 the whole conversation comes back, from the PATH — not from a value we handed ourselves', async () => {
@@ -632,7 +602,6 @@ describe('exporting a session', () => {
       expect(result.events).toBe(before.ledger.length)
       // ⛔ Every ledger entry, not a count that happens to match.
       expect(away.store.events(result.sessionId)).toEqual(before.ledger)
-      away.close()
     })
 
     it('🔴 …and the restored conversation is VISIBLE, placed as an adopted one (154)', async () => {
@@ -683,7 +652,6 @@ describe('exporting a session', () => {
       // ⚠️ And it is not the OTHER refusal: a bundle from a `~/.claude` row would otherwise be told
       // it is one of the user's own conversations, which is a sentence about somebody else's file.
       expect(refused?.reason).not.toContain('BroCrew can read it here')
-      away.close()
     })
 
     it('🔴 …and the REOPEN COMMAND refuses it too, not just the two lists (194 M2)', async () => {
@@ -727,7 +695,6 @@ describe('exporting a session', () => {
       // are about the same thing rather than that they are the same string.
       const listed = away.store.unresumable().find((r) => r.sessionId === restored.sessionId)
       expect(listed!.reason).toContain('restored from a bundle')
-      away.close()
     })
 
     it('🔴 a malformed or foreign file is REFUSED with a reason, and nothing is half-imported', () => {
@@ -765,7 +732,6 @@ describe('exporting a session', () => {
       // ⛔ **Nothing was half-imported.** Five refusals, zero rows — the failure `194` M2 warns
       // about is a file that is understood just well enough to leave a conversation behind.
       expect(away.store.recorded()).toEqual([])
-      away.close()
     })
 
     it('🔴 a bundle whose profile is a PATH is refused — that string becomes a directory name', async () => {
@@ -817,7 +783,6 @@ describe('exporting a session', () => {
         const result = away.host.importBundleFile(path)
         expect(result.ok, result.ok ? '' : `${name}: ${result.reason}`).toBe(true)
       }
-      away.close()
     })
 
     it('⚠️ a ledger entry that names a conversation the app cannot read is refused in WORDS', async () => {
@@ -851,7 +816,6 @@ describe('exporting a session', () => {
         expect(result.reason).not.toContain('too_small')
         expect(result.reason).not.toContain('expected object')
       }
-      away.close()
     })
 
     it('🔴 a bundle that disagrees with ITSELF about which conversation it is, is refused', async () => {
@@ -923,7 +887,6 @@ describe('exporting a session', () => {
       // ⛔ …and the row really points at the NEW conversation, which is the fact the refusal above
       // protects: the ledger had the last word, and it said the same thing as the header.
       expect(away.store.recorded()[0]?.providerSessionId).toBe('th_from_elsewhere')
-      away.close()
     })
 
     it('⚠️ a bundle whose ledger names NO conversation is not a disagreement', async () => {
@@ -954,7 +917,6 @@ describe('exporting a session', () => {
       const result = away.host.importBundleFile(noSessionEvents)
 
       expect(result.ok, result.ok ? '' : result.reason).toBe(true)
-      away.close()
     })
 
     it('⚠️ a bundle that carried NO conversation does not claim BroBot has the whole of it', async () => {
@@ -1004,7 +966,6 @@ describe('exporting a session', () => {
           })(),
         )
       expect(full.some((r) => r.includes('has the whole conversation'))).toBe(true)
-      away.close()
     })
 
     it('⚠️ a bundle from a NEWER BroBot is refused by version, in its own words', () => {
@@ -1036,7 +997,6 @@ describe('exporting a session', () => {
       // leaves membership to the method that knows which shapes it can read.
       if (!result.ok) expect(result.reason).toContain('unreadable bundle version: 99')
       expect(away.store.recorded()).toEqual([])
-      away.close()
     })
 
     it('⚠️ the same bundle twice says “you already have this” rather than claiming a restore', async () => {
@@ -1059,7 +1019,6 @@ describe('exporting a session', () => {
       expect(second.sessionId).toBe(first.sessionId)
       expect(away.store.recorded()).toHaveLength(1)
       expect(second.behind, 'the same file is not newer than itself').toBeUndefined()
-      away.close()
     })
 
     /**
@@ -1170,7 +1129,6 @@ describe('exporting a session', () => {
 
         expect(again.ok && again.already).toBe(true)
         expect(again.ok && again.behind, 'a file BEHIND the row is not news either').toBeUndefined()
-        fresh.close()
       })
 
       it('⛔ …and a FIRST import never reports being behind its own arrival', async () => {
@@ -1188,7 +1146,6 @@ describe('exporting a session', () => {
 
         expect(result.ok && result.already).toBe(false)
         expect(result.ok && result.behind).toBeUndefined()
-        away.close()
       })
     })
   })

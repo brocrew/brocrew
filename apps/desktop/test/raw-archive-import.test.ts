@@ -1,12 +1,9 @@
-import { fixtureProviderConfig } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
-import { FakeRuntime } from '@brobot2/runtime'
 import { FileEdits, claudeProjectDirName } from '@brobot2/runtime/claude'
 // Reached by path on purpose: the normalizer is not on the runtime package's public surface, and
 // 088 may not change that package. Importing it HERE keeps the app's own mapping honest without
@@ -17,10 +14,13 @@ import { NO_DISCOVERY, type Discovery } from '../src/main/adopt/discover-session
 import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { discoverEveryHomeIn } from './helpers/discover-every-home'
+import {
+  homesPerProfileUnder,
+  hostsOverAScratchDatabase,
+  providerConfigOf,
+} from './lib/hosts-over-a-scratch-database'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { AssistantItem, ToolItem, UserItem } from '../src/renderer/src/lib/transcript'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
@@ -34,7 +34,6 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrations = join(here, '../src/main/db/migrations')
 const FIXTURE = join(here, 'fixtures/claude-transcript.jsonl')
 
 class NullSink implements RuntimeEventSink {
@@ -99,12 +98,12 @@ describe('transcript import from the provider’s own file', () => {
     expect(tool.entries[0]!.event).toEqual({ type: 'assistant_message', text: 'Progress' })
   })
 
-  let dir: string
   let userData: string
-  let db: AppDatabase
   let store: SessionStore
   /** The fixture's own session id and cwd, read out of it rather than restated here. */
   let fixture: { sessionId: string; cwd: string; lines: string[] }
+
+  const scratch = hostsOverAScratchDatabase('brobot2-archive-')
 
   function claudeHome(profileId = 'default'): string {
     return join(userData, 'provider-homes', 'default', profileId, 'claude')
@@ -124,34 +123,22 @@ describe('transcript import from the provider’s own file', () => {
   let counter = 0
 
   function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    const providerHome = (provider: string, profileId: string) =>
-      join(userData, 'provider-homes', 'default', profileId, provider)
-    return new RuntimeHost({
-      store,
+    return scratch.host({
       discoverSessions: discoverEverything,
       exportDirectory: () => join(userData, 'exports'),
       nativeTranscriptPath,
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: providerHome,
-      providerHomePath: providerHome,
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+      ...homesPerProfileUnder(() => userData),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        ...fixtureProviderConfig(provider, home),
-        model: 'programmatic',
-      }),
+      readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'programmatic'),
       ...overrides,
     })
   }
 
   beforeEach(() => {
     counter = 0
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-archive-'))
-    userData = join(dir, 'userData')
+    store = scratch.store
+    userData = join(scratch.dir, 'userData')
     mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
 
     // Split the way the line reader does — every line, minus the empty piece after the last
     // newline — rather than `.filter(Boolean)`, which would drop blanks on both sides and make the
@@ -162,11 +149,6 @@ describe('transcript import from the provider’s own file', () => {
       .map((line) => JSON.parse(line) as { sessionId?: string; cwd?: string })
       .find((record) => typeof record.cwd === 'string')
     fixture = { sessionId: named?.sessionId ?? '', cwd: named?.cwd ?? '', lines }
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('reads every line of the provider’s own file', async () => {

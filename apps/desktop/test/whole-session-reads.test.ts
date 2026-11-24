@@ -1,16 +1,6 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Discovery } from '../src/main/adopt/discover-sessions'
@@ -21,10 +11,15 @@ import {
   buildBundle,
   reassembleNativeFile,
 } from '../src/main/archive/export-session'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
 import { discoverEveryHomeIn } from './helpers/discover-every-home'
+import {
+  homesPerProfileUnder,
+  hostsOverAScratchDatabase,
+  oneRuntimePerProvider,
+  providerConfigOf,
+} from './lib/hosts-over-a-scratch-database'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { HISTORY_WINDOW_MAX_EVENTS, HISTORY_WINDOW_TURNS } from '../src/shared/runtime-ipc'
 
@@ -51,9 +46,6 @@ import { HISTORY_WINDOW_MAX_EVENTS, HISTORY_WINDOW_TURNS } from '../src/shared/r
  *   writer that became cheaper *and different*, which would break the round trip 088/089 built and
  *   is the one property this feature has.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrations = join(here, '../src/main/db/migrations')
 
 /**
  * A Claude transcript of `lines` records, transcribed from the shape in
@@ -177,29 +169,17 @@ describe('a whole session is never held in memory (053)', () => {
   let store: SessionStore
   let transcript: string
 
+  const scratch = hostsOverAScratchDatabase('brobot2-whole-session-')
+
   const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
   function buildHost(ownStore: SessionStore = store): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
+    return scratch.host({
       store: ownStore,
       discoverSessions: discoverEverything,
-      exportDirectory: () => join(dir, 'exports'),
       nativeTranscriptPath,
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      ...homesPerProfileUnder(() => userData),
+      readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'programmatic'),
     })
   }
 
@@ -234,20 +214,14 @@ describe('a whole session is never held in memory (053)', () => {
   }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-whole-session-'))
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     userData = join(dir, 'userData')
     cwd = join(dir, 'work')
     mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     transcript = syntheticTranscript(SESSION_ID, cwd, LINES)
     plant(transcript)
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   describe('reading the provider’s own file into a ledger', () => {
@@ -558,31 +532,13 @@ describe('a whole session is never held in memory (053)', () => {
 
     function resumableHost(ownStore: SessionStore = store): RuntimeHost {
       let counter = 0
-      return new RuntimeHost({
+      return scratch.host({
         store: ownStore,
         discoverSessions: () => ({ found: [], skipped: [] }),
-        exportDirectory: () => join(dir, 'exports'),
-        nativeTranscriptPath: () => null,
-        createRuntime: (provider) => {
-          const existing = runtimes.get(provider)
-          if (existing) return existing
-          const fresh = new FakeRuntime(provider)
-          runtimes.set(provider, fresh)
-          return fresh
-        },
-        prepareProviderHome: (provider, profileId) =>
-          join(userData, 'provider-homes', 'default', profileId, provider),
-        providerHomePath: (provider, profileId) =>
-          join(userData, 'provider-homes', 'default', profileId, provider),
-        resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+        createRuntime: oneRuntimePerProvider(() => runtimes),
+        ...homesPerProfileUnder(() => userData),
         newSessionId: () => `sess_live_${++counter}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'programmatic',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'programmatic'),
       })
     }
 

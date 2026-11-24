@@ -1,14 +1,11 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * ⛔ **168 M6 · a conversation older than the `profile_id` column loses its images** (188 §1).
@@ -32,6 +29,8 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
   const THREAD = 'th_legacy'
   const CALL = 'call_lighthouse'
 
+  const scratch = hostsOverAScratchDatabase('brobot2-legacy-images-')
+
   /** A rollout in the shape 067 measured: the id IS the filename, and the bytes are never read. */
   const rollout = (savedPath?: string): string[] => [
     JSON.stringify({
@@ -54,10 +53,9 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
   ]
 
   const host = (): RuntimeHost =>
-    new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => new FakeRuntime(provider),
+    scratch.host({
+      // Under the real-pathed root below, where the helper's default is the folder as created.
+      exportDirectory: () => join(dir, 'exports'),
       // ⚑ **`<root>/<projectId>/<profileId>/<provider>` — the real layout, not a shortened one**, so
       // the naming-convention candidate is built where the app builds it. (Until `726` the asset
       // door also anchored `generated_images` at the fourth segment below the root; R92 removed it.)
@@ -67,13 +65,7 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
       providerHomePath: (provider, profileId) => join(dir, 'homes', 'default', profileId, provider),
       resolveCwd: (sessionId, requested) => requested ?? join(dir, sessionId),
       newSessionId: () => SESSION,
-      readProviderConfig: (_p, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CODEX_HOME', 'programmatic'),
     })
 
   /** A session's rollout, written where the pass below reads it. */
@@ -119,10 +111,9 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
     // is `/private/var/...`. The asset door answers with the REAL path, so a lexical root would make
     // every path compared below differ by its spelling alone, and fail for that reason rather than
     // the one under test.
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'brobot2-legacy-images-')))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, join(__dirname, '../src/main/db/migrations'))
-    store = createSessionStore(db)
+    dir = realpathSync(scratch.dir)
+    db = scratch.db
+    store = scratch.store
     store.create({
       id: SESSION,
       provider: 'codex',
@@ -138,11 +129,6 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
       SESSION,
     )
     plantRollout(SESSION, rollout())
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** What an old build left behind: a recording of ours with no profile and no adoption. */

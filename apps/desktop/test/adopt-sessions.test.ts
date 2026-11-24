@@ -1,8 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { ClaudeRuntime, claudeProjectDirName } from '@brobot2/runtime/claude'
 import { FakeRuntime, parseSessionRef } from '@brobot2/runtime'
@@ -10,11 +8,14 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { discoverCodexSessions } from '../src/main/providers/codex/discovery'
 import type { ChildDescent, Discovery } from '../src/main/adopt/discovery-types'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, mergeDescent, type SessionStore } from '../src/main/db/session-store'
 import { readLibrary } from '../src/main/library/session-library'
 import { discoverEveryHomeIn } from './helpers/discover-every-home'
+import {
+  homesPerProfileUnder,
+  hostsOverAScratchDatabase,
+} from './lib/hosts-over-a-scratch-database'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 /**
@@ -24,8 +25,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
  * a Codex `threads` row. Adopted conversations must be resumable, failures must be reported,
  * and repeated scans must not duplicate entries.
  */
-
-const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class NullSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -97,18 +96,14 @@ let userData: string
 let db: AppDatabase
 let store: SessionStore
 
+const scratch = hostsOverAScratchDatabase('brobot2-adopt-')
+
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'brobot2-adopt-'))
+  dir = scratch.dir
+  db = scratch.db
+  store = scratch.store
   userData = join(dir, 'userData')
   mkdirSync(userData, { recursive: true })
-  db = openDatabase(join(dir, 'brobot2.sqlite'))
-  applyMigrations(db, migrations)
-  store = createSessionStore(db)
-})
-
-afterEach(() => {
-  db.close()
-  rmSync(dir, { recursive: true, force: true })
 })
 
 /** A Codex home with its state database and the rollout files its threads point at. */
@@ -169,27 +164,14 @@ const discoverEverything = (): Discovery => discoverEveryHomeIn(userData)
 
 function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
   let counter = 0
-  return new RuntimeHost({
-    store,
+  return scratch.host({
     discoverSessions: discoverEverything,
     // The real reader, over the fixtures this suite writes — archiving and import are part of
     // what a scan does, so the same walk has to see the same files.
     exportDirectory: () => join(userData, 'exports'),
     nativeTranscriptPath,
-    createRuntime: (provider) => new FakeRuntime(provider),
-    prepareProviderHome: (provider, profileId) =>
-      join(userData, 'provider-homes', 'default', profileId, provider),
-    providerHomePath: (provider, profileId) =>
-      join(userData, 'provider-homes', 'default', profileId, provider),
-    resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+    ...homesPerProfileUnder(() => userData),
     newSessionId: () => `sess_adopted_${++counter}`,
-    readProviderConfig: (_provider, home) => ({
-      home,
-      homeEnv: 'CODEX_HOME',
-      model: 'file-based',
-      authNote: null,
-      files: [],
-    }),
     ...overrides,
   })
 }

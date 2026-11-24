@@ -1,14 +1,11 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { FakeRuntime } from '@brobot2/runtime'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 
@@ -24,7 +21,6 @@ import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const ROLLOUT = join(here, 'fixtures/codex-rollout.jsonl')
-const migrations = join(here, '../src/main/db/migrations')
 
 describe('importing a Codex rollout', () => {
   let dir: string
@@ -34,29 +30,19 @@ describe('importing a Codex rollout', () => {
 
   const SESSION = 'sess_codex_import'
 
+  const scratch = hostsOverAScratchDatabase('brobot2-codex-import-')
+
   const host = (): RuntimeHost =>
-    new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
+    scratch.host({
       resolveCwd: (sessionId, requested) => requested ?? join(dir, sessionId),
       newSessionId: () => SESSION,
-      readProviderConfig: (_p, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CODEX_HOME', 'programmatic'),
     })
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-codex-import-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     lines = readFileSync(ROLLOUT, 'utf8').split('\n').filter(Boolean)
     store.create({
       id: SESSION,
@@ -65,11 +51,6 @@ describe('importing a Codex rollout', () => {
       approvalMode: 'ask',
       profileId: 'default',
     })
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /**

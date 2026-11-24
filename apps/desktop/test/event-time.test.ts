@@ -1,8 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -13,6 +12,12 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { discoverEveryHomeIn } from './helpers/discover-every-home'
+import {
+  homesPerProfileUnder,
+  hostsOverAScratchDatabase,
+  oneRuntimePerProvider,
+  providerConfigOf,
+} from './lib/hosts-over-a-scratch-database'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -58,39 +63,21 @@ describe('when each event happened', () => {
   let runtimes: Map<string, FakeRuntime>
   let fixture: { sessionId: string; cwd: string; text: string }
 
+  const scratch = hostsOverAScratchDatabase('brobot2-time-')
+
   function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
+    return scratch.host({
       discoverSessions: () => discoverEveryHomeIn(userData),
       // A pinned clock, so "the wire and the ledger agree" is an equality rather than a
       // near-enough: two readings of Date.now() would differ by a millisecond and prove nothing.
       now: () => clock,
-      exportDirectory: () => join(dir, 'exports'),
       nativeTranscriptPath,
       // One runtime per provider, SHARED across hosts: a relaunched app gets a new host, but the
       // provider's own state outlives it — and the Fake models that by refusing to resume a ref
       // it never issued (034).
-      createRuntime: (provider) => {
-        const existing = runtimes.get(provider)
-        if (existing) return existing
-        const fresh = new FakeRuntime(provider)
-        runtimes.set(provider, fresh)
-        return fresh
-      },
-      prepareProviderHome: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      providerHomePath: (provider, profileId) =>
-        join(userData, 'provider-homes', 'default', profileId, provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'programmatic',
-        authNote: null,
-        files: [],
-      }),
+      createRuntime: oneRuntimePerProvider(() => runtimes),
+      ...homesPerProfileUnder(() => userData),
+      readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'programmatic'),
       ...overrides,
     })
   }
@@ -108,12 +95,11 @@ describe('when each event happened', () => {
       .all(sessionId) as { ordinal: number; created_at: number }[]
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-time-'))
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     userData = join(dir, 'userData')
     mkdirSync(userData, { recursive: true })
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     clock = 1_800_000_000_000
     runtimes = new Map()
 
@@ -124,11 +110,6 @@ describe('when each event happened', () => {
       .map((line) => JSON.parse(line) as { sessionId?: string; cwd?: string })
       .find((record) => typeof record.cwd === 'string')
     fixture = { sessionId: named?.sessionId ?? '', cwd: named?.cwd ?? '', text }
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('tells the renderer the same moment it writes to the ledger', async () => {
@@ -245,7 +226,7 @@ describe('when each event happened', () => {
     expect(bundle.ledger.map((entry) => entry.at)).toEqual(before.map((entry) => entry.at))
 
     // Into an empty database, as a transfer would be.
-    const elsewhereDb = openDatabase(join(dir, 'elsewhere.sqlite'))
+    const elsewhereDb = scratch.alsoClose(openDatabase(join(dir, 'elsewhere.sqlite')))
     applyMigrations(elsewhereDb, migrations)
     const elsewhere = createSessionStore(elsewhereDb)
     clock = 1_900_000_000_000
@@ -254,7 +235,6 @@ describe('when each event happened', () => {
     expect(elsewhere.events(restored).map((entry) => entry.at)).toEqual(
       before.map((entry) => entry.at),
     )
-    elsewhereDb.close()
   })
 
   it('leaves the provider-neutral event alone — the time is on the envelope', () => {
