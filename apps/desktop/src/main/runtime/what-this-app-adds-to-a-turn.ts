@@ -1,5 +1,5 @@
-import { clockTimeFrom } from '../../shared/clock'
-import { localFormat } from '../../shared/local-time'
+import { MAX_INSTANT, clockTimeFrom } from '../../shared/clock'
+import { localFields, localFormat } from '../../shared/local-time'
 import type { PieceRow } from '../../shared/task-contracts'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 import { providerFailureDiagnosis } from '../../shared/work-reconciliation'
@@ -83,7 +83,55 @@ export type CurrentWorkInTheTurn =
   | { readonly kind: 'ambiguous'; readonly labels: readonly string[]; readonly more: number }
   | { readonly kind: 'none' | 'unavailable' }
 
+interface OtherConversation {
+  readonly line: string
+  readonly lastActiveAt: number | null
+}
+
+interface OtherConversations {
+  readonly shown: readonly OtherConversation[]
+  readonly more: number
+}
+
+function anotherConversationLine(other: OtherConversation): string {
+  const named = `  - ${other.line}`
+  const at = other.lastActiveAt
+  if (at === null || !Number.isFinite(at) || Math.abs(at) > MAX_INSTANT) {
+    return `${named} — last activity unknown.`
+  }
+  const wall = localFields(at)
+  if (!Number.isFinite(wall.year) || wall.year < 0 || wall.year > 9999)
+    return `${named} — last activity unknown.`
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  const date = `${String(wall.year).padStart(4, '0')}-${pad(wall.month + 1)}-${pad(wall.date)}`
+  const time = `${pad(wall.hours)}:${pad(wall.minutes)}`
+  const civil = new Date(0)
+  civil.setUTCFullYear(wall.year, wall.month, wall.date)
+  civil.setUTCHours(wall.hours, wall.minutes, wall.seconds, 0)
+  const offset = (civil.getTime() - Math.floor(at / 1000) * 1000) / 1000
+  const absolute = Math.abs(offset)
+  const seconds = absolute % 60
+  const zone =
+    offset === 0
+      ? 'UTC'
+      : `UTC${offset < 0 ? '-' : '+'}${pad(Math.floor(absolute / 3600))}:${pad(Math.floor(absolute / 60) % 60)}${seconds === 0 ? '' : `:${pad(seconds)}`}`
+  return `${named} — last active ${date} at ${time} ${zone}.`
+}
+
+export const OTHER_CONVERSATIONS_SHOWN = 5
+
+export function peerActivityText(others: OtherConversations): string {
+  if (others.shown.length === 0) return ''
+  return [
+    '- Other conversations of this profile, most recent first (list_agents shows more):',
+    ...others.shown.map(anotherConversationLine),
+    ...(others.more > 0 ? [`  - and ${String(others.more)} more.`] : []),
+  ].join('\n')
+}
+
 export interface ExtraTurnFacts {
+  readonly peerActivity?: string
+  readonly savedMethods?: string
   readonly helpers?: {
     readonly rows: readonly AHelperInTheTurn[]
     readonly more: number
@@ -298,5 +346,7 @@ export function whatThisAppAddsToATurn(turn: {
     ...(turn.questions === null ? [] : itsOpenQuestions(turn.questions, now)),
     ...(turn.waiting === null ? [] : whoWaitsOnIt(turn.waiting, now)),
     ...extraLines(turn.extra ?? {}, now),
+    ...(turn.extra?.peerActivity ? [turn.extra.peerActivity] : []),
+    ...(turn.extra?.savedMethods ? [turn.extra.savedMethods] : []),
   ].join('\n')
 }

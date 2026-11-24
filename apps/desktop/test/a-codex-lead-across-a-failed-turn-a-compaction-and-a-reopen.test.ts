@@ -44,7 +44,7 @@ import {
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { readSavedMethods, savedMethodsUseOf } from '../src/main/saved-methods'
+import { readSavedMethods } from '../src/main/saved-methods'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import {
   brobotWorkspace,
@@ -373,6 +373,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
         authNote: null,
         files: [],
       }),
+      readSavedMethodsFor: (profile, at) =>
+        readSavedMethods(join(userData, 'provider-homes', profile, 'runbooks'), at),
       readInstructions: reader ?? theProductsReader,
       reopenLeadsGraceMs: 60,
       ...(leads === undefined
@@ -476,8 +478,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     const app = anApp()
     const c1 = await aCodexConversation(app)
     await saying(app, c1, 'one')
-    // ⚑ A second conversation of the same profile: c1's next launch lists it, so c1's
-    // "This conversation" section changes and the reopen owes only that section.
+    // The recorded work label changes c1's "This conversation" section on its first reopen.
     await aCodexConversation(app)
     const reopened = await reopen(app, c1)
     const block = wholeLeadOf(reopened)
@@ -801,47 +802,52 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
 
   // ── §4 ───────────────────────────────────────────────────────────────────
 
-  /**
-   * `main/index.ts`'s reader with the profile's saved methods: the text composed as every record
-   * keeps it, and the model sent the index's lines.
-   */
-  const withSavedMethods: Reader = (provider, cwd, providerHome, context) => {
-    const userData = dirname(dirname(dirname(providerHome)))
-    const savedMethods = readSavedMethods(join(dirname(providerHome), 'runbooks'), Date.now())
-    const composed = profileBundleSpans(context)
-    const bundle = publishProfileBundle(provider, providerHome, composed.text)
-    const read = readSessionInstructions({
-      provider,
-      cwd,
-      providerHome,
-      bundle,
-      bundleComposed: composed,
-      thisConversation: thisConversationSpans(
-        { ...context, savedMethods },
-        toolsToldInTextFor(provider),
-      ),
-      workspaceFile: join(brobotWorkspace(userData), CLAUDE_INSTRUCTIONS_FILE),
-      workspaceOwnFiles: workspaceOwnFilesIn(userData),
-      home: userData,
-    })
-    return {
-      instructions: read.instructions,
-      systemHint: read.systemHint ?? undefined,
-      ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
-      memoryLoaded: read.memoryLoaded,
-      profileFile: read.profileFile,
-      savedMethods: savedMethodsUseOf(savedMethods),
-    }
-  }
-
   /** The ledger's rows beside the launch records, which keep the index as it was sent. */
   const rowsBesideTheLaunches = (app: App, id: string) =>
     JSON.stringify(app.store.events(id).filter((one) => one.event.type !== 'launched'))
 
+  it.each(['failed turn', 'compaction'] as const)(
+    'sends the current saved methods and peers again after a %s',
+    async (loss) => {
+      const app = anApp()
+      const id = await aCodexConversation(app)
+      await aCodexConversation(app)
+      const folder = join(app.userData, 'provider-homes', 'ali', 'runbooks')
+      mkdirSync(folder, { recursive: true })
+      writeFileSync(join(folder, 'rotate.md'), '# A fictional method\n')
+      const title = 'Rotate the fictional log after a reset'
+      writeFileSync(
+        join(folder, 'index.md'),
+        `- ${title} | weekly | verified 2026-10-12 | rotate.md\n`,
+      )
+      const peerHeading = 'Other conversations of this profile'
+      const latestSent = () => messagesAfter(app, id, -1).at(-1)?.event.sent
+
+      await saying(app, id, 'first')
+      expect(latestSent()).toContain(title)
+      expect(latestSent()).toContain(peerHeading)
+      await saying(app, id, 'same facts')
+      expect(latestSent()).not.toContain(title)
+      expect(latestSent()).not.toContain(peerHeading)
+
+      if (loss === 'compaction') {
+        await saying(app, id, '/compact')
+        expect(ledger(app, id).some((event) => event.type === 'compaction')).toBe(true)
+      } else {
+        script.rejectTurnStarts = 1
+        await saying(app, id, 'fail to reach the provider')
+        expect(turnRows(app, id).at(-1)).toMatchObject({ state: 'failed', wordOf: 'this-app' })
+      }
+      await saying(app, id, 'next accepted turn')
+      expect(latestSent()).toContain(title)
+      expect(latestSent()).toContain(peerHeading)
+    },
+  )
+
   it('the saved-methods index reaches the model on a start and a reopen, and its rows keep the same lines', async () => {
     // The app-server reflects each turn's input back, as it does, so its echo is recorded too.
     script.echoInput = true
-    const app = anApp(withSavedMethods)
+    const app = anApp()
     const folder = join(app.userData, 'provider-homes', 'ali', 'runbooks')
     mkdirSync(folder, { recursive: true })
     writeFileSync(join(folder, 'rotate.md'), '# A fictional method\n')
@@ -886,13 +892,13 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     const [first] = messagesAfter(app, id, -1)
     expect(first?.event.sent).toContain(TITLE)
     expect(rowsBesideTheLaunches(app, id)).toContain(TITLE)
-    expect(JSON.stringify(newestLaunch(app, id))).toContain(TITLE)
+    expect(JSON.stringify(newestLaunch(app, id))).not.toContain(TITLE)
     // The row's lead is the kept text, at its kept length, so a later life reads it back whole.
     const block = wholeLeadOf(newestLaunch(app, id))
     expect(first?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
     expect(first?.event.lead).toEqual({ is: 'whole', chars: block.length })
 
-    // A second method saved before the reopen changes the section, so the reopen owes it again.
+    // The new method is sent in the reopened turn's addendum.
     const SECOND = 'Check the fictional backup qx4'
     writeFileSync(join(folder, 'backup.md'), '# Another fictional method\n')
     writeFileSync(
@@ -962,7 +968,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
 
   it('with saved methods and a leads read that never answers, the model gets the lines and its rows keep them', async () => {
     script.echoInput = true
-    const app = anApp(withSavedMethods, 'never')
+    const app = anApp(undefined, 'never')
     const folder = join(app.userData, 'provider-homes', 'ali', 'runbooks')
     mkdirSync(folder, { recursive: true })
     writeFileSync(join(folder, 'rotate.md'), '# A fictional method\n')
@@ -985,7 +991,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
         .slice(atReopen)
         .map((request) => request.params),
     )
-    // The whole text went, with the index's lines in it for the model…
+    // The whole lead and the saved-method addendum both reach the model.
     expect(sent).toContain(TITLE)
     const [two] = messagesAfter(app, c1, reopened.ordinal)
     expect(two?.event.lead?.is).toBe('whole')

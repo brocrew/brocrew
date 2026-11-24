@@ -46,7 +46,6 @@ const context = (text: string, version = 1): NotesContext => ({
   startedBy: null,
   root: 'not-yet-numbered',
   configured: 'Standing wishes stay first.',
-  others: { shown: [], more: 0 },
   ownNotes: { text, version },
 })
 

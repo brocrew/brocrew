@@ -10,7 +10,7 @@ import type { ThemeStore } from '../themes/store'
 import type { MainThreadWork } from '../stall-watch'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
-import type { SavedMethodsUse } from '../../shared/saved-methods'
+import type { SavedMethodsReading } from '../saved-methods'
 import type { TextPackUse } from '../../shared/text-pack'
 import type { TextPackRead } from '../skills/text-pack'
 import type { AgentRuntime, SessionRef } from '@brobot2/runtime'
@@ -64,6 +64,7 @@ export interface RuntimeHostDeps {
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
   savedMethods?: SavedMethodService
+  readSavedMethodsFor?(profile: string, at: number): SavedMethodsReading
   skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
 
   readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
@@ -439,8 +440,6 @@ export interface RuntimeHostDeps {
     profileFile?: LaunchProfileFile | null
     /** The text pack a build run from its source read for this launch, or could not use. */
     textPack?: TextPackUse
-    /** What this launch was given from its profile's saved methods, by count and size. */
-    savedMethods?: SavedMethodsUse
 
     context?: InstructionContext
   }

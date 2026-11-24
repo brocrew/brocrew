@@ -108,7 +108,6 @@ function context(plugins: readonly PluginInstructionEntry[] | null): Instruction
     cwd: '/fictional/work',
     startedBy: null,
     root: 'not-yet-numbered',
-    others: { shown: [], more: 0 },
     plugins,
   }
 }

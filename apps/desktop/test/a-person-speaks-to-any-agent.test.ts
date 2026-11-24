@@ -35,7 +35,6 @@ describe('PE-002 · a person can speak directly to any agent', () => {
         // ⚑ D-016 · a conversation another one started owns no root.
         root: null,
         // ⚑ D-024 · R1 · no other conversation of the profile.
-        others: { shown: [], more: 0 },
       }
       const bundle = publishProfileBundle(provider, home, composeProfileBundle(context))
       expect(bundle.ok).toBe(true)

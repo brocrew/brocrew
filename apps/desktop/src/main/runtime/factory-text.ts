@@ -1,5 +1,3 @@
-import { SAVED_METHODS_HEADING } from './instruction-headings'
-export { SAVED_METHODS_HEADING } from './instruction-headings'
 import {
   pluginInstructionParagraphs,
   PLUGINS_HEADING,
@@ -11,13 +9,10 @@ import { providerDescriptor, DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared'
 import type { InstructionSpan, WhoseText } from '../../shared/whose-text'
 // ⚑ **D-024 · R1 — a profile's other conversations, said as every other agent-facing line says a
 // piece and a time.**
-import { MAX_INSTANT } from '../../shared/clock'
-import { localFields } from '../../shared/local-time'
 import { PRODUCT_NAME } from '../../shared/product-name'
 import { DEFAULT_PROFILE_ID } from '../../shared/runtime-ipc'
 import type { Provider } from '@brobot2/shared'
 import { agentPreamble, type PromptIdentity } from './agent-preamble'
-import { savedMethodsParagraphs, type SavedMethodsReading } from '../saved-methods'
 
 /**
  * 🔴 **The text a child is actually told** (377, HO-009 §7) — the canonical source: the profile's
@@ -476,8 +471,6 @@ export interface InstructionContext {
   readonly displayName?: string | null
   /** One profile-shared page as this launch read it; absent on older composition callers. */
   readonly ownNotes?: { readonly version: number; readonly text: string } | null
-  /** The profile's saved methods as this launch read them; no section when not given. */
-  readonly savedMethods?: SavedMethodsReading
   /** The real controller's current catalogue; null/absent means no Plugins section. */
   readonly plugins?: readonly PluginInstructionEntry[] | null
   /** Where this conversation is working — the RESOLVED cwd. */
@@ -513,8 +506,6 @@ export interface InstructionContext {
    * leaving a `trim()` in two files.
    */
   readonly configured?: string | null
-  /** Other conversations of this profile, named and dated as of this launch. */
-  readonly others: OtherConversations
   /** Build metadata retained for callers; it is not printed in this block. */
   readonly build?: TheBuildRunning | null
 }
@@ -529,49 +520,6 @@ export interface TheBuildRunning {
   readonly dirty: boolean
   /** How many database migrations have been applied, or `null` when that could not be read. */
   readonly schema: number | null
-}
-
-/**
- * 🔴 **D-024 · R1 — the most OTHER conversations of a profile one launch lists**, newest activity
- * first. ⚑ A profile runs a handful at once (two Alis on 2026-09-30, a few BroBots), and one line
- * each is ~250 characters: five is ~1.3 KB on every request of the conversation, the ceiling worth
- * paying. ⛔ The rest are counted, never dropped in silence.
- */
-export const OTHER_CONVERSATIONS_SHOWN = 5
-
-interface OtherConversation {
-  readonly line: string
-  readonly lastActiveAt: number | null
-}
-
-export interface OtherConversations {
-  readonly shown: readonly OtherConversation[]
-  readonly more: number
-}
-
-function anotherConversationLine(other: OtherConversation): string {
-  const named = `  - ${other.line}`
-  const at = other.lastActiveAt
-  if (at === null || !Number.isFinite(at) || Math.abs(at) > MAX_INSTANT) {
-    return `${named} — last activity unknown.`
-  }
-  const wall = localFields(at)
-  if (!Number.isFinite(wall.year) || wall.year < 0 || wall.year > 9999)
-    return `${named} — last activity unknown.`
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  const date = `${String(wall.year).padStart(4, '0')}-${pad(wall.month + 1)}-${pad(wall.date)}`
-  const time = `${pad(wall.hours)}:${pad(wall.minutes)}`
-  const civil = new Date(0)
-  civil.setUTCFullYear(wall.year, wall.month, wall.date)
-  civil.setUTCHours(wall.hours, wall.minutes, wall.seconds, 0)
-  const offset = (civil.getTime() - Math.floor(at / 1000) * 1000) / 1000
-  const absolute = Math.abs(offset)
-  const seconds = absolute % 60
-  const zone =
-    offset === 0
-      ? 'UTC'
-      : `UTC${offset < 0 ? '-' : '+'}${pad(Math.floor(absolute / 3600))}:${pad(Math.floor(absolute / 60) % 60)}${seconds === 0 ? '' : `:${pad(seconds)}`}`
-  return `${named} — last active ${date} at ${time} ${zone}.`
 }
 
 /**
@@ -600,16 +548,6 @@ function dynamicLayer(context: InstructionContext): string[] {
         ? "- Your conversation has its own work. Use list_tasks for its label. If untitled, name it with update_work after the person's request."
         : `- Your conversation's work is ${context.root}. If untitled, name it with update_work after the person's request.`,
     )
-  }
-  // Omit the list when this profile has no other conversation to point to.
-  if (context.others.shown.length > 0) {
-    lines.push(
-      '- Other conversations of this profile, most recent first (list_agents shows more):',
-      ...context.others.shown.map(anotherConversationLine),
-    )
-    if (context.others.more > 0) {
-      lines.push(`  - and ${String(context.others.more)} more.`)
-    }
   }
   return lines
 }
@@ -781,14 +719,6 @@ function thisConversationSections(
   const lines = [`- ${RULE_WRITING_POLICY}`]
   lines.push(`- ${context.profileSlug == null ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY}`)
   sections.push({ whose: 'dynamic', heading: '## What you may do', blocks: [lines.join('\n')] })
-  // The index is composed here from the fields of its well-formed lines, never sent as written.
-  if (context.savedMethods !== undefined) {
-    sections.push({
-      whose: 'dynamic',
-      heading: `## ${SAVED_METHODS_HEADING}`,
-      blocks: savedMethodsParagraphs(context.savedMethods),
-    })
-  }
   if (context.plugins != null) {
     sections.push({
       whose: 'dynamic',

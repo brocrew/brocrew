@@ -65,7 +65,7 @@ import {
   providerVersionsFromModules,
   providerProgramPathsFromModules,
 } from './providers'
-import { readSavedMethods, savedMethodsUseOf } from './saved-methods'
+import { readSavedMethods } from './saved-methods'
 import { createSavedMethodService } from './saved-method-service'
 import { createMethodChangeStore } from './db/method-changes'
 import {
@@ -426,13 +426,10 @@ export async function composeRuntimeHost(
     whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
     providerSnapshot: (provider, model) => snapshotFor(provider, model),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+    readSavedMethodsFor: (profile, at) =>
+      readSavedMethods(savedMethodsFolder(userData, profile), at),
     readInstructions: (provider, cwd, providerHome, context, launchPack) => {
       const pack = launchPack ?? readTextPack(process.env, app.isPackaged, shippedVersion)
-      const savedMethods =
-        context.profileSlug === null
-          ? undefined
-          : readSavedMethods(savedMethodsFolder(userData, context.profileSlug), Date.now())
-      const launchContext = savedMethods === undefined ? context : { ...context, savedMethods }
       const composed = profileBundleSpans(
         pack.kind === 'read' ? { ...context, factoryText: factoryTextOf(pack.pack) } : context,
         provider,
@@ -445,11 +442,7 @@ export async function composeRuntimeHost(
         providerHome,
         bundle,
         bundleComposed: composed,
-        thisConversation: thisConversationSpans(
-          launchContext,
-          toolsToldInTextFor(provider),
-          provider,
-        ),
+        thisConversation: thisConversationSpans(context, toolsToldInTextFor(provider), provider),
         workspaceFile: providerKnowledge[provider].instructions.workspaceFile?.(
           brobotWorkspace(userData),
         ),
@@ -461,7 +454,6 @@ export async function composeRuntimeHost(
         ...(read.firstTurnLead === null ? {} : { firstTurnLead: read.firstTurnLead }),
         memoryLoaded: read.memoryLoaded,
         profileFile: read.profileFile,
-        ...(savedMethods === undefined ? {} : { savedMethods: savedMethodsUseOf(savedMethods) }),
         ...(pack.kind === 'none'
           ? {}
           : {

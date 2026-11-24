@@ -420,7 +420,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     cwd: '/tmp/work',
     startedBy: null,
     root: null,
-    others: { shown: [], more: 0 },
     ...over,
   }
 }

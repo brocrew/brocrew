@@ -1,3 +1,5 @@
+import { savedMethodsParagraphs } from '../saved-methods'
+import { SAVED_METHODS_HEADING } from './instruction-headings'
 import { RecordWriteFailed } from './record-write'
 import { InstructionDecisions } from './host-split/instruction-decisions'
 import { AgentCreation } from './agent-creation'
@@ -431,12 +433,7 @@ import { readBundleFile } from '../archive/read-bundle'
 import { messageWithHandedPaths, recheckHandedPaths } from './handed-path'
 import { modelSetupRequired, whyALaunchWasRefused } from './launch-refusal'
 import { ReopenQueue } from './reopen-queue'
-import {
-  OTHER_CONVERSATIONS_SHOWN,
-  type InstructionContext,
-  type TheBuildRunning,
-  type OtherConversations,
-} from './factory-text'
+import { type InstructionContext, type TheBuildRunning } from './factory-text'
 import { memoryNoteDir, noteNamesIn, notesThatAppeared } from './memory-notes'
 import { readWorkflowOutput } from '../workflow-output'
 import { readConfigFile } from '../config-file'
@@ -933,6 +930,8 @@ import {
   type WhereTheSenderStands,
 } from './turn-origin'
 import {
+  OTHER_CONVERSATIONS_SHOWN,
+  peerActivityText,
   whatThisAppAddsToATurn,
   type AQuestionItHasOpen,
   type AHelperInTheTurn,
@@ -20579,35 +20578,7 @@ export class RuntimeHost implements LiveHost {
       plugins: readPluginInstructions(this.deps.plugins),
       // ⚑ **F006 — which build is running**, as the window's title bar says it.
       build: this.theBuildRunning(),
-      // 🔴 **D-024 · R1 — the profile's other conversations** ({@link otherConversationsOf}).
-      // ⚑ None for a conversation this app cannot name an identity for: it is of no profile.
-      others:
-        profileSlug === null
-          ? { shown: [], more: 0 }
-          : this.otherConversationsOf(
-              profileSlug,
-              conversation !== null ? this.theIdsItStandsFor(conversation) : [],
-            ),
     }
-  }
-
-  // Name the five newest peer conversations from their recorded activity.
-  private otherConversationsOf(
-    profileSlug: string,
-    /**
-     * ⚑ **What the launching conversation stands for** — itself and the ones it took the place of
-     * ({@link theIdsItStandsFor}); none on a first launch.
-     */
-    itself: readonly string[],
-  ): OtherConversations {
-    const others = this.deps.store
-      .conversationsOf(profileSlug)
-      .filter((one) => !itself.includes(one.conversation) && !this.replacedBy.has(one.conversation))
-    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => ({
-      line: this.nameByItsWork(one.conversation),
-      lastActiveAt: one.lastActiveAt,
-    }))
-    return { shown, more: others.length - shown.length }
   }
 
   /**
@@ -22123,7 +22094,7 @@ export class RuntimeHost implements LiveHost {
     const aPersonStartedIt = session.aPersonsWordsOpenedIt
     const facts = this.factsForTheTurnBlock(session, currentPiece)
     const changed = turnBlockChanges(
-      { ...facts, person: aPersonStartedIt, now },
+      { ...facts, ...this.profileFactsAtHand(session, now), person: aPersonStartedIt, now },
       session.turnBlockSnapshot,
     )
     session.pendingTurnBlock = {
@@ -22158,6 +22129,34 @@ export class RuntimeHost implements LiveHost {
       return context
     const reminders = session.builtInSkills.reminder
     return reminders === '' ? context : `${context}\n${reminders}`
+  }
+
+  private profileFactsAtHand(
+    session: HostedSession,
+    now: number,
+  ): { peerActivity?: string; savedMethods?: string } {
+    const profileId = this.slots.get(session.id)?.profileId
+    if (profileId == null) return {}
+    const profile = foldProfileName(profileId)
+    const itself = this.theIdsItStandsFor(session.id)
+    const others = this.deps.store
+      .conversationsOf(profile)
+      .filter((one) => !itself.includes(one.conversation) && !this.replacedBy.has(one.conversation))
+    const shown = others.slice(0, OTHER_CONVERSATIONS_SHOWN).map((one) => ({
+      line: this.nameByItsWork(one.conversation),
+      lastActiveAt: one.lastActiveAt,
+    }))
+    const reading = this.deps.readSavedMethodsFor?.(profile, now)
+    return {
+      peerActivity: peerActivityText({ shown, more: others.length - shown.length }),
+      ...(reading === undefined
+        ? {}
+        : {
+            savedMethods: [`## ${SAVED_METHODS_HEADING}`, ...savedMethodsParagraphs(reading)].join(
+              '\n\n',
+            ),
+          }),
+    }
   }
 
   private factsForTheTurnBlock(
@@ -35884,7 +35883,6 @@ export class RuntimeHost implements LiveHost {
         toolset,
         ...(launchSettings === undefined ? {} : { launchSettings }),
         ...(read.textPack === undefined ? {} : { textPack: read.textPack }),
-        ...(read.savedMethods === undefined ? {} : { savedMethods: read.savedMethods }),
         ...(builtInSkills
           ? {
               builtInSkills: {
@@ -41397,6 +41395,11 @@ export class RuntimeHost implements LiveHost {
       (event.type === 'turn' && event.state === 'failed' && event.wordOf === 'this-app')
     ) {
       session.pluginsAsLastSaid = null
+      session.turnBlockSnapshot = {
+        ...session.turnBlockSnapshot,
+        peerActivity: undefined,
+        savedMethods: undefined,
+      }
       session.firstTurnLead = session.lifeLead
       session.firstTurnLeadIs = 'whole'
     }

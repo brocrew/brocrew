@@ -45,7 +45,6 @@ const context = (over: Partial<InstructionContext> = {}): InstructionContext => 
   root: 'W1',
   // ⚑ **D-024 · R1 — required**: the profile's other conversations. None here, which renders no
   // line at all — the list is not this file's subject.
-  others: { shown: [], more: 0 },
   ...over,
 })
 

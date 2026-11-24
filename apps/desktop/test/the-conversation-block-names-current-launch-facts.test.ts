@@ -1,19 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { thisConversationSpans, type InstructionContext } from '../src/main/runtime/factory-text'
-import { readLocalTimeFrom } from '../src/shared/local-time'
 
 const context = (over: Partial<InstructionContext> = {}): InstructionContext => ({
   profileSlug: 'fictional-agent',
   cwd: '/tmp/fictional-work',
   startedBy: null,
   root: null,
-  others: { shown: [], more: 0 },
   ...over,
 })
 const said = (over: Partial<InstructionContext> = {}): string =>
   thisConversationSpans(context(over)).text
-
-afterEach(() => readLocalTimeFrom(() => null))
 
 describe('the conversation block at this launch', () => {
   it('keeps the folder and parent facts, without build or repeated identity', () => {
@@ -40,56 +36,5 @@ describe('the conversation block at this launch', () => {
     )
     expect(said({ root: null })).not.toContain("Your conversation's work")
     expect(said({ root: null })).not.toContain('Your conversation has its own work')
-  })
-
-  it('dates activity through the same local clock as the window, including midnight', () => {
-    readLocalTimeFrom(() => ({ before: 3_600_000, changes: [], rule: null }))
-    const text = said({
-      others: {
-        shown: [
-          {
-            line: 'conversation W1 · Before midnight',
-            lastActiveAt: Date.UTC(2026, 9, 10, 22, 59),
-          },
-          { line: 'conversation W2 · After midnight', lastActiveAt: Date.UTC(2026, 9, 10, 23, 1) },
-        ],
-        more: 0,
-      },
-    })
-    expect(text).toContain('W1 · Before midnight — last active 2026-10-10 at 23:59 UTC+01:00.')
-    expect(text).toContain('W2 · After midnight — last active 2026-10-11 at 00:01 UTC+01:00.')
-    expect(text).not.toContain('answered')
-  })
-
-  it('never turns an absent or invalid activity into a time-only claim', () => {
-    for (const lastActiveAt of [null, NaN, Infinity, 9e15]) {
-      const text = said({
-        others: {
-          shown: [{ line: 'conversation sess_unknown · untitled', lastActiveAt }],
-          more: 0,
-        },
-      })
-      expect(text).toContain('sess_unknown · untitled — last activity unknown.')
-      expect(text).not.toContain('last active ')
-    }
-  })
-
-  it('uses the effective zone at each activity date rather than the current offset', () => {
-    readLocalTimeFrom(() => ({
-      before: -5 * 3_600_000,
-      changes: [{ at: Date.UTC(2026, 2, 8, 7), offset: -4 * 3_600_000 }],
-      rule: null,
-    }))
-    const text = said({
-      others: {
-        shown: [
-          { line: 'conversation W1 · Earlier', lastActiveAt: Date.UTC(2026, 2, 8, 6, 59) },
-          { line: 'conversation W2 · Later', lastActiveAt: Date.UTC(2026, 2, 8, 7, 1) },
-        ],
-        more: 0,
-      },
-    })
-    expect(text).toContain('W1 · Earlier — last active 2026-03-08 at 01:59 UTC-05:00.')
-    expect(text).toContain('W2 · Later — last active 2026-03-08 at 03:01 UTC-04:00.')
   })
 })

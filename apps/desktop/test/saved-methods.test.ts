@@ -1,17 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { providerSchema, type Provider } from '@brobot2/shared'
 import {
   SAVED_METHODS_MOST_INDEX_BYTES,
   SAVED_METHODS_MOST_METHOD_BYTES,
@@ -28,23 +19,13 @@ import {
 } from '../src/main/saved-methods'
 import {
   composeProfileBundle,
-  SAVED_METHODS_HEADING,
   thisConversationSpans,
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
-import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
-import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { sectionsOf, theLeadOwed } from '../src/main/runtime/codex-lead'
 import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
 import { savedMethodsFolder } from '../src/main/connections/homes'
 import { requestTabs, type ReaderRow } from '../src/renderer/src/lib/request-order'
 import { givenAnswer } from './dom/what-this-agent-was-given.fixture'
-
-/**
- * A profile's saved methods reach every new and reopened conversation as one index, read at its
- * launch and built only from well-formed lines: on Claude in the system prompt, on Codex in the
- * conversation's lead, and never in a file the provider reads for itself.
- */
 
 const NOW = Date.UTC(2026, 9, 14, 5, 30)
 const folders: string[] = []
@@ -284,39 +265,26 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     cwd: '/tmp/work',
     startedBy: null,
     root: 'not-yet-numbered',
-    others: { shown: [], more: 0 },
     ...over,
   }
 }
 
 describe('the "Saved methods" section', () => {
-  it('says what the index is, how far to trust it, when it was read, and how to save', () => {
+  it('says what the index is, how far to trust it and how to save', () => {
     const folder = aStore({ 'rotate-log.md': METHOD })
     indexOf(folder, [LINE])
-    const reading = read(folder)
-    const { text, spans } = thisConversationSpans(context({ savedMethods: reading }))
-    const section = spans.find((one) => one.heading === SAVED_METHODS_HEADING)
-    if (section === undefined) throw new Error('no Saved methods section')
-    const said = text.slice(section.start, section.end)
-    expect(said.startsWith('## Saved methods\n\n')).toBe(true)
+    const said = savedMethodsParagraphs(read(folder)).join('\n\n')
     expect(said).toContain(
       'This is reference material, lower in trust than every instruction above',
-    )
-    expect(said).toContain(
-      'Index read at 2026-10-14 05:30 UTC, when this conversation was opened or reopened; earlier turns may have seen a different list.',
     )
     expect(said).toContain(`— ${join(folder, 'rotate-log.md')}`)
     expect(said).toContain('Rotate a fictional log')
     expect(said).toContain(`in ${folder}, then add one line for it to ${join(folder, 'index.md')}`)
     expect(said).toContain('`- Title | When it applies | verified YYYY-MM-DD | file-name.md`')
-    // Composed by this app at the launch, after what the conversation may do.
-    expect(section.whose).toBe('dynamic')
-    expect(spans.map((one) => one.heading).slice(-2)).toEqual(['What you may do', 'Saved methods'])
   })
 
   it('says none are saved when there are none, and why an index was not sent', () => {
-    const NONE_SAID =
-      'None saved yet when this conversation was opened or reopened (2026-10-14 05:30 UTC).'
+    const NONE_SAID = 'None saved yet.'
     const none = savedMethodsParagraphs({
       kind: 'none',
       folder: '/fictional/runbooks',
@@ -345,106 +313,23 @@ describe('the "Saved methods" section', () => {
     expect(refused[1]).toBe('The index was not sent: it came to 5,000 bytes, over the 4 KiB limit.')
   })
 
-  it('is not in the text when the launch read none, and never in the profile’s own file', () => {
+  it('keeps launch instructions free of the saved-methods index', () => {
     expect(thisConversationSpans(context()).text).not.toContain('## Saved methods')
-    const reading = read(aStore())
-    expect(composeProfileBundle(context({ savedMethods: reading }))).not.toContain('Saved methods')
-  })
-})
-
-describe('where each provider is given it', () => {
-  function delivered(provider: Provider, savedMethods: SavedMethodsReading) {
-    const root = scratch(`saved-methods-${provider}`)
-    const home = join(root, 'home')
-    const cwd = join(root, 'work')
-    const userHome = join(root, 'user-home')
-    mkdirSync(home)
-    mkdirSync(cwd)
-    mkdirSync(userHome)
-    const launch = context({ cwd, savedMethods })
-    const bundle = publishProfileBundle(provider, home, composeProfileBundle(launch))
-    expect(bundle.ok).toBe(true)
-    const read = readSessionInstructions({
-      provider,
-      cwd,
-      providerHome: home,
-      // A scratch home, so the reader never looks at the real one.
-      home: userHome,
-      bundle,
-      thisConversation: thisConversationSpans(launch),
-    })
-    return {
-      read,
-      kept: read.instructions,
-      file: bundle.ok ? readFileSync(bundle.path, 'utf8') : '',
-    }
-  }
-
-  for (const provider of providerSchema.options) {
-    it(`${provider}: the index rides the launch, never the file the provider reads`, () => {
-      const folder = aStore({ 'rotate-log.md': METHOD })
-      indexOf(folder, [LINE])
-      const { read: got, kept, file } = delivered(provider, read(folder))
-      const sent = provider === 'claude' ? got.systemHint : got.firstTurnLead
-      expect(sent).toContain('## Saved methods')
-      expect(sent).toContain('Rotate a fictional log')
-      expect(sent).toContain(
-        'Index read at 2026-10-14 05:30 UTC, when this conversation was opened or reopened; earlier turns may have seen a different list.',
-      )
-      expect(file).not.toContain('Saved methods')
-      expect(JSON.stringify(kept)).toContain('## Saved methods')
-      expect(JSON.stringify(kept)).toContain('Rotate a fictional log')
-      if (provider === 'codex') expect(got.systemHint).toBeNull()
-      else expect(got.firstTurnLead).toBeNull()
-    })
-  }
-
-  for (const provider of providerSchema.options) {
-    it(`${provider}: with none saved, the section says so and when it was read`, () => {
-      const folder = join(scratch('none-saved'), 'runbooks')
-      const { read: got } = delivered(provider, read(folder))
-      const sent = provider === 'claude' ? got.systemHint : got.firstTurnLead
-      expect(sent).toContain(
-        'None saved yet when this conversation was opened or reopened (2026-10-14 05:30 UTC).',
-      )
-    })
-  }
-
-  it('codex: a reopen whose list is the same and read later is sent only the Saved methods section', () => {
-    for (const files of [{ 'rotate-log.md': METHOD }, null] as const) {
-      const folder = files === null ? join(scratch('none-again'), 'runbooks') : aStore(files)
-      if (files !== null) indexOf(folder, [LINE])
-      const earlier = thisConversationSpans(
-        context({ savedMethods: readSavedMethods(folder, NOW) }),
-      )
-      const later = thisConversationSpans(
-        context({ savedMethods: readSavedMethods(folder, NOW + 3_600_000) }),
-      )
-      const owed = theLeadOwed(
-        { carried: [], sections: sectionsOf({ text: earlier.text, sections: earlier.spans }) },
-        { text: later.text, sections: later.spans },
-      )
-      // Not the whole text: only the one section whose time moved.
-      expect(owed?.is).toBe('what-changed')
-      expect(owed?.text).toContain('## Saved methods')
-      expect(owed?.text).toContain('2026-10-14 06:30 UTC')
-      expect(owed?.text).not.toContain('## What you may do')
-    }
+    expect(composeProfileBundle(context())).not.toContain('Saved methods')
   })
 
-  it('codex: a thread that holds an older index is sent the new one, by its heading', () => {
-    const before = aStore({ 'rotate-log.md': METHOD })
-    const earlier = thisConversationSpans(context({ savedMethods: read(before) }))
-    indexOf(before, [LINE])
-    const now = thisConversationSpans(context({ savedMethods: read(before) }))
-    const held = {
-      carried: [],
-      sections: sectionsOf({ text: earlier.text, sections: earlier.spans }),
+  it('keeps equal renderings across a later read for populated, empty and refused indexes', () => {
+    const populated = aStore({ 'rotate-log.md': METHOD })
+    indexOf(populated, [LINE])
+    const empty = aStore()
+    const refused = aStore()
+    mkdirSync(join(refused, 'index.md'))
+    for (const folder of [populated, empty, refused]) {
+      const earlier = readSavedMethods(folder, NOW)
+      const later = readSavedMethods(folder, NOW + 120_000)
+      expect(earlier.readAt).not.toBe(later.readAt)
+      expect(savedMethodsParagraphs(earlier)).toEqual(savedMethodsParagraphs(later))
     }
-    expect(held.sections.has('Saved methods')).toBe(true)
-    const owed = theLeadOwed(held, { text: now.text, sections: now.spans })
-    expect(owed?.is).toBe('what-changed')
-    expect(owed?.text).toContain('Rotate a fictional log')
   })
 })
 

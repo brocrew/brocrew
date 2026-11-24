@@ -102,22 +102,11 @@ const NOT_ONE_DOMAIN: Record<string, RegExp> = {
 const thisConversationText = (launch: InstructionContext): string =>
   thisConversationSpans(launch).text
 
-const OTHERS_IN_EVERY_FORM: InstructionContext['others'] = {
-  shown: [
-    { line: 'conversation W1.2 · Compare the flights', lastActiveAt: Date.UTC(2026, 8, 30, 2, 31) },
-    { line: 'conversation W2.1 · Book the train', lastActiveAt: null },
-    { line: 'conversation W3 · Bakery website', lastActiveAt: 0 },
-    { line: 'conversation sess_untitled · untitled', lastActiveAt: null },
-  ],
-  more: 2,
-}
-
 const everyBundle = (): string[] =>
   [
-    context({ profileSlug: null, root: 'not-yet-numbered', others: OTHERS_IN_EVERY_FORM }),
+    context({ profileSlug: null, root: 'not-yet-numbered' }),
     context({
       startedBy: 'Ada, conversation W2 · Plan the trip',
-      others: OTHERS_IN_EVERY_FORM,
     }),
   ].map((launch) => `${composeProfileBundle(launch)}\n\n${thisConversationText(launch)}`)
 
@@ -127,7 +116,6 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     cwd: '/tmp/work',
     startedBy: null,
     root: null,
-    others: { shown: [], more: 0 },
     ...over,
   }
 }
@@ -160,12 +148,6 @@ describe('§1 · one instruction set', () => {
       for (const line of [
         '- This conversation was started by Ada, conversation W2 · Plan the trip.',
         "- Your conversation has its own work. Use list_tasks for its label. If untitled, name it with update_work after the person's request.",
-        '- Other conversations of this profile, most recent first (list_agents shows more):',
-        '  - conversation W1.2 · Compare the flights — last active ',
-        '  - conversation W2.1 · Book the train — last activity unknown.',
-        '  - conversation W3 · Bakery website — last active ',
-        '  - conversation sess_untitled · untitled — last activity unknown.',
-        '  - and 2 more.',
       ]) {
         expect(read, `${line} is not in the texts the censuses read`).toContain(line)
       }

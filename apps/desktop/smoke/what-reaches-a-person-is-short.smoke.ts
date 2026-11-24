@@ -94,8 +94,6 @@ it(
         // ⚑ D-016 · a conversation a person starts owns a root; one another conversation started
         // owns none.
         root: audience === 'agent' ? null : 'W1',
-        // ⚑ D-024 · R1 · no other conversation of the profile.
-        others: { shown: [], more: 0 },
       })
       try {
         for (const provider of providerSchema.options) {

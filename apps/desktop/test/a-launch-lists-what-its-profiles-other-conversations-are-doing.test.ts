@@ -6,7 +6,6 @@ import {
   fixtureDatabase,
   ObservedProviderLaunches,
 } from './lib/host-fixture'
-import { seedHistoricalSuccessor } from './lib/historical-replacement'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +21,6 @@ import {
   profileBundleSpans,
   thisConversationSpans,
   type InstructionContext,
-  type OtherConversations,
 } from '../src/main/runtime/factory-text'
 import {
   composeSystemHint,
@@ -36,40 +34,10 @@ import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { WHAT_CHANGED_HEADER } from '../src/main/runtime/codex-lead'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { readSavedMethods } from '../src/main/saved-methods'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
-/**
- * 🔴 **D-024 · a launch lists what its profile's OTHER conversations are doing** — the part of
- * `8f602804` that no test asked of the code that composes it, hands it on, or keeps it out of the
- * profile's file.
- *
- * ⚑ **What each group below pins, and why it was open:**
- *
- *  - **The line itself** (§1): the heading is drawn only when there is a conversation to list, and
- *    `and N more` only when there is a rest. Every negative in the repo was silent about the empty
- *    case; the heading was only ever asserted present.
- *  - **The identity index** (§2): `conversationsOf` is the one query a launch ranks by. No test
- *    asked the store for it, so its order, its profile boundary and its unplaced-row exclusion were
- *    unpinned.
- *  - **What the host reads off it** (§3): who each conversation works for, its latest pieces in the
- *    word the giver's board says, the bound on both, the conversation itself and the ones another
- *    took the place of left out — on a launch, a reopen and a replacement's first launch.
- *  - **Where it goes** (§4): not into the profile's file (a sibling's launch rewrites that), but with
- *    this launch alone — Claude's system prompt, or the first message of each Codex life, once.
- *  - **What the reader does with it** (§5): the drawer's note on Codex, and the byte budget, which
- *    reserves the block and never drops it.
- *  - **The composition root** (§6): `main/index.ts` is the Electron entry and no test imports it, so
- *    the line that hands the reader this conversation's text is a source census with its control.
- *
- * ⚠️ **Every negative is paired with a positive from the same reader**, and every list is asked of
- * the words a launch is really handed — Claude's system prompt, or what the Codex double heard —
- * beside the fields of the context the host read, which the words are composed from.
- *
- * Use the real host, SQLite ledger, migrations, toolsets, reader, and publisher; only the
- * provider is doubled (§4 explains its command arm). All directories are temporary, with no
- * Electron, port, or personal userData.
- */
-
+// Use a real Host, SQLite store and instruction reader with fictional providers.
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
@@ -88,19 +56,8 @@ function context(over: Partial<InstructionContext> = {}): InstructionContext {
     cwd: '/tmp/work',
     startedBy: null,
     root: null,
-    others: { shown: [], more: 0 },
     ...over,
   }
-}
-
-/** The lines of the list under its heading, and nothing after it. */
-function listLinesIn(said: string): string[] {
-  const lines = said.split('\n')
-  const at = lines.indexOf(LIST_HEADING)
-  if (at < 0) return []
-  const rest = lines.slice(at + 1)
-  const end = rest.findIndex((line) => !line.startsWith('  - '))
-  return end < 0 ? rest : rest.slice(0, end)
 }
 
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
@@ -112,46 +69,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §1 · the line, as the text composes it
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('the other conversations in the launch text', () => {
-  it('omits an empty list and names each recorded conversation once', () => {
-    const alone = thisConversationSpans(context()).text
-    expect(alone).toContain('## This conversation')
-    expect(alone).not.toContain(LIST_HEADING)
-    const beside = thisConversationSpans(
-      context({
-        others: {
-          shown: [
-            { line: 'conversation W1.2 · Compare the flights', lastActiveAt: null },
-            { line: 'conversation sess_unplaced · untitled', lastActiveAt: null },
-          ],
-          more: 0,
-        },
-      }),
-    ).text
-    expect(listLinesIn(beside)).toEqual([
-      '  - conversation W1.2 · Compare the flights — last activity unknown.',
-      '  - conversation sess_unplaced · untitled — last activity unknown.',
-    ])
-  })
-  it('counts overflow without inventing dates', () => {
-    const shown = [{ line: 'conversation W1 · Trip', lastActiveAt: null }]
-    for (const more of [0, 1, 3]) {
-      const text = thisConversationSpans(context({ others: { shown, more } })).text
-      expect(listLinesIn(text)).toEqual([
-        '  - conversation W1 · Trip — last activity unknown.',
-        ...(more > 0 ? [`  - and ${more} more.`] : []),
-      ])
-    }
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// §2 · the identity index
-// ─────────────────────────────────────────────────────────────────────────────
-
 describe('§2 · the identity index lists one profile’s conversations', () => {
   let dir: string
   let db: AppDatabase
@@ -278,7 +195,7 @@ class Sink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-describe('§3 · a launch lists the profile’s other conversations', () => {
+describe('§3 · launch instructions and changing turn facts', () => {
   let userData: string
   let root: string
   let db: AppDatabase
@@ -291,7 +208,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   let seen: InstructionContext[]
   let counter: number
   let clock: number
-  let activityAtRead: readonly { conversation: string; lastActiveAt: number }[]
   let window: Sink
   const tick = (): number => clock++
 
@@ -309,11 +225,12 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
+      readSavedMethodsFor: (profile, at) =>
+        readSavedMethods(join(userData, 'runbooks', profile), at),
       readProviderConfig: fixtureProviderConfig,
       // ⚑ **A copy of `main/index.ts`'s call**: the profile's text alone is published, this
       // conversation's own text rides the launch, and the reader says which channel keeps it.
       readInstructions: (provider, cwd, providerHome, ctx) => {
-        activityAtRead = store.conversationsOf(ctx.profileSlug ?? '')
         seen.push(ctx)
         const composed = profileBundleSpans(ctx)
         const bundle = publishProfileBundle(provider, providerHome, composed.text)
@@ -342,7 +259,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     root = mkdtempSync(join(tmpdir(), 'brobot2-d024-launch-root-'))
     db = fixtureDatabase(userData)
     clock = Date.UTC(2030, 0, 1)
-    activityAtRead = []
     store = createSessionStore(db, tick)
     counter = 0
     hosts = []
@@ -402,31 +318,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
   }
 
   const sectionOf = (ctx: InstructionContext): string => thisConversationSpans(ctx).text
-  const activityOf = (conversation: string): number => {
-    const record = activityAtRead.find((one) => one.conversation === conversation)
-    if (record === undefined) throw new Error(`no activity row for ${conversation}`)
-    return record.lastActiveAt
-  }
-  const addressed = (conversation: string, label: string, title: string) => ({
-    line: `conversation ${label} · ${title}`,
-    lastActiveAt: activityOf(conversation),
-  })
-  const aPersonOn = (conversation: string): OtherConversations['shown'][number] => {
-    const root = store.rootOf(conversation)
-    if (root === null) throw new Error(`${conversation} owns no root`)
-    return addressed(
-      conversation,
-      root.label,
-      store.rootLines(root.piece).title || host.whatToCallTheConversation(conversation),
-    )
-  }
-  const lineFor = (other: OtherConversations['shown'][number]): string => {
-    const text = thisConversationSpans(context({ others: { shown: [other], more: 0 } })).text
-    const line = listLinesIn(text)[0]
-    if (line === undefined) throw new Error('no conversation line')
-    return line
-  }
-
   /** The quit a person's ⌘Q is, and the next launch over the same ledger. */
   const quitAndRelaunch = async (beforeLoad?: () => void): Promise<void> => {
     for (const built of hosts) await built.closeAll()
@@ -434,12 +325,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     store = createSessionStore(db, tick)
     host = buildHost()
     seen = []
-  }
-
-  const lastTools = (): AgentToolset => {
-    const tools = handed.at(-1)
-    if (tools === undefined) throw new Error('no toolset was handed out')
-    return tools
   }
 
   /**
@@ -462,8 +347,6 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     expect(first.outcome, JSON.stringify(first)).toBe('ok')
     expect(first.started).toBe(true)
     const ali1 = first.agent as string
-    const atAli1 = lastContext()
-    const toldAli1 = toldAt(-1)
     await waitFor(() => cards(ali1).length > 0, 'the first brief to park on its card')
     afterTheFirst()
 
@@ -483,167 +366,66 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
     const atAli2 = lastContext()
     const toldAli2 = toldAt(-1)
     await waitFor(() => cards(ali2).length > 0, 'the second brief to park on its card')
-    return {
-      bro,
-      ada,
-      ali1,
-      ali2,
-      label1: first.label as string,
-      label2: second.label as string,
-      atAli1,
-      atAli2,
-      toldAli1,
-      toldAli2,
-    }
+    return { atAli2, toldAli2 }
   }
 
   // ── the tests ──────────────────────────────────────────────────────────────
 
-  it('a first launch has no peers; a second names only its profile peer', async () => {
-    const { bro, ada, ali1, label1, atAli1, atAli2, toldAli1, toldAli2 } =
-      await twoAlisOfTwoGivers()
-    expect(atAli1.profileSlug).toBe('ali')
-    expect(atAli1.others).toEqual({ shown: [], more: 0 })
-    expect(toldAli1).toContain('## This conversation')
-    expect(toldAli1).not.toContain(LIST_HEADING)
-    expect(store.identityOf(bro.id)?.profileSlug).toBe(DEFAULT_PROFILE_ID)
-    expect(store.identityOf(ada.id)?.profileSlug).toBe('ada')
-    const first = addressed(ali1, label1, 'Check the fixes')
-    expect(atAli2.others).toEqual({ shown: [first], more: 0 })
-    expect(listLinesIn(toldAli2 ?? '')).toEqual([lineFor(first)])
-    expect(toldAli2?.endsWith(sectionOf(atAli2))).toBe(true)
-  })
+  it('keeps the Claude prompt byte-identical as peer activity and saved methods change across reopen', async () => {
+    const target = await personOpens('ali', { approvalMode: 'auto' })
+    const peer = await personOpens('ali', { approvalMode: 'auto' })
+    await host.send(target.id, 'warm up', window)
+    await waitFor(() => providerHeard(target.id).length === 1, 'the launch to be recorded')
 
-  it('names person-owned roots and keeps recorded activity order', async () => {
-    const { ali1, ali2, label1, label2 } = await twoAlisOfTwoGivers()
-    const ali3 = (await personOpens('ali')).id
-    expect(lastContext().others).toEqual({
-      shown: [
-        addressed(ali2, label2, 'List the hotels'),
-        addressed(ali1, label1, 'Check the fixes'),
-      ],
-      more: 0,
-    })
-    const ali4 = (await personOpens('ali')).id
-    expect(ali4).not.toBe(ali3)
-    const expected = [
-      aPersonOn(ali3),
-      addressed(ali2, label2, 'List the hotels'),
-      addressed(ali1, label1, 'Check the fixes'),
-    ]
-    expect(lastContext().others).toEqual({ shown: expected, more: 0 })
-    expect(listLinesIn(toldAt(-1) ?? '')).toEqual(expected.map(lineFor))
-  })
+    const folder = join(userData, 'runbooks', 'ali')
+    mkdirSync(folder, { recursive: true })
+    const index = join(folder, 'index.md')
+    const firstMethod = '- Rotate the fictional logs | weekly | verified 2030-01-01 | rotate.md'
+    writeFileSync(join(folder, 'rotate.md'), '# A fictional method\n')
+    writeFileSync(index, `${firstMethod}\n`)
 
-  it('a reopened conversation excludes itself and retains its helper address', async () => {
-    const a = await personOpens('ali')
-    const given = await callOn(a.tools, 'give_work', {
-      to: 'new',
-      conversation_title: 'Sub task',
-      definition_of_done: 'The requested result and its checks are recorded.',
-      profile: 'ali',
-      title: 'Sub task',
-      brief: 'do the sub task',
-    })
-    expect(given.outcome, JSON.stringify(given)).toBe('ok')
-    expect(given.started).toBe(true)
-    const b = given.agent as string
-    const label = given.label as string
-    expect(b).not.toBe(a.id)
-    await waitFor(() => cards(b).length > 0, 'the sub task to park on its card')
     await quitAndRelaunch()
-    await host.resumeSession(a.id, window)
-    const expected = addressed(b, label, 'Sub task')
-    expect(lastContext().others).toEqual({ shown: [expected], more: 0 })
-    expect(listLinesIn(toldAt(-1) ?? '')).toEqual([lineFor(expected)])
-    await host.resumeSession(b, window)
-    expect(lastContext().others).toEqual({ shown: [aPersonOn(a.id)], more: 0 })
-    expect(listLinesIn(toldAt(-1) ?? '')).toEqual([lineFor(aPersonOn(a.id))])
-  })
+    await host.resumeSession(target.id, window)
+    const initial = toldAt(-1)
+    expect(initial).toContain('## This conversation')
+    expect(initial).not.toContain(LIST_HEADING)
+    expect(initial).not.toContain('## Saved methods')
+    await host.send(target.id, 'before the minute boundary', window)
+    await waitFor(() => providerHeard(target.id).length === 2, 'the first compared turn')
+    const firstTurn = providerHeard(target.id)[1] ?? ''
+    const activityLine = (turn: string) =>
+      turn.split('\n').find((line) => /^ {2}- conversation .+ — last active /.test(line))
+    const firstActivity = activityLine(firstTurn)
+    expect(firstTurn).toContain('This app adds what follows')
+    expect(firstTurn).toContain(LIST_HEADING)
+    expect(firstActivity).toBeDefined()
+    expect(firstTurn).toContain('Rotate the fictional logs')
 
-  it('bounds the list to five addresses, without child-piece history, and counts the rest', async () => {
-    const fillers: string[] = []
-    for (let k = 0; k < 6; k++) {
-      const id = `sess_filler_${k}`
-      store.create({ id, provider: 'claude', cwd: root, approvalMode: 'ask', profileId: 'ali' })
-      store.append(id, 0, { type: 'turn', state: 'completed' }, 1_000 + k)
-      fillers.push(id)
-    }
-    const bro = await personOpens(DEFAULT_PROFILE_ID)
-    const titles = ['Piece one', 'Piece two', 'Piece three', 'Piece four']
-    const labels: string[] = []
-    let ali = ''
-    for (const title of titles) {
-      const given = await callOn(bro.tools, 'give_work', {
-        ...(ali === '' ? { to: 'new', conversation_title: 'Review the itinerary' } : { to: ali }),
-        definition_of_done: 'The requested result and its checks are recorded.',
-        profile: 'ali',
-        title,
-        brief: title,
-      })
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      if (labels.length === 0) {
-        ali = given.agent as string
-        await waitFor(() => cards(ali).length > 0, 'the first piece to park on its card')
-      } else expect(given.agent).toBe(ali)
-      labels.push(given.label as string)
-    }
-    expect(store.piecesOwnedBy(ali).map((piece) => piece.label)).toEqual(labels)
-    const next = (await personOpens('ali')).id
-    expect(next).not.toBe(ali)
-    const expected = [
-      addressed(ali, labels[0] ?? '', 'Review the itinerary'),
-      ...[5, 4, 3, 2].map((k) => aPersonOn(fillers[k] ?? '')),
-    ]
-    expect(lastContext().others).toEqual({ shown: expected, more: 2 })
-    const lines = listLinesIn(toldAt(-1) ?? '')
-    expect(lines).toEqual([...expected.map(lineFor), '  - and 2 more.'])
-    for (const title of titles) expect(lines.join('\n')).not.toContain(title)
-    for (let k = 0; k < 2; k++) {
-      const id = `sess_bea_${k}`
-      store.create({ id, provider: 'claude', cwd: root, approvalMode: 'ask', profileId: 'bea' })
-      store.append(id, 0, { type: 'turn', state: 'completed' }, 2_000 + k)
-    }
-    await personOpens('bea')
-    await personOpens('bea')
-    expect(lastContext().others.shown).toHaveLength(3)
-    expect(lastContext().others.more).toBe(0)
-    expect(listLinesIn(toldAt(-1) ?? '')).toHaveLength(3)
-  })
-
-  it('excludes replaced conversations while retaining the replacement address', async () => {
-    const { bro, ali1, ali2, label1, label2, atAli2 } = await twoAlisOfTwoGivers()
-    expect(atAli2.others.shown[0]?.line).toContain(`conversation ${label1} ·`)
-    const replacement = `sess_${++counter}`
-    await quitAndRelaunch(() => {
-      seedHistoricalSuccessor(store, ali1, replacement, tick(), {
-        sessions: issued,
-        home: syntheticProviderHome(() => userData)('claude', 'ali'),
-      })
-    })
-    await host.resumeSession(bro.id, window)
-    const said = await callOn(lastTools(), 'message_agent', {
-      agent: ali1,
-      kind: 'note',
-      text: 'are you there',
-    })
-    expect(said, JSON.stringify(said)).toMatchObject({
-      outcome: 'ok',
-      agent: ali1,
-      went_to: replacement,
-    })
-    expect(ledger(ali1)).toContainEqual({ type: 'replaced_by', sessionId: replacement })
-    expect(store.identityOf(ali1)?.profileSlug).toBe('ali')
-    expect(lastContext().others).toEqual({
-      shown: [addressed(ali2, label2, 'List the hotels')],
-      more: 0,
-    })
-    await host.resumeSession(ali2, window)
-    expect(lastContext().others.shown).toHaveLength(1)
-    expect(lastContext().others.shown[0]?.line).toBe(
-      `conversation ${replacement} · ${host.whatToCallTheConversation(replacement)}`,
+    const lastActivity = () =>
+      store.conversationsOf('ali').find((row) => row.conversation === peer.id)?.lastActiveAt ?? 0
+    const earlier = lastActivity()
+    clock += 120_000
+    await host.resumeSession(peer.id, window)
+    await host.send(peer.id, 'change peer activity', window)
+    await waitFor(() => providerHeard(peer.id).length === 1, 'the peer activity to be recorded')
+    expect(lastActivity() - earlier).toBeGreaterThanOrEqual(60_000)
+    writeFileSync(join(folder, 'backup.md'), '# Another fictional method\n')
+    writeFileSync(
+      index,
+      `${firstMethod}\n- Check the fictional backup | weekly | verified 2030-01-01 | backup.md\n`,
     )
-    expect(lastContext().others.shown[0]?.lastActiveAt).toBe(activityOf(replacement))
+
+    await quitAndRelaunch()
+    await host.resumeSession(target.id, window)
+    expect(toldAt(-1)).toBe(initial)
+    await host.send(target.id, 'after the minute boundary', window)
+    await waitFor(() => providerHeard(target.id).length === 3, 'the reopened turn')
+    const nextTurn = providerHeard(target.id)[2] ?? ''
+    expect(nextTurn).toContain('This app adds what follows')
+    expect(nextTurn).toContain(LIST_HEADING)
+    expect(activityLine(nextTurn)).toBeDefined()
+    expect(activityLine(nextTurn)).not.toBe(firstActivity)
+    expect(nextTurn).toContain('Check the fictional backup')
   })
 
   it('writes the profile’s file as the same bytes for every conversation of it, carrying nothing of this one', async () => {
@@ -665,7 +447,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
 
     // The paired positive: the same facts went with the launch, in the words it was handed.
     expect(atAli2.startedBy).not.toBeNull()
-    expect(toldAli2).toContain(LIST_HEADING)
+    expect(toldAli2).not.toContain(LIST_HEADING)
     expect(toldAli2).toContain(`This conversation was started by ${atAli2.startedBy ?? ''}.`)
     expect(toldAli2).toContain('## This conversation')
   })
@@ -802,18 +584,12 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
       await host.send(c1.id, 'two', window)
       await waitFor(() => providerHeard(c1.id).length === 2, 'the resumed life to hear it')
       const heard = providerHeard(c1.id)
-      // The first life's lead listed nobody; the reopen's names c2, as a person's conversation.
-      expect(firstLead).not.toContain(LIST_HEADING)
       expect(heard[0]?.startsWith(`${firstLead}\n\n`)).toBe(true)
       const reopenLead = leadFor(atReopen)
-      expect(reopenLead).toContain(lineFor(aPersonOn(c2.id)))
-      // ⚑ **W4.179 — a reopened Codex thread already holds the first life's text**, so the reopen
-      // sends only the sections that changed, under the line that says they replace those — here
-      // "This conversation", which now names c2 — and not the ones the thread already holds.
+      expect(reopenLead).not.toContain(LIST_HEADING)
+      // The work label is first known after creation. Only that changed section is owed.
       expect(heard[1]?.startsWith(`${WHAT_CHANGED_HEADER}\n\n## This conversation\n`)).toBe(true)
-      const changed = reopenLead.slice(reopenLead.indexOf('## This conversation'))
-      const section = changed.slice(0, changed.indexOf('\n\n## '))
-      expect(heard[1]).toContain(section)
+      expect(heard[1]).toContain("Your conversation's work is")
       expect(heard[1]).not.toContain('## The brobot tools')
       expect(heard[1]).not.toContain('## What you may do')
       // …and it is that reopen's own, never the first life's.
@@ -1002,7 +778,7 @@ function handsTheReaderThisConversationAndPublishesOnlyTheProfiles(source: strin
   const publishCalls = argumentsOfEach(stripped, 'publishProfileBundle')
   return (
     readerCalls.length === 1 &&
-    /thisConversation:\s*thisConversationSpans\(\s*launchContext,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/.test(
+    /thisConversation:\s*thisConversationSpans\(\s*context,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/.test(
       readerCalls[0] ?? '',
     ) &&
     stripped.split('thisConversationSpans(').length - 1 === 1 &&
@@ -1021,7 +797,7 @@ describe('§6 · the composition root hands the reader this conversation’s tex
     expect(argumentsOfEach(stripped, 'readSessionInstructions')).toHaveLength(1)
     expect(argumentsOfEach(stripped, 'publishProfileBundle')).toHaveLength(1)
     expect(stripped).toMatch(
-      /thisConversation:\s*thisConversationSpans\(\s*launchContext,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/,
+      /thisConversation:\s*thisConversationSpans\(\s*context,\s*toolsToldInTextFor\(provider\),\s*provider,?\s*\)/,
     )
     expect(stripped.split('thisConversationSpans(').length - 1).toBe(1)
     expect(squashed(argumentsOfEach(stripped, 'publishProfileBundle')[0] ?? '')).toBe(
@@ -1039,7 +815,7 @@ describe('§6 · the composition root hands the reader this conversation’s tex
     expect(handsTheReaderThisConversationAndPublishesOnlyTheProfiles(publishesBoth)).toBe(false)
 
     const hasNone = source.replace(
-      '        thisConversation: thisConversationSpans(\n          launchContext,\n          toolsToldInTextFor(provider),\n          provider,\n        ),\n',
+      '        thisConversation: thisConversationSpans(context, toolsToldInTextFor(provider), provider),\n',
       '',
     )
     expect(hasNone).not.toBe(source)

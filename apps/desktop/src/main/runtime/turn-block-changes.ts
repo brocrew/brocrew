@@ -10,6 +10,8 @@ export const TURN_HELPER_PIECES = 256
 const TURN_HELPER_LINES = 5
 
 export interface TurnBlockSnapshot {
+  readonly peerActivity?: string
+  readonly savedMethods?: string
   readonly rotation: number
   readonly personWait: { readonly signature: string; readonly at: number } | null
   readonly hintedTurn: string | null
@@ -23,6 +25,8 @@ export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
 
 export function turnBlockChanges(
   input: {
+    readonly peerActivity?: string
+    readonly savedMethods?: string
     readonly now: number
     readonly person: boolean
     readonly helpers: readonly AHelperInTheTurn[]
@@ -35,11 +39,21 @@ export function turnBlockChanges(
   before: TurnBlockSnapshot,
 ): { readonly extra: ExtraTurnFacts; readonly next: TurnBlockSnapshot } {
   const extra: {
+    peerActivity?: string
+    savedMethods?: string
     helpers?: ExtraTurnFacts['helpers']
     nobodyWaiting?: boolean
     replyQuestion?: boolean
     currentWork: CurrentWorkInTheTurn
   } = { currentWork: input.current }
+  if (input.peerActivity !== undefined && input.peerActivity !== before.peerActivity) {
+    if (input.peerActivity !== '') extra.peerActivity = input.peerActivity
+    else if (before.peerActivity)
+      extra.peerActivity = 'There are no other conversations of this profile.'
+  }
+  if (input.savedMethods !== undefined && input.savedMethods !== before.savedMethods) {
+    extra.savedMethods = input.savedMethods
+  }
   const order = (left: AHelperInTheTurn, right: AHelperInTheTurn): number =>
     left.givenAt - right.givenAt || left.label.localeCompare(right.label)
   const eligible = [...input.helpers].sort(order)
@@ -92,6 +106,8 @@ export function turnBlockChanges(
   return {
     extra,
     next: {
+      peerActivity: input.peerActivity ?? before.peerActivity,
+      savedMethods: input.savedMethods ?? before.savedMethods,
       rotation,
       personWait:
         input.personWait === null

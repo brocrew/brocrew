@@ -40,6 +40,30 @@ const block = (extra: Parameters<typeof whatThisAppAddsToATurn>[0]['extra']): st
   })
 
 describe('turn block changes', () => {
+  it('sends peer activity and saved-method changes independently, at the end', () => {
+    const facts = {
+      ...input,
+      peerActivity: 'Peer activity at noon',
+      savedMethods: '## Saved methods\n\nRotate logs',
+    }
+    const first = turnBlockChanges(facts, EMPTY_TURN_BLOCK)
+    expect(block(first.extra)).toMatch(/Peer activity at noon\n## Saved methods\n\nRotate logs$/)
+
+    const later = turnBlockChanges(
+      { ...facts, now: 120_000, peerActivity: 'Peer activity at 12:01' },
+      first.next,
+    )
+    expect(block(later.extra)).toContain('Peer activity at 12:01')
+    expect(block(later.extra)).not.toContain('## Saved methods')
+
+    const withoutPeers = turnBlockChanges(
+      { ...facts, peerActivity: '', savedMethods: '## Saved methods\n\nCheck backups' },
+      later.next,
+    )
+    expect(block(withoutPeers.extra)).toContain('There are no other conversations of this profile.')
+    expect(block(withoutPeers.extra)).toContain('Check backups')
+  })
+
   it('shows current work on both person-started and app-started turns', () => {
     const first = turnBlockChanges(input, EMPTY_TURN_BLOCK)
     expect(block(first.extra)).toContain(TURN_BLOCK_WORDS.nobody)

@@ -11,7 +11,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { linesOf as heldLines } from './helpers/provider-lines'
-import { sectionsOf, theLeadOwed } from '../src/main/runtime/codex-lead'
+import { WHAT_CHANGED_HEADER } from '../src/main/runtime/codex-lead'
 import {
   composeProfileBundle,
   thisConversationSpans,
@@ -23,6 +23,7 @@ import { savedMethodsFolder } from '../src/main/connections/homes'
 import {
   readSavedMethods,
   SAVED_METHODS_INDEX,
+  savedMethodsParagraphs,
   type SavedMethodsReading,
 } from '../src/main/saved-methods'
 
@@ -53,14 +54,12 @@ const aReading = (methods: boolean): SavedMethodsReading => readSavedMethods(aPr
 const anHourLater = (reading: SavedMethodsReading): SavedMethodsReading =>
   readSavedMethods(reading.folder, NOW + 3_600_000)
 
-function context(savedMethods?: SavedMethodsReading): InstructionContext {
+function context(): InstructionContext {
   return {
     profileSlug: 'fictional-writer',
     cwd: '/tmp/work',
     startedBy: null,
     root: 'not-yet-numbered',
-    others: { shown: [], more: 0 },
-    ...(savedMethods === undefined ? {} : { savedMethods }),
   }
 }
 
@@ -70,7 +69,7 @@ function wholeLead(savedMethods?: SavedMethodsReading): string {
   const cwd = join(root, 'work')
   const userHome = join(root, 'user-home')
   for (const one of [home, cwd, userHome]) mkdirSync(one)
-  const launch = context(savedMethods)
+  const launch = context()
   const bundle = publishProfileBundle('codex', home, composeProfileBundle(launch))
   const read = readSessionInstructions({
     provider: 'codex',
@@ -82,18 +81,14 @@ function wholeLead(savedMethods?: SavedMethodsReading): string {
     thisConversation: thisConversationSpans(launch),
   })
   if (read.firstTurnLead === null) throw new Error('no lead')
-  return read.firstTurnLead
+  return savedMethods === undefined
+    ? read.firstTurnLead
+    : `${read.firstTurnLead}\n\n${legacyIndex(savedMethods)}`
 }
 
-function whatChangedLead(earlier: SavedMethodsReading, later: SavedMethodsReading): string {
-  const before = thisConversationSpans(context(earlier))
-  const now = thisConversationSpans(context(later))
-  const owed = theLeadOwed(
-    { carried: [], sections: sectionsOf({ text: before.text, sections: before.spans }) },
-    { text: now.text, sections: now.spans },
-  )
-  if (owed?.is !== 'what-changed') throw new Error('not what changed')
-  return owed.text
+// Synthetic historical input. Older versions put the index in their launch lead.
+function legacyIndex(reading: SavedMethodsReading): string {
+  return ['## Saved methods', ...savedMethodsParagraphs(reading)].join('\n\n')
 }
 
 const holdsATitle = (text: string): boolean => TITLES.some((title) => text.includes(title))
@@ -147,7 +142,7 @@ describe('a Codex ledger re-derived from its rollout', () => {
     const reading = aReading(true)
     const later = anHourLater(reading)
     const first = `${wholeLead(reading)}\n\nRotate the logs, please.`
-    const reopened = `${whatChangedLead(reading, later)}\n\nAnd once more.`
+    const reopened = `${WHAT_CHANGED_HEADER}\n\n${legacyIndex(later)}\n\nAnd once more.`
 
     const marked = `${wholeLead(later)}\n\n${REQUEST_MARKER}\nCheck the disk.`
     const rollout = [

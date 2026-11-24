@@ -60,7 +60,6 @@ describe('one set of instructions for every agent', () => {
       const contexts = LAUNCHES.map((launch): InstructionContext => ({
         ...launch,
         cwd,
-        others: { shown: [], more: 0 },
       }))
       const published = contexts.map((context, index) => {
         const home = join(root, `home-${index}`)

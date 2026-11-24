@@ -74,7 +74,6 @@ const CONTEXT: InstructionContext = {
   root: 'not-yet-numbered',
   configured: 'Never merge without asking me first.',
   // ⚑ D-024 · R1 · no other conversation of the profile — which renders no line at all.
-  others: { shown: [], more: 0 },
 }
 
 const BUNDLE = profileBundleSpans(CONTEXT)
