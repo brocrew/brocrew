@@ -212,6 +212,16 @@ it('lock waits are bounded and cannot remove a live owner; birth mismatch handle
   expect(ownerState(owner)).toBe('alive')
   expect(ownerState({ ...owner, birth: 'different-birth' })).toBe('gone')
 })
+it('a waiter outlasts a live holder past two seconds and enters once the holder dies inside', async () => {
+  const f = fixture()
+  const holder = f.start('hold', 'holder')
+  await until(() => fs.existsSync(path.join(f.root, 'barrier.holder.ready')), holder)
+  // A sibling waits, as plugin processes do: a parent waiting synchronously never reaps its child.
+  const waiter = f.start('enter', 'waiter')
+  expect(await holder.done).toBe(0)
+  expect(await waiter.done).toBe(0)
+  expect(waiter.text()).toBe('entered\n')
+})
 for (const phase of ['reserved', 'renamed', 'moved', 'local-retired', 'retired'])
   it(`recovers actual process death at migration ${phase}`, async () => {
     const f = fixture()

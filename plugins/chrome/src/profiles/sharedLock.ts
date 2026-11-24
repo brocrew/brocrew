@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { retry, writeAtomicallySync } from '../../../shared/atomic-file.js'
 import { privateFolder } from '../privatePaths.js'
 import { windowsBirthOf } from './windowsBirth.js'
 export type Liveness = 'alive' | 'gone' | 'unknown'
@@ -46,11 +47,20 @@ export const identity = (): ProcessIdentity => {
   return { pid: process.pid, birth }
 }
 const pause = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5)
+const busy = () => new Error('Shared Chrome registry busy; try again.')
+/** Without a process birth there is no exit to wait for, so a contender that could not be
+ * identified, even once, is kept but waited on only this long from then. */
+const UNIDENTIFIED_WAIT_MS = 2000
+/** On Windows each liveness answer starts a program, so contenders are asked a few times a second. */
+const ASK_AGAIN_MS = 250
+/** Waits while a contender ahead lives: what runs inside is a short metadata transaction, so
+ * one is done when it leaves or its process exits, however slow the machine. A caller may bound
+ * its own wait. */
 export function withSharedLock<T>(
   root: string,
   owner: ProcessIdentity,
   fn: () => T,
-  timeout = 2000,
+  timeout = Infinity,
 ): T {
   const locks = privateFolder(root, path.join(root, 'registry.lock'), true)
   const token = `${owner.pid}.${Buffer.from(owner.birth).toString('base64url')}.${randomUUID()}`
@@ -79,18 +89,22 @@ export function withSharedLock<T>(
       }
       let ticket: number | null = null
       try {
-        privateFolder(locks, path.join(locks, name))
-        const stat = fs.lstatSync(path.join(locks, name, 'ticket'))
-        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Invalid registry ticket')
-        ticket = Number(fs.readFileSync(path.join(locks, name, 'ticket'), 'utf8'))
-        if (!Number.isSafeInteger(ticket) || ticket < 1) throw new Error('Invalid registry ticket')
+        // Windows refuses to open a ticket while its owner deletes it; that ends with the delete.
+        ticket = retry(() => {
+          privateFolder(locks, path.join(locks, name))
+          const stat = fs.lstatSync(path.join(locks, name, 'ticket'))
+          if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Invalid registry ticket')
+          const value = Number(fs.readFileSync(path.join(locks, name, 'ticket'), 'utf8'))
+          if (!Number.isSafeInteger(value) || value < 1) throw new Error('Invalid registry ticket')
+          return value
+        })
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
         // A contender can finish between readdir, lstat and realpath. Its unique
         // directory cannot become a successor, so absence is safe to skip. An
         // existing directory without a ticket is still choosing and stays blocking.
         try {
-          fs.lstatSync(path.join(locks, name))
+          retry(() => fs.lstatSync(path.join(locks, name)))
         } catch (absent) {
           if ((absent as NodeJS.ErrnoException).code === 'ENOENT') continue
           throw absent
@@ -105,14 +119,26 @@ export function withSharedLock<T>(
     const temp = path.join(mine, 'choosing')
     fs.writeFileSync(temp, String(number), { mode: 0o600, flag: 'wx' })
     fs.renameSync(temp, path.join(mine, 'ticket'))
+    let asked = Date.now()
+    const unidentified = new Map<string, number>()
     for (;;) {
-      const blocked = contenders().some(
+      const ahead = contenders().filter(
         (c) =>
           c.token !== token &&
           (c.ticket === null || c.ticket < number || (c.ticket === number && c.token < token)),
       )
-      if (!blocked) return fn()
-      if (Date.now() >= end) throw new Error('Shared Chrome registry busy; try again.')
+      if (ahead.length === 0) return fn()
+      const now = Date.now()
+      if (now >= end) throw busy()
+      for (const c of ahead)
+        if (observed.get(c.token) === 'unknown' && !unidentified.has(c.token))
+          unidentified.set(c.token, now)
+      if (ahead.some((c) => now - (unidentified.get(c.token) ?? now) >= UNIDENTIFIED_WAIT_MS))
+        throw busy()
+      if (now - asked >= ASK_AGAIN_MS) {
+        for (const c of ahead) observed.delete(c.token)
+        asked = now
+      }
       pause()
     }
   } finally {
@@ -121,22 +147,5 @@ export function withSharedLock<T>(
 }
 /** Durable replace, keeping arbitrary unknown fields in the caller's object. */
 export function durableJson(file: string, value: unknown): void {
-  const temp = `${file}.${randomUUID()}.tmp`
-  const fd = fs.openSync(temp, 'wx', 0o600)
-  try {
-    fs.writeFileSync(fd, JSON.stringify(value) + '\n')
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
-  }
-  fs.renameSync(temp, file)
-  // Windows doesn't allow directory fsync; the rename still provides atomic visibility.
-  if (process.platform !== 'win32') {
-    const dir = fs.openSync(path.dirname(file), 'r')
-    try {
-      fs.fsyncSync(dir)
-    } finally {
-      fs.closeSync(dir)
-    }
-  }
+  writeAtomicallySync(file, JSON.stringify(value) + '\n')
 }

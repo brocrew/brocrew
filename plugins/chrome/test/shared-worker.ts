@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { writeAtomicallySync } from '../../shared/atomic-file.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
-import { identity } from '../src/profiles/sharedLock.js'
+import { identity, withSharedLock } from '../src/profiles/sharedLock.js'
 const [command, home, shared, id, barrier, boundary] = process.argv.slice(2)
 const pause = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5)
 if (command === 'lock-crash') {
@@ -17,6 +17,18 @@ if (command === 'lock-crash') {
   )
   process.stderr.write('fictional lock crash\n')
   process.exit(42)
+}
+if (command === 'hold') {
+  // Holds the registry lock longer than any flat wait, then dies without releasing it.
+  withSharedLock(shared, identity(), () => {
+    fs.writeFileSync(`${barrier}.${id}.ready`, '')
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2500)
+    process.exit(0)
+  })
+}
+if (command === 'enter') {
+  withSharedLock(shared, identity(), () => process.stdout.write('entered\n'))
+  process.exit(0)
 }
 fs.mkdirSync(home, { recursive: true })
 const store = createSharedProfileStore({

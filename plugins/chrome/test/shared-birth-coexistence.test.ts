@@ -70,3 +70,48 @@ it.each(['old-holds', 'new-holds'])(
     expect(fs.readdirSync(path.join(root, 'registry.lock'))).toEqual([])
   },
 )
+
+const liveBirth = '638980000000000001'
+const reusedBirth = '638980000000000002'
+// The test runner's parent stands in for a live contender; only its birth answers are fictional.
+function contend(answer: (elapsed: number, call: number) => string) {
+  vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
+  const started = Date.now()
+  let calls = 0
+  run.mockImplementation((_program, args) =>
+    args[0] === String(process.pid)
+      ? nativeBirth + '\n'
+      : answer(Date.now() - started, calls++) + '\n',
+  )
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-birth-coexist-'))
+  roots.push(root)
+  const other = path.join(
+    root,
+    'registry.lock',
+    `${process.ppid}.${Buffer.from(liveBirth).toString('base64url')}.11111111-1111-4111-8111-111111111111`,
+  )
+  fs.mkdirSync(other, { recursive: true })
+  fs.writeFileSync(path.join(other, 'ticket'), '1')
+  return { root, other, owner: identity(), started }
+}
+
+it('waits on an identified live contender past two seconds and enters once it is gone', () => {
+  const c = contend((elapsed) => (elapsed < 2500 ? liveBirth : reusedBirth))
+  expect(withSharedLock(c.root, c.owner, () => 'entered')).toBe('entered')
+  expect(Date.now() - c.started).toBeGreaterThanOrEqual(2500)
+  expect(fs.existsSync(c.other)).toBe(false)
+})
+
+it('keeps a contender whose birth reads fail even now and then, and waits on it only two seconds', () => {
+  const c = contend((elapsed, call) => {
+    if (elapsed >= 3000) return reusedBirth
+    if (call % 2 === 0) throw new Error('fictional birth read failure')
+    return liveBirth
+  })
+  const work = vi.fn()
+  expect(() => withSharedLock(c.root, c.owner, work)).toThrow(
+    'Shared Chrome registry busy; try again.',
+  )
+  expect(work).not.toHaveBeenCalled()
+  expect(fs.existsSync(c.other)).toBe(true)
+})

@@ -2,7 +2,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { identity, withSharedLock } from '../src/profiles/sharedLock.js'
+import {
+  durableJson,
+  identity,
+  withSharedLock,
+  type ProcessIdentity,
+} from '../src/profiles/sharedLock.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import { createSharedProfileStore, inspectChrome } from '../src/profiles/sharedStore.js'
 const roots: string[] = []
@@ -390,16 +395,21 @@ it('a disk reservation retained during uncertain Chrome state can be released an
   f.open('beta').shared.acquire('fern').release()
 })
 
-it('the registry mutex tolerates a completed contender disappearing during realpath validation', () => {
-  const f = fixture()
-  const owner = identity()
+/** A contender of this process with ticket 1, which the test makes leave mid-scan. */
+function plantContender(shared: string, owner: ProcessIdentity) {
   const folder = path.join(
-    f.shared,
+    shared,
     'registry.lock',
     `${owner.pid}.${Buffer.from(owner.birth).toString('base64url')}.11111111-1111-4111-8111-111111111111`,
   )
   fs.mkdirSync(folder, { recursive: true })
   fs.writeFileSync(path.join(folder, 'ticket'), '1')
+  return folder
+}
+it('the registry mutex tolerates a completed contender disappearing during realpath validation', () => {
+  const f = fixture()
+  const owner = identity()
+  const folder = plantContender(f.shared, owner)
   const realpath = fs.realpathSync
   let removed = false
   vi.spyOn(fs, 'realpathSync').mockImplementation((target, options) => {
@@ -411,6 +421,45 @@ it('the registry mutex tolerates a completed contender disappearing during realp
   })
   expect(withSharedLock(f.shared, owner, () => 'entered')).toBe('entered')
   expect(removed).toBe(true)
+})
+
+const refused = () => Object.assign(new Error('fictional EPERM'), { code: 'EPERM' })
+
+it('the registry mutex looks again at a contender ticket refused while it is being deleted', () => {
+  const f = fixture()
+  const owner = identity()
+  const folder = plantContender(f.shared, owner)
+  const read = fs.readFileSync
+  let removed = false
+  vi.spyOn(fs, 'readFileSync').mockImplementation(((target: fs.PathOrFileDescriptor, options) => {
+    if (target === path.join(folder, 'ticket') && !removed) {
+      removed = true
+      fs.rmSync(folder, { recursive: true })
+      throw refused()
+    }
+    return read(target, options)
+  }) as typeof fs.readFileSync)
+  expect(withSharedLock(f.shared, owner, () => 'entered')).toBe('entered')
+  expect(removed).toBe(true)
+})
+
+it('a durable registry replace waits for a reader that has the file open', () => {
+  const f = fixture()
+  const file = path.join(f.shared, 'registry.json')
+  fs.writeFileSync(file, '{"revision":1}\n')
+  const rename = fs.renameSync
+  let refusals = 0
+  vi.spyOn(fs, 'renameSync').mockImplementation((source, target) => {
+    if (target === file && refusals < 2) {
+      refusals++
+      throw refused()
+    }
+    rename(source, target)
+  })
+  durableJson(file, { revision: 2 })
+  expect(refusals).toBe(2)
+  expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ revision: 2 })
+  expect(fs.readdirSync(f.shared)).toEqual(['registry.json'])
 })
 
 it('a registry publication fault during disk release retains the handle for same-process recovery', () => {

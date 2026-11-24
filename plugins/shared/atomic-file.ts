@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'node:path'
 const DELAYS = [50, 100, 150, 200, 250, 300, 300, 300, 350]
 const HELD = new Set(['EBUSY', 'EPERM', 'EACCES'])
 
-function retry<T>(operation: () => T): T {
+export function retry<T>(operation: () => T): T {
   for (let attempt = 0; ; attempt++) {
     try {
       return operation()
