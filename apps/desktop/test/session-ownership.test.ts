@@ -1,10 +1,6 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type {
   AgentRuntime,
   RuntimeEvent,
@@ -17,10 +13,9 @@ import type {
 // tests is a property of that exact class. A hand-rolled imitation would prove the imitation works.
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import type { Provider } from '@brobot2/shared'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { RuntimeEventSink, RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
@@ -39,8 +34,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * nothing to the store's reducer, so a failed stream left the row at `working` with its turn open.
  * A fake store cannot show that.
  */
-
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -165,12 +158,14 @@ describe('one finalizer owns the end of a session (051)', () => {
   let host: RuntimeHost
   let sink: RecordingSink
   let handle: ScriptedHandle
+  // Every host is closed after each test; the wedged-session tests build theirs with
+  // `closeDrainTimeoutMs: 40`, so their close is bounded.
+  const scratch = hostsOverAScratchDatabase('brobot2-ownership-')
 
   /** The host, wired to one scripted provider. `highWaterMark` is the queue's, for the overflow. */
   function buildHost(options: { highWaterMark?: number; closeDrainTimeoutMs?: number } = {}) {
-    const built = new RuntimeHost({
+    const built = scratch.host({
       store,
-      ...neutralHostDeps(() => dir),
       createRuntime: (provider: Provider): AgentRuntime => ({
         provider,
         // ⚑ **D-042 · R1 moved a fact here: every start NAMES its model and effort**, and a Codex
@@ -197,17 +192,8 @@ describe('one finalizer owns the end of a session (051)', () => {
         },
         resume: () => Promise.reject(new Error('not used here')),
       }),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
       newSessionId: () => 'sess_1',
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'scripted',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CODEX_HOME', 'scripted'),
       ...(options.closeDrainTimeoutMs === undefined
         ? {}
         : { closeDrainTimeoutMs: options.closeDrainTimeoutMs }),
@@ -227,19 +213,11 @@ describe('one finalizer owns the end of a session (051)', () => {
     db.prepare('SELECT status FROM provider_session WHERE id = ?').get(id) as { status: string }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-ownership-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     host = buildHost()
     sink = new RecordingSink()
-  })
-
-  afterEach(() => {
-    // No `closeAll()` here: several of these tests end with a deliberately wedged session, and the
-    // point of the bound inside the finalizer is that teardown does not wait on one forever.
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('closes the provider before it unregisters the session, on an explicit close', async () => {

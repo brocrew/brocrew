@@ -1,20 +1,13 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { FakeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import {
-  NULL_SESSION_STORE,
-  createSessionStore,
-  type SessionStore,
-} from '../src/main/db/session-store'
+import { NULL_SESSION_STORE, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   NEEDING_TOKEN,
@@ -31,6 +24,10 @@ import type {
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { neutralHostDeps } from './lib/host-fixture'
+import {
+  hostsOverAScratchDatabase,
+  oneRuntimePerProvider,
+} from './lib/hosts-over-a-scratch-database'
 
 /**
  * **123 · Working outside a turn — four minutes of real work the app called `idle`.**
@@ -622,49 +619,18 @@ describe('the provider working outside a turn (123)', () => {
  * the fresh `idle` that lands after the replay, rather than about the replay being clean.
  */
 describe('a conversation whose ledger ends on a phantom `working` (123 §4)', () => {
-  const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-  let dir: string
-  let db: AppDatabase
   let store: SessionStore
   let runtimes: Map<string, FakeRuntime>
 
-  function buildHost(): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => {
-        const existing = runtimes.get(provider)
-        if (existing) return existing
-        const fresh = new FakeRuntime(provider)
-        runtimes.set(provider, fresh)
-        return fresh
-      },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
+  const scratch = hostsOverAScratchDatabase('brobot2-stranded-recovery-')
+  const buildHost = (): RuntimeHost =>
+    scratch.host({
+      createRuntime: oneRuntimePerProvider(() => runtimes),
     })
-  }
 
   beforeEach(() => {
+    store = scratch.store
     runtimes = new Map()
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-stranded-recovery-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('is usable again when it is reopened', async () => {

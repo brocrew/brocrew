@@ -1,15 +1,16 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type {
+  RuntimeEventSink,
+  RuntimeHost,
+  RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { createArchiveCoordinator, isArchiveRefused } from '../src/main/archive/archive-coordinator'
 import type { UserHomeSession } from '../src/main/adopt/user-homes'
@@ -32,8 +33,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * `createAppLifetime`: "the connection closed after the import finished" is not a property a fake
  * store can hold an opinion about.
  */
-
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -167,6 +166,7 @@ describe('a quit waits for the import in flight, and closes the database after i
   let host: RuntimeHost
   let transcript: string
   let found: UserHomeSession[]
+  const scratch = hostsOverAScratchDatabase('brobot2-shutdown-')
 
   /**
    * A provider file holding a real conversation repeated past one derive batch (two thousand) — so
@@ -185,30 +185,14 @@ describe('a quit waits for the import in flight, and closes the database after i
     return path
   }
 
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      discoverSessions: NO_DISCOVERY,
+  const buildHost = (overrides: Partial<RuntimeHostDeps> = {}) =>
+    scratch.host({
       // The session's provider file, which an import reads.
       nativeTranscriptPath: () => transcript,
-      exportDirectory: () => join(dir, 'exports'),
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
       userHomeSessions: () => ({ found, skipped: [] }),
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CODEX_HOME', 'fake'),
       ...overrides,
     })
-  }
 
   /** The real shutdown, in the real order, with a marker on every step the assertions need. */
   function quit(order: string[]) {
@@ -253,23 +237,17 @@ describe('a quit waits for the import in flight, and closes the database after i
 
   /** Re-open the database the quit closed. What survived a shutdown is only readable this way. */
   function reopen(): { db: AppDatabase; store: SessionStore } {
-    const reopened = openDatabase(join(dir, 'brobot2.sqlite'))
+    const reopened = scratch.alsoClose(openDatabase(join(dir, 'brobot2.sqlite')))
     return { db: reopened, store: createSessionStore(reopened) }
   }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-shutdown-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     host = buildHost()
     found = []
     transcript = plantLong('long')
-  })
-
-  afterEach(() => {
-    if (db.open) db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('waits for an import ALREADY IN FLIGHT and MID-FILE, and closes SQLite only after it', async () => {
@@ -379,18 +357,16 @@ describe('a provider that is still starting is owned (062)', () => {
   let starts: number
   let resumes: number
   let held: { promise: Promise<void>; resolve: () => void } | null
+  const scratch = hostsOverAScratchDatabase('brobot2-starting-')
 
   /**
    * A runtime whose `start()` can be held open, so a test can stand inside the interval this task
    * is about — the provider spawned, the handle not yet in anyone's hands.
    */
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
+  function buildHost(overrides: Partial<RuntimeHostDeps> = {}) {
     const handles: SessionHandle[] = []
     const runtimes = new Map<string, AgentRuntime>()
-    const built = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
+    const built = scratch.host({
       // One runtime per provider, memoized: `FakeRuntime` validates resume against the refs IT
       // issued, so a fresh instance per call would refuse every reopen as a forged ref.
       createRuntime: (provider): AgentRuntime => {
@@ -418,38 +394,24 @@ describe('a provider that is still starting is owned (062)', () => {
         runtimes.set(provider, wrapped)
         return wrapped
       },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CODEX_HOME', 'fake'),
       ...overrides,
     })
     return { host: built, handles }
   }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-starting-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     starts = 0
     resumes = 0
     held = null
     host = buildHost().host
   })
 
-  afterEach(async () => {
+  afterEach(() => {
     held?.resolve()
-    await host.closeAll()
-    if (db.open) db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('closes a provider that arrives after the quit, instead of registering it', async () => {

@@ -1,17 +1,17 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
+import type {
+  RuntimeEventSink,
+  RuntimeHost,
+  RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -33,9 +33,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * docblock says.
  */
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
 describe('a torn instruction row does not stop the ledger · §1-§2 the cross-session read', () => {
   let userData: string
   let raw: AppDatabase
@@ -43,19 +40,14 @@ describe('a torn instruction row does not stop the ledger · §1-§2 the cross-s
   let clock: number
   const ordinals = new Map<string, number>()
   const tick = (): number => clock++
+  const scratch = hostsOverAScratchDatabase('brobot2-torn-instruction-', { now: tick })
 
   beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-torn-instruction-'))
-    raw = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(raw, migrationsFolder)
+    userData = scratch.dir
+    raw = scratch.db
+    store = scratch.store
     clock = 8_000_000
     ordinals.clear()
-    store = createSessionStore(raw, tick)
-  })
-
-  afterEach(() => {
-    raw.close()
-    rmSync(userData, { recursive: true, force: true })
   })
 
   const conversation = (id: string, profileId: string): string => {
@@ -166,9 +158,9 @@ describe('a torn instruction row does not stop the ledger · §1-§2 the cross-s
 
 describe('a torn instruction row does not stop the ledger · §3 nothing withdraws an ask automatically', () => {
   let dir: string
-  let db: AppDatabase
   let store: SessionStore
   let hostA: RuntimeHost
+  const scratch = hostsOverAScratchDatabase('brobot2-torn-instruction-relaunch-')
 
   class RecordingSink implements RuntimeEventSink {
     readonly aPersonIsBehindIt = true
@@ -181,11 +173,8 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
     sendLiveness(): void {}
   }
 
-  /** Everything a host needs — `two-hosts-import.test.ts`'s minimal shape, no `readInstructions`. */
-  const deps = (): ConstructorParameters<typeof RuntimeHost>[0] => ({
-    store,
-    ...neutralHostDeps(() => dir),
-    createRuntime: (provider: Provider) => new FakeRuntime(provider),
+  /** A host's own deps — `two-hosts-import.test.ts`'s minimal shape, no `readInstructions`. */
+  const deps = (): Partial<RuntimeHostDeps> => ({
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(dir, 'provider-homes', profileId ?? 'default', provider)
       mkdirSync(home, { recursive: true })
@@ -194,26 +183,13 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
     providerHomePath: (provider: Provider) => join(dir, 'provider-homes', provider),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(dir, sessionId, requested),
     newSessionId: () => `sess_${Math.floor(Math.random() * 1_000_000)}`,
-    readProviderConfig: (provider, home) => ({
-      home,
-      homeEnv: 'X',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: providerConfigOf('X', 'm'),
   })
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-torn-instruction-relaunch-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
-    hostA = new RuntimeHost(deps())
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
+    dir = scratch.dir
+    store = scratch.store
+    hostA = scratch.host(deps())
   })
 
   const window = new RecordingSink('webContents:1')
@@ -257,7 +233,7 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
     // 🚩 **"The next launch"**: a second `RuntimeHost` over the SAME store/db. `RuntimeHost`'s own
     // constructor is where every stranded-work sweep runs, and none of them is about an
     // instruction ask.
-    const hostB = new RuntimeHost(deps())
+    const hostB = scratch.host(deps())
 
     const now = hostB.agentInstructions('worker')
     expect(now.waiting).toHaveLength(1)

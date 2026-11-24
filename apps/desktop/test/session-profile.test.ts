@@ -1,16 +1,16 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  hostsOverAScratchDatabase,
+  oneRuntimePerProvider,
+} from './lib/hosts-over-a-scratch-database'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { claudeAutoMemoryDir, claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { composeSystemHint, readSessionInstructions } from '../src/main/runtime/instructions'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import {
   DEFAULT_PROFILE_ID,
@@ -18,7 +18,7 @@ import {
   deriveProviderHome,
   prepareProviderHome,
 } from '../src/main/connections/homes'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { RuntimeEventSink, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 
 /**
  * A profile is the shared-vs-isolated memory boundary: it picks the provider home, and the home
@@ -30,8 +30,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
  * The real path derivation runs; only the credential seams are injected, so this never reads the
  * machine Keychain or the personal `~/.codex`.
  */
-
-const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class NullSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
@@ -49,6 +47,8 @@ describe('session profile', () => {
   let runtimes: Map<string, FakeRuntime>
   /** Every home this run provisioned, in order — the assertions read these. */
   let homes: string[]
+
+  const scratch = hostsOverAScratchDatabase('brobot2-profile-')
 
   async function realHome(provider: Provider, profileId: string): Promise<string> {
     const home = await prepareProviderHome(
@@ -75,45 +75,20 @@ describe('session profile', () => {
     return home
   }
 
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => {
-        const existing = runtimes.get(provider)
-        if (existing) return existing
-        const fresh = new FakeRuntime(provider)
-        runtimes.set(provider, fresh)
-        return fresh
-      },
+  const buildHost = (overrides: Partial<RuntimeHostDeps> = {}) =>
+    scratch.host({
+      createRuntime: oneRuntimePerProvider(() => runtimes),
       prepareProviderHome: realHome,
       providerHomePath: homePath,
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
       ...overrides,
     })
-  }
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-profile-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     runtimes = new Map()
     homes = []
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('shares one home between sessions in the same profile, and separates different ones', async () => {

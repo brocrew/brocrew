@@ -1,14 +1,6 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { SessionStore } from '../src/main/db/session-store'
 
 /**
  * **After an abnormal exit, the reopen list showed dead sessions as "working"** (074, from 069 §2.5).
@@ -29,8 +21,6 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
  * precisely the state under test.
  */
 
-const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
 /**
  * The normal answer to "what is something alive running right now" — nothing (198).
  *
@@ -42,20 +32,11 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 const NOTHING_RUNNING: ReadonlySet<string> = new Set()
 
 describe('a session a dead process left mid-run', () => {
-  let dir: string
-  let db: AppDatabase
   let store: SessionStore
+  const scratch = hostsOverAScratchDatabase('brobot2-orphan-')
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-orphan-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
+    store = scratch.store
   })
 
   /**
@@ -192,21 +173,9 @@ describe('a session a dead process left mid-run', () => {
     crashedMidTurn('sess_crashed')
     expect(statusOf('sess_crashed')).toBe('working')
 
-    new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+    scratch.host({
       newSessionId: () => 'sess_unused',
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'x',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'x'),
     })
 
     expect(statusOf('sess_crashed')).toBe('idle')

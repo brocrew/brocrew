@@ -1,8 +1,6 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProcessExit, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
@@ -13,10 +11,8 @@ import type {
   SessionHandle,
   SessionRef,
 } from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { joinLiveHosts, workRunningElsewhere } from '../src/main/runtime/live-hosts'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import {
@@ -24,9 +20,6 @@ import {
   STOOD_DOWN_NOTICE,
   runAsSoleInstance,
 } from '../src/main/single-instance'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrations = join(here, '../src/main/db/migrations')
 
 /** What a caught rejection actually says — never `String(error)`, which prints `[object Object]`. */
 const errorText = (error: unknown): string =>
@@ -116,21 +109,17 @@ describe('one app per data folder', () => {
   })
   describe('work another live host is running', () => {
     let dir: string
-    let db: AppDatabase
     let store: SessionStore
     const leaves: (() => void)[] = []
+    const scratch = hostsOverAScratchDatabase('brobot2-one-app-')
 
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), 'brobot2-one-app-'))
-      db = openDatabase(join(dir, 'db.sqlite'))
-      applyMigrations(db, migrations)
-      store = createSessionStore(db)
+      dir = scratch.dir
+      store = scratch.store
     })
 
     afterEach(() => {
       for (const leave of leaves.splice(0)) leave()
-      db.close()
-      rmSync(dir, { recursive: true, force: true })
     })
 
     const SINK = {
@@ -142,21 +131,9 @@ describe('one app per data folder', () => {
     }
 
     const buildHost = (over: Partial<RuntimeHostDeps> = {}): RuntimeHost =>
-      new RuntimeHost({
-        store,
-        ...neutralHostDeps(() => dir),
-        createRuntime: (provider) => new FakeRuntime(provider),
-        prepareProviderHome: (provider) => join(dir, 'homes', provider),
-        providerHomePath: (provider) => join(dir, 'homes', provider),
-        resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+      scratch.host({
         newSessionId: () => `sess_${Math.random().toString(16).slice(2)}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'x',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'x'),
         ...over,
       })
 

@@ -1,18 +1,15 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { linesOf } from './helpers/provider-lines'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
 
 /**
  * **A derived ledger says what read it, and is rebuilt only when asked** (065, from 061 finding 6 —
@@ -30,7 +27,6 @@ import { linesOf } from './helpers/provider-lines'
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrations = join(here, '../src/main/db/migrations')
 
 const SESSION = 'sess_derived'
 
@@ -51,19 +47,14 @@ describe('the derived-generation contract (065)', () => {
   let issued: number
   /** The provider's lines a derive reads, as the test has planted and grown them. */
   let held: string[]
+  const scratch = hostsOverAScratchDatabase('brobot2-derived-')
 
   beforeEach(() => {
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     held = []
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-derived-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     issued = 0
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** An adopted row with `count` lines of its provider's file behind it — what a derive reads. */
@@ -836,24 +827,11 @@ describe('the derived-generation contract (065)', () => {
     }
 
     const buildHost = (announced?: string[]): RuntimeHost =>
-      new RuntimeHost({
-        store,
+      scratch.host({
         ...(announced === undefined ? {} : { announce: ({ what }) => void announced.push(what) }),
-        discoverSessions: NO_DISCOVERY,
         nativeTranscriptPath: () => (held.length === 0 ? null : providerFile()),
-        exportDirectory: () => join(dir, 'exports'),
-        createRuntime: (provider) => new FakeRuntime(provider),
-        prepareProviderHome: (provider) => join(dir, 'homes', provider),
-        providerHomePath: (provider) => join(dir, 'homes', provider),
-        resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
         newSessionId: () => `sess_host_${++issued}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'x',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'x'),
       })
 
     it('rebuilds a session when it is named, reading its grown file, and reports what it did', async () => {

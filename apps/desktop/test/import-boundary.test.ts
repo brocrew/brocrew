@@ -1,14 +1,11 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { AppDatabase } from '../src/main/db/connection'
+import type { SessionStore } from '../src/main/db/session-store'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { CLAUDE_JSONL } from '../src/main/providers/claude/transcripts'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { linesOf } from './helpers/provider-lines'
@@ -32,14 +29,13 @@ import type { SessionBundle } from '../src/main/archive/export-session'
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const migrations = join(here, '../src/main/db/migrations')
 const CLAUDE_FIXTURE = join(here, 'fixtures/claude-transcript.jsonl')
 
 describe('import has one completion boundary (051)', () => {
-  let dir: string
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
+  const scratch = hostsOverAScratchDatabase('brobot2-import-boundary-')
 
   const rows = () =>
     db.prepare('SELECT id, external_ref FROM provider_session').all() as {
@@ -50,32 +46,9 @@ describe('import has one completion boundary (051)', () => {
     (db.prepare(`SELECT count(*) AS c FROM ${table}`).get() as { c: number }).c
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-import-boundary-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
-    let counter = 0
-    host = new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'x',
-        authNote: null,
-        files: [],
-      }),
-    })
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
+    db = scratch.db
+    store = scratch.store
+    host = scratch.host({ readProviderConfig: providerConfigOf('CLAUDE_CONFIG_DIR', 'x') })
   })
 
   /** A bundle of `entries` messages, optionally with the ordinal collision that fails an import. */

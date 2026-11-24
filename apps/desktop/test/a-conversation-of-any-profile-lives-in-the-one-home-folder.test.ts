@@ -16,6 +16,7 @@ import {
   prepareProviderHome,
 } from '../src/main/connections/homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { oneRuntimePerProvider } from './lib/hosts-over-a-scratch-database'
 
 /**
  * # ⛔ A conversation of ANY profile lives in the one home folder (D-016a, commit 2)
@@ -134,13 +135,7 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     return new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => {
-        const existing = runtimes.get(provider)
-        if (existing) return existing
-        const fresh = new FakeRuntime(provider)
-        runtimes.set(provider, fresh)
-        return fresh
-      },
+      createRuntime: oneRuntimePerProvider(() => runtimes),
       prepareProviderHome: realHome,
       providerHomePath: (provider, profileId) => deriveProviderHome(dir, { profileId, provider }),
       resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),

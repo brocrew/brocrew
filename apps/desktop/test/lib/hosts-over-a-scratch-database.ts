@@ -17,6 +17,17 @@ export const providerConfigOf =
   (homeEnv: string, model: string): RuntimeHostDeps['readProviderConfig'] =>
   (_provider, home) => ({ home, homeEnv, model, authNote: null, files: [] })
 
+/** One fake runtime per provider, shared by every host given it: a relaunch keeps its state. */
+export const oneRuntimePerProvider =
+  (runtimes: () => Map<string, FakeRuntime>): RuntimeHostDeps['createRuntime'] =>
+  (provider) => {
+    const existing = runtimes().get(provider)
+    if (existing) return existing
+    const fresh = new FakeRuntime(provider)
+    runtimes().set(provider, fresh)
+    return fresh
+  }
+
 /** Provider homes laid out per profile: `provider-homes/default/<profile>/<provider>`. */
 export function homesPerProfileUnder(
   root: () => string,

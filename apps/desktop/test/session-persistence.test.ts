@@ -1,9 +1,9 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  hostsOverAScratchDatabase,
+  oneRuntimePerProvider,
+} from './lib/hosts-over-a-scratch-database'
+import { join } from 'node:path'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   FakeRuntime,
   parseSessionRef,
@@ -11,19 +11,17 @@ import {
   type RuntimeEvent,
 } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import {
-  NULL_SESSION_STORE,
-  createSessionStore,
-  type SessionStore,
-} from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { NULL_SESSION_STORE, type SessionStore } from '../src/main/db/session-store'
+import type {
+  RuntimeEventSink,
+  RuntimeHost,
+  RuntimeHostDeps,
+} from '../src/main/runtime/runtime-host'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import type { PromptUpdateBaseline } from '../src/shared/human-answer-contracts'
 
 // A real host and temporary database prove which rows survive the process that wrote them.
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 function typedTurn(text: string, baseline?: PromptUpdateBaseline) {
   return {
@@ -76,26 +74,8 @@ describe('session persistence', () => {
   let sink: RecordingSink
   let calls: string[]
 
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
-      ...overrides,
-    })
-  }
+  const scratch = hostsOverAScratchDatabase('brobot2-persist-')
+  const buildHost = (overrides: Partial<RuntimeHostDeps> = {}) => scratch.host(overrides)
 
   const sessionRows = () =>
     db.prepare('SELECT * FROM provider_session ORDER BY created_at').all() as Record<
@@ -108,19 +88,12 @@ describe('session persistence', () => {
       .all(sessionId) as Record<string, unknown>[]
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-persist-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
+    dir = scratch.dir
+    db = scratch.db
+    store = scratch.store
     calls = []
-    store = createSessionStore(db)
     host = buildHost()
     sink = new RecordingSink(sinkOwnerId({ id: 1 }), calls)
-  })
-
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   it('records the session the moment it is created', async () => {
@@ -577,7 +550,7 @@ describe('session persistence', () => {
     // A second connection, opened before anything is written and never handed to the app. What it
     // can see is what a NEXT LAUNCH sees: committed rows, no finalizer, no drain — the state a
     // SIGKILL leaves. `smoke:ui` step 44 is the live half of this.
-    const onDisk = openDatabase(join(dir, 'brobot2.sqlite'))
+    const onDisk = scratch.alsoClose(openDatabase(join(dir, 'brobot2.sqlite')))
     const refOnDisk = (sessionId: string): string | null =>
       (
         onDisk.prepare('SELECT external_ref FROM provider_session WHERE id = ?').get(sessionId) as
@@ -797,7 +770,6 @@ describe('session persistence', () => {
  * happens when the provider cannot find the conversation at all.
  */
 describe('resume', () => {
-  let dir: string
   let db: AppDatabase
   let store: SessionStore
   let sink: RecordingSink
@@ -808,47 +780,18 @@ describe('resume', () => {
    */
   let runtimes: Map<string, FakeRuntime>
 
-  const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-  function buildHost(overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}) {
-    let counter = 0
-    return new RuntimeHost({
-      store,
-      ...neutralHostDeps(() => dir),
-      createRuntime: (provider) => {
-        const existing = runtimes.get(provider)
-        if (existing) return existing
-        const fresh = new FakeRuntime(provider)
-        runtimes.set(provider, fresh)
-        return fresh
-      },
-      prepareProviderHome: (provider) => join(dir, 'homes', provider),
-      providerHomePath: (provider) => join(dir, 'homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'file-based',
-        authNote: null,
-        files: [],
-      }),
+  const scratch = hostsOverAScratchDatabase('brobot2-resume-')
+  const buildHost = (overrides: Partial<RuntimeHostDeps> = {}) =>
+    scratch.host({
+      createRuntime: oneRuntimePerProvider(() => runtimes),
       ...overrides,
     })
-  }
 
   beforeEach(() => {
+    db = scratch.db
+    store = scratch.store
     runtimes = new Map()
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-resume-'))
-    db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
     sink = new RecordingSink()
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** Run a session to the point where it is recorded and resumable, then close it. */

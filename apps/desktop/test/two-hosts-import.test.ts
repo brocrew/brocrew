@@ -1,29 +1,23 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import type { SessionStore } from '../src/main/db/session-store'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { linesOf } from './helpers/provider-lines'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import type { ImportedRecording } from '../src/shared/runtime-ipc'
+import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CLAUDE_FIXTURE = join(here, 'fixtures/claude-transcript.jsonl')
-const migrations = join(here, '../src/main/db/migrations')
 const ID = 'sess_child'
 
 describe('one ledger, two hosts, one import', () => {
   let dir: string
-  let db: AppDatabase
   let store: SessionStore
   let hostA: RuntimeHost
   let hostB: RuntimeHost
@@ -32,58 +26,40 @@ describe('one ledger, two hosts, one import', () => {
   /** How many times host B got as far as looking for the transcript. */
   let bReachedTheHome: number
 
+  const scratch = hostsOverAScratchDatabase('brobot2-two-hosts-')
+
   /** Everything a host needs, minus the one seam each test wants to reach into. */
-  const deps = (
-    lookUp: typeof nativeTranscriptPath,
-  ): ConstructorParameters<typeof RuntimeHost>[0] => ({
-    store,
-    discoverSessions: NO_DISCOVERY,
+  const deps = (lookUp: typeof nativeTranscriptPath): Partial<RuntimeHostDeps> => ({
     nativeTranscriptPath: lookUp,
-    exportDirectory: () => join(dir, 'exports'),
-    createRuntime: (provider: Provider) => new FakeRuntime(provider),
     prepareProviderHome: (provider, profileId) => homeOf(provider, profileId),
     providerHomePath: (provider, profileId) => join(dir, 'homes', profileId ?? 'none', provider),
-    resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
     newSessionId: () => `sess_${Math.floor(1)}`,
-    readProviderConfig: (provider, home) => ({
-      home,
-      homeEnv: 'X',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: providerConfigOf('X', 'm'),
   })
 
   const homeOf = (provider: Provider, profileId: string): string =>
     join(dir, 'homes', profileId, provider)
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'brobot2-two-hosts-'))
-    db = openDatabase(join(dir, 'db.sqlite'))
-    applyMigrations(db, migrations)
-    store = createSessionStore(db)
+    dir = scratch.dir
+    store = scratch.store
     pressedByB = null
     bReachedTheHome = 0
 
     // Host B is built first so host A's seam can name it.
-    hostB = new RuntimeHost(
+    hostB = scratch.host(
       deps((provider, home, ref) => {
         bReachedTheHome += 1
         return nativeTranscriptPath(provider, home, ref)
       }),
     )
-    hostA = new RuntimeHost(
+    hostA = scratch.host(
       deps((provider, home, ref) => {
         // Inside A's import, after its claim and before it reads a byte, B presses Import.
         if (pressedByB === null) pressedByB = hostB.importRecordedSession(ID)
         return nativeTranscriptPath(provider, home, ref)
       }),
     )
-  })
-
-  afterEach(() => {
-    db.close()
-    rmSync(dir, { recursive: true, force: true })
   })
 
   /** An app-owned adopted row: found in a home we provisioned, so it carries a profile. */
