@@ -258,7 +258,7 @@ describe('734 · the queue names agents, not folders', () => {
       ['worker-g', 'Bob'],
       ['helper-g', 'Cleo'],
     ] as const) {
-      expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
+      expect(await host.setAgentDisplayName(slug, name), slug).not.toBeNull()
     }
     const { child: pm } = await gives(boss, 'pm-g', 'plan')
     return { boss, pm }
@@ -449,8 +449,8 @@ describe('734 · the queue names agents, not folders', () => {
         host.decisionsForAPerson().rows.find((one) => one.request.askedBy === worker)?.sentence,
       ]
       expect(said()).toEqual(['Ada waiting on you', 'Bob waiting on you'])
-      expect(host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
-      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      expect(await host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
+      expect(await host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
       expect(said()).toEqual(['Ava waiting on you', 'Ben waiting on you'])
     })
 
@@ -524,7 +524,7 @@ describe('734 · the queue names agents, not folders', () => {
       const shared = rosterReadsIn(() => host.decisionsForAPerson())
       expect(shared.answer).toBe(once.answer)
       expect(shared.reads).toBe(0)
-      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      expect(await host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
       const renamed = rosterReadsIn(() => host.decisionsForAPerson())
       expect(renamed.reads).toBe(1)
       expect(renamed.answer.rows.map((one) => one.sentence)).toContain('Ben waiting on you')

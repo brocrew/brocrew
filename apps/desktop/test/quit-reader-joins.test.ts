@@ -42,6 +42,7 @@ it.each(['success', 'sign-in failure', 'session failure'])(
     const host = Object.assign(Object.create(RuntimeHost.prototype), {
       deps: { ...deps, store: {} },
       startupRepairs: new Set<string>(),
+      agentKnowledgeOperations: new Set<Promise<unknown>>(),
       recordOpenForQuit() {},
       stopHearingCommits() {},
       windowIncidentReads: { invalidate() {} },

@@ -1,3 +1,4 @@
+import { nameGracesTeam } from './helpers/graces-team'
 import { giveToConversation, readGivenTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -1418,7 +1419,7 @@ describe('484 · state a supervisor can trust', () => {
         (handle) => holdingAWorkingTurn(handle, itsWord),
         words,
       )
-      expect(host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
+      expect(await host.setAgentDisplayName(pmProfile, 'Ada')).not.toBeNull()
       await waitFor(
         () => host.agentCard(worker, asPm(pm), pm)?.state.is === 'active',
         'the deliberately held provider turn to be working',
@@ -1474,16 +1475,7 @@ describe('484 · state a supervisor can trust', () => {
       worker: string
       piece: string
     }> => {
-      await bringIdentityIntoBeing('pm-g')
-      await bringIdentityIntoBeing('worker-g')
-      const boss = await personOpens('boss-g')
-      for (const [slug, name] of [
-        ['boss-g', 'Grace'],
-        ['pm-g', 'Ada'],
-        ['worker-g', 'Bob'],
-      ] as const) {
-        expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
-      }
+      const boss = await nameGracesTeam(host, bringIdentityIntoBeing, personOpens)
       const bossTools = agentToolsFor(host, boss)
       // Each give starts the conversation below it, its brief the first turn.
       const pm = (await aGive(bossTools, 'pm-g', 'the plan')).agent
@@ -1641,7 +1633,7 @@ describe('484 · state a supervisor can trust', () => {
       })
       // ⚑ **The name is read per answer** (`729`'s review): renamed, the next look says the new name —
       // a memo that outlived one answer would say *Grace* for the life of the app.
-      expect(host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
+      expect(await host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
       const renamed = host.stalledWorkForAPerson().rows.find((one) => one.piece === piece)
       expect(renamed?.askedToStop?.askerName).toBe(theConversationCalled('Gina', itsWork))
     })

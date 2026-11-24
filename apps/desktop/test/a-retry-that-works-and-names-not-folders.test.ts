@@ -1,3 +1,4 @@
+import { nameGracesTeam } from './helpers/graces-team'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -392,16 +393,7 @@ describe('732 · a retry that works, and names, not folders', () => {
     itsWord: 'interrupted' | 'completed',
     words: string,
   ): Promise<GraceAdaAndBob> => {
-    await bringIdentityIntoBeing('pm-g')
-    await bringIdentityIntoBeing('worker-g')
-    const boss = await personOpens('boss-g')
-    for (const [slug, name] of [
-      ['boss-g', 'Grace'],
-      ['pm-g', 'Ada'],
-      ['worker-g', 'Bob'],
-    ] as const) {
-      expect(host.setAgentDisplayName(slug, name), slug).not.toBeNull()
-    }
+    const boss = await nameGracesTeam(host, bringIdentityIntoBeing, personOpens)
     const givenPm = await callOn(boss, 'give_work', {
       to: 'new',
       conversation_title: 'plan',
@@ -541,8 +533,8 @@ describe('732 · a retry that works, and names, not folders', () => {
       // ⚠️ A memo that outlived one answer would say *Bob* and *Ada* for the life of the app.
       const rig = await graceAdaAndBob('interrupted', '732-renamed')
       await graceStopsBobWhileAdaIsClosed(rig)
-      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
-      expect(host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
+      expect(await host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      expect(await host.setAgentDisplayName('pm-g', 'Ava')).not.toBeNull()
       const row = host.stalledWorkForAPerson().rows.find((one) => one.piece === rig.piece)
       expect({ holder: row?.ownerName, giver: row?.giverName }).toEqual({
         holder: 'Ben',
@@ -633,7 +625,7 @@ describe('732 · a retry that works, and names, not folders', () => {
       expect(
         (await callOn(rig.boss, 'interrupt_agent', { agent: rig.worker, reason: 'why' })).outcome,
       ).toBe('ok')
-      expect(host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
+      expect(await host.setAgentDisplayName('boss-g', 'Gina')).not.toBeNull()
       expect(asksIn(rig.worker)).toEqual([
         {
           type: 'work_interrupted',
