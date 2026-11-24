@@ -15,12 +15,12 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { theConversationCalled } from '../src/shared/piece-called'
 
 const CLAUSES = {
-  recipient: 'Address the actual reader',
-  person: 'Lead with the answer or needed decision',
-  warmth: 'in warm, plain words',
-  courtesyKeptBrief: 'Keep greetings and apologies brief',
-  noFiller: 'End with the answer or needed question; no offers or filler',
-  recapOnlyToHelp: 'Recap only when needed',
+  recipient: 'Write to the person as a thoughtful colleague would',
+  focus: 'lead with what matters',
+  language: 'in their language',
+  plain: 'plainly',
+  concise: 'briefly',
+  tone: 'with a calm, considerate tone',
   brief: 'Keep finished files on the piece so agents can find them',
 } as const
 const THE_PARENTS_PIECE = { label: 'W1', title: 'Bakery website' } as const
