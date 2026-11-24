@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { randomUUID } from 'node:crypto'
 import { setup, seams } from './plugin-production-fixtures'
-import { supervisorFixtures } from './plugin-supervisor-fixtures'
+import { deferred, supervisorFixtures } from './plugin-supervisor-fixtures'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
 import { PluginSupervisorAttachment } from '../src/main/plugins/supervisor/client'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
@@ -12,7 +12,11 @@ import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 
 const owners = supervisorFixtures()
 const apps: PluginSupervisorAttachment[] = []
+const controllers: { close(): Promise<void> }[] = []
 afterEach(async () => {
+  // Controllers first: a startup or retry still running writes into the owner root, and removing
+  // that root under it failed with ENOTEMPTY (card 395).
+  for (const controller of controllers.splice(0)) await controller.close()
   for (const app of apps.splice(0)) await app.quit()
   await owners.cleanup()
 })
@@ -22,10 +26,17 @@ describe.skipIf(process.platform === 'win32')(
   () => {
     async function begin(mode: 'new' | 'reused', ready = false) {
       const f = await setup()
+      controllers.push(f.controller)
       const target = await owners.fixture()
       const app = new PluginSupervisorAttachment()
       apps.push(app)
       vi.spyOn(app, 'supports').mockReturnValue(false)
+      const admitting = deferred<void>()
+      const start = app.start.bind(app)
+      vi.spyOn(app, 'start').mockImplementation((options) => {
+        start(options)
+        admitting.resolve()
+      })
       const recordPath = join(target.root, 'supervisor/owner.json')
       async function publish(lifecycleReady: boolean, epoch?: string) {
         const record = JSON.parse(await readFile(recordPath, 'utf8'))
@@ -57,7 +68,11 @@ describe.skipIf(process.platform === 'win32')(
         workspaceRoot: target.workspaceRoot,
         supervisor: app,
       })
-      await vi.waitFor(() => expect(app.holdsLease()).toBe(true))
+      // Wait for the admission itself. A 1 s poll measured the runner: a whole owner launch, hello
+      // and hold took 30-270 ms here and passed 1 s on a busy CI runner (card 395).
+      await admitting.promise
+      expect(await app.ready(), String(app.lastStartError)).toBe(true)
+      expect(app.holdsLease()).toBe(true)
       let settled = false
       const initialization = f.controller.ready!().then(() => {
         settled = true

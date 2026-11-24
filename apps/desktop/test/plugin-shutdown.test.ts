@@ -80,11 +80,15 @@ describe.skipIf(process.platform === 'win32')(
   'installed plugin shutdown, scratch roots and inert host',
   () => {
     async function attached(f: Awaited<ReturnType<typeof fixture>>, state = f.state) {
+      // The owner's drain steps, so a failed shutdown says which step failed.
+      const drain: string[] = []
       const owner = await PluginSupervisor.start({
         root: f.root,
         workspaceRoots: [f.workspace],
         tickEvery: 10,
         drainWithin: 1000,
+        traceDrain: ({ stage, state, cause }) =>
+          drain.push(`${stage}:${state}${cause ? ` (${cause})` : ''}`),
       })
       closes.push(() => owner.shutdown())
       const lease = await PluginWorkspaceLease.attach({
@@ -116,7 +120,7 @@ describe.skipIf(process.platform === 'win32')(
         propose: () => {},
       })
       closes.push(() => client.close())
-      return { owner, lease, service, client, fake, sink: { ...sink, sink: stableSink } }
+      return { owner, lease, service, client, fake, drain, sink: { ...sink, sink: stableSink } }
     }
     async function phase(root: string) {
       return JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
@@ -210,15 +214,26 @@ describe.skipIf(process.platform === 'win32')(
       const f = await fixture()
       const run = await attached(f)
       await run.client.install('chrome')
-      const ack = deferred<boolean>()
-      const revoke = vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => ack.promise)
+      const ack = deferred<boolean>(),
+        asked = deferred<void>()
+      vi.spyOn(run.sink.sink, 'revoke').mockImplementation(() => {
+        asked.resolve()
+        return ack.promise
+      })
+      // The owner ends a silent consumer at 75% of its budget and gives up at 100%. On real timers,
+      // one runner stall across both fired them in the same turn, so the deadline judged the
+      // consumer before its teardown could run (card 393). Here only the owner's first deadline
+      // fires, and the teardown it starts runs on real I/O.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const closing = run.owner.shutdown()
       try {
-        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-        expect(await closing).toBe(true)
+        await asked.promise
+        await vi.advanceTimersToNextTimerAsync()
+        expect(await closing, run.drain.join(', ')).toBe(true)
         expect(await phase(f.root)).toBe('stopped')
         expect(run.service.controller.cleanForShutdown()).toBe(true)
       } finally {
+        vi.useRealTimers()
         ack.resolve(true)
         await closing.catch(() => undefined)
       }
