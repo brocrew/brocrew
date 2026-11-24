@@ -438,8 +438,8 @@ describe('populated recovery measurement', () => {
       try {
         const seen = await compareMeasurementCopies({ root, file, fs: nodeFs })
         expect(seen.map(({ path }) => path)).toEqual(['production-adapter', 'portable-copy'])
-        expect(seen[0].adapterAdmission).toBe(true)
         for (const one of seen) {
+          expect(one.callerAdmission).toBe(true)
           expect(one.correct).toBe(true)
           expect(one.cleanupVerified).toBe(true)
           expect(one.finished).toBeLessThanOrEqual(one.validationStarted)

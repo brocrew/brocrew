@@ -8,7 +8,6 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -131,17 +130,17 @@ describe('only one run at a time', () => {
 describe('242 · the gate socket has to FIT, and the root is what decides', () => {
   const RUN = '2026-08-19T10-20-30-400Z-4242'
   const LONGEST = 'user-data-sole-instance'
+  const OLD_DARWIN_TMPDIR = '/var/folders/_h/h3hwq1s0hjds8mmwtd5gv00000gn0a/T'
 
   it('🔴 the OLD root could not hold a socket, and the NEW one can', (ctx) => {
     // darwin only: the premise is the Mac's long `tmpdir()` against a 104-byte socket path.
     // CI runs on Linux and skips it.
     ctx.skip(process.platform !== 'darwin')
-    // Computed, never created: these are strings and the filesystem is not touched.
-    const wasAt = join(tmpdir(), 'brobot2-ui-smoke', RUN, LONGEST, GATE_SOCKET)
-    expect(
-      wasAt.length,
-      'this machine’s tmpdir is short enough that the smokes were NOT masked — re-derive 241 §3',
-    ).toBeGreaterThanOrEqual(SUN_PATH_MAX)
+    // Computed, never created: these are strings and the filesystem is not touched. The old root is
+    // the shape of a Mac's default `os.tmpdir()` (48 bytes), not this process's own, so a short
+    // `TMPDIR` cannot make the negative pass for the wrong reason.
+    const wasAt = join(OLD_DARWIN_TMPDIR, 'brobot2-ui-smoke', RUN, LONGEST, GATE_SOCKET)
+    expect(wasAt.length).toBeGreaterThanOrEqual(SUN_PATH_MAX)
 
     // ...and the paired positive, on the root the smokes use. Built from `dirname` because
     // `smokeTmpRoot` creates and `chmod`s what it is given, and a test may not touch a live
