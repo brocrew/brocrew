@@ -5,39 +5,22 @@ import {
   type FilesLibraryRequest,
   type FilesLibraryResult,
 } from '../../shared/files-library'
-import { committedChangesOf, type Committed } from './committed-changes'
+import { changesWhatIsRead, committedRevision } from './committed-revision'
 import type { AppDatabase } from './connection'
 
 /**
- * The tables whose writes can change a Files reading. A conversation's own row is left out: Files
- * reads only its id and identity, both written when the row is made (the session store's
- * `writeIdentityOnSession`), and its removal is a whole `deleted` change. Every ordinary append
- * rewrites that row's status.
+ * What a Files reading reads. A conversation's own row is left out: Files reads only its id and
+ * identity, both written when the row is made (the session store's `writeIdentityOnSession`), and
+ * its removal is a whole `deleted` change. Every ordinary append rewrites that row's status.
  */
-const READ_TABLES = new Set(['work', 'work_resource', 'agent_identity', 'derived_generation'])
-const READ_ROWS = new Set<string>(['work_retitled', 'replaced_by'])
+const changesWhatFilesRead = changesWhatIsRead(
+  new Set(['work', 'work_resource', 'agent_identity', 'derived_generation']),
+  new Set(['work_retitled', 'replaced_by']),
+)
 
-const changesWhatFilesRead = (change: Committed): boolean =>
-  change.resync ||
-  [...change.tables].some((table) => READ_TABLES.has(table)) ||
-  change.rows.some((row) => READ_ROWS.has(row.rowType)) ||
-  // Trimming never removes the rows Files reads.
-  [...change.whole.values()].some((why) => why !== 'trimmed')
-
-/**
- * A revision that moves when a commit on `db` changes what Files reads, or when another
- * connection commits; `null` while no fresh snapshot can be read.
- */
-export function filesLibraryRevision(db: AppDatabase, canRead: () => boolean): () => string | null {
-  let changes = 0
-  committedChangesOf(db).listen((change) => {
-    if (changesWhatFilesRead(change)) changes++
-  })
-  return () => {
-    if (!canRead()) return null
-    return `${changes}:${String(db.pragma('data_version', { simple: true }))}`
-  }
-}
+/** A revision that moves when what Files reads changed, or when another connection commits. */
+export const filesLibraryRevision = (db: AppDatabase, canRead: () => boolean) =>
+  committedRevision(db, canRead, changesWhatFilesRead)
 
 /** Dedicated caches and native permits belong to one window in this workspace. */
 export class FilesLibraryWindows {

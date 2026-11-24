@@ -369,7 +369,7 @@ it('matches an independent pair-by-pair oracle for randomized small directed fix
   }
 })
 
-it('returns one coherent pinned reading stale after an intervening external write without retrying', () => {
+it('returns one coherent pinned reading after an intervening write without retrying, stale once the host revision moves', () => {
   const f = graphFixture()
   owned.push(f)
   f.seed()
@@ -390,9 +390,12 @@ it('returns one coherent pinned reading stale after an intervening external writ
   owned.push(engine)
   const h = snapshot(engine.read({ operation: 'snapshot' }, graphContext))
   expect(h.nodeCount).toBe(5)
-  expect(h.stale).toBe(true)
+  expect(h.stale).toBe(false)
   expect(rosterReads).toBe(1)
-  const page = engine.read({ operation: 'nodes', snapshot: h.snapshot }, graphContext)
+  const page = engine.read(
+    { operation: 'nodes', snapshot: h.snapshot },
+    { ...graphContext, hostRevision: 'moved' },
+  )
   expect(page).toMatchObject({ type: 'nodes', stale: true })
   const next = snapshot(engine.read({ operation: 'snapshot' }, graphContext))
   expect(next.nodeCount).toBe(6)
