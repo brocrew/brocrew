@@ -192,10 +192,10 @@ describe('§1 · one instruction set', () => {
     it('⛔ the memory rule and the work rule stay generic', () => {
       const plain = composeProfileBundle(context())
       expect(plain).toContain(
-        "Keep the person's standing wishes in your own notes and, when permitted, tested lessons in saved methods; keep task facts separate.",
+        'Keep the person’s wishes with their source and scope; distinguish proposals, temporary instructions and later corrections. Notes do not change standing rules. When permitted, keep tested lessons in saved methods; keep task facts separate.',
       )
       expect(plain).toContain(
-        'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',
+        'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off, within your assigned role and current permissions.',
       )
     })
 
@@ -203,7 +203,7 @@ describe('§1 · one instruction set', () => {
       const common = composeProfileBundle(context())
       expect(common).toContain('Follow local conventions; explain conflicts.')
       expect(common).toContain(
-        'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',
+        'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off, within your assigned role and current permissions.',
       )
       expect(common).toContain(
         'Keep the judgement and hand off separable, noisy work when the saved time or expertise justifies coordination.',
@@ -1039,7 +1039,7 @@ describe('§9 · one agent instruction set', () => {
   it('keeps delegation, handover and profile sizing together for every agent', () => {
     const said = composeProfileBundle(context())
     expect(said).toContain(
-      'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off.',
+      'A specialist may keep work that is small, tightly connected, covered by an exact installed procedure, or cheaper to do than hand off, within your assigned role and current permissions.',
     )
     expect(said).toContain(
       'Keep the judgement and hand off separable, noisy work when the saved time or expertise justifies coordination.',
