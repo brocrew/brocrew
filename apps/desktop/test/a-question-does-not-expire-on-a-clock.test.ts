@@ -378,10 +378,11 @@ describe('591 · a question does not expire on a clock', () => {
       // say whether that start happened (`kept`). ⚠️ The person's door hands a question this app
       // asked to one function, and the route is in there.
       const code = codeOf(mainRoot, 'runtime/runtime-host.ts')
-      expect(code).not.toContain('aTurnIsWaiting')
-      const agentAnswer = bodyOf(code, 'async answerQuestion(').replace(/\s+/g, '')
+      const answers = codeOf(mainRoot, 'runtime/host-split/question-answers.ts')
+      expect(code + answers).not.toContain('aTurnIsWaiting')
+      const agentAnswer = bodyOf(answers, 'async answerQuestion(').replace(/\s+/g, '')
       expect(agentAnswer).toContain(
-        'consttold=this.deliverAnswer(decisionForStoppedAsker===undefined?words:{...words,decisionForStoppedAsker},request.requestId,speaking,said,null,null,stopAs,files.files,)',
+        'consttold=this.host.deliverAnswer(decisionForStoppedAsker===undefined?words:{...words,decisionForStoppedAsker},request.requestId,speaking,said,null,null,stopAs,files.files,)',
       )
       expect(bodyOf(code, 'async respondUserInput(')).toContain(
         'return await this.aPersonAnswersAQuestionThisAppAsked(',
