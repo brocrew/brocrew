@@ -1,7 +1,6 @@
 {
   "apps/desktop/smoke/idle-is-not-true.smoke.ts": 1180,
   "apps/desktop/smoke/lifecycle-stage.smoke.ts": 2072,
-  "apps/desktop/src/main/db/session-store.ts": 9647,
   "apps/desktop/src/main/index.ts": 1817,
   "apps/desktop/src/main/plugins/lifecycle/controller.ts": 1775,
   "apps/desktop/src/main/recovery/checkpoint.ts": 1113,
