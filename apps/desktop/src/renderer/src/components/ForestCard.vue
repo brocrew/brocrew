@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ConversationRow from './ConversationRow.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import { computed } from 'vue'
 import type { GraphNode } from '../lib/forest-graph'
 import { OPEN_THE_CONVERSATION } from '../lib/taking-over'
@@ -166,7 +167,7 @@ const shown = computed(() =>
         :data-depth="task.depth"
         :data-conversation="task.conversation"
       >
-        <span class="task" data-cy="forest-task" :title="task.taskRow?.said">
+        <div class="task" data-cy="forest-task" :title="task.taskRow?.said">
           <span class="tnum" data-cy="forest-task-number">{{ task.taskRow?.reading.heading }}</span>
           <span
             class="mark"
@@ -176,7 +177,13 @@ const shown = computed(() =>
             :title="task.taskRow?.reading.word"
             >{{ task.taskRow?.open ? '○' : '●' }}</span
           >
-          <span class="said" data-cy="forest-task-said">{{ task.taskRow?.said }}</span>
+          <MarkdownWords
+            compact
+            class="said"
+            data-cy="forest-task-said"
+            :text="task.taskRow?.said ?? ''"
+            :session-id="task.conversation"
+          />
           <!-- ⚑ **UI-002 · its files, counted** (`07` §2 item 3) — a press opens the Files tab at
                this piece. ⛔ The line itself stays words: only the count is a press. -->
           <button
@@ -194,7 +201,7 @@ const shown = computed(() =>
             <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg
             >{{ countOf(task.taskRow?.piece) }}
           </button>
-        </span>
+        </div>
         <span v-if="task.taskRow?.giverNotDrawn" class="absent" data-cy="forest-giver-not-drawn"
           >Given by a conversation this reading did not draw</span
         >

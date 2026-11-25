@@ -52,7 +52,12 @@ export interface ConversationRowView {
   /** The provider, said on the identity line. */
   readonly addressProvider?: Provider | null
   readonly namedByYou?: boolean
-  readonly pieces?: readonly { readonly key: string; readonly text: string; readonly cy?: string }[]
+  readonly pieces?: readonly {
+    readonly key: string
+    readonly text: string
+    readonly lead?: string
+    readonly cy?: string
+  }[]
   readonly opening?: string | null
 }
 

@@ -13,6 +13,7 @@ import { workReading } from '../lib/work-report'
 import type { CastTask } from '../lib/working-together'
 import CardEmpty from './CardEmpty.vue'
 import TaskList from './TaskList.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
   page: Extract<ConversationTaskPageResult, { ok: true }> | null
@@ -85,6 +86,7 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
   <p v-else-if="!page" class="task-note" role="status">Reading tasks…</p>
   <template v-if="page">
     <TaskList
+      :conversation="page.conversation"
       v-if="page.current"
       :key="page.current.piece"
       data-cy="cast-taken"
@@ -113,6 +115,7 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
         <span v-if="otherTotal !== null">{{ otherTotal }}</span>
       </summary>
       <TaskList
+        :conversation="page.conversation"
         data-cy="cast-other"
         mode="other"
         :tasks="other"
@@ -151,7 +154,7 @@ const status = computed(() => props.page?.current?.statusLine ?? null)
       >
         {{ agoWords(status.at, minute) }}
       </time>
-      <p>{{ status.text }}</p>
+      <MarkdownWords :text="status.text" :session-id="page.conversation" />
     </div>
   </template>
 </template>

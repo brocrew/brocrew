@@ -70,6 +70,14 @@ const card = (id: string): { m: ReturnType<typeof mount>; sent: () => UserInputR
   return { m, sent: () => seen }
 }
 
+function expectSelectedAnswer(m: ReturnType<typeof mount>, chip: HTMLButtonElement) {
+  expect(chip.closest('.option')!.classList.contains('selected')).toBe(true)
+  expect(chip.getAttribute('aria-pressed')).toBe('true')
+  const answer = m.q('user-input-answer') as HTMLButtonElement
+  expect(answer.disabled).toBe(false)
+  return answer
+}
+
 describe('a question id from the prototype chain (146 §2)', () => {
   for (const id of ['constructor', '__proto__', 'toString', 'valueOf']) {
     it(`renders, lights and answers a question whose id is \`${id}\``, async () => {
@@ -86,9 +94,7 @@ describe('a question id from the prototype chain (146 §2)', () => {
       await Promise.resolve()
 
       // ⛔ `__proto__` stored nothing at all, so neither of these could ever become true.
-      expect(chip!.classList.contains('selected')).toBe(true)
-      const answer = m.q('user-input-answer') as HTMLButtonElement
-      expect(answer.disabled).toBe(false)
+      const answer = expectSelectedAnswer(m, chip!)
 
       answer.click()
       expect(sent()).toHaveLength(1)
@@ -167,10 +173,8 @@ describe('a REQUEST id from the prototype chain, around the card (150, from 148 
       expect(chip, `no chip under request id ${id}`).not.toBeNull()
       chip!.click()
       await Promise.resolve()
-      expect(chip!.classList.contains('selected')).toBe(true)
 
-      const answer = m.q('user-input-answer') as HTMLButtonElement
-      expect(answer.disabled).toBe(false)
+      const answer = expectSelectedAnswer(m, chip!)
       answer.click()
       expect(seen).toHaveLength(1)
       // …and the draft that was written is the one the record holds under that id, not a stray.

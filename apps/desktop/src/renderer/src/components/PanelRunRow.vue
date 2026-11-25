@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
+import { vButtonKeys } from '../lib/button-keys'
 import type { PanelRun } from '../lib/panel-runs'
 defineProps<{
   run: PanelRun
+  conversation?: string
   canStop?: boolean
   stopping?: boolean
   disabled?: boolean
@@ -11,27 +14,42 @@ defineEmits<{ open: []; stop: [] }>()
 </script>
 <template>
   <div class="run-row" :data-run-key="run.key" :data-cy="`panel-run-${run.key}`">
-    <button
+    <div
       class="run-open"
-      type="button"
+      role="button"
+      :tabindex="disabled ? -1 : 0"
+      v-button-keys
       data-cy="panel-row"
       :data-item="run.itemId"
-      :disabled="disabled"
+      :aria-disabled="disabled"
       :title="title"
-      @click="$emit('open')"
+      @click="!disabled && $emit('open')"
     >
       <svg class="icon" aria-hidden="true"><use :href="run.icon" /></svg>
-      <span class="copy">
-        <strong class="label" data-cy="panel-run-label">{{ run.label }}</strong>
-        <span class="detail"
-          >{{ run.group }}<template v-if="run.detail"> · {{ run.detail }}</template></span
-        >
+      <div class="copy">
+        <MarkdownWords
+          v-if="run.labelIsProse"
+          class="label"
+          data-cy="panel-run-label"
+          :text="run.label"
+          :session-id="conversation"
+        />
+        <strong v-else class="label" data-cy="panel-run-label">{{ run.label }}</strong>
+        <div class="detail">
+          {{ run.group }}<template v-if="run.detail"> · </template>
+          <MarkdownWords
+            v-if="run.detailIsProse && run.detail"
+            :text="run.detail"
+            :session-id="conversation"
+          />
+          <template v-else>{{ run.detail }}</template>
+        </div>
         <span class="status" :class="{ failed: run.failed }"
           >{{ run.status }}<span v-if="run.time" class="time">{{ run.time }}</span></span
         >
-      </span>
+      </div>
       <svg class="icon arrow" aria-hidden="true"><use href="#i-chevron" /></svg>
-    </button>
+    </div>
     <button
       v-if="canStop && run.stopId"
       class="stop row-stop bb-button"
@@ -92,6 +110,11 @@ defineEmits<{ open: []; stop: [] }>()
   white-space: nowrap;
   text-overflow: ellipsis;
   margin-top: var(--space-1);
+}
+.detail :deep(.markdown-words),
+.detail :deep(.md-chat),
+.detail :deep(p) {
+  display: inline;
 }
 .status {
   display: flex;

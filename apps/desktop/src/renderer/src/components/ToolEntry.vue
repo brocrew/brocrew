@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PathsHere } from '../composables/useMessagePaths'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { CapabilityStatus, ChildWorkInput, CommandTail } from '../../../shared/runtime-ipc'
 import { BACKGROUND_SENTENCE, BACKGROUND_WORD, backgroundState } from '../lib/background-work'
@@ -8,6 +9,7 @@ import { TOOL_OUTCOME_WORD, didNotPlainlySucceed, toolOutcome, toolTook } from '
 import type { ToolItem, TranscriptItem } from '../lib/transcript'
 import SubAgentEntry from './SubAgentEntry.vue'
 import WorkflowEntry from './WorkflowEntry.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * One thing the agent did: a foldable row, with its output underneath when it lands.
@@ -21,6 +23,7 @@ import WorkflowEntry from './WorkflowEntry.vue'
  */
 const props = withDefaults(
   defineProps<{
+    paths?: PathsHere | null
     item: ToolItem & Pick<TranscriptItem, 'at'>
     /**
      * ⛔ **What this command has printed, while it runs** (300) — supplied by whoever is FOLLOWING
@@ -434,16 +437,23 @@ const droppedNote = computed(() =>
            it leaving: together they are the whole record. -->
       <template v-if="item.background?.summary">
         <p class="cap">what became of it</p>
-        <p class="ended" data-cy="tool-background-summary">{{ item.background.summary }}</p>
+        <MarkdownWords
+          class="ended"
+          data-cy="tool-background-summary"
+          :text="item.background.summary"
+          :paths="props.paths"
+        />
       </template>
       <slot name="answer">
         <template v-if="item.result">
           <p class="cap">what it answered</p>
-          <pre
+          <MarkdownWords
             class="text tool-body"
             :class="item.result.ok ? 'out-ok' : 'out-bad'"
             data-cy="tool-output"
-            >{{ item.result.summary }}</pre>
+            :text="item.result.summary"
+            :paths="props.paths"
+          />
           <!-- The door to the whole answer (462), or the sentence that says there is none. -->
           <div class="answer-ask">
             <button
@@ -473,6 +483,7 @@ const droppedNote = computed(() =>
         v-for="card in item.subAgents"
         :key="card.agentId"
         :card="card"
+        :paths="props.paths"
         placement="nested"
         :can-open-transcript="props.canOpenChild"
         @open-child="(what, label) => emit('openChild', what, label)"
@@ -486,6 +497,7 @@ const droppedNote = computed(() =>
     <div v-if="item.workflow" class="subagents" data-cy="tool-workflow">
       <WorkflowEntry
         :run="item.workflow"
+        :paths="props.paths"
         :can-open-child="props.canOpenChild"
         :can-open-output="props.canOpenOutput"
         @open-output="(taskId, workflow) => emit('openOutput', taskId, workflow)"

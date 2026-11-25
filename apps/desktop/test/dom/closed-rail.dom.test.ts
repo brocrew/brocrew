@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { answerTheCatalogue } from './answered-catalogue'
 import { nextTick } from 'vue'
+import { userEvent } from 'vitest/browser'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type {
@@ -373,15 +374,24 @@ describe('every row is the same control, and its press opens that conversation (
     for (const id of ids) {
       const one = row(m, id)
       expect(visible(one), `${id} is on screen`).toBe(true)
-      expect(one.tagName, `${id} is not a control`).toBe('BUTTON')
+      expect(one.getAttribute('role'), `${id} is not a control`).toBe('button')
       expect(getComputedStyle(one).cursor, `${id}'s cursor says it does nothing`).not.toBe(
         'default',
       )
+      const before = m.selected.length
       one.click()
       await nextTick()
+      expect(m.selected.slice(before)).toEqual([id])
+      expect(one.tabIndex).toBe(0)
+      one.focus()
+      expect(document.activeElement).toBe(one)
+      await userEvent.keyboard('{Enter}')
+      expect(m.selected.slice(before)).toEqual([id, id])
+      await userEvent.keyboard(' ')
+      expect(m.selected.slice(before)).toEqual([id, id, id])
     }
-    // ⚑ Each press is its own row's, once, in order — never a second verb.
-    expect(m.selected).toEqual(ids)
+    // Each pointer, Enter and Space gesture opens its own row once, in order.
+    expect(m.selected).toEqual(ids.flatMap((id) => [id, id, id]))
     expect(m.host.querySelectorAll('[data-cy^="cancel-reopen-"]')).toHaveLength(0)
   })
 })
@@ -673,7 +683,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(visible(row(m, 'sess_lostref'))).toBe(true)
     // …and the row that stayed is the same KIND of row: unresumable, and a press opens it. The
     // rule is about whose conversation it is, not about whether it can be reopened.
-    expect(row(m, 'sess_lostref').tagName).toBe('BUTTON')
+    expect(row(m, 'sess_lostref').getAttribute('role')).toBe('button')
   })
 
   it('⛔ a LIVE conversation on a non-default profile IS drawn — the pair 154 needs (172)', async () => {
@@ -719,7 +729,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     // ⛔ **And it is a way IN, not a line of text** (172 acceptance 6). A row that is drawn and does
     // nothing on a press would satisfy every assertion above and leave the conversation exactly as
     // unreachable as it was — which is what the ticket is about.
-    expect(drawn.tagName).toBe('BUTTON')
+    expect(drawn.getAttribute('role')).toBe('button')
     drawn.click()
     expect(m.selected).toEqual(['sess_developer'])
   })

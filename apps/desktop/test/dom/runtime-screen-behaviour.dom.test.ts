@@ -40,6 +40,16 @@ beforeEach(installRuntimeScreenFixture)
 const backOf = (screen: { q: (cy: string) => HTMLElement }): HTMLButtonElement =>
   screen.q('nav-back') as HTMLButtonElement
 
+function transcriptLinks(screen: ReturnType<typeof mount>) {
+  return screen.all('message-link').filter((element) => element.closest('[data-cy="transcript"]'))
+}
+
+function transcriptLink(screen: ReturnType<typeof mount>) {
+  const links = transcriptLinks(screen)
+  expect(links).toHaveLength(1)
+  return links[0]!
+}
+
 async function screenWithLink(target = 'W2.1', working = false) {
   runtime.attachOpen.mockResolvedValueOnce([
     {
@@ -65,7 +75,7 @@ async function screenWithLink(target = 'W2.1', working = false) {
   ])
   expect(await sessions.attachOpen()).toEqual(['fictional-source'])
   const screen = mount(RuntimeScreen, {})
-  await expect.poll(() => screen.all('message-link').length).toBe(1)
+  await expect.poll(() => transcriptLinks(screen).length).toBe(1)
   return screen
 }
 
@@ -86,12 +96,12 @@ it('opens a resolved conversation and returns to the original message without se
     status: 'Idle',
     opens: { sessionId: 'fictional-target' },
   })
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('message-link').length).toBe(0)
   expect(runtime.look).toHaveBeenCalledWith({ sessionId: 'fictional-target', claim: true })
   expect(backOf(screen).disabled).toBe(false)
   backOf(screen).click()
-  await expect.poll(() => screen.all('message-link').length).toBe(1)
+  await expect.poll(() => transcriptLinks(screen).length).toBe(1)
   expect(runtime.startAndSend).not.toHaveBeenCalled()
   expect(runtime.send).not.toHaveBeenCalled()
   expect(runtime.resume).not.toHaveBeenCalled()
@@ -108,7 +118,7 @@ it('opens archived history read-only, with a way back, and never calls look or a
   runtime.resolveLink.mockResolvedValueOnce(archived)
   const screen = await screenWithLink('[Older draft](brocrew://conversation/fictional-archive)')
   runtime.resolveLink.mockResolvedValueOnce(archived)
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(1)
   expect(runtime.latestHistory).toHaveBeenCalledWith({ sessionId: 'fictional-archive' })
   expect(screen.q('linked-history').querySelector('textarea')).toBeNull()
@@ -119,7 +129,7 @@ it('opens archived history read-only, with a way back, and never calls look or a
   expect(runtime.send).not.toHaveBeenCalled()
   backOf(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(0)
-  expect(screen.q('message-link').textContent).toBe('Older draft')
+  expect(transcriptLink(screen).textContent).toBe('Older draft')
 })
 
 it.each(['source conversation', 'previous archive'])(
@@ -168,7 +178,7 @@ it.each(['source conversation', 'previous archive'])(
     if (returnsTo === 'previous archive')
       runtime.latestHistory.mockResolvedValueOnce(history('W8.3'))
     const screen = await screenWithLink('W8.1')
-    screen.q('message-link').click()
+    transcriptLink(screen).click()
     await expect.poll(() => screen.q('linked-history').textContent).toContain('Older draft')
     const archiveLink = () =>
       screen.q('linked-history').querySelector<HTMLButtonElement>('[data-cy="message-link"]')!
@@ -185,7 +195,7 @@ it.each(['source conversation', 'previous archive'])(
       await expect.poll(() => screen.q('linked-history').textContent).toContain('Older draft')
     } else {
       await expect.poll(() => screen.all('linked-history').length).toBe(0)
-      expect(screen.q('message-link').textContent).toBe('W8.1')
+      expect(transcriptLink(screen).textContent).toBe('W8.1')
     }
     await nextTick()
     expect(screen.all('message-link-failure')).toHaveLength(0)
@@ -205,7 +215,7 @@ it('opens an exact identity profile and its conversation shelf and can go back',
   runtime.resolveLink.mockResolvedValueOnce(answer)
   const screen = await screenWithLink('[Editor](brocrew://agent/agent%3Aeditor)')
   runtime.resolveLink.mockResolvedValueOnce(answer)
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('team-open-editor').length).toBe(1)
   expect(screen.q('team-name-editor').textContent).toBe('Editor')
   expect((screen.q('team-shelf-editor') as HTMLDetailsElement).open).toBe(true)
@@ -213,7 +223,7 @@ it('opens an exact identity profile and its conversation shelf and can go back',
     'No conversation on the list runs as it.',
   )
   backOf(screen).click()
-  await expect.poll(() => screen.all('message-link').length).toBe(1)
+  await expect.poll(() => transcriptLinks(screen).length).toBe(1)
   expect(runtime.look).not.toHaveBeenCalled()
   expect(runtime.send).not.toHaveBeenCalled()
 })
@@ -247,7 +257,7 @@ it('follows a link out of archived history and returns through that history to t
     turnAligned: true,
   })
   const screen = await screenWithLink('W8.1')
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(1)
   const onward = screen
     .q('linked-history')
@@ -269,7 +279,7 @@ it('follows a link out of archived history and returns through that history to t
   )
   backOf(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(0)
-  expect(screen.q('message-link').textContent).toBe('W8.1')
+  expect(transcriptLink(screen).textContent).toBe('W8.1')
   expect(backOf(screen).disabled).toBe(true)
   expect(runtime.resume).not.toHaveBeenCalled()
   expect(runtime.startAndSend).not.toHaveBeenCalled()
@@ -316,20 +326,20 @@ it('returns through a recorded conversation even after the window released its r
     .mockResolvedValueOnce(b)
     .mockResolvedValueOnce(b)
   const screen = await screenWithLink('W9.1')
-  screen.q('message-link').click()
-  await expect.poll(() => screen.all('message-link')[0]?.textContent).toBe('W9.2')
-  await expect.poll(() => screen.q('message-link').dataset.linkState).toBe('available')
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
+  await expect.poll(() => transcriptLinks(screen)[0]?.textContent).toBe('W9.2')
+  await expect.poll(() => transcriptLink(screen).dataset.linkState).toBe('available')
+  transcriptLink(screen).click()
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
   backOf(screen).click()
-  await expect.poll(() => screen.all('message-link')[0]?.textContent).toBe('W9.2')
+  await expect.poll(() => transcriptLinks(screen)[0]?.textContent).toBe('W9.2')
   expect(runtime.look).toHaveBeenCalledWith({ sessionId: 'recorded-a', claim: false })
   // The step ends once its page is drawn; a press before that is the same step's.
   await new Promise<void>((done) =>
     requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 0))),
   )
   backOf(screen).click()
-  await expect.poll(() => screen.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(screen)[0]?.textContent).toBe('W9.1')
   expect(runtime.resume).not.toHaveBeenCalled()
   expect(runtime.startAndSend).not.toHaveBeenCalled()
   expect(runtime.send).not.toHaveBeenCalled()
@@ -369,7 +379,7 @@ it('leaves a closed history page closed when a link look finishes late', async (
       }),
   )
   const screen = await screenWithLink('W8.1')
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(1)
   const onward = screen
     .q('linked-history')
@@ -389,7 +399,7 @@ it('leaves a closed history page closed when a link look finishes late', async (
   await nextTick()
   // Two reads of each link, and none after Back: Back keeps focus on its own button, not the link.
   expect(runtime.resolveLink).toHaveBeenCalledTimes(4)
-  expect(screen.q('message-link').textContent).toBe('W8.1')
+  expect(transcriptLink(screen).textContent).toBe('W8.1')
   expect(backOf(screen).disabled).toBe(true)
   expect(screen.all('message-link-failure')).toHaveLength(0)
 })
@@ -405,7 +415,7 @@ it('Back from archived history returns to the working conversation without inter
   runtime.resolveLink.mockResolvedValueOnce(archive).mockResolvedValueOnce(archive)
   const screen = await screenWithLink('W8.1', true)
   expect(sessions.get('fictional-source')?.control.status).toBe('working')
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(1)
   backOf(screen).click()
   await expect.poll(() => screen.all('linked-history').length).toBe(0)
@@ -1123,7 +1133,7 @@ it('reads the two file lists once per conversation opening, including mount', as
     status: 'Idle',
     opens: { sessionId: 'fictional-target' },
   })
-  screen.q('message-link').click()
+  transcriptLink(screen).click()
   await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(2)
   expect(runtime.filesKept).toHaveBeenLastCalledWith({
     scope: 'tree',

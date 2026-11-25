@@ -10,6 +10,7 @@ import { WORK_DOUBT_WORDS, workGivenOutView, type WorkGivenOutReading } from '..
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import WorkFacts from './WorkFacts.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * 🔴 **The work this conversation gave out** (508) — the seventh drawer tab, and the surface
@@ -147,12 +148,22 @@ const view = computed(() =>
           </p>
           <!-- ⛔ **The one line every surface draws for this fact** — see `WorkFacts.vue`. -->
           <WorkFacts :reading="row" />
-          <p v-if="row.definitionOfDone" class="condition" data-cy="work-row-done">
-            Done when: {{ row.definitionOfDone }}
-          </p>
-          <p v-if="row.said" class="said" :title="row.said" data-cy="work-row-said">
-            {{ row.said }}
-          </p>
+          <MarkdownWords
+            v-if="row.definitionOfDone"
+            class="condition"
+            data-cy="work-row-done"
+            lead="Done when:"
+            :text="row.definitionOfDone"
+            :session-id="props.conversation"
+          />
+          <MarkdownWords
+            v-if="row.said"
+            class="said"
+            :title="row.said"
+            data-cy="work-row-said"
+            :text="row.said"
+            :session-id="props.conversation"
+          />
         </li>
       </ol>
 

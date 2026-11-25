@@ -1,7 +1,7 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
@@ -17,9 +17,7 @@ import {
 
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
-import type { ForestNode } from '../../src/shared/the-whole-forest'
-import { forestView } from '../../src/renderer/src/lib/the-forest'
-import { conv, forestDrawn, forestOf } from './forest-fixture'
+import { forestDrawn, viewFromWhoCalled } from './forest-fixture'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { assertClippedButTold, assertDrawn, describeCarrier, drawnReady, sweep } from './drawn'
 import { META, drawerProps, mount, unmountAll, type Mounted } from './harness'
@@ -127,51 +125,6 @@ const given = (m: { graph: Mounted }): HTMLElement[] =>
     (row) => row.dataset.conversation !== META.sessionId,
   )
 
-/**
- * ⚑ **The forest this reading describes** — this conversation, its parent above it, the ones it
- * spawned under it, any other it gave work to at the root, and every piece on the card that holds
- * it. ⚠️ The Graph tab draws the WHOLE forest from its own read; a reading of one conversation is the
- * part of it these assertions are about.
- */
-function forestFrom(read: WhoCalledWhom, identities: readonly AgentIdentity[] | null) {
-  const rows: ForestNode[] = []
-  if (read.parent)
-    rows.push(conv(read.parent.conversation, null, { identity: read.parent.identity }))
-  rows.push(conv(META.sessionId, read.parent?.conversation ?? null, { identity: 'default' }))
-  const drawn = new Set([META.sessionId, read.parent?.conversation])
-  for (const child of read.children.rows) {
-    rows.push(
-      conv(child.conversation, META.sessionId, {
-        identity: child.identity,
-        running: child.running,
-      }),
-    )
-    drawn.add(child.conversation)
-  }
-  for (const work of [...read.workGivenOut.rows, ...read.workTakenIn.rows]) {
-    if (!drawn.has(work.to)) {
-      rows.push(conv(work.to, null, { identity: work.toIdentity ?? 'worker' }))
-      drawn.add(work.to)
-    }
-    rows.push({
-      node: 'a-task',
-      under: { is: 'a-conversation', conversation: work.to },
-      givenBy:
-        work.from === null
-          ? { is: 'the-person' }
-          : { is: 'a-conversation', conversation: work.from },
-      work,
-    } as unknown as ForestNode)
-  }
-  return forestView({
-    forest: forestOf(rows),
-    atWork: null,
-    waits: null,
-    identities,
-    held: new Set<string>(),
-  })
-}
-
 const walk = <Row>(
   rows: readonly Row[],
   kind: LedgerWalkKind,
@@ -248,7 +201,10 @@ async function show(over: Shown) {
   const graph = mount(
     TeamForest,
     {
-      view: over.read === null ? null : forestFrom(over.read, over.identities ?? null),
+      view:
+        over.read === null
+          ? null
+          : viewFromWhoCalled(over.read, over.identities ?? null, META.sessionId),
       current: META.sessionId,
     },
     { width: over.graphWidth ?? 1000, height: 900 },
@@ -450,8 +406,16 @@ describe('§1 · the property — who started it, what it started, and what pass
     ).toEqual(['worker', 'worker'])
     // ⚑ Each chip draws its small plate.
     for (const chip of chips) expect(chip.querySelector('[data-cy="agent-plate"]')).toBeTruthy()
-    chips[1]!.querySelector('button')!.click()
+    const chip = chips[1]!.querySelector<HTMLElement>('.agent-chip[role="button"]')!
+    expect(chip.tabIndex).toBe(0)
+    chip.click()
     expect(press).toEqual(['sess_busy'])
+    chip.focus()
+    expect(document.activeElement).toBe(chip)
+    await userEvent.keyboard('{Enter}')
+    expect(press).toEqual(['sess_busy', 'sess_busy'])
+    await userEvent.keyboard(' ')
+    expect(press).toEqual(['sess_busy', 'sess_busy', 'sess_busy'])
     // ⛔ …and no card opens under the strip: the panel is this agent's card alone.
     expect(m.drawer.host.querySelectorAll('.agent')).toHaveLength(0)
     expect(m.drawer.all('session-bot')).toHaveLength(1)
@@ -468,7 +432,15 @@ describe('§1 · the property — who started it, what it started, and what pass
     })
     const chips = agentRows(m.q('cast-children-strip'))
     expect(chips).toHaveLength(2)
-    for (const chip of chips) expect(chip.querySelector('button')).toBeNull()
+    for (const chip of chips) {
+      expect(chip.querySelector('button')).toBeNull()
+      const control = chip.querySelector<HTMLElement>('.agent-chip')!
+      expect(control).not.toBeNull()
+      expect(control.getAttribute('role')).toBeNull()
+      expect(control.getAttribute('tabindex')).toBeNull()
+      expect(control.tabIndex).toBe(-1)
+      expect(control.matches('button, a[href], input, select, textarea, summary')).toBe(false)
+    }
   })
 
   it('🔴 a tile draws the big avatar’s facts as it does: the plate, and beside it the name, profile and word', async () => {
@@ -864,7 +836,12 @@ describe('§3 · four children, no fact about where any of them is, and the pres
     // Each of the four chips opens its own conversation, whatever that conversation’s state.
     const strip = m.q('cast-children-strip')
     expect(agentRows(strip)).toHaveLength(4)
-    for (const chip of strip.querySelectorAll<HTMLElement>('button')) chip.click()
+    const controls = strip.querySelectorAll<HTMLElement>('.agent-chip[role="button"]')
+    expect(controls).toHaveLength(4)
+    for (const chip of controls) {
+      expect(chip.tabIndex).toBe(0)
+      chip.click()
+    }
     expect(opened).toEqual(['sess_recording', 'sess_unwatched', 'sess_here', 'sess_elsewhere'])
 
     // ⛔ **And the words of the old press are not on this band at all** — the one press's words are
@@ -904,7 +881,7 @@ describe('§3 · four children, no fact about where any of them is, and the pres
     // The recipient’s chip opens its conversation; in the graph, its card provides the
     // corresponding press.
     m.q('cast-children-strip')
-      .querySelector<HTMLButtonElement>('button[data-conversation="sess_unwatched"]')!
+      .querySelector<HTMLElement>('[role="button"][data-conversation="sess_unwatched"]')!
       .click()
     await nextTick()
     expect(pressed).toEqual(['sess_unwatched'])

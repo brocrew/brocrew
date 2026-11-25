@@ -510,12 +510,20 @@ async function takeItBack(piece: string): Promise<void> {
     </div>
     <WorkFacts v-if="card.facts" :reading="card.facts" />
     <!-- ⚑ **A give's title, above its brief** — the piece's own name, as the tree lists it. -->
-    <p v-if="card.title" class="title" data-cy="outgoing-title">{{ card.title }}</p>
+    <MarkdownWords
+      v-if="card.title"
+      class="title"
+      data-cy="outgoing-title"
+      :text="card.title"
+      :paths="props.paths"
+      :session-id="props.sessionId"
+    />
     <ReadableWords
       v-if="jsonParts && view === 'readable'"
       class="msg-body"
       data-cy="outgoing-readable"
       :parts="jsonParts"
+      :paths="props.paths"
       :title="fullTime(item.at)"
     />
     <div
@@ -525,7 +533,12 @@ async function takeItBack(piece: string): Promise<void> {
       :data-cut="card.bodyIsCut"
       :title="fullTime(item.at)"
     >
-      <MarkdownWords v-if="view === 'readable'" :text="card.body" />
+      <MarkdownWords
+        v-if="view === 'readable'"
+        :text="card.body"
+        :paths="props.paths"
+        :session-id="props.sessionId"
+      />
       <template v-else>{{ card.body }}</template>
     </div>
     <!-- 🔴 **678 · a cut body SAYS it was cut, in words and outside the message's box** — never

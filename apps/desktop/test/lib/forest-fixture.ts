@@ -1,3 +1,4 @@
+import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import type { TaskState } from '../../src/shared/task-contracts'
 import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { forestView, type ForestView } from '../../src/renderer/src/lib/the-forest'
@@ -150,4 +151,47 @@ export function emptyForestBridge(
       }
     },
   }
+}
+
+/**
+ * ⚑ **The forest this reading describes** — this conversation, its parent above it, the ones it
+ * spawned under it, any other it gave work to at the root, and every piece on the card that holds
+ * it. ⚠️ The Graph tab draws the WHOLE forest from its own read; a reading of one conversation is the
+ * part of it these assertions are about.
+ */
+export function viewFromWhoCalled(
+  read: WhoCalledWhom,
+  identities: readonly AgentIdentity[] | null,
+  sessionId: string,
+) {
+  const rows: ForestNode[] = []
+  if (read.parent)
+    rows.push(conv(read.parent.conversation, null, { identity: read.parent.identity }))
+  rows.push(conv(sessionId, read.parent?.conversation ?? null, { identity: 'default' }))
+  const drawn = new Set([sessionId, read.parent?.conversation])
+  for (const child of read.children.rows) {
+    rows.push(
+      conv(child.conversation, sessionId, {
+        identity: child.identity,
+        running: child.running,
+      }),
+    )
+    drawn.add(child.conversation)
+  }
+  for (const work of [...read.workGivenOut.rows, ...read.workTakenIn.rows]) {
+    if (!drawn.has(work.to)) {
+      rows.push(conv(work.to, null, { identity: work.toIdentity ?? 'worker' }))
+      drawn.add(work.to)
+    }
+    rows.push({
+      node: 'a-task',
+      under: { is: 'a-conversation', conversation: work.to },
+      givenBy:
+        work.from === null
+          ? { is: 'the-person' }
+          : { is: 'a-conversation', conversation: work.from },
+      work,
+    } as unknown as ForestNode)
+  }
+  return viewOf(rows, identities)
 }

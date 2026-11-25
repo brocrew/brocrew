@@ -2,8 +2,9 @@
 import ProviderLabel from './ProviderLabel.vue'
 import { useProviderLabel } from '../composables/useProviderLabel'
 import ConversationRow from './ConversationRow.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
-import type { OwnWait } from '../lib/conversation-list'
+import type { OwnWait, aGiverWaitsOnPurposeSays } from '../lib/conversation-list'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import {
   type CreatedSession,
@@ -119,7 +120,7 @@ const props = withDefaults(
      * While a piece this conversation gave waits on purpose: whom it waits on and why, said in
      * place of the wait's own word (`says`), and with the status line whole on its title.
      */
-    waitsOnPurpose?: { readonly says: string; readonly whole: string } | null
+    waitsOnPurpose?: ReturnType<typeof aGiverWaitsOnPurposeSays>
     /** While this conversation holds a piece with a typed wait: that wait, said in place of "Idle". */
     ownWait?: OwnWait | null
     /**
@@ -495,8 +496,9 @@ const panelToggleName = computed(() =>
       </template>
       <template #status>
         <div v-if="!(unstarted && props.starting)" class="agent-standing" data-cy="agent-standing">
-          <span
+          <MarkdownWords
             v-if="!unstarted"
+            compact
             class="standing-word"
             :class="statusTone"
             data-cy="session-status"
@@ -505,9 +507,10 @@ const panelToggleName = computed(() =>
             :tabindex="statusDetail ? 0 : undefined"
             :data-status="props.status ?? ''"
             :data-standing="standing"
-          >
-            {{ statusLabel }}
-          </span>
+            :text="!props.providerLimit ? (onPurpose?.status ?? statusLabel) : statusLabel"
+            :lead="!props.providerLimit && onPurpose?.status ? `${onPurpose.lead}:` : undefined"
+            :session-id="onPurpose?.conversation ?? props.session?.sessionId"
+          />
         </div>
         <!-- What the agent is doing and when it last reported, at the end of the line. It takes
                the room left on the line and cuts the activity there, so the bar never grows a row. -->
@@ -807,7 +810,7 @@ const panelToggleName = computed(() =>
 }
 
 /* A wait on purpose is a sentence: it is cut at this width, and its whole is on its title. */
-.standing-word {
+.agent-standing .standing-word {
   overflow: hidden;
   max-width: 56ch;
   color: var(--text);

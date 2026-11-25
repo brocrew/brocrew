@@ -267,6 +267,7 @@ for (const md of [renderer, chatRenderer]) {
     const escaped = md.utils.escapeHtml(source)
     const alt = self.renderInlineAsText(token.children ?? [], options, env)
     const label = alt === '' ? escaped : `${md.utils.escapeHtml(alt)} — ${escaped}`
+    if (env?.streaming) return `<span class="refused-image">${label}</span>`
     // `validateLink` decides the `href` exactly as it would for an ordinary link, so a destination
     // this app refuses to navigate to is not made clickable by having arrived as an image.
     if (/^brocrew:/i.test(source) && token.meta?.internalLinkLabel !== true)
@@ -368,6 +369,7 @@ function clip(value: string): string {
  */
 for (const md of [renderer, chatRenderer]) {
   md.renderer.rules.link_close = (tokens, index, options, env, self) => {
+    if (env?.streaming) return '</span>'
     const closed = self.renderToken(tokens, index, options)
     const localKey = tokens[index]?.meta?.localFileKey
     const finish = (disclosure: string): string =>
@@ -411,6 +413,7 @@ for (const md of [renderer, chatRenderer]) {
   }
 
   md.renderer.rules.link_open = (tokens, index, options, env, self) => {
+    if (env?.streaming) return '<span>'
     const token = tokens[index]
     const href = token?.attrGet('href')?.trim() ?? ''
     if (/^brocrew:/i.test(href) || token?.meta?.messageLink === true) {
@@ -436,8 +439,8 @@ export function renderMarkdown(source: string): string {
 }
 
 /** What an agent said, in the conversation stream. */
-export function renderChatMarkdown(source: string, lead?: string): string {
-  const html = chatRenderer.render(source)
+export function renderChatMarkdown(source: string, lead?: string, streaming = false): string {
+  const html = chatRenderer.render(source, { streaming })
   if (!lead) return html
   const label = `<span class="md-lead">${chatRenderer.utils.escapeHtml(lead)}</span>`
   return html.startsWith('<p>') ? `<p>${label} ${html.slice(3)}` : `<p>${label}</p>\n${html}`

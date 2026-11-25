@@ -116,10 +116,16 @@ describe('a multiple-choice question renders as multiple choice (139)', () => {
     await Promise.resolve()
 
     // ⛔ THE DEFECT: pre-139 the second click replaced the first and exactly one chip was ever lit.
-    expect(chip('q0', 'Core rendering').classList.contains('selected')).toBe(true)
-    expect(chip('q0', 'Agents & skills').classList.contains('selected')).toBe(true)
+    expect(chip('q0', 'Core rendering').closest('.option')!.classList.contains('selected')).toBe(
+      true,
+    )
+    expect(chip('q0', 'Agents & skills').closest('.option')!.classList.contains('selected')).toBe(
+      true,
+    )
     // …and the one nobody touched is not, so "selected" still means something.
-    expect(chip('q0', 'Interactive UI').classList.contains('selected')).toBe(false)
+    expect(chip('q0', 'Interactive UI').closest('.option')!.classList.contains('selected')).toBe(
+      false,
+    )
 
     m.q('user-input-answer').click()
     expect(sent()).toHaveLength(1)
@@ -134,7 +140,9 @@ describe('a multiple-choice question renders as multiple choice (139)', () => {
     chip('q0', 'Interactive UI').click()
     await Promise.resolve()
 
-    expect(chip('q0', 'Interactive UI').classList.contains('selected')).toBe(false)
+    expect(chip('q0', 'Interactive UI').closest('.option')!.classList.contains('selected')).toBe(
+      false,
+    )
     m.q('user-input-answer').click()
     expect(answers(sent()[0]!)).toEqual({ q0: ['Core rendering'] })
   })
@@ -193,8 +201,12 @@ describe('the single-select question beside it is untouched (139, the paired pos
     chip('q1', 'Workspace root').click()
     await Promise.resolve()
 
-    expect(chip('q1', 'A ui-demo/ subfolder').classList.contains('selected')).toBe(false)
-    expect(chip('q1', 'Workspace root').classList.contains('selected')).toBe(true)
+    expect(
+      chip('q1', 'A ui-demo/ subfolder').closest('.option')!.classList.contains('selected'),
+    ).toBe(false)
+    expect(chip('q1', 'Workspace root').closest('.option')!.classList.contains('selected')).toBe(
+      true,
+    )
 
     m.q('user-input-answer').click()
     // A STRING, not a one-element list: no existing caller had to move, and none may be made to.
@@ -350,7 +362,9 @@ describe('the answer that is not on the list, and the words around it (143)', ()
     other.value = 'something else'
     other.dispatchEvent(new Event('input', { bubbles: true }))
     await Promise.resolve()
-    expect(chip('q0', 'Core rendering').classList.contains('selected')).toBe(false)
+    expect(chip('q0', 'Core rendering').closest('.option')!.classList.contains('selected')).toBe(
+      false,
+    )
 
     chip('q0', 'Core rendering').click()
     await Promise.resolve()
@@ -432,14 +446,16 @@ describe('the answer that is not on the list, and the words around it (143)', ()
     const described = card([DESCRIBED])
     const row = described.m.host.querySelector('.options')!
     expect(row.classList.contains('described')).toBe(true)
-    expect(described.chip('q0', 'Core rendering').getBoundingClientRect().height).toBeGreaterThan(
-      28,
-    )
+    expect(
+      described.chip('q0', 'Core rendering').closest('.option')!.getBoundingClientRect().height,
+    ).toBeGreaterThan(28)
 
     // …and a question whose options carry none is untouched: every pre-143 ledger row is this shape.
     const plain = card([MULTI])
     expect(plain.m.host.querySelector('.options')!.classList.contains('described')).toBe(false)
-    expect(plain.chip('q0', 'Core rendering').getBoundingClientRect().height).toBe(28)
+    expect(
+      plain.chip('q0', 'Core rendering').closest('.option')!.getBoundingClientRect().height,
+    ).toBe(28)
   })
 
   it('a header is drawn only where the provider sent one', async () => {

@@ -88,7 +88,13 @@ describe('the person’s MCP server card', () => {
     expect(m.host.querySelector('code')?.textContent).toBe(URL)
     expect(m.host.textContent).toContain('Fictional Writer asks you to add an MCP server')
     expect(m.host.textContent).toContain(`It says this server can: “${REACHES}”`)
-    expect(m.host.querySelector('a')).toBeNull()
+    expect(m.host.querySelector('code')?.closest('a')).toBeNull()
+    expect(
+      [...m.host.querySelectorAll('a')].map((link) => ({
+        href: link.getAttribute('href'),
+        text: link.textContent,
+      })),
+    ).toEqual([{ href: 'https://fictional.example', text: 'https://fictional.example' }])
     // The scope is on the card's face; what it means is under "What approving does".
     expect(m.host.textContent).toContain('Who gets it: every agent.')
     expect(m.host.querySelector('.request-means')?.textContent).toContain(

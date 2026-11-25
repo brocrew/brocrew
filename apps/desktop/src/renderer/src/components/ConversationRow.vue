@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
 import { computed } from 'vue'
 import type { ConversationRowCy, ConversationRowView } from '../lib/conversation-row'
 import { agoWords, fullTime } from '../lib/clock'
@@ -96,7 +97,7 @@ const tailParts = computed(() =>
 </script>
 
 <template>
-  <span
+  <div
     class="conversation-row"
     :data-form="props.form"
     :data-head="props.row.head"
@@ -119,7 +120,7 @@ const tailParts = computed(() =>
       />
     </template>
     <slot name="lead" />
-    <span
+    <div
       class="rail-copy"
       :class="{
         'rail-worker-top': props.row.head === 'worker',
@@ -239,14 +240,16 @@ const tailParts = computed(() =>
           /></template>
           <template v-if="props.row.namedByYou"> · Named by you</template>
         </small>
-        <small
+        <MarkdownWords
           v-for="piece in props.row.pieces ?? []"
           :key="piece.key"
           class="rail-worker-piece"
-          :title="piece.text"
+          :title="[piece.lead, piece.text].filter(Boolean).join(' ')"
           :data-cy="piece.cy"
-          >{{ piece.text }}</small
-        >
+          :text="piece.text"
+          :lead="piece.lead"
+          :session-id="props.row.id"
+        />
         <small
           v-if="props.row.opening"
           :id="`${props.idPrefix}-opening-${props.row.id}`"
@@ -257,9 +260,9 @@ const tailParts = computed(() =>
         >
         <slot name="below" />
       </template>
-    </span>
+    </div>
     <slot name="aside" />
-  </span>
+  </div>
 </template>
 
 <style scoped>

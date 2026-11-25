@@ -629,11 +629,11 @@ describe('a question asked with no options, one press, several parts and several
     const postgres = optionIn(q1, 'Postgres')
     const sqlite = optionIn(q1, 'SQLite')
     await press(postgres)
-    expect(postgres.classList.contains('selected')).toBe(true)
-    expect(sqlite.classList.contains('selected')).toBe(false)
+    expect(postgres.closest('.option')!.classList.contains('selected')).toBe(true)
+    expect(sqlite.closest('.option')!.classList.contains('selected')).toBe(false)
     // ⚑ Lit in paint, beside the unlit one; and a staged single pick says it is held.
-    expect(getComputedStyle(postgres).backgroundColor).not.toBe(
-      getComputedStyle(sqlite).backgroundColor,
+    expect(getComputedStyle(postgres.closest('.option')!).backgroundColor).not.toBe(
+      getComputedStyle(sqlite.closest('.option')!).backgroundColor,
     )
     expect(postgres.getAttribute('aria-pressed')).toBe('true')
     expect(sqlite.getAttribute('aria-pressed')).toBe('false')
@@ -643,8 +643,8 @@ describe('a question asked with no options, one press, several parts and several
     expect(m.answers).toHaveLength(0)
 
     await press(sqlite)
-    expect(postgres.classList.contains('selected')).toBe(false)
-    expect(sqlite.classList.contains('selected')).toBe(true)
+    expect(postgres.closest('.option')!.classList.contains('selected')).toBe(false)
+    expect(sqlite.closest('.option')!.classList.contains('selected')).toBe(true)
 
     await press(optionIn(q2, 'eu'))
     expect(sendOf(m).disabled).toBe(false)
@@ -654,7 +654,7 @@ describe('a question asked with no options, one press, several parts and several
 
     // Typed words replace the pick…
     await typeInto(box!, 'MySQL')
-    expect(sqlite.classList.contains('selected')).toBe(false)
+    expect(sqlite.closest('.option')!.classList.contains('selected')).toBe(false)
     await press(sendOf(m))
     expect(flat(m.answers.at(-1))).toEqual({ q1: ['MySQL'], q2: ['eu'] })
 
@@ -667,8 +667,8 @@ describe('a question asked with no options, one press, several parts and several
     // ⚑ Words equal to an option's label stay the box's: no option is lit and the answer is sent once.
     await typeInto(box!, 'SQLite')
     expect(box!.value).toBe('SQLite')
-    expect(sqlite.classList.contains('selected')).toBe(false)
-    expect(postgres.classList.contains('selected')).toBe(false)
+    expect(sqlite.closest('.option')!.classList.contains('selected')).toBe(false)
+    expect(postgres.closest('.option')!.classList.contains('selected')).toBe(false)
     await press(sendOf(m))
     expect(flat(m.answers.at(-1))).toEqual({ q1: ['SQLite'], q2: ['eu'] })
     expect(m.answers).toHaveLength(4)

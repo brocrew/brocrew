@@ -176,7 +176,10 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     listed()
     const m = await band(360, panelReading(), false)
     const card = m.host.querySelector<HTMLElement>('.agent-chip[data-conversation="ada-worker-2"]')!
-    expect(card.tagName).toBe('SPAN')
+    expect(card.tagName).toBe('DIV')
+    expect(card.getAttribute('role')).toBeNull()
+    expect(card.tabIndex).toBeLessThan(0)
+    expect(card.matches('button, a[href], input, select, textarea')).toBe(false)
     card.click()
     expect(m.opened).toEqual([])
   })
