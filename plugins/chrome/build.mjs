@@ -2,7 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
-import { filesBelow, finalizePackage } from '../shared/package-archive.mjs'
+import {
+  bundledPackages,
+  bundleServer,
+  filesBelow,
+  finalizePackage,
+} from '../shared/package-archive.mjs'
 import { build } from 'esbuild'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -68,21 +73,7 @@ export async function buildChromePackage(
   const payload = path.join(destination, 'package')
   fs.mkdirSync(payload)
   if (target.os === 'win32') buildWindowsBirth(path.join(payload, 'bin/chrome-process-birth.exe'))
-  const result = await build({
-    entryPoints: [path.join(root, 'src/index.ts')],
-    outfile: path.join(payload, 'server.mjs'),
-    platform: 'node',
-    target: 'node22',
-    format: 'esm',
-    bundle: true,
-    sourcemap: false,
-    legalComments: 'eof',
-    metafile: true,
-    external: ['playwright-core'],
-    banner: {
-      js: "import { createRequire as brocrewCreateRequire } from 'node:module'; const require = brocrewCreateRequire(import.meta.url);",
-    },
-  })
+  const result = await bundleServer(build, root, payload, { external: ['playwright-core'] })
   copyRuntime(
     path.join(root, 'node_modules/playwright-core'),
     path.join(payload, 'node_modules/playwright-core'),
@@ -101,22 +92,8 @@ export async function buildChromePackage(
   }
   const licenses = path.join(payload, 'licenses')
   fs.mkdirSync(licenses)
-  const packages = new Map()
-  for (const input of Object.keys(result.metafile.inputs)) {
-    let current = path.dirname(path.resolve(input))
-    while (current.startsWith(root)) {
-      if (fs.existsSync(path.join(current, 'package.json'))) {
-        const meta = JSON.parse(fs.readFileSync(path.join(current, 'package.json')))
-        if (meta.name && meta.version && current.split(path.sep).includes('node_modules')) {
-          packages.set(current, meta)
-          break
-        }
-      }
-      current = path.dirname(current)
-    }
-  }
   const notices = []
-  for (const [dir, meta] of packages) {
+  for (const [dir, meta] of bundledPackages(root, result.metafile)) {
     notices.push({
       name: meta.name,
       version: meta.version,

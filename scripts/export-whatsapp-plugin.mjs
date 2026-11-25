@@ -1,78 +1,13 @@
 // Explicit local source export; never copies history, dependency folders or pushes a repository.
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { copyPluginSource } from './plugin-source.mjs'
+import { exportPluginRepository } from './plugin-source.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export function exportWhatsAppPlugin(destination) {
-  if (!path.isAbsolute(destination) || fs.existsSync(destination))
-    throw new Error('Use a fresh absolute export folder')
-  copyPluginSource(root, destination, 'whatsapp')
-  fs.mkdirSync(path.join(destination, 'scripts/lib'), { recursive: true })
-  for (const name of ['tests-run-in-a-fictional-home.mjs', 'a-test-sees-no-real-home.setup.mjs'])
-    fs.copyFileSync(
-      path.join(root, 'scripts/lib', name),
-      path.join(destination, 'scripts/lib', name),
-    )
-  fs.copyFileSync(path.join(root, 'LICENSE'), path.join(destination, 'LICENSE'))
-  fs.writeFileSync(path.join(destination, '.gitignore'), 'node_modules/\nartifact/\n*.log\n')
-  fs.writeFileSync(
-    path.join(destination, 'package.json'),
-    JSON.stringify(
-      {
-        name: 'brocrew-plugin-whatsapp',
-        version: JSON.parse(fs.readFileSync(path.join(root, 'plugins/whatsapp/package.json')))
-          .version,
-        private: true,
-        type: 'module',
-        license: 'Apache-2.0',
-        scripts: {
-          build: 'node scripts/build-plugin-release.mjs whatsapp',
-          test: 'vitest run --config vitest.release.config.mts',
-          typecheck: 'tsc --noEmit -p plugins/whatsapp/tsconfig.json',
-        },
-        devDependencies: { vitest: '4.1.10', typescript: '5.9.3', '@types/node': '22.19.15' },
-      },
-      null,
-      2,
-    ) + '\n',
-  )
-  fs.writeFileSync(
-    path.join(destination, 'package-lock.json'),
-    JSON.stringify(
-      JSON.parse(
-        fs.readFileSync(path.join(root, 'plugins/whatsapp/release-tooling-lock.json'), 'utf8'),
-      ),
-      null,
-      2,
-    ) + '\n',
-  )
-  fs.writeFileSync(
-    path.join(destination, 'README.md'),
-    '# WhatsApp plugin for BroCrew\n\nThis repository is a clean source export of the WhatsApp plugin maintained and integration-tested with BroCrew. It contains no app history, no WhatsApp session and no messages. Its release workflow builds reproducible archives for macOS arm64 and Windows x64 with Go 1.27.2 and no cgo, runs the tests with a fake bridge and made-up chats, and emits the entry for BroCrew’s plugin list. Users install from Settings → Plugins and link a phone by scanning a QR code; they run no commands and supply no key or token.\n\nBroCrew installs the archive for its own system; on Windows that needs an app whose plugin host runs plugins there. The plugin’s own notes are in `plugins/whatsapp/README.md`; the copied code’s MIT notice is in `plugins/whatsapp/bridge/UPSTREAM-LICENSE`.\n',
-  )
-  fs.copyFileSync(
-    path.join(root, 'scripts/build-plugin-release.mjs'),
-    path.join(destination, 'scripts/build-plugin-release.mjs'),
-  )
-  fs.mkdirSync(path.join(destination, 'release-test'))
-  fs.writeFileSync(path.join(destination, 'release-test/release.test.ts'), releaseTest)
-  fs.writeFileSync(
-    path.join(destination, 'vitest.release.config.mts'),
-    `import { defineConfig } from 'vitest/config'
-import { THE_GUARD, theTestsEnv } from './scripts/lib/tests-run-in-a-fictional-home.mjs'
-export default defineConfig({
-  test: { environment: 'node', env: theTestsEnv(), setupFiles: [THE_GUARD],
-    include: ['plugins/whatsapp/test/**/*.test.ts', 'release-test/*.test.ts'],
-    exclude: ['plugins/chrome/test/archive.test.ts'],
-  },
-})
-`,
-  )
-
-  fs.mkdirSync(path.join(destination, '.github/workflows'), { recursive: true })
-  fs.writeFileSync(path.join(destination, '.github/workflows/release.yml'), workflow)
+  exportPluginRepository(root, destination, 'whatsapp', { readme, releaseTest, workflow })
 }
+const readme =
+  '# WhatsApp plugin for BroCrew\n\nThis repository is a clean source export of the WhatsApp plugin maintained and integration-tested with BroCrew. It contains no app history, no WhatsApp session and no messages. Its release workflow builds reproducible archives for macOS arm64 and Windows x64 with Go 1.27.2 and no cgo, runs the tests with a fake bridge and made-up chats, and emits the entry for BroCrew’s plugin list. Users install from Settings → Plugins and link a phone by scanning a QR code; they run no commands and supply no key or token.\n\nBroCrew installs the archive for its own system; on Windows that needs an app whose plugin host runs plugins there. The plugin’s own notes are in `plugins/whatsapp/README.md`; the copied code’s MIT notice is in `plugins/whatsapp/bridge/UPSTREAM-LICENSE`.\n'
 const releaseTest = `import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'

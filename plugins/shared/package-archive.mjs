@@ -15,6 +15,41 @@ export function filesBelow(dir, prefix = '') {
         : [{ path: name, bytes: fs.readFileSync(path.join(dir, entry.name)) }]
     })
 }
+/** Bundles the plugin's server into the payload with the plugin's own esbuild `build`. */
+export const bundleServer = (build, root, payload, options) =>
+  build({
+    entryPoints: [path.join(root, 'src/index.ts')],
+    outfile: path.join(payload, 'server.mjs'),
+    platform: 'node',
+    target: 'node22',
+    format: 'esm',
+    bundle: true,
+    sourcemap: false,
+    legalComments: 'eof',
+    metafile: true,
+    banner: {
+      js: "import { createRequire as brocrewCreateRequire } from 'node:module'; const require = brocrewCreateRequire(import.meta.url);",
+    },
+    ...options,
+  })
+/** The installed packages the bundle drew files from, each folder with its package.json. */
+export function bundledPackages(root, metafile) {
+  const packages = new Map()
+  for (const input of Object.keys(metafile.inputs)) {
+    let current = path.dirname(path.resolve(input))
+    while (current.startsWith(root)) {
+      if (fs.existsSync(path.join(current, 'package.json'))) {
+        const meta = JSON.parse(fs.readFileSync(path.join(current, 'package.json')))
+        if (meta.name && meta.version && current.split(path.sep).includes('node_modules')) {
+          packages.set(current, meta)
+          break
+        }
+      }
+      current = path.dirname(current)
+    }
+  }
+  return packages
+}
 function ustar(files) {
   const chunks = []
   for (const file of files) {

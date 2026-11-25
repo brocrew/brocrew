@@ -2,7 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { digest, finalizePackage } from '../shared/package-archive.mjs'
+import {
+  bundledPackages,
+  bundleServer,
+  digest,
+  finalizePackage,
+} from '../shared/package-archive.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 /** The Go release the bridge is built and tested with; the archive is reproducible only with it. */
@@ -88,20 +93,8 @@ export async function buildWhatsAppPackage(
   const goModules = buildBridge(go, program, chosen)
   const bridgeSha256 = digest(fs.readFileSync(program))
   const { build } = await import('esbuild')
-  const result = await build({
-    entryPoints: [path.join(root, 'src/index.ts')],
-    outfile: path.join(payload, 'server.mjs'),
-    platform: 'node',
-    target: 'node22',
-    format: 'esm',
-    bundle: true,
-    sourcemap: false,
-    legalComments: 'eof',
-    metafile: true,
+  const result = await bundleServer(build, root, payload, {
     define: { BROCREW_BRIDGE_SHA256: JSON.stringify(bridgeSha256) },
-    banner: {
-      js: "import { createRequire as brocrewCreateRequire } from 'node:module'; const require = brocrewCreateRequire(import.meta.url);",
-    },
   })
   fs.cpSync(path.join(root, 'ui'), path.join(payload, 'ui'), {
     recursive: true,
@@ -115,20 +108,7 @@ export async function buildWhatsAppPackage(
     path.join(licenses, 'whatsapp-mcp-LICENSE'),
   )
   const notices = [{ name: 'whatsapp-mcp', version: '7d6a06d', license: 'MIT' }]
-  const packages = new Map()
-  for (const input of Object.keys(result.metafile.inputs)) {
-    let current = path.dirname(path.resolve(input))
-    while (current.startsWith(root)) {
-      if (fs.existsSync(path.join(current, 'package.json'))) {
-        const meta = JSON.parse(fs.readFileSync(path.join(current, 'package.json')))
-        if (meta.name && meta.version && current.split(path.sep).includes('node_modules')) {
-          packages.set(current, meta)
-          break
-        }
-      }
-      current = path.dirname(current)
-    }
-  }
+  const packages = bundledPackages(root, result.metafile)
   const licenseFiles = (dir) =>
     fs
       .readdirSync(dir)
