@@ -52,14 +52,15 @@ it.skipIf(!process.env.CI)(
       })()
       db.pragma('wal_checkpoint(TRUNCATE)')
       const bundle = await bundleAWorker(
-        'src/main/past-work-search.worker.ts',
+        'test/fixtures/past-work-index-opens.worker.ts',
         directory,
         'past-work.cjs',
       )
+      const indexOpens = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
       reader = new PastWorkSearchReader(
         (source) =>
           new Worker(bundle, {
-            workerData: { file: source },
+            workerData: { file: source, indexOpens: indexOpens.buffer },
             resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16 },
           }),
       )
@@ -89,6 +90,8 @@ it.skipIf(!process.env.CI)(
         hits: [expect.objectContaining({ conversation: 'fictional-conversation-999' })],
       })
       expect(ticks).toBeGreaterThan(0)
+      const coldIndexOpens = Atomics.load(indexOpens, 0)
+      expect(coldIndexOpens).toBeGreaterThan(0)
       const queryTimes: number[] = []
       for (let run = 0; run < 10; run++) {
         const at = performance.now()
@@ -96,6 +99,7 @@ it.skipIf(!process.env.CI)(
         queryTimes.push(performance.now() - at)
         expect(found.ok && found.hits.length).toBe(5)
         if (found.ok) expect(new Set(found.hits.map((hit) => hit.conversation)).size).toBe(5)
+        expect(Atomics.load(indexOpens, 0)).toBe(coldIndexOpens)
       }
       const queryMaxMs = Math.max(...queryTimes)
       const rankedTimes = [...queryTimes].sort((left, right) => left - right)
@@ -115,7 +119,6 @@ it.skipIf(!process.env.CI)(
             mainThreadTicksDuringColdBuild: ticks,
           }),
       )
-      expect(queryMedianMs).toBeLessThanOrEqual(200)
     } finally {
       await reader?.close()
       store.closePastWorkSearch()
