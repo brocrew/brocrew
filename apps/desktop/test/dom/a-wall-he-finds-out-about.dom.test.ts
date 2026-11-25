@@ -237,7 +237,7 @@ describe('§2 · the state that reached no surface at all', () => {
     const m = await draw()
     const short = m.q('persons-queue-walls-unread')
     expect(visible(short)).toBe(true)
-    expect(short.textContent).toContain('may not be shown here')
+    expect(short.textContent?.trim()).toBe("Usage limits couldn't be read.")
     // ⛔ **And no wall is invented to go with it** — the disclosure says *not known*, not *walled*.
     expect(m.host.querySelectorAll('[data-cy^="persons-queue-wall-says-"]')).toHaveLength(0)
   })
@@ -278,7 +278,8 @@ describe('§4 · beside the rows, above them, and never blended into them', () =
     supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await draw()
     const band = m.q('persons-queue-walls').getBoundingClientRect()
-    const rows = m.q('persons-queue-rows').getBoundingClientRect()
+    // The rows' list steps aside on Waiting on you, so the first row is what is measured.
+    const rows = m.q('persons-queue-rows').querySelector('li')!.getBoundingClientRect()
     expect(rows.height).toBeGreaterThan(0)
     expect(band.bottom).toBeLessThanOrEqual(rows.top)
   })
@@ -349,8 +350,8 @@ describe('§5 · Home, which is the screen he actually reads', () => {
     supply([wall(CLAUDE_SAID, null), wall(CODEX_SAID, 99)])
     const m = await home()
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
-    expect(m.host.querySelectorAll('[data-cy="yours-count"]')).toHaveLength(0)
-    expect(m.host.querySelectorAll('[data-cy="yours-group"]')).toHaveLength(0)
+    expect(m.q('waiting-pill-count-approvals').textContent?.trim()).toBe('0')
+    expect(m.q('waiting-pill-count-questions').textContent?.trim()).toBe('0')
   })
 
   /**
@@ -364,44 +365,28 @@ describe('§5 · Home, which is the screen he actually reads', () => {
    * *"N items below are waiting on you"* is the sentence `533` refuses, and *"one of the lists…
    * could not be read"* names a list the wall look is ruled not to be.
    *
-   * 🔴 **688 · re-aimed, and the WORDS were never the defect: the TONE was** (`688` §3.1, ruled:
-   * *"a green All clear never sits beside an amber line on the same page"*). ⚑ The intro is
-   * unchanged; the stat now says `Nothing` in the neutral ink beside the amber wall — what is true
-   * of the person (nothing is owed by them). ⚠️ Its ink is measured in
-   * `who-wrote-it-and-which-task.dom.test.ts` §6; this pins the word.
+   * 🔴 **688 · the TONE**: no green sits beside an amber line on the same page (`688` §3.1). The
+   * page's line is in the neutral ink; `who-wrote-it-and-which-task.dom.test.ts` §6 measures it.
    */
-  it('🔴 685 · a wall ALONE — the quiet intro, `Nothing` owed (688), the band, and no group that counts what is owed', async () => {
+  it('🔴 685 · a wall ALONE — the quiet line beside the band', async () => {
     supply([wall(CLAUDE_SAID, null)])
     const m = await home()
-    expect(m.q('waiting-intro').textContent?.trim()).toBe(
-      'Nothing here is blocked on an answer from you.',
-    )
-    expect(m.q('waiting-stat').textContent?.trim()).toBe('Nothing')
+    expect(m.q('waiting-intro').textContent?.trim()).toBe('Nothing needs you.')
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
-    expect(m.host.querySelectorAll('[data-cy="yours-group"]')).toHaveLength(0)
-    expect(m.host.querySelectorAll('[data-cy="live-group"]')).toHaveLength(0)
   })
 
-  // ⚑ **688 · still `All clear`**: a wall look that did not answer is drawn in the MUTED ink, not
-  // amber, so no amber line stands beside the green (`theStatBesideTheLines`).
   it('🔴 685 · a wall look that did not answer — the band says so, and the page is still quiet about what is owed', async () => {
     supply([], { wallLookAnswered: false })
     const m = await home()
     expect(visible(m.q('persons-queue-walls-unread'))).toBe(true)
-    expect(m.q('waiting-intro').textContent?.trim()).toBe(
-      'Nothing here is blocked on an answer from you.',
-    )
-    expect(m.q('waiting-stat').textContent?.trim()).toBe('All clear')
-    expect(m.host.querySelectorAll('[data-cy="yours-group"]')).toHaveLength(0)
+    expect(m.q('waiting-intro').textContent?.trim()).toBe('Nothing needs you.')
+    expect(m.q('waiting-pill-count-approvals').textContent?.trim()).toBe('0')
   })
 
   it('⚑ 685 · the control — the same wall beside something really owed moves the intro off quiet', async () => {
     supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await home()
-    expect(m.q('waiting-intro').textContent?.trim()).not.toBe(
-      'Nothing here is blocked on an answer from you.',
-    )
-    expect(m.q('waiting-stat').textContent?.trim()).not.toBe('All clear')
+    expect(m.q('waiting-intro').textContent?.trim()).toBe('1 thing needs you.')
   })
 
   it('⚑ …and with something really owed, the group and its count come back unchanged', async () => {
@@ -409,7 +394,7 @@ describe('§5 · Home, which is the screen he actually reads', () => {
     // only if the label and the count are drawn when there IS something to settle.
     supply([wall(CLAUDE_SAID, null)], { decisions: [decisionRow('req_1', 'sess_worker')] })
     const m = await home()
-    expect(m.q('yours-count').textContent?.trim()).toBe('1')
+    expect(m.q('waiting-pill-count-approvals').textContent?.trim()).toBe('1')
     expect(visible(m.q('persons-queue-wall-says-claude'))).toBe(true)
   })
 })

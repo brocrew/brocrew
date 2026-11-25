@@ -427,28 +427,28 @@ describe('a give whose arguments were cut', () => {
     const recipient = agentCardRecipient(profileCut)
     expect(recipient).toBe(AN_UNNAMED_RECIPIENT)
     expect(recipient).not.toContain('de')
-    expect(profileCut.q('outgoing-heading').textContent).not.toMatch(/\bde\b/)
+    expect(profileCut.q('exchange-head').textContent).not.toMatch(/\bde\b/)
   })
 })
 
 /* ------------------------------------------------------------------ held and sent */
 
 describe('how a give went', () => {
-  it('🔴 a give held for a busy agent says “held · goes when its turn ends” and a sent one says “sent”', async () => {
+  it('🔴 a give held for a busy agent says “held · goes when its turn ends” and a sent one says “given”', async () => {
     const summary = JSON.stringify(ARGS)
 
     const held = await pane(gave(summary, HELD_RECEIPT))
     expect(held.q('outgoing').getAttribute('data-state')).toBe('held')
-    expect(held.q('outgoing-state').textContent?.trim()).toBe('held · goes when its turn ends')
-    expect(held.q('outgoing-task').textContent?.trim()).toBe('W1.2.3')
+    expect(held.q('exchange-state').textContent?.trim()).toBe('held · goes when its turn ends')
+    expect(held.q('outgoing-outcome').textContent?.trim()).toBe('Ayo gets it when its turn ends.')
     unmountAll()
 
     // ⚑ THE POSITIVE for the held pane: the same call on the same page, and the word differs only
     // because the receipt does.
     const went = await pane(gave(summary, SENT_RECEIPT))
     expect(went.q('outgoing').getAttribute('data-state')).toBe('sent')
-    expect(went.q('outgoing-state').textContent?.trim()).toBe('sent')
-    expect(went.q('outgoing-task').textContent?.trim()).toBe('W1.2')
+    expect(went.q('exchange-state').textContent?.trim()).toBe('given')
+    expect(went.q('outgoing-outcome').textContent?.trim()).toBe('Ayo has it.')
   })
 })
 

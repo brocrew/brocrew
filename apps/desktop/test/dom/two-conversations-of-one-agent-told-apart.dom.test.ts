@@ -245,7 +245,10 @@ describe('§1 · the person’s queue — two parents’ Bobs, both parked', () 
     supply(TWO_BOBS())
     const m = await home()
     // ⚑ The premise, off the screen: two rows, both *Bob*, oldest first.
-    const drawn = [...m.q('persons-queue-rows').children].map((li) => li.getAttribute('data-cy'))
+    // The page draws each row on its own, in this order.
+    const drawn = [...m.host.querySelectorAll('[data-cy^="persons-queue-row-"]')].map((li) =>
+      li.getAttribute('data-cy'),
+    )
     expect(drawn).toEqual([`persons-queue-row-${OLDER}`, `persons-queue-row-${NEWER}`])
     expect(m.q(`persons-queue-chain-${OLDER}`).getAttribute('aria-label')).toBe(
       'Bob waiting on you',

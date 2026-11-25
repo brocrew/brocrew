@@ -34,7 +34,12 @@ import type { UserInputResponse } from '../../../shared/runtime-ipc'
 // ⚑ **UI-009 · a question this app asked is drawn and answered as `QuestionCard`** — see
 // {@link PersonsQueueRow.question}.
 import type { QueuePress } from './question-card'
-import type { PersonsQueueRow, PersonsQueueWorld } from './persons-queue-rows'
+import {
+  namesakesIn,
+  type Namesake,
+  type PersonsQueueRow,
+  type PersonsQueueWorld,
+} from './persons-queue-rows'
 import { type PersonsQueueView, andJoin, counted, personsQueueView } from './persons-queue-view'
 import {
   type InstructionAsksView,
@@ -51,6 +56,7 @@ export {
   byBlockedSince,
   KIND_WORDS,
   DID_WORDS,
+  isAnApproval,
   namesakesIn,
   namesakeSays,
 } from './persons-queue-rows'
@@ -332,7 +338,8 @@ function eachStopOnce(
 }
 
 /** One stop of one piece: a hand-back speaks for the stop it was pressed on. */
-function stopKey(row: StoppedWorkRow): string {
+/** One stop of one piece: a piece can stop again after an earlier stop's hand-back. */
+export function stopKey(row: StoppedWorkRow): string {
   return `${row.key}@${String(row.at)}`
 }
 
@@ -375,6 +382,10 @@ interface McpServerRequestRow {
   readonly only: readonly string[] | null
   /** Whether approving reopens the asking conversation: its own profile would get the server. */
   readonly reopensTheAsker: boolean
+  /** When it was asked, epoch ms: where Waiting on you lists it, oldest first. */
+  readonly at: number
+  /** The conversation that asked, which its card opens. */
+  readonly sessionId: string
 }
 
 /**
@@ -412,7 +423,7 @@ function mcpServerRequestsView(
 ): McpServerRequestsView | null {
   if (walked === null && lastLookAnswered) return null
   return {
-    rows: (walked ?? []).map(({ requested, askerCalled }) => {
+    rows: (walked ?? []).map(({ requested, askerCalled, at, conversation }) => {
       const agents = requested.whoGetsIt === 'everyone' ? null : (requested.agents ?? [])
       return {
         requestId: requested.requestId,
@@ -423,6 +434,8 @@ function mcpServerRequestsView(
         reaches: requested.reaches,
         only: agents === null ? null : agents.map(nameOf),
         reopensTheAsker: agents === null || agents.includes(requested.requestedBy),
+        at,
+        sessionId: conversation,
       }
     }),
     partial: walked === null,
@@ -639,6 +652,14 @@ export interface PersonsQueueDoors {
 export interface PersonsQueue {
   /** What to draw, or `null` while nobody has answered. */
   readonly view: ComputedRef<PersonsQueueView | null>
+  /** The rows whose asker reads the same name as another conversation's, over the whole look. */
+  readonly namesakes: ComputedRef<ReadonlyMap<string, Namesake>>
+  /**
+   * Whether the screen's first look has come back, answered or not (`PersonsQueueWorld.looked`).
+   * Before it, every list is still loading; after it, a list with nothing in it is empty or could
+   * not be read.
+   */
+  readonly looked: ComputedRef<boolean>
   /**
    * 🔴 **What the queue says about the PROVIDERS, or `null` while nobody has looked** (533) — see
    * {@link ProviderLimitsView}, whose docblock is the whole argument for why this is a second
@@ -960,6 +981,7 @@ export function createPersonsQueue(): PersonsQueue {
     lastLookAnswered: boolean
   }>(NOBODY_HAS_LOOKED_FOR_A_STOP)
   const world = ref<PersonsQueueWorld>(NOTHING_LOOKED_AT_YET)
+  const looked = ref(false)
   let doors: PersonsQueueDoors | null = null
   // ⚑ **UI-009 · what each question card's last press came to** — see {@link PersonsQueue.presses}.
   const presses = reactive(new Map<string, QueuePress>())
@@ -1186,6 +1208,8 @@ export function createPersonsQueue(): PersonsQueue {
 
   return {
     view,
+    looked: computed(() => looked.value),
+    namesakes: computed(() => namesakesIn(view.value?.rows ?? [])),
     limits,
     stalled,
     stopped,
@@ -1386,6 +1410,7 @@ export function createPersonsQueue(): PersonsQueue {
         for (const key of [...pressed.keys()]) if (!listed.has(key)) pressed.delete(key)
       }
       world.value = nextWorld
+      looked.value = nextWorld.looked !== false
       doors = nextDoors
     },
     forget() {
@@ -1412,6 +1437,7 @@ export function createPersonsQueue(): PersonsQueue {
       stoppedWork.value = NOBODY_HAS_LOOKED_FOR_A_STOP
       incidentsRead.value = NOBODY_HAS_LOOKED_FOR_AN_INCIDENT
       world.value = NOTHING_LOOKED_AT_YET
+      looked.value = false
       doors = null
     },
   }

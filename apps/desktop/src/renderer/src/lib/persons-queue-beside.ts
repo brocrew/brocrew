@@ -153,6 +153,8 @@ export interface StalledWorkRow {
    * measure from two instants.
    */
   readonly since: string | null
+  /** When it stopped, epoch ms, or `null` when nothing recorded it. */
+  readonly at: number | null
   /**
    * ⛔ **Whether this window is already running the conversation the work is in** — {@link
    * PersonsQueueRow.held}'s fact, one population over, and it decides the same gesture: a
@@ -321,6 +323,7 @@ export function stalledWorkView(
       // ⛔ **Null when nothing recorded the moment**, and the band says so rather than drawing a
       // blank — `sinceWords`' third arm, one population over.
       since: work.stalledAt === null ? null : agoWords(work.stalledAt, now),
+      at: work.stalledAt,
       held: held.has(work.owner),
       // ⚑ **D-017b · the one press's words, and not a second vocabulary** — the conversation opens
       // in its full view, whatever it is doing.
@@ -346,6 +349,10 @@ export interface InstructionAskRow {
   readonly why: string
   /** The rules it asked for, whole. */
   readonly text: string
+  /** When it was asked, epoch ms: where Waiting on you lists it, oldest first. */
+  readonly at: number
+  /** The conversation that asked, which its card opens. */
+  readonly sessionId: string
 }
 
 /**
@@ -394,6 +401,8 @@ export function instructionAsksView(
       about: nameOf(one.asked.about),
       why: one.asked.why,
       text: one.asked.text,
+      at: one.at,
+      sessionId: one.conversation,
     })),
     partial: instructionAsksForAPerson === null,
     stale: !lastLookAnswered,
@@ -426,6 +435,8 @@ export interface WaitingOnWhoWroteRow {
    * rows are, {@link StalledWorkRow.since}'s rule.
    */
   readonly since: string
+  /** When its turn answered the person, epoch ms: where Waiting on you lists it, oldest first. */
+  readonly at: number
   /**
    * ⛔ **Whether this window is already running the conversation the work is in** —
    * {@link StalledWorkRow.held}'s fact, one population over.
@@ -489,6 +500,7 @@ export function waitingOnWhoWroteView(
       label: one.label,
       what: one.title,
       since: agoWords(one.answeredAt, now),
+      at: one.answeredAt,
       held: held.has(one.owner),
       // ⚑ **The stalled band's one press, and its words**: the conversation opens in its full view.
       action: OPEN_THE_CONVERSATION,

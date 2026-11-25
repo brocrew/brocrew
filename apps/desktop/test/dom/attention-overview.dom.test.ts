@@ -1,6 +1,8 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { aQueueReadEmpty } from './a-queue-read-empty'
+import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -93,6 +95,7 @@ let view: Mounted | null = null
 afterEach(() => {
   view = null
   unmountAll()
+  usePersonsQueue().forget()
   delete (window as { api?: unknown }).api
 })
 
@@ -389,12 +392,11 @@ describe('the overview, painted', () => {
  */
 describe('the Waiting badge is the length of the list under it', () => {
   it('⛔ counts the live queue, and reads All clear when nothing needs you', async () => {
+    aQueueReadEmpty(NOW)
     view = mount(WaitingOnYou, { needsYou: [], clock: NOW })
     await nextTick()
-    expect(view.host.querySelector('[data-cy="waiting-stat"]')?.textContent?.trim()).toBe(
-      'All clear',
-    )
-    expect(view.host.querySelector('[data-cy="attention-clear"]')).not.toBeNull()
+    expect(view.q('waiting-intro').textContent?.trim()).toBe('Nothing needs you.')
+    expect(view.q('waiting-list-none').textContent?.trim()).toBe('No questions for you.')
 
     // …and the paired positive: two real requests, two rows, and a stat that says two.
     unmountAll()
@@ -404,8 +406,15 @@ describe('the Waiting badge is the length of the list under it', () => {
     )
     view = mount(WaitingOnYou, { needsYou: requests, clock: NOW })
     await nextTick()
-    expect(view.host.querySelector('[data-cy="waiting-stat"]')?.textContent?.trim()).toBe('2 items')
-    expect(view.host.querySelectorAll('[data-cy^="attention-request-"]')).toHaveLength(2)
+    expect(view.q('waiting-intro').textContent?.trim()).toBe('2 things need you.')
+    // One live request is a question and one a permission: each in its own list.
+    expect(view.q('waiting-pill-count-questions').textContent?.trim()).toBe('1')
+    expect(view.q('waiting-pill-count-approvals').textContent?.trim()).toBe('1')
+    expect(
+      view.host.querySelectorAll(
+        '[data-cy="waiting-list-questions"] [data-cy^="attention-request-"]',
+      ),
+    ).toHaveLength(1)
   })
 
   it('⛔ the RAIL’s Waiting badge counts the live queue, and is absent at zero', async () => {

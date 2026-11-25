@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { unmountAll, type Mounted } from './harness'
 
 /**
  * On *Waiting on you*, every kind of card is of the same family as the request cards — stopped
- * work, the providers' usage, questions, to-dos, work no agent is driving, recoveries, asks about an
- * agent's rules, MCP server requests and work waiting on a reply: the same grid, the same shell and
- * the same top-line type, with their words, buttons and doors unchanged.
+ * work, questions, to-dos, work no agent is driving, recoveries, asks about an agent's rules, MCP
+ * server requests and work waiting on a reply: one to a row, the same shell and the same top-line
+ * type, with their words, buttons and doors unchanged. The providers' usage sits in the page head.
  */
 
 afterEach(() => {
@@ -37,79 +38,90 @@ const shell = (card: HTMLElement): Record<string, string> => {
 const box = (card: HTMLElement) => card.getBoundingClientRect()
 
 /** Each kind of card besides the permission requests, by the class its own component gives it. */
-const KINDS = ['.pq-stall', '.usage-limit', '.wait', '.request', '.asks > .ask', '.reply'] as const
+const KINDS = ['.pq-row', '.pq-stall', '.wait', '.request', '.asks > .ask', '.reply'] as const
 
-/** Each kind's top line, set in the request card's caption type. */
 const TOP_LINES =
-  '.pq-stop-who, .pq-stall > .pq-stall-says:first-child, .usage-says, .wait-head, .request-who, .ask-who, .reply-who'
+  '.pq-stop-who, .pq-stall > .pq-stall-says:first-child, .request-who, .ask-who, .reply-who, .todo-head'
 
-/** Each kind's controls, which sit at the card's foot. */
 const FEET =
   '.pq-stop-actions, .pq-stall > .pq-go, .wait-controls, .request-controls, .ask-controls, .reply-go'
 
+const LISTS = ['questions', 'todo', 'approvals', 'work', 'reply'] as const
+
+/** Every card of the given kinds, list by list, as a person pages through the pills. */
+async function eachList(
+  m: Mounted,
+  look: (cards: HTMLElement[], list: (typeof LISTS)[number]) => void,
+): Promise<void> {
+  for (const list of LISTS) {
+    m.q(`waiting-pill-${list}`).click()
+    await nextTick()
+    look(
+      KINDS.flatMap((kind) => cardsOf(m, `[data-cy="waiting-list-${list}"] ${kind}`)),
+      list,
+    )
+  }
+}
+
 describe('every kind of card is a card like the request cards', () => {
-  it('in a list 832px or wider, every kind sits two to a row, at the request cards’ width', async () => {
-    const m = await aWaitingPageWithEveryCard(1180)
-    const requests = cardsOf(m, '.pq-row')
-    const stopped = cardsOf(m, '[data-cy^="persons-queue-stopped-"].pq-stall')
-    const usage = cardsOf(m, '[data-cy^="persons-queue-wall-"].usage-limit')
-    const stalled = cardsOf(m, '[data-cy="persons-queue-stall"]')
-    expect([requests.length, stopped.length, usage.length, stalled.length]).toEqual([3, 2, 2, 1])
-    const width = box(requests[0]!).width
-    expect(width).toBeLessThan(box(m.q('waiting-on-you')).width / 2)
-    for (const card of [...stopped, ...usage, ...stalled])
-      expect(Math.abs(box(card).width - width), card.dataset.cy).toBeLessThan(1)
-    // Two to a row: the pair shares its top and its height, and the second sits right of the first.
-    for (const pair of [stopped, usage]) {
-      expect(box(pair[1]!).top).toBeCloseTo(box(pair[0]!).top, 0)
-      expect(box(pair[1]!).height).toBeCloseTo(box(pair[0]!).height, 0)
-      expect(box(pair[1]!).left).toBeGreaterThan(box(pair[0]!).right)
-    }
+  it('in every list, each card is one to a row, at one width', async () => {
+    const m = await aWaitingPageWithEveryCard(1180, 3200, true)
+    const width = box(m.host.querySelector<HTMLElement>('.pq-row')!).width
+    let seen = 0
+    await eachList(m, (cards, list) => {
+      for (const card of cards) {
+        expect(Math.abs(box(card).width - width), `${list} ${card.className}`).toBeLessThan(1)
+        seen++
+      }
+      // One to a row: in the order they are drawn, each starts below the one before it ends.
+      const down = [...cards].sort((a, b) => box(a).top - box(b).top)
+      for (let at = 1; at < down.length; at++)
+        expect(box(down[at]!).top, list).toBeGreaterThanOrEqual(box(down[at - 1]!).bottom - 1)
+    })
+    expect(seen).toBeGreaterThan(10)
   })
 
-  it('in a narrower list, each is one to a row, as the request cards are', async () => {
+  it('in a narrower list, each is still one to a row, as wide as the list', async () => {
     const m = await aWaitingPageWithEveryCard(720)
-    const width = box(m.host.querySelector<HTMLElement>('.pq-row')!).width
+    m.q('waiting-pill-work').click()
+    await nextTick()
     const [first, second] = cardsOf(m, '[data-cy^="persons-queue-stopped-"].pq-stall')
-    expect(Math.abs(box(first!).width - width)).toBeLessThan(1)
+    const list = m.host.querySelector<HTMLElement>('.attention-list')!
+    expect(box(first!).width).toBeGreaterThan(box(list).width * 0.8)
     expect(box(second!).top).toBeGreaterThan(box(first!).bottom)
   })
 
-  it('wears the request card’s shell, and its top line in the request card’s type', async () => {
+  it('wears the request card’s shell, and its top line in one type', async () => {
     const m = await aWaitingPageWithEveryCard(1180, 3200, true)
-    const top = m.host.querySelector<HTMLElement>('.pq-row .pq-hop')!
-    const request = top.closest<HTMLElement>('.pq-row')!
-    for (const kind of KINDS) {
-      const cards = cardsOf(m, `.attention-list ${kind}`)
-      expect(cards.length, `${kind} is drawn`).toBeGreaterThan(0)
-      for (const card of cards) expect(shell(card), kind).toEqual(shell(request))
-    }
-    for (const line of cardsOf(m, TOP_LINES))
-      expect(getComputedStyle(line).fontSize, line.className).toBe(getComputedStyle(top).fontSize)
-  })
-
-  it('lays every kind out at the request cards’ width in a list 832px or wider', async () => {
-    const m = await aWaitingPageWithEveryCard(1180, 3200, true)
-    const width = box(m.host.querySelector<HTMLElement>('.pq-row')!).width
-    for (const kind of KINDS)
-      for (const card of cardsOf(m, `.attention-list ${kind}`))
-        expect(Math.abs(box(card).width - width), kind).toBeLessThan(1)
+    m.q('waiting-pill-approvals').click()
+    await nextTick()
+    const request = m.host.querySelector<HTMLElement>('.pq-row')!
+    const theShell = shell(request)
+    const sizes = new Set<string>()
+    await eachList(m, (cards, list) => {
+      for (const card of cards) expect(shell(card), `${list} ${card.className}`).toEqual(theShell)
+      for (const line of cardsOf(m, TOP_LINES)) sizes.add(getComputedStyle(line).fontSize)
+    })
+    expect([...sizes]).toHaveLength(1)
+    expect(parseFloat([...sizes][0]!)).toBeGreaterThanOrEqual(13)
   })
 
   it('puts every card’s controls at its foot', async () => {
     const m = await aWaitingPageWithEveryCard(1180, 3200, true)
-    for (const foot of cardsOf(m, FEET)) {
-      const card = foot.closest<HTMLElement>(
-        '.pq-stall, .usage-limit, .wait, .request, .ask, .reply',
-      )!
-      expect(box(card).bottom - box(foot).bottom, foot.className).toBeLessThan(
-        parseFloat(getComputedStyle(card).paddingBottom) + 2,
-      )
-    }
+    await eachList(m, () => {
+      for (const foot of cardsOf(m, FEET)) {
+        const card = foot.closest<HTMLElement>('.pq-stall, .wait, .request, .ask, .reply')!
+        expect(box(card).bottom - box(foot).bottom, foot.className).toBeLessThan(
+          parseFloat(getComputedStyle(card).paddingBottom) + 2,
+        )
+      }
+    })
   })
 
   it('keeps the rules an agent asked for readable, in the request card’s code box', async () => {
     const m = await aWaitingPageWithEveryCard(1180, 3200, true)
+    m.q('waiting-pill-approvals').click()
+    await nextTick()
     const text = m.host.querySelector<HTMLElement>('.ask-text')!
     const code = m.q('permission-detail')
     expect(text.textContent).toBe('Always show prices with two decimals.')
@@ -119,15 +131,19 @@ describe('every kind of card is a card like the request cards', () => {
       )
   })
 
-  it('lets one provider’s usage take the whole row, where two share it', async () => {
-    const one = await aWaitingPageWithEveryCard(1180, 1400, false, true)
-    const list = one.q('persons-queue-walls')
-    const lone = one.q('persons-queue-wall-claude')
-    expect(Math.abs(box(lone).width - box(list).width)).toBeLessThan(1)
+  it('draws the providers’ usage in the page head, above every list', async () => {
+    const m = await aWaitingPageWithEveryCard(1180, 1400)
+    const walls = m.q('persons-queue-walls')
+    expect(walls.closest('.page-head')).not.toBeNull()
+    const list = m.host.querySelector<HTMLElement>('.attention-list')!
+    for (const provider of ['claude', 'codex'])
+      expect(box(m.q(`persons-queue-wall-${provider}`)).bottom).toBeLessThanOrEqual(box(list).top)
   })
 
   it('keeps every word, button and door, with the controls at each card’s foot', async () => {
     const m = await aWaitingPageWithEveryCard(1180)
+    m.q('waiting-pill-work').click()
+    await nextTick()
     for (const key of ['work_41', 'work_42']) {
       const card = m.q(`persons-queue-stopped-${key}`)
       expect(m.q(`persons-queue-stopped-look-${key}`).textContent).toContain('Look')

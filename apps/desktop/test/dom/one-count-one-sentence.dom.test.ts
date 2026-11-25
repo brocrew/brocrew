@@ -298,8 +298,8 @@ describe('§4 · the stalled band — F-R18b', () => {
  * page, while the corner copy exists only when a sheet is open. ⚑ `stallSaysSomething` opens it.
  */
 describe('§5 · the stalled band reaches Waiting on you', () => {
-  /** ⚑ This page's all-clear, as `homeAttention` words it for a screen with nothing owed and no hole. */
-  const ALL_CLEAR = 'Nothing here is blocked on an answer from you.'
+  /** ⚑ This page's all-clear, for a screen with nothing owed and no hole. */
+  const ALL_CLEAR = 'Nothing needs you.'
 
   const page_ = async () => {
     await page.viewport(1400, 1200)
@@ -311,13 +311,13 @@ describe('§5 · the stalled band reaches Waiting on you', () => {
   it('🔴 a stall walk that answered with 4 unread rows and nothing else draws its line on the page', async () => {
     supplyStalls(STALLS(4))
     const m = await page_()
-    const line = m.q('persons-queue-stalled-short')
+    m.q('waiting-pill-work').click()
+    await nextTick()
+    const line = m.q('waiting-list-short')
     expect(visible(line)).toBe(true)
-    expect(said(line)).toContain('4 rows of this app’s record could not be read')
-    // ⛔ **and the page above it does not call itself quiet** — `401`'s adjacent contradiction, which
-    // this page could not show until it drew the band (`678`'s review)
-    expect(said(m.q('waiting-intro'))).not.toBe(ALL_CLEAR)
-    expect(said(m.q('waiting-stat'))).not.toBe('All clear')
+    expect(said(line)).toBe("Couldn't read all of this list. Trying again…")
+    // ⛔ **and the page above it does not call itself quiet** — `401`'s adjacent contradiction
+    expect(m.host.querySelector('[data-cy="waiting-intro"]')?.textContent ?? '').not.toBe(ALL_CLEAR)
   })
 
   it('🔴 stalled WORK alone — no hole, nothing owed — reaches the page too', async () => {
@@ -351,6 +351,5 @@ describe('§5 · the stalled band reaches Waiting on you', () => {
     expect(m.host.querySelector('[data-cy="persons-queue"]')).toBeNull()
     // ⚑ the paired positive: the same page, with nothing wrong, DOES give the all-clear
     expect(said(m.q('waiting-intro'))).toBe(ALL_CLEAR)
-    expect(said(m.q('waiting-stat'))).toBe('All clear')
   })
 })

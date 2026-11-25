@@ -697,16 +697,27 @@ watch(
         <p data-cy="user-input-after">{{ WHAT_COMES_AFTER_IS_NOT_OURS }}</p>
       </component>
     </div>
-    <button
-      v-else-if="showSend"
-      class="send"
-      type="button"
-      data-cy="question-send"
-      :disabled="!open || !complete"
-      @click="send"
+    <div v-else-if="showSend" class="question-foot">
+      <button
+        class="send"
+        type="button"
+        data-cy="question-send"
+        :disabled="!open || !complete"
+        @click="send"
+      >
+        {{ SEND }}
+      </button>
+      <span class="foot-spacer"></span>
+      <!-- The page's way to the conversation, on the same line as Send. -->
+      <slot name="door" />
+    </div>
+    <div
+      v-if="$slots.door && (!showSend || (offer && live && (!shortcuts || queueOffers?.length)))"
+      class="question-foot"
     >
-      {{ SEND }}
-    </button>
+      <span class="foot-spacer"></span>
+      <slot name="door" />
+    </div>
     <p v-if="!item && reading.note" class="aside" data-cy="question-note">{{ reading.note }}</p>
     <p
       v-if="reading.receipt !== null"

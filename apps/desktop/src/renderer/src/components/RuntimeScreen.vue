@@ -2263,6 +2263,8 @@ const lastLookAnswered = ref<{ questions: boolean; decisions: boolean }>({
   questions: true,
   decisions: true,
 })
+/** Whether the queue's first look has come back, answered or refused. */
+const queueLooked = ref(false)
 /**
  * 🔴 **The wall read of the one look, and the first that is not a thing a person owes** (533,
  * HO-052 §4).
@@ -2365,7 +2367,12 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
  */
 async function lookAtTheQueueOnce(): Promise<void> {
   if (actionableReadsClosed) return
-  const answer = await store.personsQueue()
+  let answer: Awaited<ReturnType<typeof store.personsQueue>>
+  try {
+    answer = await store.personsQueue()
+  } finally {
+    if (!actionableReadsClosed) queueLooked.value = true
+  }
   const queue = answer !== null && !('refused' in answer) ? answer : null
   const questions = queue?.questions ?? null
   const decisions = queue?.decisions ?? null
@@ -3410,6 +3417,7 @@ watchEffect(() => {
       answeredFromHere: answered.value,
       now: clock.value,
       lastLookAnswered: lastLookAnswered.value,
+      looked: queueLooked.value,
     },
     {
       travel: (row) => void goToQuestion(row),
@@ -3868,7 +3876,6 @@ onUnmounted(() => {
             @open-request="openRequest"
             @open-agent="(profileSlug) => overlays.open({ kind: 'agentCapabilities', profileSlug })"
             :since-last-here="sinceLastHere"
-            @open-conversation="(sessionId) => void openConversation(sessionId)"
             @see-recent-activity="place = 'away'"
           />
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { usePersonsQueue, type WaitingOnWhoWroteRow } from '../lib/persons-queue'
+import { drawnFrom } from '../lib/waiting-order'
 
 /**
  * 🔴 **F097 · the work whose agent answered a person and waits on their next words** — the rows
@@ -19,8 +20,10 @@ const props = withDefaults(
   defineProps<{
     /** ⛔ Whether this is the corner copy — `PersonsQueue`'s own prop, passed down. */
     floating?: boolean
+    /** The one card this copy draws, by key, where the page draws its cards one at a time. */
+    only?: string
   }>(),
-  { floating: false },
+  { floating: false, only: undefined },
 )
 
 /**
@@ -31,7 +34,7 @@ const emit = defineEmits<{ leave: [] }>()
 
 const queue = usePersonsQueue()
 const view = computed(() => queue.waitingOnWhoWrote.value)
-const rows = computed(() => view.value?.rows ?? [])
+const rows = computed(() => drawnFrom(view.value?.rows ?? [], props.only, (row) => row.key))
 
 /** ⚑ The page's handles say `waiting`; the corner's are its queue card's. */
 const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
@@ -50,7 +53,7 @@ function open(row: WaitingOnWhoWroteRow): void {
   <!-- ⛔ **A look that did not answer** — a row may be missing, and the list says so rather than
        vanishing into an all-clear. -->
   <p
-    v-if="view?.unread"
+    v-if="props.floating && view?.unread"
     class="replies-short"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-replies-unread`"
@@ -60,7 +63,7 @@ function open(row: WaitingOnWhoWroteRow): void {
   <!-- ⛔ **A look that answered and could not read some rows** — the one sentence every surface
        draws for that count (`rows-unread.ts`). -->
   <p
-    v-if="view?.short"
+    v-if="props.floating && view?.short"
     class="replies-short"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-replies-short`"

@@ -39,33 +39,6 @@ import type { AttentionRequest } from './attention'
  * which any summary is allowed to say "nothing needs you", and it is the reason this type exists.
  */
 
-/** Amber when something is waiting; green only when nothing is. */
-export type HomeTone = 'ok' | 'waiting'
-
-/**
- * 🔴 **688 · F3 — the stat's word and tone when an AMBER line stands on the same page.**
- *
- * ⚑ **Ruled (`688` §3.1): a green *All clear* never sits beside an amber line.** A wall (*"Claude is
- * near its weekly limit; …"*, UI-009) and stopped work are drawn amber on the *Waiting on you* page, and
- * neither is owed by the person (`533`), so `homeAttention` stays quiet — its words agree with the
- * line, and its GREEN did not: a person reads the tone first. ⚑ **So the stat says what is true of
- * the person, in the neutral ink**: nothing is owed by them — {@link NOTHING_OWED}.
- *
- * ⛔ **Asked OUTSIDE `homeAttention({ … })`**, whose call sites a census keeps free of every hole
- * and band (`persons-queue.test.ts` §9.6): a wall does not change how much the person owes, only
- * the tone the answer may be drawn in. ⚠️ `null` is the neutral ink — no class.
- */
-export const NOTHING_OWED = 'Nothing'
-
-export function theStatBesideTheLines(
-  attention: Pick<HomeAttention, 'quiet' | 'stat' | 'statTone'>,
-  anAmberLineStands: boolean,
-): { readonly stat: string; readonly tone: HomeTone | null } {
-  return attention.quiet && anAmberLineStands
-    ? { stat: NOTHING_OWED, tone: null }
-    : { stat: attention.stat, tone: attention.statTone }
-}
-
 export interface HomeAttention {
   /** Real pending requests across open conversations — answerable on this screen. */
   live: number
@@ -116,7 +89,8 @@ export interface HomeAttention {
    * it counts.
    */
   stat: string
-  statTone: HomeTone
+  /** Amber when something is waiting; green only when nothing is. */
+  statTone: 'ok' | 'waiting'
   /** The introduction over the queue. */
   intro: string
 }

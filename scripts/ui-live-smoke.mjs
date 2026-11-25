@@ -113,6 +113,18 @@ import { writableUnasked } from './lib/unasked-roots.mjs'
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const OWNED_LAUNCHER = join(REPO_ROOT, 'scripts/lib/owned-launcher.mjs')
 const OWNED_LAUNCHER_CLAIM = 'brobot2-owned-launcher-claimed'
+
+/**
+ * Page side: open Waiting on you's Approvals list, where a permission is drawn, and draw any card
+ * held behind its "N new" pill, so a row that is not drawn is one that is not waiting.
+ */
+const OPEN_APPROVALS = `await (async () => {
+  const pause = () => new Promise((done) => setTimeout(done, 120))
+  const pill = document.querySelector('[data-cy=waiting-pill-approvals]')
+  if (pill && pill.getAttribute('aria-selected') !== 'true') { pill.click(); await pause() }
+  const held = document.querySelector('[data-cy=waiting-show-new]')
+  if (held) { held.click(); await pause() }
+})()`
 /** Attach to an app the developer is already running (still guarded), instead of launching one. */
 const ATTACH_MODE = Boolean(process.env.BROBOT_CDP_PORT)
 const PORT = ATTACH_MODE ? Number(process.env.BROBOT_CDP_PORT) : await freePort()
@@ -3423,12 +3435,12 @@ async function main() {
 
   if (ATTACH_MODE) {
     skip(
-      '1b2 a fresh install fabricates nothing — All clear, no badge, and the digest in one honest state',
+      '1b2 a fresh install fabricates nothing — nothing needs you, no badge, and the digest in one honest state',
       'the attached app reads its own userData, which this smoke does not own — run without BROBOT_CDP_PORT to check the fresh install',
     )
   } else {
     await step(
-      '1b2 a fresh install fabricates nothing — All clear, no badge, and the digest in one honest state',
+      '1b2 a fresh install fabricates nothing — nothing needs you, no badge, and the digest in one honest state',
       async () => {
         // The app ships with nothing: no Waiting-on-you badge, a quiet queue, and no hidden zero
         // pretending to be a real count. The smoke's userData is brand new, so this is the fresh install.
@@ -3444,12 +3456,12 @@ async function main() {
           // run must not look like one that passed.
           const el = (sel) => document.querySelector(sel)
           if (!el('[data-cy=waiting-on-you]')) return null
+          // Until its first read answers, the page draws grey cards and says nothing: wait for it.
+          if (!el('[data-cy=waiting-intro]')) return null
           return {
-            needsYou: el('[data-cy=waiting-stat]')?.textContent.trim(),
-            // NB: attention-empty marked the empty "Dispatch decisions" SECTION, and 305 §1 moved
-            // those rows into the panel. A group with no rows draws no heading, so the region that
-            // says it is empty is the panel's own clear block, which is what 067 asks for anyway.
-            emptyQueue: Boolean(el('[data-cy=attention-clear]')),
+            needsYou: el('[data-cy=waiting-intro]')?.textContent.trim(),
+            // The open list says it is empty in words, which is what 067 asks for.
+            emptyQueue: Boolean(el('[data-cy=waiting-list-none]')),
             badge: Boolean(el('[data-cy=waiting-badge]')),
           }`),
           10_000,
@@ -3476,7 +3488,7 @@ async function main() {
           10_000,
         )
 
-        if (waiting.needsYou !== 'All clear') {
+        if (waiting.needsYou !== 'Nothing needs you.') {
           throw new Error(`needs-you reads ${waiting.needsYou}`)
         }
         if (!waiting.emptyQueue) throw new Error('the empty queue does not say it is empty')
@@ -3495,7 +3507,7 @@ async function main() {
         await clickWhenReady(cdp, 'new-conversation')
 
         return (
-          `fresh install: All clear, no badge, the empty queue says so, and Recent activity is ` +
+          `fresh install: nothing needs you, no badge, the empty list says so, and Recent activity is ` +
           `${away.read ? 'read, saying what it found' : 'not yet read'}`
         )
       },
@@ -7655,7 +7667,7 @@ async function main() {
   )
 
   await step(
-    '14 with nothing open, Waiting on you reads quiet in the ink its lines call for, and the rail has no badge (606, 688 F3)',
+    '14 with nothing open, Waiting on you says nothing needs you, and the rail has no badge (606)',
     async () => {
       // The queue has its own destination, and nothing is open at this point in the run, so it must be
       // genuinely empty and say so in words, with no badge on the rail row that opens it.
@@ -7666,24 +7678,13 @@ async function main() {
           await cdp.evaluate(`
           const el = (sel) => document.querySelector(sel)
           if (!el('[data-cy=waiting-on-you]')) return null
+          // Until its first read answers, the page draws grey cards and says nothing: wait for it.
+          if (!el('[data-cy=waiting-intro]')) return null
           return {
             wired: el('[data-cy=waiting-on-you]').dataset.wired,
-            needsYou: el('[data-cy=waiting-stat]')?.textContent.trim() ?? '',
-            // ⚑ 722 · 688 F3's two inputs, read off the page: the stat's INK — the class
-            // theStatBesideTheLines hands it: ok, waiting, or none for the neutral ink — and
-            // whether an amber line stands, which is WaitingOnYou's anAmberLineStands: PersonsQueue
-            // draws its walls list only over a wall and its stalled list only over stopped work.
-            // No backticks: page side.
-            statTone: el('[data-cy=waiting-stat]')?.classList.contains('ok')
-              ? 'ok'
-              : el('[data-cy=waiting-stat]')?.classList.contains('waiting')
-                ? 'waiting'
-                : null,
-            walls: Boolean(el('[data-cy=waiting-on-you] [data-cy=persons-queue-walls]')),
-            stalled: Boolean(el('[data-cy=waiting-on-you] [data-cy=persons-queue-stalled]')),
+            needsYou: el('[data-cy=waiting-intro]')?.textContent.trim() ?? '',
             railBadge: document.querySelector('[data-cy=waiting-badge]')?.textContent.trim() ?? null,
             liveRows: document.querySelectorAll('[data-cy^=attention-request-]').length,
-            clear: Boolean(el('[data-cy=attention-clear]')),
           }`),
         10_000,
       )
@@ -7691,28 +7692,12 @@ async function main() {
       if (waiting.wired !== 'true') {
         throw new Error(`Waiting on you marks itself ${waiting.wired}, and every row on it is real`)
       }
-      // The LIVE queue is empty at this point in the run — nothing is open — and it says so in
-      // words.
+      // The LIVE queue is empty at this point in the run — nothing is open — and the page says so
+      // in words. Stopped work or a provider's limit may be drawn too; neither is owed by the person.
       if (waiting.liveRows !== 0)
         throw new Error(`${waiting.liveRows} live row(s) with nothing open`)
-      if (!waiting.clear) throw new Error('the live queue draws neither a row nor its clear state')
-      // `All clear` in green, or `Nothing` in the neutral ink, and the PAGE decides which. The stat is
-      // `theStatBesideTheLines` (`home-attention.ts`): a quiet queue beside an amber line (a provider's
-      // wall or stopped work, both owed by nobody) reads `NOTHING_OWED` with no tone, because a green
-      // all-clear beside amber is the ruled defect. A full batch reaches this step over one: an earlier
-      // step's session holds a seven_day "approaching its rate limit", which `provider-limit.ts` reads
-      // as about to stop and no five_hour clear retracts. Each arm pins its INK as well as its word.
-      const amber = waiting.walls || waiting.stalled
-      const quietStat = amber ? { stat: 'Nothing', tone: null } : { stat: 'All clear', tone: 'ok' }
-      if (waiting.needsYou !== quietStat.stat || waiting.statTone !== quietStat.tone) {
-        throw new Error(
-          `the queue's stat reads "${waiting.needsYou}" in ${waiting.statTone ?? 'neutral'} ink ` +
-            `with nothing open and ` +
-            (amber
-              ? `an amber line on the page (a wall: ${waiting.walls}, stopped work: ${waiting.stalled})`
-              : 'no amber line') +
-            ` — 688 F3 says "${quietStat.stat}" in ${quietStat.tone ?? 'neutral'} ink`,
-        )
+      if (waiting.needsYou !== 'Nothing needs you.') {
+        throw new Error(`the page reads "${waiting.needsYou}" with nothing open`)
       }
       if (waiting.railBadge !== null) {
         throw new Error(`the Waiting badge reads "${waiting.railBadge}" over an empty queue`)
@@ -7730,7 +7715,7 @@ async function main() {
         10_000,
       )
 
-      return `Waiting on you: "${waiting.needsYou}" in ${waiting.statTone ?? 'neutral'} ink${amber ? ' beside an amber line (688 F3)' : ''}, no live row, no badge`
+      return `Waiting on you: "${waiting.needsYou}", no live row, no badge`
     },
   )
 
@@ -16763,28 +16748,59 @@ async function main() {
 
       // The queue has its own destination.
       await clickWhenReady(cdp, 'rail-waiting')
+      // A question is in the Questions list and a permission in the Approvals list: the reading opens
+      // each pill in turn, Approvals last so a press on a permission finds it drawn, and reads that
+      // list's rows in the order they stand on screen.
       const READ_QUEUE = `
-        const rows = [...document.querySelectorAll('[data-cy^=attention-request-]')]
+        const surface = document.querySelector('[data-cy=waiting-on-you]') ? 'waiting' : (document.querySelector('[data-cy=conversation-pane]') ? 'conversation' : 'other')
+        const read = async (pill) => {
+          const tab = document.querySelector('[data-cy=waiting-pill-' + pill + ']')
+          tab?.click()
+          await new Promise((done) => setTimeout(done, 120))
+          // Anything that arrived while the list was open waits behind "N new": draw it too.
+          const held = document.querySelector('[data-cy=waiting-show-new]')
+          if (held) { held.click(); await new Promise((done) => setTimeout(done, 120)) }
+          const list = document.querySelector('[data-cy=waiting-list-' + pill + ']')
+          // Every card the list draws, of every kind, in the order a person reads and tabs through.
+          const cards = [...(list?.querySelectorAll('.one-card') ?? [])]
+          const rows = [...(list?.querySelectorAll('[data-cy^=attention-request-], [data-cy^=persons-queue-row-]') ?? [])]
+          return {
+            open: tab?.getAttribute('aria-selected') === 'true',
+            live: rows.filter((one) => one.dataset.cy.startsWith('attention-request-')),
+            present: Boolean(list?.querySelector('[data-cy=attention-live]')),
+            // When each card began waiting, as its own row says, in drawn order; '' has no clock.
+            ages: cards.map((one) => one.dataset.at),
+            // The cards a person still owes: a request decided here stays drawn, and is not owed.
+            owed: cards.filter((one) => !one.querySelector('.settled')).length,
+          }
+        }
+        const questions = await read('questions')
+        const approvals = await read('approvals')
+        const rows = [...questions.live, ...approvals.live]
+        const count = (pill) => Number(document.querySelector('[data-cy=waiting-pill-count-' + pill + ']')?.textContent.trim() || 0)
         return {
           // What surface is actually up — a click that did not navigate is the first thing to rule out.
-          surface: document.querySelector('[data-cy=waiting-on-you]') ? 'waiting' : (document.querySelector('[data-cy=conversation-pane]') ? 'conversation' : 'other'),
-          present: Boolean(document.querySelector('[data-cy=attention-live]')),
-          clear: Boolean(document.querySelector('[data-cy=attention-clear]')),
+          surface,
+          opened: questions.open && approvals.open,
+          lists: { questions: questions.ages, approvals: approvals.ages },
+          // Each of the two lists read here: what its pill counts, and the owed cards drawn under it.
+          counted: { questions: count('questions'), approvals: count('approvals') },
+          owedIn: { questions: questions.owed, approvals: approvals.owed },
+          intro: document.querySelector('[data-cy=waiting-intro]')?.textContent.trim() ?? '',
+          present: approvals.present || questions.present,
+          clear: Boolean(document.querySelector('[data-cy=waiting-list-none]')),
           // 203's rail count, read beside it: if the rail says 2 and the queue says 0, the projection
           // is fine and the SURFACE is the problem — and the other way round narrows it just as hard.
           // ⚑ 2026-10-01 · one badge per rail section (BroBot's, the other agents'), read as N+M.
           railRows: [...document.querySelectorAll('[data-cy^=rail-needs-you-]')].map((badge) => badge.textContent.trim()).join('+') || null,
-          stat: document.querySelector('[data-cy=waiting-stat]')?.textContent.trim() ?? '',
+          // Every pill's count, added: the number the rail's badge says too.
+          stat: String(['questions', 'todo', 'approvals', 'work', 'reply'].reduce((sum, pill) => sum + count(pill), 0)),
           badge: document.querySelector('[data-cy=waiting-badge]')?.textContent.trim() ?? null,
-          // ⚑ 722 · the person's own queue — the second term the stat and the badge have always
-          // added (606) — as rows drawn on THIS page, and the label over them. Scoped to the page:
-          // PersonsQueue also has a corner copy an open sheet mounts. No backticks: page side.
-          yours: document.querySelectorAll('[data-cy=waiting-on-you] [data-cy^=persons-queue-row-]').length,
-          yoursCount: document.querySelector('[data-cy=yours-count]')?.textContent.trim() ?? null,
-          wired: document.querySelector('[data-cy=attention-live]')?.dataset.wired ?? null,
+          wired: document.querySelector('[data-cy=waiting-on-you]')?.dataset.wired ?? null,
           rows: rows.map((row) => ({
             cy: row.dataset.cy,
             kind: row.dataset.kind,
+            list: row.closest('[data-cy^=waiting-list-]')?.dataset.cy ?? '',
             where: row.querySelector('[data-cy=attention-where]')?.textContent.trim() ?? '',
             standing: row.querySelector('[data-cy=attention-standing]')?.textContent.trim() ?? '',
             asked: row.querySelector('[data-cy=attention-asked]')?.textContent.trim() ?? '',
@@ -16798,6 +16814,25 @@ async function main() {
       // queue lists all of them.
       let last = null
       const mineOf = (seen) => seen.rows.filter((row) => row.where === 'needs-you')
+      // The five pills, the rail's badge and the intro say one number, read against the whole panel
+      // rather than this step's share: earlier steps leave rows of every kind waiting. And each pill
+      // read here counts exactly the cards drawn under it that a person still owes, of any kind.
+      const countsAgree = (seen, when) => {
+        const stated = Number(seen.stat)
+        const introSays = Number(seen.intro.match(/^(\d+) things? needs? you\.$/)?.[1])
+        if (Number(seen.badge) !== stated || introSays !== stated) {
+          throw new Error(
+            `${when}, the counts disagree: pills ${seen.stat}, rail "${seen.badge}", intro "${seen.intro}"`,
+          )
+        }
+        for (const list of ['questions', 'approvals']) {
+          if (seen.counted[list] !== seen.owedIn[list]) {
+            throw new Error(
+              `${when}, the ${list} pill says ${seen.counted[list]} over ${seen.owedIn[list]} owed card(s) drawn`,
+            )
+          }
+        }
+      }
       const queue = await waitFor(
         'the overview to list both of THIS step’s frozen conversations',
         async () => {
@@ -16873,36 +16908,20 @@ async function main() {
           .filter((row) => row.folder === 'needs-you')`)
       const railTexts = new Set(rail.map((row) => row.text))
       const mine = mineOf(queue)
-      // The badge and the stat are the length of the lists under them, asserted against the whole
-      // panel rather than this step's share: with twenty-odd rows from earlier steps, a count derived
-      // from anything but the lists would be visibly wrong.
-      //
-      // The formula has two terms: `WaitingOnYou.vue` asks `homeAttention({ requests: needsYou,
-      // onlyYou: personsRows })`, and the rail's badge is `RuntimeScreen`'s `homeNeedsYou.total` over
-      // the same two (`home-attention.ts`'s `total`, `live + onlyYou`). Both terms are read off the
-      // DOM, so a page that stopped drawing either group breaks the equation here.
-      const listed = queue.rows.length + queue.yours
-      const stated = Number(queue.stat.match(/^(\d+)/)?.[1])
-      if (stated !== listed || Number(queue.badge) !== listed) {
-        throw new Error(
-          `the counts disagree with the lists: stat "${queue.stat}", rail "${queue.badge}", ` +
-            `${queue.rows.length} live row(s) + ${queue.yours} of yours to settle`,
-        )
+      countsAgree(queue, 'before the answer')
+      // Each of mine is in its own list: the question under Questions, the permission under Approvals.
+      const filed = mine.map((row) => `${row.kind}:${row.list}`).sort()
+      if (filed.join(',') !== 'permission:waiting-list-approvals,question:waiting-list-questions') {
+        throw new Error(`expected each row in its own list: got ${filed.join(', ')}`)
       }
-      // ...and the label over the second list counts what is under it (`PersonsQueueView.count` is
-      // `rows.length`, `persons-queue.ts`).
-      if (queue.yours > 0 && Number(queue.yoursCount) !== queue.yours) {
-        throw new Error(
-          `"Yours to settle" says ${queue.yoursCount} over ${queue.yours} drawn row(s)`,
-        )
-      }
-      // Mine are ordered relative to each other, which is what this step can assert: the run's older
-      // rows sit above them because they have been waiting longer.
-      const kinds = mine.map((row) => row.kind)
-      if (kinds.join(',') !== 'permission,question') {
-        throw new Error(
-          `expected the permission (older) above the question: got ${kinds.join(', ')}`,
-        )
+      // Within each list every kind of card stands oldest first by its own row's time, in the order
+      // it is drawn and tabbed through; a card with no clock comes after every card with one.
+      if (!queue.opened) throw new Error('a Waiting on you pill did not open its list')
+      for (const [list, ages] of Object.entries(queue.lists)) {
+        const dated = ages.map((age) => (age === '' ? Infinity : Number(age)))
+        if (dated.some((age, i) => Number.isNaN(age) || (i > 0 && age < dated[i - 1]))) {
+          throw new Error(`the ${list} list is not oldest first: ${ages.join(', ')}`)
+        }
       }
       // The third conversation is not here: the control that makes every count above mean something.
       for (const row of mine) {
@@ -16918,7 +16937,7 @@ async function main() {
           throw new Error(`${row.cy} offers no decision at all, which is 195 H3's "answer control"`)
         }
       }
-      const permission = mine[0]
+      const permission = mine.find((row) => row.kind === 'permission')
       if (!permission.scope.includes(cwd) && permission.scope === '') {
         throw new Error('the permission row discloses no scope at all (071)')
       }
@@ -16961,13 +16980,7 @@ async function main() {
           `answering one row changed the list by ${before - after.rows.length}: ${before} → ${after.rows.length}`,
         )
       }
-      // The same two terms as the check above the answer.
-      if (Number(after.badge) !== after.rows.length + after.yours) {
-        throw new Error(
-          `the counts did not follow: rail "${after.badge}", ${after.rows.length} live row(s) + ` +
-            `${after.yours} of yours to settle`,
-        )
-      }
+      countsAgree(after, 'after the answer')
       // ...and the conversation the overview allowed did the work.
       await waitFor(
         'the file the overview authorized',
@@ -16977,7 +16990,7 @@ async function main() {
 
       return claims(
         asserted(
-          `1 · 3 conversations, 2 frozen (${kinds.join(' + ')}), 1 quiet and absent from the queue · ` +
+          `1 · 3 conversations, 2 frozen (${filed.join(' + ')}), 1 quiet and absent from the queue · ` +
             `six facts on every row (e.g. "${permission.asked}" · ${permission.age} · ` +
             `[${permission.decisions.join(', ')}]) · answered MINE from Waiting on you → ${before} rows became ` +
             `${after.rows.length}, rail "${after.badge}", and allowed.txt was written · ` +
@@ -21284,10 +21297,12 @@ async function main() {
               async () =>
                 await cdp.evaluate(`
               const flat = (node) => node?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
-              const queue = document.querySelector('[data-cy=persons-queue][data-place=in-flow]')
-              const personsMatches = [...(queue?.querySelectorAll('[data-cy^=persons-queue-row-]') ?? [])]
+              // A permission is drawn in the Approvals list: open it first.
+              ${OPEN_APPROVALS}
+              // Every routed row the Approvals list draws, each in its own copy of the queue.
+              const personsMatches = [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy=persons-queue][data-place=in-flow] [data-cy^=persons-queue-row-]')]
                 .filter((one) => one.dataset.cy === ${JSON.stringify(rowCy)})
-              const attentionMatches = [...document.querySelectorAll('[data-cy^=attention-request-]')]
+              const attentionMatches = [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy^=attention-request-]')]
                 .filter((one) => one.dataset.cy === ${JSON.stringify(attentionCy)})
               if (personsMatches.length !== 1 || attentionMatches.length !== 1) return null
               const persons = personsMatches[0]
@@ -21426,14 +21441,15 @@ async function main() {
             } else {
               await clickWhenReady(cdp, 'rail-waiting')
               pressed = await cdp.evaluate(`
+            // A permission is drawn in the Approvals list: open it first.
+            ${OPEN_APPROVALS}
             const rowCy = ${JSON.stringify(rowCy)}
             const label = ${JSON.stringify(labels[outcome])}
             const root =
               ${JSON.stringify(pressedOn)} === 'attention'
-                ? [...document.querySelectorAll('[data-cy^=attention-request-]')]
+                ? [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy^=attention-request-]')]
                     .find((one) => one.dataset.cy === ${JSON.stringify(attentionCy)})
-                : [...(document.querySelector('[data-cy=persons-queue][data-place=in-flow]')
-                    ?.querySelectorAll('[data-cy^=persons-queue-row-]') ?? [])]
+                : [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy=persons-queue][data-place=in-flow] [data-cy^=persons-queue-row-]')]
                     .find((one) => one.dataset.cy === rowCy)
             const candidates = ${JSON.stringify(pressedOn)} === 'attention'
               ? [...(root?.querySelectorAll('[data-cy^=attention-decide-]') ?? [])]
@@ -21488,8 +21504,9 @@ async function main() {
                 async () => {
                   const reading = await cdp.evaluate(`
               const flat = (node) => node?.textContent?.replace(/\\s+/g, ' ').trim() ?? null
-              const queue = document.querySelector('[data-cy=persons-queue][data-place=in-flow]')
-              const rendered = [...(queue?.querySelectorAll('[data-cy^=persons-queue-row-]') ?? [])]
+              // A permission is drawn in the Approvals list: open it first.
+              ${OPEN_APPROVALS}
+              const rendered = [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy=persons-queue][data-place=in-flow] [data-cy^=persons-queue-row-]')]
               const renderedMatches = rendered
                 .filter((one) => one.dataset.cy === ${JSON.stringify(rowCy)})
               const walked = await window.api.runtime.decisionsForAPerson()
@@ -21500,7 +21517,7 @@ async function main() {
               const durable = durableMatches[0]
               const diagnostic = {
                 surface: document.querySelector('[data-cy=waiting-on-you]') ? 'waiting' : 'other',
-                queue: queue !== null,
+                list: document.querySelector('[data-cy=waiting-list-approvals]') !== null,
                 rendered: rendered.map((one) => one.dataset.cy ?? null),
                 renderedMatches: renderedMatches.length,
                 durable: walked?.rows?.map((one) =>
@@ -21573,8 +21590,9 @@ async function main() {
               )
             }
             const claimed = await cdp.evaluate(`
-          const queue = document.querySelector('[data-cy=persons-queue][data-place=in-flow]')
-          const row = [...(queue?.querySelectorAll('[data-cy^=persons-queue-row-]') ?? [])]
+          // A permission is drawn in the Approvals list: open it first.
+          ${OPEN_APPROVALS}
+          const row = [...document.querySelectorAll('[data-cy=waiting-list-approvals] [data-cy=persons-queue][data-place=in-flow] [data-cy^=persons-queue-row-]')]
             .find((one) => one.dataset.cy === ${JSON.stringify(rowCy)})
           const button = row?.querySelector('.pq-take-over')
           if (!button || button.disabled) return false
@@ -21640,9 +21658,24 @@ async function main() {
               async () =>
                 await cdp.evaluate(`
               if (!document.querySelector('[data-cy=waiting-on-you]')) return null
-              const persons = [...document.querySelectorAll('[data-cy^=persons-queue-row-]')]
+              // An absence counts only where the Approvals list is the one drawn.
+              const approvals = document.querySelector('[data-cy=waiting-pill-approvals]')
+              if (approvals?.getAttribute('aria-selected') !== 'true') {
+                approvals?.click()
+                return null
+              }
+              // A card held behind "N new" is not drawn, and is not settled: draw it, then look again.
+              const held = document.querySelector('[data-cy=waiting-show-new]')
+              if (held) {
+                held.click()
+                return null
+              }
+              const list = document.querySelector('[data-cy=waiting-list-approvals]')
+              // An absence counts only in a list that is there to hold the rows.
+              if (!list) return null
+              const persons = [...list.querySelectorAll('[data-cy^=persons-queue-row-]')]
                 .some((one) => one.dataset.cy === ${JSON.stringify(rowCy)})
-              const attention = [...document.querySelectorAll('[data-cy^=attention-request-]')]
+              const attention = [...list.querySelectorAll('[data-cy^=attention-request-]')]
                 .some((one) => one.dataset.cy === ${JSON.stringify(attentionCy)})
               return !persons && !attention ? { persons: false, attention: false } : null`),
               budget(30_000),

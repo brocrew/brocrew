@@ -582,15 +582,18 @@ describe('§4 · three ways to be handed nothing, three different screens', () =
     await page.viewport(1440, 900)
     const home = mount(WaitingOnYou, {}, { width: 1440, height: 900 })
     await nextTick()
-    expect(home.q('attention-clear').innerText).not.toContain('Nothing needs you.')
-    expect(home.q('waiting-intro').innerText).toContain('could not be read')
-    expect(home.q('yours-count').innerText.trim()).toBe('0')
+    expect(home.all('waiting-list-none')).toEqual([])
+    expect(home.all('waiting-intro')).toEqual([])
+    expect(home.q('waiting-list-short').innerText).toContain("Couldn't read all of this list")
+    // The list could not be read whole and holds nothing known: its pill claims no number.
+    expect(home.q('waiting-pill-count-questions').innerText.trim()).toBe('')
 
     // ⚑ **The paired positive**: with both reads landed and empty, the claim comes back.
     supply([], { decisions: [] })
     await nextTick()
-    expect(home.q('attention-clear').innerText).toContain('Nothing needs you.')
-    expect(home.all('yours-group')).toEqual([])
+    expect(home.q('waiting-list-none').innerText).toBe('No questions for you.')
+    expect(home.q('waiting-intro').innerText).toBe('Nothing needs you.')
+    expect(home.all('waiting-list-short')).toEqual([])
   })
 
   it('⛔ nothing is waiting: still nothing drawn — and Home is the surface that says so', async () => {
@@ -601,8 +604,9 @@ describe('§4 · three ways to be handed nothing, three different screens', () =
     unmountAll()
     const home = mount(WaitingOnYou, {}, { width: 1180, height: 808 })
     await nextTick()
-    expect(home.all('yours-group')).toEqual([])
-    expect(home.q('attention-clear').innerText).toContain('Nothing needs you.')
+    expect(home.q('waiting-pill-count-questions').innerText.trim()).toBe('0')
+    expect(home.q('waiting-intro').innerText).toBe('Nothing needs you.')
+    expect(home.q('waiting-list-none').innerText).toBe('No questions for you.')
   })
 
   /**
@@ -761,9 +765,9 @@ describe('§6 · Home cannot say the workspace is quiet over one of these', () =
     // ⛔ **`403` renamed it, and the rename is the point rather than churn.** The group now holds
     // requests that were NEVER escalated — a permission a spawned child parked on was a person's
     // from the instant it was routed — so the old label described half of its own contents.
-    expect(m.q('yours-group').innerText.toLowerCase()).toContain('yours to settle')
-    expect(m.q('yours-group').innerText.toLowerCase()).not.toContain('a-question')
-    expect(m.q('yours-count').innerText.trim()).toBe('1')
+    expect(m.q('waiting-pill-questions').getAttribute('aria-selected')).toBe('true')
+    expect(m.q('waiting-pill-questions').innerText).not.toContain('a-question')
+    expect(m.q('waiting-pill-count-questions').innerText.trim()).toBe('1')
     expect(m.all('persons-queue-row-sess_worker-7:req_1')).toHaveLength(1)
   })
 
@@ -778,18 +782,16 @@ describe('§6 · Home cannot say the workspace is quiet over one of these', () =
     await nextTick()
     // ⚑ **UI-009 (F052) · and the empty live list is not drawn above it at all** — no *Conversations
     // 0*, and no sentence about a list with nothing in it.
-    expect(m.all('attention-clear')).toEqual([])
-    expect(m.all('live-group')).toEqual([])
-    // ⛔ **The intro names no population and no location since `403`**, and both halves are
-    // load-bearing: the number folds escalated questions AND requests that never travelled, and
-    // *"conversations it is not running"* was only ever ordinarily true.
-    expect(m.q('waiting-intro').innerText).toContain('1 item below is waiting on you')
+    expect(m.all('waiting-list-none')).toEqual([])
+    // ⛔ **The intro names no population and no location since `403`**: the number folds
+    // escalated questions AND requests that never travelled.
+    expect(m.q('waiting-intro').innerText).toBe('1 thing needs you.')
     expect(m.q('waiting-intro').innerText).not.toContain('a-question')
 
     // ⛔ **The paired negative**: take the escalation away and the claim comes back.
     supply([])
     await nextTick()
-    expect(m.q('attention-clear').innerText).toContain('Nothing needs you.')
+    expect(m.q('waiting-list-none').innerText).toBe('No questions for you.')
   })
 
   /**
@@ -805,17 +807,16 @@ describe('§6 · Home cannot say the workspace is quiet over one of these', () =
     await page.viewport(1440, 900)
     const m = mount(WaitingOnYou, {}, { width: 1440, height: 900 })
     await nextTick()
-    const clear = (): string => m.q('attention-clear').innerText.trim()
-    // ⚑ **D-017b** — *"this window is running"* was a process fact (`05` rule 5): the sentence
-    // names the list it labels instead.
-    expect(clear()).toBe('No conversation on this list is frozen on a permission or a question.')
+    // A list that was not read whole says so, and claims nothing about what is in it.
+    expect(m.q('waiting-list-short').innerText).toContain("Couldn't read all of this list")
+    expect(m.all('waiting-list-none')).toEqual([])
 
-    // ⛔ **The paired positive**: with nothing under it, the whole-screen claim is true and comes
-    // back unqualified — so this measures the narrowing rather than the wording of one branch.
+    // ⛔ **The paired positive**: with the list read whole and empty, the claim comes back, and
+    // the read line goes.
     supply([])
     await nextTick()
-    expect(clear()).toContain('No conversation is frozen on a permission or a question.')
-    expect(clear()).not.toContain('on this list')
+    expect(m.q('waiting-list-none').innerText).toBe('No questions for you.')
+    expect(m.all('waiting-list-short')).toEqual([])
   })
 
   it('⛔ the count is the number of rows, unrounded, at twelve', async () => {
@@ -827,7 +828,7 @@ describe('§6 · Home cannot say the workspace is quiet over one of these', () =
     await page.viewport(1440, 900)
     const m = mount(WaitingOnYou, {}, { width: 1440, height: 900 })
     await nextTick()
-    expect(m.q('yours-count').innerText.trim()).toBe('12')
+    expect(m.q('waiting-pill-count-questions').innerText.trim()).toBe('12')
     expect(m.all('persons-queue-row-sess_w11:req_11')).toHaveLength(1)
     // ⛔ **And the group's own header is NOT drawn here.** The label above it already names the
     // list and carries the number; a second heading and a second count in the same six inches is
@@ -1155,8 +1156,10 @@ describe('§9 · a decision, its words, and the two groups', () => {
     await page.viewport(1440, 900)
     const home = mount(WaitingOnYou, {}, { width: 1440, height: 900 })
     await nextTick()
-    expect(home.q('yours-count').innerText.trim()).toBe('2')
-    expect(home.q('yours-group').innerText.toLowerCase()).toContain('yours to settle')
+    expect(home.q('waiting-pill-count-questions').innerText.trim()).toBe('1')
+    expect(home.q('waiting-pill-count-approvals').innerText.trim()).toBe('1')
+    home.q('waiting-pill-approvals').click()
+    await nextTick()
     expect(home.all('persons-queue-row-sess_worker-9:req_p')).toHaveLength(1)
     // ⛔ **And Home draws no heading or line** — those belong to the corner copy, where nothing
     // else on screen explains what the box is.

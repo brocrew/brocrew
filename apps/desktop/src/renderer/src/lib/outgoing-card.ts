@@ -70,7 +70,27 @@ export function withoutHandles(text: string): string {
 const REPLY_MARK = 'reply'
 
 /** ⚑ A piece of work this conversation gave, beside its heading. */
-export const GIVE_MARK = 'work'
+export const GIVE_MARK = 'gave work'
+
+/** A give's state on its folded line, once its brief went straight away. */
+export const GIVEN_WORD = 'given'
+
+/** A cut brief shorter than this says nothing a person can use: its card offers the whole one. */
+export const TOO_SHORT_TO_READ = 40
+
+/**
+ * What became of a give, in one sentence, naming the conversation it went to where that is known;
+ * `null` where only its receipt can say.
+ */
+export function giveOutcome(
+  card: Pick<OutgoingCardReading, 'state' | 'recipient'>,
+  conversation: string | null = null,
+): string | null {
+  const into = conversation === null ? '' : ` in “${conversation}”`
+  if (card.state === 'sent') return `${card.recipient} has it${into}.`
+  if (card.state === 'held') return `${card.recipient} gets it${into} when its turn ends.`
+  return null
+}
 
 /** ⚑ **D-047 · the mark on a card that gave a piece a new brief.** */
 export const NEW_BRIEF_MARK = 'New brief'

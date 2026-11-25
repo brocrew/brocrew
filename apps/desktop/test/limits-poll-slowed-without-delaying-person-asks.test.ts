@@ -72,6 +72,7 @@ function fixture() {
     mcpServerRequests: { value: null },
     lastServerRequestLookAnswered: { value: true },
     stoppedWork: { value: null },
+    queueLooked: { value: false },
     lastStopLookAnswered: { value: true },
     workIncidents: { value: null },
     lastIncidentLookAnswered: { value: true },

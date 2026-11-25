@@ -380,9 +380,9 @@ const SURFACES: readonly Surface[] = [
     component: WaitingOnYou,
     rootCy: 'waiting-on-you',
     props: () => ({ needsYou: [], clock: WAITING_CLOCK }),
-    evidence: ['waiting-stat', 'waiting-intro', 'waiting-bound', 'attention-clear'],
+    evidence: ['waiting-pill-questions', 'loading-cards'],
     minElements: 12,
-    innerCy: 'attention-clear',
+    innerCy: 'loading-cards',
   },
   {
     what: 'Recent activity, which 606 split off Home',

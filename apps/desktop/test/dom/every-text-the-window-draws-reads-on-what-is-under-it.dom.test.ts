@@ -128,9 +128,20 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     async () => {
       await page.viewport(1180, 1400)
       const m = await aWaitingPageWithMarkdown(1180, 1400)
+      m.q('question-more').click()
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you, a markdown command to approve, its details open',
+    async () => {
+      await page.viewport(1180, 1400)
+      const m = await aWaitingPageWithMarkdown(1180, 1400)
+      m.q('waiting-pill-approvals').click()
+      await pause()
       for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
         more.open = true
-      m.q('question-more').click()
       await pause()
       return m.host
     },
@@ -140,9 +151,9 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     async () => {
       await page.viewport(1180, 1400)
       const m = await aWaitingPageWithMarkdown(1180, 1400)
-      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
-        more.open = true
-      m.q('waiting-todo-head-req_todo').scrollIntoView({ block: 'center' })
+      m.q('waiting-pill-todo').click()
+      await pause()
+      m.q('waiting-todo-more-req_todo').click()
       await pause()
       return m.host
     },
@@ -304,7 +315,7 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     },
   ],
   [
-    'Waiting on you, with usage, stopped work and requests, each request’s details open',
+    'Waiting on you, with usage and requests, each request’s details open',
     async () => {
       await page.viewport(1200, 900)
       const m = await aWaitingPageWithEveryCard(1180, 900)
@@ -318,29 +329,57 @@ const STATES: readonly [string, () => Promise<Element>][] = [
     },
   ],
   [
-    'Waiting on you with every kind of card, details open, scrolled to the to-dos',
+    'Waiting on you, with stopped work',
     async () => {
       await page.viewport(1200, 900)
-      const m = await aWaitingPageWithEveryCard(1180, 900, true)
-      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
-        more.open = true
-      const list = m.host.querySelector<HTMLElement>('.attention-list')
-      const todos = m.host.querySelector<HTMLElement>('[data-cy="todos-group"]')
-      if (list && todos)
-        list.scrollTop += todos.getBoundingClientRect().top - list.getBoundingClientRect().top
+      const m = await aWaitingPageWithEveryCard(1180, 900)
+      m.q('waiting-pill-work').click()
       await pause()
       return m.host
     },
   ],
   [
-    'Waiting on you with every kind of card, details open, scrolled to its end',
+    'Waiting on you with every kind of card, its to-dos',
     async () => {
       await page.viewport(1200, 900)
       const m = await aWaitingPageWithEveryCard(1180, 900, true)
-      for (const more of m.host.querySelectorAll<HTMLDetailsElement>('details.pq-more'))
+      m.q('waiting-pill-todo').click()
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you with every kind of card, the work that needs you',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900, true)
+      m.q('waiting-pill-work').click()
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you with every kind of card, its approvals',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900, true)
+      m.q('waiting-pill-approvals').click()
+      await pause()
+      // The list stands oldest first, so the rule ask and the server request lead it.
+      for (const more of m.host.querySelectorAll<HTMLDetailsElement>(
+        'details.pq-more, details.request-means',
+      ))
         more.open = true
-      const list = m.host.querySelector<HTMLElement>('.attention-list')
-      if (list) list.scrollTop = list.scrollHeight
+      await pause()
+      return m.host
+    },
+  ],
+  [
+    'Waiting on you with every kind of card, its replies',
+    async () => {
+      await page.viewport(1200, 900)
+      const m = await aWaitingPageWithEveryCard(1180, 900, true)
+      m.q('waiting-pill-reply').click()
       await pause()
       return m.host
     },
@@ -394,27 +433,39 @@ const PROOF: Record<string, Proof> = {
       '[data-cy="question-words"] strong',
       '[data-cy="question-context"] code',
       '[data-cy="persons-queue-asked-part"] .md-chat strong',
-      '[data-cy="permission-detail"]',
     ],
   },
-  'Waiting on you, markdown to-dos': {
-    read: ['.todo-text strong', '.todo-text a', '.todo-text code'],
+  'Waiting on you, a markdown command to approve, its details open': {
+    read: ['[data-cy="permission-detail"]'],
   },
-  'Waiting on you, with usage, stopped work and requests, each request’s details open': {
+  'Waiting on you, markdown to-dos': {
+    read: ['.todo-lead strong', '.todo-text a', '.todo-text code'],
+  },
+  'Waiting on you, with usage and requests, each request’s details open': {
     read: [
       'details.pq-more[open] .pq-more-body',
-      'details.permission-details[open] [data-cy="permission-after"]',
+      'details.pq-more[open] [data-cy="permission-after"]',
       '[data-cy="persons-queue-wall-says-claude"]',
-      '[data-cy="persons-queue-stall"] .pq-stall-says',
-      '[data-cy="persons-queue-stopped-says-work_41"]',
       '.pq-row .pq-hop',
     ],
   },
-  'Waiting on you with every kind of card, details open, scrolled to the to-dos': {
-    read: ['[data-cy="waiting-todo-head-req_todo"]', '.wait-says', '.asks > .ask .ask-text'],
+  'Waiting on you, with stopped work': {
+    read: [
+      '[data-cy="persons-queue-stall"] .pq-stall-says',
+      '[data-cy="persons-queue-stopped-says-work_41"]',
+    ],
   },
-  'Waiting on you with every kind of card, details open, scrolled to its end': {
-    read: ['.request-who', '.reply-who'],
+  'Waiting on you with every kind of card, its to-dos': {
+    read: ['[data-cy="waiting-todo-head-req_todo"]'],
+  },
+  'Waiting on you with every kind of card, the work that needs you': {
+    read: ['.wait-says'],
+  },
+  'Waiting on you with every kind of card, its approvals': {
+    read: ['.asks > .ask .ask-text', '.request-who'],
+  },
+  'Waiting on you with every kind of card, its replies': {
+    read: ['.reply-who'],
   },
 }
 

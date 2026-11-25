@@ -171,17 +171,14 @@ describe('§1 · the rail draws two destinations and one count between them', ()
 })
 
 describe('§2 · each destination paints ONE population, and not the other’s', () => {
-  it('🔴 Waiting on you paints the queue, its bound and its stat — and nothing windowed', async () => {
+  it('🔴 Waiting on you paints the queue and its count — and nothing windowed', async () => {
     mounted = mount(WaitingOnYou, { needsYou: OWED(), clock: NOW }, { width: 1040, height: 900 })
     await nextTick()
 
     expect(mounted.all('attention-request-sess_a')).toHaveLength(1)
     expect(mounted.all('attention-request-sess_b')).toHaveLength(1)
-    expect(text(mounted.q('waiting-stat'))).toBe('2 items')
-    // ⛔ **The BOUND, in words, on the destination** — `HO-025` §2's half of the split. A page that
-    // listed a complete queue without saying it was complete would be one property short.
-    expect(visible(mounted.q('waiting-bound'))).toBe(true)
-    expect(text(mounted.q('waiting-bound'))).toContain('not windowed')
+    // ⛔ The list counts every request it draws, however old: its pill says two.
+    expect(text(mounted.q('waiting-pill-count-approvals'))).toBe('2')
 
     // 🔴 **Nothing windowed is on it** — the disjointness `EXT-008` §3 is about, asserted as an
     // absence beside the positives that make it mean something. ⚑ D-016 deleted the seed, so the

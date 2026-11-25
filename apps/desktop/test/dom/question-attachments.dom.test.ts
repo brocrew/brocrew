@@ -142,6 +142,8 @@ it.each(['structured', 'legacy'] as const)(
       paneProps({ record: record(events), canAnswer: true }),
     )
     openFrom(conversation.q('inline-todo-req_todo'), words, filename)
+    queue.q('waiting-pill-todo').click()
+    await nextTick()
     openFrom(queue.q('waiting-todo-req_todo'), words, filename)
     expect(openFile.mock.calls).toEqual([[resource], [resource]])
   },

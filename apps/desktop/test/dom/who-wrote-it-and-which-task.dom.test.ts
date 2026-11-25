@@ -470,7 +470,7 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
   const tokenInk = (m: Mounted, token: string): string => {
     const probe = document.createElement('span')
     probe.style.color = `var(${token})`
-    m.q('waiting-stat').parentElement!.append(probe)
+    m.q('waiting-on-you').append(probe)
     const said = getComputedStyle(probe).color
     probe.remove()
     return said
@@ -487,22 +487,23 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
     const amber = [tokenInk(m, '--waiting-text-label'), tokenInk(m, '--waiting')]
     const green = tokenInk(m, '--success')
     expect(inked(m, amber).length).toBeGreaterThan(0)
-    expect(words(m.q('waiting-stat'))).toBe('Nothing')
-    expect(ink(m.q('waiting-stat'))).toBe(tokenInk(m, '--text-soft'))
+    expect(words(m.q('waiting-intro'))).toBe('Nothing needs you.')
+    expect(ink(m.q('waiting-intro'))).toBe(tokenInk(m, '--text-soft'))
     expect(inked(m, [green])).toEqual([])
   })
 
   it('🔴 stopped work alone: the same — its line is amber too', async () => {
     const m = await thePage({ stalled: true })
     expect(visible(m.q('persons-queue-stall-says-work_x'))).toBe(true)
-    expect(words(m.q('waiting-stat'))).toBe('Nothing')
+    expect(words(m.q('waiting-intro'))).toBe('Nothing needs you.')
     expect(inked(m, [tokenInk(m, '--success')])).toEqual([])
   })
 
-  it('⚑ THE CONTROL — a quiet page with no amber line keeps its green *All clear*', async () => {
+  it('⚑ THE CONTROL — a quiet page with no amber line says so, and draws no amber', async () => {
     const m = await thePage({})
-    expect(words(m.q('waiting-stat'))).toBe('All clear')
-    expect(ink(m.q('waiting-stat'))).toBe(tokenInk(m, '--success'))
+    expect(words(m.q('waiting-intro'))).toBe('Nothing needs you.')
+    const amber = [tokenInk(m, '--waiting-text-label'), tokenInk(m, '--waiting')]
+    expect(inked(m, amber)).toEqual([])
   })
 })
 

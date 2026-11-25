@@ -193,7 +193,11 @@ async function screen() {
   return m
 }
 
-it('Waiting on you shows what finished or failed since the person was last here, each opening its conversation', async () => {
+/** What the since chip says, or nothing while it is not drawn. */
+const summary = (m: { host: HTMLElement }): string =>
+  m.host.querySelector('[data-cy="since-summary"]')?.textContent ?? ''
+
+it('Waiting on you says what finished or failed since the person was last here, above its lists', async () => {
   const since = Date.now() - 40 * MINUTE
   localStorage.setItem(LAST_SEEN, String(since))
   runtime.recentActivity.mockResolvedValue(
@@ -201,25 +205,13 @@ it('Waiting on you shows what finished or failed since the person was last here,
   )
   const m = await screen()
   m.q('rail-waiting').click()
-  await expect.poll(() => m.all('since-line').length).toBe(2)
-  // The box asks for exactly the time since the person was last here.
+  await expect.poll(() => summary(m)).toContain('1 reported done · 1 failed')
+  // The chip asks for exactly the time since the person was last here.
   expect(runtime.recentActivity).toHaveBeenCalledWith({ from: since, to: expect.any(Number) })
-  // Open requests stay below it.
-  const box = m.q('since-last-here').getBoundingClientRect()
-  expect(box.top).toBeLessThan(m.q('attention-clear').getBoundingClientRect().top)
-
-  runtime.look.mockResolvedValueOnce({
-    ...META,
-    sessionId: 'recorded-2',
-    handover: 'recorded',
-    history: { entries: [], from: 0, hasOlder: false, turnAligned: true },
-  } as ResumedSession)
-  m.all('since-line')[1]!.click()
-  await expect
-    .poll(() => runtime.look.mock.calls.at(-1)?.[0])
-    .toMatchObject({
-      sessionId: 'recorded-2',
-    })
+  // It sits in the page head, above the lists.
+  const chip = m.q('since-last-here').getBoundingClientRect()
+  const lists = m.host.querySelector<HTMLElement>('.attention-list')!.getBoundingClientRect()
+  expect(chip.bottom).toBeLessThanOrEqual(lists.top)
 })
 
 it('See all goes to Recent activity, which reads the chosen window', async () => {
@@ -227,8 +219,8 @@ it('See all goes to Recent activity, which reads the chosen window', async () =>
   runtime.recentActivity.mockResolvedValue(reading([line('1', 'finished', 5)]))
   const m = await screen()
   m.q('rail-waiting').click()
-  await expect.poll(() => m.all('since-see-all').length).toBe(1)
-  m.q('since-see-all').click()
+  await expect.poll(() => m.all('since-last-here').length).toBe(1)
+  m.q('since-last-here').click()
   await expect.poll(() => m.all('recent-activity').length).toBe(1)
   await expect.poll(() => m.all('activity-line').length).toBe(1)
   runtime.recentActivity.mockClear()
@@ -325,13 +317,14 @@ it('a reply for an earlier "last here" is dropped once the boundary moved', asyn
   await expect.poll(() => replies.length).toBe(2)
   expect(runtime.recentActivity.mock.calls.at(-1)![0].from).toBe(later)
   replies[1]!(reading([line('1', 'finished', 5)]))
-  await expect.poll(() => m.all('since-line').length).toBe(1)
+  await expect.poll(() => summary(m)).toContain('1 reported done')
   replies[0]!(
     reading([line('2', 'finished', 30), line('3', 'failed', 40), line('4', 'failed', 50)]),
   )
   await settle()
   await settle()
-  expect(m.all('since-line')).toHaveLength(1)
+  expect(summary(m)).toContain('1 reported done')
+  expect(summary(m)).not.toContain('failed')
 })
 
 it('a page read still out when the person moves to Waiting on you starts no read for the box', async () => {
@@ -343,11 +336,11 @@ it('a page read still out when the person moves to Waiting on you starts no read
   m.q('rail-waiting').click()
   await expect.poll(() => replies.length).toBe(2)
   replies[1]!(reading([line('1', 'finished', 1)]))
-  await expect.poll(() => m.all('since-line').length).toBe(1)
+  await expect.poll(() => summary(m)).toContain('1 reported done')
   // The page's reply arrives last: it asks for nothing more and changes nothing.
   replies[0]!(reading([]))
   await settle()
   await settle()
   expect(replies).toHaveLength(2)
-  expect(m.all('since-line')).toHaveLength(1)
+  expect(summary(m)).toContain('1 reported done')
 })

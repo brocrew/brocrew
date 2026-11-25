@@ -97,8 +97,10 @@ describe('to-dos in the conversation', () => {
     )
     const r = reactive(record(events))
     const m = mount(ConversationPane, paneProps({ record: r }), { width: 1200, height: 808 })
-    expect(m.q('inline-todo-text-req_report').textContent).toBe(TEXT)
+    expect(m.q('inline-todo-lead-req_report').textContent?.trim()).toBe(TEXT)
     expect(m.all('tool-entry')).toHaveLength(0)
+    m.q('inline-todo-add-note-req_report').click()
+    await nextTick()
     const note = m.q('inline-todo-note-req_report') as HTMLTextAreaElement
     note.value = 'The title matches.'
     note.dispatchEvent(new Event('input', { bubbles: true }))
@@ -123,6 +125,8 @@ describe('to-dos in the conversation', () => {
       return 'The report request is still open. Try again.'
     })
     const m = mount(ConversationPane, paneProps({ record: record(events) }))
+    m.q('inline-todo-add-note-req_report').click()
+    await nextTick()
     const note = m.q('inline-todo-note-req_report') as HTMLTextAreaElement
     note.value = 'I cannot open the sample.'
     note.dispatchEvent(new Event('input', { bubbles: true }))
@@ -166,7 +170,7 @@ describe('to-dos in the conversation', () => {
     ]
     for (const [endings, said] of replays) {
       const m = mount(ConversationPane, paneProps({ record: record([...events, ...endings]) }))
-      expect(m.q('inline-todo-text-req_report').textContent).toBe(TEXT)
+      expect(m.q('inline-todo-lead-req_report').textContent?.trim()).toBe(TEXT)
       expect(m.q('inline-todo-said-req_report').textContent?.trim()).toBe(said)
       expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
       expect(m.all('inline-todo-cant-req_report')).toHaveLength(0)

@@ -28,12 +28,17 @@ import type { OutgoingWords, ToolItem, TranscriptItem } from '../lib/transcript'
 import {
   A_PERSON_ADDRESSED,
   BODY_WAS_CUT,
+  GIVEN_WORD,
+  giveOutcome,
   OUTGOING_STATE_WORD,
   outgoingCard,
   receiptIsCut,
   STATUS_LEAD,
+  TOO_SHORT_TO_READ,
   TOOK_ON_WORD,
+  withoutHandles,
 } from '../lib/outgoing-card'
+import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { workSummary } from '../lib/work-report'
 import { ANSWER_NOT_HELD } from '../lib/tool-answer'
 import { QUESTION_STATE_WORD } from '../lib/question-card'
@@ -150,6 +155,7 @@ const todo = computed(() => {
     head: todoHead({ askedByName: name, label: asked.label ?? null }),
     text: asked.prompt,
     files: asked.action.files,
+    at: props.item.at ?? 0,
   }
   const shared = queue.todoCards.value.find((one) => one.row.key === row.key)
   const ended =
@@ -243,6 +249,32 @@ const filesSaid = computed(() => {
 })
 /** Cards drawn folded to one line. */
 const folds = computed(() => agentCard.value || takeOn.value || handBack.value)
+
+const cast = useWhoCalledWhom()
+/** The title of the conversation a card's work went to, where the rail lists one. */
+const destination = computed(() => {
+  const to = card.value?.where?.conversation
+  return cast.listedConversations.value?.find((one) => one.sessionId === to)?.named?.title ?? null
+})
+
+/**
+ * A give, drawn plainly: its title, its brief when enough of it is here, what became of it, and the
+ * tool's own words, folded. A cut brief too short to read gives way to the press that reads it whole.
+ */
+const give = computed(() => {
+  const given = card.value
+  if (given === null || given.tool !== 'give_work') return null
+  const tooShort = given.bodyIsCut && (given.body ?? '').trim().length < TOO_SHORT_TO_READ
+  return {
+    briefShown: given.body !== null && !(tooShort && given.title !== null && given.wholeBrief),
+    outcome: giveOutcome(given, destination.value),
+    state: given.state === 'sent' ? GIVEN_WORD : OUTGOING_STATE_WORD[given.state],
+    toolSaid:
+      given.receipt === null && props.item.result?.ok === true
+        ? withoutHandles(props.item.result.summary)
+        : null,
+  }
+})
 
 /** ⚑ A give's card wears the send glyph: work handed over. */
 const glyph = computed(() =>
@@ -392,23 +424,25 @@ async function takeItBack(piece: string): Promise<void> {
                   ? `${card.recipient} · ${props.words.sent.toLabel}`
                   : card.recipient,
               kind: card.mark || 'message',
-              label: card.facts?.heading ?? card.piece,
-              text: card.body ?? card.title ?? '',
+              label: give ? null : (card.facts?.heading ?? card.piece),
+              text: (give ? card.title : null) ?? card.body ?? card.title ?? '',
               at: item.at,
               where: card.where,
-              state: [
-                card.facts ? workSummary(card.facts) : null,
-                filesSaid,
-                OUTGOING_STATE_WORD[card.state],
-              ]
-                .filter(Boolean)
-                .join(' · '),
+              state: give
+                ? give.state
+                : [
+                    card.facts ? workSummary(card.facts) : null,
+                    filesSaid,
+                    OUTGOING_STATE_WORD[card.state],
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
             }
           : undefined
     "
     @open-conversation="(id) => emit('openConversation', id)"
   >
-    <div class="msg-meta">
+    <div v-if="!give" class="msg-meta">
       <strong class="heading" data-cy="outgoing-heading"
         ><svg v-if="glyph" class="icon" aria-hidden="true"><use :href="glyph" /></svg
         ><span data-cy="outgoing-sender">{{ props.ownAgent ?? THIS_CONVERSATION_FIRST }}</span>
@@ -470,6 +504,10 @@ async function takeItBack(piece: string): Promise<void> {
       <WordsViews v-if="jsonParts" v-model="view" class="views" />
       <span class="time" :class="{ beside: jsonParts }">{{ clockTime(item.at) }}</span>
     </div>
+    <!-- A give's brief that carries JSON still reads two ways. -->
+    <div v-if="give && jsonParts" class="msg-meta">
+      <WordsViews v-model="view" class="views" />
+    </div>
     <WorkFacts v-if="card.facts" :reading="card.facts" />
     <!-- ⚑ **A give's title, above its brief** — the piece's own name, as the tree lists it. -->
     <p v-if="card.title" class="title" data-cy="outgoing-title">{{ card.title }}</p>
@@ -481,7 +519,7 @@ async function takeItBack(piece: string): Promise<void> {
       :title="fullTime(item.at)"
     />
     <div
-      v-else-if="card.body !== null"
+      v-else-if="card.body !== null && (give === null || give.briefShown)"
       class="msg-body"
       data-cy="outgoing-message"
       :data-cut="card.bodyIsCut"
@@ -494,7 +532,11 @@ async function takeItBack(piece: string): Promise<void> {
          the `…` this drew until `678`, which the author may have typed (`BODY_WAS_CUT`).
          🔴 **UI-011 · a give's cut brief opens to the whole one** (F037) — the sentence says where it
          is and is the press: the owner's conversation, at the brief's own row. -->
-    <p v-if="card.bodyIsCut" class="cut" data-cy="outgoing-cut">
+    <p
+      v-if="card.bodyIsCut && (give === null || give.briefShown || card.wholeBrief)"
+      class="cut"
+      data-cy="outgoing-cut"
+    >
       <button
         v-if="card.wholeBrief"
         class="press"
@@ -506,11 +548,27 @@ async function takeItBack(piece: string): Promise<void> {
       </button>
       <template v-else>{{ BODY_WAS_CUT }}</template>
     </p>
+    <p v-if="give?.outcome" class="outcome" data-cy="outgoing-outcome">{{ give.outcome }}</p>
+    <details v-if="give?.toolSaid" class="tool-said" data-cy="outgoing-tool-said">
+      <summary>What the tool said</summary>
+      <p>{{ give.toolSaid }}</p>
+    </details>
     <FileRows
       :files="handedOver"
       :can-open="props.canOpenDocument ?? false"
       @open-document="(resourceId) => emit('openDocument', resourceId)"
     />
+    <div v-if="give && card.takeBack && props.takeBack" class="give-foot">
+      <button
+        class="press"
+        type="button"
+        data-cy="outgoing-take-back"
+        :disabled="takingBack"
+        @click="takeItBack(card.takeBack)"
+      >
+        {{ TAKE_BACK }}
+      </button>
+    </div>
     <!-- ⚑ **UI-003 · a take-on's newest status line**, small, until the reply that finishes it. -->
     <p v-if="card.status" class="status" data-cy="outgoing-status">
       <span class="status-lead">{{ STATUS_LEAD }}</span> {{ card.status }}
@@ -659,6 +717,38 @@ async function takeItBack(piece: string): Promise<void> {
   height: 11px;
   margin-right: var(--space-2);
   vertical-align: -1px;
+}
+
+/* A give says what became of it in one sentence, at the brief's size. */
+.outcome {
+  margin: var(--space-4) 0 0;
+  color: var(--text-soft);
+  font-size: var(--type-reading);
+  line-height: var(--leading-reading);
+}
+
+.tool-said {
+  margin: var(--space-4) 0 0;
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+
+.tool-said summary {
+  cursor: pointer;
+  font-weight: var(--fw-medium);
+}
+
+.tool-said p {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.give-foot {
+  display: flex;
+  align-items: center;
+  margin-top: var(--space-4);
+  gap: var(--space-6);
 }
 
 .status {

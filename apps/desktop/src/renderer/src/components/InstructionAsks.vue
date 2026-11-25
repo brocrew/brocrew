@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { usePersonsQueue } from '../lib/persons-queue'
+import { OPEN_THE_CONVERSATION } from '../lib/taking-over'
+import { drawnFrom } from '../lib/waiting-order'
+import StandingRuleAsk from './StandingRuleAsk.vue'
 
 /**
  * ⚑ **D-017 · R19 · what an agent asked a person to approve about an identity's rules** — the asks
@@ -18,17 +21,19 @@ const props = withDefaults(
   defineProps<{
     /** ⛔ Whether this is the corner copy — `PersonsQueue`'s own prop, passed down. */
     floating?: boolean
+    /** The one card this copy draws, by key, where the page draws its cards one at a time. */
+    only?: string
   }>(),
-  { floating: false },
+  { floating: false, only: undefined },
 )
 
 const queue = usePersonsQueue()
-const rows = computed(() => queue.asks.value?.rows ?? [])
+const rows = computed(() => drawnFrom(queue.asks.value?.rows ?? [], props.only, (one) => one.askId))
 
-/** ⛔ **A look that has not answered** — an ask may be missing, and the list says so. */
+/** A look that has not answered, said by the corner; the page says it for the whole list. */
 const unread = computed(() => {
   const asks = queue.asks.value
-  return asks !== null && (asks.partial || asks.stale)
+  return props.floating && asks !== null && (asks.partial || asks.stale)
 })
 
 /** ⚑ The page keeps the handles it shipped with; the corner's are its queue card's. */
@@ -50,30 +55,31 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-asks`"
   >
-    <li v-for="one in rows" :key="one.askId" class="ask" :data-cy="`${cy}-ask-${one.askId}`">
-      <p class="ask-who">
+    <StandingRuleAsk
+      v-for="one in rows"
+      :key="one.askId"
+      :why="one.why"
+      :text="one.text"
+      :cy="`${cy}-ask-${one.askId}`"
+      :approve-cy="`${cy}-ask-approve-${one.askId}`"
+      :refuse-cy="`${cy}-ask-refuse-${one.askId}`"
+      :compact="props.floating"
+      @decide="queue.decideInstruction(one.askId, $event)"
+    >
+      <template #who>
         <strong>{{ one.askedBy }}</strong> asked to set the rules {{ one.about }} follows
-      </p>
-      <!-- ⚠️ **A CLAIM, and labelled as one** — `438`'s rule, as the sheet labels it. -->
-      <p class="ask-why">It said: “{{ one.why }}”</p>
-      <pre class="ask-text">{{ one.text }}</pre>
-      <div class="ask-controls">
-        <button
-          type="button"
-          :data-cy="`${cy}-ask-approve-${one.askId}`"
-          @click="queue.decideInstruction(one.askId, true)"
-        >
-          Approve
-        </button>
-        <button
-          type="button"
-          :data-cy="`${cy}-ask-refuse-${one.askId}`"
-          @click="queue.decideInstruction(one.askId, false)"
-        >
-          Refuse
-        </button>
-      </div>
-    </li>
+      </template>
+      <button
+        v-if="!floating"
+        type="button"
+        class="pq-go pq-door"
+        :data-cy="`${cy}-ask-open-${one.askId}`"
+        @click="queue.openWork(one)"
+      >
+        {{ OPEN_THE_CONVERSATION }}
+        <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+      </button>
+    </StandingRuleAsk>
   </ol>
 </template>
 
@@ -97,39 +103,6 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
   list-style: none;
 }
 
-.ask {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  gap: var(--space-2);
-}
-
-.ask-who,
-.ask-why {
-  margin: 0;
-  font-size: var(--type-caption);
-  overflow-wrap: anywhere;
-}
-
-.ask-text {
-  max-height: 200px;
-  margin: 0;
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--code-bg);
-  font: inherit;
-  overflow: auto;
-  white-space: pre-wrap;
-}
-
-.ask-controls {
-  display: flex;
-  gap: var(--space-3);
-}
-
 /* ⚑ **The corner copy: a row of the queue card** — `.pq-row`'s box and `.pq-rows`' gap, inside a
    card the corner bounds and scrolls. */
 .asks-unread.floating {
@@ -140,15 +113,5 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
 .asks.floating {
   padding: 0;
   gap: var(--space-4);
-}
-
-.asks.floating .ask {
-  padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-}
-
-.asks.floating .ask-text {
-  max-height: 120px;
 }
 </style>

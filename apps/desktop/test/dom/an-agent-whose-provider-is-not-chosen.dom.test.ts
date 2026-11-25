@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, provide } from 'vue'
+import { aQueueReadEmpty } from './a-queue-read-empty'
+import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
@@ -146,6 +148,7 @@ describe('the Team card names it', () => {
 describe('"Waiting on you" counts it as a person’s to settle, with a door to its sheet', () => {
   it('a line names the agent, it is counted, and its door opens that agent’s sheet', async () => {
     const opened: string[] = []
+    aQueueReadEmpty(1_700_000_000_000)
     const m = mount(WaitingOnYou, {
       agents: roster(MIXED),
       clock: 1_700_000_000_000,
@@ -157,8 +160,9 @@ describe('"Waiting on you" counts it as a person’s to settle, with a door to i
     )
     expect(m.all('waiting-provider-not-chosen-ida')).toEqual([])
     // ⚑ A person's to settle: counted in the group and in what they owe.
-    expect(m.q('provider-not-chosen-count').textContent?.trim()).toBe('1')
-    expect(m.q('waiting-stat').textContent?.trim()).toBe('1 item')
+    expect(m.q('waiting-pill-count-approvals').textContent?.trim()).toBe('1')
+    expect(m.q('waiting-intro').textContent?.trim()).toBe('1 thing needs you.')
+    usePersonsQueue().forget()
 
     m.q('waiting-provider-choose-ana').click()
     await nextTick()
@@ -170,9 +174,11 @@ describe('"Waiting on you" counts it as a person’s to settle, with a door to i
       agents: roster({ provider: 'claude', from: 'saved' }),
       clock: 1_700_000_000_000,
     })
-    expect(none.all('waiting-provider-not-chosen')).toEqual([])
+    expect(none.host.querySelectorAll('[data-cy^="waiting-provider-not-chosen-"]')).toHaveLength(0)
     unmountAll()
     const unread = mount(WaitingOnYou, { agents: null, clock: 1_700_000_000_000 })
-    expect(unread.all('waiting-provider-not-chosen')).toEqual([])
+    expect(unread.host.querySelectorAll('[data-cy^="waiting-provider-not-chosen-"]')).toHaveLength(
+      0,
+    )
   })
 })

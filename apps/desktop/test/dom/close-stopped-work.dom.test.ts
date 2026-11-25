@@ -39,14 +39,19 @@ function supply(closeWork: (piece: string) => Promise<{ ok: boolean; said: strin
 it('shows Close on real stopped and stalled cards and opens to-do conversations', async () => {
   await page.viewport(1350, 1400)
   const m = await aWaitingPageWithEveryCard(1350, 1400, true)
+  const question = parseFloat(
+    getComputedStyle(m.host.querySelector<HTMLElement>('[data-cy="question-words"]')!).fontSize,
+  )
+  m.q('waiting-pill-work').click()
+  await nextTick()
   expect(m.q('persons-queue-stall-close-work_32').textContent?.trim()).toBe('Close')
   expect(m.q('persons-queue-stopped-close-work_41').textContent?.trim()).toBe('Close')
+  m.q('waiting-pill-todo').click()
+  await nextTick()
   expect(m.q('waiting-todo-open-req_todo').textContent?.trim()).toBe('Open the conversation')
-  const text = m.q('waiting-todo-text-req_todo')
-  const reference = m.host.querySelector<HTMLElement>('[data-cy="question-words"]')!
-  expect(parseFloat(getComputedStyle(text).fontSize)).toBe(
-    parseFloat(getComputedStyle(reference).fontSize),
-  )
+  // The to-do leads with what to do, never smaller than a question's words.
+  const lead = m.q('waiting-todo-lead-req_todo')
+  expect(parseFloat(getComputedStyle(lead).fontSize)).toBeGreaterThanOrEqual(question)
 })
 it.each([false, true])(
   'sends Close once, shares pending between copies, and shows its receipt (never delivered: %s)',

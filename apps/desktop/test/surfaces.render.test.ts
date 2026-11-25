@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import WaitingOnYou from '../src/renderer/src/components/WaitingOnYou.vue'
+import { usePersonsQueue } from '../src/renderer/src/lib/persons-queue'
+import { aQueueReadEmpty } from './dom/a-queue-read-empty'
 import RecentActivity from '../src/renderer/src/components/RecentActivity.vue'
 import type { AttentionRequest } from '../src/renderer/src/lib/attention'
 import { DEFAULT_ACTIVITY_WINDOW_MS } from '../src/renderer/src/lib/recent-activity'
@@ -45,7 +47,10 @@ describe('the two destinations say their own half', () => {
     // The claim is absence of a standings enumeration: a list of state words becomes stale as
     // the vocabulary grows. The positive pins the current sentence while the negatives pin
     // its shape; draw it at the destination owning the described population.
+    // The page says nothing until its first read answers: supply one that answered empty.
+    aQueueReadEmpty()
     const html = await render(WaitingOnYou, { needsYou: [] })
+    usePersonsQueue().forget()
 
     // ⚠️ **Read from the paragraph, not from the page.** Vue's SSR emits HTML comments, and this
     // component's own comment quotes the sentence it replaced — so a whole-page `not.toContain`
@@ -59,7 +64,7 @@ describe('the two destinations say their own half', () => {
     const closes = html.indexOf('</p>', opens)
     expect(opens, 'the intro has no paragraph').toBeGreaterThan(-1)
     const intro = html.slice(opens, closes)
-    expect(intro).toContain('Nothing here is blocked on an answer from you.')
+    expect(intro).toContain('Nothing needs you.')
     expect(intro).not.toContain('either working or idle')
     expect(intro).not.toContain('working, idle, or')
   })
@@ -72,11 +77,11 @@ describe('a fresh install renders empty, and says so (012)', () => {
     const waiting = await render(WaitingOnYou, { needsYou: [] })
     const away = await render(RecentActivity, notReadYet)
 
-    expect(waiting).toContain('All clear')
-    // ⚠️ **`attention-empty` → `attention-clear`** (305 §1): the panel's own clear block is the one
-    // that says the region is empty, which is the claim 012 and 067 actually make.
-    expect(waiting).toContain('data-cy="attention-clear"')
-    expect(waiting).toContain('Nothing needs you.')
+    // ⚑ **Before its first read, Waiting on you claims nothing**: grey cards where its list will
+    // be, and no count, sentence or "nothing here" over a queue it has not read.
+    expect(waiting).toContain('data-cy="loading-cards"')
+    expect(waiting).not.toContain('data-cy="waiting-intro"')
+    expect(waiting).not.toContain('data-cy="waiting-list-none"')
     // ⚑ **438 · the digest on a fresh install has not been READ, which is not a zero.** A "0"
     // here would have been the strongest thing this screen could say about a database it has
     // not opened.
@@ -122,7 +127,7 @@ describe('neither destination claims the whole app is quiet (211 §2)', () => {
 
     // The positives, so the negatives below are not asserted over a blank page.
     expect(queue).toContain('data-cy="attention-request-sess_codex_1"')
-    expect(queue).toMatch(/data-cy="waiting-stat"[^>]*>\s*1 item/)
+    expect(queue).toMatch(/data-cy="waiting-pill-count-approvals"[^>]*>\s*1/)
     expect(away).toContain('data-cy="activity-empty"')
     for (const claim of WHOLE_APP_CLAIMS) {
       expect(away, `Recent activity claims "${claim}" while 1 item is waiting`).not.toContain(claim)
@@ -134,7 +139,7 @@ describe('neither destination claims the whole app is quiet (211 §2)', () => {
     const queue = await render(WaitingOnYou, { needsYou: [] })
     const away = await render(RecentActivity, nothingRecorded)
 
-    expect(queue).toMatch(/data-cy="waiting-stat"[^>]*>\s*All clear/)
+    expect(queue).toContain('data-cy="loading-cards"')
     expect(away).toContain('No activity recorded in the last 12 hours.')
     for (const claim of WHOLE_APP_CLAIMS) {
       expect(away, `the quiet page claims "${claim}"`).not.toContain(claim)

@@ -13,7 +13,7 @@ const rows = (n: number) => ({ rows: Array.from({ length: n }, (_, i) => ({ key:
 
 function queue(): PersonsQueue {
   return {
-    view: ref({ count: 1 }),
+    view: ref({ count: 1, ...rows(1) }),
     asks: ref(rows(2)),
     serverRequests: ref(rows(3)),
     waitingOnWhoWrote: ref(rows(4)),

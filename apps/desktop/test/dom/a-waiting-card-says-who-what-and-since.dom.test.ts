@@ -295,7 +295,12 @@ describe('§1 · who asked, what, and since when', () => {
       'persons-queue-row-sess_glint:req_g',
       'persons-queue-row-sess_orbit:req_o',
     ])
-    expect(m.host.querySelectorAll('ol.pq-rows')).toHaveLength(1)
+    // One run in one list: each card follows the last, with nothing drawn between them.
+    const cards = [...m.host.querySelectorAll<HTMLElement>('.one-card')]
+    expect(cards.map((card) => card.querySelector<HTMLElement>('.pq-row')?.dataset.cy)).toEqual(
+      order,
+    )
+    expect(new Set(cards.map((card) => card.parentElement))).toHaveProperty('size', 1)
   })
 })
 
@@ -475,13 +480,13 @@ describe('§6 · the page’s own words', () => {
     })
     const m = await thePage(1180, [question])
     expect(intro(m)).not.toContain('permission')
-    expect(intro(m)).toBe('Answer here, or open the card for the full disclosure.')
+    expect(intro(m)).toBe('2 things need you.')
   })
 
   it('…nor a row whose answers this window could not read', async () => {
     supply([decision('sess_brobot', 'req_test', 240_000)], new Map())
     const m = await thePage()
-    expect(intro(m)).toBe('1 item below is waiting on you.')
+    expect(intro(m)).toBe('1 thing needs you.')
   })
 
   it('claims nothing in a footer about what cannot run without you', async () => {

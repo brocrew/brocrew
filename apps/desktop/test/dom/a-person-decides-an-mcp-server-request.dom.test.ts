@@ -89,7 +89,11 @@ describe('the person’s MCP server card', () => {
     expect(m.host.textContent).toContain('Fictional Writer asks you to add an MCP server')
     expect(m.host.textContent).toContain(`It says this server can: “${REACHES}”`)
     expect(m.host.querySelector('a')).toBeNull()
-    expect(m.host.textContent).toContain(`Who gets it: every agent. ${EXTERNAL_MCP_EVERYONE_MEANS}`)
+    // The scope is on the card's face; what it means is under "What approving does".
+    expect(m.host.textContent).toContain('Who gets it: every agent.')
+    expect(m.host.querySelector('.request-means')?.textContent).toContain(
+      EXTERNAL_MCP_EVERYONE_MEANS,
+    )
     expect(m.host.textContent).not.toContain('BroCrew has not contacted this address yet.')
     expect(m.host.textContent).toContain(
       'unless that would stop its background work or end its planning',
@@ -171,7 +175,8 @@ describe('the person’s MCP server card', () => {
     })
     const m = mount(McpServerRequests, {})
     await nextTick()
-    const buttons = [...m.host.querySelectorAll<HTMLButtonElement>('button')]
+    // Approve and Refuse; the way to the conversation stays open while a decision is pending.
+    const buttons = [...m.host.querySelectorAll<HTMLButtonElement>('button:not(.pq-go)')]
     buttons[0]!.click()
     buttons[0]!.click()
     buttons[1]!.click()
@@ -193,7 +198,7 @@ describe('the person’s MCP server card', () => {
     await nextTick()
     expect(m.host.textContent).not.toContain('BroCrew has not contacted this address yet.')
     expect(m.host.querySelector('code')?.textContent).toBe(URL)
-    expect(m.host.querySelectorAll('button')).toHaveLength(2)
+    expect(m.host.querySelectorAll('button:not(.pq-go)')).toHaveLength(2)
   })
 
   it('the Tools request band disappears after the last request is settled', async () => {
@@ -218,11 +223,11 @@ describe('the person’s MCP server card', () => {
   it('the Waiting on you request group disappears when empty', async () => {
     const m = mount(WaitingOnYou, { needsYou: [], clock: 1000, agents: REGISTER })
     await nextTick()
-    expect(m.host.querySelector('[data-cy="server-requests-count"]')?.textContent).toBe('1')
+    expect(m.q('waiting-pill-count-approvals').textContent).toBe('1')
     expect(m.host.querySelector('[data-cy="waiting-server-requests"]')).not.toBeNull()
     supply([])
     await nextTick()
-    expect(m.host.querySelector('[data-cy="server-requests-count"]')).toBeNull()
+    expect(m.q('waiting-pill-count-approvals').textContent).toBe('0')
     expect(m.host.querySelector('[data-cy="waiting-server-requests"]')).toBeNull()
   })
 
@@ -271,7 +276,7 @@ describe('the person’s MCP server card', () => {
       )
       expect(page.all('waiting-server-request-approve-fictional-request')).toHaveLength(0)
       expect(corner.all('persons-queue-server-request-refuse-fictional-request')).toHaveLength(0)
-      expect(page.q('server-requests-count').textContent).toBe('0')
+      expect(page.q('waiting-pill-count-approvals').textContent).toBe('0')
       expect(corner.all('persons-queue-count')).toHaveLength(0)
       supply([])
       await nextTick()
@@ -330,8 +335,8 @@ describe('the person’s MCP server card', () => {
     expect(pressed).toHaveBeenCalledTimes(1)
     expect(
       [
-        ...page.host.querySelectorAll<HTMLButtonElement>('button'),
-        ...corner.host.querySelectorAll<HTMLButtonElement>('button'),
+        ...page.host.querySelectorAll<HTMLButtonElement>('button:not(.pq-go)'),
+        ...corner.host.querySelectorAll<HTMLButtonElement>('button:not(.pq-go)'),
       ].every((one) => one.disabled),
     ).toBe(true)
     release()
@@ -375,21 +380,28 @@ describe('the person’s MCP server card', () => {
 
   it('a failed first read says requests may be missing rather than asserting an empty list', async () => {
     supply(null, false)
-    const m = mount(McpServerRequests, {})
+    const m = mount(McpServerRequests, { place: 'tools' })
     await nextTick()
-    expect(m.q('waiting-server-requests-unread').textContent?.trim()).toBe(
+    expect(m.q('tools-server-requests-unread').textContent?.trim()).toBe(
       'The requests to add MCP servers could not be read just now, so one may be missing.',
     )
-    expect(m.all('waiting-server-requests')).toHaveLength(0)
+    expect(m.all('tools-server-requests')).toHaveLength(0)
+    // Waiting on you says it once for the whole list, in its own line.
+    const page = mount(WaitingOnYou, { needsYou: [], clock: 1000 })
+    await nextTick()
+    page.q('waiting-pill-approvals').click()
+    await nextTick()
+    expect(page.all('waiting-list-short')).toHaveLength(1)
+    expect(page.all('waiting-server-requests-unread')).toHaveLength(0)
   })
 
   it('a stale read retains the last request and says that another may be missing', async () => {
     supply([REQUEST], false)
-    const m = mount(McpServerRequests, {})
+    const m = mount(McpServerRequests, { place: 'tools' })
     await nextTick()
-    expect(m.q('waiting-server-requests-unread').textContent).toContain('one may be missing')
+    expect(m.q('tools-server-requests-unread').textContent).toContain('one may be missing')
     expect(m.host.querySelector('code')?.textContent).toBe(URL)
-    expect(m.all('waiting-server-request-approve-fictional-request')).toHaveLength(1)
+    expect(m.all('tools-server-request-approve-fictional-request')).toHaveLength(1)
   })
 
   it('wraps the complete long address inside a narrow card without clipping', async () => {

@@ -29,11 +29,7 @@ import {
   wideGrantWarningParts,
   grantedFor,
 } from '../lib/permission-offer'
-import {
-  WHAT_COMES_AFTER_IS_NOT_OURS,
-  serversAskOf,
-  whatThisAnswerDoes,
-} from '../lib/user-input-offer'
+import { serversAskOf, whatThisAnswerDoes } from '../lib/user-input-offer'
 import { whoAnsweredIt } from '../../../shared/who-did-it'
 import type { RequestDraft, TakenWithoutThisWindow } from '../lib/session-record'
 import {
@@ -46,6 +42,7 @@ import { escaped } from '../lib/named-in-a-reply'
 import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
 import PathsInText from './PathsInText.vue'
 import MarkdownWords from './MarkdownWords.vue'
+import WhatComesAfter from './WhatComesAfter.vue'
 
 /**
  * The agent is frozen until this is answered. The card may only offer the decisions the provider
@@ -56,6 +53,8 @@ import MarkdownWords from './MarkdownWords.vue'
 const props = defineProps<{
   item: PermissionItem & Pick<TranscriptItem, 'at'>
   compact?: boolean
+  /** Whether the page around the card says what comes after in its own Details. */
+  afterSaidElsewhere?: boolean
   stackAnswers?: boolean
   queueSent?: boolean
   queueOutcomes?: readonly PermissionOutcome[]
@@ -904,13 +903,21 @@ function decide(outcome: PermissionOutcome): void {
         <!-- 🔴 **The gap, once for the row** (434, HO-024 §5.3) — the same sentence in the same
              place `PersonsQueue` draws it. -->
         <component
-          v-if="offered.length > 0"
+          v-if="offered.length > 0 && !afterSaidElsewhere"
           :is="compact ? 'details' : 'div'"
           class="permission-details"
         >
           <summary v-if="compact">Details</summary>
-          <p class="after" data-cy="permission-after">{{ WHAT_COMES_AFTER_IS_NOT_OURS }}</p>
+          <WhatComesAfter class="after" />
         </component>
+        <!-- Waiting on you's way to the conversation, on the same line as the answers. -->
+        <slot name="door" />
+      </div>
+      <div
+        v-if="$slots.door && (answered || answeredElsewhere || !showOffer)"
+        class="permission-actions"
+      >
+        <slot name="door" />
       </div>
 
       <!-- The WHOLESALE grant (058), below the row and never in it.

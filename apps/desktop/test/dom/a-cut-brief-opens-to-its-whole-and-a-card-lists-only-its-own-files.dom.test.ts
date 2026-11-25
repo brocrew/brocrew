@@ -321,8 +321,8 @@ describe('the cut note on a give card, drawn', () => {
     await nextTick()
     // ⚑ Two arguments, the brief's label second.
     expect(calls).toEqual([[OWNER, 'W1.2']])
-    // ⛔ The ordinary press names no brief to land on.
-    m.q('outgoing-where').click()
+    // ⛔ The ordinary press, on the card's folded line, names no brief to land on.
+    m.q('exchange-where').click()
     await nextTick()
     expect(calls).toHaveLength(2)
     expect(calls[1]![0]).toBe(OWNER)
@@ -334,7 +334,7 @@ describe('the cut note on a give card, drawn', () => {
     const unread = await pane(gives(LONG_BRIEF), { held: [] })
     expect(read(unread.m.q('outgoing-cut'))).toBe(BODY_WAS_CUT)
     expect(unread.m.all('outgoing-read-whole')).toHaveLength(0)
-    expect(unread.m.all('outgoing-where')).toHaveLength(0)
+    expect(unread.m.all('exchange-where')).toHaveLength(0)
     unmountAll()
 
     // …a pane given no list of the conversations it can open (`held`): the same plain words.
@@ -342,7 +342,7 @@ describe('the cut note on a give card, drawn', () => {
     const blind = await pane(gives(LONG_BRIEF))
     expect(read(blind.m.q('outgoing-cut'))).toBe(BODY_WAS_CUT)
     expect(blind.m.all('outgoing-read-whole')).toHaveLength(0)
-    expect(blind.m.all('outgoing-where')).toHaveLength(0)
+    expect(blind.m.all('exchange-where')).toHaveLength(0)
     unmountAll()
 
     // …and a brief that ended: no cut note at all, while the ordinary press is drawn.
@@ -351,7 +351,7 @@ describe('the cut note on a give card, drawn', () => {
     expect(read(ended.m.q('outgoing-message'))).toBe(SHORT_BRIEF)
     expect(ended.m.all('outgoing-cut')).toHaveLength(0)
     expect(ended.m.all('outgoing-read-whole')).toHaveLength(0)
-    expect(visible(ended.m.q('outgoing-where'))).toBe(true)
+    expect(visible(ended.m.q('exchange-where'))).toBe(true)
   })
 })
 
@@ -601,7 +601,7 @@ describe('the inputs a card lists are those kept by the time it was written', ()
     }
     // No reading of the cast: no edge, so the bound is the result's own time.
     const m = await paneOver({ record: stamped(AT + 1_000) }, files)
-    expect(read(m.q('outgoing-task'))).toBe('W1.2')
+    expect(m.q('outgoing').getAttribute('data-tool')).toBe('give_work')
     expect(documentsIn(m.q('outgoing'))).toEqual(['res_with'])
     unmountAll()
     // ⚑ The pair: the same give whose result landed after both were kept lists both.

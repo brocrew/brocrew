@@ -25,7 +25,7 @@ import type { InstructionAskWaiting } from '../../src/shared/own-instructions'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 
 import { everythingOverTheWire } from '../lib/the-wire'
-import { mount, unmountAll, visible, type Mounted } from './harness'
+import { mount, unmountAll, type Mounted } from './harness'
 
 /**
  * ⚑ **D-017 · R19 — what an agent asked a person about an identity's rules, unpinned before this
@@ -284,8 +284,8 @@ describe('§5 · Waiting on you and the overlay corner draw the same asks', () =
     const m = mount(WaitingOnYou, { needsYou: [], clock: NOW })
     await nextTick()
 
-    expect(visible(m.q('asks-group'))).toBe(true)
-    expect(m.q('asks-count').textContent?.trim()).toBe('1')
+    expect(m.q('waiting-pill-approvals').getAttribute('aria-selected')).toBe('true')
+    expect(m.q('waiting-pill-count-approvals').textContent?.trim()).toBe('1')
 
     const row = m.q(`waiting-ask-${ask.asked.askId}`)
     expect(row.textContent).toContain(ask.asked.proposedBy)
@@ -299,8 +299,7 @@ describe('§5 · Waiting on you and the overlay corner draw the same asks', () =
     // ⚑ D-017 · R19: `onlyYou` is widened by the ask, so the page says something is waiting even
     // though `needsYou` is empty and the ordinary queue has no rows either — ⚑ **UI-009 (F052)**:
     // and it draws no empty *Conversations 0* group above it.
-    expect(m.q('waiting-intro').textContent?.trim()).toBe('1 item below is waiting on you.')
-    expect(m.host.querySelector('[data-cy="live-group"]')).toBeNull()
+    expect(m.q('waiting-intro').textContent?.trim()).toBe('1 thing needs you.')
 
     // ⚑ The paired negative: with no asks and nothing else waiting, neither group draws at all,
     // and the page is quiet.
@@ -308,11 +307,9 @@ describe('§5 · Waiting on you and the overlay corner draw the same asks', () =
     supply(undefined)
     const empty = mount(WaitingOnYou, { needsYou: [], clock: NOW })
     await nextTick()
-    expect(empty.host.querySelector('[data-cy="asks-group"]')).toBeNull()
-    expect(empty.host.querySelector('[data-cy="live-group"]')).toBeNull()
-    expect(empty.q('waiting-intro').textContent?.trim()).toBe(
-      'Nothing here is blocked on an answer from you.',
-    )
+    expect(empty.q('waiting-pill-count-approvals').textContent?.trim()).toBe('0')
+    expect(empty.host.querySelectorAll('[data-cy^="waiting-ask-"]')).toHaveLength(0)
+    expect(empty.q('waiting-intro').textContent?.trim()).toBe('Nothing needs you.')
   })
 
   it('the overlay corner counts and lists the asks beside the queue’s own rows, and mounts on asks alone', async () => {

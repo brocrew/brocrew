@@ -31,7 +31,7 @@ import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import type { PersonTodo } from '../../src/shared/work-waits'
 import { assertDrawn, drawnReady } from './drawn'
-import { mount, unmountAll, visible } from './harness'
+import { mount, unmountAll, visible, type Mounted } from './harness'
 import { identities, workerRows } from './parallel-workers-fixture'
 
 /**
@@ -206,6 +206,10 @@ function supply(
   return doors
 }
 
+/** The page's one line beside its title, or nothing when it draws none. */
+const intro = (m: Mounted): string =>
+  m.host.querySelector('[data-cy="waiting-intro"]')?.textContent?.trim() ?? ''
+
 const waitingOnYou = async () => {
   await page.viewport(1400, 1200)
   const m = mount(WaitingOnYou, { needsYou: [], clock: AT + 60_000 }, { width: 1351, height: 1200 })
@@ -225,11 +229,13 @@ describe('a to-do an agent asked of a person', () => {
     const m = await waitingOnYou()
     const head = m.q('waiting-todo-head-req_board')
     expect(read(head)).toBe('Ada asks you to do this · W3.1')
-    expect(read(m.q('waiting-todo-text-req_board'))).toBe(TODO.text)
-    expect(read(m.q('todos-count'))).toBe('1')
+    expect(read(m.q('waiting-todo-lead-req_board'))).toBe(TODO.text)
+    expect(read(m.q('waiting-pill-count-todo'))).toBe('1')
+    m.q('waiting-todo-add-note-req_board').click()
+    await nextTick()
     const note = m.q('waiting-todo-note-req_board') as HTMLTextAreaElement
     expect(note.placeholder).toBe('Add a note (optional)')
-    for (const cy of ['head', 'text', 'done', 'cant']) {
+    for (const cy of ['head', 'lead', 'done', 'cant']) {
       assertDrawn(m.q(`waiting-todo-${cy}-req_board`), `the to-do's ${cy}`)
     }
     expect(read(m.q('waiting-todo-done-req_board'))).toBe('Done')
@@ -241,13 +247,15 @@ describe('a to-do an agent asked of a person', () => {
     file.click()
     expect(doors.files).toEqual(['res_italian'])
     // Owed by a person, so the page does not call itself quiet over it.
-    expect(read(m.q('waiting-stat'))).not.toBe('All clear')
+    expect(intro(m)).toBe('1 thing needs you.')
   })
 
   it('Done sends the note once and says so in place; the presses go', async () => {
     const held = heldAnswer<string | null>()
     const doors = supply({ todos: [TODO] }, { answer: held.door })
     const m = await waitingOnYou()
+    m.q('waiting-todo-add-note-req_board').click()
+    await nextTick()
     const note = m.q('waiting-todo-note-req_board') as HTMLTextAreaElement
     note.value = '  Got lost at move 6.  '
     note.dispatchEvent(new Event('input'))
@@ -308,8 +316,8 @@ describe('a to-do an agent asked of a person', () => {
     supply({ todos: [TODO] })
     const m = await waitingOnYou()
     expect(m.all('waiting-todo-req_board')).toHaveLength(1)
-    expect(m.host.querySelector('[data-cy="yours-group"]')).toBeNull()
-    expect(read(m.q('todos-count'))).toBe('1')
+    expect(read(m.q('waiting-pill-count-questions'))).toBe('0')
+    expect(read(m.q('waiting-pill-count-todo'))).toBe('1')
   })
 
   it('the corner copy counts it and draws it', async () => {
@@ -401,19 +409,20 @@ describe('work that needs you', () => {
   it('is counted as owed, under its own heading', async () => {
     supply({ incidents: [incident()] })
     const m = await waitingOnYou()
-    expect(read(m.q('incidents-group').querySelector('span')!)).toBe('Work that needs you')
-    expect(read(m.q('incidents-count'))).toBe('1')
-    // Counted as owed: the stat names a number, never the all-clear or "Nothing".
-    expect(read(m.q('waiting-stat'))).not.toBe('All clear')
-    expect(read(m.q('waiting-stat'))).not.toBe('Nothing')
+    expect(m.q('waiting-pill-work').getAttribute('aria-selected')).toBe('true')
+    expect(read(m.q('waiting-pill-work'))).toContain('Work that needs you')
+    expect(read(m.q('waiting-pill-count-work'))).toBe('1')
+    // Counted as owed: the page names a number, never the all-clear.
+    expect(intro(m)).toBe('1 thing needs you.')
   })
 
   it('the control: a recovery is not counted as owed', async () => {
     supply({ incidents: [recovery()] })
     const m = await waitingOnYou()
-    expect(m.host.querySelector('[data-cy="incidents-group"]')).toBeNull()
-    // Owed by nobody and no amber line: the page is clear beside it.
-    expect(read(m.q('waiting-stat'))).toBe('All clear')
+    expect(read(m.q('waiting-pill-count-work'))).toBe('0')
+    // Owed by nobody: the page is clear beside it, and still draws it in its list.
+    expect(intro(m)).toBe('Nothing needs you.')
+    expect(m.all('waiting-recoveries-work_41')).toHaveLength(1)
   })
 })
 
@@ -590,10 +599,15 @@ describe('picking work back up', () => {
   it('a look that did not answer says so, once per reading', async () => {
     supply({ lastLookAnswered: { todos: false, incidents: false } })
     const m = await waitingOnYou()
-    for (const part of ['todos', 'incidents']) {
-      expect(visible(m.q(`waiting-${part}-unread`)), part).toBe(true)
+    for (const pill of ['todo', 'work']) {
+      m.q(`waiting-pill-${pill}`).click()
+      await settle()
+      expect(m.all('waiting-list-short'), pill).toHaveLength(1)
+      expect(visible(m.q('waiting-list-short')), pill).toBe(true)
     }
-    expect(m.host.querySelector('[data-cy="waiting-recoveries-unread"]')).toBeNull()
+    m.q('waiting-pill-reply').click()
+    await settle()
+    expect(m.all('waiting-list-short')).toHaveLength(0)
   })
 
   it('a piece a person gave offers Look only, and says so', async () => {
@@ -686,18 +700,19 @@ describe('an incidents walk that answered without reading everything', () => {
   it.each(shorts)('says so and never reads all clear: %o', async (short) => {
     supply({ incidents: [], ...short })
     const m = await waitingOnYou()
-    const line = m.q('waiting-incidents-short')
+    m.q('waiting-pill-work').click()
+    await settle()
+    const line = m.q('waiting-list-short')
     expect(visible(line)).toBe(true)
     assertDrawn(line, 'the could-not-read line')
-    expect(read(m.q('waiting-stat'))).not.toBe('All clear')
-    expect(m.host.querySelector('[data-cy="waiting-incidents-unread"]')).toBeNull()
+    expect(intro(m)).not.toBe('Nothing needs you.')
   })
 
   it('the control: a whole walk with nothing in it draws no group and reads all clear', async () => {
     supply({ incidents: [] })
     const m = await waitingOnYou()
-    expect(m.host.querySelector('[data-cy="incidents-group"]')).toBeNull()
-    expect(read(m.q('waiting-stat'))).toBe('All clear')
+    expect(read(m.q('waiting-pill-count-work'))).toBe('0')
+    expect(intro(m)).toBe('Nothing needs you.')
   })
 })
 

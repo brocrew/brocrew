@@ -22,6 +22,7 @@ const todo: TodoRow = {
   head: 'Ada asks',
   text: 'Check the result',
   files: [],
+  at: 10,
 }
 const entry: WorkEntry = {
   key: 'piece',
@@ -30,6 +31,7 @@ const entry: WorkEntry = {
   says: 'Needs a look',
   mayTakeBack: true,
   kind: 'stopped',
+  at: 10,
 }
 
 interface Card {

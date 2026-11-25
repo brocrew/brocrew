@@ -5,11 +5,12 @@ import { computed, ref, useId } from 'vue'
 // Shared kind and time wording is read by both queue and conversation cards.
 import {
   DID_WORDS,
+  isAnApproval,
   KIND_WORDS,
   LOOK,
   usePersonsQueue,
   namesakeSays,
-  namesakesIn,
+  stopKey,
   type NoAnswerHere,
   type PersonsQueueRow,
   type StalledWorkRow,
@@ -18,6 +19,7 @@ import { sinceWords } from '../lib/queue-time'
 import { permissionOutcomes, permissionShortcutFor, shortcutFor } from '../lib/attention'
 import { LIMIT_WORDS } from '../lib/user-input-offer'
 import { TAKE_BACK } from '../lib/take-back'
+import { drawnFrom } from '../lib/waiting-order'
 import { TAKE_IT_OVER_TO_ANSWER_HERE } from '../lib/taking-over'
 import { questionOnTheQueue, type QuestionCardReading } from '../lib/question-card'
 import type { PermissionDecision, UserInputResponse } from '../../../shared/runtime-ipc'
@@ -27,6 +29,7 @@ import WorkWaits from './WorkWaits.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 import QuestionCard from './QuestionCard.vue'
 import PermissionCard from './PermissionCard.vue'
+import WhatComesAfter from './WhatComesAfter.vue'
 import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
 
 /**
@@ -81,10 +84,8 @@ import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
  * ## 🔴 Two populations, one list, and a label only when there are two of them
  *
  * ⛔ **`403` added the rows a spawned child actually produces** — a permission it parked on, which
- * `401`'s reader was structurally unable to list. ⚑ They are drawn in the same list as the
- * escalated questions, because a person has one inbox and one count; what stops that being a
- * blend is the group LABEL whenever both are present, and `pq-says` on every row of the second
- * population whether or not the label is there.
+ * `401`'s reader was structurally unable to list. ⚑ On *Waiting on you* they are its Approvals
+ * list and the escalated questions its Questions list (`part`); the corner draws both in one.
  *
  * ⚠️ **`says` is the reliable discriminator and the chain is NOT**, which is worth stating because
  * the first draft of this note claimed all three. An escalated row whose walk was STOPPED draws
@@ -92,10 +93,8 @@ import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
  * reader told to tell them apart by shape would be told wrong. ⛔ `PersonsQueueRow.kind` is on the
  * row for exactly this reason: the surface reads the fact rather than inferring it.
  *
- * ⚠️ **The label appears only when both groups are** — `305 §1`'s rule, one level down: one list
- * needs no label, two do, and a label over the only list on screen is noise a reader has to rule
- * out. ⛔ **The `<ol>`s are separate and the SCROLLER is not**: a bounded band with two scrollers
- * in it can hide a whole group behind the other's overflow.
+ * ⛔ **The `<ol>`s are separate and the SCROLLER is not**: a bounded band with two scrollers in it
+ * can hide a whole group behind the other's overflow.
  *
  * ## 🔴 UI-009 · a question this app asked IS its card (F052)
  *
@@ -103,18 +102,16 @@ import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
  *
  * ## ⚑ UI-009 · the providers' usage limits are not drawn here
  *
- * ⚑ *Waiting on you* draws them at its top, outside *Yours to settle* — nothing in them is a person's
- * to settle — and the corner draws none: a usage warning is not a summons.
+ * ⚑ *Waiting on you* draws them in its head — nothing in them is a person's to settle — and the
+ * corner draws none: a usage warning is not a summons.
  *
  * ## ⚑ D-017 · R19 · the corner also carries the asks against an identity's rules
  *
  * ⛔ **The corner is the queue's copy on the layer that covers everything else, so it owes what the
  * page it summarises owes**: *Waiting on you* draws the instruction asks beside these rows, and the
  * corner counts them in its head and lists them under the rows (`InstructionAsks`), in the same
- * scroller. ⚠️ The in-flow copy does not: that page draws them as a group of its own.
- *
- * ⚑ **F097 · and the work whose agent answered a person**, for the same reason and the same way:
- * counted in the head, listed under the asks (`WaitingOnWhoWrote`), in flow only by the page.
+ * scroller, as it does the work whose agent answered a person (`WaitingOnWhoWrote`). The in-flow
+ * copy does not: the page draws those in lists of their own.
  */
 const props = withDefaults(
   defineProps<{
@@ -124,8 +121,15 @@ const props = withDefaults(
      * on you* gives it and what a test measuring its content rather than its corner wants.
      */
     floating?: boolean
+    /**
+     * Which of Waiting on you's lists this copy draws: its questions, its permission decisions, or
+     * the work that stopped. Every kind when it is left out, as the corner draws them.
+     */
+    part?: 'questions' | 'approvals' | 'work'
+    /** The one card this copy draws, by key, where the page draws its cards one at a time. */
+    only?: string
   }>(),
-  { floating: false },
+  { floating: false, part: undefined, only: undefined },
 )
 
 /**
@@ -141,33 +145,38 @@ const queue = usePersonsQueue()
 const expanded = ref(false)
 const bodyId = useId()
 const view = computed(() => queue.view.value)
-const rows = computed(() => view.value?.rows ?? [])
-/** 🔴 **737 · `734` F-2 — the rows whose asker reads the same name as another conversation's.** */
-const namesakes = computed(() => namesakesIn(rows.value))
+/** Whether this copy draws the given kind of thing. */
+function draws(part: 'questions' | 'approvals' | 'work'): boolean {
+  return props.part === undefined || props.part === part
+}
+const rows = computed(() =>
+  drawnFrom(view.value?.rows ?? [], props.only, (row) => row.key).filter((row) =>
+    draws(isAnApproval(row) ? 'approvals' : 'questions'),
+  ),
+)
+/** The rows whose asker reads the same name as another conversation's, read once per look. */
+const namesakes = queue.namesakes
 /**
  * ⚑ **557 · what the queue says about work that STOPPED with nobody left to tell** — a third
  * computed off the same composable, and `StalledWorkView`'s docblock is why it is not a fourth
  * population of `view` either.
  */
 const stalled = computed(() => queue.stalled.value)
-const stalledRows = computed(() => stalled.value?.rows ?? [])
+const stalledRows = computed(() =>
+  draws('work') ? drawnFrom(stalled.value?.rows ?? [], props.only, (row) => row.key) : [],
+)
 /** The pieces whose holder stopped with them, its giver told: beside the stalled band. */
 const stopped = computed(() => queue.stopped.value)
-const stoppedCards = computed(() => queue.stoppedCards.value)
-/**
- * ⚑ **D-017 · R19 · the asks against an identity's rules, and the corner's head over them** — see
- * `InstructionAsksView`. ⛔ **Drawn here by the CORNER copy only**: in flow, *Waiting on you* draws
- * them as a group of their own under its own label, and a second list there would draw each twice.
- */
+const stoppedCards = computed(() =>
+  draws('work') ? drawnFrom(queue.stoppedCards.value, props.only, (card) => stopKey(card.row)) : [],
+)
+/** The asks against an identity's rules, drawn here by the corner copy only: the page lists them. */
 const asks = computed(() => queue.asks.value)
 const asksSaySomething = computed(
   () =>
     asks.value !== null && (asks.value.rows.length > 0 || asks.value.partial || asks.value.stale),
 )
-/**
- * ⚑ **F097 · the work whose agent answered a person** — drawn here by the CORNER copy only, the
- * asks' rule: in flow, *Waiting on you* draws it as a group of its own.
- */
+/** The work whose agent answered a person, drawn here by the corner copy only, as the asks. */
 const replies = computed(() => queue.waitingOnWhoWrote.value)
 const repliesSaySomething = computed(
   () =>
@@ -302,33 +311,25 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 <template>
   <!-- ⚠️ **`v-if` on there being a row, not on the view being non-null**, and the two are different
        absences: `null` is *the first look has not landed*, and an empty list is *nothing is
-       waiting*. Neither draws anything here — a queue is a summons, and a summons with nothing in
-       it is noise — but only the second is a fact this app is allowed to state, and the surface
-       that states it is *Waiting on you*'s own "Nothing here is blocked on an answer from you",
-       which counts this list.
+       waiting*. Neither draws anything here: *Waiting on you* says which one it is, per list.
 
        ⛔ **…and a THIRD absence draws after all** (403, from the review): one read refused while
        the other came back empty. `rows.length` is 0 there and the first version therefore drew
        nothing at all — which put the screen back to *"the workspace is quiet"* over a population
        the app had failed to read. ⚑ A card carrying only the short-list line is the honest screen. -->
-  <!-- ⚠️ **606 · `data-place`'s second value names WHAT THIS COPY IS, not the screen it is on.**
-       ⛔ It read `home` until `EXT-008` §3 gave the queue its own destination, and a word that
-       names a screen is a claim that expires the moment the screen moves —
-       `a-column-name-is-a-claim`, and rule `27.1`'s *a guard scoped by where things live today
-       expires silently*. ⚑ `overlay` and `in-flow` are the two things this component actually is,
-       on any page that mounts it. -->
+  <!-- `data-place` names what this copy is, not the screen it is on, so it stays true when it moves. -->
   <section
     v-if="
-      (view !== null &&
-        (rows.length > 0 || view.partial || view.stale || view.noLedger || view.rowsDropped)) ||
+      rows.length > 0 ||
       stalledRows.length > 0 ||
-      stalled?.unread === true ||
-      !!stalled?.short ||
       stoppedCards.length > 0 ||
-      stopped?.unread === true ||
-      !!stopped?.short ||
       (props.floating &&
-        (asksSaySomething ||
+        ((view !== null && (view.partial || view.stale || view.noLedger || view.rowsDropped)) ||
+          stalled?.unread === true ||
+          !!stalled?.short ||
+          stopped?.unread === true ||
+          !!stopped?.short ||
+          asksSaySomething ||
           repliesSaySomething ||
           serverRequestsSaySomething ||
           queue.todoCards.value.length > 0 ||
@@ -339,15 +340,8 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
     :data-place="props.floating ? 'overlay' : 'in-flow'"
     data-cy="persons-queue"
   >
-    <!-- ⛔ **The header belongs to the CORNER copy, and only to it.** In the overlay layer nothing
-         else on screen explains what this box is; in flow it sits under a group label that names
-         it. ⚑ **UI-009 · and the corner's line is gone** — *"Nobody above them has answered. This
-         takes you to the card…"* explained the machinery, and was false of a question asked
-         directly. -->
-    <!-- ⚑ **D-017 · R19 · `corner`, and not `view`, at the head** — the queue's heading and count
-         widened by the asks this copy lists and (F097) the work waiting on the reply (`cornerHead`),
-         so the corner counts what *Waiting on you* draws. ⛔ `null` under the same rule as before:
-         nothing is said over lists nobody has read. -->
+    <!-- The corner's head counts every list this copy draws (`cornerHead`); `null` says nothing
+         over lists nobody has read. -->
     <header v-if="props.floating" class="pq-head">
       <button
         type="button"
@@ -432,20 +426,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           </div>
         </li>
       </ul>
-      <!-- 🔴 **557 · the stall look has stopped answering.** ⛔ Drawn rather than left blank: a band
-           that vanishes reads as an all-clear, and this all-clear is *every piece of work that
-           stopped has reached somebody*. -->
-      <p v-if="stalled?.unread" class="pq-short" data-cy="persons-queue-stalled-unread">
-        The last look for work that has stopped did not answer, so something nobody has been told
-        about may not be shown here.
-      </p>
-      <!-- 🔴 **678 · F-R18b — the look answered, and could not read some rows.** ⛔ Not the line
-           above, which is *the look did not answer*: this one is `rowsUnread` on a walk that did,
-           in the one sentence every surface draws for that count (`rows-unread.ts`). ⚠️ Until
-           `678` nothing drew it, and the section's `v-if` above now opens for it alone. -->
-      <p v-if="stalled?.short" class="pq-short" data-cy="persons-queue-stalled-short">
-        {{ stalled.short }}
-      </p>
       <!-- Work whose holder stopped with it, its giver told: the piece, when it stopped, and the two
            things a person can do about it. -->
       <!-- A card the list no longer holds stays while its hand-back is on its way, then says the
@@ -471,17 +451,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           </p>
           <div v-if="card.listed || card.pending" class="pq-stop-actions">
             <button
-              v-if="card.listed"
-              class="pq-go"
-              type="button"
-              :data-cy="`persons-queue-stopped-look-${card.row.key}`"
-              @click="queue.openWork(card.row)"
-            >
-              {{ LOOK }}
-              <svg class="icon"><use href="#i-arrow" /></svg>
-            </button>
-            <button
-              class="pq-go"
+              class="pq-answer"
               type="button"
               :disabled="card.pending"
               :data-cy="`persons-queue-stopped-hand-back-${card.row.key}`"
@@ -494,6 +464,16 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               :disabled="card.pending"
               :cy="`persons-queue-stopped-close-${card.row.key}`"
             />
+            <button
+              v-if="card.listed"
+              class="pq-go pq-door"
+              type="button"
+              :data-cy="`persons-queue-stopped-look-${card.row.key}`"
+              @click="queue.openWork(card.row)"
+            >
+              {{ LOOK }}
+              <svg class="icon"><use href="#i-arrow" /></svg>
+            </button>
           </div>
           <p
             v-if="card.said !== null"
@@ -514,53 +494,43 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           </button>
         </li>
       </ul>
-      <p v-if="stopped?.unread" class="pq-short" data-cy="persons-queue-stopped-unread">
-        The last look for work whose agent stopped did not answer, so some may not be shown here.
-      </p>
-      <p v-if="stopped?.short" class="pq-short" data-cy="persons-queue-stopped-short">
-        {{ stopped.short }}
-      </p>
-      <!-- ⛔ **One of the two reads did not answer, so this list is short and says so** (403,
-           from the review). ⚠️ The first version returned NO view at all in this state, which put
-           the screen back to *"the workspace is quiet"* over rows it had just read. ⚑ Drawn in
-           BOTH copies, because it is a disclosure about the list rather than the corner card's
-           chrome, and the in-flow copy draws the same list. ⚠️ **606 · that copy is on
-           `WaitingOnYou`** — `EXT-008` §3. -->
-      <p v-if="view?.partial" class="pq-short" data-cy="persons-queue-partial">
-        One of these lists could not be read just now, so there may be more than this.
-      </p>
-      <!-- 🔴 **453 · there was no ledger behind the answer at all.** ⛔ This is the disclosure the
-           card could not draw before, and it is the one that mattered most: every reader answered
-           an empty list, `partial` and `stale` were both false, and the honest screen was
-           indistinguishable from a quiet workspace. -->
-      <p v-if="view?.noLedger" class="pq-short" data-cy="persons-queue-no-ledger">
-        This app has no record to read just now, so an empty list here says nothing about what is
-        waiting on you.
-      </p>
-      <!-- 🔴 **453 · the list is short by rows this app could not read** — `150`'s skip, which has
-           been silent above the store since it was written. ⛔ The cause is genuinely unknown and
-           the sentence says so rather than guessing at one. -->
-      <p v-if="view?.rowsDropped" class="pq-short" data-cy="persons-queue-rows-dropped">
-        Part of this app’s own record could not be read, so something waiting on you may be missing
-        from this list.
-      </p>
-      <!-- 🔴 **The list is not being read any more** (434) — a different hole from the one above,
-           and the reachable one. ⛔ The screen keeps each population's last good answer on a
-           refusal, which is right; what it cannot do is keep drawing that answer silently, because
-           everything that arrived since is omitted and an omission reads as *nothing arrived*. -->
-      <p v-if="view?.stale" class="pq-short" data-cy="persons-queue-stale">
-        The last look at one of these lists did not answer, so this is what it said before that —
-        anything that has arrived since is not here.
-      </p>
-      <!-- 🔴 **ONE list, oldest-blocked first** (434, criterion 17) — the groups are gone. ⛔ A
-           group is a second ordering, and with two of them a nine-minute permission sat below a
-           four-second question because of which READER found it. ⚑ What the group label carried
-           — which population a row is — is now on the row, where `PersonsQueueRow.kind` always
-           said it was.
-
-           ⚠️ **The list is NAMED with its own ordering**, so a screen reader browsing the card
+      <!-- What the corner says when a list it reads could not be read whole. In flow, Waiting on you
+           says it once for the open list. -->
+      <template v-if="props.floating">
+        <p v-if="stalled?.unread" class="pq-short" data-cy="persons-queue-stalled-unread">
+          The last look for work that has stopped did not answer, so something nobody has been told
+          about may not be shown here.
+        </p>
+        <p v-if="stalled?.short" class="pq-short" data-cy="persons-queue-stalled-short">
+          {{ stalled.short }}
+        </p>
+        <p v-if="stopped?.unread" class="pq-short" data-cy="persons-queue-stopped-unread">
+          The last look for work whose agent stopped did not answer, so some may not be shown here.
+        </p>
+        <p v-if="stopped?.short" class="pq-short" data-cy="persons-queue-stopped-short">
+          {{ stopped.short }}
+        </p>
+        <p v-if="view?.partial" class="pq-short" data-cy="persons-queue-partial">
+          One of these lists could not be read just now, so there may be more than this.
+        </p>
+        <p v-if="view?.noLedger" class="pq-short" data-cy="persons-queue-no-ledger">
+          This app has no record to read just now, so an empty list here says nothing about what is
+          waiting on you.
+        </p>
+        <p v-if="view?.rowsDropped" class="pq-short" data-cy="persons-queue-rows-dropped">
+          Part of this app’s own record could not be read, so something waiting on you may be
+          missing from this list.
+        </p>
+        <p v-if="view?.stale" class="pq-short" data-cy="persons-queue-stale">
+          The last look at one of these lists did not answer, so this is what it said before that —
+          anything that has arrived since is not here.
+        </p>
+      </template>
+      <!-- 🔴 **Oldest-blocked first** (434, criterion 17): which population a row is, is on the row
+           (`PersonsQueueRow.kind`). ⚠️ The list is NAMED with its ordering, so a screen reader
            hears what the order means rather than a bare *"list, 4 items"*. -->
       <ol
+        v-if="rows.length > 0"
         class="pq-rows"
         aria-label="Waiting on you, the longest-blocked first"
         data-cy="persons-queue-rows"
@@ -582,7 +552,19 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             @open-document="queue.openFile"
             @answer="(response) => answer(row, response)"
             @move="(decision) => queue.move(row, decision)"
-          />
+          >
+            <template #door>
+              <button
+                class="pq-go"
+                type="button"
+                :data-cy="`persons-queue-go-${row.key}`"
+                @click="go(row)"
+              >
+                {{ row.action }}
+                <svg class="icon"><use href="#i-arrow" /></svg>
+              </button>
+            </template>
+          </QuestionCard>
 
           <ol
             v-if="!row.question"
@@ -655,9 +637,22 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             :provider="row.cardProvider ?? null"
             :queue-sent="row.noAnswerHere === 'answer-sent'"
             :queue-outcomes="permissionOutcomes(row.answers)"
+            :after-said-elsewhere="hasDetails(row)"
             compact
             @decide="(_, decision) => settlePermission(row, decision)"
-          />
+          >
+            <template #door>
+              <button
+                class="pq-go pq-door"
+                type="button"
+                :data-cy="`persons-queue-go-${row.key}`"
+                @click="go(row)"
+              >
+                {{ row.action }}
+                <svg class="icon"><use href="#i-arrow" /></svg>
+              </button>
+            </template>
+          </PermissionCard>
           <QuestionCard
             v-else-if="row.words"
             :reading="recordedQuestion(row)"
@@ -711,6 +706,10 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             >
               <summary>Details</summary>
               <div class="pq-more-body">
+                <WhatComesAfter
+                  v-if="row.liveCard?.kind === 'permission' && row.answers.length > 0"
+                  class="pq-says"
+                />
                 <!-- ⛔ **Which population** — see `KIND_WORDS`: drawn for every decision and every
                      question that was escalated, and not on a question asked of you directly,
                      where *"nobody above has answered"* is false. -->
@@ -751,16 +750,10 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               <!-- 🔴 **Take it over WITHOUT going to it** (434) — `336`'s door with the navigation
                    left off, so the answers land on this row and the person never leaves the one
                    list. ⚠️ Its word says it is a take-over, because it is: this window becomes the
-                   owner, and the owner is who may send to it, answer it and end it.
-                   ⛔ **It is not who the conversation ends WITH, and this comment said it was until
-                   `523`.** These rows are conversations nobody is holding, which is what an
-                   agent-spawned child is — and `closeSessionsForOwner` RELEASES one of those when the
-                   window goes, rather than closing it. ⚑ So the press is undoable: `handing-it-back.ts`
-                   is the one that undoes it. -->
-              <!-- ⛔ **One arm reaches this button**: `not-yours-yet`, *its card cannot be answered
-                   from here yet*. ⚑ **D-017 · R6** — a question this app asked is answered on its card
-                   whoever holds the conversation, so it needs no take-over. ⛔ **Not folded into
-                   `!row.held`**, because `held` is false on rows this gesture cannot help. -->
+                   owner, and the owner is who may send to it, answer it and end it. ⚑ The press is
+                   undoable: `handing-it-back.ts` undoes it (`523`). -->
+              <!-- ⛔ Only `not-yours-yet` reaches it (a question this app asked needs no take-over,
+                   D-017 · R6); not `!row.held`, which is false on rows this cannot help. -->
               <button
                 v-if="row.noAnswerHere === 'not-yours-yet'"
                 class="pq-take-over"
@@ -771,15 +764,11 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                 {{ TAKE_IT_OVER_TO_ANSWER_HERE }}
               </button>
 
-              <!-- ⛔ **One button, and it travels.** ⚠️ Its word says which of two gestures it is
-                   before it is pressed: opening a conversation this window is running, or taking
-                   over one nobody holds — `336`'s door, and a widening a person is told about in
-                   advance.
-
-                   ⛔ **It says the same thing for both populations, and that is deliberate**: the
-                   promise is ARRIVAL, and a word that changed with the kind would be this surface
-                   claiming to know what a person will be able to do when they get there. -->
+              <!-- ⛔ **One button, and it travels**, its word saying which gesture it is before it is
+                   pressed (`336`'s door). A question's and a live permission's ride on their card's
+                   answer line instead. -->
               <button
+                v-if="!row.question && row.liveCard?.kind !== 'permission'"
                 class="pq-go"
                 type="button"
                 :data-cy="`persons-queue-go-${row.key}`"
@@ -945,8 +934,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   overflow-y: auto;
 }
 
-/* ⚑ **The group label, quiet on purpose.** It separates two populations; it is not a second
-   heading, and the row under it carries the words that matter. */
 /* ⛔ **Which population, on the row** (434) — the group label's weight, on the row's first line,
    because the group it used to head cannot exist inside one ordering. */
 .pq-kind {

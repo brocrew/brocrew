@@ -161,7 +161,7 @@ it('one MCP request appears on Waiting, its rail badge and the overlay corner ex
   await expect
     .poll(() => m.all('waiting-server-request-approve-fictional-request-1').length)
     .toBe(1)
-  expect(m.q('server-requests-count').textContent).toBe('1')
+  expect(m.q('waiting-pill-count-approvals').textContent).toBe('1')
   expect(m.host.textContent).not.toContain('The person approved')
   m.q('rail-team').click()
   await expect.poll(() => m.all('team-workspace').length).toBe(1)
@@ -196,7 +196,7 @@ it('the actual screen sends only id and approve and removes the count before its
     .poll(() => m.all('waiting-server-request-settled-fictional-request-1').length)
     .toBe(1)
   expect(m.q('waiting-badge').textContent?.trim()).toBe('1')
-  expect(m.q('server-requests-count').textContent).toBe('1')
+  expect(m.q('waiting-pill-count-approvals').textContent).toBe('1')
   expect(m.q('waiting-server-request-settled-fictional-request-1').textContent).toBe(
     'Registered. It offers: read_notes.',
   )
@@ -211,7 +211,7 @@ it('the healthy empty screen has no MCP group, badge or floating request count',
   await nextTick()
   expect(m.all('waiting-badge')).toHaveLength(0)
   expect(m.all('waiting-server-requests')).toHaveLength(0)
-  expect(m.all('server-requests-count')).toHaveLength(0)
+  expect(m.q('waiting-pill-count-approvals').textContent?.trim()).not.toMatch(/[1-9]/)
   expect(m.all('persons-queue-count')).toHaveLength(0)
 })
 
@@ -233,9 +233,12 @@ it('an MCP request and a reply owed to a person count once each across distinct 
   await expect
     .poll(() => m.all('waiting-server-request-approve-fictional-request-1').length)
     .toBe(1)
-  expect(m.q('server-requests-count').textContent).toBe('1')
-  expect(m.host.textContent).toContain('Draft fictional pages')
+  expect(m.q('waiting-pill-count-approvals').textContent).toBe('1')
   expect(m.all('waiting-server-request-fictional-request-1')).toHaveLength(1)
+  expect(m.q('waiting-pill-count-reply').textContent).toBe('1')
+  m.q('waiting-pill-reply').click()
+  await nextTick()
+  expect(m.host.textContent).toContain('Draft fictional pages')
   m.q('rail-team').click()
   await expect.poll(() => m.all('team-workspace').length).toBe(1)
   m.q('team-tab-roster').click()

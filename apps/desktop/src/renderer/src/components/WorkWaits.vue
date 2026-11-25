@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { LOOK, usePersonsQueue } from '../lib/persons-queue'
 import { TAKE_BACK } from '../lib/take-back'
 import type { TodoRow } from '../lib/work-waits'
+import { drawnFrom } from '../lib/waiting-order'
 import TodoCard from './TodoCard.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 
@@ -17,8 +18,10 @@ const props = withDefaults(
     part: 'todos' | 'incidents' | 'recoveries'
     /** Whether this is the corner copy. */
     floating?: boolean
+    /** The one card this copy draws, by key, where the page draws its cards one at a time. */
+    only?: string
   }>(),
-  { floating: false },
+  { floating: false, only: undefined },
 )
 const emit = defineEmits<{ leave: [] }>()
 
@@ -27,7 +30,14 @@ const waits = computed(() => queue.workWaits.value)
 const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
 
 /** The work list's cards, for the two parts that list pieces. */
-const cards = computed(() => (props.part === 'todos' ? [] : queue.workCards.value[props.part]))
+const cards = computed(() =>
+  props.part === 'todos'
+    ? []
+    : drawnFrom(queue.workCards.value[props.part], props.only, ({ entry }) => entry.key),
+)
+const todoCards = computed(() =>
+  drawnFrom(queue.todoCards.value, props.only, (card) => card.row.key),
+)
 const workPart = computed(() => (props.part === 'recoveries' ? 'recoveries' : 'incidents'))
 
 const unreadSays: Record<typeof props.part, string> = {
@@ -38,7 +48,8 @@ const unreadSays: Record<typeof props.part, string> = {
   recoveries: '',
 }
 
-const unread = computed(() => waits.value[props.part].unread)
+/** A look that did not answer, said by the corner; the page says it for the whole list. */
+const unread = computed(() => props.floating && waits.value[props.part].unread)
 
 function openTodo(row: TodoRow): void {
   if (props.floating) emit('leave')
@@ -51,7 +62,7 @@ function openTodo(row: TodoRow): void {
     {{ unreadSays[part] }}
   </p>
   <p
-    v-if="waits[part].short"
+    v-if="floating && waits[part].short"
     class="waits-unread"
     :class="{ floating }"
     :data-cy="`${cy}-${part}-short`"
@@ -59,17 +70,12 @@ function openTodo(row: TodoRow): void {
     {{ waits[part].short }}
   </p>
   <ol
-    v-if="part === 'todos' && queue.todoCards.value.length > 0"
+    v-if="part === 'todos' && todoCards.length > 0"
     class="waits"
     :class="{ floating }"
     :data-cy="`${cy}-todos`"
   >
-    <li
-      v-for="card in queue.todoCards.value"
-      :key="card.row.key"
-      class="wait"
-      :class="{ settled: card.taken }"
-    >
+    <li v-for="card in todoCards" :key="card.row.key" class="wait" :class="{ settled: card.taken }">
       <TodoCard :card="card" :cy="cy" open-conversation @open="openTodo(card.row)" />
     </li>
   </ol>
@@ -85,15 +91,6 @@ function openTodo(row: TodoRow): void {
       <p class="wait-says" :data-cy="`${cy}-${part}-says-${one.key}`">{{ one.says }}</p>
       <div v-if="listed || pending" class="wait-controls">
         <button
-          v-if="listed"
-          type="button"
-          :data-cy="`${cy}-${part}-look-${one.key}`"
-          @click="queue.openWork(one)"
-        >
-          {{ LOOK }}
-          <svg class="icon"><use href="#i-arrow" /></svg>
-        </button>
-        <button
           v-if="one.mayTakeBack"
           type="button"
           :disabled="pending"
@@ -108,6 +105,16 @@ function openTodo(row: TodoRow): void {
           :disabled="pending"
           :cy="`${cy}-${part}-close-${one.key}`"
         />
+        <button
+          v-if="listed"
+          type="button"
+          class="wait-door"
+          :data-cy="`${cy}-${part}-look-${one.key}`"
+          @click="queue.openWork(one)"
+        >
+          {{ LOOK }}
+          <svg class="icon"><use href="#i-arrow" /></svg>
+        </button>
       </div>
       <p
         v-if="said !== null"

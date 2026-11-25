@@ -17,6 +17,7 @@ import type { AgentStore } from '../lib/agent-store'
 import { useClientApi } from '../client-provider/injection'
 import { fullTime } from '../lib/clock'
 import { useAgentStore } from '../composables/useAgentStore'
+import StandingRuleAsk from './StandingRuleAsk.vue'
 
 /**
  * 🔴 **The editor `HO-063` gap 4 asked for — where a person writes rules that reach an agent at
@@ -444,41 +445,25 @@ async function reviewChanges(): Promise<void> {
            ⚠️ **A relay never appears here**, because a relay was written when it was made; the
            history below is where a person sees one, labelled with what this app did and did not
            check. -->
-      <div v-if="waiting.length > 0" class="asks" data-cy="own-instructions-asks">
-        <div
+      <ol v-if="waiting.length > 0" class="asks" data-cy="own-instructions-asks">
+        <StandingRuleAsk
           v-for="one in waiting"
           :key="one.asked.askId"
-          class="ask"
-          :data-cy="`own-instructions-ask-${one.asked.askId}`"
+          :why="one.asked.why"
+          :text="one.asked.text"
+          :cy="`own-instructions-ask-${one.asked.askId}`"
+          :approve-cy="`own-instructions-approve-${one.asked.askId}`"
+          :refuse-cy="`own-instructions-refuse-${one.asked.askId}`"
+          why-cy="own-instructions-ask-why"
+          :busy="busy"
+          @decide="decide(one.asked.askId, $event)"
         >
-          <p class="ask-who">
+          <template #who>
             <strong>{{ named(one.asked.proposedBy) }}</strong> asked to set these rules ·
             {{ fullTime(one.at) }}
-          </p>
-          <!-- ⚠️ **A CLAIM, and labelled as one** — `438`'s rule: nothing in this app checked a
-               word of it. -->
-          <p class="ask-why" data-cy="own-instructions-ask-why">It said: “{{ one.asked.why }}”</p>
-          <pre class="ask-text">{{ one.asked.text }}</pre>
-          <div class="ask-controls">
-            <button
-              type="button"
-              :disabled="busy"
-              :data-cy="`own-instructions-approve-${one.asked.askId}`"
-              @click="decide(one.asked.askId, true)"
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              :disabled="busy"
-              :data-cy="`own-instructions-refuse-${one.asked.askId}`"
-              @click="decide(one.asked.askId, false)"
-            >
-              Refuse
-            </button>
-          </div>
-        </div>
-      </div>
+          </template>
+        </StandingRuleAsk>
+      </ol>
 
       <p v-if="history.length === 0" class="identity-note" data-cy="own-instructions-empty">
         {{ NOBODY_HAS_WRITTEN_ONE }}
@@ -725,8 +710,7 @@ async function reviewChanges(): Promise<void> {
   resize: vertical;
 }
 
-.own-instructions-controls,
-.ask-controls {
+.own-instructions-controls {
   display: flex;
   gap: var(--space-3);
 }
@@ -741,7 +725,6 @@ async function reviewChanges(): Promise<void> {
   list-style: none;
 }
 
-.ask,
 .version {
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-md);
@@ -752,8 +735,6 @@ async function reviewChanges(): Promise<void> {
   min-width: 0;
 }
 
-.ask-who,
-.ask-why,
 .version-head,
 .version-said {
   margin: 0;
@@ -765,7 +746,6 @@ async function reviewChanges(): Promise<void> {
 
 /* ⛔ **`pre-wrap` and its own scroll**, because a person's rules are prose with newlines and a
    pasted operating model is long — and the page body must never scroll sideways. */
-.ask-text,
 .version-text {
   margin: 0;
   padding: var(--space-2);

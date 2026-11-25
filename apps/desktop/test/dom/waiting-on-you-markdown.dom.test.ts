@@ -77,16 +77,22 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     expect(
       m.host.querySelector('[data-cy="persons-queue-asked-part"] .md-chat strong')?.textContent,
     ).toBe('the short draft')
+    m.q('waiting-pill-approvals').click()
+    await nextTick()
     expect(m.host.querySelector('[data-cy="permission-action"] strong')?.textContent).toBe(
       'Run the preview check',
     )
-    expect(m.host.querySelector('.todo-text strong')?.textContent).toBe('Check the preview')
+    m.q('waiting-pill-todo').click()
+    await nextTick()
+    expect(m.host.querySelector('.todo-lead strong')?.textContent).toBe('Check the preview')
     expect(m.host.querySelectorAll('.todo-text li')).toHaveLength(2)
   })
 
   it('keeps approval commands literal, including markdown punctuation', async () => {
     if (theme === 'crew-night') wearTheme(theme)
     const m = await aWaitingPageWithMarkdown()
+    m.q('waiting-pill-approvals').click()
+    await nextTick()
     const command = m.host.querySelector('[data-cy="permission-detail"]')!
     expect(command.textContent).toBe(LITERAL_COMMAND)
     expect(command.querySelector('strong, a, .md-chat')).toBeNull()
@@ -119,12 +125,7 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     await expect
       .poll(() => m.host.querySelectorAll('[aria-label="Open file"]').length)
       .toBeGreaterThan(0)
-    for (const selector of [
-      '[data-cy="question-words"]',
-      '[data-cy="persons-queue-asked-part"]',
-      '[data-cy="persons-queue-asked-sess_glint:req_provider"] [data-cy="question-words"]',
-      '.todo-text',
-    ]) {
+    const opensIn = async (selector: string): Promise<void> => {
       const words = m.host.querySelector(selector)!
       const open = words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!
       expect(open, selector).not.toBeNull()
@@ -132,6 +133,18 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
       open.click()
       await nextTick()
     }
+    for (const selector of [
+      '[data-cy="question-words"]',
+      '[data-cy="persons-queue-asked-part"]',
+      '[data-cy="persons-queue-asked-sess_glint:req_provider"] [data-cy="question-words"]',
+    ]) {
+      await opensIn(selector)
+    }
+    m.q('waiting-pill-todo').click()
+    await expect
+      .poll(() => m.host.querySelectorAll('.todo-text [aria-label="Open file"]').length)
+      .toBeGreaterThan(0)
+    await opensIn('.todo-text')
     expect(opens).toHaveLength(4)
     expect(opens.every((target) => target.sessionId === 'sess_glint')).toBe(true)
     expect(opens.every((target) => target.text === '/work/sample/notes.md')).toBe(true)
@@ -166,16 +179,31 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     }
     if (theme === 'crew-night') wearTheme(theme)
     const m = await aWaitingPageWithMarkdown(1180, 1000, false, true)
-    await expect.poll(() => m.host.querySelectorAll('[aria-label="Open file"]').length).toBe(5)
-    for (const button of m.host.querySelectorAll<HTMLButtonElement>('[aria-label="Open file"]'))
-      button.click()
-    await nextTick()
+    // The questions list holds four of the five; the to-do list holds the fifth.
+    let copies = 0
+    for (const [pill, count] of [
+      ['questions', 4],
+      ['todo', 1],
+    ] as const) {
+      m.q(`waiting-pill-${pill}`).click()
+      // Every list stays drawn; only the open one is on screen.
+      const shown = `[data-cy="waiting-list-${pill}"]`
+      await expect
+        .poll(() => m.host.querySelectorAll(`${shown} [aria-label="Open file"]`).length)
+        .toBe(count)
+      for (const button of m.host.querySelectorAll<HTMLButtonElement>(
+        `${shown} [aria-label="Open file"]`,
+      ))
+        button.click()
+      await nextTick()
+      copies += m.host.querySelectorAll(`${shown} [aria-label="Copy path"]`).length
+    }
     expect(asks.flatMap((ask) => ask.texts)).toContain('notes.md')
     expect(opens).toHaveLength(5)
     expect(
       opens.every((target) => target.sessionId === 'sess_glint' && target.text === 'notes.md'),
     ).toBe(true)
-    expect(m.host.querySelectorAll('[aria-label="Copy path"]')).toHaveLength(5)
+    expect(copies).toBe(5)
   })
 
   it.each([1180, 480])(
@@ -188,9 +216,12 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
       m.q('question-more').click()
       await nextTick()
       expect(m.q('question-more').getAttribute('aria-expanded')).toBe('true')
-      const blocks = m.host.querySelectorAll<HTMLElement>('.md-chat pre')
-      expect(blocks).toHaveLength(3)
-      for (const block of blocks) {
+      const blocks = (list = 'questions'): HTMLElement[] => [
+        ...m.host.querySelectorAll<HTMLElement>(`[data-cy="waiting-list-${list}"] .md-chat pre`),
+      ]
+      // Two in the questions list; the to-do's own is checked in its list below.
+      expect(blocks()).toHaveLength(2)
+      for (const block of blocks()) {
         expect(getComputedStyle(block).overflowX).toBe('auto')
         expect(block.scrollWidth).toBeGreaterThan(block.clientWidth)
       }
@@ -206,6 +237,18 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
       await nextTick()
       expect(m.q('question-more').getAttribute('aria-expanded')).toBe('false')
       expect(m.all('question-context')).toHaveLength(0)
+      m.q('waiting-pill-todo').click()
+      await nextTick()
+      m.q('waiting-todo-more-req_todo').click()
+      await nextTick()
+      expect(blocks('todo')).toHaveLength(1)
+      for (const block of blocks('todo')) {
+        expect(getComputedStyle(block).overflowX).toBe('auto')
+        expect(block.scrollWidth).toBeGreaterThan(block.clientWidth)
+      }
+      for (const card of m.host.querySelectorAll<HTMLElement>('.todo')) {
+        expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth)
+      }
     },
   )
 })

@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { agentName, type AgentIdentities } from '../../../shared/runtime-ipc'
 import { aProviderNotChosenSays } from '../lib/front-door-words'
 import { providersNotChosenIn } from '../lib/agent-store'
-import { owedHere } from '../lib/owed-here'
-import { homeAttention, permissionsIntro, theStatBesideTheLines } from '../lib/home-attention'
-import { usePersonsQueue } from '../lib/persons-queue'
+import { owedByList, owedHere, type WaitingList } from '../lib/owed-here'
+import { homeAttention, permissionsIntro } from '../lib/home-attention'
+import { isAnApproval, stopKey, usePersonsQueue } from '../lib/persons-queue'
 import { usageSays, usageTitle } from '../lib/usage-limit'
 import { limitsDisplayLabel, limitsDisplayWords } from '../lib/limits-display'
 import type { AttentionDecision, AttentionRequest } from '../lib/attention'
 import AttentionQueue from './AttentionQueue.vue'
 import InstructionAsks from './InstructionAsks.vue'
+import LoadingCards from './LoadingCards.vue'
 import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
 import PersonsQueue from './PersonsQueue.vue'
@@ -19,142 +20,51 @@ import SinceYouWereLastHere from './SinceYouWereLastHere.vue'
 import type { SinceView } from '../lib/recent-activity'
 
 /**
- * **Waiting on you: everything a person OWES, and it is bounded by nothing.**
- *
- * ## 🔴 **Why it is its own destination** — `EXT-008` §3, and the rule is older than the mockup
- *
- * ⛔ **`HO-025` §2:** ⚑ ***a digest is WINDOWED; the queue is COMPLETE regardless of age.***
- * ⚠️ **So this and {@link WhileYouWereAway} are not two views of one thing** — one is what he owes
- * and one is what changed — ⛔ **and a single destination holding both would have to pick one of
- * those two properties and be wrong about the other.** ⚑ The mockup encodes the split without
- * having been told; `EXT-009` §2 is why it is being built now.
- *
- * ## ⚑ **Moved from Home, not re-derived** (606)
- *
- * ⛔ **Every line in this file was drawing on Home before `606`**, reading the same two populations
- * from the same two sources — `attention.ts`'s projection through `props.needsYou`, and
- * `persons-queue.ts`'s supplied module. ⚠️ **Nothing here computes a population**:
- * `home-attention.ts` and `digest.ts` decide what the numbers ARE. ⚑ **D-017 · R19 added the
- * instruction asks** — the host's read, carried by the same supplied module (`persons.asks`) so the
- * overlay's corner draws the same list — and narrowed the first source to the cards no host read
- * lists. ⚑ **F097 added the work whose agent answered a person**, carried the same way
- * (`persons.waitingOnWhoWrote`).
- *
- * ## ⛔ **WIRED, and the whole of it** — no `soon`, no placeholder, no seeded row
- *
- * ⚑ Every row it draws is a real request, from this window's conversations or the host's reads.
+ * Waiting on you: everything a person owes, however old, sorted into five lists. A big pill per
+ * list carries its count, and one list shows at a time. While a list is open, what arrives in it
+ * waits behind a "new" pill, so nothing moves under the person's eyes. Nothing here computes a
+ * population: `persons-queue.ts` and `attention.ts` decide what each list holds.
  */
 const props = withDefaults(
   defineProps<{
-    /**
-     * ⛔ **The LIVE queue — the cards on this window's conversations that no host read lists** (205;
-     * ⚑ **D-017 · R19**: `listedNowhereElse`).
-     *
-     * ⚑ Projected by `attention.ts` in `RuntimeScreen`, which is where the records live, and
-     * handed down already built. This surface does not reach into the session store.
-     */
+    /** The cards on this window's conversations that no host read lists, built by `RuntimeScreen`. */
     needsYou?: AttentionRequest[]
-    /**
-     * ⚠️ **The clock the ages are measured against**, which ticks only while something is waiting —
-     * see `RuntimeScreen`. ⛔ Not a frozen fixture instant: an age measured against a stopped clock
-     * stops with it.
-     */
+    /** The clock the ages are measured against; it ticks only while something is waiting. */
     clock?: number
     /** The last roster read, for the agents no other agent can start until a person chooses. */
     agents?: AgentIdentities | null
-    /** What finished or failed since the person was last here, or `null` to draw no box. */
+    /** What finished or failed since the person was last here, or `null` to draw no chip. */
     sinceLastHere?: { view: SinceView; since: number } | null
   }>(),
   { needsYou: () => [], clock: () => Date.now(), agents: null, sinceLastHere: null },
 )
 
 const emit = defineEmits<{
-  /** Answer a pending request without leaving this surface (205 §2). */
+  /** Answer a pending request without leaving this page. */
   decide: [request: AttentionRequest, decision: AttentionDecision]
   /** Go to the card itself. */
   openRequest: [request: AttentionRequest]
   /** Open an agent's sheet, where its provider is chosen. */
   openAgent: [profileSlug: string]
-  openConversation: [conversation: string]
   seeRecentActivity: []
 }>()
 
-/**
- * ⛔ **The queue that ends at a person, read here rather than passed in** (401).
- *
- * ⚑ **A supplied module, exactly as `SideRail` reads the spawn stop.** `RuntimeScreen` does the
- * looking and hands the answer to `persons-queue.ts`; this screen and the overlay lane read the
- * one view, so there is no state in which this count and the corner's count disagree.
- */
 const persons = usePersonsQueue()
 
-/**
- * ⚠️ **How many rows the *Yours to settle* group DRAWS** — `PersonsQueueView.count`. ⛔ Zero while
- * NEITHER read has answered, so a screen that has not looked yet claims nothing.
- */
-const personsRows = computed(() => persons.view.value?.count ?? 0)
-
-/**
- * ⚑ **D-017 · R19 — the asks this page draws**, oldest first as the host read them — the queue
- * module's, so the corner copy counts and lists the same ones.
- */
-const asks = computed(() => persons.asks.value?.rows ?? [])
-
-/** ⛔ **A look for asks that has not answered** — the group is drawn to say so. */
-const asksUnread = computed(() => {
-  const read = persons.asks.value
-  return read !== null && (read.partial || read.stale)
-})
-
-/** The agents' requests to register an MCP server, as the queue module carries them. */
+const view = computed(() => persons.view.value)
+const personsRows = computed(() => view.value?.rows ?? [])
+const askRows = computed(() => persons.asks.value?.rows ?? [])
 const serverRequests = computed(() => persons.serverRequests.value?.rows ?? [])
-
-/** A look for those requests that has not answered: the group is drawn to say so. */
-const serverRequestsUnread = computed(() => {
-  const read = persons.serverRequests.value
-  return read !== null && (read.partial || read.stale)
-})
-
-/**
- * ⚑ **F097 — the work whose agent answered a person**, oldest first as the host read it — the queue
- * module's, so the corner copy counts and lists the same pieces.
- */
 const replies = computed(() => persons.waitingOnWhoWrote.value?.rows ?? [])
-
-/** ⛔ **A look for that work that did not answer, or answered short** — the group says so. */
-const repliesUnread = computed(() => {
-  const read = persons.waitingOnWhoWrote.value
-  return read !== null && (read.unread || !!read.short)
-})
-
-/** The to-dos agents asked of a person, as the queue module carries them. */
 const todos = computed(() => persons.workWaits.value.todos)
-/**
- * The pieces no agent moved after being reminded, counted as owed; and the recoveries, which are
- * not.
- */
 const incidents = computed(() => persons.workWaits.value.incidents)
-const recoveries = computed(() => persons.workWaits.value.recoveries)
 
-/** ⛔ **Everything a person owes here that is not one of this window's cards** — the three groups. */
-const onlyYou = computed(() => owedHere(persons, props.agents))
-
-/**
- * 🔴 **533 · what the queue says about the PROVIDERS** — ⚑ **UI-009 (F052) · drawn at the top of
- * this page, outside every group**: a usage limit is nobody's to settle, so it is not under *Yours
- * to settle*, and it says plainly how near the limit is and when it resets (`usage-limit.ts`).
- *
- * ⛔ **Deliberately not added to {@link personsRows} or to `homeAttention`.** That number is *how
- * much do I owe*, and a wall is owed by nobody.
- */
+/** A provider's usage limit is nobody's to settle: drawn in the page head, outside every list. */
 const walls = computed(() => persons.limits.value?.walls ?? [])
 const wallsUnread = computed(() => persons.limits.value?.unread === true)
 const limitsDisplay = computed(() => persons.limits.value?.display)
 
-/**
- * The agents no other agent can start until a person chooses their provider: a person's to settle,
- * so counted with what they owe, here and on the rail's badge ({@link providersNotChosenIn}).
- */
+/** The agents no other agent can start until a person chooses their provider. */
 const notChosen = computed(() =>
   providersNotChosenIn(props.agents).map(({ slug, startedOn }) => ({
     slug,
@@ -162,77 +72,33 @@ const notChosen = computed(() =>
   })),
 )
 
-/**
- * 🔴 **678 · whether the queue has anything to say about STOPPED WORK** — and it decides whether
- * the queue is mounted when no row is there.
- *
- * ⛔ **The stalled band (`557`) was never in this gate**: `606` built this page on `personsRows`,
- * `attention.unread` and the providers, so work that had stopped with nobody told — its rows, a look
- * that did not answer, and since `678` rows its walk could not read (F-R18b) — drew only in the
- * corner copy an open sheet mounts, and this page said nothing. ⚑ Found by `678`'s review, because
- * the one sentence `678` put in that band would otherwise be read on no page a person goes to.
- * ⚠️ **Its ROWS are not added to {@link personsRows}**, the walls' rule: that counts
- * what a person owes, and the band's own words say what is wrong. ⛔ **685 · its two HOLES do reach
- * `homeAttention`** — through the queue's one derived field, `mayBeShort` (`678`), because a band
- * that could not be read forbids *quiet*; this said *"not added … to `homeAttention`"* after `678`
- * made that half false (`678` F3's sweep). ⚑ A WALL's look that did not answer does not reach it —
- * see `persons-queue.ts`' `limits`: a wall is owed by nobody (`533`).
- */
-const stallSaysSomething = computed(() => {
-  // Work whose holder stopped with it, its giver told, is drawn in the same place and gate.
-  return (
-    persons.stoppedCards.value.length > 0 ||
-    [persons.stalled.value, persons.stopped.value].some(
-      (band) => band !== null && (band.rows.length > 0 || band.unread || !!band.short),
-    )
-  )
-})
+const onlyYou = computed(() => owedHere(persons, props.agents))
 
-/** ⛔ **Every summary on this screen, decided in ONE place** (305 §1, from `304`). */
+/** Every summary on this page, decided in one place. */
 const attention = computed(() =>
   homeAttention({
     requests: props.needsYou,
     onlyYou: onlyYou.value,
-    // ⛔ **Any hole forbids *quiet*** (434, widened to four by 453) — a list never read, one that
-    // has stopped answering, one with no ledger behind it, and one short by rows this app could
-    // not parse. ⚑ The disjunction lives on the queue since `453`, and since `678` it also covers
-    // the stalled band's two holes, which this page now draws — see the queue's own field, read by
-    // the rail's call site too, so the two cannot come apart.
-    // ⚑ **D-017 · R19** — the field covers a look for the asks that has not answered, too.
     unread: persons.mayBeShort.value,
   }),
 )
 
 /**
- * 🔴 **688 · F3 — an amber line stands on this page** — a provider's wall (drawn above every group
- * since UI-009), or a stopped piece of work, both in the summons register and both owed by nobody.
- * ⛔ Read beside {@link attention}, never inside its call — see `theStatBesideTheLines`.
- */
-const anAmberLineStands = computed(
-  () =>
-    (persons.limits.value?.walls.length ?? 0) > 0 ||
-    incidents.value.rows.length > 0 ||
-    (persons.stalled.value?.rows.length ?? 0) > 0 ||
-    (persons.stopped.value?.rows.length ?? 0) > 0,
-)
-
-/**
- * Whether everything waiting on this page is a request for a permission — this window's cards and
- * the rows below alike — so the intro may call them that. A row whose answers this window cannot
- * read is not known to be one.
+ * Whether everything waiting is a request for a permission, this window's cards and the rows below
+ * alike, so the intro may call them that.
  */
 const permissionsOnly = computed(
   () =>
     attention.value.total > 0 &&
     !attention.value.unread &&
-    asks.value.length === 0 &&
+    askRows.value.length === 0 &&
     serverRequests.value.length === 0 &&
     replies.value.length === 0 &&
     todos.value.rows.length === 0 &&
     incidents.value.rows.length === 0 &&
     notChosen.value.length === 0 &&
     props.needsYou.every((request) => request.kind === 'permission') &&
-    (persons.view.value?.rows ?? []).every(
+    personsRows.value.every(
       (row) =>
         row.kind === 'a-decision' &&
         row.answers.length > 0 &&
@@ -240,25 +106,231 @@ const permissionsOnly = computed(
     ),
 )
 
-/** One short sentence over the page, true of what is in it. */
-const intro = computed(() =>
-  permissionsOnly.value ? permissionsIntro(attention.value.total) : attention.value.intro,
-)
+type Pill = WaitingList
 
-/** ⚑ **688 · F3** — the stat's word and ink, never green beside an amber line. */
-const stat = computed(() => theStatBesideTheLines(attention.value, anAmberLineStands.value))
+/** The five lists, always all five and always in this order, so the pills never move. */
+const PILLS: readonly { readonly id: Pill; readonly label: string; readonly none: string }[] = [
+  { id: 'questions', label: 'Questions', none: 'No questions for you.' },
+  { id: 'todo', label: 'To do', none: 'Nothing to do.' },
+  { id: 'approvals', label: 'Approvals', none: 'Nothing to approve.' },
+  { id: 'work', label: 'Work that needs you', none: 'No work needs you.' },
+  { id: 'reply', label: 'Your reply', none: 'Nobody is waiting on your reply.' },
+]
+
+const liveQuestions = computed(() => props.needsYou.filter((one) => one.kind === 'question'))
+const livePermissions = computed(() => props.needsYou.filter((one) => one.kind === 'permission'))
 
 /**
- * ⚑ **UI-009 · the *Conversations* group only where it can hold something** — F052's empty
- * *Conversations 0* above a question listed below. ⛔ Still drawn on a screen that owes nothing, where
- * its clear line is the page's *"Nothing needs you."*
+ * Every card each list draws: which component draws it (`from`), its key, and when it began
+ * waiting (`null` when no clock was kept).
  */
-const showConversations = computed(() => attention.value.live > 0 || onlyYou.value === 0)
+type Aged = { readonly key: string; readonly at: number | null } & (
+  | { readonly from: 'live'; readonly request: AttentionRequest }
+  | { readonly from: 'not-chosen'; readonly says: string }
+  | {
+      readonly from:
+        | 'persons'
+        | 'ask'
+        | 'server'
+        | 'todo'
+        | 'incidents'
+        | 'recoveries'
+        | 'stalled'
+        | 'stopped'
+        | 'reply'
+    }
+)
+const live = (request: AttentionRequest): Aged => ({
+  from: 'live',
+  key: request.key,
+  at: request.at,
+  request,
+})
+const aged = computed<Readonly<Record<Pill, readonly Aged[]>>>(() => ({
+  questions: [
+    ...liveQuestions.value.map(live),
+    ...personsRows.value
+      .filter((row) => !isAnApproval(row))
+      .map((row) => ({ from: 'persons' as const, key: row.key, at: row.blockedSince })),
+  ],
+  todo: persons.todoCards.value.map(({ row }) => ({ from: 'todo', key: row.key, at: row.at })),
+  approvals: [
+    ...livePermissions.value.map(live),
+    ...personsRows.value
+      .filter(isAnApproval)
+      .map((row) => ({ from: 'persons' as const, key: row.key, at: row.blockedSince })),
+    ...askRows.value.map((one) => ({ from: 'ask' as const, key: one.askId, at: one.at })),
+    ...[...serverRequests.value, ...persons.serverRequestsSettled.value.map(({ row }) => row)].map(
+      (one) => ({ from: 'server' as const, key: one.requestId, at: one.at }),
+    ),
+    ...notChosen.value.map((one) => ({
+      from: 'not-chosen' as const,
+      key: one.slug,
+      at: null,
+      says: one.says,
+    })),
+  ],
+  work: [
+    ...(['incidents', 'recoveries'] as const).flatMap((from) =>
+      persons.workCards.value[from].map(({ entry }) => ({ from, key: entry.key, at: entry.at })),
+    ),
+    ...(persons.stalled.value?.rows ?? []).map((row) => ({
+      from: 'stalled' as const,
+      key: row.key,
+      at: row.at,
+    })),
+    ...persons.stoppedCards.value.map(({ row }) => ({
+      from: 'stopped' as const,
+      key: stopKey(row),
+      at: row.at,
+    })),
+  ],
+  reply: replies.value.map((row) => ({ from: 'reply', key: row.key, at: row.at })),
+}))
+
+/** How many things in each list are the person's to settle: what its pill counts. */
+const owed = computed(() => owedByList(persons, props.agents, props.needsYou))
+
+/**
+ * Before the screen's first reading, every list is drawn as grey cards, never as empty. The reads
+ * behind the lists are supplied together, so the first one ends it for all five, answered or not.
+ */
+const loading = computed(() => !persons.looked.value)
+
+const personsShort = computed(() => {
+  const read = view.value
+  if (read === null) return persons.looked.value
+  return read.partial || read.stale || read.noLedger || read.rowsDropped
+})
+const workShort = computed(() =>
+  [persons.stalled.value, persons.stopped.value].some(
+    (band) => band !== null && (band.unread || !!band.short),
+  ),
+)
+
+/** A list whose last read did not answer, or answered short: one line says some may be missing. */
+const short = computed<Readonly<Record<Pill, boolean>>>(() => {
+  const asks = persons.asks.value
+  const requests = persons.serverRequests.value
+  const written = persons.waitingOnWhoWrote.value
+  return {
+    questions: personsShort.value,
+    todo: todos.value.unread || !!todos.value.short,
+    approvals:
+      personsShort.value ||
+      (asks !== null && (asks.partial || asks.stale)) ||
+      (requests !== null && (requests.partial || requests.stale)),
+    work: incidents.value.unread || !!incidents.value.short || workShort.value,
+    reply: written !== null && (written.unread || !!written.short),
+  }
+})
+
+/**
+ * One short line beside the title: how much needs the person, or that nothing does. None before
+ * the first read, and none when nothing waits but the queue may be short, as the rail's badge
+ * reads it: the list's own line says so.
+ */
+const intro = computed(() => {
+  if (loading.value) return ''
+  const total = attention.value.total
+  if (total === 0) return attention.value.unread || personsShort.value ? '' : 'Nothing needs you.'
+  if (permissionsOnly.value) return permissionsIntro(total)
+  return total === 1 ? '1 thing needs you.' : `${String(total)} things need you.`
+})
+
+/**
+ * The list on screen. Until the person picks one, the first list with something in it, chosen
+ * once the reads have something to say, so the page never switches lists by itself afterwards.
+ */
+const picked = ref<Pill | null>(null)
+const shown = computed<Pill>(() => picked.value ?? 'questions')
+watch(
+  [owed, aged, loading],
+  () => {
+    if (picked.value !== null) return
+    const first =
+      PILLS.find((pill) => owed.value[pill.id] > 0) ??
+      PILLS.find((pill) => aged.value[pill.id].length > 0)
+    if (first !== undefined) picked.value = first.id
+    else if (!loading.value) picked.value = 'questions'
+  },
+  { immediate: true },
+)
+
+/**
+ * Where each card of the open list sits: oldest first across every kind, as the person found the
+ * list. Anything newer waits behind the "new" pill and then joins the end, so arrivals never move
+ * the cards they are reading. Opening a list again sorts it whole.
+ */
+const oldestFirst = (cards: readonly Aged[]): Aged[] =>
+  [...cards].sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity) || 0)
+const order = ref<ReadonlyMap<string, number> | null>(null)
+function look(whole: boolean): void {
+  if (loading.value) {
+    order.value = null
+    return
+  }
+  const next = new Map(whole ? [] : (order.value ?? []))
+  for (const { key } of oldestFirst(aged.value[shown.value]))
+    if (!next.has(key)) next.set(key, next.size)
+  order.value = next
+}
+watch(shown, () => look(true))
+watch(
+  loading,
+  (still) => {
+    if (!still && order.value === null) look(true)
+  },
+  { immediate: true },
+)
+/**
+ * Each list's cards in the order they are drawn, and so read and tabbed through: the open list as
+ * the person found it, every other list oldest first. Every list stays drawn, so nothing typed in
+ * one is lost when another opens.
+ */
+const drawn = computed<Readonly<Record<Pill, readonly Aged[]>>>(() => {
+  const found = order.value
+  const lists = Object.fromEntries(PILLS.map((pill) => [pill.id, oldestFirst(aged.value[pill.id])]))
+  if (found !== null)
+    lists[shown.value] = aged.value[shown.value]
+      .filter(({ key }) => found.has(key))
+      .sort((a, b) => found.get(a.key)! - found.get(b.key)!)
+  return lists as Record<Pill, Aged[]>
+})
+const held = computed(() => aged.value[shown.value].length - drawn.value[shown.value].length)
+
+/** Over a list with nothing drawn, arrivals move nothing, so they are drawn at once. */
+watch(held, (count) => {
+  if (count > 0 && count === aged.value[shown.value].length) look(false)
+})
+
+const list = ref<HTMLElement | null>(null)
+function pick(pill: Pill): void {
+  picked.value = pill
+  look(true)
+  list.value?.scrollTo({ top: 0 })
+}
+async function showNew(): Promise<void> {
+  look(false)
+  await nextTick()
+  list.value?.scrollTo({ top: list.value.scrollHeight, behavior: 'smooth' })
+}
+
+/** Answered to-dos stay where they were, as one line, until the person clears them. */
+const answered = computed(() =>
+  persons.todoCards.value.filter((card) => card.taken && !card.listed && !card.pending),
+)
+function clearAnswered(): void {
+  for (const card of answered.value) persons.dismissTodo(card.row)
+}
+
+/** "Nothing here" is said only over a list read whole with nothing in it, held or drawn. */
+const drawsNothing = computed(
+  () => aged.value[shown.value].length === 0 && !loading.value && !short.value[shown.value],
+)
 </script>
 
 <template>
-  <!-- ⚑ **Light paper, unconditionally** — the attribute every body surface inside `<main>` carries
-       (344), and `chat-theme.test.ts` asserts the set of them by name. -->
   <section
     class="waiting-surface bb-conversation-ground"
     data-wired="true"
@@ -266,238 +338,173 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
     data-chat-theme="light"
   >
     <header class="page-head">
-      <div class="head-copy">
+      <div class="head-row">
         <h1 class="bb-page-title">Waiting on you</h1>
-        <!-- ⛔ **The sentence the rail row deliberately does not carry** (`EXT-008` §5):
-             explanation belongs where the thing is. ⚑ It is `home-attention.ts`'s, so this page
-             and the rail's badge cannot come to different claims about one population. -->
-        <p data-cy="waiting-intro">{{ intro }}</p>
+        <p v-if="intro" class="intro" data-cy="waiting-intro">{{ intro }}</p>
+        <span class="head-spacer"></span>
+        <div class="head-chips">
+          <SinceYouWereLastHere
+            v-if="props.sinceLastHere"
+            :view="props.sinceLastHere.view"
+            :since="props.sinceLastHere.since"
+            :clock="props.clock"
+            @see-all="emit('seeRecentActivity')"
+          />
+          <span v-if="limitsDisplay" class="chip" data-cy="limits-display-reading">
+            {{ limitsDisplayLabel(limitsDisplay) }}
+            <template v-if="limitsDisplay.reading && limitsDisplay.status !== 'ready'">
+              · {{ limitsDisplayWords.lastReading(limitsDisplay.reading.evaluatedAt) }}
+            </template>
+            <template v-if="limitsDisplay.status === 'unavailable'">
+              · {{ limitsDisplayWords.failed }}</template
+            >
+          </span>
+          <ul
+            v-if="walls.length > 0 && limitsDisplay?.status !== 'unavailable'"
+            class="walls"
+            data-cy="persons-queue-walls"
+          >
+            <li
+              v-for="wall in walls"
+              :key="wall.key"
+              class="chip usage-limit"
+              :data-standing="wall.standing"
+              :data-cy="`persons-queue-wall-${wall.provider}`"
+            >
+              <span
+                :title="usageTitle(wall)"
+                :data-cy="`persons-queue-wall-says-${wall.provider}`"
+                >{{
+                  limitsDisplay?.reading
+                    ? limitsDisplayWords.condition(
+                        usageSays(wall, limitsDisplay.reading.evaluatedAt),
+                        limitsDisplay.reading.evaluatedAt,
+                      )
+                    : usageSays(wall, props.clock)
+                }}</span
+              >
+            </li>
+          </ul>
+          <span
+            v-if="wallsUnread && !limitsDisplay"
+            class="chip"
+            data-cy="persons-queue-walls-unread"
+          >
+            Usage limits couldn't be read.
+          </span>
+        </div>
       </div>
-      <span class="head-spacer"></span>
-      <!-- ⛔ **What this destination is bounded BY, said on the destination** — `HO-025` §2's half
-           of the split, and the reason the number beside it may never be added to the other row's.
-           ⚠️ Drawn as a property of the list rather than as a count, because the count is on the
-           rail row and on the groups below. -->
-      <p class="page-bound" data-cy="waiting-bound">
-        Everything still open, however old. This list is not windowed.
-      </p>
-      <!-- ⛔ **`homeAttention.stat` and its tone, on the screen the number is ABOUT** (606). ⚑
-           `live + onlyYou` is *how much do I owe*, which is this destination. ⚠️ **`All clear` /
-           `Not known` / `3 items` are its three words** and the middle one is the one that matters: a list that
-           did not answer has no number to give, and `homeAttention` refuses to invent a zero.
-           🔴 **688 · F3 — and `Nothing`, in neutral ink, where `All clear` would sit green beside
-           an amber line** (a wall, stopped work) — see `theStatBesideTheLines`. -->
-      <div class="head-stat">
-        <span>Needs you</span>
-        <strong :class="stat.tone" data-cy="waiting-stat">{{ stat.stat }}</strong>
+      <div class="pills" role="tablist" aria-label="What is waiting on you">
+        <button
+          v-for="pill in PILLS"
+          :key="pill.id"
+          type="button"
+          role="tab"
+          class="pill"
+          :class="{ zero: owed[pill.id] === 0 }"
+          :aria-selected="pill.id === shown"
+          :data-cy="`waiting-pill-${pill.id}`"
+          @click="pick(pill.id)"
+        >
+          <span class="count" :data-cy="`waiting-pill-count-${pill.id}`">{{
+            (loading || short[pill.id]) && owed[pill.id] === 0 ? '' : owed[pill.id]
+          }}</span>
+          {{ pill.label }}
+        </button>
       </div>
     </header>
 
-    <div class="attention-list">
-      <SinceYouWereLastHere
-        v-if="props.sinceLastHere"
-        :view="props.sinceLastHere.view"
-        :since="props.sinceLastHere.since"
-        :clock="props.clock"
-        @open="(conversation) => emit('openConversation', conversation)"
-        @see-all="emit('seeRecentActivity')"
-      />
-      <p v-if="limitsDisplay" class="usage-unread" data-cy="limits-display-reading">
-        {{ limitsDisplayLabel(limitsDisplay) }}
-        <span v-if="limitsDisplay.reading && limitsDisplay.status !== 'ready'">
-          · {{ limitsDisplayWords.lastReading(limitsDisplay.reading.evaluatedAt) }}
-        </span>
-        <span v-if="limitsDisplay.status === 'unavailable'">
-          · {{ limitsDisplayWords.failed }}</span
+    <div ref="list" class="attention-list" role="tabpanel" :data-list="shown">
+      <div class="list-bar">
+        <p v-if="short[shown]" class="short" role="status" data-cy="waiting-list-short">
+          Couldn't read all of this list. Trying again…
+        </p>
+        <span class="bar-spacer"></span>
+        <button
+          v-if="shown === 'todo' && answered.length > 0"
+          type="button"
+          class="clear"
+          data-cy="waiting-clear-answered"
+          @click="clearAnswered"
         >
-      </p>
-      <!-- 🔴 **533 · the providers' usage limits — UI-009 (F052): first, and under no label.**
-           ⛔ Nothing here is a person's to settle, so it is not in *Yours to settle*; ⚑ the sentence
-           is plain (*"Claude is near its weekly limit; it resets on 7 October."*), and the
-           provider's own lines and the exact reset are on its title. ⚠️ No control on it: a limit
-           ends when the provider says so. -->
-      <!-- Not drawn while limits are unavailable: an old reading beside "Limits unavailable" would
-           contradict it. -->
-      <ul
-        v-if="walls.length > 0 && limitsDisplay?.status !== 'unavailable'"
-        class="usage"
-        data-cy="persons-queue-walls"
-      >
-        <li
-          v-for="wall in walls"
-          :key="wall.key"
-          class="usage-limit"
-          :data-standing="wall.standing"
-          :data-cy="`persons-queue-wall-${wall.provider}`"
+          Clear {{ answered.length }} answered
+        </button>
+        <button
+          v-if="held > 0"
+          type="button"
+          class="new"
+          data-cy="waiting-show-new"
+          @click="showNew"
         >
-          <p
-            class="usage-says"
-            :title="usageTitle(wall)"
-            :data-cy="`persons-queue-wall-says-${wall.provider}`"
-          >
-            {{
-              limitsDisplay?.reading
-                ? limitsDisplayWords.condition(
-                    usageSays(wall, limitsDisplay.reading.evaluatedAt),
-                    limitsDisplay.reading.evaluatedAt,
-                  )
-                : usageSays(wall, props.clock)
-            }}
-          </p>
-        </li>
-      </ul>
-      <!-- 🔴 **533 · the look for limits has stopped answering.** ⛔ Drawn rather than left blank,
-           because a band that vanishes reads as an all-clear: *every provider is still taking
-           work*. -->
-      <p
-        v-if="wallsUnread && !limitsDisplay"
-        class="usage-unread"
-        data-cy="persons-queue-walls-unread"
-      >
-        The last look at what the providers have said did not answer, so a limit that would stop
-        your agents may not be shown here.
-      </p>
-      <!-- ⛔ WIRED (205): every row is a real pending request on a real open conversation.
-
-           ⚠️ **The heading appears only when the other group is here too** (305 §1). One list
-           needs no label; two do, and a label over the only list on screen is noise a reader has
-           to rule out. -->
-      <div
-        v-if="showConversations && (onlyYou > 0 || attention.unread)"
-        class="group-label"
-        data-cy="live-group"
-      >
-        <span>Conversations</span>
-        <strong data-cy="live-decisions">{{ attention.live }}</strong>
+          <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+          {{ held }} new
+        </button>
       </div>
-      <!-- ⛔ **`alone` is a claim about the SCREEN** (305 §1). `AttentionQueue`'s empty block says
-           *"Nothing needs you."* only when it is the whole answer; with an escalated question
-           listed below it, it is not. -->
-      <AttentionQueue
-        v-if="showConversations"
-        :requests="props.needsYou"
-        :now="props.clock"
-        :alone="onlyYou === 0 && !attention.unread"
-        @decide="(request, decision) => emit('decide', request, decision)"
-        @open="(request) => emit('openRequest', request)"
-      />
 
-      <!-- 🔴 **Yours to settle** (401 + 403, criterion 11) — what no conversation on this screen
-           can show, because the conversation that raised it is ordinarily one this window is not
-           running. ⚑ Its own group and its own label for `305 §1`'s reason: a reader must be able
-           to tell a card they can answer here from a chain that takes them somewhere else.
+      <div class="list-body">
+        <LoadingCards v-if="loading && aged[shown].length === 0" />
+        <p v-else-if="drawsNothing" class="none" data-cy="waiting-list-none">
+          {{ PILLS.find((pill) => pill.id === shown)?.none }}
+        </p>
 
-           ⚑ **678 · the card also draws for stopped work alone.** ⛔ **The LABEL keeps its own
-           condition**, because it names what is a person's to settle. -->
-      <template v-if="personsRows > 0 || attention.unread || stallSaysSomething">
-        <!-- ⚠️ **`yours-count`, breaking the `-decisions` suffix its sibling uses** (403):
-             `decisions` is the NAME of one of the two populations inside this group, and a handle
-             that read `yours-decisions` would name half of what it counts. -->
-        <div v-if="personsRows > 0 || attention.unread" class="group-label" data-cy="yours-group">
-          <span>Yours to settle</span>
-          <strong data-cy="yours-count">{{ personsRows }}</strong>
-        </div>
-        <PersonsQueue />
-      </template>
-
-      <!-- What an agent asked a person to do: answered on its card, counted as owed. -->
-      <template v-if="persons.todoCards.value.length > 0 || todos.unread">
-        <div class="group-label" data-cy="todos-group">
-          <span>Things an agent asked you to do</span>
-          <strong data-cy="todos-count">{{ todos.rows.length }}</strong>
-        </div>
-        <WorkWaits part="todos" />
-      </template>
-
-      <!-- Pieces no agent is driving: a wait that names nothing, or a piece that stopped. -->
-      <template
-        v-if="persons.workCards.value.incidents.length > 0 || incidents.unread || !!incidents.short"
-      >
-        <div class="group-label" data-cy="incidents-group">
-          <span>Work that needs you</span>
-          <strong data-cy="incidents-count">{{ incidents.rows.length }}</strong>
-        </div>
-        <WorkWaits part="incidents" />
-      </template>
-
-      <!-- Each piece the app is picking back up, chose not to, or could not. -->
-      <template v-if="persons.workCards.value.recoveries.length > 0 || recoveries.unread">
-        <div class="group-label" data-cy="recoveries-group">
-          <span>Picking work back up</span>
-          <strong data-cy="recoveries-count">{{ recoveries.rows.length }}</strong>
-        </div>
-        <WorkWaits part="recoveries" />
-      </template>
-
-      <!-- ⚑ **D-017 · R19 — what an agent asked a person to approve about an identity's rules**, from
-           the host's read over every conversation — the ask `OwnInstructions` draws on that
-           identity's sheet, decided here through the same door. ⚠️ Its own group: an ask is decided
-           on its row and has no conversation to open. ⚑ **`InstructionAsks` draws it**, as it does
-           in the overlay's corner, so the two cannot list one ask two ways. -->
-      <template v-if="asks.length > 0 || asksUnread">
-        <div class="group-label" data-cy="asks-group">
-          <span>Rules an agent asked for</span>
-          <strong data-cy="asks-count">{{ asks.length }}</strong>
-        </div>
-        <InstructionAsks />
-      </template>
-
-      <!-- The agents' requests to register an MCP server, decided on their own rows, as the corner
-           and the Tools page draw them. -->
-      <template
-        v-if="
-          serverRequests.length > 0 ||
-          serverRequestsUnread ||
-          persons.serverRequestsSettled.value.length > 0
-        "
-      >
-        <div class="group-label" data-cy="server-requests-group">
-          <span>MCP servers an agent asked for</span>
-          <strong data-cy="server-requests-count">{{ serverRequests.length }}</strong>
-        </div>
-        <McpServerRequests />
-      </template>
-
-      <!-- ⚑ The agents no other agent can start until a person chooses their provider — their
-           conversations ran on both, and none is saved. A person's to settle, so counted with what
-           they owe; its door opens the agent's sheet, where the provider is chosen. -->
-      <template v-if="notChosen.length > 0">
-        <div class="group-label" data-cy="provider-not-chosen-group">
-          <span>Agents waiting for a provider</span>
-          <strong data-cy="provider-not-chosen-count">{{ notChosen.length }}</strong>
-        </div>
-        <ul class="usage" data-cy="waiting-provider-not-chosen">
-          <li
-            v-for="agent in notChosen"
-            :key="agent.slug"
-            class="usage-limit"
-            data-standing="stopped"
-            :data-cy="`waiting-provider-not-chosen-${agent.slug}`"
+        <div
+          v-for="pill in PILLS"
+          v-show="shown === pill.id"
+          :key="pill.id"
+          class="one-list"
+          :data-cy="`waiting-list-${pill.id}`"
+        >
+          <div
+            v-for="one in drawn[pill.id]"
+            :key="`${one.from}:${one.key}`"
+            class="one-card"
+            :data-at="one.at ?? ''"
           >
-            <p class="usage-says">{{ agent.says }}</p>
-            <button
-              type="button"
-              class="usage-door"
-              :data-cy="`waiting-provider-choose-${agent.slug}`"
-              @click="emit('openAgent', agent.slug)"
+            <AttentionQueue
+              v-if="one.from === 'live'"
+              :requests="[one.request]"
+              :now="props.clock"
+              :alone="false"
+              @decide="(request, decision) => emit('decide', request, decision)"
+              @open="(request) => emit('openRequest', request)"
+            />
+            <PersonsQueue
+              v-else-if="one.from === 'persons'"
+              :part="pill.id === 'approvals' ? 'approvals' : 'questions'"
+              :only="one.key"
+            />
+            <PersonsQueue
+              v-else-if="one.from === 'stalled' || one.from === 'stopped'"
+              part="work"
+              :only="one.key"
+            />
+            <InstructionAsks v-else-if="one.from === 'ask'" :only="one.key" />
+            <McpServerRequests v-else-if="one.from === 'server'" :only="one.key" />
+            <WorkWaits v-else-if="one.from === 'todo'" part="todos" :only="one.key" />
+            <WorkWaits
+              v-else-if="one.from === 'incidents' || one.from === 'recoveries'"
+              :part="one.from"
+              :only="one.key"
+            />
+            <WaitingOnWhoWrote v-else-if="one.from === 'reply'" :only="one.key" />
+            <div
+              v-else-if="one.from === 'not-chosen'"
+              class="provider-not-chosen"
+              :data-cy="`waiting-provider-not-chosen-${one.key}`"
             >
-              Choose its provider
-            </button>
-          </li>
-        </ul>
-      </template>
-
-      <!-- 🔴 **F097 — the work whose agent answered a person and waits on their next words**, from the
-           host's read over every conversation. ⚠️ Its own group, as the asks are: no card, nothing
-           frozen behind it, and its door opens the conversation the person wrote to. ⚑
-           **`WaitingOnWhoWrote` draws it**, as it does in the overlay's corner. -->
-      <template v-if="replies.length > 0 || repliesUnread">
-        <div class="group-label" data-cy="replies-group">
-          <span>Waiting on your reply</span>
-          <strong data-cy="replies-count">{{ replies.length }}</strong>
+              <p class="usage-says">{{ one.says }}</p>
+              <button
+                type="button"
+                class="usage-door"
+                :data-cy="`waiting-provider-choose-${one.key}`"
+                @click="emit('openAgent', one.key)"
+              >
+                Choose its provider
+              </button>
+            </div>
+          </div>
         </div>
-        <WaitingOnWhoWrote />
-      </template>
+      </div>
     </div>
   </section>
 </template>
@@ -512,232 +519,262 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
 }
 
 .page-head {
-  display: flex;
-  min-height: var(--surface-header-h);
   flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-10) var(--space-12);
+  padding: var(--space-9) var(--space-12) var(--space-8);
   border-bottom: var(--border-width) solid var(--line);
   background: var(--surface-header-bg);
-  gap: var(--space-8);
 }
 
-.head-copy {
-  min-width: 0;
+.head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4) var(--space-7);
 }
 
-.head-copy h1 {
+.head-row h1 {
   margin: 0;
 }
 
-.head-copy p {
-  margin: var(--space-3) 0 0;
-  color: var(--muted);
-  font-size: var(--type-small);
-  line-height: var(--leading-relaxed);
+.intro {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-reading);
 }
 
 .head-spacer {
   flex: 1;
 }
 
-.head-stat {
-  flex: none;
-  padding: var(--space-4) var(--space-6);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--panel);
+.head-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
 }
 
-.head-stat span {
-  display: block;
-  color: var(--muted);
-  font-size: var(--type-caption);
+.chip {
+  display: inline-flex;
+  min-height: var(--control-h);
+  align-items: center;
+  padding: 0 var(--space-6);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--text-soft);
+  font-size: var(--type-small);
   font-weight: var(--fw-medium);
 }
 
-.head-stat strong {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--text-soft);
-  font-size: var(--type-body);
+.walls {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  gap: var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.chip.usage-limit {
+  border-color: var(--waiting-pill-border);
+  background: var(--waiting-bg);
+  color: var(--waiting-text-label);
+}
+
+.chip.usage-limit[data-standing='stopped'] {
   font-weight: var(--fw-semibold);
 }
 
-.head-stat strong.waiting {
-  color: var(--waiting);
+/* The five lists: big, and always in one place. */
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: var(--space-8);
+  gap: var(--space-5);
 }
 
-.head-stat strong.ok {
-  color: var(--success);
+.pill {
+  display: inline-flex;
+  height: var(--space-28);
+  align-items: center;
+  padding: 0 var(--space-11) 0 var(--space-4);
+  border: var(--border-accent-width) solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--type-reading);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  gap: var(--space-6);
 }
 
-.page-bound {
-  max-width: var(--reader-measure);
-  flex: 0 1 16em;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-  text-align: right;
+.pill:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-fill-weak);
+}
+
+.pill .count {
+  display: grid;
+  min-width: var(--space-20);
+  height: var(--space-20);
+  place-items: center;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--panel-3);
+  color: var(--text);
+  font-size: var(--type-title);
+  font-weight: var(--fw-heavy);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+
+.pill[aria-selected='true'] {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+}
+
+.pill[aria-selected='true'] .count {
+  background: var(--accent-solid-bg);
+  color: var(--accent-ink);
+}
+
+.pill.zero:not([aria-selected='true']) {
+  color: var(--text-soft);
+  font-weight: var(--fw-medium);
+}
+
+.pill.zero .count {
+  border: var(--border-accent-width) solid var(--line-strong);
+  background: transparent;
+  color: var(--text-soft);
 }
 
 .attention-list {
   container: waiting-requests / inline-size;
   min-height: 0;
   flex: 1;
-  padding: var(--space-10) var(--space-12);
+  padding: 0 var(--space-12) var(--space-20);
   background: var(--attention-bg);
   overflow: auto;
   scrollbar-color: var(--scrollbar-thumb) transparent;
   scrollbar-width: thin;
 }
 
-.usage {
-  padding: 0;
-  margin: 0 0 var(--space-8);
-  gap: var(--space-6);
-  list-style: none;
+.attention-list > * {
+  max-width: 940px;
 }
 
-/* Match the shared card shell while keeping these components' overlay copies unchanged. */
-.usage-limit,
-.usage-unread,
+/* A reserved row: the "new" pill and the list's one note appear here, so no card moves. */
+.list-bar {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  min-height: var(--space-24);
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.bar-spacer {
+  flex: 1;
+}
+
+.short {
+  margin: 0;
+  color: var(--waiting-text-label);
+  font-size: var(--type-small);
+  font-weight: var(--fw-medium);
+}
+
+.clear {
+  min-height: var(--control-h);
+  padding: 0 var(--space-5);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--type-small);
+  font-weight: var(--fw-medium);
+}
+
+.new {
+  display: inline-flex;
+  min-height: var(--control-h);
+  align-items: center;
+  padding: 0 var(--space-7) 0 var(--space-6);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-2);
+  color: var(--accent-ink);
+  font-size: var(--type-body);
+  font-weight: var(--fw-semibold);
+  box-shadow: var(--shadow-card);
+  gap: var(--space-3);
+}
+
+.new .icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  transform: rotate(90deg);
+}
+
+.none {
+  margin: 0;
+  padding: var(--space-20) var(--space-12);
+  border: var(--border-width) dashed var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--text-soft);
+  font-size: var(--type-reading);
+  text-align: center;
+}
+
+/* Every card on the page shares one shell, one column wide. */
+.provider-not-chosen,
 .attention-list :deep(.pq-row),
 .attention-list :deep(.pq-stall),
 .attention-list :deep(.wait),
 .attention-list :deep(.request),
 .attention-list :deep(.reply),
 .attention-list :deep(.asks > .ask),
-.attention-list :deep(.attention-request),
-.attention-list :deep(.attention-clear) {
+.attention-list :deep(.attention-request) {
   min-width: 0;
-  padding: var(--card-padding);
+  padding: var(--card-padding) var(--space-9);
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-card);
   background: var(--panel);
   box-shadow: var(--shadow-card);
 }
 
-/* A usage card, like a request card: its sentence on the top line, its door at the foot. */
-.usage-limit {
+/* One column of cards, drawn in age order across every kind: whatever holds them steps aside. */
+.list-body {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-4);
-}
-
-.usage-says {
-  margin: 0;
-  color: var(--waiting-text-label);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-}
-
-.usage-limit[data-standing='stopped'] .usage-says {
-  font-weight: var(--fw-semibold);
-}
-
-.usage-door {
-  margin-top: auto;
-}
-
-/* A provider's usage alone takes the whole row rather than leave half of it empty. */
-.usage > .usage-limit:only-child {
-  grid-column: 1 / -1;
-}
-
-.usage-unread {
-  margin: 0 0 var(--space-6);
-  color: var(--muted);
-  font-size: var(--type-small);
-  line-height: var(--leading-relaxed);
-}
-
-.group-label {
-  display: flex;
-  align-items: center;
-  margin: var(--space-8) 0 var(--space-4);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-  gap: var(--space-3);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.group-label strong {
-  padding: 0 var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--panel);
-  color: var(--text-soft);
-  line-height: var(--leading-relaxed);
-}
-
-.attention-list :deep(.persons-queue:not(.floating)),
-.attention-list :deep(.waits:not(.floating)),
-.attention-list :deep(.requests:not(.floating)),
-.attention-list :deep(.replies:not(.floating)),
-.attention-list :deep(.asks:not(.floating)) {
-  padding: 0;
-}
-
-.attention-list :deep(.pq-rows),
-.attention-list :deep(.pq-stalled),
-.attention-list :deep(.waits),
-.attention-list :deep(.requests),
-.attention-list :deep(.replies),
-.attention-list :deep(.asks),
-.attention-list :deep(.attention-rows) {
   gap: var(--space-6);
 }
 
-/* Every card on the page shares one grid: a column, then two from 832px. */
-.usage,
+.one-list,
+.one-card,
+.attention-list :deep(.persons-queue),
+.attention-list :deep(.pq-body),
 .attention-list :deep(.pq-rows),
 .attention-list :deep(.pq-stalled),
 .attention-list :deep(.waits),
 .attention-list :deep(.requests),
 .attention-list :deep(.replies),
 .attention-list :deep(.asks),
+.attention-list :deep(.attention-live),
 .attention-list :deep(.attention-rows) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  display: contents;
 }
 
-@container waiting-requests (min-width: 832px) {
-  .usage,
-  .attention-list :deep(.pq-rows),
-  .attention-list :deep(.pq-stalled),
-  .attention-list :deep(.waits),
-  .attention-list :deep(.requests),
-  .attention-list :deep(.replies),
-  .attention-list :deep(.asks),
-  .attention-list :deep(.attention-rows) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
-  }
-}
-
-.attention-list :deep(.pq-row) {
-  align-content: start;
-}
-
-.attention-list :deep(.pq-row.with-live-card) {
-  gap: var(--space-1);
-}
-
-/* The rules an agent asked for, in the request card's own code box: its panel, line and ink. */
-.attention-list :deep(.ask-text) {
-  border: var(--border-width) solid var(--line-strong);
-  background: var(--code-bg);
-  color: var(--code-text);
-}
-
-.attention-list :deep(.pq-body) {
-  gap: var(--space-8);
+/* An answered card is one quiet line, where it was. */
+.attention-list :deep(.wait.settled) {
+  padding-block: var(--space-5);
+  background: var(--panel-2);
+  box-shadow: none;
 }
 
 .attention-list :deep(.pq-stall),
@@ -748,93 +785,159 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   gap: var(--space-4);
 }
 
-.attention-list :deep(.pq-stall > p) {
+.attention-list :deep(.pq-stall > p),
+.attention-list :deep(.wait > p) {
   margin: 0;
 }
 
-/* Each card, like a request card: its top line in the request's caption type, and its controls at
-   the foot, so cards on one row end level; a door alone sits at the bottom right. */
-.attention-list :deep(.pq-stall-says),
-.attention-list :deep(.pq-stop-who),
-.attention-list :deep(.wait-head),
-.attention-list :deep(.request-who),
-.attention-list :deep(.reply-who),
-.attention-list :deep(.ask-who) {
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
+.provider-not-chosen {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
 }
 
-.attention-list :deep(.pq-stall > .pq-go),
+.usage-says {
+  flex: 1;
+  margin: 0;
+  color: var(--text);
+  font-size: var(--type-reading);
+  font-weight: var(--fw-semibold);
+}
+
+/* Readable type on every card: who and when at 13, the words at 15, nothing fainter than muted. */
+.attention-list :deep(.pq-stall-says),
+.attention-list :deep(.pq-stop-who),
+.attention-list :deep(.request-who),
+.attention-list :deep(.reply-who),
+.attention-list :deep(.ask-who),
+.attention-list :deep(.question-head),
+.attention-list :deep(.request-head) {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
+}
+
+.attention-list :deep(.pq-stall-what),
+.attention-list :deep(.wait-says),
+.attention-list :deep(.reply-what),
+.attention-list :deep(.request-asked),
+.attention-list :deep(.request-line),
+.attention-list :deep(.ask-why) {
+  color: var(--text);
+  font-size: var(--type-reading);
+  font-weight: var(--fw-semibold);
+  line-height: var(--leading-snug);
+}
+
+.attention-list :deep(.pq-stall-said),
+.attention-list :deep(.pq-meta),
+.attention-list :deep(.request-age),
+.attention-list :deep(.request-means) {
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+
+/* Every card's buttons on one line: the answers first, the way to the conversation last. */
 .attention-list :deep(.pq-stop-actions),
 .attention-list :deep(.wait-controls),
 .attention-list :deep(.request-controls),
 .attention-list :deep(.ask-controls),
-.attention-list :deep(.reply-go) {
-  margin-top: auto;
+.attention-list :deep(.pq-actions),
+.attention-list :deep(.request-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: stretch;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.attention-list :deep(.pq-controls) {
+  display: flex;
+  margin-left: auto;
+  gap: var(--space-4);
 }
 
 .attention-list :deep(.pq-stall > .pq-go),
-.attention-list :deep(.pq-stall-actions),
-.attention-list :deep(.reply-go) {
-  align-self: flex-end;
-}
-
-.attention-list :deep(.pq-stall-said),
-.attention-list :deep(.pq-stall-what),
-.attention-list :deep(.reply-what) {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
+.attention-list :deep(.reply-go),
+.attention-list :deep(.pq-stall-actions .pq-go),
+.attention-list :deep(.pq-door),
+.attention-list :deep(.wait-door) {
+  margin-left: auto;
 }
 
 .usage-door,
-.attention-list :deep(.pq-go),
-.attention-list :deep(.reply-go),
-.attention-list :deep(.request-open),
-.attention-list :deep(.ask-controls > button),
+.attention-list :deep(.pq-answer),
+.attention-list :deep(.pq-take-over),
+.attention-list :deep(.request-decide),
+.attention-list :deep(.ask-controls > button:not(.pq-go)),
 .attention-list :deep(.wait-controls > button),
-.attention-list :deep(.request-controls > button) {
+.attention-list :deep(.request-controls > button:not(.pq-go)),
+.attention-list :deep(.close-work button) {
   display: inline-flex;
   min-height: var(--control-h);
   align-items: center;
   justify-content: center;
-  padding: var(--space-3) var(--space-6);
+  padding: 0 var(--space-7);
   border: var(--border-width) solid var(--line-strong);
   border-radius: var(--radius-sm);
   background: var(--panel);
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  line-height: var(--leading-snug);
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: var(--fw-medium);
   gap: var(--control-gap);
 }
 
-.attention-list :deep(.with-live-card .pq-go) {
-  min-height: 22px;
-  padding: 0;
+/* The way to the conversation reads as a link, so the answers stay the buttons. */
+.attention-list :deep(.pq-go),
+.attention-list :deep(.reply-go),
+.attention-list :deep(.request-open),
+.attention-list :deep(.wait-controls > .wait-door) {
+  display: inline-flex;
+  min-height: var(--control-h);
+  align-items: center;
+  padding: 0 var(--space-2) 0 var(--space-5);
   border: 0;
-  background: transparent;
-  font-size: var(--type-caption);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent-2-text);
+  font-size: var(--type-body);
+  font-weight: var(--fw-semibold);
+  gap: var(--control-gap);
 }
 
 .usage-door:hover,
-.attention-list :deep(.pq-go:hover),
-.attention-list :deep(.reply-go:hover),
-.attention-list :deep(.request-open:hover),
-.attention-list :deep(.ask-controls > button:hover),
+.attention-list :deep(.pq-answer:hover),
+.attention-list :deep(.request-decide:hover:not(:disabled)),
+.attention-list :deep(.ask-controls > button:not(.pq-go):hover),
 .attention-list :deep(.wait-controls > button:hover:not(:disabled)),
-.attention-list :deep(.request-controls > button:hover:not(:disabled)) {
+.attention-list :deep(.request-controls > button:not(.pq-go):hover:not(:disabled)) {
   border-color: var(--accent-border);
   background: var(--accent-fill);
 }
 
+.attention-list :deep(.pq-go:hover),
+.attention-list :deep(.reply-go:hover),
+.attention-list :deep(.request-open:hover),
+.attention-list :deep(.wait-controls > .wait-door:hover) {
+  background: var(--accent-2-mix-7);
+}
+
 .attention-list :deep(.pq-go .icon),
-.attention-list :deep(.reply-go .icon) {
+.attention-list :deep(.reply-go .icon),
+.attention-list :deep(.wait-door .icon) {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
 
-.attention-list :deep(.attention-clear) {
-  margin: 0;
-  padding: var(--space-16);
+/* The rules an agent asked for, in the request card's own code box: its panel, line and ink. */
+.attention-list :deep(.ask-text) {
+  border: var(--border-width) solid var(--line-strong);
+  background: var(--code-bg);
+  color: var(--code-text);
+}
+
+/* A row that draws the live card itself keeps the card's own spacing. */
+.attention-list :deep(.pq-row.with-live-card) {
+  gap: var(--space-1);
 }
 </style>

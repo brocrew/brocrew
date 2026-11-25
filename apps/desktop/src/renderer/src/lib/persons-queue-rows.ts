@@ -649,4 +649,19 @@ export interface PersonsQueueWorld {
     readonly questions: boolean
     readonly decisions: boolean
   }
+  /**
+   * `false` while the screen's first look is still on its way, answered or not; absent once it
+   * has come back. Until then *Waiting on you* draws every list as loading.
+   */
+  readonly looked?: boolean
+}
+
+/**
+ * Whether a row is a permission to approve, which *Waiting on you* lists under Approvals, rather
+ * than a question to answer. A decision whose card asks a question is a question.
+ */
+export function isAnApproval(row: Pick<PersonsQueueRow, 'kind' | 'liveCard' | 'answers'>): boolean {
+  if (row.kind !== 'a-decision') return false
+  if (row.liveCard !== undefined) return row.liveCard.kind === 'permission'
+  return row.answers.every((answer) => answer.kind === 'permission')
 }

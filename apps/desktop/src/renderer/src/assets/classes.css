@@ -249,6 +249,16 @@
   background: var(--panel);
   box-shadow: var(--shadow-card);
 }
+/* One request a person settles inside a queue list: an agent's ask or a server's request. */
+.bb-request {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+  gap: var(--space-2);
+}
 .bb-card--tinted {
   background: var(--accent-fill);
   border-color: var(--accent-border-weak);

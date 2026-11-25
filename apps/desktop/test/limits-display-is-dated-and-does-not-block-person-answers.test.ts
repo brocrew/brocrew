@@ -193,6 +193,7 @@ describe('the actual screen publishes actionables without awaiting the limits la
       mcpServerRequests: { value: null },
       lastServerRequestLookAnswered: { value: true },
       stoppedWork: { value: null },
+      queueLooked: { value: false },
       lastStopLookAnswered: { value: true },
       workIncidents: { value: null },
       lastIncidentLookAnswered: { value: true },

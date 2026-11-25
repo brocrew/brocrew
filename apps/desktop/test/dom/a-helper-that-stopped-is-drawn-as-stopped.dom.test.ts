@@ -162,8 +162,10 @@ describe('a stopped piece under Waiting on you', () => {
     ] as const) {
       assertDrawn(el, what)
     }
-    // It is owed by nobody, so the page does not call itself quiet over it, nor count it.
-    expect(read(m.q('waiting-stat'))).not.toBe('All clear')
+    // It is owed by nobody: drawn in its list, and counted nowhere.
+    expect(m.q('waiting-pill-work').getAttribute('aria-selected')).toBe('true')
+    expect(read(m.q('waiting-pill-count-work'))).toBe('0')
+    expect(read(m.q('waiting-intro'))).toBe('Nothing needs you.')
   })
 
   it('says “its giver” when the row names no giver', async () => {
@@ -209,7 +211,9 @@ describe('a stopped piece under Waiting on you', () => {
   it('a look that did not answer says so, and nothing stopped draws nothing', async () => {
     supply(null, undefined, false)
     const unread = await waitingOnYou()
-    expect(visible(unread.q('persons-queue-stopped-unread'))).toBe(true)
+    unread.q('waiting-pill-work').click()
+    await nextTick()
+    expect(visible(unread.q('waiting-list-short'))).toBe(true)
     unmountAll()
 
     supply(walkOf([]))
@@ -225,11 +229,14 @@ describe('a stopped piece under Waiting on you', () => {
     ]) {
       supply({ ...walkOf([]), ...short })
       const m = await waitingOnYou()
-      const line = m.q('persons-queue-stopped-short')
+      m.q('waiting-pill-work').click()
+      await nextTick()
+      const line = m.q('waiting-list-short')
       expect(visible(line)).toBe(true)
       assertDrawn(line, 'the rows the look could not read')
-      expect(read(m.q('waiting-stat'))).not.toBe('All clear')
-      expect(m.host.querySelector('[data-cy="persons-queue-stopped-unread"]')).toBeNull()
+      expect(m.host.querySelector('[data-cy="waiting-intro"]')?.textContent).not.toBe(
+        'Nothing needs you.',
+      )
       unmountAll()
     }
     // The control: a whole read with nothing in it says nothing.

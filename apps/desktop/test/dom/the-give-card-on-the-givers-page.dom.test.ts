@@ -113,16 +113,16 @@ const pane = (events: TranscriptEvent[]) => {
 }
 
 describe('the piece a conversation gave, on its own page', () => {
-  it('🔴 a card with the send glyph, to Ayo, W1.2, the title above the brief, sent, and the press', async () => {
+  it('🔴 a card to Ayo: gave work, its title above the brief, given, and the press', async () => {
     const m = await pane([inventory, ...GIVEN])
     const card = m.q('outgoing')
     expect(visible(card)).toBe(true)
     expect(card.getAttribute('data-tool')).toBe('give_work')
-    expect(card.querySelector('.heading use')?.getAttribute('href')).toBe('#i-send')
     expect(agentCardRecipient(m)).toBe('Ayo')
-    expect(m.q('outgoing-task').textContent?.trim()).toBe('W1.2')
-    expect(m.q('outgoing-mark').textContent?.trim()).toBe('work')
-    expect(m.q('outgoing-state').textContent?.trim()).toBe('sent')
+    expect(card.querySelector('.exchange-heading')?.textContent).toContain('gave work')
+    expect(m.q('exchange-preview').textContent?.trim()).toBe('Make the rail say what the card says')
+    expect(m.q('exchange-state').textContent?.trim()).toBe('given')
+    expect(m.q('outgoing-outcome').textContent?.trim()).toBe('Ayo has it.')
     const title = m.q('outgoing-title')
     const brief = m.q('outgoing-message')
     expect(visible(title)).toBe(true)
@@ -134,7 +134,7 @@ describe('the piece a conversation gave, on its own page', () => {
     expect(title.getBoundingClientRect().bottom).toBeLessThanOrEqual(
       brief.getBoundingClientRect().top + 1,
     )
-    expect(visible(m.q('outgoing-where'))).toBe(true)
+    expect(visible(m.q('exchange-where'))).toBe(true)
     // ⛔ **The card IS the call** — no tool row beside it for the same act, and no receipt printed.
     expect(m.all('tool-entry')).toHaveLength(0)
     expect(m.all('outgoing-receipt')).toHaveLength(0)

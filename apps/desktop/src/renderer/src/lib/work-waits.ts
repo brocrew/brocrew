@@ -161,6 +161,8 @@ export interface TodoRow {
   readonly head: string
   readonly text: string
   readonly files: PersonTodo['files']
+  /** When it was asked, epoch ms: where Waiting on you lists it, oldest first. */
+  readonly at: number
 }
 
 /** One incident as its entry draws it. */
@@ -174,6 +176,8 @@ export interface WorkEntry {
   readonly mayTakeBack: boolean
   /** The incident's kind, as a key a test and a style can select on. */
   readonly kind: WorkIncidentKind
+  /** Since when, epoch ms: where Waiting on you lists it, oldest first. */
+  readonly at: number
 }
 
 /** A list, whether its last look answered, and what it could not read. */
@@ -264,6 +268,7 @@ export function workWaitsView(read: WorkWaitsRead, now: number): WorkWaitsView {
     says: incidentSays(incident, now),
     mayTakeBack: mayTakeBack(incident),
     kind: incident.kind,
+    at: incident.since,
   })
   const all = [...one.values()]
   const unread = !read.lastLookAnswered.incidents
@@ -280,6 +285,7 @@ export function workWaitsView(read: WorkWaitsRead, now: number): WorkWaitsView {
         head: todoHead(todo),
         text: todo.text,
         files: todo.files,
+        at: todo.at,
       })),
       unread: !read.lastLookAnswered.todos,
       short: null,

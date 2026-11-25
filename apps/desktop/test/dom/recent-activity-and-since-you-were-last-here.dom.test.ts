@@ -245,7 +245,7 @@ describe('Since you were last here', () => {
     return { m, opened, seeAll: () => seeAll }
   }
 
-  it(`shows at most ${String(SINCE_SHOWN)} lines, of what finished or failed since then, and counts them all`, () => {
+  it(`counts every outcome since then, and keeps at most ${String(SINCE_SHOWN)} lines for Recent activity`, () => {
     const since = NOW - 35 * MINUTE
     const lines = [
       ...[1, 2, 3, 4, 5, 6].map((minutes) => line('finished', minutes)),
@@ -254,60 +254,41 @@ describe('Since you were last here', () => {
       line('stopped', 9),
       line('finished', 40),
     ]
+    expect(sinceView(reading(lines), since)!.lines).toHaveLength(SINCE_SHOWN)
     const { m } = box(lines, since)
-    expect(m.all('since-line')).toHaveLength(SINCE_SHOWN)
-    expect(
-      m.all('since-line').every((one) => ['finished', 'failed'].includes(one.dataset.what!)),
-    ).toBe(true)
     expect(m.q('since-summary').textContent).toContain('6 reported done · 1 failed')
     expect(m.q('since-summary').textContent).toContain('Today, since')
   })
 
-  it('each line opens its conversation, and See all goes to Recent activity', async () => {
-    const lines = [line('failed', 2, { agent: 'Felix' })]
-    const { m, opened, seeAll } = box(lines, NOW - 10 * MINUTE)
-    expect(m.q('since-line').textContent).toContain('Felix')
-    m.q('since-line').click()
-    m.q('since-see-all').click()
+  it('is one chip, and it goes to Recent activity', async () => {
+    const { m, opened, seeAll } = box([line('failed', 2, { agent: 'Felix' })], NOW - 10 * MINUTE)
+    expect(m.all('since-line')).toHaveLength(0)
+    m.q('since-last-here').click()
     await nextTick()
-    expect(opened).toEqual([lines[0]!.conversation])
+    expect(opened).toEqual([])
     expect(seeAll()).toBe(1)
-    expect(m.q('since-see-all').textContent?.trim()).toBe('See all in Recent activity')
+    expect(m.q('since-last-here').title).toBe('See all in Recent activity')
   })
 
   it('says nothing finished or failed only over a whole read', () => {
     const { m } = box([line('started', 2)], NOW - 10 * MINUTE)
-    expect(m.all('since-line')).toHaveLength(0)
     expect(m.q('since-summary').textContent).toContain('nothing finished or failed')
-    expect(m.all('since-read-in-part')).toHaveLength(0)
+    expect(m.all('since-some-missing')).toHaveLength(0)
   })
 
-  it('a read made only in part claims no absence, and says lines may be missing', () => {
+  it('a read made only in part claims no absence, and says some may be missing', () => {
     for (const read of [{ rowsUnread: 2 }, { ledgersSkipped: 1 }]) {
       const { m } = box([line('started', 2)], NOW - 10 * MINUTE, read)
       expect(m.q('since-summary').textContent).not.toContain('nothing')
-      expect(m.q('since-read-in-part').textContent).toContain('some lines may be missing')
+      expect(m.q('since-some-missing').textContent).toContain('some may be missing')
       unmountAll()
     }
   })
 
   it('a read stopped at its newest lines, all starts and stops, claims no absence', () => {
     const { m } = box([line('started', 2), line('stopped', 3)], NOW - 10 * MINUTE, {}, true)
-    expect(m.all('since-line')).toHaveLength(0)
     expect(m.q('since-summary').textContent).not.toContain('nothing')
-    expect(m.q('since-capped').textContent?.trim()).toBe(
-      'Only the newest 200 were read; older ones may be missing.',
-    )
-    expect(m.host.textContent).not.toContain('Showing the newest')
-  })
-
-  it('a capped read with more outcomes than the box shows says what was read, not what is shown', () => {
-    const lines = Array.from({ length: 8 }, (_, at) => line('finished', at + 1))
-    const { m } = box(lines, NOW - 30 * MINUTE, {}, true)
-    expect(m.all('since-line')).toHaveLength(SINCE_SHOWN)
-    expect(m.q('since-capped').textContent?.trim()).toBe(
-      'Only the newest 200 were read; older ones may be missing.',
-    )
+    expect(m.q('since-some-missing').textContent).toContain('some may be missing')
   })
 
   it('has nothing to say without a last-seen record or a reading', () => {

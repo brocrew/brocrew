@@ -126,6 +126,7 @@ describe('§1 · waitingOnWhoWroteView — the rows, and a hole for a failed rea
           label: 'W1.1',
           what: 'Build the pages',
           since: '5m ago',
+          at: NOW - 300_000,
           held: false,
           action: OPEN_THE_CONVERSATION,
         },
@@ -249,8 +250,8 @@ describe('§4 · Waiting on you draws it as its own group, with its door', () =>
     const m = mount(WaitingOnYou, { needsYou: [], clock: NOW }, { width: 1040, height: 900 })
     await nextTick()
 
-    expect(visible(m.q('replies-group'))).toBe(true)
-    expect(said(m.q('replies-count'))).toBe('1')
+    expect(m.q('waiting-pill-reply').getAttribute('aria-selected')).toBe('true')
+    expect(said(m.q('waiting-pill-count-reply'))).toBe('1')
     const row = m.q('waiting-reply-work_1')
     expect(visible(row)).toBe(true)
     for (const words of ['Ada', 'is waiting on your reply', 'W1.1', 'Build the pages', '5m ago']) {
@@ -261,28 +262,28 @@ describe('§4 · Waiting on you draws it as its own group, with its door', () =>
     button.click()
     expect(opened).toEqual(['sess_ada'])
 
-    // ⚑ It is counted with what needs the person: the page is not quiet, and says one item.
-    expect(said(m.q('waiting-intro'))).toBe('1 item below is waiting on you.')
-    expect(said(m.q('waiting-stat'))).toBe('1 item')
-    expect(m.host.querySelector('[data-cy="live-group"]')).toBeNull()
+    // ⚑ It is counted with what needs the person: the page is not quiet, and says one thing.
+    expect(said(m.q('waiting-intro'))).toBe('1 thing needs you.')
   })
 
   it('draws no group over an answered empty look, and the hole over a failed one', async () => {
     supply({ walked: walkOf([]), lastLookAnswered: true })
     const empty = mount(WaitingOnYou, { needsYou: [], clock: NOW }, { width: 1040, height: 900 })
     await nextTick()
-    expect(empty.host.querySelector('[data-cy="replies-group"]')).toBeNull()
-    expect(said(empty.q('waiting-intro'))).toBe('Nothing here is blocked on an answer from you.')
+    expect(said(empty.q('waiting-pill-count-reply'))).toBe('0')
+    expect(said(empty.q('waiting-intro'))).toBe('Nothing needs you.')
     unmountAll()
 
     supply({ walked: null, lastLookAnswered: false })
     const failed = mount(WaitingOnYou, { needsYou: [], clock: NOW }, { width: 1040, height: 900 })
     await nextTick()
-    expect(visible(failed.q('replies-group'))).toBe(true)
-    expect(said(failed.q('replies-count'))).toBe('0')
-    expect(visible(failed.q('waiting-replies-unread'))).toBe(true)
-    expect(said(failed.q('waiting-intro'))).not.toBe(
-      'Nothing here is blocked on an answer from you.',
+    // A list that could not be read claims no number, not even nought.
+    expect(said(failed.q('waiting-pill-count-reply'))).toBe('')
+    failed.q('waiting-pill-reply').click()
+    await nextTick()
+    expect(visible(failed.q('waiting-list-short'))).toBe(true)
+    expect(failed.host.querySelector('[data-cy="waiting-intro"]')?.textContent ?? '').not.toBe(
+      'Nothing needs you.',
     )
   })
 })

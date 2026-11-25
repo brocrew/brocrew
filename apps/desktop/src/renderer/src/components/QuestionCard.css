@@ -410,3 +410,13 @@
   min-height: 24px;
   padding-block: 2px;
 }
+
+.question-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.foot-spacer {
+  flex: 1;
+}

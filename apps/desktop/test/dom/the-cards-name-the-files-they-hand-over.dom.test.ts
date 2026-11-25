@@ -267,7 +267,7 @@ describe('the cards where files change hands name each file', () => {
     unmountAll()
     // ⛔ The pair: the same give with the tree not read draws the card and no row.
     const unread = await pane(GIVES, null)
-    expect(read(unread.q('outgoing-task'))).toBe('W1.2')
+    expect(unread.q('outgoing').getAttribute('data-tool')).toBe('give_work')
     expect(unread.all('file-row')).toHaveLength(0)
   })
 

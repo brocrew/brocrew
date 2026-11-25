@@ -35,6 +35,7 @@ const REFS = [
   'mcpServerRequests',
   'lastServerRequestLookAnswered',
   'stoppedWork',
+  'queueLooked',
   'lastStopLookAnswered',
   'workIncidents',
   'lastIncidentLookAnswered',

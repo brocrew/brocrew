@@ -2,6 +2,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { EXTERNAL_MCP_EVERYONE_MEANS } from '../../../shared/external-mcp'
 import { usePersonsQueue } from '../lib/persons-queue'
+import { OPEN_THE_CONVERSATION } from '../lib/taking-over'
+import { drawnFrom } from '../lib/waiting-order'
 
 /**
  * The agents' requests to register an MCP server, each with what approving it would do, drawn in
@@ -19,8 +21,10 @@ const props = withDefaults(
     floating?: boolean
     /** The page's handle prefix, for the copy drawn on the Tools page. */
     place?: 'waiting' | 'tools'
+    /** The one card this copy draws, by key, where the page draws its cards one at a time. */
+    only?: string
   }>(),
-  { floating: false, place: 'waiting' },
+  { floating: false, place: 'waiting', only: undefined },
 )
 
 const queue = usePersonsQueue()
@@ -29,14 +33,20 @@ const queue = usePersonsQueue()
  * they ended (`said`) in place of the buttons until the person dismisses them.
  */
 const cards = computed(() => [
-  ...(queue.serverRequests.value?.rows ?? []).map((row) => ({ row, said: null })),
-  ...queue.serverRequestsSettled.value,
+  ...drawnFrom(queue.serverRequests.value?.rows ?? [], props.only, (row) => row.requestId).map(
+    (row) => ({ row, said: null }),
+  ),
+  ...drawnFrom(queue.serverRequestsSettled.value, props.only, ({ row }) => row.requestId),
 ])
 
-/** A look that has not answered: a request may be missing, and the list says so. */
+/** A look that has not answered: said here, except on Waiting on you, which says it once. */
 const unread = computed(() => {
   const requests = queue.serverRequests.value
-  return requests !== null && (requests.partial || requests.stale)
+  return (
+    (props.floating || props.place === 'tools') &&
+    requests !== null &&
+    (requests.partial || requests.stale)
+  )
 })
 
 const cy = computed(() => (props.floating ? 'persons-queue' : props.place))
@@ -90,7 +100,7 @@ watch(
     <li
       v-for="{ row: one, said } in cards"
       :key="one.requestId"
-      class="request"
+      class="request bb-request"
       :class="{ settled: said !== null }"
       :data-cy="`${cy}-server-request-${one.requestId}`"
     >
@@ -103,9 +113,7 @@ watch(
       </p>
       <!-- The agent's own words, labelled as its claim, and drawn as plain text. -->
       <p class="request-line">It says this server can: “{{ one.reaches }}”</p>
-      <p v-if="one.only === null" class="request-line">
-        Who gets it: every agent. {{ EXTERNAL_MCP_EVERYONE_MEANS }}
-      </p>
+      <p v-if="one.only === null" class="request-line">Who gets it: every agent.</p>
       <p v-else class="request-line">Who gets it: only {{ one.only.join(', ') }}.</p>
       <p
         v-if="said !== null"
@@ -114,7 +122,8 @@ watch(
       >
         {{ said }}
       </p>
-      <p v-else class="request-means">
+      <details v-else class="request-means">
+        <summary>What approving does</summary>
         <span v-if="one.reopensTheAsker"
           >Approving asks this address what tools it offers, registers it if none clash with
           BroCrew's own, and reopens {{ one.askerCalled }} once it is idle so it gets them, unless
@@ -125,7 +134,8 @@ watch(
           >Registers its tools if no name clashes; agents get them on their next start or
           reopen.</span
         >
-      </p>
+        <span v-if="one.only === null"> {{ EXTERNAL_MCP_EVERYONE_MEANS }}</span>
+      </details>
       <div v-if="said !== null" class="request-controls">
         <button
           type="button"
@@ -161,6 +171,16 @@ watch(
           >
             Refuse
           </button>
+          <button
+            v-if="!floating && place === 'waiting'"
+            type="button"
+            class="pq-go pq-door"
+            :data-cy="`${cy}-server-request-open-${one.requestId}`"
+            @click="queue.openWork(one)"
+          >
+            {{ OPEN_THE_CONVERSATION }}
+            <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
+          </button>
         </div>
       </template>
     </li>
@@ -184,16 +204,6 @@ watch(
   padding: 0 var(--space-9) var(--space-5);
   gap: var(--space-3);
   list-style: none;
-}
-
-.request {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  gap: var(--space-2);
 }
 
 .request-who,

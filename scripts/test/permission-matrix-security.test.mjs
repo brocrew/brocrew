@@ -173,7 +173,7 @@ describe('480 permission-matrix source boundaries', () => {
     const waiting = renderer('WaitingOnYou.vue')
     expect(waiting).toContain('data-cy="waiting-on-you"')
     expect(waiting).toMatch(/<AttentionQueue\b/)
-    expect(waiting).toMatch(/<PersonsQueue\s*\/>/)
+    expect(waiting).toMatch(/<PersonsQueue\b[^>]*\/>/)
     expect(renderer('PersonsQueue.vue')).toContain(
       `:data-place="props.floating ? 'overlay' : 'in-flow'"`,
     )
@@ -200,13 +200,15 @@ describe('480 permission-matrix source boundaries', () => {
     expect(matrixStep).toContain('const cardVerdictsMatch = permissionCardSource.match(')
     expect(matrixStep).toContain('if (card.verdict !== cardVerdicts[outcome] || card.note) {')
 
-    // An absence read where the projections are never drawn passes without looking.
+    // An absence read where the projections are never drawn passes without looking, and a card
+    // held behind "N new" is not drawn either: it is shown before the list is read.
     const settle = matrixStep.slice(matrixStep.indexOf('const waitForProjectionSettlement = async'))
     expectOrdered(
       settle.indexOf("if (!document.querySelector('[data-cy=waiting-on-you]')) return null"),
-      settle.indexOf(
-        "const persons = [...document.querySelectorAll('[data-cy^=persons-queue-row-]')]",
-      ),
+      settle.indexOf("const held = document.querySelector('[data-cy=waiting-show-new]')"),
+      settle.indexOf("const list = document.querySelector('[data-cy=waiting-list-approvals]')"),
+      settle.indexOf('if (!list) return null'),
+      settle.indexOf("const persons = [...list.querySelectorAll('[data-cy^=persons-queue-row-]')]"),
       settle.indexOf('return !persons && !attention'),
     )
   })

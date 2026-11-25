@@ -147,7 +147,7 @@ describe('the Take back press on a service’s current piece', () => {
     // One fact over: the same piece, with no word from the host that a person may take it back.
     const plain = await pane(false)
     expect(plain.m.all('outgoing-take-back')).toEqual([])
-    expect(visible(plain.m.q('outgoing-where'))).toBe(true)
+    expect(visible(plain.m.q('exchange-where'))).toBe(true)
   })
 
   it('takes the piece back and says so in place, drawn whole', async () => {
