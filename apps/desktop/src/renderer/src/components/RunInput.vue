@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ text?: string; progress?: string; result?: string }>()
+defineProps<{ text?: string; progress?: string; result?: string; pendingOutput?: boolean }>()
 </script>
 <template>
   <details v-if="text" class="run-input" open data-cy="run-input">
@@ -10,6 +10,7 @@ defineProps<{ text?: string; progress?: string; result?: string }>()
     <strong>{{ result !== undefined ? 'Result' : 'Progress' }}</strong>
     <span>{{ result ?? progress }}</span>
   </p>
+  <p v-else-if="pendingOutput" class="run-state" data-cy="run-no-output">No output yet.</p>
 </template>
 <style scoped>
 .run-input {

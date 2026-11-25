@@ -32,7 +32,7 @@ it.each([
               id: 'route-task',
               toolCallId,
               description: 'Route notes',
-              run: { kind: 'command', input, progress: 'Reading notes' },
+              run: { kind: 'command', input },
             },
           ],
         },
@@ -55,6 +55,23 @@ it.each([
     }
     m.q('panel-row').click()
     await tick()
+    expect(checkInput().querySelector('[data-cy=run-no-output]')?.textContent).toBe(
+      'No output yet.',
+    )
+    applyEvent(session.value.transcript, {
+      type: 'background_work',
+      source: 'fixture',
+      running: [
+        {
+          id: 'route-task',
+          toolCallId,
+          description: 'Route notes',
+          run: { kind: 'command', input, progress: 'Reading notes' },
+        },
+      ],
+    })
+    await tick()
+    expect(checkInput().querySelector('[data-cy=run-no-output]')).toBeNull()
     expect(checkInput().querySelector('[data-cy=run-state]')?.textContent).toContain(
       'Reading notes',
     )

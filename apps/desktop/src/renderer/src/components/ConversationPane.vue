@@ -1663,6 +1663,7 @@ onUnmounted(() => {
         <template #body>
           <RunInput
             v-if="overlays.backgroundFor"
+            :pending-output="!overlays.backgroundFor.outcome && !overlays.backgroundFor.unfinished"
             :text="overlays.backgroundFor.run?.input"
             :progress="overlays.backgroundFor.run?.progress"
             :result="overlays.backgroundFor.run?.result"
