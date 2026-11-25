@@ -166,8 +166,8 @@ const bodyId = useId()
 </script>
 
 <template>
-  <section class="themes" data-cy="themes-section">
-    <span class="themes-icon" aria-hidden="true"
+  <section class="icon-card" data-cy="themes-section">
+    <span class="icon-card-icon" aria-hidden="true"
       ><svg class="icon"><use href="#i-layers" /></svg
     ></span>
     <h2>
@@ -271,64 +271,10 @@ const bodyId = useId()
   </section>
 </template>
 
+<style scoped src="./icon-card-presentation.css"></style>
+<style scoped src="./fold-heading-presentation.css"></style>
+
 <style scoped>
-.themes {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-7) var(--space-8) var(--space-7) calc(var(--space-24) + var(--space-16));
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--panel);
-  gap: var(--space-3);
-}
-.themes-icon {
-  position: absolute;
-  top: var(--space-6);
-  left: var(--space-6);
-  display: grid;
-  width: var(--space-24);
-  height: var(--space-24);
-  place-items: center;
-  border: var(--border-width) solid var(--accent-border-weak);
-  border-radius: var(--radius-card);
-  background: var(--accent-fill);
-  color: var(--accent);
-}
-.themes-icon .icon {
-  width: var(--space-16);
-  height: var(--space-16);
-  fill: none;
-  stroke: currentColor;
-}
-h2 {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-.fold {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  gap: var(--space-2);
-}
-.chevron {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  flex: none;
-  transform: rotate(90deg);
-}
-.chevron.folded {
-  transform: none;
-}
 .themes-body {
   display: contents;
 }
