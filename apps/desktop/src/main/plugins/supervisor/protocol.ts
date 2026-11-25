@@ -11,8 +11,6 @@ export const OWNER_LIMITS = {
   drain: 5_000,
   cleanup: 60_000,
 } as const
-/** Cold runtime verification, copying and child readiness share this bounded launch wait. */
-export const OWNER_LAUNCH_MS = process.platform === 'win32' ? 60_000 : 30_000
 export const secret = () => randomBytes(32).toString('hex')
 export const Hex = z.string().regex(/^[a-f0-9]{64}$/)
 const Uuid = z.uuid()

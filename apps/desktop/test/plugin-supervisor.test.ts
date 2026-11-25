@@ -756,27 +756,46 @@ describe.skipIf(process.platform === 'win32')(
         code: 'unavailable',
       })
     })
-    it('starts once through an injected launcher and drops an attachment that completes during quit', async () => {
+    it('starts once and releases a lease already admitted when quit starts', async () => {
       const { root, workspaces } = fixture()
       const lifetime = new PluginSupervisorAttachment()
-      let continueLaunch!: () => void
-      const held = new Promise<void>((resolve) => {
-        continueLaunch = resolve
+      let markAdmitted!: () => void
+      let publish!: () => void
+      const admitted = new Promise<void>((resolve) => {
+        markAdmitted = resolve
+      })
+      const pending = new Promise<void>((resolve) => {
+        publish = resolve
       })
       const launch = vi.fn(async () => {
-        await held
         const owner = await PluginSupervisor.start({ root, workspaceRoots: [] })
         owners.push(owner)
       })
-      lifetime.start({ root, workspaceRoot: workspaces[0]!, build: 'fictional', launch })
-      lifetime.start({ root, workspaceRoot: workspaces[0]!, build: 'fictional', launch })
-      const quit = lifetime.quit()
-      continueLaunch()
-      await quit
-      expect(launch).toHaveBeenCalledTimes(1)
-      expect(JSON.parse(readFileSync(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
-        'stopped',
-      )
+      const attach = PluginWorkspaceLease.attach.bind(PluginWorkspaceLease)
+      const delayed = vi
+        .spyOn(PluginWorkspaceLease, 'attach')
+        .mockImplementation(async (options) => {
+          const lease = await attach(options)
+          markAdmitted()
+          await pending
+          return lease
+        })
+      try {
+        lifetime.start({ root, workspaceRoot: workspaces[0]!, build: 'fictional', launch })
+        lifetime.start({ root, workspaceRoot: workspaces[0]!, build: 'fictional', launch })
+        await admitted
+        const quit = lifetime.quit()
+        publish()
+        await quit
+        expect(launch).toHaveBeenCalledTimes(1)
+        expect(JSON.parse(readFileSync(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+          'stopped',
+        )
+      } finally {
+        publish()
+        delayed.mockRestore()
+        await lifetime.quit()
+      }
     })
     it('closes admission before awaiting a pending child start; a late lease cannot reopen that owner', async () => {
       const { root, workspaces } = fixture()

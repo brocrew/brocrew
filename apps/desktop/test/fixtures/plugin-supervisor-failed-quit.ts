@@ -45,6 +45,7 @@ async function main() {
   )
   const configPath = join(root, 'launch.json')
   await writeFile(configPath, config)
+  if (process.argv.includes('receipt-refused')) await mkdir(join(root, 'service.json'))
   const { owner } = await runPluginSupervisor(configPath, hash(config))
   if (process.argv.includes('shutdown-reject'))
     owner.shutdown = async () => {

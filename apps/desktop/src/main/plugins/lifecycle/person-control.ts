@@ -478,6 +478,7 @@ export async function servePersonPluginControl(options: {
       },
       () => negotiatedRefusals,
     )
+    // Before authentication, silence holds a connection slot without identifying a consumer.
     const authentication = setTimeout(() => channel.close(), 2000)
     type PersonSession = {
       channel: PersonChannel
@@ -583,21 +584,27 @@ export async function connectPersonPluginControl(options: {
   path: string
   key: string
   handle(input: unknown): Promise<unknown>
+  signal?: AbortSignal
 }): Promise<PersonChannel> {
   if (!Hex.safeParse(options.key).success) throw new PluginSupervisorError('unavailable')
+  if (options.signal?.aborted)
+    throw new PluginSupervisorError('unavailable', { cause: options.signal.reason })
   return new Promise((resolve, reject) => {
     const socket = createConnection(localEndpoint(options.path, 'person', options.key))
     let input = ''
-    const timer = setTimeout(() => {
-      socket.destroy()
-      reject(new PluginSupervisorError('unavailable'))
-    }, 2000)
-    const failed = () => {
-      clearTimeout(timer)
-      socket.destroy()
-      reject(new PluginSupervisorError('unavailable'))
+    const cleanup = () => {
+      socket.off('data', hello)
+      socket.off('error', failed)
+      socket.off('close', closed)
+      options.signal?.removeEventListener('abort', cancelled)
     }
-    socket.once('error', failed)
+    const failed = (cause?: unknown) => {
+      cleanup()
+      socket.destroy()
+      reject(new PluginSupervisorError('unavailable', { cause }))
+    }
+    const closed = () => failed()
+    const cancelled = () => failed(options.signal?.reason)
     const hello = (bytes: Buffer) => {
       input += bytes.toString('utf8')
       if (input.length > 65 || !input.endsWith('\n')) {
@@ -606,11 +613,12 @@ export async function connectPersonPluginControl(options: {
       }
       const challenge = input.trimEnd()
       if (!Hex.safeParse(challenge).success) return failed()
-      socket.off('data', hello)
-      socket.off('error', failed)
-      clearTimeout(timer)
+      cleanup()
       resolve(new PersonChannel(socket, challenge, 'client', options.handle))
     }
+    socket.once('error', failed)
+    socket.once('close', closed)
+    options.signal?.addEventListener('abort', cancelled, { once: true })
     socket.on('data', hello)
   })
 }

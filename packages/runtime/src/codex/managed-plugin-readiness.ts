@@ -1,20 +1,22 @@
 import type { CodexTransport } from './codex-transport'
 import { observeManagedPlugins, type ManagedPluginObserver } from '../managed-plugin-observation'
 
-export const MANAGED_PLUGIN_READY_WITHIN_MS = 10_000
-export type ManagedPluginReadiness = 'ready' | 'unavailable' | 'timeout' | 'cancelled'
+export type ManagedPluginReadiness = 'ready' | 'unavailable' | 'cancelled'
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
 /** Observe this thread's connections; a failed plugin never makes the turn fail. */
 export function waitForManagedPluginTools(
-  transport: Pick<CodexTransport, 'request'>,
+  transport: Pick<CodexTransport, 'request' | 'closedSignal'>,
   threadId: string,
   names: readonly string[],
-  signal: AbortSignal,
+  turnSignal: AbortSignal,
   observer?: ManagedPluginObserver,
 ): Promise<ManagedPluginReadiness> {
+  const signal = transport.closedSignal
+    ? AbortSignal.any([turnSignal, transport.closedSignal])
+    : turnSignal
   if (signal.aborted) return Promise.resolve('cancelled')
   if (names.length === 0) return Promise.resolve('ready')
   return new Promise((resolve) => {
@@ -29,7 +31,6 @@ export function waitForManagedPluginTools(
     const finish = (outcome: ManagedPluginReadiness): void => {
       if (settled) return
       settled = true
-      clearTimeout(deadline)
       signal.removeEventListener('abort', cancelled)
       for (const wake of pauses) wake()
       for (const name of names)
@@ -37,13 +38,11 @@ export function waitForManagedPluginTools(
           observe({
             server: name,
             tools: [],
-            outcome: outcome === 'timeout' || outcome === 'cancelled' ? outcome : 'unavailable',
+            outcome: outcome === 'cancelled' ? outcome : 'unavailable',
           })
       resolve(outcome)
     }
     const cancelled = (): void => finish('cancelled')
-    const deadline = setTimeout(() => finish('timeout'), MANAGED_PLUGIN_READY_WITHIN_MS)
-    deadline.unref?.()
     signal.addEventListener('abort', cancelled, { once: true })
     const pause = (): Promise<void> =>
       new Promise((wake) => {
@@ -101,7 +100,7 @@ export function waitForManagedPluginTools(
   })
 }
 
-/** A fresh thread-scoped read, separate from the first-turn discovery deadline. */
+/** A fresh thread-scoped read, separate from first-turn discovery. */
 export async function failedManagedPluginConnections(
   transport: Pick<CodexTransport, 'request'>,
   threadId: string,

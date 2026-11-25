@@ -61,6 +61,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
         : 'Invalid plugin service configuration'
     console.error(pluginStartupStderr(message) ?? 'Plugin service failed')
   }
+  let startupFailed = false
   let stopping: Promise<void> | undefined
   function stop(): Promise<void> {
     return (stopping ??= (async () => {
@@ -72,7 +73,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
       }
       try {
         const stopped = await host.stop()
-        process.exit(drained && stopped.exited ? 0 : 1)
+        process.exit(!startupFailed && drained && stopped.exited ? 0 : 1)
       } catch (error) {
         reportFailure(error)
         process.exit(1)
@@ -86,7 +87,15 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
     void stop()
   })
   void owner.closed.then(stop)
-  writeReceipt(receipts, 'service.json', { format: 1, ready: true, pid: process.pid })
+  try {
+    writeReceipt(receipts, 'service.json', { format: 1, ready: true, pid: process.pid })
+  } catch (error) {
+    // The listener already owns the fence. Drain it before reporting a failed start.
+    startupFailed = true
+    reportFailure(error)
+    await stop()
+    throw error
+  }
   if (config.lifecycle) {
     const bootstrap = async () => {
       while (!owner.acceptsStarts()) await new Promise((resolve) => setTimeout(resolve, 10))

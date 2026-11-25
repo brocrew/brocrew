@@ -617,7 +617,6 @@ export function productionPluginController() {
                         root: options.root,
                         appVersion: options.appVersion,
                         target: options.target ?? thisMachine(),
-                        signal: lifetime.signal,
                         sourceVersion: 2,
                       })
                       fetched()
@@ -656,6 +655,7 @@ export function productionPluginController() {
             root: options.root,
             workspaceRoot: options.workspaceRoot,
             build: options.build,
+            signal: lifetime.signal,
             onLost() {
               if (ended) return
               failed('connection-lost')
@@ -704,7 +704,6 @@ export function productionPluginController() {
           }
           phase = 'connection'
           let connectionError: unknown
-          const until = performance.now() + (process.platform === 'win32' ? 60_000 : 5000)
           do {
             try {
               const candidate: Peer = { detaching: false, lost: false }
@@ -752,9 +751,17 @@ export function productionPluginController() {
               connectionError = error
               if (cleanupUncertain || ended) return false
               if (peer === attempt) peer = undefined
+              const cause = (error instanceof Error ? error.cause : undefined) as
+                NodeJS.ErrnoException | undefined
+              if (
+                cause?.code !== 'ENOENT' &&
+                cause?.code !== 'ECONNREFUSED' &&
+                cause?.code !== 'EBUSY'
+              )
+                break
               await new Promise((resolve) => setTimeout(resolve, 50))
             }
-          } while (!ended && performance.now() < until)
+          } while (!ended && options.supervisor.holdsLease())
           if (!connected || ended) {
             if (!ended) failed('connection', launch.diagnostic(connectionError) ?? connectionError)
             if (attempt?.connection) await detach(attempt)
@@ -808,7 +815,7 @@ export function productionPluginController() {
         ended = true // Refuse new Settings/discovery calls before waiting for consumer cleanup.
         acceptingBusy = undefined
         lifetime.abort() // Cancel catalogue I/O without destroying the attached person channel.
-        if (!peer) personLifetime.abort() // No attached channel needs reverse acknowledgments.
+        if (!peer?.connection) personLifetime.abort() // No attached channel needs reverse acknowledgments.
         clearInterval(timer)
         clearTimeout(recovery)
         try {

@@ -153,7 +153,6 @@ export async function loadRepoPluginList(options: {
       : await downloadPluginBytes({
           url: options.sourceVersion === 2 ? PLUGIN_LIST_V2_URL : PLUGIN_LIST_URL,
           maximum: PLUGIN_LIMITS.catalogueBytes,
-          milliseconds: 5000,
           signal: options.signal,
         }).catch((error: unknown) => {
           throw new PluginListError(

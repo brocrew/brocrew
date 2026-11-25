@@ -10,7 +10,6 @@ import {
   pluginWorkspaceIdentity,
 } from '../src/main/plugins/supervisor/client'
 import { LaunchConfig } from '../src/main/plugins/supervisor/launch-format'
-import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'
 import {
   digest,
@@ -96,7 +95,8 @@ export async function smoke(resources: string, scratch: string, packages?: strin
   process.on('SIGINT', interrupted)
   let lease: PluginWorkspaceLease | undefined
   try {
-    const until = performance.now() + OWNER_LAUNCH_MS
+    // The smoke driver must report a stalled fixture and tear down its own child.
+    const until = performance.now() + (process.platform === 'win32' ? 60_000 : 30_000)
     let ready = false
     while (performance.now() < until) {
       if (spawnError) throw spawnError

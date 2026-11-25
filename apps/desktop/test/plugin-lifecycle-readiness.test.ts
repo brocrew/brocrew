@@ -2,12 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { once } from 'node:events'
+import { createServer, type Socket } from 'node:net'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
 import { connectPersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
+import { localEndpoint } from '../src/main/plugins/local-endpoint'
 import type { createPluginNodeHost } from '../src/main/plugins/node-host'
 import { cleanupLifecycleFixtures, deferred, fixture } from './plugin-lifecycle-fixtures'
 import { supervisorFixtures } from './plugin-supervisor-fixtures'
@@ -103,24 +106,87 @@ describe.skipIf(process.platform === 'win32')('the lifecycle readiness publicati
   })
 })
 
-it('keeps cold bootstrap within the original owner launch budget', async () => {
+it.each(['challenge', 'cancel'] as const)(
+  'ends the person handshake on %s even when the peer is slow',
+  async (action) => {
+    const target = await owners.fixture()
+    const path = join(target.workspaceRoot, 'fictional-person.sock')
+    const key = 'a'.repeat(64)
+    const accepted = deferred<Socket>()
+    const server = createServer((socket) => accepted.resolve(socket))
+    server.listen(localEndpoint(path, 'person', key))
+    await once(server, 'listening')
+    const stopping = new AbortController()
+    let socket: Socket | undefined
+    let settled = false
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const connecting = connectPersonPluginControl({
+      path,
+      key,
+      handle: async () => true,
+      signal: stopping.signal,
+    }).then(
+      (channel) => {
+        settled = true
+        channel.close()
+        return { connected: true }
+      },
+      (error: unknown) => {
+        settled = true
+        return { error }
+      },
+    )
+    try {
+      socket = await accepted.promise
+      if (action === 'challenge') {
+        await vi.advanceTimersByTimeAsync(2_100)
+        expect(settled).toBe(false)
+        socket.write(key + '\n')
+        expect(await connecting).toEqual({ connected: true })
+      } else {
+        stopping.abort(new Error('fictional app quit'))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(settled).toBe(true)
+        expect(await connecting).toMatchObject({
+          error: { code: 'unavailable', cause: { message: 'fictional app quit' } },
+        })
+      }
+    } finally {
+      vi.useRealTimers()
+      socket?.destroy()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  },
+)
+
+it('waits for the current owner to publish lifecycle readiness past the former launch deadline', async () => {
   const target = await owners.fixture()
   const original = performance.now.bind(performance)
   let elapsed = 0
   const clock = vi.spyOn(performance, 'now').mockImplementation(() => original() + elapsed)
-  const lease = await target.attach({
-    launch: async () => {
-      await target.start({ lifecycle: true, now: original })
-      elapsed += OWNER_LAUNCH_MS - 1000
+  const owner = await target.start({ lifecycle: true, now: original })
+  const lease = await target.attach()
+  const stopping = new AbortController()
+  elapsed = 65_000
+  let settled = false
+  const bootstrapping = lease.lifecycleReady(stopping.signal).then(
+    () => {
+      settled = true
+      return { ready: true }
     },
-  })
+    (error: unknown) => {
+      settled = true
+      return { error }
+    },
+  )
   try {
-    elapsed += 1001
-    await expect(lease.lifecycleReady()).rejects.toMatchObject({
-      code: 'unavailable',
-      cause: { message: 'Plugin lifecycle did not become ready within the owner launch budget' },
-    })
+    await nextTurn()
+    expect(settled).toBe(false)
+    owner.markLifecycleReady()
+    expect(await bootstrapping).toEqual({ ready: true })
   } finally {
+    stopping.abort()
+    await bootstrapping
     lease.abandon()
     clock.mockRestore()
   }

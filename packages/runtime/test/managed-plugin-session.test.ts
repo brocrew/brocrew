@@ -2,7 +2,6 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   withManagedPluginAttachments,
   PLUGIN_ATTACHMENT_WAIT_MS,
-  MANAGED_PLUGIN_REOPEN_WITHIN_MS,
   StoppedBeforeSend,
   type ManagedPluginAttachment,
   type ManagedPluginAttachmentSource,
@@ -14,6 +13,7 @@ import type { RuntimeEvent } from '../src/events'
 import { TurnInProgress } from '../src/turn-in-progress'
 import { ManagedPluginOwnership } from '../src/managed-plugin-ownership'
 import { ManagedPluginFailure } from '../src/managed-plugin-failure'
+import { deferred } from './fixtures/plugin-readiness'
 
 const route = { name: 'plugin-fern', url: 'http://127.0.0.1:8123/mcp', capability: 'a'.repeat(64) }
 const initial = {
@@ -275,34 +275,31 @@ it.each(['interrupt', 'close', 'settings', 'provider activity', 'late rejection'
   },
 )
 
-it('shares the preparation deadline instead of granting the fresh attempt another minute', async () => {
+it('keeps a fresh repair active past the former reopen limit until Stop', async () => {
   vi.useFakeTimers()
   const f = fixture(false, () => Promise.resolve())
   const handle = await f.runtime.start(initial)
   const ordinaryStart = vi.mocked(f.raw.start).getMockImplementation()!
-  let finish!: () => void
-  const held = new Promise<void>((resolve) => {
-    finish = resolve
-  })
-  let freshSignal: AbortSignal | undefined
+  const { promise: held, resolve: finish } = deferred<void>()
   vi.mocked(f.raw.resume).mockImplementation(async () => {
-    await new Promise((resolve) => setTimeout(resolve, MANAGED_PLUGIN_REOPEN_WITHIN_MS - 25))
+    await new Promise((resolve) => setTimeout(resolve, 59_975))
     throw new ResumeError(handle.ref!, 'missing', { noSuchSession: true })
   })
   vi.mocked(f.raw.start).mockImplementation(async (options) => {
     const candidate = await ordinaryStart(options)
     options.onSessionCreated?.(candidate)
-    freshSignal = options.signal
     await held
     return candidate
   })
   f.change({ revision: 'next', servers: [] })
   const sending = handle.send('queued input')
   void sending.catch(() => {})
-  await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_REOPEN_WITHIN_MS - 25)
+  await vi.advanceTimersByTimeAsync(59_975)
   expect(f.raw.start).toHaveBeenCalledTimes(2)
+  const freshSignal = vi.mocked(f.raw.start).mock.lastCall?.[0].signal
+  await vi.advanceTimersByTimeAsync(5_025)
   expect(freshSignal?.aborted).toBe(false)
-  await vi.advanceTimersByTimeAsync(25)
+  await handle.interrupt()
   expect(freshSignal?.aborted).toBe(true)
   finish()
   await expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
@@ -663,38 +660,41 @@ it('close cancels and joins an in-flight managed reopen before releasing the sou
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
 })
 
-it('uses the provider resume budget, joins a cancelled attempt, then keeps the old inventory', async () => {
-  vi.useFakeTimers()
-  const f = fixture(),
-    a = await f.runtime.start(initial)
-  let cancelled = false
-  vi.mocked(f.raw.resume).mockImplementationOnce(async (_ref, options) => {
-    await new Promise<void>((_resolve, reject) =>
-      options.signal!.addEventListener(
-        'abort',
-        () => {
-          cancelled = true
-          reject(new Error('fictional resume timed out'))
-        },
-        { once: true },
-      ),
-    )
-    throw new Error('unreachable')
-  })
-  f.change({ revision: 'new', servers: [] })
-  const sending = a.send('fictional words')
-  await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_REOPEN_WITHIN_MS - 1)
-  expect(cancelled).toBe(false)
-  await vi.advanceTimersByTimeAsync(1)
-  await sending
-  expect(cancelled).toBe(true)
-  expect(f.raw.resume).toHaveBeenCalledTimes(1)
-  expect(f.opened).toHaveLength(1)
-  expect(f.opened[0]!.close).not.toHaveBeenCalled()
-  expect(f.opened[0]!.options).toMatchObject({ managedPluginMcp: [route] })
-  expect(f.opened[0]!.send).toHaveBeenCalledOnce()
-  await a.close()
-})
+it.each(['ready', 'Stop'] as const)(
+  'keeps a managed reopen active past one minute until %s',
+  async (end) => {
+    vi.useFakeTimers()
+    const f = fixture()
+    const handle = await f.runtime.start(initial)
+    const ordinaryResume = vi.mocked(f.raw.resume).getMockImplementation()!
+    const { promise: held, resolve: finish } = deferred<void>()
+    vi.mocked(f.raw.resume).mockImplementationOnce(async (ref, options) => {
+      await held
+      return ordinaryResume(ref, options)
+    })
+    f.change({ revision: 'new', servers: [] })
+    const sending = handle.send('fictional words')
+    void sending.catch(() => {})
+    try {
+      await vi.advanceTimersByTimeAsync(65_000)
+      expect(vi.mocked(f.raw.resume).mock.lastCall?.[1].signal?.aborted).toBe(false)
+      if (end === 'Stop') await handle.interrupt()
+      finish()
+      if (end === 'Stop') {
+        await expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
+        expect(f.opened.every((one) => one.send.mock.calls.length === 0)).toBe(true)
+      } else {
+        await sending
+        expect(f.opened[1]!.send).toHaveBeenCalledExactlyOnceWith('fictional words')
+      }
+      expect(f.opened[0]!.send).not.toHaveBeenCalled()
+      expect(f.opened[end === 'Stop' ? 1 : 0]!.close).toHaveBeenCalledOnce()
+    } finally {
+      finish()
+      await handle.close()
+    }
+  },
+)
 
 it('unchanged actual inventory never reopens, including revision-only or ordering changes', async () => {
   const f = fixture()
@@ -764,7 +764,7 @@ it('app Quit closes a replacement that returns after cancellation without sendin
   })
   f.change({ revision: 'changed', servers: [] })
   const sending = a.send('fictional continuation')
-  const refusal = expect(sending).rejects.toThrow('stopped')
+  const refusal = expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
   await ready
   const closing = a.close('app-quit')
   expect(a.close()).toBe(closing)
@@ -800,7 +800,7 @@ it('Stop during held resume leaves the old handle usable for the next ordinary s
   })
   f.change({ revision: 'changed', servers: [] })
   const sending = a.send('fictional stopped message')
-  const refusal = expect(sending).rejects.toThrow('fictional cancelled')
+  const refusal = expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
   await preparing
   await a.interrupt()
   await refusal
@@ -943,7 +943,7 @@ it('Stop while old cleanup is held keeps the prepared same-thread handle usable'
   })
   f.change({ revision: 'two', servers: [] })
   const sending = a.send('fictional stopped message')
-  const refused = expect(sending).rejects.toThrow('stopped')
+  const refused = expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
   await closing
   await a.interrupt()
   release()

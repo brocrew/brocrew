@@ -81,6 +81,8 @@ export interface CodexTransport {
   respondError(id: string | number, code: number, message: string): void
   /** Notifications + server-initiated requests, in order. Single consumer. */
   incoming(): AsyncIterable<CodexIncoming>
+  /** Aborts at the terminal transition, before pending requests are rejected. */
+  readonly closedSignal?: AbortSignal
   /** Shut the transport (kills the child process tree for the spawn transport). */
   close(): void | Promise<void>
   /**
@@ -303,6 +305,8 @@ export class SpawnCodexTransport implements CodexTransport {
   private stderrTail = ''
   /** Non-null once the transport is terminal; the reason every pending/future op is rejected with. */
   private terminalError: Error | null = null
+  private readonly terminal = new AbortController()
+  readonly closedSignal = this.terminal.signal
   /** Single-flight guard so repeated/concurrent close() share one teardown. */
   private closing: Promise<void> | null = null
   /** Single-flight bounded process-group teardown; runs on EVERY terminal transition (031). */
@@ -593,6 +597,7 @@ export class SpawnCodexTransport implements CodexTransport {
   private terminate(error: Error): void {
     if (this.terminalError) return
     this.terminalError = error
+    this.terminal.abort(error)
     for (const waiter of this.pending.values()) waiter.reject(error)
     this.pending.clear()
     this.queue.close()

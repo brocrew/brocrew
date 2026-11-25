@@ -11,7 +11,6 @@ import { isWithinOrSame } from '../private-files'
 import { workspacePluginRoot } from '../root-selection'
 import {
   Hex,
-  OWNER_LAUNCH_MS,
   OWNER_LIMITS,
   OWNER_WIRE,
   AGENT_ROUTES_FORMAT_2,
@@ -67,6 +66,22 @@ function serializedLaunch(identity: string, launch: () => Promise<void>): Promis
   launches.set(identity, work)
   return work
 }
+async function waitForLaunch(launch: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return launch
+  let cancel: (() => void) | undefined
+  try {
+    await Promise.race([
+      launch,
+      new Promise<never>((_, reject) => {
+        cancel = () => reject(signal.reason)
+        if (signal.aborted) cancel()
+        else signal.addEventListener('abort', cancel, { once: true })
+      }),
+    ])
+  } finally {
+    if (cancel) signal.removeEventListener('abort', cancel)
+  }
+}
 const releasedDrains = new Map<string, { epoch: string; since: number }>()
 function releasedDrainStalled(
   storage: SupervisorStorage,
@@ -110,9 +125,9 @@ function releasedDrainStalled(
   }
 }
 /**
- * A request's deadline. When this app stalled past it, what had already arrived is read before
- * it expires, so an answer that came in time is not lost to the app's own delay. Once the time
- * is up, the request itself is not sent: nobody would read its answer.
+ * A liveness probe or synchronous registration cannot depend on a stalled owner's timer.
+ * A legacy renewal must retry a lost reply before expiry. Release cannot hold app quit.
+ * Read a buffered answer before giving up.
  */
 function requestDeadline(expire: () => void) {
   const at = performance.now() + OWNER_LIMITS.request
@@ -125,22 +140,24 @@ function holdSupervisorConnection(
   storage: SupervisorStorage,
   record: OwnerRecord,
   command: Extract<Command, { kind: 'hold' }>,
+  signal?: AbortSignal,
 ): Promise<Socket> {
+  signal?.throwIfAborted()
   const nonce = secret()
   return new Promise((resolve, reject) => {
     const socket = createConnection(storage.endpoint(record))
     let bytes = Buffer.alloc(0),
       challenge: string | undefined,
       done = false
-    const fail = (error: Error) => {
+    const fail = (error: unknown) => {
       if (done) return
       done = true
-      clearTimeout(deadline.timer)
+      signal?.removeEventListener('abort', cancelled)
       socket.destroy()
       reject(new PluginSupervisorError('unavailable', { cause: error }))
     }
-    const unanswered = () => new Error(`no reply to hold within ${OWNER_LIMITS.request} ms`)
-    const deadline = requestDeadline(() => fail(unanswered()))
+    const cancelled = () => fail(signal?.reason)
+    signal?.addEventListener('abort', cancelled, { once: true })
     socket.on('error', fail)
     socket.once('close', () => fail(new Error('the plugin service closed hold unanswered')))
     socket.on('data', (chunk: Buffer) => {
@@ -153,7 +170,6 @@ function holdSupervisorConnection(
         bytes = bytes.subarray(end + 1)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          if (deadline.passed()) throw unanswered()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -161,7 +177,7 @@ function holdSupervisorConnection(
         if (response.nonce !== nonce || response.epoch !== record.epoch || !response.ok)
           throw new Error('the plugin service refused the held connection')
         done = true
-        clearTimeout(deadline.timer)
+        signal?.removeEventListener('abort', cancelled)
         resolve(socket)
       } catch (error) {
         fail(error instanceof Error ? error : new Error(String(error)))
@@ -169,12 +185,14 @@ function holdSupervisorConnection(
     })
   })
 }
-/** One bounded command on the owner socket. */
+/** One command on the owner socket. */
 export function supervisorRequest(
   storage: SupervisorStorage,
   record: OwnerRecord,
   command: Command,
+  signal?: AbortSignal,
 ): Promise<unknown> {
+  signal?.throwIfAborted()
   storage.check()
   const nonce = secret()
   return new Promise((resolve, reject) => {
@@ -185,12 +203,24 @@ export function supervisorRequest(
     const finish = (error?: PluginSupervisorError, value?: unknown) => {
       if (done) return
       done = true
-      clearTimeout(deadline.timer)
+      clearTimeout(deadline?.timer)
+      signal?.removeEventListener('abort', cancelled)
       socket.destroy()
       if (error) reject(error)
       else resolve(value)
     }
-    const deadline = requestDeadline(() => finish(new NoReply()))
+    const bounded =
+      command.kind === 'renew' ||
+      command.kind === 'release' ||
+      command.kind === 'probe' ||
+      command.kind === 'hello'
+    const deadline = bounded ? requestDeadline(() => finish(new NoReply())) : undefined
+    const cancelled = () => {
+      // After hello is sent, settle its bounded reply so Quit can release any registration.
+      if (command.kind === 'hello' && challenge !== undefined) return
+      finish(new PluginSupervisorError('unavailable', { cause: signal?.reason }))
+    }
+    signal?.addEventListener('abort', cancelled, { once: true })
     socket.on('error', () => finish(new NoReply()))
     socket.on('close', () => {
       if (!done) finish(new NoReply())
@@ -209,7 +239,7 @@ export function supervisorRequest(
         bytes = Buffer.alloc(0)
         if (!challenge) {
           challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
-          if (deadline.passed()) throw new NoReply()
+          if (deadline?.passed()) throw new NoReply()
           socket.write(pack({ epoch: record.epoch, nonce, challenge, command }))
           return
         }
@@ -244,7 +274,9 @@ export interface SupervisorClientOptions {
   generation: string
   build: string
   wire?: WireVersion
+  /** Resolves once the launched owner has published readiness. */
   launch?: () => Promise<void>
+  signal?: AbortSignal
   onLost?: () => void
 }
 export class PluginWorkspaceLease {
@@ -255,6 +287,7 @@ export class PluginWorkspaceLease {
   private retry: ReturnType<typeof setTimeout> | undefined
   private renewing: Promise<void> | undefined
   private ended = false
+  private readonly requests = new AbortController()
   /** Open while this app's registration lasts; when held, no heartbeat is sent. */
   private held: Socket | undefined
   readonly lease: string
@@ -267,7 +300,6 @@ export class PluginWorkspaceLease {
     private readonly options: SupervisorClientOptions,
     private readonly workspace: string,
     hello: z.infer<typeof Hello>,
-    private readonly startupUntil: number,
   ) {
     this.lease = hello.lease
     this.minor = hello.minor
@@ -280,10 +312,12 @@ export class PluginWorkspaceLease {
   }
   /** An owner that offers it gets one held connection; renewals then stop. */
   private async hold(): Promise<void> {
-    const socket = await holdSupervisorConnection(this.storage, this.record, {
-      kind: 'hold',
-      ...this.identity(),
-    })
+    const socket = await holdSupervisorConnection(
+      this.storage,
+      this.record,
+      { kind: 'hold', ...this.identity() },
+      this.options.signal,
+    )
     this.held = socket
     clearInterval(this.timer)
     socket.on('error', () => socket.destroy())
@@ -291,6 +325,7 @@ export class PluginWorkspaceLease {
       if (this.held !== socket || this.ended) return
       this.held = undefined
       this.ended = true
+      this.requests.abort()
       clearTimeout(this.retry)
       this.storage.close()
       console.warn('[plugins] supervisor-lease-ended owner-connection-closed')
@@ -303,11 +338,11 @@ export class PluginWorkspaceLease {
   }
   static async attach(options: SupervisorClientOptions): Promise<PluginWorkspaceLease> {
     const admission = pluginStartupTrace.begin('owner-admission')
-    let startupUntil = performance.now() + OWNER_LAUNCH_MS
     let storage: SupervisorStorage | undefined
     let phase: OwnerDiagnostic['phase'] = 'unreadable'
     let stage: OwnerDiagnostic['stage'] = 'attach-record'
     try {
+      options.signal?.throwIfAborted()
       const workspace = realpathSync(options.workspaceRoot)
       if (!lstatSync(workspace).isDirectory()) refuse()
       const workspaceId = createHash('sha256').update(workspace).digest('hex')
@@ -347,6 +382,7 @@ export class PluginWorkspaceLease {
                   build: options.build,
                   wire: options.wire ?? OWNER_WIRE,
                 },
+            options.signal,
           )
           probe = 'live'
         } catch (error) {
@@ -358,36 +394,19 @@ export class PluginWorkspaceLease {
       }
       const stalled = releasedDrainStalled(storage, record, probe)
       const launchOnce = async () => {
+        options.signal?.throwIfAborted()
         if (launched) return
         launched = true
         if (!options.launch) refuse()
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const until = performance.now() + OWNER_LAUNCH_MS
-        startupUntil = until
         const root = realpathSync.native(storage!.root)
         const identity = `${process.platform === 'win32' ? root.toLowerCase() : root}\0${storage!.identity}`
         try {
-          await Promise.race([
-            serializedLaunch(identity, options.launch),
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(
-                () => reject(new PluginSupervisorError('unavailable')),
-                OWNER_LAUNCH_MS,
-              )
-            }),
-          ])
+          await waitForLaunch(serializedLaunch(identity, options.launch), options.signal)
         } catch (error) {
+          if (options.signal?.aborted) throw error
           launchError = error
-          record = readOwner()
-          return
-        } finally {
-          clearTimeout(timer)
         }
-        do {
-          record = readOwner()
-          if (record && record.phase !== 'stopped') break
-          await new Promise((resolve) => setTimeout(resolve, 10))
-        } while (performance.now() < until)
+        record = readOwner()
       }
       if (record?.wire.major === 1 && options.launch && (options.wire ?? OWNER_WIRE).major > 1)
         await launchOnce()
@@ -436,7 +455,7 @@ export class PluginWorkspaceLease {
       }
       let answer: unknown
       try {
-        answer = await supervisorRequest(storage, record, helloCommand)
+        answer = await supervisorRequest(storage, record, helloCommand, options.signal)
       } catch (error) {
         if (error instanceof PluginSupervisorError && error.code === 'busy') {
           const current = readOwner()
@@ -461,23 +480,21 @@ export class PluginWorkspaceLease {
                 .digest('hex'),
             })
         }
+        options.signal?.throwIfAborted()
         if (!(error instanceof NoReply) || !options.launch || launched) throw error
         await launchOnce()
         const successor = readOwner()
         if (!successor || successor.phase !== 'accepting') throw error
         record = successor
         phase = successor.phase
-        answer = await supervisorRequest(storage, record, helloCommand)
+        answer = await supervisorRequest(storage, record, helloCommand, options.signal)
       }
       const hello = Hello.parse(answer)
-      const lease = new PluginWorkspaceLease(
-        storage,
-        record,
-        options,
-        workspaceId,
-        hello,
-        startupUntil,
-      )
+      const lease = new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
+      if (options.signal?.aborted) {
+        await lease.close()
+        options.signal.throwIfAborted()
+      }
       if (lease.features.includes(APP_HELD_CONNECTION)) {
         try {
           await lease.hold()
@@ -543,6 +560,7 @@ export class PluginWorkspaceLease {
           refuse()
         }
         this.ended = true
+        this.requests.abort()
         clearInterval(this.timer)
         clearTimeout(this.retry)
         this.storage.close()
@@ -579,20 +597,25 @@ export class PluginWorkspaceLease {
   }): Promise<{ readonly format: 1 | 2; readonly value: unknown }> {
     if (this.ended) refuse()
     const format = this.features.includes(AGENT_ROUTES_FORMAT_2) ? 2 : 1
-    const value = await supervisorRequest(this.storage, this.record, {
-      kind: 'agent-routes',
-      ...this.identity(),
-      ...input,
-      release: input.release ?? false,
-      ...(format === 2 ? { format: 2 as const } : {}),
-    })
+    const value = await supervisorRequest(
+      this.storage,
+      this.record,
+      {
+        kind: 'agent-routes',
+        ...this.identity(),
+        ...input,
+        release: input.release ?? false,
+        ...(format === 2 ? { format: 2 as const } : {}),
+      },
+      this.requests.signal,
+    )
     return { format, value }
   }
   /** False once the lease has ended here, for whatever reason. */
   standing(): boolean {
     return !this.ended
   }
-  /** Owner registration must precede bootstrap; its launch budget also covers lifecycle readiness. */
+  /** Registration precedes bootstrap. The same accepting owner must publish lifecycle readiness. */
   async lifecycleReady(signal?: AbortSignal): Promise<void> {
     for (;;) {
       signal?.throwIfAborted()
@@ -606,17 +629,13 @@ export class PluginWorkspaceLease {
       }
       if (record?.epoch !== this.epoch || record.phase !== 'accepting') refuse()
       if (record.lifecycleReady !== false) return
-      const remaining = this.startupUntil - performance.now()
-      if (remaining <= 0)
-        throw new PluginSupervisorError('unavailable', {
-          cause: new Error('Plugin lifecycle did not become ready within the owner launch budget'),
-        })
-      await delay(Math.min(10, remaining), undefined, { signal })
+      await delay(10, undefined, { signal })
     }
   }
   /** For an owner that has stopped: there is nobody left to send a release to. */
   abandon(): void {
     this.ended = true
+    this.requests.abort()
     this.held?.destroy()
     clearInterval(this.timer)
     clearTimeout(this.retry)
@@ -625,6 +644,7 @@ export class PluginWorkspaceLease {
   async close(): Promise<boolean> {
     if (this.ended) return false
     this.ended = true
+    this.requests.abort()
     clearInterval(this.timer)
     clearTimeout(this.retry)
     try {
@@ -670,9 +690,16 @@ export class PluginSupervisorAttachment {
   /** Kept by every attempt until one is admitted, so the service can hand back a lost answer. */
   private generation = randomUUID()
   private admitting?: Promise<PluginWorkspaceLease>
+  private readonly admission = new AbortController()
   /** Start and recovery share one admission at a time, so a registration has one lease here. */
   private attach(options: Omit<SupervisorClientOptions, 'generation'>) {
-    this.admitting ??= PluginWorkspaceLease.attach({ ...options, generation: this.generation })
+    this.admitting ??= PluginWorkspaceLease.attach({
+      ...options,
+      generation: this.generation,
+      signal: options.signal
+        ? AbortSignal.any([options.signal, this.admission.signal])
+        : this.admission.signal,
+    })
       .then((lease) => {
         this.generation = randomUUID()
         return lease
@@ -702,7 +729,8 @@ export class PluginSupervisorAttachment {
       })
       .catch((error) => {
         this.startError = error
-        console.warn('[plugins] supervisor-start-failed')
+        if (!this.ended && !options.signal?.aborted)
+          console.warn('[plugins] supervisor-start-failed')
         this.pending = undefined // No local lease authority. A later person retry still faces the owner fence.
         return null
       })
@@ -795,7 +823,9 @@ export class PluginSupervisorAttachment {
   }
   quit(): Promise<void> {
     this.ended = true
+    this.admission.abort()
     this.quitting ??= (async () => {
+      await this.recovering
       const lease = await this.pending
       await lease?.close()
     })()

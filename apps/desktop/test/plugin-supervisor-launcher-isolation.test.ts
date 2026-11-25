@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
 
 vi.mock('../src/main/plugins/supervisor/storage', async (original) => {
@@ -63,10 +62,14 @@ describe('supervisor launch isolation between roots', () => {
       release = resolve
     })
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    const failed = PluginWorkspaceLease.attach({ ...first, launch: () => pending }).catch(
-      (error: unknown) => error,
-    )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    const cancelled = new AbortController()
+    const failed = PluginWorkspaceLease.attach({
+      ...first,
+      launch: () => pending,
+      signal: cancelled.signal,
+    }).catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(0)
+    cancelled.abort()
     expect(await failed).toMatchObject({ code: 'unavailable' })
     vi.useRealTimers()
   }
@@ -98,7 +101,7 @@ describe('supervisor launch isolation between roots', () => {
     const failed = PluginWorkspaceLease.attach({ ...second, launch }).catch(
       (error: unknown) => error,
     )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    await vi.advanceTimersByTimeAsync(0)
     expect(await failed).toMatchObject({ code: 'unavailable', cause: { cause: original } })
     expect(launch).toHaveBeenCalledOnce()
   })
@@ -116,10 +119,14 @@ describe('supervisor launch isolation between roots', () => {
     })
     const launch = vi.fn(() => pending)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const cancelled = new AbortController()
     const attempts = [first, alias].map((one) =>
-      PluginWorkspaceLease.attach({ ...one, launch }).catch((error: unknown) => error),
+      PluginWorkspaceLease.attach({ ...one, launch, signal: cancelled.signal }).catch(
+        (error: unknown) => error,
+      ),
     )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    await vi.advanceTimersByTimeAsync(0)
+    cancelled.abort()
     for (const attempt of attempts) expect(await attempt).toMatchObject({ code: 'unavailable' })
     expect(launch).toHaveBeenCalledOnce()
   })

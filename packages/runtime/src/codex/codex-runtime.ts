@@ -125,7 +125,7 @@ import { nativeAccountTag } from './account-identity'
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
-import { registerCodexBuiltInSkills } from './built-in-skills'
+import { prepareCodexSkills, registerCodexBuiltInSkills } from './built-in-skills'
 import type { SessionStatus } from '@brobot2/shared'
 import type { AgentToolset } from '../agent-tools'
 import type { ExternalMcpReach } from '../external-mcp'
@@ -159,7 +159,6 @@ import type { LaunchSetting } from '../launch-settings'
 import { authStateReason, blocksLaunch } from '../auth-state'
 import { probeCodexAuth } from './auth-probe'
 import {
-  MANAGED_PLUGIN_READY_WITHIN_MS,
   failedManagedPluginConnections,
   waitForManagedPluginTools,
 } from './managed-plugin-readiness'
@@ -462,7 +461,7 @@ export class CodexSessionHandle implements SessionHandle {
     await this.assertCredentialUsable()
     if (this.builtInSkills) {
       try {
-        await this.beforeSkillDiscovery?.()
+        await prepareCodexSkills(this.beforeSkillDiscovery, this.transport.closedSignal)
         await registerCodexBuiltInSkills(
           this.builtInSkills,
           this.cwd,
@@ -470,6 +469,7 @@ export class CodexSessionHandle implements SessionHandle {
           this.sharedSkillsRoot,
         )
       } catch (cause) {
+        this.transport.closedSignal?.throwIfAborted()
         throw new Error(BUILT_IN_SKILLS_FAILURE, { cause })
       }
       this.startPhase('skills-registered')
@@ -1293,6 +1293,7 @@ export class CodexSessionHandle implements SessionHandle {
   }
 
   private finishUnexpected(reason: string, endedByThisAdapter = false): void {
+    this.cancelManagedPluginWait()
     this.settleRequests()
     this.currentTurn = null
     this.machine.fatalError(reason, endedByThisAdapter)
@@ -1477,7 +1478,6 @@ export class CodexSessionHandle implements SessionHandle {
     return JSON.stringify([this._ref?.sessionId, [...this.awaitedManagedPlugins()].sort()])
   }
 
-  // A managed-plugin wait belongs to one local turn; cancellation must not dispatch it later.
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
     this.managedPluginObservationVersion++
     const scope = this.managedPluginObservationScope()
@@ -1499,6 +1499,7 @@ export class CodexSessionHandle implements SessionHandle {
       this.managedPluginWait = null
       if (
         this.isShuttingDown ||
+        this.transport.closedSignal?.aborted ||
         this.currentTurn?.localId !== localId ||
         this.managedPluginObservationScope() !== scope ||
         outcome === 'cancelled'
@@ -1513,7 +1514,6 @@ export class CodexSessionHandle implements SessionHandle {
             {
               method: 'managed-plugin/discovery',
               outcome,
-              withinMs: MANAGED_PLUGIN_READY_WITHIN_MS,
               message: 'Plugin unavailable. Try again.',
             },
             'lifecycle',
