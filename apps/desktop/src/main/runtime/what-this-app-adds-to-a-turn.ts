@@ -58,6 +58,9 @@ export const TURN_BLOCK_WORDS = {
   updateGivenWork: 'Check this work and make any needed updates.',
   current: (label: string, title: string, conversation: string): string =>
     `Your current work: task ${label} · ${title}, in ${conversation}${conversation.endsWith('.') ? '' : '.'}`,
+  currentRules: 'Your current rules:',
+  keepCurrentRules:
+    'Keep these up to date with update_work current_rules, and remove any that no longer apply.',
 } as const
 
 export interface AHelperInTheTurn {
@@ -146,7 +149,23 @@ export interface ExtraTurnFacts {
   readonly nobodyWaiting?: boolean
   readonly replyQuestion?: boolean
   readonly currentWork?: CurrentWorkInTheTurn
+  /** The conversation's current rules as its agent wrote them, said on every turn they exist. */
+  readonly currentRules?: string
   readonly openHeldCount?: number
+}
+
+/** Current rules as the footer lists them: one per non-blank line, each as a list item. */
+function currentRulesLines(text: string): string[] {
+  const rules = text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim().replace(/^[-*•]\s+/, ''))
+    .filter((line) => line !== '')
+  if (rules.length === 0) return []
+  return [
+    TURN_BLOCK_WORDS.currentRules,
+    ...rules.map((rule) => `- ${rule}`),
+    TURN_BLOCK_WORDS.keepCurrentRules,
+  ]
 }
 
 function oneLine(text: string, limit: number): string {
@@ -232,6 +251,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
             : TURN_BLOCK_WORDS.currentUnavailable,
       )
   }
+  lines.push(...currentRulesLines(facts.currentRules ?? ''))
   const count = facts.openHeldCount ?? 0
   if (count > 0) lines.push(TURN_BLOCK_WORDS.openHeld(count))
   const context = facts.currentContext ?? null

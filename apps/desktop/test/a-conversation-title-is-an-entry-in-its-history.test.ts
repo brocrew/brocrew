@@ -228,11 +228,15 @@ describe("a conversation's title", () => {
     const next = () => store.nextOrdinal('sess_adopted')
     store.titleConversation('sess_adopted', next(), byAgent('DEV-100012'), AT + 10)
     store.titleConversation('sess_adopted', next(), byPerson('DEV-100012 and DEV-100013'), AT + 11)
+    // The agent's current rules are this app's row too, and a rebuild keeps them.
+    const rules = { type: 'current_rules_set', text: 'Keep the pace at two an hour.' } as const
+    store.append('sess_adopted', next(), rules, AT + 12)
 
     expect(await derive(true)).toBe('imported')
     const afterFirstRebuild = store.events('sess_adopted')
     expect(await derive(true)).toBe('imported')
     expect(store.events('sess_adopted')).toEqual(afterFirstRebuild)
+    expect(store.newestOfType?.('sess_adopted', 'current_rules_set')?.event).toEqual(rules)
     expect(store.conversationTitle('sess_adopted')).toEqual({
       title: 'DEV-100012 and DEV-100013',
       author: { kind: 'person' },
@@ -243,7 +247,7 @@ describe("a conversation's title", () => {
         `SELECT e.ordinal, json_extract(e.payload, '$.title') AS title,
                 (SELECT max(o.ordinal) FROM events o
                   WHERE o.session_id = e.session_id AND o.generation = e.generation
-                    AND o.type <> 'titled') AS last_provider_row
+                    AND o.type NOT IN ('titled', 'current_rules_set')) AS last_provider_row
            FROM events e WHERE e.session_id = ? AND e.type = 'titled' ORDER BY e.ordinal`,
       )
       .all('sess_adopted') as { ordinal: number; title: string; last_provider_row: number }[]

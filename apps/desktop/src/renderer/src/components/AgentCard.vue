@@ -180,6 +180,7 @@ const taskPage = useConversationTaskPage(
   () => props.taskPageSource,
   () => props.conversation,
 )
+const currentRules = computed(() => taskPage.page.value?.currentRules?.trim() || null)
 /** ⚑ Every piece "All tasks" lists: the work given to it, and the root a person gave. */
 const allTasks = computed(() => {
   if (!props.taskPageSource) return (counts.value?.all ?? 0) + (root.value === null ? 0 : 1)
@@ -606,6 +607,18 @@ const fileManager = fileManagerHere()
     <!-- ⚑ **3 · Whatever else is known about it**, and the caller's slot at the end. ⚠️ On the
          scrolling card this is `090` §3's scroller: parts 1–2 above it never scroll away. -->
     <div class="panel-body" data-cy="panel-body">
+      <!-- The agent's current rules, as it last wrote them; read-only, and absent when it has none. -->
+      <CardSection
+        v-if="currentRules"
+        class="card-rules"
+        icon="#i-list"
+        accent
+        aria-label="Current rules"
+        data-cy="card-rules"
+      >
+        <template #title>Current rules</template>
+        <p class="rules-text" data-cy="card-rules-text">{{ currentRules }}</p>
+      </CardSection>
       <!-- Show work given to this agent under Current task: draw the selected work in full and the rest as single lines. Preserve the `cast-taken*` hooks used by these rows. -->
       <CardSection
         class="card-task"
@@ -1355,8 +1368,18 @@ button.run-effort[aria-expanded='true'] {
 
 /* ⚑ The work given to this agent — at the panel's margins, above its plate. The heading and the gap
    line are the band's own register. */
+.card-rules,
 .card-task {
   margin: 0 var(--space-5) var(--space-5);
+}
+
+.rules-text {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .task-unread {

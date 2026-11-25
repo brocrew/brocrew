@@ -174,6 +174,7 @@ describe('405 · a refusal you can see', () => {
     giveWork: (...args) => host.giveWork(...args),
     receiptForSend: (...args) => host.receiptForSend(...args),
     updateWork: (...args) => host.updateWork(...args),
+    setCurrentRules: (...args) => host.setCurrentRules(...args),
     // ⚑ **D-016 · commit 6 · `take_on_work`'s door**, delegated like every other member.
     takeOnWork: (...args) => host.takeOnWork(...args),
     compactConversation: (...args) => host.compactConversation(...args),

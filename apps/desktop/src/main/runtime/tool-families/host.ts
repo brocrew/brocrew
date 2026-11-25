@@ -113,6 +113,7 @@ export interface AgentToolHost {
     },
     by: Caller,
   ): Promise<UpdateWorkOutcome>
+  setCurrentRules(text: string, by: Caller): void
   whatAPieceIsTo(sender: string, agent: string, spelled: string): WhatAPieceIsToIt
   readResource(
     resourceId: string,

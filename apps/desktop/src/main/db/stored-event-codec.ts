@@ -98,7 +98,9 @@ function boundOneRow(event: TranscriptEvent): TranscriptEvent {
     boundCardFacts(
       boundWorkReport(
         boundRelayedIdentity(
-          boundTheDrive(boundPieceNamed(boundTitled(boundPendingCompaction(event)))),
+          boundTheDrive(
+            boundPieceNamed(boundTitled(boundCurrentRules(boundPendingCompaction(event)))),
+          ),
         ),
       ),
     ),
@@ -123,6 +125,13 @@ function boundPendingCompaction(event: TranscriptEvent): TranscriptEvent {
       ...(request.reason === undefined ? {} : { reason: request.reason }),
     },
   }
+}
+
+/** Stored current rules are text, or the row is skipped and noted. */
+function boundCurrentRules(event: TranscriptEvent): TranscriptEvent {
+  if (event.type !== 'current_rules_set') return event
+  if (typeof event.text !== 'string') throw new Error('stored current rules could not be read')
+  return { type: 'current_rules_set', text: event.text }
 }
 
 /** A stored title is read whole or not at all: a row that is not one is skipped, and noted. */

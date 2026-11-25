@@ -314,21 +314,26 @@ export function createLedgerEventsPart(deps: LedgerEventsPartDeps) {
   }
 
   const selectTitledOf = db.prepare(
-    `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
-      WHERE type = 'titled' AND session_id = ? AND generation = ?
+    `SELECT type, payload, created_at FROM events INDEXED BY events_kind_owner_idx
+      WHERE type IN ('titled', 'current_rules_set') AND session_id = ? AND generation = ?
       ORDER BY ordinal`,
   )
 
-  /** A provider rebuild has no titles. A copied ledger may already hold their ordered prefix. */
+  /**
+   * A provider rebuild has no titles and no current rules. A copied ledger may already hold their
+   * ordered prefix.
+   */
   function carryTitles(sessionId: string, from: number, to: number): void {
     if (from === to) return
-    type TitleRow = { payload: string; created_at: number }
+    type TitleRow = { type: string; payload: string; created_at: number }
     const titles = selectTitledOf.all(sessionId, from) as TitleRow[]
     if (titles.length === 0) return
     const copied = selectTitledOf.all(sessionId, to) as TitleRow[]
     const firstMissing = titles.findIndex(
       (title, index) =>
-        title.payload !== copied[index]?.payload || title.created_at !== copied[index]?.created_at,
+        title.type !== copied[index]?.type ||
+        title.payload !== copied[index]?.payload ||
+        title.created_at !== copied[index]?.created_at,
     )
     if (firstMissing < 0) return
     const last =
@@ -339,7 +344,7 @@ export function createLedgerEventsPart(deps: LedgerEventsPartDeps) {
         newEventId(),
         sessionId,
         last + 1 + index,
-        'titled',
+        title.type,
         title.payload,
         title.created_at,
         null,

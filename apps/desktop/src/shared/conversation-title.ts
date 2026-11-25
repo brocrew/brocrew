@@ -1,7 +1,8 @@
 /**
  * A conversation's title: the job it holds ("DEV-100012", "Lisbon trip, March"), kept as an entry in
  * that conversation's own history. The newest entry stands. Each entry records who set it, so an
- * agent can tell when a person named the conversation and leave that title alone.
+ * agent can tell when a person named the conversation and leave that title alone. Its current rules
+ * are kept the same way.
  *
  * Importing nothing, so main and the renderer read the same rule.
  */
@@ -20,6 +21,18 @@ export interface ConversationTitledEvent {
   readonly title: string
   readonly author: ConversationTitleAuthor
 }
+
+/**
+ * A conversation's current rules, written by its own agent with `update_work`: a few short lines
+ * every turn's footer prints. The newest record stands; empty text clears them.
+ */
+export interface CurrentRulesSetEvent {
+  readonly type: 'current_rules_set'
+  readonly text: string
+}
+
+/** The rows a conversation keeps about itself in its own ledger: its title and current rules. */
+export type ConversationOwnRow = ConversationTitledEvent | CurrentRulesSetEvent
 
 /** A title as it reads now: the text, who set it and when. */
 export interface ConversationTitle {

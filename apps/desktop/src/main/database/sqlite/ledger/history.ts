@@ -39,7 +39,7 @@ export function createLedgerHistoryRead(
   )
   const { threadLeadRows } = createThreadLeadReader(db, activeGeneration)
   const selectNewestOfType = db.prepare(
-    `SELECT ordinal, payload, created_at FROM events
+    `SELECT ordinal, payload, created_at FROM events INDEXED BY events_kind_owner_idx
       WHERE session_id = ? AND generation = ? AND type = ? AND ordinal >= ? AND ordinal < ?
       ORDER BY ordinal DESC LIMIT 1`,
   )

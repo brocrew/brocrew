@@ -111,6 +111,7 @@ import {
   listConversationTasks,
   readAllConversationTasks,
   readConversationTasks,
+  currentRulesIn,
   type ConversationTasksInput,
 } from './conversation-tasks'
 import type {
@@ -127,6 +128,7 @@ import type {
   ConversationTitleHistory,
   ConversationTitleHistoryInput,
   ConversationTitledEvent,
+  CurrentRulesSetEvent,
 } from '../../shared/conversation-title'
 import {
   canonicalAddressOf,
@@ -14951,13 +14953,34 @@ export class RuntimeHost implements LiveHost {
         if (slot?.session === null) await slot.arrived
       },
       record: (conversation, titled) => {
-        const session = this.slots.get(conversation)?.session
-        if (session != null) this.publishOurs(session, titled)
-        else if (!this.writeWhileNothingRunsIt(conversation, titled))
-          throw new Error('Could not record the conversation title.')
+        this.intoItsOwnLedger(conversation, titled, 'Could not record the conversation title.')
         this.theWorldMoved('work')
       },
     })
+  }
+
+  /** A row this app writes about a conversation into that conversation's own ledger. */
+  private intoItsOwnLedger(
+    conversation: string,
+    row: ConversationTitledEvent | CurrentRulesSetEvent,
+    failed: string,
+  ): void {
+    const session = this.slots.get(conversation)?.session
+    if (session != null) this.publishOurs(session, row)
+    else if (!this.writeWhileNothingRunsIt(conversation, row)) throw new Error(failed)
+  }
+
+  /** The caller's current rules, set or cleared with `update_work`, in its own ledger. */
+  setCurrentRules(text: string, by: Caller): void {
+    const caller = sessionSpeakingAs(by)
+    if (caller === null) return
+    this.intoItsOwnLedger(
+      caller,
+      { type: 'current_rules_set', text },
+      'Could not record the current rules.',
+    )
+    // The window's right panel reads them with the conversation's tasks.
+    this.theWorldMoved('work')
   }
 
   /**
@@ -17490,6 +17513,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       extra: {
         ...changed.extra,
         openHeldCount: facts.openHeldCount,
+        currentRules: currentRulesIn(this.deps.store, session.id),
         conversation: this.nameByItsWork(session.id),
         currentContext: this.contextSizeOf(session.id)?.percentUsed ?? null,
         contextOf: (id) => this.contextSizeOf(id)?.percentUsed ?? null,
@@ -18483,6 +18507,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       // ⚑ **D-016 · `update_work`'s rows**, into the owner's ledger when it is running.
       | WorkRetitledEvent
       | ConversationTitledEvent
+      | CurrentRulesSetEvent
       | PendingCompactionEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent
@@ -18893,6 +18918,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       // ⚑ **D-016 · `update_work`'s rows** — see {@link RuntimeHost.publishOurs}.
       | WorkRetitledEvent
       | ConversationTitledEvent
+      | CurrentRulesSetEvent
       | PendingCompactionEvent
       | WorkStatusSetEvent
       | WorkRebriefedEvent

@@ -590,6 +590,8 @@ describe('transcript fold', () => {
         },
         adds: 0,
       },
+      // Current rules are the footer's to say, never a row in the transcript.
+      { event: { type: 'current_rules_set', text: 'Keep the pace at three an hour.' }, adds: 0 },
       {
         event: { type: 'work_status_set', piece: 'work_1', line: 'reading', by: 'sess_child' },
         adds: 0,
@@ -947,6 +949,7 @@ describe('transcript fold', () => {
       question_asked: true,
       pending_compaction: true,
       titled: true,
+      current_rules_set: true,
     }
     expect(
       [...new Set(ours.map((o) => o.event.type))].sort(),

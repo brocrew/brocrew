@@ -21,6 +21,18 @@ const cursorShape = z.object({
   piece: z.string(),
 })
 
+/**
+ * A conversation's current rules as its agent last wrote them with `update_work`: the newest
+ * `current_rules_set` row in its own ledger, `''` when it has none or they were cleared.
+ */
+export function currentRulesIn(
+  store: Pick<SessionStore, 'newestOfType'>,
+  conversation: string,
+): string {
+  const newest = store.newestOfType?.(conversation, 'current_rules_set')?.event
+  return newest?.type === 'current_rules_set' ? newest.text : ''
+}
+
 const panelCursorShape = cursorShape
   .omit({ listing: true })
   .extend({ current: z.string().nullable() })
@@ -275,6 +287,7 @@ export function readConversationTasks(
     | 'rootOf'
     | 'turnBlockRootLines'
     | 'rootDoneCondition'
+    | 'newestOfType'
   >,
 ): ConversationTaskPageResult {
   const conversation = input.sessionId
@@ -335,6 +348,7 @@ export function readConversationTasks(
     else if (TASK_IS_OPEN[state]) counts.open++
     else counts.closed++
   }
+  const currentRules = currentRulesIn(store, conversation)
 
   return {
     ok: true,
@@ -350,5 +364,6 @@ export function readConversationTasks(
           ).toString('base64url'),
     rowsUnread: unread.count,
     ledgersSkipped: unread.ledgersSkipped,
+    ...(currentRules === '' ? {} : { currentRules }),
   }
 }

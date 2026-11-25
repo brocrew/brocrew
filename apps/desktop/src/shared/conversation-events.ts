@@ -7,7 +7,7 @@ import type {
 import type { AgentRulesReceipt } from './agent-rules'
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
-import type { ConversationTitledEvent } from './conversation-title'
+import type { ConversationOwnRow } from './conversation-title'
 import type { KeptPromptStart } from './instruction-contracts'
 import type { AnsweredQuestion, UserTurnEvent } from './human-answer-contracts'
 import type {
@@ -1389,8 +1389,8 @@ export type TranscriptEvent =
   | ReplyUndeliveredEvent
   | RequestEscalatedEvent
   | ToolRefusedEvent
-  // A conversation's title, in its own ledger; the newest stands.
-  | ConversationTitledEvent
+  // A conversation's title and its current rules, in its own ledger; the newest of each stands.
+  | ConversationOwnRow
 
 /** Recorded provider work relationships, in first-observed order. */
 export interface WorkAncestryFacts {

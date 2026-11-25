@@ -59,5 +59,7 @@ export type ConversationTaskPageResult =
       readonly next: string | null
       readonly rowsUnread: number
       readonly ledgersSkipped: number
+      /** The conversation's current rules as its agent last wrote them; absent when it has none. */
+      readonly currentRules?: string
     }
   | { readonly ok: false; readonly reason: 'unknown-conversation' | 'invalid-cursor' }

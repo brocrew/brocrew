@@ -691,7 +691,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         { args: { piece: label, resources: 'a.md' }, says: 'must be a list of paths' },
         {
           args: { piece: label },
-          says: 'say title, status, brief, definition_of_done, close, resources, or several',
+          says: 'say title, status, brief, definition_of_done, close, resources, current_rules, or several',
         },
       ]
 

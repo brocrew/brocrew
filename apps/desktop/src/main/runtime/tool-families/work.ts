@@ -69,6 +69,8 @@ interface UpdateWorkArguments {
   readonly close?: boolean
   /** **R2** — files to keep for the piece, as its inputs or as what was made for it. */
   readonly resources?: readonly string[]
+  /** The caller's own current rules, which every turn's footer prints; empty clears them. */
+  readonly current_rules?: string
 }
 
 const UPDATE_PIECE_ARGUMENT = 'piece' satisfies keyof UpdateWorkArguments
@@ -89,6 +91,8 @@ const UPDATE_BRIEF_ARGUMENT = 'brief' satisfies keyof UpdateWorkArguments
 const UPDATE_CLOSE_ARGUMENT = 'close' satisfies keyof UpdateWorkArguments
 
 const UPDATE_RESOURCES_ARGUMENT = 'resources' satisfies keyof UpdateWorkArguments
+
+const UPDATE_RULES_ARGUMENT = 'current_rules' satisfies keyof UpdateWorkArguments
 
 /** The keys of `update_work`'s `on`, in the order a refusal names them. */
 const WAIT_ON_KINDS = [
@@ -265,7 +269,10 @@ export function createWithdrawTaskTool(
 }
 
 export function createUpdateWorkTool(
-  host: Pick<AgentToolHost, 'updateWork' | 'whatToCallTheConversation' | 'whyWhatIsHeldWaits'>,
+  host: Pick<
+    AgentToolHost,
+    'updateWork' | 'setCurrentRules' | 'whatToCallTheConversation' | 'whyWhatIsHeldWaits'
+  >,
   by: Caller,
   guarded: (run: () => Promise<AgentToolAnswer>) => Promise<AgentToolAnswer>,
 ): AgentToolDefinition & { readonly name: ToolName } {
@@ -365,6 +372,12 @@ export function createUpdateWorkTool(
         .describe(
           `Files to keep for the piece — ${HELD_FORMS_WITH_EXTENSIONS_SAID} — anywhere; a relative path is read from your own working directory. Each is copied and hashed: as inputs when you add files to work you gave, and as evidence when closing. Other files are kept with the task.`,
         ),
+      current_rules: z
+        .string()
+        .optional()
+        .describe(
+          `Your conversation’s current rules or immediate goals, a few short lines such as “tonight keep the pace at 3 pieces an hour”, at most ${String(REPLY_SUMMARY_LIMIT)} characters. Every turn’s footer shows them until you change them. Send them whole each time; empty clears them. Needs no piece.`,
+        ),
     } satisfies Readonly<Record<keyof UpdateWorkArguments, z.ZodType>>,
     call: (args) =>
       guarded(async () => {
@@ -376,7 +389,16 @@ export function createUpdateWorkTool(
         const condition = args[UPDATE_DONE_ARGUMENT]
         const close = args[UPDATE_CLOSE_ARGUMENT]
         const paths = args[UPDATE_RESOURCES_ARGUMENT]
+        const rules = args[UPDATE_RULES_ARGUMENT]
         const problems: string[] = []
+        if (
+          rules !== undefined &&
+          (typeof rules !== 'string' || rules.trim().length > REPLY_SUMMARY_LIMIT)
+        ) {
+          problems.push(
+            `${UPDATE_RULES_ARGUMENT} must be text of at most ${String(REPLY_SUMMARY_LIMIT)} characters, or empty to clear them`,
+          )
+        }
         if (piece !== undefined && (typeof piece !== 'string' || piece.length === 0)) {
           problems.push(`${UPDATE_PIECE_ARGUMENT} must be a piece's label or id, or left out`)
         }
@@ -436,16 +458,16 @@ export function createUpdateWorkTool(
         }
         const closes = close === true
         const keeps = Array.isArray(paths) && paths.length > 0
-        if (
-          title === undefined &&
-          status === undefined &&
-          brief === undefined &&
-          condition === undefined &&
-          !closes &&
-          !keeps
-        ) {
+        const actsOnAPiece =
+          title !== undefined ||
+          status !== undefined ||
+          brief !== undefined ||
+          condition !== undefined ||
+          closes ||
+          keeps
+        if (!actsOnAPiece && rules === undefined) {
           problems.push(
-            `say ${UPDATE_TITLE_ARGUMENT}, ${UPDATE_STATUS_ARGUMENT}, ${UPDATE_BRIEF_ARGUMENT}, ${UPDATE_DONE_ARGUMENT}, ${UPDATE_CLOSE_ARGUMENT}, ${UPDATE_RESOURCES_ARGUMENT}, or several`,
+            `say ${UPDATE_TITLE_ARGUMENT}, ${UPDATE_STATUS_ARGUMENT}, ${UPDATE_BRIEF_ARGUMENT}, ${UPDATE_DONE_ARGUMENT}, ${UPDATE_CLOSE_ARGUMENT}, ${UPDATE_RESOURCES_ARGUMENT}, ${UPDATE_RULES_ARGUMENT}, or several`,
           )
         }
         if (closes && (brief !== undefined || condition !== undefined)) {
@@ -462,6 +484,17 @@ export function createUpdateWorkTool(
         }
         if (problems.length > 0) {
           return refusalAnswer(refuseTool('malformed-request', { problems }))
+        }
+        // Current rules belong to the caller's conversation, not to a piece: written after the
+        // piece's update succeeds, so a refused update leaves them as they were.
+        const newRules = typeof rules === 'string' ? rules.trim() : null
+        const rulesSaved =
+          newRules === ''
+            ? 'Your current rules are cleared.'
+            : 'Your current rules are saved; every turn’s footer shows them.'
+        if (newRules !== null && !actsOnAPiece) {
+          host.setCurrentRules(newRules, by)
+          return answer({ outcome: 'ok' }, rulesSaved)
         }
         const updated = await host.updateWork(
           {
@@ -524,6 +557,16 @@ export function createUpdateWorkTool(
           }
           return refusalAnswer(refuseTool(updated.rail, updated.detail))
         }
+        let rulesSaid: string | null = null
+        if (newRules !== null) {
+          try {
+            host.setCurrentRules(newRules, by)
+            rulesSaid = rulesSaved
+          } catch {
+            // The piece's update already landed, so this answer still says so.
+            rulesSaid = 'Your current rules were not saved; send current_rules again.'
+          }
+        }
         const owner = host.whatToCallTheConversation(updated.owner)
         // No echo of the title, status line or brief the call sent. The label is said only when
         // the call did not spell it exactly; what reached the holder always follows.
@@ -572,6 +615,7 @@ export function createUpdateWorkTool(
                   host.whyWhatIsHeldWaits(updated.owner),
                 ),
               ]),
+          ...(rulesSaid === null ? [] : [rulesSaid]),
         ]
         return answer(
           {
