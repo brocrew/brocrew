@@ -17,7 +17,7 @@ import type {
   WhatThisAgentWasGiven,
   WhatTheModelGot,
 } from '../../src/shared/what-this-agent-was-given'
-import { mount, record, unmountAll, type Mounted, openWorkReports } from './harness'
+import { META, mount, record, unmountAll, type Mounted, openWorkReports } from './harness'
 import { givenAnswer, modelGotAnswer } from './what-this-agent-was-given.fixture'
 
 /**
@@ -112,6 +112,105 @@ describe('the overview', () => {
     })
     await settle()
     expect(m.q('input-share-words').textContent).toContain('has not reported its window')
+  })
+})
+
+describe('launch evidence', () => {
+  it('keeps one selected request tab and moves focus with the keyboard', async () => {
+    const m = popup()
+    await settle()
+    const tabs = [...m.host.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1, -1])
+    tabs[0]!.focus()
+    for (const [key, index] of [
+      ['ArrowRight', 1],
+      ['End', 4],
+      ['ArrowRight', 0],
+      ['ArrowLeft', 4],
+      ['Home', 0],
+    ] as const) {
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+      await settle()
+      expect(document.activeElement).toBe(tabs[index])
+      expect(tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true')).toEqual([
+        tabs[index],
+      ])
+      expect(tabs.filter((tab) => tab.tabIndex === 0)).toEqual([tabs[index]])
+      expect(m.host.querySelectorAll('[role="tabpanel"]')).toHaveLength(1)
+    }
+  })
+
+  it('keeps exact held text, memory reach and unread paths when the detailed read fails', async () => {
+    ;(window as { api?: unknown }).api = {
+      runtime: {
+        whatThisAgentWasGiven: async () => {
+          throw new Error('This launch record cannot be read again.')
+        },
+      },
+    }
+    const m = mount(
+      AgentInputPopup,
+      {
+        sessionId: 'older',
+        provider: 'claude',
+        who: 'Designer',
+        profile: 'designer',
+        state: null,
+        startLoaded: false,
+        relaunched: true,
+        instructions: {
+          ...META.instructions,
+          composed: 'Held launch text.',
+          provider: [],
+          agentMemory: [
+            {
+              kind: 'agent-memory',
+              path: '/work/memory/MEMORY.md',
+              text: 'Index.',
+              bytes: 6,
+              truncated: false,
+              reach: 'prompt',
+            },
+            {
+              kind: 'agent-memory-topic',
+              path: '/work/memory/topic.md',
+              text: 'Topic.',
+              bytes: 6,
+              truncated: false,
+              reach: 'on-request',
+              link: '/work/notes/topic.md',
+            },
+          ],
+          refused: [{ path: '/work/rules.md', reason: 'dangling-link', link: '/work/missing.md' }],
+        },
+      },
+      { width: 1000, height: 800 },
+    )
+    await expect.poll(() => m.q('input-popup-why').textContent).toContain('cannot be read again')
+    expect(m.q('input-reported-files').textContent).toContain('No files reported.')
+    expect(m.q('told-composition').textContent).toContain('Held launch text.')
+    expect(m.q('told-earlier').textContent).toContain('Earlier')
+    const memory = m.all('input-launch-memory-file')
+    expect(memory).toHaveLength(2)
+    expect(memory[0]?.textContent).toContain('In the prompt')
+    expect(memory[1]?.textContent).toContain('Available on request')
+    expect(memory[1]?.textContent).toContain('/work/notes/topic.md')
+    expect(m.q('refused-instruction').textContent).toContain('/work/missing.md')
+  })
+
+  it('says the stored provider text is unavailable when there is no snapshot', async () => {
+    const given = givenAnswer()
+    const m = popup(
+      givenAnswer({
+        providerParts: { ...given.providerParts, snapshot: null, why: 'No matching snapshot.' },
+      }),
+    )
+    await settle()
+    expect(m.q('input-provider-about').querySelector('summary')?.textContent?.trim()).toBe(
+      'Stored provider text unavailable',
+    )
+    expect(m.q('input-provider-why').textContent).toContain('No matching snapshot.')
+    expect(m.all('input-copy-notice')).toHaveLength(0)
   })
 })
 

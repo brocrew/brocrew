@@ -34,7 +34,6 @@ import ToolAnswerViewer from './ToolAnswerViewer.vue'
 import RunInput from './RunInput.vue'
 import OverlayHost, { useModalDepth } from './OverlayHost.vue'
 import SessionTools from './SessionTools.vue'
-import AgentInstructionsSheet from './AgentInstructionsSheet.vue'
 import AgentInputPopup from './AgentInputPopup.vue'
 import { READ_WHAT_THE_MODEL_GOT } from '../lib/agent-inputs'
 import PromptComposer from './PromptComposer.vue'
@@ -750,7 +749,7 @@ onUnmounted(() => {
         :on-stop-background-work="props.onStopBackgroundWork"
         :on-open-run="overlays.openPanelRun"
         @refresh-config="emit('refreshConfig')"
-        @open-instructions="overlays.instructionsFor = props.record.sessionId"
+        @open-instructions="overlays.inputsFor = props.record.sessionId"
         @open-inputs="overlays.inputsFor = props.record.sessionId"
         @open-book="(profile) => emit('openBook', profile)"
         @set-approval-mode="(mode) => emit('setApprovalMode', mode)"
@@ -871,27 +870,6 @@ onUnmounted(() => {
       <SessionTools :tools="control.tools" @close="overlays.toolsFor = null" />
     </OverlayHost>
 
-    <!-- 🔴 **The agent's side, wide** (`527` §3.3) — raised HERE with the pane's other sheets, so
-         the pane, the transcript and the drawer all stay mounted underneath it. ⛔ **That is the
-         whole of *"an index entry that opens wide satisfies both; a separate screen he has to
-         navigate to does not"*** (`HO-050` §1.2): nothing routes, nothing unmounts, Escape and the
-         backdrop close it, and `OverlayHost` gives focus back to the entry that opened it. -->
-    <OverlayHost
-      v-if="overlays.instructionsOpen"
-      label="What this agent was told"
-      @close="overlays.instructionsFor = null"
-    >
-      <AgentInstructionsSheet
-        :instructions="overlays.instructionsOpen.instructions"
-        :on-read-instruction="props.onReadInstruction"
-        :on-reveal-path="props.onRevealPath"
-        :tools="control.tools"
-        :relaunched="props.record.liveFrom !== null"
-        @close="overlays.instructionsFor = null"
-      />
-    </OverlayHost>
-
-    <!-- 🔴 **F093 · everything this agent is given**, through the same host as the sheet above. -->
     <OverlayHost
       v-if="overlays.inputsOpen"
       label="Instructions, memory and tools"
@@ -904,6 +882,10 @@ onUnmounted(() => {
         :profile="profileItRunsAs(overlays.inputsOpen)"
         :state="control"
         :start-loaded="controlHoldsTheStart(props.record)"
+        :instructions="overlays.inputsOpen.instructions"
+        :relaunched="props.record.liveFrom !== null"
+        :on-read-instruction="props.onReadInstruction"
+        :on-reveal-path="props.onRevealPath"
         @close="overlays.inputsFor = null"
       />
     </OverlayHost>

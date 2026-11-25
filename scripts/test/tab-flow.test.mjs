@@ -229,7 +229,7 @@ describe('tabFlowViolation — the rule', () => {
 
   /**
    * What the model was told is an Info read, but the block is no longer on the tab. It is on
-   * `AgentInstructionsSheet`, which `ConversationPane` raises on the overlay layer: reachable from
+   * `AgentInputPopup`, which `ConversationPane` raises on the overlay layer: reachable from
    * whichever tab is selected, and mounted by none of them.
    *
    * So the right answer for those hooks is `null` from every tab, and that is what is asserted.
@@ -252,71 +252,51 @@ describe('tabFlowViolation — the rule', () => {
       expect(tabFlowViolation('info', read), hook).toBeNull()
     }
 
-    // …and everything behind it, which no tab mounts. Named hooks and both families, because a
-    // dropped prefix is a different mistake from a dropped entry.
     const onTheSheet = [
-      'session-instructions',
-      'refused-instruction',
+      'input-popup',
+      'input-tab-0',
+      'input-popup-body',
+      'input-reported-files',
+      'input-provider-about',
       'provider-instruction',
       'provider-instructions-lead',
-      'instructions-note',
       'provider-scope',
       'provider-open',
       'provider-reveal',
       'provider-read',
       'provider-instructions-absent',
-      'instructions-why',
-      'instructions-why-body',
+      'input-launch-evidence',
+      'refused-instruction',
+      'instructions-note',
       'told-composition',
-      'told-sentence',
       'told-earlier',
-      'told-register',
       'told-appended-nothing',
-      'told-withheld',
-      'told-why',
-      'told-order',
-      // The names here are the live ones, and the census under this array closes the vacuity: `tabOfHook`
-      // answers `null` for a hook in neither table, so a renamed hook would make every assertion below
-      // vacuous rather than red.
-      'told-block',
-      'told-block-toggle',
-      'told-block-label',
-      'told-block-link',
-      'memory-reach-prompt',
-      'told-tabs',
-      'told-tab-factory',
-      'told-size',
-      'told-nothing-of-yours',
-      'told-layer-provider-base',
-      'told-why-app-composed',
-      'told-says-agent-store',
-      'told-count-published-tools',
-      'told-bytes-app-composed',
+      'input-launch-source',
+      'input-launch-memory-file',
     ]
 
-    /**
-     * Every name above is a hook the component really draws. Without this the list is a wish:
-     * `tabOfHook` returns `null` for a name nothing has heard of, so a hook renamed on the sheet keeps
-     * passing for ever. A family hook is bound through a template literal, so its literal prefix is
-     * what the source can be asked for.
-     */
-    const panel = readFileSync(
-      join(REPO, 'apps/desktop/src/renderer/src/components/SessionInstructions.vue'),
-      'utf8',
-    )
+    const panel = [
+      'AgentInputPopup',
+      'InstructionOverviewDisclosures',
+      'ReportedInstructionFiles',
+      'LaunchInstructionEvidence',
+    ]
+      .map((component) =>
+        readFileSync(
+          join(REPO, `apps/desktop/src/renderer/src/components/${component}.vue`),
+          'utf8',
+        ),
+      )
+      .join('\n')
     const bindings = [...panel.matchAll(/:data-cy="`([a-z-]+)\$\{/g)].map((hit) => hit[1])
+    expect(bindings).toContain('input-tab-')
     const missing = onTheSheet.filter(
       (hook) =>
-        !panel.includes(`data-cy="${hook}"`) && !bindings.some((head) => hook.startsWith(head)),
+        !panel.includes(`'${hook}'`) &&
+        !panel.includes(`data-cy="${hook}"`) &&
+        !bindings.some((head) => hook.startsWith(head)),
     )
-    expect(
-      missing,
-      `this list names hooks the sheet has stopped drawing: ${missing.join(', ')}`,
-    ).toEqual([])
-    expect(
-      bindings.length,
-      'no family bindings were read — the census read nothing',
-    ).toBeGreaterThan(0)
+    expect(missing, 'this list names hooks the sheet does not draw').toEqual([])
     for (const hook of onTheSheet) {
       const read = `document.querySelector('[data-cy=${hook}]')`
       expect(tabOfHook(hook), `${hook} is still filed under a tab`).toBeNull()

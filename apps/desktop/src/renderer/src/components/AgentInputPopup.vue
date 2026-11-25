@@ -4,6 +4,12 @@ import type { Provider } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import type { WhatThisAgentWasGiven } from '../../../shared/what-this-agent-was-given'
 import type { ProviderSnapshot } from '../../../shared/provider-snapshots'
+import type { SessionInstructions } from '../../../shared/instruction-contracts'
+import type {
+  InstructionSourceResult,
+  RevealResult,
+  SessionPathTarget,
+} from '../../../shared/runtime-ipc'
 import {
   argumentsOf,
   AUTHOR,
@@ -23,6 +29,8 @@ import { groupTokens } from '../lib/context-meter'
 import { readableError } from '../lib/session-record'
 import type { TranscriptState } from '../lib/transcript'
 import WhatTheModelGot from './WhatTheModelGot.vue'
+import InstructionOverviewDisclosures from './InstructionOverviewDisclosures.vue'
+import LaunchInstructionEvidence from './LaunchInstructionEvidence.vue'
 
 /**
  * "What this agent receives": Overview, then one tab per position in the provider's request, in
@@ -42,6 +50,10 @@ const props = defineProps<{
   state: TranscriptState | null
   /** Whether that transcript holds the conversation's start, so its first message is the first. */
   startLoaded: boolean
+  instructions?: SessionInstructions
+  relaunched?: boolean
+  onReadInstruction?: (index: number) => Promise<InstructionSourceResult>
+  onRevealPath?: (target: SessionPathTarget) => Promise<RevealResult>
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -93,6 +105,7 @@ async function read(): Promise<void> {
   } catch (error) {
     if (mine !== asked) return
     given.value = null
+    tab.value = 0
     givenWhy.value = `Couldn’t read what it was given: ${readableError(error)} Try Read again.`
   }
 }
@@ -149,12 +162,6 @@ const copyNotice = computed(() =>
 const settings = computed(() =>
   settingRows(given.value?.launchSettings, given.value?.launchSettingDisplay),
 )
-const SHAPE_WORDS: Readonly<Record<ProviderSnapshot['shape'], string>> = {
-  messages: 'Sent as messages, with the tools beside them.',
-  functions: 'Its tools go as functions, and its prompt as the request’s instructions.',
-  exec: 'Tools sent as code.',
-}
-
 const versionLine = computed(() => {
   const version = given.value?.providerParts.version ?? null
   const name = PROVIDER_NAME[props.provider]
@@ -164,7 +171,12 @@ const versionLine = computed(() => {
 
 <template>
   <!-- The host is the dialog (`OverlayHost`'s `role="dialog"`); this is a labelled region in it. -->
-  <section class="input-popup" aria-labelledby="input-popup-title" data-cy="input-popup">
+  <section
+    class="input-popup"
+    aria-labelledby="input-popup-title"
+    data-cy="input-popup"
+    data-subject="agent"
+  >
     <header class="popup-head">
       <div class="popup-title">
         <h2 id="input-popup-title" class="bb-title">Instructions, memory and tools</h2>
@@ -210,6 +222,7 @@ const versionLine = computed(() => {
         :aria-selected="tab === index"
         :tabindex="tab === index ? 0 : -1"
         :data-cy="`input-tab-${String(index)}`"
+        :data-position="tabs[index - 1]?.key"
         @click="tab = index"
       >
         <span v-if="index > 0" class="tab-number">{{ index }}</span>
@@ -363,26 +376,6 @@ const versionLine = computed(() => {
               <strong>Launch settings</strong>
               <span class="bb-muted">{{ TRUST.notRecorded }}</span>
             </div>
-          </div>
-        </details>
-        <p v-if="copyNotice" class="note" data-cy="input-copy-notice">{{ copyNotice }}</p>
-        <p v-if="given.providerParts.why" class="not-yet" data-cy="input-provider-why">
-          {{ given.providerParts.why }}
-        </p>
-        <details v-if="snapshot" class="bb-disclosure nested" data-cy="input-provider-about">
-          <summary><strong>About the stored copy</strong></summary>
-          <div class="bb-disclosure-body about">
-            <p class="bb-caption bb-muted" data-cy="input-provider-version">
-              {{ `${snapshot.label}, captured with ${snapshot.model}.` }}
-            </p>
-            <p v-for="note in snapshot.notes" :key="note" data-cy="input-provider-note">
-              {{ note }}
-            </p>
-            <p class="bb-caption bb-muted" data-cy="input-provider-shape">
-              {{ SHAPE_WORDS[snapshot.shape] }} ≈{{ groupTokens(snapshot.approxTokens) }} tokens
-              total.
-            </p>
-            <p class="bb-caption bb-muted">⟨ ⟩ marks what changes</p>
           </div>
         </details>
       </template>
@@ -628,6 +621,23 @@ const versionLine = computed(() => {
           {{ line }}
         </p>
       </template>
+
+      <InstructionOverviewDisclosures
+        v-if="tab === 0 && (props.instructions || given)"
+        :reported-files="props.instructions?.provider"
+        :provider-parts="given?.providerParts"
+        :copy-notice="copyNotice"
+        :on-read-instruction="props.onReadInstruction"
+        :on-reveal-path="props.onRevealPath"
+      />
+      <LaunchInstructionEvidence
+        v-if="
+          props.instructions &&
+          (given === null || shown?.key === 'system-prompt' || shown?.key === 'files-and-folder')
+        "
+        :instructions="props.instructions"
+        :relaunched="props.relaunched"
+      />
     </div>
 
     <footer class="popup-foot bb-caption bb-muted">
@@ -753,7 +763,8 @@ const versionLine = computed(() => {
   max-width: 64ch;
 }
 
-.note {
+.note,
+:deep(.input-copy-notice) {
   padding: var(--space-5) var(--space-6);
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius);
@@ -788,8 +799,7 @@ const versionLine = computed(() => {
   gap: var(--space-3);
 }
 
-.settings,
-.about {
+.settings {
   display: grid;
   gap: var(--space-3);
   font-size: var(--type-small);
@@ -1007,7 +1017,8 @@ const versionLine = computed(() => {
   overflow-wrap: anywhere;
 }
 
-.not-yet {
+.not-yet,
+:deep(.input-provider-why) {
   margin: 0;
   color: var(--faint);
   font-size: var(--type-small);
