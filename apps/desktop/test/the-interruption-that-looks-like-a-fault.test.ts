@@ -7,43 +7,22 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider, TurnEnding } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type AgentCard } from './helpers/giver-notice-host'
-import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import {
-  INTERRUPT_RAILS,
-  admitInterrupt,
-  interruptPermanenceOf,
-  interruptRetryableOf,
-  refuseInterrupt,
-} from '../src/main/runtime/interrupt-rails'
+import { TOOL_NAMES, agentToolsFor } from '../src/main/runtime/agent-tools'
+import { INTERRUPT_RAILS, admitInterrupt, interruptPermanenceOf, interruptRetryableOf, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
 import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { TOOL_REFUSALS, refuseTool } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  ASKED_TO_STOP,
-  HOW_WORK_STOPPED,
-  WHERE_A_STOP_IS_OBSERVED,
-  WHO_STOPPED_IT,
-  howWorkStopped,
-  stoppedBy,
-  whoAskedClause,
-  type WhereAStopIsObserved,
-} from '../src/shared/how-work-stopped'
+import { ASKED_TO_STOP, HOW_WORK_STOPPED, WHERE_A_STOP_IS_OBSERVED, WHO_STOPPED_IT, howWorkStopped, stoppedBy, whoAskedClause, type WhereAStopIsObserved } from '../src/shared/how-work-stopped'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { mailboxOf } from '../src/shared/mailbox'
 import { deriveRoutedRequests } from '../src/shared/questions'
@@ -51,12 +30,8 @@ import { ENDING_SENTENCE } from '../src/renderer/src/lib/ending'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { askedToStopSays } from '../src/renderer/src/lib/stop-unanswered'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **395 · the interruption that looks like a provider fault** — Slice 4 S5, HO-007's last build
@@ -193,16 +168,6 @@ describe('395 · the interruption that looks like a provider fault', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const ledger = (sessionId: string): TranscriptEvent[] =>

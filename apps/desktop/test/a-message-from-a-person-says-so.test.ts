@@ -14,14 +14,9 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId, WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
-import {
-  A_PERSON_SENT_IT,
-  messageNamingItsSender,
-  theDirectionLine,
-  THE_PERSON_AT_A_WINDOW,
-} from '../src/main/runtime/turn-origin'
+import { A_PERSON_SENT_IT, messageNamingItsSender, theDirectionLine, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -29,6 +24,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **607 · a message from a person says so** — `HO-088` §4, the half `414` left to silence.
@@ -212,16 +208,6 @@ describe('607 · a message from a person says so', () => {
 
   const receiptsIn = (sessionId: string): TranscriptEvent[] =>
     ledger(sessionId).filter((event) => event.type === 'message_sent')
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
 
   const personOpens = async (profileId: string, sink: RecordingSink = window): Promise<string> => {
     const { sessionId } = await host.createSession(

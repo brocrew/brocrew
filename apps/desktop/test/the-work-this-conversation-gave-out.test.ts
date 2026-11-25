@@ -15,7 +15,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { WALK_COVERS } from '../src/shared/questions'
 import { TASK_IS_OPEN, UNDRIVEN_SENTENCES, workGivenOut } from '../src/shared/tasks'
@@ -23,18 +22,14 @@ import { DEFAULT_PROFILE_LABEL } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { PANEL_EMPTY_WORDS, panelEmptyWords } from '../src/renderer/src/lib/session-panel'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
-import {
-  NOTHING_GIVEN_OUT,
-  WORK_DOUBT_WORDS,
-  workGivenOutView,
-  type WorkGivenOutReading,
-} from '../src/renderer/src/lib/work-given-out'
+import { NOTHING_GIVEN_OUT, WORK_DOUBT_WORDS, workGivenOutView, type WorkGivenOutReading } from '../src/renderer/src/lib/work-given-out'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import { visibleCopy } from './lib/visible-copy'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * ⚑ **A bridge that answers exactly one verb**, with the two subscriptions `createSessionStore`
@@ -164,16 +159,6 @@ describe('508 · the work this conversation gave out', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

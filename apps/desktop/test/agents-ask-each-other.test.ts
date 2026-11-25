@@ -11,15 +11,10 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import {
-  fixtureFolder,
-  fixtureDatabase,
-  numberedFixtureHostPaths,
-  RecordingSink,
-} from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, numberedFixtureHostPaths, RecordingSink } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **D-009 · F012 — agents can ask each other, and the answer comes back.**
@@ -127,16 +122,6 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
     const tools = order.at(-1)
     if (tools === undefined) throw new Error('no toolset was handed to that launch')
     return { id: sessionId, tools }
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const ledger = (sessionId: string): TranscriptEvent[] =>

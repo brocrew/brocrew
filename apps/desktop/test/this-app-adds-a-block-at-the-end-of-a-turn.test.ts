@@ -22,29 +22,16 @@ import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink, RuntimeHostDeps } from './helpers/giver-notice-host'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import type { TextPackRead } from '../src/main/skills/text-pack'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PERSON_LAST_WROTE_WITHIN_TURNS } from '../src/main/db/session-store'
 import { THE_APP_ITSELF } from './helpers/giver-notice-host'
-import {
-  howLongAgo,
-  OPEN_QUESTIONS_NAMED,
-  THE_BLOCK_BEGINS,
-  whatThisAppAddsToATurn,
-} from '../src/main/runtime/what-this-app-adds-to-a-turn'
+import { howLongAgo, OPEN_QUESTIONS_NAMED, THE_BLOCK_BEGINS, whatThisAppAddsToATurn } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { whatThisAppAdded, withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import {
-  EMPTY_TURN_BLOCK,
-  turnBlockChanges,
-  type TurnBlockSnapshot,
-} from '../src/main/runtime/turn-block-changes'
-import {
-  TURN_BLOCK_WORDS,
-  type AHelperInTheTurn,
-  type CurrentWorkInTheTurn,
-} from '../src/main/runtime/what-this-app-adds-to-a-turn'
+import { EMPTY_TURN_BLOCK, turnBlockChanges, type TurnBlockSnapshot } from '../src/main/runtime/turn-block-changes'
+import { TURN_BLOCK_WORDS, type AHelperInTheTurn, type CurrentWorkInTheTurn } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const shipped = readBuiltInSkills(
@@ -222,16 +209,6 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       window,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

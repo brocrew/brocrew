@@ -11,15 +11,11 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeChangeMessage,
-  type RuntimeChangeSubject,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeChangeMessage, type RuntimeChangeSubject } from '../src/shared/runtime-ipc'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { whenTheWorldMoves } from '../src/renderer/src/lib/the-world-moved'
+import { callOn } from './helpers/call-tool'
 
 /**
  * # 🔴 678 §4 · Reads per act — `672`'s burst harness, landed as a pin on COUNTS (rule 39)
@@ -171,16 +167,6 @@ describe('§1 · announcements per act, through the real host', () => {
     )
     for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setImmediate(resolve))
     return tally(label)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   it('🔴 give 3, 3 replies, stop 3 — each announces what `672` measured, and no more', async () => {

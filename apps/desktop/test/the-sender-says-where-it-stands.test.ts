@@ -10,18 +10,12 @@ import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import {
-  fixtureFolder,
-  fixtureDatabase,
-  syntheticProviderHome,
-  fixtureProviderConfig,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureFolder, fixtureDatabase, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * # 🔴 D-011 · every message says who sent it and how they relate (proposal §8)
@@ -95,16 +89,6 @@ describe('D-011 · the sender says where it stands', () => {
     const tools = order.at(-1)
     if (tools === undefined) throw new Error('no toolset was handed to that launch')
     return { id: sessionId, tools }
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const ledger = (sessionId: string): TranscriptEvent[] =>

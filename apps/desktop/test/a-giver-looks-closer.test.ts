@@ -32,6 +32,7 @@ import {
   neutralHostDeps,
   RecordingSink,
 } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -84,15 +85,6 @@ describe('D-012 · a giver looks closer', () => {
     return { id: sessionId, tools }
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
   const textOf = async (
     toolset: AgentToolset,
     name: ToolName,

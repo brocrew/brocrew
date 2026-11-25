@@ -27,6 +27,7 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -110,16 +111,6 @@ describe('397 · the word for a question nobody stopped', () => {
   ): Promise<void> => {
     const id = await personOpens(profileId, host, provider)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const textOf = async (

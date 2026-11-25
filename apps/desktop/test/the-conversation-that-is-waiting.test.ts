@@ -7,34 +7,17 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  ResumeOptions,
-  SessionHandle,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import type { AgentToolset, ResumeOptions, SessionHandle, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  TASK_IS_OPEN,
-  TASK_WAITS,
-  composeWhatEachPieceIsWaitingOn,
-  theWaitAConversationIsIn,
-  whereTheWorkItHoldsStands,
-} from '../src/shared/tasks'
+import { TASK_IS_OPEN, TASK_WAITS, composeWhatEachPieceIsWaitingOn, theWaitAConversationIsIn, whereTheWorkItHoldsStands } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import {
-  fixtureProviderConfig,
-  syntheticProviderHome,
-  neutralHostDeps,
-  RecordingSink,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **621 · the conversation that is waiting, with no task to say so** — `EXT-014` §5 and
@@ -189,16 +172,6 @@ describe('621 · the conversation that is waiting', () => {
       window,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

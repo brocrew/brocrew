@@ -15,7 +15,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
@@ -24,15 +23,9 @@ import { stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import type { StalledWork } from '../src/shared/stalled-work'
 
-import type {
-  ResumableSessionInfo,
-  RuntimeBridge,
-  RuntimeChangeMessage,
-  RuntimeCommand,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { ResumableSessionInfo, RuntimeBridge, RuntimeChangeMessage, RuntimeCommand, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { fixtureRuntimeBridge } from './lib/runtime-command-bridge'
+import { callOn } from './helpers/call-tool'
 
 /**
  * # 🔴 701 · a conversation the QUIT left open starts on its first message — ⚑ D-017b: EVERY one does
@@ -296,16 +289,6 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     }
     const atRelaunch = await quitAndRelaunch()
     return { ids, atRelaunch }
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const lastToolset = (): AgentToolset => {

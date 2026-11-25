@@ -15,12 +15,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import {
-  TOOL_NAMES,
-  TOOL_REFUSALS,
-  refuseTool,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { TOOL_NAMES, TOOL_REFUSALS, refuseTool } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
@@ -30,14 +25,11 @@ import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rai
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
 import { MODEL_RAILS, refuseModel } from '../src/main/connections/model-rails'
-import {
-  WORK_SEARCH_RAILS,
-  WORK_SEARCH_REFUSAL_WORDS,
-  workSearchRefusal,
-} from '../src/shared/work-search-words'
+import { WORK_SEARCH_RAILS, WORK_SEARCH_REFUSAL_WORDS, workSearchRefusal } from '../src/shared/work-search-words'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -127,16 +119,6 @@ describe('what an agent is told about its work', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {

@@ -87,6 +87,7 @@ import {
   type ResumeGate,
   settleFixtureTurns,
 } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 // The window names providers as the catalogue supplies them.
 beforeAll(answerTheCatalogue)
@@ -1308,16 +1309,6 @@ describe('D-018 · D-036 · a giver waiting on its helpers is counted and stoppe
     const found = handles.find((handle) => handle.ref.sessionId === row.ref.sessionId)
     if (found === undefined) throw new Error(`no provider double carries ${id}'s ref`)
     return found
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const opens = async (profileId: string): Promise<string> => {

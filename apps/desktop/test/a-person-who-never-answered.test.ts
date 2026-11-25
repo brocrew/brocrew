@@ -4,37 +4,20 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type FakeSessionHandle,
-  type ResumeOptions,
-  type SessionRef,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle, type ResumeOptions, type SessionRef, type StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { waitFor } from './lib/f093-host'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DIGEST_LINE_KINDS,
-  DIGEST_REGISTERS,
-  LINE_REGISTERS,
-  type DigestRegister,
-} from '../src/shared/digest'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { DIGEST_LINE_KINDS, DIGEST_REGISTERS, LINE_REGISTERS, type DigestRegister } from '../src/shared/digest'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
@@ -123,16 +106,6 @@ describe('465 · a person who never answered', () => {
     const ordinal = ordinals.get(id) ?? 0
     ordinals.set(id, ordinal + 1)
     store.append(id, ordinal, event, when)
-  }
-
-  const callOn = async (
-    tools: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = tools.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const digestOf = (from = FROM, to = TO): ReturnType<typeof distil> =>

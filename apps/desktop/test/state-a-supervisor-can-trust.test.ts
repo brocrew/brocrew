@@ -39,6 +39,7 @@ import {
   RecordingSink,
   syntheticProviderHome,
 } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **484 · state a supervisor can trust** — HO-031 §2.1 and §2.2, and three of §3's defects.
@@ -248,16 +249,6 @@ describe('484 · state a supervisor can trust', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const textOf = async (

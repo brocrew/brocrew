@@ -1,29 +1,19 @@
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, refuseTool } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **424 §B · the arms of `agent-cannot-take-a-message`, after the one that made it false was
@@ -137,16 +127,6 @@ describe('424 §B · what `agent-cannot-take-a-message` still answers for', () =
   /** An identity exists only once a person has run a conversation as it — 341 criterion 12. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     await host.close(await personOpens(profileId), window)
-  }
-
-  const callOn = async (
-    set: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = set.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const latestHandle = (): FakeSessionHandle => {

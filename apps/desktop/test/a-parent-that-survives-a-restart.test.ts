@@ -7,13 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import type { AgentToolset, FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -21,15 +15,11 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { type Caller, type CallerIdentity } from '../src/main/runtime/runtime-host'
-import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * A real host and ledger with a fake provider. Reopen reconstructs provenance from the ledger.
@@ -200,15 +190,6 @@ describe('373 · a parent that survives a restart', () => {
   }
 
   /** The toolset one session is offered, called the way a provider would call it. */
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
 
   /** ⛔ The toolset the HOST handed the launch or reopen that just happened. */
   const theToolsetJustHandedOut = (): AgentToolset => {

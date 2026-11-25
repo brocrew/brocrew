@@ -33,6 +33,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * D-016 · commit 6 · a request the person makes is a piece that waits on them.
@@ -375,16 +376,6 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /** The words a model reads, and the payload beside them. */

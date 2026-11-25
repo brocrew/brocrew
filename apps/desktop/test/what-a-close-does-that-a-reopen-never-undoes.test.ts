@@ -3,35 +3,20 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
-import type {
-  AgentToolAnswer,
-  AgentToolset,
-  FakeRuntime,
-  FakeSessionHandle,
-  RuntimeEvent,
-  StartOptions,
-} from '@brobot2/runtime'
+import type { AgentToolAnswer, FakeRuntime, FakeSessionHandle, RuntimeEvent, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, type ResumeGate } from './lib/provider-double'
-import {
-  waitFor,
-  type TranscriptEvent,
-  fixtureFolder,
-  fixtureDatabase,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { waitFor, type TranscriptEvent, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /** What a Close of a worker mid-turn tells its parent: the turn it interrupted. */
 const ITS_TURN_WAS_STOPPED = undrivenSentence('turn_interrupted')
@@ -112,16 +97,6 @@ describe('what a close does that a reopen never undoes', () => {
       sink,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const runningOf = (sessionId: string): string | undefined =>

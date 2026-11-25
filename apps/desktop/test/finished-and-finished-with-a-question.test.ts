@@ -9,36 +9,17 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { replyText, workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  A_PERSON_MUST_ACT,
-  A_PERSON_MUST_ACT_SENTENCE,
-  TASK_IS_OPEN,
-  derivePieces,
-  isAWorkReport,
-  undrivenSentence,
-} from '../src/shared/tasks'
+import { A_PERSON_MUST_ACT, A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, derivePieces, isAWorkReport, undrivenSentence } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import {
-  WORK_STATE_WORD,
-  personsMark,
-  personsPart,
-  workReading,
-} from '../src/renderer/src/lib/work-report'
+import { WORK_STATE_WORD, personsMark, personsPart, workReading } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import {
-  waitFor,
-  fixtureFolder,
-  fixtureDatabase,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { waitFor, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **406 · finished, and finished with a question** — HO-019 §2's property, and the two defects
@@ -146,16 +127,6 @@ describe('406 · finished, and finished with a question', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const entries = (sessionId: string): readonly PersistedEventInfo[] => store.events(sessionId)

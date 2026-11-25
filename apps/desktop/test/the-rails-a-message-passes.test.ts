@@ -1,11 +1,6 @@
 import { giveANewWorkerItsFirstTask } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import {
-  neutralHostDeps,
-  RecordingSink,
-  syntheticProviderHome,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,14 +14,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { CallerIdentity } from '../src/main/runtime/runtime-host'
-import {
-  TOOL_REFUSALS,
-  agentCallerId,
-  refuseTool,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { TOOL_REFUSALS, agentCallerId, refuseTool } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS, describeRail } from '../src/main/runtime/spawn-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **374 · the rails a message passes.**
@@ -132,16 +123,6 @@ describe('374 · the rails a message passes', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const theToolsetJustHandedOut = (): AgentToolset => {
