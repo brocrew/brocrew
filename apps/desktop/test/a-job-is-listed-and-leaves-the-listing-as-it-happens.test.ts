@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
+import { aJobCancelled, aJobMade } from './lib/scheduling-calls-fixture'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -296,31 +297,13 @@ describe('what is scheduled is said as it changes', () => {
   let call = 0
   /** Its provider runs `CronCreate`, as its tool hooks report it. */
   const creates = (id: string, job: Job): void => {
-    doubleOf(id).simulateScheduledWork({
-      jobs: undefined,
-      receipt: {
-        tool: 'CronCreate',
-        toolUseId: `toolu_create_${String(++call)}`,
-        calledAt: clock,
-        answeredAt: clock + 2,
-        input: { cron: job.schedule, recurring: job.recurring },
-        result: { id: job.id, recurring: job.recurring },
-      },
-    })
+    doubleOf(id).simulateScheduledWork(aJobMade(job, `toolu_create_${String(++call)}`, clock))
   }
   /** Its provider runs `CronDelete`; `answered` is the id its result names, or none. */
   const cancels = (id: string, asked: string, answered: string | null = asked): void => {
-    doubleOf(id).simulateScheduledWork({
-      jobs: undefined,
-      receipt: {
-        tool: 'CronDelete',
-        toolUseId: `toolu_delete_${String(++call)}`,
-        calledAt: clock,
-        answeredAt: clock + 2,
-        input: { id: asked },
-        ...(answered === null ? {} : { result: { id: answered } }),
-      },
-    })
+    doubleOf(id).simulateScheduledWork(
+      aJobCancelled(asked, answered, `toolu_delete_${String(++call)}`, clock),
+    )
   }
   /** Its provider states its level, as it does when a turn ends. */
   const states = (id: string, ...jobs: Job[]): void => {

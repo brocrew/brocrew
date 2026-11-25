@@ -37,6 +37,7 @@ import type { LibraryEntry, RuntimeStatesMessage } from '../src/shared/runtime-i
 
 import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'
+import { aJobMade } from './lib/scheduling-calls-fixture'
 
 /**
  * Zone-file reads are served here; an unserved zone path throws ENOENT, independent of the
@@ -1397,17 +1398,7 @@ describe('§6 · the host puts a job’s time in the zone the Mac moved to', () 
   }
   /** The provider makes the daily job, as its tool hooks report it, and lists it at the turn's end. */
   const schedulesTheDailyJob = (handle: FakeSessionHandle): void => {
-    handle.simulateScheduledWork({
-      jobs: undefined,
-      receipt: {
-        tool: 'CronCreate',
-        toolUseId: 'toolu_daily',
-        calledAt: clock,
-        answeredAt: clock + 2,
-        input: { cron: DAILY.schedule, recurring: true },
-        result: { id: DAILY.id, recurring: true },
-      },
-    })
+    handle.simulateScheduledWork(aJobMade(DAILY, 'toolu_daily', clock))
     handle.simulateScheduledWork({ jobs: [DAILY] })
   }
 

@@ -6,6 +6,7 @@ import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aGiverAndHelper, type AServiceWorld } from './helpers/a-service-world'
 import { callOn } from './helpers/call-agent-tool'
+import { aJobMade } from './lib/scheduling-calls-fixture'
 
 const accepted = (given: GiveOutcome) => {
   if (!given.ok) throw new Error(given.refusal.reason)
@@ -224,17 +225,13 @@ describe('a failed write is one failed operation', () => {
       }
       return append(...args)
     })
-    handle.simulateScheduledWork({
-      jobs: undefined,
-      receipt: {
-        tool: 'CronCreate',
-        toolUseId: 'fictional-create',
-        calledAt: world.clock,
-        answeredAt: world.clock + 2,
-        input: { cron: '* * * * *', recurring: true },
-        result: { id: 'abcd1234', recurring: true },
-      },
-    })
+    handle.simulateScheduledWork(
+      aJobMade(
+        { id: 'abcd1234', schedule: '* * * * *', recurring: true },
+        'fictional-create',
+        world.clock,
+      ),
+    )
     await vi.waitFor(() => expect(failed).toBeGreaterThan(0))
     write.mockRestore()
     handle.simulateScheduledWork({ jobs: undefined })

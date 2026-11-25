@@ -1,10 +1,11 @@
 import type { AgentState, ScheduleLevel } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
+import { aJobCancelled, aJobMade, throughClaudesHooks } from './lib/scheduling-calls-fixture'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -24,14 +25,7 @@ import {
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  importScheduleAttemptsFile,
-  MAX_ATTEMPT_CONVERSATIONS,
-  SCHEDULE_ATTEMPTS_FILE,
-  scheduleAttemptsIn,
-  type ConversationAttempts,
-  type KeptAttempts,
-} from '../src/main/schedule-attempts-file'
+import { scheduleAttemptsIn, type KeptAttempts } from '../src/main/schedule-attempts-file'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
@@ -437,58 +431,6 @@ const NIGHTLY: Job = {
 /** The pause between two starts the host makes by itself, in these tests. */
 const GAP = 120
 
-describe('what was done about scheduled jobs is kept for the conversations recorded most recently', () => {
-  it('⛔ of one more than the cap, the one recorded longest ago goes, and a read gives back what was written', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'brobot2-attempts-'))
-    const db = openDatabase(join(dir, 'brobot2.sqlite'))
-    try {
-      applyMigrations(db, migrationsFolder)
-      const done = (at: number): ConversationAttempts => ({
-        attempts: [{ key: 'a job', revision: 'as it was', attempted: true }],
-        admittedAt: at,
-        told: [{ id: 'a notice', of: 'a making', said: true }],
-        runs: { 'a making': { runAt: at, startedAt: at, unanswered: 2 } },
-        notStartedSaid: { 'job-a': 'no-word-from-its-provider' },
-        at,
-      })
-      scheduleAttemptsIn(db).write({
-        conversations: Object.fromEntries(
-          Array.from({ length: MAX_ATTEMPT_CONVERSATIONS + 1 }, (_, n) => [
-            `sess_${String(n)}`,
-            done(1_000 + n),
-          ]),
-        ),
-      })
-      const back = scheduleAttemptsIn(db).read().conversations
-      expect(Object.keys(back)).toHaveLength(MAX_ATTEMPT_CONVERSATIONS)
-      // ⚠️ The one dropped is read as nothing done: it costs one more start, and no more.
-      expect(back['sess_0']).toBeUndefined()
-      expect(back[`sess_${String(MAX_ATTEMPT_CONVERSATIONS)}`]).toEqual(
-        done(1_000 + MAX_ATTEMPT_CONVERSATIONS),
-      )
-
-      // The old file is imported once; one that is not JSON is kept and imports nothing.
-      const file = join(dir, SCHEDULE_ATTEMPTS_FILE)
-      writeFileSync(file, '{ torn')
-      importScheduleAttemptsFile(db, dir)
-      expect(readFileSync(file, 'utf8')).toBe('{ torn')
-      expect(Object.keys(scheduleAttemptsIn(db).read().conversations)).toHaveLength(
-        MAX_ATTEMPT_CONVERSATIONS,
-      )
-      writeFileSync(
-        file,
-        JSON.stringify({ conversations: { sess_x: { at: 'yesterday' }, sess_y: done(7) } }),
-      )
-      importScheduleAttemptsFile(db, dir)
-      expect(scheduleAttemptsIn(db).read().conversations).toEqual({ sess_y: done(7) })
-      expect(existsSync(file)).toBe(false)
-    } finally {
-      db.close()
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
-})
-
 describe('D-029 · the host starts a stopped conversation in time for the jobs it scheduled', () => {
   let userData: string
   let root: string
@@ -662,17 +604,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   const makes = async (id: string, ...jobs: Job[]): Promise<void> => {
     const before = levelRows(id)
     for (const job of jobs) {
-      doubleOf(id).simulateScheduledWork({
-        jobs: undefined,
-        receipt: {
-          tool: 'CronCreate',
-          toolUseId: `toolu_${job.id}`,
-          calledAt: clock,
-          answeredAt: clock + 2,
-          input: { cron: job.schedule, recurring: job.recurring },
-          result: { id: job.id, recurring: job.recurring },
-        },
-      })
+      doubleOf(id).simulateScheduledWork(aJobMade(job, `toolu_${job.id}`, clock))
     }
     doubleOf(id).simulateScheduledWork({ jobs: [...jobs] })
     await waitFor(() => levelRows(id) > before + jobs.length, `${id} to list its jobs`)
@@ -1744,51 +1676,99 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     expect(stateOf(host, g)).toEqual({ is: 'idle' })
   })
 
-  it('a life started for its jobs holds them from its first moment, so the idle stop leaves it alone, until they could no longer run and its provider has said nothing', async () => {
-    const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    const before = handlesOf(a).length
+  /** The watches a life started for its jobs arms, to let go of them once its provider says nothing. */
+  const letGo = (): TimerCall[] =>
+    setTimeoutSpy.mock.calls
+      .filter(([fn]) => String(fn).includes('has said nothing of the jobs'))
+      .map(([fn, delay]) => ({ fn: fn as () => void, delay: Number(delay) }))
 
-    // Inside the lead: the start is owed at once.
-    restartsAt(LATE)
-    await waitFor(() => handlesOf(a).length === before + 1, 'A to be started for its job')
-    // The provider says nothing; the life reads what its wake-up held.
-    expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: DUE })
+  it.each([
+    ['silent', []],
+    [
+      'only listing and setting a wake-up',
+      [
+        ['CronList', {}, { jobs: [] }],
+        ['ScheduleWakeup', { delaySeconds: 600 }, { scheduledFor: DUE + 600_000 }],
+      ],
+    ],
+  ] as const)(
+    'a life started for its jobs holds them from its first moment, so the idle stop leaves it alone, until they could no longer run and its provider, %s, has said nothing of them',
+    async (_, calls) => {
+      const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      const before = handlesOf(a).length
 
-    // A plain conversation in the same host IS counted at once; A, scheduled from its seed, is not.
-    const h = await opens('agent-h')
-    await settle()
-    expect(h).not.toBe(a)
-    expect(liveCountdowns()).toBe(1)
+      // Inside the lead: the start is owed at once.
+      restartsAt(LATE)
+      await waitFor(() => handlesOf(a).length === before + 1, 'A to be started for its job')
+      // The provider says nothing; the life reads what its wake-up held.
+      expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: DUE })
 
-    const letGo = (): TimerCall[] =>
-      setTimeoutSpy.mock.calls
-        .filter(([fn]) => String(fn).includes('has said nothing of the jobs'))
-        .map(([fn, delay]) => ({ fn: fn as () => void, delay: Number(delay) }))
-    expect(letGo()).toHaveLength(1)
+      // A plain conversation in the same host IS counted at once; A, scheduled from its seed, is not.
+      const h = await opens('agent-h')
+      await settle()
+      expect(h).not.toBe(a)
+      expect(liveCountdowns()).toBe(1)
+      expect(letGo()).toHaveLength(1)
 
-    // Before the job's minute plus the lead, the let-go looks again and holds on.
-    // ⚑ Its minute is behind us, so the word is plain *scheduled*: no time is promised, and it is
-    // not idle.
-    clock = local(9, 28, 14, 45, 20)
-    letGo()[0]?.fn()
-    expect(letGo()).toHaveLength(2)
-    expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: null })
-    // ⚑ The zone moving reads its jobs again, and the watch holds on.
-    host.placeTheWakeUpsAgain()
-    await settle()
-    expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: null })
+      // Before the job's minute plus the lead, the let-go looks again and holds on.
+      // ⚑ Its minute is behind us, so the word is plain *scheduled*: no time is promised, and it is
+      // not idle.
+      clock = local(9, 28, 14, 45, 20)
+      letGo()[0]?.fn()
+      expect(letGo()).toHaveLength(2)
+      expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: null })
+      // ⚑ The zone moving reads its jobs again, and the watch holds on.
+      host.placeTheWakeUpsAgain()
+      await settle()
+      expect(stateOf(host, a)).toEqual({ is: 'scheduled', dueAt: null })
+      // ⚑ A listing or a wake-up call says nothing of its jobs.
+      const rows = levelRows(a)
+      for (const [tool, input, response] of calls) {
+        const { receipt } = throughClaudesHooks(tool, `toolu_${tool}`, input, response, clock)
+        doubleOf(a).simulateScheduledWork({ jobs: undefined, receipt })
+      }
+      await waitFor(() => levelRows(a) >= rows + calls.length, 'its receipts to be kept')
 
-    // Past it, with nothing said, the life holds none of them, and D-018 may count it again.
-    clock = local(9, 28, 14, 45, 40)
-    letGo().at(-1)?.fn()
-    await settle()
-    expect(stateOf(host, a)).toEqual({ is: 'idle' })
-    expect(
-      infoSpy.mock.calls.some(([line]) => String(line).includes('holds none of them now')),
-    ).toBe(true)
-    expect(liveCountdowns()).toBe(2)
-  })
+      // Past it, with nothing said, the life holds none of them, and D-018 may count it again.
+      clock = local(9, 28, 14, 45, 40)
+      letGo().at(-1)?.fn()
+      await settle()
+      expect(stateOf(host, a)).toEqual({ is: 'idle' })
+      expect(
+        infoSpy.mock.calls.some(([line]) => String(line).includes('holds none of them now')),
+      ).toBe(true)
+      expect(liveCountdowns()).toBe(2)
+    },
+  )
+
+  it.each([
+    [
+      'made',
+      () => aJobMade({ id: 'job-z', schedule: '0 9 * * *', recurring: true }, 'toolu_z', LATE),
+    ],
+    ['cancelled', () => aJobCancelled('job-y', 'job-y', 'toolu_y', LATE)],
+  ])(
+    '⚑ a job %s is its provider speaking of its jobs: the life stops watching and lets go of nothing',
+    async (_, said) => {
+      const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      const before = handlesOf(a).length
+      restartsAt(LATE)
+      await waitFor(() => handlesOf(a).length === before + 1, 'A to be started for its job')
+      const rows = levelRows(a)
+      doubleOf(a).simulateScheduledWork(said())
+      await waitFor(() => levelRows(a) > rows, 'its receipt to be kept')
+      expect(letGo()).toHaveLength(1)
+      clock = local(9, 28, 14, 45, 40)
+      letGo().at(-1)?.fn()
+      await settle()
+      expect(letGo()).toHaveLength(1)
+      expect(
+        infoSpy.mock.calls.some(([line]) => String(line).includes('holds none of them now')),
+      ).toBe(false)
+    },
+  )
 
   it('⛔ a conversation woken for its job that stops before its provider says anything is not woken again; one whose provider listed the job again is', async () => {
     const jobB: Job = { ...ONE_SHOT_A, id: 'job-b' }

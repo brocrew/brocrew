@@ -21,6 +21,7 @@ import {
 import { planReceiptSchedule } from '../src/shared/schedule-receipts'
 import { readLocalTimeFrom, theZoneReadNow } from '../src/shared/local-time'
 import { createIntlCalendar, eligibilityBounds } from '../src/shared/schedule-wake'
+import { plannedFrom } from './lib/scheduling-calls-fixture'
 
 /**
  * **A conversation's schedule is planned from the receipts and levels in its own ledger.** Rows in
@@ -82,17 +83,8 @@ const deleted = (at: number, toolUseId: string, asked: string, answered?: string
     ...(answered === undefined ? {} : { result: { id: answered } }),
   })
 
-function planned(rows: readonly ScheduleEvidenceRow[], now: number) {
-  const ledger = scheduleEvidenceOf(CONVERSATION, rows, ONE_ERA, UTC)
-  return planReceiptSchedule(ledger, aConversationsScope(CONVERSATION), {
-    now,
-    wakeLeadMs: 30_000,
-    calendar: UTC,
-    clockEra: 'wall-1',
-    clockContinuous: true,
-    noticeDelivery: { acceptedIds: [], mailbox: [] },
-  })
-}
+const planned = (rows: readonly ScheduleEvidenceRow[], now: number) =>
+  plannedFrom(CONVERSATION, rows, now, UTC)
 
 describe('the evidence a ledger holds', () => {
   it.each([5, 40])(

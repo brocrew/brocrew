@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { aJobCancelled, aJobMade } from './lib/scheduling-calls-fixture'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -325,17 +326,7 @@ describe('scheduled jobs across a crash', () => {
   /** Its provider makes the job, as its tool hooks report the call, and lists it. */
   const makes = async (id: string, job: Job): Promise<void> => {
     const before = levelRows(id).length
-    doubleOf(id).simulateScheduledWork({
-      jobs: undefined,
-      receipt: {
-        tool: 'CronCreate',
-        toolUseId: `toolu_${job.id}`,
-        calledAt: clock,
-        answeredAt: clock + 2,
-        input: { cron: job.schedule, recurring: job.recurring },
-        result: { id: job.id, recurring: job.recurring },
-      },
-    })
+    doubleOf(id).simulateScheduledWork(aJobMade(job, `toolu_${job.id}`, clock))
     doubleOf(id).simulateScheduledWork({ jobs: [job] })
     await waitFor(() => levelRows(id).length > before + 1, `${id} to list its job`)
     await settle()
@@ -790,17 +781,9 @@ describe('scheduled jobs across a crash', () => {
       await lists(a, ONE_SHOT)
       expect(listedNow(a)).toEqual([ONE_SHOT.id])
       const told = heldWords(a).length
-      doubleOf(a).simulateScheduledWork({
-        jobs: undefined,
-        receipt: {
-          tool: 'CronDelete',
-          toolUseId: 'toolu_cancel',
-          calledAt: clock,
-          answeredAt: clock + 2,
-          input: { id: ONE_SHOT.id },
-          result: { id: ONE_SHOT.id },
-        },
-      })
+      doubleOf(a).simulateScheduledWork(
+        aJobCancelled(ONE_SHOT.id, ONE_SHOT.id, 'toolu_cancel', clock),
+      )
       await settle()
       expect(now.store.scheduleEvidenceRows(a).cut).toBe(true)
       expect(listedNow(a)).toEqual([])
