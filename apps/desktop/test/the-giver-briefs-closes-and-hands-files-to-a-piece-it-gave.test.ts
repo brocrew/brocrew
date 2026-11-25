@@ -9,6 +9,7 @@ import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -774,7 +775,7 @@ describe('D-016c · the giver briefs, closes and hands files to a piece it gave'
         role: 'input',
         sha256: shaOf(inputText),
       })
-      expect(readBack.text).toContain('the giver’s table')
+      expect(textOfTheKeptFile(readBack.text)).toContain('the giver’s table')
 
       // ⚑ The owner's own file is what it MADE, and nobody is told: not the giver, not itself.
       await letItSettle()

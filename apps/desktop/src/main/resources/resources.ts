@@ -1,6 +1,7 @@
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
 import { isInside as within } from '@brobot2/shared/paths'
 import { refusalReason } from '../../shared/refusals'
+import { isUtf8 } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import {
   closeSync,
@@ -17,6 +18,7 @@ import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 import {
   CONTENT_OF_FORM,
   formOfName,
+  textTypeOf,
   type DocumentContent,
   type DocumentForm,
   type DrawnAs,
@@ -704,9 +706,10 @@ export function keptFileToShow(
   return { ok: true, path: join(resolve(root), row.sha256, row.name), changed: false }
 }
 
-/** Inline text stays within the existing text bound; all other bytes remain available by path. */
+/** Inline text stays within the text bound; every form names its kept path, type and size. */
 function contentOf(form: DocumentForm, bytes: Buffer, path: string): DocumentContent {
   const as = CONTENT_OF_FORM[form]
+  const kept = { path, mimeType: keptFileType(form, path, bytes), bytes: bytes.length }
   let preview: string | null = null
   if (
     (as === 'markdown' || as === 'source' || form === 'file') &&
@@ -718,15 +721,19 @@ function contentOf(form: DocumentForm, bytes: Buffer, path: string): DocumentCon
       // The file is still readable; this viewer cannot decode an inline text preview.
     }
   }
-  if (preview !== null && (as === 'markdown' || as === 'source')) return { as, text: preview }
-  return {
-    as: 'file',
-    path,
-    mimeType:
-      drawnAsOfBytes('pdf', bytes) ?? drawnAsOfBytes('image', bytes) ?? 'application/octet-stream',
-    bytes: bytes.length,
-    preview,
-  }
+  if (preview !== null && (as === 'markdown' || as === 'source'))
+    return { as, text: preview, ...kept }
+  return { as: 'file', preview, ...kept }
+}
+
+/** Card 483: Markdown and pages by their form; any other file by its signature, else as text. */
+function keptFileType(form: DocumentForm, path: string, bytes: Buffer): string {
+  const drawn =
+    form === 'markdown' || form === 'page'
+      ? null
+      : (drawnAsOfBytes('pdf', bytes) ?? drawnAsOfBytes('image', bytes))
+  if (drawn !== null) return drawn
+  return isUtf8(bytes) ? textTypeOf(form, path) : 'application/octet-stream'
 }
 
 /**

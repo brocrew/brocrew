@@ -2,6 +2,7 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chainAbove } from './helpers/conversation-ancestry'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -546,7 +547,7 @@ describe('D-024 · a profile reads across its own conversations', () => {
       }
     }
 
-    // ⚑ Each listed id is read by ali2 with read_document, whole and as what it is.
+    // ⚑ Each listed id is named to ali2 by read_document, and its kept path holds it whole.
     for (const [id, content] of [
       [outMd, 'the owner’s table\n'],
       [rootMd, 'release notes\n'],
@@ -558,7 +559,7 @@ describe('D-024 · a profile reads across its own conversations', () => {
         role: 'made',
         sha256: shaOf(content),
       })
-      expect(read.text).toContain(content.trim())
+      expect(textOfTheKeptFile(read.text)).toBe(content)
     }
 
     // ⚑ The paired positive: the list is the PROFILE's, not the caller's — the makers list the same

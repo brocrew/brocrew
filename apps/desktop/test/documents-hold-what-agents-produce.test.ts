@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import {
   syntheticProviderHome,
   neutralHostDeps,
@@ -285,7 +286,7 @@ describe('635 · the store widens, and viewing never executes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · the content union', () => {
-    it('returns text inline and gives the model usable kept paths for media', async () => {
+    it('keeps text for a window and gives the model the kept path, type and size of every form', async () => {
       const report = await mustKeep(wrote('r.md', '# it worked\n'))
       const page = await mustKeep(wrote('p.html', '<p>hello</p>\n'))
       const read = (id: string) => {
@@ -293,10 +294,29 @@ describe('635 · the store widens, and viewing never executes', () => {
         if (!answer.ok) throw new Error(`refused: ${answer.refusal.rail}`)
         return answer.content
       }
-      expect(read(report)).toEqual({ as: 'markdown', text: '# it worked\n' })
-      expect(read(page)).toEqual({ as: 'source', text: '<p>hello</p>\n' })
+      const keptAt = (id: string) => {
+        const row = store.resource(id)!
+        return realpathSync.native(join(resourcesRoot(userData), row.sha256, row.name))
+      }
+      expect(read(report)).toEqual({
+        as: 'markdown',
+        text: '# it worked\n',
+        path: keptAt(report),
+        mimeType: 'text/markdown',
+        bytes: 12,
+      })
+      expect(read(page)).toEqual({
+        as: 'source',
+        text: '<p>hello</p>\n',
+        path: keptAt(page),
+        mimeType: 'text/html',
+        bytes: 13,
+      })
       const reader = await personOpens()
       const tool = agentToolsFor(host, reader).tools.find((one) => one.name === 'read_document')!
+      expect((await tool.call({ resource: report })).text).toBe(
+        `Kept file: ${keptAt(report)}\nType: text/markdown. Size: 12 bytes.`,
+      )
       for (const [name, bytes, mimeType] of [
         ['s.png', Buffer.from('89504e470d0a1a0a', 'hex'), 'image/png'],
         ['r.pdf', Buffer.from('%PDF-1.7\n', 'binary'), 'application/pdf'],
@@ -306,20 +326,39 @@ describe('635 · the store widens, and viewing never executes', () => {
         if (content.as !== 'file') throw new Error('expected a kept path')
         expect(content).toEqual({
           as: 'file',
-          path: realpathSync.native(
-            join(resourcesRoot(userData), store.resource(id)!.sha256, name),
-          ),
+          path: keptAt(id),
           mimeType,
           bytes: bytes.length,
           preview: null,
         })
         expect(readFileSync(content.path)).toEqual(bytes)
-        const answer = await tool.call({ resource: id })
-        expect(answer.text).toContain(content.path)
-        expect(answer.text).toContain(mimeType)
-        expect(answer.text).toContain(`${bytes.length} bytes`)
+        expect((await tool.call({ resource: id })).text).toBe(
+          `Kept file: ${content.path}\nType: ${mimeType}. Size: ${bytes.length} bytes.`,
+        )
+      }
+      // A PDF or SVG under a generic name is still typed by its signature.
+      for (const [name, body, mimeType] of [
+        ['pdf.txt', '%PDF-1.7\n', 'application/pdf'],
+        ['picture.txt', '<svg xmlns="http://www.w3.org/2000/svg"/>\n', 'image/svg+xml'],
+        ['notes.txt', 'plain words\n', 'text/plain'],
+      ] as const) {
+        const said = (await tool.call({ resource: await mustKeep(wrote(name, body)) })).text
+        expect(said).toContain(`\nType: ${mimeType}. Size: ${body.length} bytes.`)
       }
     })
+
+    it.skipIf(process.platform === 'win32')(
+      'quotes a kept path with a line break or separator, so the answer stays two lines',
+      async () => {
+        const reader = await personOpens()
+        const tool = agentToolsFor(host, reader).tools.find((one) => one.name === 'read_document')!
+        for (const name of ['two\nlines.md', 'two\u2028lines.md', 'two\u2029lines.md']) {
+          const said = (await tool.call({ resource: await mustKeep(wrote(name, '# two\n')) })).text
+          expect(said.split(/\r?\n|\u2028|\u2029/u)).toHaveLength(2)
+          expect(textOfTheKeptFile(said)).toBe('# two\n')
+        }
+      },
+    )
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

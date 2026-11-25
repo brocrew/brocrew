@@ -1,5 +1,6 @@
 import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
 import { createHash } from 'node:crypto'
@@ -949,10 +950,10 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         writeFileSync(join(resourcesRoot(userData), row.sha256, row.name), '# Changed bytes')
         expect(await callOn(toolsOf(caller), 'read_document', { resource })).toMatchObject({
           outcome: 'ok',
-          content: { as: 'markdown' },
+          form: 'markdown',
         })
         const reader = toolsOf(caller).tools.find((tool) => tool.name === 'read_document')!
-        expect((await reader.call({ resource })).text).toBe('# Changed bytes')
+        expect(textOfTheKeptFile((await reader.call({ resource })).text)).toBe('# Changed bytes')
       } finally {
         engine.close()
       }

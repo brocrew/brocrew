@@ -1,9 +1,10 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
+import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -37,6 +38,7 @@ describe('reader tools answer field failures through Claude MCP', () => {
   let caller: string
   let worker: string
   let resource: string
+  let piece: string
   let closes: (() => Promise<void>)[]
   let calls: AgentToolAnswer[]
 
@@ -49,12 +51,13 @@ describe('reader tools answer field failures through Claude MCP', () => {
     const given = await world.gives(host, caller, 'worker')
     if (!given.ok) throw new Error('fictional work refused')
     worker = given.owner
+    piece = given.piece
     const path = join(world.folder, 'fictional-notes.md')
     writeFileSync(path, 'Fictional notes for a reader.')
     const update = agentToolsFor(host, caller).tools.find((one) => one.name === 'update_work')!
-    const kept = await update.call({ piece: given.piece, resources: [path] })
+    const kept = await update.call({ piece, resources: [path] })
     if (kept.structured?.outcome !== 'ok') throw new Error('fictional resource refused')
-    resource = world.store.resourcesOf(given.piece)[0]!.resource
+    resource = world.store.resourcesOf(piece)[0]!.resource
     await host.send(caller, 'Please collect the fictional notes.', world.window)
     closes = []
     calls = []
@@ -271,5 +274,37 @@ describe('reader tools answer field failures through Claude MCP', () => {
     expect(text).toContain('and 3 more')
     expect(text.length).toBeLessThan(1200)
     expect(JSON.stringify(keptRefusals())).not.toContain('x'.repeat(40))
+  })
+
+  it('read_document names a Markdown, text or PNG kept file in one shape on Claude and Codex', async () => {
+    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+    const files = [
+      {
+        name: 'fictional-plan.md',
+        bytes: Buffer.from('# Fictional plan\n'),
+        type: 'text/markdown',
+      },
+      { name: 'fictional-log.txt', bytes: Buffer.from('a fictional line\n'), type: 'text/plain' },
+      { name: 'fictional-dot.png', bytes: png, type: 'image/png' },
+    ]
+    const wire = await server('read_document')
+    for (const file of files) {
+      const path = join(world.folder, file.name)
+      writeFileSync(path, file.bytes)
+      const kept = await toolOf('update_work').call({ piece, resources: [path] })
+      expect(kept.structured?.outcome, kept.text).toBe('ok')
+      const id = world.store.resourcesOf(piece).find((one) => one.name === file.name)!.resource
+      const claude = words(await wire.call({ resource: id }))
+      const codex = await answerCodexToolCall(
+        { server: 'brobot', tools: [toolOf('read_document')] },
+        { namespace: 'brobot', tool: 'read_document', arguments: { resource: id } },
+      )
+      expect(codex).toEqual({ contentItems: [{ type: 'inputText', text: claude }], success: true })
+      const said = /^Kept file: (.+)\nType: (.+)\. Size: (\d+) bytes\.$/.exec(claude)
+      expect(said, claude).not.toBeNull()
+      expect(readFileSync(said![1]!)).toEqual(file.bytes)
+      expect(said![2]).toBe(file.type)
+      expect(Number(said![3])).toBe(file.bytes.length)
+    }
   })
 })

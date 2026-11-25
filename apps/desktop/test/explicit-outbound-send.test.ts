@@ -8,6 +8,7 @@ import type { SendReceipt } from '../src/shared/tool-outcome'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { describeConversation } from '../src/main/runtime/conversation-address'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { anOutboundWorld } from './helpers/an-outbound-world'
 import { deferred } from './helpers/quit-open-list-cases'
@@ -119,7 +120,7 @@ describe('explicit outbound sends', () => {
     const bodies: string[] = []
     for (const item of receipt.attachments) {
       if (!('resource' in item)) throw new Error('The task attachment has no resource ID.')
-      bodies.push((await read.call({ resource: item.resource })).text)
+      bodies.push(textOfTheKeptFile((await read.call({ resource: item.resource })).text))
     }
     expect(bodies[0]).toContain('A fictional test file.')
     expect(bodies[1]).toContain(text.trimEnd())

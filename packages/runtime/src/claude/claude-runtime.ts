@@ -471,6 +471,7 @@ export class ClaudeRuntime implements AgentRuntime {
     program?: string,
     launchTokenProvider?: ClaudeAuthTokenProviderAsync,
     private readonly managedProviderHomesRoot?: string,
+    private readonly keptFilesRoot?: string,
   ) {
     this.queryFactory = queryFactory
     this.sessionExists = sessionExists
@@ -858,6 +859,9 @@ export class ClaudeRuntime implements AgentRuntime {
 
       settingSources: [],
       ...(builtInSkills ? claudeBuiltInSkillOptions(builtInSkills, sharedSkillsRoot) : {}),
+      // Card 483: read_document names a kept file by its path, so the agent may read that folder
+      // without asking, as `--add-dir` grants; a work-folder change does not reset it.
+      ...(this.keptFilesRoot === undefined ? {} : { additionalDirectories: [this.keptFilesRoot] }),
 
       hooks: {
         // The guard decides; the receipt hook beside it only notes what it is handed.

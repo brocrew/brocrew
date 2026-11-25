@@ -1,6 +1,7 @@
 import type { PieceRow, WorkGivenEvent } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writeFileSync } from 'node:fs'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { join } from 'node:path'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -383,6 +384,6 @@ describe('personal work fields and their existing ownership boundaries', () => {
     expect(record.text).toContain(kept[0]!.resource)
     const read = await call(caller, 'read_document', { resource: kept[0]!.resource })
     expect(read.structured).toMatchObject({ outcome: 'ok' })
-    expect(read.text).toContain(body)
+    expect(textOfTheKeptFile(read.text)).toContain(body)
   })
 })

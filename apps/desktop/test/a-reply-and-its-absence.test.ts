@@ -2,6 +2,7 @@ import { callAddressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { callOn } from './helpers/call-agent-tool'
 import { cleanupAndReportFailures } from './helpers/cleanup-failure-trace'
 import { waitFor } from './lib/f093-host'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import { TASK_OUTCOMES, TASK_STATES } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -907,7 +908,9 @@ describe('393 · a reply, and its absence', () => {
         expect(taskOf(worker, task)).toMatchObject({ state: 'answered', resources: [resourceId] })
         // ⚑ **And the bytes kept are that file's**, read back through the parent's own door.
         const read = pmTools.tools.find((one) => one.name === 'read_document')
-        expect((await read!.call({ resource: resourceId })).text).toContain('not in my folder')
+        expect(textOfTheKeptFile((await read!.call({ resource: resourceId })).text)).toContain(
+          'not in my folder',
+        )
       } finally {
         rmSync(outside, { recursive: true, force: true })
       }
@@ -956,11 +959,9 @@ describe('393 · a reply, and its absence', () => {
       const resourceId = (landed.resources as string[])[0] as string
       const read = await callOn(pmTools, 'read_document', { resource: resourceId })
       expect(read.outcome, JSON.stringify(read)).toBe('ok')
-      // ⚑ **675 · the body is the answer's PROSE**, and the payload names only what it is (`as`) —
-      // the text was said twice until then, doubling a model's context on every read.
-      expect(read.content).toEqual({ as: 'markdown' })
+      // ⚑ **Card 483 · the answer names the kept file**, and the body is read from its path.
       const tool = pmTools.tools.find((one) => one.name === 'read_document')
-      expect((await tool!.call({ resource: resourceId })).text).toContain(
+      expect(textOfTheKeptFile((await tool!.call({ resource: resourceId })).text)).toContain(
         'Everything that did not fit.',
       )
       expect(read.piece).toBe(task)

@@ -259,6 +259,7 @@ export async function composeRuntimeHost(
       platform: process.platform,
       arch: process.arch,
       managedRoot: providerHomesRoot(userData),
+      keptFilesRoot: resourcesRoot(userData),
       signal: stopProviderServices.signal,
       commandLine: app.commandLine,
       keys: {

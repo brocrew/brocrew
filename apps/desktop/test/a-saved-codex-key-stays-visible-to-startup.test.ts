@@ -69,6 +69,7 @@ it('a saved Codex key remains usable to a fresh startup probe after its launch c
         platform: 'darwin',
         arch: 'arm64',
         managedRoot: root,
+        keptFilesRoot: join(root, 'kept'),
         signal: new AbortController().signal,
         commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
         keys: {

@@ -10,6 +10,7 @@ import {
   pieceLink as formattedPieceLink,
 } from '../src/shared/links'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 
 describe('agent tool replies keep their text without generated navigation links', () => {
   let world: AServiceWorld
@@ -152,7 +153,7 @@ describe('agent tool replies keep their text without generated navigation links'
     const kept = await call('update_work', { piece, resources: [path] })
     const resource = (kept.structured?.['resources'] as { resource: string }[])[0]!.resource
     const result = await call('read_document', { resource })
-    expect(result.text).toContain(authored)
+    expect(textOfTheKeptFile(result.text)).toBe(authored)
     await call('update_work', { piece, title: authored })
     expect((await call('list_tasks', { piece })).text).toContain(authored)
   })

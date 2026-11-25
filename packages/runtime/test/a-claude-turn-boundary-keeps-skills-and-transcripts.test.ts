@@ -100,12 +100,16 @@ describe('shared skills at a Claude turn boundary', () => {
         process.platform,
         undefined,
         '/fictional/claude',
+        undefined,
+        undefined,
+        join(home, 'kept'),
       )
       const builtInSkills = { root: join(home, 'built-in-skills'), skills: [] }
       const context = {
         providerHome: home,
         builtInSkills,
         sharedSkillsRoot: join(home, 'skills'),
+        approvalMode: 'ask' as const,
       }
       const handle =
         opening === 'start'
@@ -122,6 +126,9 @@ describe('shared skills at a Claude turn boundary', () => {
         (options?.settings as { permissions?: { additionalDirectories?: string[] } })?.permissions
           ?.additionalDirectories,
       ).toContain(context.sharedSkillsRoot)
+      // Card 483: in Ask, the kept-files folder is readable at launch, apart from the work folders.
+      expect(handle.approval.effective).toBe('ask')
+      expect(options?.additionalDirectories).toEqual([join(home, 'kept')])
       fq.emit({
         ...init('sess_shared', home),
         plugins: [{ name: 'brobot', path: builtInSkills.root }],

@@ -5,6 +5,7 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
+import { textOfTheKeptFile } from './lib/kept-file-named'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -191,14 +192,13 @@ describe('two withdrawals — open what was scoped', () => {
 
       const across = await callOn(readerTools, 'read_document', { resource: theirs })
       expect(across.outcome, JSON.stringify(across)).toBe('ok')
-      expect(across.content).toEqual({ as: 'markdown' })
       const tool = readerTools.tools.find((one) => one.name === 'read_document')
-      expect((await tool!.call({ resource: theirs })).text).toBe('# what the scribe found\n')
+      expect(textOfTheKeptFile((await tool!.call({ resource: theirs })).text)).toBe(
+        '# what the scribe found\n',
+      )
 
       const own = await callOn(readerTools, 'read_document', { resource: mine })
       expect(own.outcome, JSON.stringify(own)).toBe('ok')
-
-      expect(JSON.stringify(across)).not.toContain(kept())
     })
   })
 
@@ -212,9 +212,10 @@ describe('two withdrawals — open what was scoped', () => {
 
       const answered = await callOn(readerTools, 'read_document', { resource: theirs })
       expect(answered.outcome).toBe('ok')
-      expect(answered.content).toEqual({ as: 'markdown' })
       const reader = readerTools.tools.find((tool) => tool.name === 'read_document')!
-      expect((await reader.call({ resource: theirs })).text).toBe('somebody edited this\n')
+      expect(textOfTheKeptFile((await reader.call({ resource: theirs })).text)).toBe(
+        'somebody edited this\n',
+      )
 
       const untouched = await callOn(readerTools, 'read_document', { resource: mine })
       expect(untouched.outcome, JSON.stringify(untouched)).toBe('ok')

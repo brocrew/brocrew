@@ -224,6 +224,15 @@ function foundFileLine(found: FoundFile, readAt: number): string {
   return found.excerpt === null ? line : `${line}\n      “${found.excerpt}”`
 }
 
+/** Card 483: a path with a control character or line separator is JSON-quoted, \u-escaped. */
+const pathSaid = (path: string): string =>
+  /[\p{Cc}\u2028\u2029]/u.test(path)
+    ? JSON.stringify(path).replace(
+        /[\u2028\u2029]/gu,
+        (one) => `\\u${one.charCodeAt(0).toString(16)}`,
+      )
+    : path
+
 export function createReadDocumentTool(
   host: Pick<AgentToolHost, 'readResource'>,
   readerInputs: ReturnType<typeof readerFields>['readerInputs'],
@@ -234,10 +243,10 @@ export function createReadDocumentTool(
     name: 'read_document',
     handlerOwnsMissingInput: true,
     /**
-     * Reads a kept resource by id, returning its current local bytes.
+     * Card 483: names a kept resource's path, type and size; the agent reads what it needs.
      */
     description:
-      'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source. Other files return their actual kept path, type and size, with an inline text preview when supported; native file/media tools can use that path.',
+      'Look up a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. Returns the kept file’s path, type and size in bytes; read the path with your own file tools.',
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -272,13 +281,6 @@ export function createReadDocumentTool(
           )
         }
         const content = read.content
-        const said =
-          content.as === 'file'
-            ? `Kept file: ${content.path}\nType: ${content.mimeType}. Size: ${content.bytes} bytes.\n\n${
-                content.preview ??
-                'No inline text preview is available. Use this path with a native file/media reader that supports the format.'
-              }`
-            : content.text
         return answer(
           {
             outcome: 'ok',
@@ -287,23 +289,14 @@ export function createReadDocumentTool(
             name: read.resource.name,
             role: read.resource.role,
             sha256: read.resource.sha256,
-            // **The form is on the payload as well as in `content.as`**, because they answer
-            // different questions: `form` is *what the file is* and `as` is *what you were
-            // handed*. A page is a `page` handed over `as: 'source'`.
             form: read.form,
-            // Inline text appears once, in the answer's prose.
-            content:
-              content.as === 'file'
-                ? {
-                    as: content.as,
-                    path: content.path,
-                    mimeType: content.mimeType,
-                    bytes: content.bytes,
-                    hasPreview: content.preview !== null,
-                  }
-                : { as: content.as },
+            content: {
+              path: content.path,
+              mimeType: content.mimeType,
+              bytes: content.bytes,
+            },
           },
-          said,
+          `Kept file: ${pathSaid(content.path)}\nType: ${content.mimeType}. Size: ${content.bytes} bytes.`,
         )
       }),
   }

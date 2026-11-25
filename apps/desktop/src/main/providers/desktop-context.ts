@@ -7,6 +7,8 @@ export interface DesktopProviderContext {
   readonly platform: NodeJS.Platform
   readonly arch: string
   readonly managedRoot: string
+  /** The folder of kept files that read_document names by path (card 483). */
+  readonly keptFilesRoot: string
   readonly signal: AbortSignal
   readonly commandLine: {
     hasSwitch(name: string): boolean

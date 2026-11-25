@@ -114,6 +114,20 @@ export function formOfName(name: string): DocumentForm {
   return FORM_OF_EXTENSION[name.slice(dot).toLowerCase()] ?? 'file'
 }
 
+/** Card 483: the type of UTF-8 text other than Markdown or a page, by its name; else plain. */
+const TEXT_TYPE_OF_EXTENSION: Readonly<Record<string, string>> = {
+  '.json': 'application/json',
+  '.csv': 'text/csv',
+}
+
+export function textTypeOf(form: DocumentForm, name: string): string {
+  if (form === 'markdown') return 'text/markdown'
+  if (form === 'page') return 'text/html'
+  const dot = name.lastIndexOf('.')
+  const type = dot < 0 ? undefined : TEXT_TYPE_OF_EXTENSION[name.slice(dot).toLowerCase()]
+  return type ?? 'text/plain'
+}
+
 /**
  * 🔴 **D-032 · the types a window draws a kept picture or PDF as** — and the only ones. ⛔ No
  * `text/html`, no `text/xml`, no `application/xhtml+xml`: an SVG is drawn as a picture
@@ -148,17 +162,15 @@ export function textViewFor(name: string): { raw: boolean; sourceOnly: boolean }
   return { raw: !/\.(md|markdown|output|txt)$/i.test(name), sourceOnly: false }
 }
 
-/** Text is inline; other content retains an actual path for native file/media readers. */
-export type DocumentContent =
+/**
+ * Text is inline for a person's window; every form names its kept path, its type and its size in
+ * bytes, which is all an agent's `read_document` answers (card 483).
+ */
+export type DocumentContent = (
   | { readonly as: 'markdown'; readonly text: string }
   | { readonly as: 'source'; readonly text: string }
-  | {
-      readonly as: 'file'
-      readonly path: string
-      readonly mimeType: string
-      readonly bytes: number
-      readonly preview: string | null
-    }
+  | { readonly as: 'file'; readonly preview: string | null }
+) & { readonly path: string; readonly mimeType: string; readonly bytes: number }
 
 export const CONTENT_OF_FORM: Readonly<Record<DocumentForm, DocumentContent['as']>> = {
   markdown: 'markdown',
