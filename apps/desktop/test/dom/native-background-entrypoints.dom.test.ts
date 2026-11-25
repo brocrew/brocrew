@@ -61,6 +61,14 @@ it.each([
     applyEvent(session.value.transcript, {
       type: 'background_work',
       source: 'fixture',
+      running: [],
+    })
+    await tick()
+    expect(checkInput().querySelector('[data-cy=run-no-output]')).toBeNull()
+    expect(checkInput().querySelector('[data-cy=run-state]')).toBeNull()
+    applyEvent(session.value.transcript, {
+      type: 'background_work',
+      source: 'fixture',
       running: [
         {
           id: 'route-task',
