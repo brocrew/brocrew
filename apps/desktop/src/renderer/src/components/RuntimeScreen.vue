@@ -1430,7 +1430,6 @@ const {
   lookAfterAUsageNotice,
   lookForWhatIsYours,
   waitingHere,
-  workspace,
 } = attention
 const readings = useRuntimeScreenReadings({
   store,
@@ -1637,8 +1636,7 @@ onUnmounted(() => {
              changes from yes to no and nothing else on screen says so."* ⛔ **It is `persons.limits`
              and not a second fold of `walled`**: the queue's band already derives it from the same
              `supply` call above, so the rail and the band cannot disagree about which provider has
-             stopped. Limits keep their own last reading between the less frequent limit looks;
-             workspace counts keep the actionable cadence. -->
+             stopped. Limits keep their own last reading between the less frequent limit looks. -->
         <SideRail
           ref="rail"
           :open="store.live.value"
@@ -1647,7 +1645,8 @@ onUnmounted(() => {
           :on-screen="active"
           :place="place"
           :needs-you="homeNeedsYou.total"
-          :workspace="workspace"
+          :needs-you-partial="persons.looked.value && homeNeedsYou.unread"
+          :queue-looked="persons.looked.value"
           :workspace-folder="info?.workspace ?? null"
           :app-version="info?.version ?? null"
           :limits="persons.limits.value"
@@ -1690,6 +1689,7 @@ onUnmounted(() => {
           <WaitingOnYou
             v-else-if="surface === 'waiting'"
             :needs-you="waitingHere"
+            :attention="homeNeedsYou"
             :clock="clock"
             :agents="agentStore.identities.value"
             @decide="decideFromOverview"

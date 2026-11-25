@@ -144,7 +144,7 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
 
     // The control: this is the queue's interval, and it holds the reader the waits come from.
     expect(call).toContain('void lookForWhatIsYours(true)')
-    expect(call).toContain('void readTheWorkspace()')
+    expect(call).not.toContain('readTheWorkspace')
     expect(call).toContain('void readWhatIsWaiting()')
     expect(call.endsWith(', LOOK_EVERY_MS)')).toBe(true)
     expect(LOOK_EVERY_MS).toBe(5_000)

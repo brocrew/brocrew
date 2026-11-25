@@ -163,7 +163,7 @@ export type WhatNeedsAPerson =
  * ⚑ **A second scope has to be classified**: {@link countsIn} is keyed by this type, so adding a
  * member fails to compile until the reading carries it.
  */
-export const WHAT_A_READING_COUNTS = ['needs-you'] as const
+const WHAT_A_READING_COUNTS = ['needs-you'] as const
 
 /** One of {@link WHAT_A_READING_COUNTS}. */
 export type WhatAReadingCounts = (typeof WHAT_A_READING_COUNTS)[number]
@@ -279,9 +279,7 @@ export function countedTogether(
  * ⚑ **The reading's scopes, keyed by {@link WHAT_A_READING_COUNTS}** — so *which scope* is
  * answerable by iteration rather than by a surface writing the scopes out a second time.
  */
-export function countsIn(
-  reading: WorkspaceReading,
-): Readonly<Record<WhatAReadingCounts, OneCount>> {
+function countsIn(reading: WorkspaceReading): Readonly<Record<WhatAReadingCounts, OneCount>> {
   return { 'needs-you': reading.needsYou }
 }
 

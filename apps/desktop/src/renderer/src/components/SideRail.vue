@@ -23,14 +23,13 @@ import {
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
-import { liveSignalView } from '../lib/live-signal'
+import { PARTIAL_WAITING_COUNT, providerStopNotice } from '../lib/live-signal'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import type { RailSays } from '../composables/useWhoCalledWhom'
-import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import type { AppInfo } from '@brobot2/shared'
 import type { SessionRecord } from '../lib/session-record'
 import ConversationRow from './ConversationRow.vue'
@@ -77,6 +76,8 @@ const props = withDefaults(
      * components apart is how the rail and the pane came to disagree about one session.
      */
     needsYou?: number
+    needsYouPartial?: boolean
+    queueLooked?: boolean
     /**
      * 🔴 **The agent identities** (355) — **and since `570` this rail draws no list of them.**
      *
@@ -93,21 +94,6 @@ const props = withDefaults(
      */
     agents?: AgentIdentities | null
     /**
-     * 🔴 **How much needs a person, as of one stated moment** (571) —
-     * `567`'s `readWorkspace`, and the rail's one live signal (`EXT-008` §4.3).
-     *
-     * ⛔ **Passed IN and never derived here**, for {@link SideRail.needsYou}'s reason and one
-     * stronger: this rail HOLDS two of the facts a reader might be tempted to build it from —
-     * `props.open` is what this WINDOW is running and {@link SideRail.needsYou} is *Waiting on
-     * you*'s wider total — and neither is what `EXT-008` §4.3 asked for. ⚠️ **A workspace count composed from
-     * a window's own lists would be the renderer sum `564` measured and refused:** *"a renderer
-     * sum would race the separate reads."*
-     *
-     * ⚑ **Null before the first reading lands and on a host with no database**, which the line
-     * says by not being drawn — see `liveSignalView`, where that refusal is argued.
-     */
-    workspace?: WorkspaceReading | null
-    /**
      * 🔴 **A0 · the workspace this window runs on** (`AppInfo.workspace`): its name, drawn in the
      * footer with its first letter as the avatar, and its folder, on hover. ⛔ Never a person's name.
      * `null` until the app has said.
@@ -115,24 +101,7 @@ const props = withDefaults(
     workspaceFolder?: AppInfo['workspace'] | null
     /** ⚑ B2 · this BroBot's version (`AppInfo.version`), for the menu before updates answer. */
     appVersion?: string | null
-    /**
-     * 🔴 **What the queue's band says about the PROVIDERS** (617, `HO-080` §4) — the same
-     * `ProviderLimitsView` `PersonsQueue.vue` draws, supplied here so the rail is a second PLACE
-     * for the fact and never a second answer about it.
-     *
-     * > ⚑ **The PO:** *"That signal exists to answer* is anything happening. *A wall is the one
-     * > condition where the answer changes from* yes *to* no *and nothing else on screen says
-     * > so."*
-     *
-     * ⛔ **Passed IN like {@link SideRail.workspace}, and for a second reason of its own**:
-     * `usePersonsQueue()` is a module singleton this component could simply call, and reaching for
-     * it would make the rail's one line unmountable without supplying a whole queue — which is the
-     * shape `the-counts-nobody-can-see.dom.test.ts` measures the line at 208px with.
-     *
-     * ⚠️ **`null` is *nobody has looked for a wall*, and the line MARKS it** rather than reading it
-     * as an all-clear — see `stoppedOnTheLine`, and `533` §0, which is this app having said
-     * nothing while both providers had walled.
-     */
+    /** The same provider limits view the Waiting on you page draws. */
     limits?: ProviderLimitsView | null
     /**
      * 🔴 **What every conversation this app is RUNNING is waiting on** (636, `621` §5.1 ·
@@ -179,7 +148,6 @@ const props = withDefaults(
     onScreen: null,
     needsYou: 0,
     agents: null,
-    workspace: null,
     workspaceFolder: null,
     appVersion: null,
     limits: null,
@@ -211,23 +179,10 @@ const emit = defineEmits<{
   fold: []
 }>()
 
-/**
- * ⛔ **The *Waiting on you* badge counts what that page calls WORK** — the two REAL populations
- * (468).
- *
- * 205 made it live-only and was right to: it had been the demo seed's number, on a button whose own
- * chip said "soon" — and 195 H3 is what that cost, a real conversation frozen on a permission for
- * 63 seconds with nothing on screen counting it.
- *
- * ⚑ **The number is `homeAttention(...).total`, computed by the screen from the same call *Waiting
- * on you* makes**, so the badge and the screen it opens cannot come to different numbers. The
- * badge on each conversations section below (BroBot's, the other agents') counts CONVERSATIONS,
- * because that is what its section lists.
- *
- * ⚑ **`EXT-008` §3 split Home in two at `606`**, and this count belongs to the half that is
- * COMPLETE regardless of age — ⛔ **never to the windowed one**.
- */
-const waitingCount = computed(() => props.needsYou)
+const waitingBadge = computed(() => {
+  if (props.needsYouPartial) return props.needsYou > 0 ? `${String(props.needsYou)}*` : '*'
+  return props.needsYou > 0 ? String(props.needsYou) : ''
+})
 
 /**
  * 🔴 **606 · why there is no second count here, written down so it is a decision and not an
@@ -247,14 +202,6 @@ const waitingCount = computed(() => props.needsYou)
  * walk every thirty seconds, for somebody reading a conversation.
  */
 
-/**
- * 🔴 **571 · the rail's one live signal** — `EXT-008` §4.3's *"Not a list. One line."*
- *
- * ⚑ **A ticking clock and not `Date.now()` at render**, because the only thing on this line that
- * moves without a new reading is how OLD the reading is: a computed that re-evaluated only when
- * `props.workspace` changed would report an age of zero for ever and go quiet exactly when the
- * re-reads stopped. ⚠️ `WorkingTogether`'s supply to `workingTogetherView`, one surface over.
- */
 const railMinute = useMinuteClock()
 const {
   updatesOpen,
@@ -272,8 +219,10 @@ const {
   workspaceInitial,
 } = useRailFooter(props)
 
-const liveSignal = computed(() =>
-  liveSignalView(props.workspace, props.limits, railMinute.value, providerNamesIn(nameOfProvider)),
+const providerNotice = computed(() =>
+  props.limits !== null || props.queueLooked
+    ? providerStopNotice(props.limits, providerNamesIn(nameOfProvider))
+    : null,
 )
 
 const {
@@ -485,53 +434,13 @@ const platform = platformHere()
         New conversation
         <span>{{ chordKeys(platform, 'N') }}</span>
       </button>
-      <!-- 🔴 **571 · the one live signal** (`EXT-008` §4.3). ⚑ Two sentences, quoted as the two
-           they are: *"Not a list. One line: 2 working · 1 needs you."* and *"This is a product
-           whose premise is that agents work while he is elsewhere, and neither the mockup nor the
-           app tells him from the rail whether anything is happening."*
-
-           The signal stays outside `.rail-scroll` so it remains visible with a long list.
-           It is a child of `.rail-primary-action`, which is
-           already `flex-direction: column` with a gap — so this joins an existing layout rather
-           than declaring one, `421`'s rule for new rows.
-
-           ⚠️ **It counts what needs a person, and not `working` or `open`** — ⚑ D-017b: *open*
-           was a status every stop writes, so after a restart it said *nothing open* above the one
-           list. The argument is in `live-signal.ts`, where the words are decided.
-
-           ⛔ **What it REPLACES is `EXT-008` §2's fourth sentence** — *"Nothing running. Start one
-           above, or reopen one below."* — which was a claim about whether a process runs (`05`
-           rule 5). ⚑ New conversation is directly above this line, and every conversation is in
-           the one list below.
-
-           🔴 **617 · and a CONDITION, when a provider has stopped** — `HO-080` §4: *"that signal
-           exists to answer* is anything happening. *A wall is the one condition where the answer
-           changes from* yes *to* no *and nothing else on screen says so."* ⛔ **Two nodes and not
-           one string**, because the clause is drawn in the band's own summons register and the
-           counts are not — see `.rail-live-stopped`. ⚑ **Neither node composes a word**:
-           `liveSignal.counted` and `liveSignal.stopped.drawn` are both `live-signal.ts`', and the
-           dom file asserts this element's `textContent` IS `liveSignal.line`, which is the only
-           thing keeping what a person sees and what the `title` says one derivation.
-
-           ⚠️ **It WRAPS rather than ellipsizing, and the headroom is MEASURED rather than
-           assumed** (`531`). ⛔ **The first version of this comment said the quiet line does not
-           fit, and that was a guess** — it was measured then with two counts on the line, and
-           D-017b took one away. 🔴 **617 · a condition can still make it wrap** (a wall, two
-           walls, or the unread mark), measured by `the-counts-nobody-can-see.dom.test.ts`.
-           ⚑ **Nothing is CUT in any of them**, which is the claim this rail's missing
-           `text-overflow` exists to make: a second line rather than an ellipsis, the class `530`
-           F1 measured `textContent` being blind to. -->
       <p
-        v-if="liveSignal"
+        v-if="providerNotice"
         class="rail-live"
         data-cy="rail-live-signal"
-        :title="liveSignal.said"
-        :data-as-of="liveSignal.asOf ?? undefined"
+        :title="providerNotice.title"
       >
-        {{ liveSignal.counted
-        }}<span v-if="liveSignal.stopped" class="rail-live-stopped" data-cy="rail-live-stopped">{{
-          liveSignal.stopped.drawn
-        }}</span>
+        <span class="rail-live-stopped" data-cy="rail-live-stopped">{{ providerNotice.text }}</span>
       </p>
     </div>
 
@@ -551,10 +460,13 @@ const platform = platformHere()
           <span class="rail-copy">
             <strong>Waiting on you</strong>
           </span>
-          <!-- ⛔ **The COMPLETE count** — see {@link waitingCount}. ⚑ Absent at zero, and absent
-               entirely on a fresh install, where the honest count is no badge at all. -->
-          <span v-if="waitingCount > 0" class="count badge" data-cy="waiting-badge">
-            {{ waitingCount }}
+          <span
+            v-if="waitingBadge"
+            class="count badge"
+            data-cy="waiting-badge"
+            :title="props.needsYouPartial ? PARTIAL_WAITING_COUNT : undefined"
+          >
+            {{ waitingBadge }}
           </span>
         </button>
 

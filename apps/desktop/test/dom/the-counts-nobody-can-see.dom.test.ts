@@ -5,7 +5,7 @@ import { createDesktopProviderApi } from '../../src/renderer/src/client-provider
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { providersBridge } from '../../look/fixtures/providers'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { liveSignalView } from '../../src/renderer/src/lib/live-signal'
+import { PARTIAL_WAITING_COUNT, providerStopNotice } from '../../src/renderer/src/lib/live-signal'
 import {
   providerLimitsView,
   type ProviderLimitsView,
@@ -15,50 +15,12 @@ import {
   readProviderLimit,
   type ProviderLimitSeen,
 } from '../../src/shared/provider-limit'
-import type { OneCount, WorkspaceReading } from '../../src/shared/workspace-reading'
 import { mount, parseColor, unmountAll, visible, type Mounted } from './harness'
-import { assertClipped, assertDrawn, drawnReady, inkRects, lineCount } from './drawn'
+import { assertClipped, assertDrawn, drawnReady } from './drawn'
 
-/**
- * 🔴 **571 · the rail's one live signal, at the width the rail really is** — `EXT-008` §4.3.
- *
- * ## ⛔ Why this is in the DOM project and not beside the unit tests
- *
- * ⚠️ **`531` / `530` F1:** *"`textContent` is identical whether a browser drew a string or clipped
- * it, and every assertion this app makes about rail rows reads `textContent`."* 🔴 **This line's
- * whole job is to be read at a glance from a 251.68px column**, so *the rail holds this string* is
- * the one claim that would not be worth making. ⚑ The sensor is `drawn.ts`, and every assertion
- * below is paired with a planted cut so *nothing was clipped* is a measurement rather than a
- * sensor that was asleep.
- *
- * ⛔ **The longest COUNTED state is the QUIET one** — *Nothing needs you* — which is the opposite
- * of the usual worry and the reason the line wraps rather than ellipsizing. ⚑ **D-017b · one count
- * now**: the reading no longer counts what is *open* (`WorkspaceReading`), so every line below
- * lost its first clause.
- *
- * ⚠️ **617 · and the longest state is no longer counted at all.** A stopped provider adds a clause,
- * so the quiet line wraps to two — measured below at both widths, and cut at neither.
- */
-
-/** ⛔ The two widths this rail really is — `--rail-w`, and its ≥1400px step (`rail-rhythm`). */
 const WIDTHS = [251.68, 266.2]
-
 const AT = Date.now()
 
-const inFull = (count: number): OneCount => ({ counted: 'in-full', count })
-const notAtAll: OneCount = { counted: 'not-at-all', because: 'no-ledger' }
-
-function reading(needsYou: OneCount, readAt: number = AT): WorkspaceReading {
-  return { readAt, needsYou }
-}
-
-/* ⚑ **617 · the wall fixtures**, in `PHRASES`' own `stopped` spelling and read through the real
-   recogniser — never a `ProviderCondition` assembled by hand, which would make the rail a second
-   ANSWER about a wall rather than a second PLACE for one (`HO-080` §4).
-   ⛔ **The resets are in 2126 and that is deliberate**: `AT` is the real clock here, and
-   `foldProviderLimits` drops a wall whose reset has passed — a fixture dated 2026 would stop being
-   a wall on a date nobody would connect to this file
-   (`a-bound-written-as-the-constant-cannot-pin-it`, one axis over). */
 const CLAUDE_STOPPED = 'claude is rate-limited (seven_day); resets 2126-09-23T11:00:00.000Z'
 const CODEX_STOPPED =
   'codex is rate-limited (weekly) on the GPT-5.3-Codex-Spark limit; resets 2126-09-20T21:10:56.000Z'
@@ -86,11 +48,12 @@ function band(said: readonly string[], answered = true): ProviderLimitsView {
   return view as ProviderLimitsView
 }
 
-/** The rail, with the closed list stubbed out — `attention-rail.dom.test.ts`' helper, one prop over. */
 async function rail(
-  workspace: WorkspaceReading | null,
+  needsYou: number,
   width = WIDTHS[0] as number,
   limits: ProviderLimitsView | null = NOTHING_WALLED,
+  needsYouPartial = false,
+  queueLooked = true,
 ): Promise<Mounted> {
   const stub = window as unknown as { api?: unknown }
   stub.api = {
@@ -102,7 +65,7 @@ async function rail(
   }
   const m = mount(
     SideRail,
-    { open: [], activeId: null, place: null, workspace, limits },
+    { open: [], activeId: null, place: null, needsYou, needsYouPartial, queueLooked, limits },
     { width, height: 900 },
   )
   await new Promise((resolve) => setTimeout(resolve, 0))
@@ -111,14 +74,6 @@ async function rail(
   return m
 }
 
-/**
- * ⚑ **A box that CAN cut, TRAPPED THE WAY THE SUBJECT IS** — planted as the live signal's own
- * sibling, inside `.rail-primary-action`, at the same width and font.
- *
- * ⛔ **`a-control-must-be-trapped-the-way-the-subject-is`.** A control in `document.body` proves
- * the sensor runs; it does not prove the sensor can see a cut *in this rail's box*, which is the
- * only thing the negatives above are about.
- */
 function plantedBeside(line: HTMLElement, text: string): HTMLElement {
   const box = document.createElement('p')
   box.className = line.className
@@ -144,201 +99,84 @@ afterEach(() => {
   delete (window as unknown as { api?: unknown }).api
 })
 
-describe('the line a person can actually read', () => {
+describe('the queue badge', () => {
   for (const width of WIDTHS) {
-    it(`🔴 the busy line is drawn in full at ${String(width)}px`, async () => {
-      const m = await rail(reading(inFull(1)), width)
-      const line = m.q('rail-live-signal')
-      expect(visible(line)).toBe(true)
-      expect(line.textContent?.trim()).toBe('1 needs you')
-      assertDrawn(line, 'the live signal')
-    })
+    it(`draws the full and partial badge at ${String(width)}px`, async () => {
+      const full = await rail(1234, width)
+      const badge = full.q('waiting-badge')
+      expect(badge.textContent?.trim()).toBe('1234')
+      expect(badge.title).toBe('')
+      assertDrawn(badge, 'four-digit badge')
+      unmountAll()
 
-    it(`⛔ the QUIET line — the longest one — is drawn in full at ${String(width)}px`, async () => {
-      // 🔴 **The state `571` §5.2 asked to derive.** *Nothing running. Start one above, or reopen
-      // one below.* is gone; what stands here is the same claim the counts make, at zero.
-      const m = await rail(reading(inFull(0)), width)
-      const line = m.q('rail-live-signal')
-      expect(line.textContent?.trim()).toBe('Nothing needs you')
-      assertDrawn(line, 'the quiet live signal')
-      // ⚑ **The headroom, as a number** — the component's comment claims one and this is where it
-      // is taken. ⛔ The first version of that comment said this line does NOT fit; it does, on one
-      // line. ⚠️ **617 · what is no longer true is the sentence that followed** — *the wrap is for
-      // a state that does not exist yet*: a stopped provider is that state and it exists, which
-      // the block below measures (`a-number-can-survive-the-death-of-its-derivation`, twice now).
-      expect(lineCount(line), 'the longest state no longer fits on one line').toBe(1)
-      const widest = Math.max(...inkRects(line).map((rect) => rect.width))
-      expect(widest).toBeLessThan(line.getBoundingClientRect().width)
-    })
-
-    it(`⚑ …and the sensor that said so can see a cut in the SAME box at ${String(width)}px`, async () => {
-      // ⛔ **`a-positive-assertion-must-differ-from-the-default`.** The *nothing was clipped*
-      // verdicts above are worth nothing unless this sensor reports a cut where they were taken.
-      const m = await rail(reading(inFull(0)), width)
-      const control = plantedBeside(
-        m.q('rail-live-signal'),
-        'Nothing needs you · and a clause far, far wider than this narrow column could ever hold',
+      const partial = await rail(12, width, band([CLAUDE_STOPPED], false), true)
+      expect(partial.q('waiting-badge').textContent?.trim()).toBe('12*')
+      expect(partial.q('waiting-badge').title).toBe(PARTIAL_WAITING_COUNT)
+      assertDrawn(partial.q('waiting-badge'), 'partial badge')
+      expect(partial.q('rail-live-signal').title).toContain(
+        'the read that finds a walled provider did not answer',
       )
-      assertClipped(control, 'the control planted beside the live signal')
+      expect(partial.q('rail-live-signal').title).not.toContain(PARTIAL_WAITING_COUNT)
     })
   }
 
-  it('⛔ four digits still fit, so the line does not quietly depend on small numbers', async () => {
-    const m = await rail(reading(inFull(1234)))
-    const line = m.q('rail-live-signal')
-    expect(line.textContent?.trim()).toBe('1234 needs you')
-    assertDrawn(line, 'the live signal at four digits')
+  it('omits a complete zero and shows an asterisk for an incomplete zero', async () => {
+    const initial = await rail(0, WIDTHS[0], null, false, false)
+    expect(initial.all('waiting-badge')).toHaveLength(0)
+    expect(initial.all('rail-live-signal')).toHaveLength(0)
+    expect(visible(initial.q('new-conversation'))).toBe(true)
+
+    const empty = await rail(0)
+    expect(empty.all('waiting-badge')).toHaveLength(0)
+    const partial = await rail(0, WIDTHS[0], NOTHING_WALLED, true)
+    expect(partial.q('waiting-badge').textContent?.trim()).toBe('*')
+    expect(partial.q('waiting-badge').title).toBe(PARTIAL_WAITING_COUNT)
+    expect(partial.host.textContent).not.toContain('Nothing needs you')
   })
 })
 
-describe('what the rail says, and what it no longer says', () => {
-  it('🔴 the sentence this replaced is not on the rail in any state', async () => {
-    // ⛔ **`EXT-008` §2's fourth bullet.** ⚠️ Asserted on a rail with NOTHING open, which is the
-    // one state that used to render it — a negative taken anywhere else would be vacuous.
-    const m = await rail(reading(inFull(0)))
-    expect(m.all('no-open-sessions')).toHaveLength(0)
-    expect(m.host.textContent).not.toContain('Nothing running')
-    // ⚑ **The paired positive, in the same mount**: the rail really did render, and the line that
-    // took its place is on screen.
-    expect(visible(m.q('rail-live-signal'))).toBe(true)
-    expect(visible(m.q('new-conversation'))).toBe(true)
-  })
-
-  it('⛔ a counted zero is DRAWN, and the line says nothing of what is open', async () => {
-    // 🔴 **Honesty rule 1, on the surface rather than in the shape.** ⚑ **D-017b · the scope this
-    // test left uncounted, `open`, is gone from the reading** — so the half that proved an
-    // uncounted scope ABSENT is the no-line test below, and what stays here is the drawn zero and
-    // that no *open* reaches the line.
-    const m = await rail(reading(inFull(0)))
-    const line = m.q('rail-live-signal')
-    expect(line.textContent?.trim()).toBe('Nothing needs you')
-    expect(line.textContent).not.toContain('open')
-    assertDrawn(line, 'the one-cell live signal')
-  })
-
-  it('⚠️ nothing counted at all draws NO LINE, which is not a zero', async () => {
-    const m = await rail(reading(notAtAll))
-    expect(m.all('rail-live-signal')).toHaveLength(0)
-    // ⚑ **The control**: the same rail WITH a reading draws it, so the absence above is the arm
-    // and not a prop this mount never passed.
-    const drawn = await rail(reading(inFull(0)))
-    expect(drawn.all('rail-live-signal')).toHaveLength(1)
-  })
-
-  it('⛔ before any reading lands the rail says nothing about the workspace', async () => {
-    const m = await rail(null)
-    expect(m.all('rail-live-signal')).toHaveLength(0)
-    expect(m.host.textContent).not.toContain('needs you')
-  })
-})
-
-describe('the moment is on the hover, never on the line', () => {
-  it('🔴 a reading older than one re-read says so, and only in the title', async () => {
-    const m = await rail(reading(inFull(1), AT - 600_000))
-    const line = m.q('rail-live-signal')
-    expect(line.textContent?.trim()).toBe('1 needs you')
-    expect(line.title).toContain('10m ago')
-    expect(line.dataset.asOf).toBe('10m ago')
-    assertDrawn(line, 'the live signal beside a stale stamp')
-  })
-
-  it('⚑ a fresh reading carries no age at all — the paired negative', async () => {
-    const m = await rail(reading(inFull(1)))
-    const line = m.q('rail-live-signal')
-    expect(line.title).toBe('1 needs you')
-    expect(line.dataset.asOf).toBeUndefined()
-  })
-})
-
-/**
- * 🔴 **617 · the wall, on the one line a person actually looks at** — `HO-080` §4.
- *
- * A condition missed while the person is specifically looking for it needs a measurable
- * surface check rather than an assumption about attention.
- *
- * ⚠️ **So the claims here are the ones only a real engine can answer**: is the clause DRAWN in the
- * 187px box, does it survive two providers, and is it a different colour from the counts it sits
- * beside — which is the whole of why a person would see it. ⛔ **Never a class name**
- * (`a-scoped-class-matches-nothing-in-another-component`): the assertion is the resolved rgba.
- */
-describe('617 · a provider that has stopped, on the rail', () => {
+describe('provider stop on the rail', () => {
   for (const width of WIDTHS) {
-    it(`🔴 one walled provider is drawn in full at ${String(width)}px`, async () => {
-      const m = await rail(reading(inFull(1)), width, band([CLAUDE_STOPPED]))
-      const line = m.q('rail-live-signal')
-      expect(line.textContent).toBe('1 needs you · Claude stopped')
-      assertDrawn(line, 'the live signal with one wall')
-      assertDrawn(m.q('rail-live-stopped'), 'the stopped clause')
-    })
+    it(`draws one and two stopped providers at ${String(width)}px`, async () => {
+      const one = await rail(1, width, band([CLAUDE_STOPPED]))
+      const notice = one.q('rail-live-stopped')
+      expect(notice.textContent).toBe('Claude stopped')
+      expect(parseColor(getComputedStyle(notice).color)).not.toEqual(
+        parseColor(getComputedStyle(one.q('rail-live-signal')).color),
+      )
+      assertDrawn(notice, 'one stopped provider')
+      unmountAll()
 
-    it(`⛔ TWO walled providers — 617 §4.3's case — are drawn in full at ${String(width)}px`, async () => {
-      const m = await rail(reading(inFull(0)), width, band([CLAUDE_STOPPED, CODEX_STOPPED]))
-      const line = m.q('rail-live-signal')
-      expect(line.textContent).toBe('Nothing needs you · Codex and Claude stopped')
-      // ⚑ **It WRAPS, and that is the state the component's comment was holding open for.** ⛔ The
-      // claim being measured is *nothing is cut*, not *it fits on one line* — the rail has no
-      // `text-overflow`, so a second line is the designed outcome and a cut would be the defect.
-      assertDrawn(line, 'the live signal with two walls')
-      expect(lineCount(line)).toBeGreaterThan(1)
+      const two = await rail(0, width, band([CLAUDE_STOPPED, CODEX_STOPPED]))
+      expect(two.q('rail-live-stopped').textContent).toBe('Codex and Claude stopped')
+      assertDrawn(two.q('rail-live-stopped'), 'two stopped providers')
+      expect(two.all('waiting-badge')).toHaveLength(0)
+
+      const planted = plantedBeside(
+        two.q('rail-live-signal'),
+        'Codex and Claude stopped · a clause far wider than the rail can draw',
+      )
+      assertClipped(planted, 'deliberately clipped control')
     })
   }
 
-  it('⚑ …and the sensor can still see a cut in the SAME box, with the wall clause in it', async () => {
-    // ⛔ `a-control-must-be-trapped-the-way-the-subject-is`, re-taken for the longest state this
-    // line now has — the negatives above are worth nothing without it.
-    const m = await rail(reading(inFull(0)), WIDTHS[0], band([CLAUDE_STOPPED, CODEX_STOPPED]))
-    const control = plantedBeside(
-      m.q('rail-live-signal'),
-      'Nothing needs you · Codex and Claude stopped',
+  it('draws the provider notice and hover from the same view', async () => {
+    const limits = band([CLAUDE_STOPPED])
+    const shown = await rail(1, WIDTHS[0], limits)
+    const model = providerStopNotice(limits)
+    expect(model).not.toBeNull()
+    expect(shown.q('rail-live-signal').textContent).toBe(model?.text)
+    expect(shown.q('rail-live-signal').title).toBe(model?.title)
+
+    const ordinary = await rail(1)
+    expect(ordinary.all('rail-live-signal')).toHaveLength(0)
+    expect(ordinary.q('waiting-badge').textContent?.trim()).toBe('1')
+
+    const unread = await rail(1, WIDTHS[0], null)
+    expect(unread.q('rail-live-stopped').textContent).toBe('nothing stopped*')
+    expect(unread.q('rail-live-signal').title).toContain(
+      'the read that finds a walled provider did not answer',
     )
-    assertClipped(control, 'the two-wall line planted in a box that cannot wrap')
-  })
-
-  it('🔴 the clause is a different colour from the counts beside it', async () => {
-    // ⚠️ **The property a person perceives, not a class.** ⛔ `.rail-live` is `--faint`; the clause
-    // is the band's own summons token, which is what makes it the thing that stops a scan.
-    const m = await rail(reading(inFull(1)), WIDTHS[0], band([CLAUDE_STOPPED]))
-    const line = m.q('rail-live-signal')
-    const clause = m.q('rail-live-stopped')
-    const faint = parseColor(getComputedStyle(line).color)
-    const summons = parseColor(getComputedStyle(clause).color)
-    expect(faint).not.toBeNull()
-    expect(summons).not.toBeNull()
-    expect(summons, 'the stopped clause is drawn in the line’s own ink').not.toEqual(faint)
-    // ⚑ **And heavier**, as the band draws a `stopped` wall — one treatment, two surfaces.
-    expect(Number(getComputedStyle(clause).fontWeight)).toBeGreaterThan(
-      Number(getComputedStyle(line).fontWeight),
-    )
-  })
-
-  it('⛔ what a person SEES is the string the title carries — one derivation, two spellings', async () => {
-    // 🔴 **The rail renders the two halves and the module composes the whole.** ⚑ This is the only
-    // thing keeping them from drifting (`169` §1), and it is asserted on the state with both.
-    const limits = band([CLAUDE_STOPPED], false)
-    const held = reading(inFull(1))
-    const m = await rail(held, WIDTHS[0], limits)
-    const line = m.q('rail-live-signal')
-    const view = liveSignalView(held, limits, AT)
-    expect(line.textContent).toBe(view!.line)
-    expect(line.title).toBe(view!.said)
-    // ⚠️ **The mark is on screen too** — the read that finds a wall did not answer.
-    expect(line.textContent).toContain('Claude stopped*')
-  })
-
-  it('⚠️ an ordinary day adds nothing at all, and the element is absent', async () => {
-    // ⛔ **The paired negative in the same file**: every positive above is about a wall and not
-    // about a clause this rail now always draws.
-    const m = await rail(reading(inFull(1)))
-    expect(m.q('rail-live-signal').textContent).toBe('1 needs you')
-    expect(m.all('rail-live-stopped')).toHaveLength(0)
-  })
-
-  it('🔴 a wall look that has not answered is MARKED on the rail, not read as quiet', async () => {
-    const m = await rail(reading(inFull(1)), WIDTHS[0], null)
-    const line = m.q('rail-live-signal')
-    expect(line.textContent).toBe('1 needs you · nothing stopped*')
-    assertDrawn(line, 'the live signal with an unread wall look')
-    expect(line.title).toContain('the read that finds a walled provider did not answer')
   })
 })
 
@@ -378,7 +216,7 @@ async function namedRail(name: string, late = false) {
             open: [],
             activeId: null,
             place: null,
-            workspace: reading(inFull(1)),
+            needsYou: 1,
             limits,
           })
       },
@@ -393,24 +231,26 @@ async function namedRail(name: string, late = false) {
 
 it('uses each selected catalogue on the actual rail without changing its counted facts', async () => {
   const one = await namedRail('Fern')
-  expect(one.m.q('rail-live-signal').textContent).toBe('1 needs you · Fern stopped')
+  expect(one.m.q('rail-live-signal').textContent).toBe('Fern stopped')
   const two = await namedRail('Willow')
-  expect(two.m.q('rail-live-signal').textContent).toBe('1 needs you · Willow stopped')
-  expect(one.m.q('rail-live-signal').textContent).toBe('1 needs you · Fern stopped')
+  expect(two.m.q('rail-live-signal').textContent).toBe('Willow stopped')
+  expect(one.m.q('rail-live-signal').textContent).toBe('Fern stopped')
   expect(one.limits.walls.map((wall) => wall.provider)).toEqual(['claude'])
   expect(one.runtime.providerCatalogue).toHaveBeenCalledTimes(1)
   expect(two.runtime.providerCatalogue).toHaveBeenCalledTimes(1)
   expect(one.raw).not.toHaveBeenCalled()
   expect(two.raw).not.toHaveBeenCalled()
+  expect(one.m.q('waiting-badge').textContent?.trim()).toBe('1')
+  expect(two.m.q('waiting-badge').textContent?.trim()).toBe('1')
 })
 
 it('keeps the rail count and generic stop visible until its selected names answer', async () => {
   const out = await namedRail('Fern', true)
   const line = out.m.q('rail-live-signal')
-  expect(line.textContent).toContain('1 needs you')
+  expect(out.m.q('waiting-badge').textContent?.trim()).toBe('1')
   expect(line.textContent).toMatch(/provider.*stopped/i)
   expect(line.textContent).not.toContain('Claude')
   out.answer()
-  await vi.waitFor(() => expect(line.textContent).toBe('1 needs you · Fern stopped'))
+  await vi.waitFor(() => expect(line.textContent).toBe('Fern stopped'))
   expect(out.raw).not.toHaveBeenCalled()
 })

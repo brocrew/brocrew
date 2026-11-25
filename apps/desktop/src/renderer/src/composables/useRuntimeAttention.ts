@@ -22,7 +22,6 @@ import { homeAttention } from '../lib/home-attention'
 import { syncAttentionSignals } from './useAttentionSignals'
 import { limitsReadCadence, type PersonsQueue } from '../lib/persons-queue'
 import { theWaitIn, theWorkIn, whoItOwesIn } from '../lib/conversation-waits'
-import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import type { StalledWork } from '../../../shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../../shared/stopped-work'
 import type { WorkIncident } from '../../../shared/work-incidents'
@@ -475,59 +474,6 @@ export function useRuntimeAttention({
   }
 
   /**
-   * 🔴 **The workspace's two counts, for the rail's one live signal** (571, `EXT-008` §4.3).
-   *
-   * ⛔ **`null` until the first reading lands**, which `liveSignalView` draws as nothing at all —
-   * *nobody has looked yet* is not a number and the rail may not invent one for it.
-   */
-  const workspace = ref<WorkspaceReading | null>(null)
-
-  /**
-   * 🔴 **571 · the rail's live signal is read, not derived** — `567`'s `readWorkspace`, whose whole
-   * point is that one stamped moment covers both counts.
-   *
-   * ## ⚠️ It rides {@link lookForWhatIsYours}' tick, and that is the answer to *"do not invent a poll"*
-   *
-   * ⛔ **This window already has one authority on what needs a person and one cadence for it.** The
-   * `needsYou` half of this reading is EXACTLY the populations `personsQueueView` merges and
-   * (D-017 · R19) the instruction asks drawn beside them, so a second cadence would let the rail and
-   * the queue disagree about one number for a reason neither surface could explain. ⚑ **Fired in the same tick callback rather than inside that function's
-   * `Promise.all`**, because that fold is *one card drawn from one moment* (`403`, `533`, `557`) and
-   * this is a different card with a stamp of its own; going out together is what bounds the gap, and
-   * two calls in one callback are in flight together exactly as five in one `Promise.all` are.
-   *
-   * ## ⚑ And the half a push DOES carry
-   *
-   * ⛔ **`534`'s `conversations` subject re-reads this**, because a conversation being born or ending
-   * is precisely what moves the `open` count, and it is written by callers no gesture here can see.
-   * ⚠️ **No new subject was added**: the `needsYou` populations announce nothing today, and `534`'s
-   * own rule is that a subject nothing reads may not exist. See `571`'s response §3.
-   *
-   * ## ⛔ Ungated, unlike {@link readActivity}
-   *
-   * ⚑ The rail is on screen on every surface this window has, so there is no state in which this
-   * tick paints nothing — which is the exact test {@link readActivity}'s gate applies and fails.
-   *
-   * ⛔ **A refusal keeps the last good reading**, for {@link lookForWhatIsYours}' reason and one of
-   * this shape's own: a reading assembled here would carry a {@link WorkspaceReading.readAt} this window
-   * minted rather than measured.
-   */
-  async function readTheWorkspaceOnce(): Promise<void> {
-    const reading = await store.readWorkspace()
-    if (reading !== null) workspace.value = reading
-  }
-  /**
-   * 🔴 **678 · one read at a time, and the last change always read** — {@link oneReadAtATime}, the
-   * shape `672` gave the Team page's forest. ⛔ **Priced first** (`678` §4, 200 conversations × 2,000
-   * events, fake runtime): **155 ms per read** on the main process, fired on every `conversations`
-   * announcement on every page — ending three conversations announced six and blocked it for 929 ms.
-   * ⚑ Coalesced, a burst costs at most two reads (310 ms). ⚠️ **Still over the 100 ms bar**: one read
-   * alone is 155 ms, and what would bring it under — one walk of the routing ledgers instead of two, no
-   * walk of an ended one, or a read of the `open` count alone for this arm — is main's, handed back.
-   */
-  const readTheWorkspace = oneReadAtATime(readTheWorkspaceOnce)
-
-  /**
    * 🔴 **636 · what every conversation this app is RUNNING is waiting on** (`621` §5.1 ·
    * `HO-095` §5.1 · `HO-096` §4) — the read `621` put on the wire and deliberately left with no
    * renderer.
@@ -542,9 +488,9 @@ export function useRuntimeAttention({
    * `621` §4's measurement. ⛔ **No window can derive this from its own stream**, so asking is the
    * only honest cadence.
    *
-   * ## ⚑ It rides {@link lookForWhatIsYours}' tick, for {@link readTheWorkspace}'s reason exactly
+   * It runs on the same tick as the person's queue.
    *
-   * ⛔ **Ungated, like the live signal and unlike {@link readActivity}**: the rail is on screen on every
+   * ⛔ **Ungated, unlike {@link readActivity}**: the rail is on screen on every
    * surface this window has, so there is no state in which this tick paints nothing. ⚠️ **Fired in
    * the same callback rather than inside that function's `Promise.all`**, because that fold is one
    * card drawn from one moment and this reading carries a `readAt` of its own.
@@ -593,8 +539,6 @@ export function useRuntimeAttention({
     lookAfterAQueueNotice,
     lookForWhatIsYours,
     refreshLimitsDisplay,
-    workspace,
-    readTheWorkspace,
     readWhatIsWaiting,
     areActionableReadsClosed: () => actionableReadsClosed,
     closeActionableReads: () => {
