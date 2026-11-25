@@ -111,8 +111,10 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(rename).not.toMatch(ASKS_THE_RAILS_LIST)
 
     // Only conversation and work notices ask the rail's list. The library read is separate.
-    expect(SCREEN.code).toContain('void library.value?.refreshResumable()')
-    const places = [SCREEN.code.slice(conversationsAt, workAt), arm]
+    const conversations = SCREEN.code.slice(conversationsAt, workAt)
+    expect(conversations).toContain('void library.value?.reread()')
+    expect(arm).not.toContain('library.value?.reread()')
+    const places = [conversations, arm]
     expect(places.map((place) => place.match(ASKS_THE_RAILS_LIST)?.length ?? 0)).toEqual([1, 1])
     expect(SCREEN.code.match(ASKS_THE_RAILS_LIST)).toHaveLength(2)
   })

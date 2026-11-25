@@ -2400,12 +2400,10 @@ async function refuseIfFramesErased(cdp, what, type = 'tool_call') {
 }
 
 /**
- * The reopen list, which lives on the Sessions page. It holds the target home, approval mode,
- * recorded reasoning effort, adopted mark, child descent, `import messages` and the only two export
- * controls in the app, so steps that press one of those go to the page first.
+ * Open the Library before reading recorded rows or using their import and export actions.
  */
 async function openReopenList(cdp) {
-  const shown = `return Boolean(document.querySelector('[data-cy=resumable-sessions]'))`
+  const shown = `return Boolean(document.querySelector('[data-cy=session-library]'))`
   if (await cdp.evaluate(shown)) return
   await clickWhenReady(cdp, 'rail-sessions')
   await waitFor('the Sessions page', async () => await cdp.evaluate(shown), 15_000)
@@ -2414,19 +2412,8 @@ async function openReopenList(cdp) {
 /**
  * One conversation's row in the reopen list, waited for (never read once), and its press pressed.
  *
- * The press is `Open` (`sessions-open-<id>`) on every row: it opens the conversation in its one
- * full view and starts nothing; a message sent there continues it. The helper name is kept for its
- * callers and for the pins in the 704 tests.
- *
- * {@link openReopenList} returns when the section is there, not the rows. `ResumableSessions.vue`
- * draws its section on mount and `looking…` while a refresh is in flight, and every conversation
- * that ends asks for one, so after a reload that is a burst and a single read can wrongly report a
- * conversation as not offered.
- *
- * So the row is matched on the conversation's id AND its cwd AND its own `sessions-open-<id>`
- * button, waited for at the 30 s the reopen waits in this file use; a timeout says what the list
- * showed. The press finds and clicks its button in one polled evaluate, because a separate find and
- * click let a refresh remove the row between them.
+ * Open takes a recorded conversation to its full view. Wait for the matching id, directory and
+ * Open control, then find and press the control in one evaluate so a refresh cannot split them.
  *
  * @returns {Promise<string>} the id whose Open was pressed.
  */
@@ -2438,13 +2425,11 @@ async function resumeFromTheReopenList(cdp, sessionId, cwd, what) {
     what,
     async () =>
       await cdp.evaluate(`
-        const hit = [...document.querySelectorAll('[data-cy=resumable-row]')].find(
+        const hit = [...document.querySelectorAll('[data-recorded-status]')].find(
           (r) =>
             r.dataset.sessionId === ${id} &&
             (r.innerText || '').includes(${folder}) &&
-            [...r.querySelectorAll('button[data-cy^=sessions-open-]')].some(
-              (b) => b.dataset.cy === 'sessions-open-' + ${id},
-            ),
+            r.querySelector('button[data-cy^=sessions-open-], button[data-cy^=library-read-]'),
         )
         return hit ? hit.dataset.sessionId : null`),
     30_000,
@@ -2452,20 +2437,20 @@ async function resumeFromTheReopenList(cdp, sessionId, cwd, what) {
     const list = await cdp
       .evaluate(
         `
-        const section = document.querySelector('[data-cy=resumable-sessions]')
-        const rows = [...document.querySelectorAll('[data-cy=resumable-row]')]
+        const section = document.querySelector('[data-cy=session-library]')
+        const rows = [...document.querySelectorAll('[data-recorded-status]')]
         const mine = rows.find((r) => r.dataset.sessionId === ${id})
         return {
           section: Boolean(section),
           looking: [...(section?.querySelectorAll('p') ?? [])]
-            .some((p) => p.textContent.trim().startsWith('looking')),
+            .some((p) => p.textContent.trim().startsWith('Reading')),
           error: document.querySelector('[data-cy=resumable-error]')?.textContent?.trim() ?? null,
-          empty: Boolean(document.querySelector('[data-cy=resumable-empty]')),
+          empty: Boolean(document.querySelector('[data-cy=library-empty]')),
           rows: rows.length,
           mine: mine
             ? {
                 cwd: (mine.innerText || '').includes(${folder}),
-                open: Boolean(mine.querySelector('button[data-cy^=sessions-open-]')),
+                open: Boolean(mine.querySelector('button[data-cy^=sessions-open-], button[data-cy^=library-read-]')),
               }
             : null,
         }`,
@@ -2479,9 +2464,9 @@ async function resumeFromTheReopenList(cdp, sessionId, cwd, what) {
       await cdp.evaluate(`
         // ⚑ A prefix scan compared by value, never a selector built from the id — the tab-flow walk
         // refuses a hook name made at runtime (704's run of step 62 went red on exactly that).
-        const button = [...document.querySelectorAll('button[data-cy^=sessions-open-]')].find(
-          (b) => b.dataset.cy === 'sessions-open-' + ${JSON.stringify(row)},
-        )
+        const match = [...document.querySelectorAll('[data-cy=library-rows] [data-session-id]')]
+          .find((entry) => entry.dataset.sessionId === ${JSON.stringify(row)})
+        const button = match?.querySelector('button[data-cy^=sessions-open-], button[data-cy^=library-read-]')
         if (!button || button.disabled) return false
         button.click()
         return true`),
@@ -5425,7 +5410,7 @@ async function main() {
       // reopen list.
       await openReopenList(cdp)
       await waitFor('the reopen list', async () =>
-        cdp.evaluate(`return Boolean(document.querySelector('[data-cy=scan-sessions]'))`),
+        cdp.evaluate(`return Boolean(document.querySelector('[data-cy=library-check-homes]'))`),
       )
 
       // Let the providers finish writing before scanning: the counts below are pinned exactly, but separate
@@ -5447,21 +5432,22 @@ async function main() {
         last = now
       }
 
-      await cdp.evaluate(CLICK('scan-sessions'))
+      await cdp.evaluate(CLICK('library-check-homes'))
       const summary = await waitFor(
         'the scan to report',
         async () =>
           await cdp.evaluate(
-            `return document.querySelector('[data-cy=scan-summary]')?.textContent?.trim() ?? null`,
+            `return document.querySelector('[data-cy=library-scan-note]')?.textContent?.trim().split(' — ').slice(1).join(' — ') || null`,
           ),
         30_000,
       )
       await cdp.screenshot('adopted-sessions')
 
       const rows = await cdp.evaluate(`
-      return [...document.querySelectorAll('[data-cy=resumable-row]')].map((row) => ({
+      return [...document.querySelectorAll('[data-recorded-status]')].map((row) => ({
         id: row.dataset.sessionId,
-        adopted: Boolean(row.querySelector('[data-cy=resumable-adopted]')),
+        adopted: row.hasAttribute('data-adopted'),
+        needsImport: Boolean(row.querySelector('button[data-cy^=import-messages-]')),
         text: row.innerText.replace(/\\s+/g, ' ').trim(),
       }))`)
 
@@ -5487,17 +5473,17 @@ async function main() {
       if (!/\d+ transcript\(s\) imported/.test(summary)) {
         throw new Error(`nothing was imported: ${summary}`)
       }
-      if (/not imported yet/.test(adopted[0].text)) {
+      if (adopted[0].needsImport) {
         throw new Error(`the adopted row still shows no transcript: ${adopted[0].text}`)
       }
 
       // Asked again, it changes nothing — the pointer already exists.
-      await cdp.evaluate(CLICK('scan-sessions'))
+      await cdp.evaluate(CLICK('library-check-homes'))
       const again = await waitFor(
         'the second scan',
         async () => {
           const now = await cdp.evaluate(
-            `return document.querySelector('[data-cy=scan-summary]')?.textContent?.trim() ?? null`,
+            `return document.querySelector('[data-cy=library-scan-note]')?.textContent?.trim().split(' — ').slice(1).join(' — ') || null`,
           )
           return now && now !== summary ? now : null
         },
@@ -5509,7 +5495,7 @@ async function main() {
         throw new Error(`scanning twice did not settle at 0/3: ${again}`)
       }
       const after = await cdp.evaluate(
-        `return document.querySelectorAll('[data-cy=resumable-row]').length`,
+        `return document.querySelectorAll('[data-recorded-status]').length`,
       )
       if (after !== rows.length)
         throw new Error(`the list grew on a second scan: ${rows.length} → ${after}`)
@@ -5526,16 +5512,16 @@ async function main() {
     // The exports are on the Sessions page, the only two export controls.
     await openReopenList(cdp)
     const row = await cdp.evaluate(`
-      const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
-        .find((r) => !r.querySelector('[data-cy=resumable-adopted]') &&
+      const row = [...document.querySelectorAll('[data-recorded-status]')]
+        .find((r) => !r.hasAttribute('data-adopted') &&
           r.innerText.toLowerCase().includes('claude') &&
-          r.querySelector('.cwd')?.textContent?.trim() === ${JSON.stringify(SCRATCH)})
+          r.innerText.includes(${JSON.stringify(SCRATCH)}))
       return row ? row.dataset.sessionId : null`)
     if (!row) throw new Error('this run’s own claude session is not in the list')
 
     const readResult = async () =>
       await cdp.evaluate(`
-        const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
+        const row = [...document.querySelectorAll('[data-recorded-status]')]
           .find((r) => r.dataset.sessionId === ${JSON.stringify(row)})
         const el = row?.querySelector('[data-cy=export-result]')
         return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null`)
@@ -5592,8 +5578,8 @@ async function main() {
      */
     await openReopenList(cdp)
     const row = await cdp.evaluate(`
-      const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
-        .find((r) => !r.querySelector('[data-cy=resumable-adopted]') &&
+      const row = [...document.querySelectorAll('[data-recorded-status]')]
+        .find((r) => !r.hasAttribute('data-adopted') &&
           r.innerText.toLowerCase().includes('claude'))
       return row ? row.dataset.sessionId : null`)
     if (!row) throw new Error('this run’s own claude session is not in the list')
@@ -5603,7 +5589,7 @@ async function main() {
       'the bundle export',
       async () =>
         await cdp.evaluate(`
-          const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
+          const row = [...document.querySelectorAll('[data-recorded-status]')]
             .find((r) => r.dataset.sessionId === ${JSON.stringify(row)})
           const el = row?.querySelector('[data-cy=export-result]')
           const text = el ? el.innerText.trim() : null
@@ -5624,7 +5610,7 @@ async function main() {
     writeFileSync(transferred, JSON.stringify(bundle, null, 2).split(originalId).join(foreignId))
 
     const before = await cdp.evaluate(
-      `return document.querySelectorAll('[data-cy=resumable-row]').length`,
+      `return document.querySelectorAll('[data-recorded-status]').length`,
     )
 
     // The paired negative first, so a control that accepted anything cannot pass the positive.
@@ -5679,7 +5665,7 @@ async function main() {
     // Import must not persist a provider ref without restoring the provider-side referent and then
     // advertise Resume. The reopen list must not have grown.
     const after = await cdp.evaluate(
-      `return document.querySelectorAll('[data-cy=resumable-row]').length`,
+      `return document.querySelectorAll('[data-recorded-status]').length`,
     )
     if (after !== before) {
       throw new Error(
@@ -5723,12 +5709,16 @@ async function main() {
     // reads is that view's transcript.
     await openReopenList(cdp)
     const adopted = await cdp.evaluate(`
-      const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
-        .find((r) => r.querySelector('[data-cy=resumable-adopted]') &&
-          r.querySelector('button[data-cy^=sessions-open-]'))
+      const row = [...document.querySelectorAll('[data-recorded-status]')]
+        .find((r) => r.hasAttribute('data-adopted') &&
+          r.querySelector('button[data-cy^=sessions-open-], button[data-cy^=library-read-]'))
       return row ? row.dataset.sessionId : null`)
     if (!adopted) throw new Error('the adopted session is not in the list, or cannot be opened')
-    await cdp.evaluate(CLICK(`sessions-open-${adopted}`))
+    await cdp.evaluate(`
+      const row = [...document.querySelectorAll('[data-cy=library-rows] [data-session-id]')]
+        .find((entry) => entry.dataset.sessionId === ${JSON.stringify(adopted)})
+      row?.querySelector('button[data-cy^=sessions-open-], button[data-cy^=library-read-]')?.click()
+    `)
     const replayed = await waitFor(
       'the reopened conversation',
       async () => {
@@ -9502,20 +9492,20 @@ async function main() {
     // The reopen list is on the Sessions page. This step picks its row by the full cwd and by the
     // Resume button, and both are page facts: a rail row carries a directory NAME and one gesture.
     await openReopenList(cdp)
-    await cdp.evaluate(CLICK('scan-sessions'))
+    await cdp.evaluate(CLICK('library-check-homes'))
     const row = await waitFor(
       'the wide conversation to be adopted',
       async () =>
         await cdp.evaluate(`
-          const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
+          const row = [...document.querySelectorAll('[data-recorded-status]')]
             .find((r) => r.innerText.includes('wide-archive'))
-          return row && !/not imported yet/.test(row.innerText) ? row.dataset.sessionId : null`),
+          return row && !row.querySelector('button[data-cy^=import-messages-]') ? row.dataset.sessionId : null`),
       120_000,
     )
 
     const readResult = async () =>
       await cdp.evaluate(`
-        const row = [...document.querySelectorAll('[data-cy=resumable-row]')]
+        const row = [...document.querySelectorAll('[data-recorded-status]')]
           .find((r) => r.dataset.sessionId === ${JSON.stringify(row)})
         const el = row?.querySelector('[data-cy=export-result]')
         return el ? el.innerText.replace(/\\s+/g, ' ').trim() : null`)
@@ -12194,20 +12184,20 @@ async function main() {
             )
           }
           // The reopen list is on the Sessions page, and this step needs it rather than the rail: it reads
-          // `resumable-status-<id>`, the row's raw status enum, while every rail row draws `ended`.
+          // `data-recorded-status`, the row's raw status enum, while every rail row draws `ended`.
           await openReopenList(secondCdp)
           const rows = await waitFor(
             'the reopen list',
             async () =>
               await secondCdp.evaluate(`
-              const list = [...document.querySelectorAll('[data-cy=resumable-row]')]
+              const list = [...document.querySelectorAll('[data-recorded-status]')]
               if (list.length === 0) return null
               return list.map((el) => {
                 const id = el.getAttribute('data-session-id')
                 return {
                   id,
                   status:
-                    el.querySelector('[data-cy=resumable-status-' + id + ']')?.textContent?.trim() ?? '',
+                    el.dataset.recordedStatus ?? '',
                 }
               })`),
           ).catch(async (error) => {
@@ -15003,7 +14993,7 @@ async function main() {
     // Closed and reopened, which makes the handshake late. The close must land before the reload and
     // the reopen row must be waited for: the reload closes every other conversation the window holds,
     // each ending makes the list refresh, and a refresh draws `looking…` in place of the rows until
-    // it answers (`ResumableSessions.vue`), so a row read inside that burst is lost.
+    // it answers, so a row read inside that burst is lost.
     // `endTheConversationAndWait` returns once the rail has let this conversation go and says which
     // one it was, so the row is matched on that id as well as on the cwd.
     const compactId = await endTheConversationAndWait(cdp)

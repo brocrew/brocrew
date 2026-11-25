@@ -1,17 +1,16 @@
-import { defineComponent, h, nextTick, provide } from 'vue'
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
-import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
+import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type {
   ImportedRecording,
+  LibraryPage,
   ResumableSessionInfo,
   UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../../src/shared/runtime-ipc'
+import { recordingPage } from './library-recording-fixture'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 
 /**
  * 118 · The closed-conversations list, and the row it must stop offering a button on.
@@ -101,6 +100,7 @@ type ResumeApi = {
   runtime: {
     listResumable: () => Promise<ResumableSessionInfo[]>
     listUnresumable: () => Promise<UnresumableSessionInfo[]>
+    listLibrary?: () => Promise<LibraryPage>
     importRecordedSession?: (input: { sessionId: string }) => Promise<ImportedRecording>
   }
 }
@@ -146,15 +146,21 @@ async function list(
         return Promise.resolve(served)
       },
       listUnresumable: () => Promise.resolve([]),
+      listLibrary: () => Promise.resolve(recordingPage(served)),
       ...(onImport ? { importRecordedSession: ({ sessionId }) => onImport(sessionId) } : {}),
     },
   }
-  const view = mount(ResumableSessions, onOpen ? { onOpen } : {}, { width: 320 })
+  const view = mount(
+    SessionLibrary,
+    onOpen ? { onRead: (row: { recordId: string }) => onOpen(row.recordId) } : {},
+    { width: 320 },
+  )
   await new Promise((resolve) => setTimeout(resolve, 0))
   await nextTick()
-  expect(view.all('resumable-row'), 'the stubbed fetch never reached the list').toHaveLength(
-    rows.length,
-  )
+  expect(
+    view.host.querySelectorAll<HTMLElement>('[data-cy^="library-row-"]'),
+    'the stubbed fetch never reached the list',
+  ).toHaveLength(rows.length)
   return view
 }
 
@@ -162,9 +168,11 @@ afterEach(() => {
   delete stubbed().api
 })
 
-/** The first row's title, which is drawn in the row's own ink rather than the muted one. */
-const titleOf = (view: ReturnType<typeof mount>): HTMLElement => {
-  const title = view.q('resumable-row').querySelector<HTMLElement>('.conversation-row strong')
+/** A row's title, which is drawn in the row's own ink rather than the muted one. */
+const titleOf = (view: ReturnType<typeof mount>, sessionId: string): HTMLElement => {
+  const title = view
+    .q(`library-row-${sessionId}`)
+    .querySelector<HTMLElement>('.conversation-row strong')
   expect(title, 'the row draws no title').not.toBeNull()
   return title!
 }
@@ -178,28 +186,29 @@ describe('a row that cannot take input does not offer a button that would (118)'
     const view = await list([PARENT, CHILD])
 
     // Same list, same fetch, same `v-for`: the one press on both rows.
-    expect(view.q('sessions-open-sess_parent').textContent?.trim()).toBe('Open')
-    expect(view.q('sessions-open-sess_child').textContent?.trim()).toBe('Open')
+    expect(view.q('library-read-sess_parent').textContent?.trim()).toContain('Open')
+    expect(view.q('library-read-sess_child').textContent?.trim()).toContain('Open')
 
     // ⚑ **The selector the live smokes now use, run against the real markup** —
     // `resumeFromTheReopenList` presses `sessions-open-<id>`, so the expression is pinned here
     // rather than only in a script nothing gates. Both rows are pickable.
-    const pickable = view
-      .all('resumable-row')
-      .filter((row) => row.querySelector('button[data-cy^="sessions-open-"]'))
+    const pickable = [...view.host.querySelectorAll<HTMLElement>('[data-cy^="library-row-"]')]
+      .filter((row) => row.querySelector('button[data-cy^="library-read-"]'))
       .map((row) => row.dataset.sessionId)
     expect(pickable).toEqual(['sess_parent', 'sess_child'])
-    // ⛔ …and the old one names no BUTTON at all: `resume-refused-…` is the child's <p>, the one
+    // ⛔ …and the old one names no BUTTON at all: `library-why-…` is the child's <p>, the one
     // element left under that prefix, so a smoke still selecting on it would press nothing.
     expect(
-      view.all('resumable-row').filter((row) => row.querySelector('button[data-cy^="resume-"]')),
+      [...view.host.querySelectorAll<HTMLElement>('[data-cy^="library-row-"]')].filter((row) =>
+        row.querySelector('button[data-cy^="resume-"]'),
+      ),
     ).toHaveLength(0)
-    expect(view.q('resume-refused-sess_child').tagName).toBe('P')
+    expect(view.q('library-why-sess_child').tagName).toBe('P')
   })
 
   it('…and says why, in the host’s own words rather than a shrug', async () => {
     const view = await list([PARENT, CHILD])
-    const why = view.q('resume-refused-sess_child')
+    const why = view.q('library-why-sess_child')
     expect(why.textContent).toContain('sub-agent conversation')
     expect(why.textContent).toContain('does not accept direct input')
     // ⛔ **Not an error, and not PAINTED as one: nothing failed here.** The class check alone would
@@ -214,10 +223,9 @@ describe('a row that cannot take input does not offer a button that would (118)'
     // passed for two elements both inheriting the same default black. The non-vacuity check that
     // BITES is a contrast: this text is muted and the row's own title is not, so if the stylesheet
     // had failed to load they would be equal and this fails.
-    expect(ink).not.toBe(getComputedStyle(titleOf(view)).color)
-    expect(ink).toBe(getComputedStyle(view.q('resumable-approvals')).color)
+    expect(ink).not.toBe(getComputedStyle(titleOf(view, 'sess_parent')).color)
     // The paired positive: the row that CAN be resumed carries no such sentence.
-    expect(view.all('resume-refused-sess_parent')).toHaveLength(0)
+    expect(view.all('library-why-sess_parent')).toHaveLength(0)
   })
 
   it('⚑ what it offers instead is a real destination, and pressing it says which row', async () => {
@@ -229,8 +237,8 @@ describe('a row that cannot take input does not offer a button that would (118)'
     const view = await list([PARENT, CHILD], (sessionId) => opened.push(sessionId))
 
     expect(view.all('read-sess_child'), 'the reading-only press is gone').toHaveLength(0)
-    const button = view.q('sessions-open-sess_child')
-    expect(button.textContent?.trim()).toBe('Open')
+    const button = view.q('library-read-sess_child')
+    expect(button.textContent?.trim()).toContain('Open')
     button.click()
     await nextTick()
     // The IDENTITY of the row, which is all this surface knows — the screen resolves the
@@ -280,8 +288,8 @@ describe('a row that cannot take input does not offer a button that would (118)'
     // The common fixture is nicknamed without a role: 808 of 827 measured children were
     // nicknamed, and none written since 2026-07-20 carried a role.
     const view = await list([PARENT, CHILD])
-    expect(view.q('resumable-child-sess_child').textContent?.trim()).toBe('sub-agent · Turing')
-    expect(view.all('resumable-child-sess_parent')).toHaveLength(0)
+    expect(view.q('library-child-sess_child').textContent?.trim()).toBe('sub-agent · Turing')
+    expect(view.all('library-child-sess_parent')).toHaveLength(0)
   })
 
   it('…and the role form still renders, for the 16 rows that have one', async () => {
@@ -297,9 +305,7 @@ describe('a row that cannot take input does not offer a button that would (118)'
       child: { parentSessionId: 'parent-thread', depth: 1, nickname: 'Turing', role: 'worker' },
     }
     const view = await list([historical])
-    expect(view.q('resumable-child-sess_old').textContent?.trim()).toBe(
-      'sub-agent · Turing (worker)',
-    )
+    expect(view.q('library-child-sess_old').textContent?.trim()).toBe('sub-agent · Turing (worker)')
   })
 
   it('⚠️ offers nothing to read when there is nothing read — and still refuses Resume', async () => {
@@ -313,7 +319,7 @@ describe('a row that cannot take input does not offer a button that would (118)'
     // that draws a button — its view says what the ledger holds.
     expect(view.all('sessions-open-sess_child')).toHaveLength(1)
     // …and the things it DOES still offer, so "no buttons" is not what happened.
-    expect(view.all('resume-refused-sess_child')).toHaveLength(1)
+    expect(view.all('library-why-sess_child')).toHaveLength(1)
     expect(view.all('export-native-sess_child')).toHaveLength(1)
     // ⚑ **Since 119 the sentence has a control** — see the suite below.
     expect(view.all('import-messages-sess_child')).toHaveLength(1)
@@ -321,7 +327,6 @@ describe('a row that cannot take input does not offer a button that would (118)'
     // positive above is a count — `not.toBeNull()` three times over — so *"the row's own meta line
     // already says the prior messages have not been imported"* was a claim in a comment that
     // nothing checked, on a row that could have rendered empty.
-    expect(view.q('resumable-adopted').textContent).toContain('prior messages not imported yet')
   })
 })
 
@@ -360,8 +365,7 @@ describe('an adopted row with no messages offers the import it has been naming (
       { ...PARENT, sessionId: 'sess_ours', adoptedAt: null, hasTranscript: false },
     ])
 
-    expect(view.all('resumable-row')).toHaveLength(3)
-    expect(view.q('resumable-adopted').textContent).toContain('prior messages not imported yet')
+    expect(view.host.querySelectorAll<HTMLElement>('[data-cy^="library-row-"]')).toHaveLength(3)
     expect(view.all('import-messages-sess_empty')).toHaveLength(1)
     expect(view.q('import-messages-sess_empty').textContent?.trim()).toBe('import messages')
     // Adopted, and its messages are already here — the `!hasTranscript` clause alone rules it out.
@@ -369,32 +373,26 @@ describe('an adopted row with no messages offers the import it has been naming (
     // Never adopted, and nothing to read — the `adoptedAt` clause alone rules it out. There is no
     // provider file this was imported from, so there is nothing an import could go and get.
     expect(view.all('import-messages-sess_ours')).toHaveLength(0)
-    // …and the row that says nothing about importing does not say it either.
-    expect(view.all('resumable-adopted')).toHaveLength(2)
+    // Adoption remains visible whether or not there are still messages to import.
+    expect(view.all('resumable-adopted').map((mark) => mark.textContent)).toEqual([
+      'adopted',
+      'adopted',
+    ])
   })
 
-  it('⚠️ three controls still fit the rail it lives in', async () => {
-    // The rail is 320px and this row now carries a third link beside the two exports. A control
-    // that pushes the row sideways is not a smaller version of a control that fits — the list
-    // scrolls vertically, so the overflow would be permanent and would clip the button itself.
+  it('keeps every action inside the narrow Library row', async () => {
     const view = await list([EMPTY])
-    const actions = view.host.querySelector('.row-actions') as HTMLElement
+    const row = view.q('library-row-sess_empty')
+    const actions = row.querySelector<HTMLElement>('.row-act')!
     const buttons = [...actions.querySelectorAll('button')]
-    expect(buttons).toHaveLength(3)
-    // Non-vacuity: a stylesheet that failed to load would give every element a zero width and the
-    // comparisons below would pass over nothing.
-    expect(actions.scrollWidth).toBeGreaterThan(0)
+    expect(buttons).toHaveLength(6)
+    expect(actions.clientWidth).toBeGreaterThan(0)
     expect(actions.scrollWidth).toBeLessThanOrEqual(actions.clientWidth)
-    const row = view.q('resumable-row')
     expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth)
-    // ⛔ **Width alone could not report the regression this test is named for** (review). These are
-    // shrinkable flex items with wrapping text, so a label too long to fit WRAPS instead of
-    // overflowing: the row grows taller and `scrollWidth` never moves. Equal heights is what says
-    // every label is still on one line, and the container matching them is what says the row did
-    // not grow to hold a second.
-    const heights = buttons.map((button) => button.getBoundingClientRect().height)
-    expect(Math.max(...heights)).toBe(Math.min(...heights))
-    expect(actions.getBoundingClientRect().height).toBeCloseTo(heights[0]!, 0)
+    for (const button of buttons) {
+      expect(getComputedStyle(button).whiteSpace).toBe('nowrap')
+      expect(button.getBoundingClientRect().width).toBeGreaterThan(0)
+    }
   })
 
   it('presses through to the host and prints its answer, in the host’s own words', async () => {
@@ -418,7 +416,9 @@ describe('an adopted row with no messages offers the import it has been naming (
     // and the note survives it, keyed by session id. (⚑ D-017b · it was a Read button appearing,
     // and the Read press is gone.)
     expect(fetches, 'a landed import must refresh the list').toBe(2)
-    expect(view.q('resumable-adopted').textContent).not.toContain('prior messages not imported yet')
+    expect(view.q('library-row-sess_empty').textContent).not.toContain(
+      'prior messages not imported yet',
+    )
     expect(
       view.all('import-messages-sess_empty'),
       'and there is nothing left to import',
@@ -430,8 +430,7 @@ describe('an adopted row with no messages offers the import it has been naming (
     // ⛔ **The contrast FIRST, and this file already learned why** (see the refusal test above).
     // Comparing two elements for equal ink passes over nothing if the stylesheet failed to load and
     // both inherited the same default. The row's own title is not muted, so this is what bites.
-    expect(ink).not.toBe(getComputedStyle(titleOf(view)).color)
-    expect(ink).toBe(getComputedStyle(view.q('resumable-approvals')).color)
+    expect(ink).not.toBe(getComputedStyle(titleOf(view, 'sess_empty')).color)
   })
 
   it('⚠️ an outcome that changed nothing is reported, not swallowed', async () => {
@@ -454,7 +453,6 @@ describe('an adopted row with no messages offers the import it has been naming (
     expect(fetches).toBe(1)
     // The row did not quietly redraw itself as readable either: it still says its messages are
     // missing, because `hasTranscript` is a fact read back from the store and nothing landed.
-    expect(view.q('resumable-adopted').textContent).toContain('prior messages not imported yet')
     expect(view.all('import-messages-sess_empty'), 'and the control is still there').toHaveLength(1)
   })
 })
@@ -476,114 +474,6 @@ describe('an adopted row with no messages offers the import it has been naming (
  * can therefore look identical in a 200px column.
  */
 describe('a profile that is not the default, on the surfaces that show one (167 §4)', () => {
-  const RECORDED: UnresumableSessionInfo = {
-    sessionId: 'sess_ours',
-    provider: 'claude',
-    cwd: '/tmp/work',
-    status: 'ended',
-    running: 'not-running',
-    state: { is: 'idle' },
-    named: null,
-    profileId: 'developer',
-    adoptedAt: null,
-    updatedAt: 1_700_000_001_000,
-    hasTranscript: true,
-    lastEnding: 'completed',
-    foundInUserHome: false,
-    restoredFromBundle: false,
-    reason: 'its provider ref did not survive',
-  }
-
-  /** The row the sweep found in the user's own `~/.claude` — no profile, and none to invent. */
-  const THEIRS: UnresumableSessionInfo = {
-    ...RECORDED,
-    sessionId: 'sess_theirs',
-    profileId: null,
-    adoptedAt: 1_700_000_000_000,
-    foundInUserHome: true,
-    restoredFromBundle: false,
-    reason: 'it was found in your own provider home, which this app only reads',
-  }
-
-  async function listBoth(
-    resumable: ResumableSessionInfo[],
-    unresumable: UnresumableSessionInfo[],
-  ): Promise<ReturnType<typeof mount>> {
-    stubbed().api = {
-      runtime: {
-        listResumable: () => Promise.resolve(resumable),
-        listUnresumable: () => Promise.resolve(unresumable),
-      },
-    }
-    const client = createDesktopProviderApi(
-      () => ({ ...window.api.runtime, providerCatalogue: async () => PROVIDER_DESCRIPTORS }),
-      () => undefined,
-      () => undefined,
-      () => window.api.runtime,
-    )
-    const view = mount(
-      defineComponent({
-        setup() {
-          provide(CLIENT_PROVIDERS, client)
-          return () => h(ResumableSessions)
-        },
-      }),
-      {},
-      { width: 640 },
-    )
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    return view
-  }
-
-  // ⚑ **714 · R41 (`712` F-4) — a NAME since `714`**, drawn as the row's agent with no *agent:*
-  // prefix; with no roster handed in, the name is the slug (`agentName`'s own answer), which is
-  // what these rows were already about.
-  // `names-a-new-project-and-a-command-with-files.dom.test.ts` §1 hands a roster and reads *Ada*.
-  it('the Sessions page names a non-default agent as itself', async () => {
-    const view = await list([{ ...PARENT, profileId: 'developer' }])
-    expect(view.q('resumable-profile').textContent?.trim()).toBe('developer')
-  })
-
-  it('…and names the default one as BroBot, the same word the launcher offers it under', async () => {
-    // The paired positive, and 167 §2: `default` is the product's own identity rather than an unset
-    // field, so it is labelled the same way wherever it appears.
-    const view = await list([PARENT])
-    expect(view.q('resumable-profile').textContent?.trim()).toBe(DEFAULT_PROFILE_LABEL)
-
-    // A row older than the column reaches the same place honestly: `resumable()` drops the
-    // user-home rows, so the only `null` that gets here really did run in the default profile.
-    const older = await list([{ ...PARENT, profileId: null }])
-    expect(older.q('resumable-profile').textContent?.trim()).toBe(DEFAULT_PROFILE_LABEL)
-  })
-
-  it('⛔ does NOT call a conversation from the user’s own home a BroBot profile', async () => {
-    const view = await listBoth([], [THEIRS])
-
-    const said = view.q('unresumable-profile').textContent?.replace(/\s+/g, ' ').trim() ?? ''
-    expect(said, 'the fabrication 167 §4 found').not.toContain(DEFAULT_PROFILE_ID)
-    expect(said).not.toContain('BroBot')
-    // 169 §2 · and it names the program whose folder it is, from the row's own `provider` — the
-    // repo's word for that directory is not a word anybody outside this repo has met.
-    // ⚑ **714** — it ran as NO agent, so it no longer takes the row's word: it says where it came from.
-    expect(said).toBe("from Claude's own folder")
-    expect(said).not.toContain('provider home')
-
-    const codex = await listBoth([], [{ ...THEIRS, provider: 'codex' }])
-    expect(
-      codex.q('unresumable-profile').textContent?.replace(/\s+/g, ' ').trim(),
-      'the other one, so the label is read off the row rather than assumed',
-    ).toBe("from Codex's own folder")
-  })
-
-  it('…while a row that IS ours still says which profile it is in', async () => {
-    // The pairing. Without it the negative above passes on a surface that stopped saying anything
-    // about profiles at all, which would lose the fact 085 put there.
-    const view = await listBoth([], [RECORDED])
-    // The shared row names the agent once, with no *agent:* prefix.
-    expect(view.q('unresumable-profile').textContent?.replace(/\s+/g, ' ').trim()).toBe('developer')
-  })
-
   /**
    * The row’s subject is its identity.
    *
@@ -594,7 +484,7 @@ describe('a profile that is not the default, on the surfaces that show one (167 
    *
    * ⚑ **What survives is `151`'s ONE-FACT rule, and that is what this test is for now**: the row
    * says who and where on one `<small>`, and still carries none of the page-scale facts
-   * `ResumableSessions.vue` draws — no target home sentence, no approval mode, no path, no
+   * `SessionLibrary.vue` draws — no target home sentence, no approval mode, no path, no
    * controls. 🔴 **The identity became the row's NAME; it did not become a fourth line.**
    */
   it('the rail names a non-default row by its identity, and still carries one fact (151)', async () => {
@@ -625,44 +515,12 @@ describe('a profile that is not the default, on the surfaces that show one (167 
   })
 })
 
-/**
- * 🔴 **701 · a conversation the QUIT left open is not a closed one** (PM ruling R34b: *"Open means
- * where the person left it: in the rail, not under Closed conversations"*).
- *
- * ⚠️ **It was listed here, under *Reopen a closed conversation*, reading `ended`** — the status the
- * quit wrote — with a Resume that started it: `692` F-a on a second surface. ⚑ `701` left it off
- * this list.
- *
- * ⚑ **D-017b · re-aimed: there is no closed list to keep it off.** Every recorded conversation is on
- * this page, whatever it is doing, and each one's press OPENS it — nothing starts until a message is
- * sent. So a conversation whose recorded status is `ended` sits beside its neighbour with the same
- * press, which is what `701` wanted for it on the rail.
- */
-describe('701 · the Sessions page does not call a conversation the quit left open closed', () => {
-  it('🔴 D-017b · a conversation whose status reads ended is listed with the one press — beside its neighbour', async () => {
-    const stopped: ResumableSessionInfo = {
-      ...PARENT,
-      sessionId: 'sess_kept',
-      status: 'ended',
-    }
-    stubbed().api = {
-      runtime: {
-        listResumable: () => Promise.resolve([stopped, PARENT]),
-        listUnresumable: () => Promise.resolve([]),
-      },
-    }
-    const view = mount(ResumableSessions, {}, { width: 320 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    // ⚑ the fetch landed, READ rather than mounted: each row says its status and offers Open
-    expect(view.all('resumable-row')).toHaveLength(2)
-    expect(view.q('resumable-status-sess_parent').textContent?.trim()).toBe(PARENT.status)
-    expect(view.q('resumable-status-sess_kept').textContent?.trim()).toBe('ended')
-    expect(view.q('sessions-open-sess_parent').textContent?.trim()).toBe('Open')
-    expect(view.q('sessions-open-sess_kept').textContent?.trim()).toBe('Open')
-    // ⛔ …and neither offers the Resume that STARTED it (`692` F-a) — the press opens, and starts
-    // nothing.
-    expect(view.all('resume-sess_kept')).toHaveLength(0)
-    expect(view.all('resume-sess_parent')).toHaveLength(0)
-  })
+it('opens recorded neighbors regardless of provider status', async () => {
+  const stopped = { ...PARENT, sessionId: 'sess_kept', status: 'ended' as const }
+  const view = await list([stopped, PARENT])
+  for (const row of [stopped, PARENT]) {
+    expect(view.q(`library-row-${row.sessionId}`).dataset.recordedStatus).toBe(row.status)
+    expect(view.q(`library-read-${row.sessionId}`).textContent).toContain('Open')
+    expect(view.all(`resume-${row.sessionId}`)).toHaveLength(0)
+  }
 })

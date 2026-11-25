@@ -75,7 +75,7 @@ export function calendarDay(at: number | undefined): string {
 /**
  * "4m ago" — precise enough to pick the right conversation out of a list, without a date library.
  *
- * ⚑ **Lifted OUT of `ResumableSessions.vue` in 151, unchanged**, because the rail's closed rows now
+ * Shared by the Library and the rail, whose closed rows
  * say the same thing about the same rows and a second copy of the thresholds would be two answers
  * to one question, six inches apart, which is 099 in miniature.
  *

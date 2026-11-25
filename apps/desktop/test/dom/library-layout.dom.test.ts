@@ -375,16 +375,19 @@ describe('a readable row is the target, and carries no action-column button (104
     expect(m.opened.map((e) => e.id)).toEqual(['ours::current'])
   })
 
-  it('a row with nothing to read is not a target, and its column offers nothing to open', async () => {
+  it('an unreadable recording offers explicit Open without making the whole row a target', async () => {
     const m = await open(page())
     const row = rowOf(m, 'ours::nothing')
     // It is recorded here, so it can be archived or deleted; nothing to read, so no read cue.
     expect([...row.querySelectorAll('.row-act button')].map(named)).toEqual([
       '[data-cy=library-archive-ours::nothing]',
       '[data-cy=library-delete-ours::nothing]',
+      '[data-cy=sessions-open-' + ZOO.find((e) => e.id === 'ours::nothing')!.recordId + ']',
     ])
     titleOf(row).click()
     expect(m.opened).toEqual([])
+    row.querySelector<HTMLButtonElement>('[data-cy^="sessions-open-"]')!.click()
+    expect(m.opened.map((item) => item.id)).toEqual(['ours::nothing'])
     // The control: a row this app holds no record of offers no Delete.
     expect(m.all('library-delete-home::unimported')).toEqual([])
   })
@@ -573,7 +576,7 @@ describe('a readable row is the target, and carries no action-column button (104
     expect(getComputedStyle(only).color).not.toBe(amber)
   })
 
-  it('the row that offers nothing says why it cannot be carried on — and no other row does', async () => {
+  it('a continuation reason remains on an app recording and stays off origin-only imports', async () => {
     const m = await open(page())
     expect(m.q('library-why-ours::nothing').textContent).toContain('no turn was ever taken')
     // Not on the un-imported row: the Import button beside it already says it, louder.
@@ -597,10 +600,10 @@ describe('a readable row is the target, and carries no action-column button (104
       rebuildable: witness.derived === 'stale' || witness.derived === 'failed',
       hasReason: witness.unresumableReason !== null,
     }).toEqual({ readable: true, importable: false, rebuildable: false, hasReason: true })
-    expect(m.all('library-why-only::here')).toEqual([])
+    expect(m.q('library-why-only::here').textContent).toContain(witness.unresumableReason)
   })
 
-  it('…and a row that can still be rebuilt is not a row that offers nothing', async () => {
+  it('…and a retryable transcript can still be unable to continue', async () => {
     /**
      * The other missing clause (105 review). The store reaches `failed` off the failure column
      * BEFORE it looks at whether anything is present, so unreadable-and-failed is a real row — and
@@ -621,7 +624,7 @@ describe('a readable row is the target, and carries no action-column button (104
     })
     const m = await open(page({ entries: [stuck], matched: 1 }))
     m.q('library-rebuild-ours::retryable')
-    expect(m.all('library-why-ours::retryable')).toEqual([])
+    expect(m.q('library-why-ours::retryable').textContent).toContain('cannot be reopened')
   })
 })
 
@@ -792,37 +795,13 @@ describe('every state the design draws renders, at three widths (104 §3)', () =
     expect(reads.at(-1)?.query).toBe('adyen refund webhook')
   })
 
-  it('🔴 a search miss does not sit above an unsearched list pretending to be results', async () => {
-    /**
-     * **HO-002 §5 acceptance #7** — found by `302` while using the app, fixed in `301`.
-     *
-     * ⛔ A unique query produced *"Nothing matches `Q302_NO_MATCH_9f73e6a1`"* over *"No title,
-     * first message or working directory across your 2 603 conversations contains that"* — **and
-     * the page went on rendering a long, clickable REOPEN A CLOSED CONVERSATION list directly
-     * underneath it.** Two opposite claims on one screen, both rendered from real state.
-     *
-     * ⚑ **The band is not searched and cannot be** — its rows come from a different read, and
-     * matching them here would be a second, weaker search answering in the first one's voice. So
-     * the page says which question the band answers, whenever the list above is narrowed.
-     */
+  it('a search miss leaves no conversation rows outside the search', async () => {
     const m = await open((query) => (query === '' ? page() : page({ entries: [], matched: 0 })))
-    // ⚑ The negative's pair, and it comes first: with no query the band says nothing extra,
-    // which is what makes the presence below mean "you are searching" rather than "always there".
-    expect(m.all('library-reopen'), 'the reopen band is on this page at all').toHaveLength(1)
-    expect(m.all('library-reopen-scope')).toEqual([])
-
-    await search(m, 'Q302_NO_MATCH_9f73e6a1')
-    expect(m.q('library-no-match').textContent).toContain('Q302_NO_MATCH_9f73e6a1')
-    const scope = m.q('library-reopen-scope').textContent ?? ''
-    expect(scope).toContain('Not filtered by your search or filters')
-    // It is INSIDE the band it is about — a sentence beside the miss would be describing a
-    // different part of the page from the one a reader is looking at when they see the rows.
-    expect(m.q('library-reopen').contains(m.q('library-reopen-scope'))).toBe(true)
-
-    // …and it goes away with the query, so it never becomes furniture (106's other direction).
-    await search(m, '')
-    expect(m.all('library-no-match')).toEqual([])
-    expect(m.all('library-reopen-scope')).toEqual([])
+    expect(m.all('library-rows')).toHaveLength(1)
+    await search(m, 'no matching conversation')
+    expect(m.q('library-no-match').textContent).toContain('no matching conversation')
+    expect(m.all('library-rows')).toHaveLength(0)
+    expect(m.host.textContent).not.toContain('Recorded conversations')
   })
 
   it('a read that failed gets the banner and NOTHING ELSE — no invented empty state', async () => {

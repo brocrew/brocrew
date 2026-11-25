@@ -1717,7 +1717,6 @@ onUnmounted(() => {
             ref="library"
             :identities="agentStore.identities.value?.identities ?? null"
             @read="readFromTheLibrary"
-            @open="select"
             @delete="(sessionId) => overlays.open({ kind: 'deleteConversation', sessionId })"
             @archived="archivedHere"
             @search-caller="(sessionId) => (librarySearchCaller = sessionId)"

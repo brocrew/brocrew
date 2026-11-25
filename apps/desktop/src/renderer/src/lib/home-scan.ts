@@ -3,28 +3,7 @@ import type { AdoptionReport } from '../../../shared/runtime-ipc'
 import type { ClientSessionApi } from '../../../shared/client-session-api'
 import { readableError } from './session-record'
 
-/**
- * **Looking through the provider homes — ONE operation, surfaced twice** (121, `120` §7).
- *
- * The rail's *"scan for existing sessions"* and Sessions' **Check homes** are the same act, and this
- * file is what makes that a fact rather than a claim. `120` ruled it explicitly:
- *
- * > *"It must be the **same** operation, surfaced twice, never forked… two scan buttons that look
- * > alike and behave differently is **061 finding 6 in control form**."*
- *
- * Expose the scan on the Library because `adoptSessions()` refreshes the `child` descent used by Kind filtering. Hiding that refresh elsewhere can leave the filter reading stale descent.
- *
- * ## What is shared and what is not
- *
- * The call and the wording are shared, because those are the two things that could differ and
- * should not. What each surface does AFTERWARDS is its own: the rail re-lists resumable and
- * unresumable rows, Sessions re-reads the library page it is showing. Sharing that too would mean
- * one press re-reading a list nobody is looking at.
- *
- * The state is per-caller rather than module-level for the same reason: two mounted surfaces each
- * report the press that happened on them, and a shared singleton would have the rail claiming
- * a scan the Sessions page ran while it was not on screen.
- */
+/** Scan agent folders and refresh the Library after the scan completes. */
 export interface HomeScan {
   /** Whether a scan is running from THIS surface. */
   readonly scanning: Ref<boolean>
@@ -40,18 +19,7 @@ export interface HomeScan {
   scan(after?: () => Promise<void>): Promise<{ report: AdoptionReport } | { error: string } | null>
 }
 
-/**
- * The run in flight is shared by callers using the same sessions capability.
- *
- * Per-surface state is right for REPORTING and wrong for concurrency, and the first version had
- * only the former: `ResumableSessions` is mounted under a `v-show` in the rail while
- * `SessionLibrary` is on screen beside it, so both buttons exist at once and each guarded only
- * itself. Two `adoptSessions()` passes then interleave over the same homes — and that pass adopts
- * by asking the store first, which is a check-then-write.
- *
- * Coalesced rather than refused, because both presses asked the same question: the second joins the
- * first and gets the same report to display.
- */
+/** Concurrent callers of the same sessions capability share an in-flight scan. */
 type HomeScanClient = Pick<ClientSessionApi, 'adoptSessions'>
 const inFlight = new WeakMap<HomeScanClient, Promise<AdoptionReport>>()
 
@@ -61,11 +29,7 @@ export function useHomeScan(sessions: HomeScanClient | undefined): HomeScan {
   const lastScan = ref<AdoptionReport | null>(null)
   const scannedAt = ref<number | null>(null)
 
-  /**
-   * `after` runs INSIDE the busy flag, which is the difference between a button that is honest
-   * about being busy and one that re-enables while its own follow-up is still fetching (review).
-   * Each surface passes its own: the rail re-lists resumable rows, Sessions re-reads its page.
-   */
+  // Keep the button busy until the Library has refreshed.
   async function scan(
     after?: () => Promise<void>,
   ): Promise<{ report: AdoptionReport } | { error: string } | null> {
@@ -115,14 +79,6 @@ export function useHomeScan(sessions: HomeScanClient | undefined): HomeScan {
  */
 export function scanSummary(report: AdoptionReport | null): string | null {
   if (report === null) return null
-  /**
-   * ⚠️ **Lifted from `ResumableSessions.vue` UNCHANGED except for the new clause** (121). The rail
-   * is the reopen lane and `120` §9.10 says leave it alone; rewording its summary to something
-   * tidier would be changing it, so this is its own sentence, now said in two places.
-   *
-   * The early return cannot hide the new number: `found === 0` means the loop that learns descents
-   * never ran a step, so `descentsLearned` is zero whenever this branch is taken.
-   */
   if (report.found === 0 && report.imported === 0) {
     // "nothing found" while the panel below lists what was found and rejected would be the
     // summary contradicting its own detail.
