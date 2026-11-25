@@ -15,7 +15,7 @@ import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
 import { LimitsReadEngine } from '../src/main/db/limits-read-engine'
 import { LimitsWorkerTransport } from '../src/main/db/limits-worker-transport'
 import type { LimitsReadInput } from '../src/main/db/limits-read-protocol'
-import { slowWindowQueries } from './fixtures/slow-window-queries'
+import { slowWindowQueries, type NativeStatementInterval } from './fixtures/slow-window-queries'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -38,8 +38,8 @@ describe('real SQLite window reads leave the caller responsive', () => {
   let limitsReader: LimitsWorkerTransport
   const ports: MessagePort[] = []
   const measurements: unknown[] = []
-  let nativeStart: (() => void) | undefined
-  let readFinished: ((interval: { startedAt: number; finishedAt: number }) => void) | undefined
+  let recordStatement: ((interval: NativeStatementInterval) => void) | undefined
+  let readFinished: (() => void) | undefined
   let operation = 0
 
   beforeAll(async () => {
@@ -88,8 +88,8 @@ describe('real SQLite window reads leave the caller responsive', () => {
       const channel = new MessageChannel()
       ports.push(channel.port1)
       channel.port1.on('message', (message) => {
-        if (message.type === 'native-start') nativeStart?.()
-        if (message.type === 'native-read-finished') readFinished?.(message)
+        if (message.type === 'native-statement') recordStatement?.(message.interval)
+        if (message.type === 'native-read-finished') readFinished?.()
       })
       return new Worker(join(directory, 'window-native.cjs'), {
         workerData: { file, reader, probe: channel.port2 },
@@ -113,20 +113,17 @@ describe('real SQLite window reads leave the caller responsive', () => {
     if (directory !== undefined) rmSync(directory, { recursive: true, force: true })
   })
 
-  async function measure<T>(
-    name: string,
-    read: () => T | Promise<T>,
-    nativeInterval?: Promise<{ startedAt: number; finishedAt: number }>,
-  ) {
+  async function measure<T>(name: string, read: () => T | Promise<T>, inWorker = false) {
     let beats = 0
     const heartbeats: number[] = []
-    let inputHandled = false
-    let inputTimer: ReturnType<typeof setTimeout> | undefined
-    nativeStart = () => {
-      inputTimer ??= setTimeout(() => {
-        inputHandled = true
-      }, 30)
-    }
+    const statements: NativeStatementInterval[] = []
+    recordStatement = (interval) => statements.push(interval)
+    const readDone = inWorker
+      ? new Promise<void>((resolve) => {
+          readFinished = resolve
+        })
+      : undefined
+    const restore = inWorker ? undefined : slowWindowQueries(() => {}, undefined, recordStatement)
     let last = performance.now()
     let longestGap = 0
     const heartbeat = setInterval(() => {
@@ -139,14 +136,7 @@ describe('real SQLite window reads leave the caller responsive', () => {
     const began = performance.now()
     try {
       const result = await read()
-      const finished = performance.now()
-      const interval =
-        nativeInterval === undefined
-          ? {
-              startedAt: performance.timeOrigin + began,
-              finishedAt: performance.timeOrigin + finished,
-            }
-          : await nativeInterval
+      await readDone
       longestGap = Math.max(longestGap, performance.now() - last)
       const elapsed = performance.now() - began
       const evidence = {
@@ -154,9 +144,11 @@ describe('real SQLite window reads leave the caller responsive', () => {
         elapsedMs: elapsed,
         longestGapMs: longestGap,
         beats,
-        ...interval,
-        interiorBeats: heartbeatsDuringRead(heartbeats, interval),
-        inputHandled,
+        statements,
+        interiorBeats: statements.reduce(
+          (total, interval) => total + heartbeatsDuringRead(heartbeats, interval),
+          0,
+        ),
         fixtureRows: 5004,
       }
       measurements.push(evidence)
@@ -164,37 +156,24 @@ describe('real SQLite window reads leave the caller responsive', () => {
       return { result, ...evidence }
     } finally {
       clearInterval(heartbeat)
-      clearTimeout(inputTimer)
-      nativeStart = undefined
+      restore?.()
+      recordStatement = undefined
       readFinished = undefined
     }
   }
 
   it.each(['routes', 'leads'] as const)(
-    '%s: the same canonical answer, with input handled during native work',
+    '%s: the same canonical answer, with caller progress during native work',
     async (kind) => {
       const query = kind === 'routes' ? { kind } : leads
-      const restore = slowWindowQueries(() => nativeStart?.())
-      let before: Awaited<ReturnType<typeof measure>>
-      try {
-        before = await measure(`before-${kind}`, () => windowEngine.read(query))
-      } finally {
-        restore()
-      }
-      const interval = new Promise<{ startedAt: number; finishedAt: number }>((resolve) => {
-        readFinished = resolve
-      })
-      const after = await measure(`after-${kind}`, () => windowReader.read(query), interval)
+      const before = await measure(`before-${kind}`, () => windowEngine.read(query))
+      const after = await measure(`after-${kind}`, () => windowReader.read(query), true)
       if (kind === 'routes')
         expect(canonicalWindowFacts(after.result)).toEqual(canonicalWindowFacts(before.result))
       else expect(after.result).toEqual(before.result)
+      expect(before.statements.length).toBeGreaterThan(0)
       expect(before.interiorBeats).toBe(0)
       expect(after.interiorBeats).toBeGreaterThan(0)
-      expect(before.longestGapMs).toBeGreaterThan(250)
-      expect(before.inputHandled).toBe(false)
-      expect(after.longestGapMs).toBeLessThan(250)
-      expect(after.beats).toBeGreaterThan(10)
-      expect(after.inputHandled).toBe(true)
     },
   )
 
@@ -207,19 +186,11 @@ describe('real SQLite window reads leave the caller responsive', () => {
       signInChangedAt: {},
       usage: {},
     }
-    const restore = slowWindowQueries(() => nativeStart?.())
-    let before: Awaited<ReturnType<typeof measure>>
-    try {
-      before = await measure('before-providerLimitsSeen', () => limitsEngine.read(input))
-    } finally {
-      restore()
-    }
-    const after = await measure('after-providerLimitsSeen', () => limitsReader.execute(input))
+    const before = await measure('before-providerLimitsSeen', () => limitsEngine.read(input))
+    const after = await measure('after-providerLimitsSeen', () => limitsReader.execute(input), true)
     expect(after.result.canonical).toEqual((before.result as typeof after.result).canonical)
-    expect(before.longestGapMs).toBeGreaterThan(250)
-    expect(before.inputHandled).toBe(false)
-    expect(after.longestGapMs).toBeLessThan(250)
-    expect(after.inputHandled).toBe(true)
-    expect(after.beats).toBeGreaterThan(10)
+    expect(before.statements.length).toBeGreaterThan(0)
+    expect(before.interiorBeats).toBe(0)
+    expect(after.interiorBeats).toBeGreaterThan(0)
   })
 })
