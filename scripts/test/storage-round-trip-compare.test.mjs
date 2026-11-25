@@ -15,11 +15,15 @@ afterEach(() => folder && rmSync(folder, { recursive: true, force: true }))
 function workspace(name, hashes) {
   const file = join(folder, `${name}.sqlite`)
   const db = new DatabaseSync(file)
+  // One transaction, never flushed to disk: the fixture's durability is not under test, and on a
+  // busy hosted runner every flush can stall.
+  db.exec('PRAGMA journal_mode=MEMORY; PRAGMA synchronous=OFF; BEGIN')
   db.exec(MIGRATIONS)
   db.exec('CREATE TABLE events (id TEXT PRIMARY KEY, payload TEXT)')
   db.exec("INSERT INTO events VALUES ('e1', 'kept')")
   const add = db.prepare('INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES (?, ?)')
   hashes.forEach((hash, i) => add.run(hash, 1700000000000 + i))
+  db.exec('COMMIT')
   db.close()
   return snapshot(file, join(folder, `${name}-copy`))
 }
