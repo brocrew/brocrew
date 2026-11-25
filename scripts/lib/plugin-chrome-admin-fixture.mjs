@@ -1,4 +1,5 @@
 // Inert test adapter: execute the package's actual route with a fake browser, never Chrome.
+import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -99,7 +100,7 @@ export async function chromeAdminRouteFixture(directory) {
         throw new Error('unexpected fictional route')
       const path = new URL(url, 'http://127.0.0.1').pathname.replace(/^\/v1/, '')
       let status, body
-      const response = {
+      const response = Object.assign(new EventEmitter(), {
         locals: {},
         status(value) {
           status = value
@@ -108,7 +109,7 @@ export async function chromeAdminRouteFixture(directory) {
         json(value) {
           body = value
         },
-      }
+      })
       const kind = path.endsWith('/flags') ? 'flags' : 'open'
       await routes.get(
         path === '/configuration' ? '/v1/configuration' : '/v1/profiles/:name/' + kind,

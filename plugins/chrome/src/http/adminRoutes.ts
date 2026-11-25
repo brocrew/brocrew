@@ -45,6 +45,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 type AdminCommand = (
   input: { body: unknown; profile?: unknown },
   res: Response,
+  signal: AbortSignal,
 ) => void | Promise<void>
 export const actorOf = (req: Request): 'panel' | 'direct-bearer' =>
   req.headers['x-brocrew-actor'] === 'panel' ? 'panel' : 'direct-bearer'
@@ -76,9 +77,21 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     res.status(applied ? 200 : status).json(applied ? { applied: true } : body)
   }
   const commands = new Map<string, AdminCommand>()
+  const run = async (handle: AdminCommand, input: Parameters<AdminCommand>[0], res: Response) => {
+    const request = new AbortController()
+    const disconnected = () => request.abort()
+    res.once('close', disconnected)
+    try {
+      await handle(input, res, request.signal)
+    } finally {
+      res.off('close', disconnected)
+    }
+  }
   const command = (action: string, path: string, handle: AdminCommand): void => {
     commands.set(action, handle)
-    app.post('/v1' + path, (req, res) => handle({ body: req.body, profile: req.params.name }, res))
+    app.post('/v1' + path, (req, res) =>
+      run(handle, { body: req.body, profile: req.params.name }, res),
+    )
   }
   const fail = (res: Response, status: number, error: string): void => send(res, status, { error })
   const view = (name: string): Record<string, unknown> | undefined => {
@@ -142,7 +155,8 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     if (!handle) return fail(res, 400, ADMIN_ERRORS.body)
     res.locals.configuration = true
     try {
-      await handle(
+      await run(
+        handle,
         { profile, body: action === 'create-profile' ? { ...body, name: profile } : body },
         res,
       )
@@ -172,7 +186,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     deps.logger.info('profile created', { by: 'panel' })
     send(res, 201, { profile: view(body.name) })
   })
-  command('set-flags', '/profiles/:name/flags', async ({ profile, body: input }, res) => {
+  command('set-flags', '/profiles/:name/flags', async ({ profile, body: input }, res, signal) => {
     const name = named(profile, res)
     if (!name) return
     const body = bodyOf(input, FLAG_NAMES)
@@ -187,32 +201,35 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       body.allowExtensions !== before.allowExtensions
     if (body.enabled === false || extensionsChanged)
       await browser
-        .exclusive(name, () => browser.close(name))
+        .exclusive(name, () => browser.close(name, signal))
         .catch((error) => {
-          if (res.locals.configuration) throw error
+          if (!signal.aborted && res.locals.configuration) throw error
         })
+    if (signal.aborted) return
     deps.logger.info('profile flags changed', { flags: Object.keys(body) })
     send(res, 200, { profile: view(name) })
   })
   commands.set('set-enabled', commands.get('set-flags')!)
-  command('helper-on', '/profiles/:name/helper', async ({ profile, body }, res) => {
+  command('helper-on', '/profiles/:name/helper', async ({ profile, body }, res, signal) => {
     const name = named(profile, res)
     if (!name) return
     if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
     store.setHelper(name, 'turning-on')
-    await browser.turnHelperOn(name).catch((error) => {
-      if (res.locals.configuration) throw error
+    await browser.turnHelperOn(name, signal).catch((error) => {
+      if (!signal.aborted && res.locals.configuration) throw error
     })
+    if (signal.aborted) return
     deps.logger.info('BroCrew helper turned on', { by: 'panel' })
     send(res, 200, { profile: view(name) })
   })
-  command('open-window', '/profiles/:name/open', async ({ profile, body }, res) => {
+  command('open-window', '/profiles/:name/open', async ({ profile, body }, res, signal) => {
     const name = named(profile, res)
     if (!name) return
     if (!bodyOf(body, [])) return fail(res, 400, ADMIN_ERRORS.body)
     try {
-      await deps.opener.open(name)
+      await deps.opener.open(name, signal)
     } catch (e) {
+      if (signal.aborted) return
       if (e instanceof ProfileInUseElsewhereError) return fail(res, 409, e.message)
       if (e instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.inUse)
       if (e instanceof BrowserNotFoundError) return fail(res, 409, ADMIN_ERRORS.noBrowser)
@@ -220,7 +237,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       deps.logger.warn('open window failed to open')
       return fail(res, 409, ADMIN_ERRORS.failed)
     }
-    send(res, 202, { profile: view(name) })
+    if (!signal.aborted) send(res, 202, { profile: view(name) })
   })
   command('rename-profile', '/profiles/:name/rename', ({ profile, body: input }, res) => {
     const name = named(profile, res)
@@ -258,33 +275,42 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     }
     send(res, 200, { profile: view(name) })
   })
-  command('delete-profile', '/profiles/:name/delete', async ({ profile, body: input }, res) => {
-    const name = named(profile, res)
-    if (!name) return
-    const body = bodyOf(input, ['confirm', 'deleteConfirmation'])
-    if (!body) return fail(res, 400, ADMIN_ERRORS.body)
-    if (body.confirm !== name) return fail(res, 400, ADMIN_ERRORS.confirm)
-    try {
-      await browser.removeWhenIdle(name, () => {
-        if (store.shared?.view(name).shared === true) {
-          if (typeof body.deleteConfirmation !== 'string')
-            throw new ProfileStoreError('Review the global deletion warning first.')
-          store.shared.remove(name, body.deleteConfirmation)
-        } else {
-          store.setFlags(name, { enabled: false })
-          store.remove(name)
-        }
-      })
-    } catch (error) {
-      if (error instanceof ProfileInUseElsewhereError) return fail(res, 409, error.message)
-      if (error instanceof ProfileStoreError) return fail(res, 409, error.message)
-      if (error instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.deleteInUse)
-      if (res.locals.configuration) throw error
-      return fail(res, 409, ADMIN_ERRORS.failed)
-    }
-    deps.logger.info('profile deleted')
-    send(res, 200, { deleted: name })
-  })
+  command(
+    'delete-profile',
+    '/profiles/:name/delete',
+    async ({ profile, body: input }, res, signal) => {
+      const name = named(profile, res)
+      if (!name) return
+      const body = bodyOf(input, ['confirm', 'deleteConfirmation'])
+      if (!body) return fail(res, 400, ADMIN_ERRORS.body)
+      if (body.confirm !== name) return fail(res, 400, ADMIN_ERRORS.confirm)
+      try {
+        await browser.removeWhenIdle(
+          name,
+          () => {
+            if (store.shared?.view(name).shared === true) {
+              if (typeof body.deleteConfirmation !== 'string')
+                throw new ProfileStoreError('Review the global deletion warning first.')
+              store.shared.remove(name, body.deleteConfirmation)
+            } else {
+              store.setFlags(name, { enabled: false })
+              store.remove(name)
+            }
+          },
+          signal,
+        )
+      } catch (error) {
+        if (signal.aborted) return
+        if (error instanceof ProfileInUseElsewhereError) return fail(res, 409, error.message)
+        if (error instanceof ProfileStoreError) return fail(res, 409, error.message)
+        if (error instanceof ProfileInUseError) return fail(res, 409, ADMIN_ERRORS.deleteInUse)
+        if (res.locals.configuration) throw error
+        return fail(res, 409, ADMIN_ERRORS.failed)
+      }
+      deps.logger.info('profile deleted')
+      send(res, 200, { deleted: name })
+    },
+  )
 }
 
 export interface AdminTab {

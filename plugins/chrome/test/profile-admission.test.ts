@@ -71,6 +71,30 @@ it('uses disabled profiles and their supported settings without changing their f
   expect(store.get(name)).toMatchObject({ enabled: false, allowSettings: false })
 })
 
+it('releases the profile queue when a window request cancels its lock-owner query', async () => {
+  const f = fixture()
+  const entered = Promise.withResolvers<void>()
+  const request = new AbortController()
+  const browser = createChromeBrowser(f.store, silentLogger, undefined, {
+    downloadsRoot: f.h.downloads,
+    lockHeld: (_dir, signal) =>
+      signal
+        ? new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+            entered.resolve()
+          })
+        : Promise.resolve(false),
+    launchContext: f.launch,
+  })
+  const opening = browser.exclusive(f.name, () => browser.ensure(f.name, request.signal))
+  await entered.promise
+  const next = browser.exclusive(f.name, () => browser.ensure(f.name))
+  request.abort(new Error('cancelled'))
+  await expect(opening).rejects.toThrow('cancelled')
+  await expect(next).rejects.toThrow('unexpected browser launch')
+  expect(f.launch).toHaveBeenCalledOnce()
+})
+
 it.each([false, true])(
   'blocks partial local deletion and permits cleanup retry (facade %s)',
   async (facade) => {

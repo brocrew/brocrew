@@ -13,6 +13,8 @@ export async function probeAuth(
           ? { headers: { 'content-type': 'application/json' }, body: '{}' }
           : {}),
         redirect: 'manual',
+        // Before readiness there is no request or lifecycle signal for a listener that accepts
+        // these self-checks without replying. Bound that startup failure and close the listener.
         signal: AbortSignal.timeout(5000),
       })
       status = res.status

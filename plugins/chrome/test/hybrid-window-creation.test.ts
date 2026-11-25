@@ -108,11 +108,10 @@ class Ctx extends EventEmitter {
     }
   }
 }
-function setup(timeout = 1000, explicit = false) {
+function setup(explicit = false) {
   const ctx = new Ctx(),
     published: Page[] = []
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
-    timeoutMs: timeout,
     onAdmit: (p) => published.push(p),
     ...(explicit
       ? {
@@ -194,7 +193,7 @@ describe('inactive native selection without the helper', () => {
   it.each(['protocol failure', 'anchor movement', 'anchor close'])(
     'fails without a second creation after %s',
     async (fault) => {
-      const { ctx, windows } = setup(40, true)
+      const { ctx, windows } = setup(true)
       const anchor = ctx.add(2)
       if (fault === 'protocol failure') ctx.fail = 'Target.createTarget'
       if (fault === 'anchor movement') ctx.moveAnchor = true
@@ -207,8 +206,12 @@ describe('inactive native selection without the helper', () => {
     },
   )
   it('reserves the finite cleanup capacity before concurrent dispatch', async () => {
-    const { ctx, windows } = setup(1000)
+    const { ctx, windows } = setup()
     ctx.hang = 'Target.createTarget'
+    ctx.tick = (method) => {
+      if (method === ctx.hang && ctx.sent.filter((call) => call.method === ctx.hang).length === 64)
+        ctx.emit('close')
+    }
     await Promise.allSettled(Array.from({ length: 65 }, () => windows.open({ newWindow: false })))
     expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(64)
     ctx.emit('close')
@@ -223,7 +226,7 @@ describe('inactive native selection without the helper', () => {
     expect(ctx.sent.filter((s) => s.method === 'Target.createTarget')).toHaveLength(count)
   })
   it('retains correlated failed page ownership after its URL changes, without public admission', async () => {
-    const { ctx, windows, published } = setup(1000, true)
+    const { ctx, windows, published } = setup(true)
     const anchor = ctx.add(2)
     published.length = 0
     ctx.changeProbe = true
@@ -262,10 +265,16 @@ describe('inactive native selection without the helper', () => {
     expect(await windows.windowId(page)).toBe(2)
     expect(ctx.sent.map((s) => s.method)).not.toContain('Runtime.evaluate')
   })
-  it('timeout consumes no public probe IDs and closes only the late owned page', async () => {
-    const { ctx, windows, published } = setup(20)
+  it('cancellation consumes no public probe IDs and closes only the late owned page', async () => {
+    const { ctx, windows, published } = setup()
+    const request = new AbortController()
     ctx.hang = 'Target.createTarget'
-    await expect(windows.open({ newWindow: false })).rejects.toThrow(/timed out|in time/)
+    ctx.tick = (method) => {
+      if (method === ctx.hang) request.abort(new Error('cancelled'))
+    }
+    await expect(windows.open({ newWindow: false, signal: request.signal })).rejects.toThrow(
+      'cancelled',
+    )
     const unrelated = ctx.add(88, 'https://unrelated.test/')
     ctx.release!()
     await new Promise((r) => setTimeout(r, 15))

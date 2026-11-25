@@ -122,8 +122,7 @@ async function stopAndProveChild(
   return child.proveEmptyGroups ? (await child.proveEmptyGroups()) === true : false
 }
 
-/** Between tries of a held stopped record. Another try starts only while a whole pause still fits
- * in the drain, since each try already retries briefly inside. */
+/** Pause before trying the whole stopped-record write again if the drain has time left. */
 const HELD_RECORD_PAUSE_MS = 100
 function drainWriteErrno(error: unknown): string {
   try {
@@ -651,12 +650,12 @@ export class PluginSupervisor {
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
       this.trace({ stage: 'server.close', state: 'complete' })
-      // On Windows a reader holding the record open refuses its replacement, so the write goes
-      // on while that lasts and the drain does. Recovery handles a record that stays unwritten.
+      // A Windows reader can hold the record open. Atomic publication and whole-write retries
+      // share the remaining drain time. Recovery handles a record that stays unwritten.
       for (let attempt = 1; ; attempt++) {
         try {
           this.trace({ stage: 'stopped-write', state: 'waiting', attempt })
-          this.storage.write({ ...this.record, phase: 'stopped' })
+          this.storage.write({ ...this.record, phase: 'stopped' }, () => this.remainingDrainMs())
           this.trace({ stage: 'stopped-write', state: 'complete', attempt })
           break
         } catch (error) {

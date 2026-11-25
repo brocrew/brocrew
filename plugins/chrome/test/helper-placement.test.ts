@@ -80,10 +80,11 @@ class Ctx extends EventEmitter {
 /** A helper whose answer each test chooses; it creates tabs the way Chrome would. */
 class Placer implements TabPlacer {
   calls: Array<{ windowId: number; url: string }> = []
-  timeouts: number[] = []
+  signals: Array<AbortSignal | undefined> = []
   answer: 'create' | Exclude<Placement, { created: true }>['helper'] | 'throw' | 'hang' = 'create'
   landIn: number | undefined
   onCreate: (() => void) | undefined
+  onDispatch: (() => void) | undefined
   release: ((created: boolean) => void) | undefined
   constructor(readonly ctx: Ctx) {}
   private create(windowId: number, url: string): Placement {
@@ -92,9 +93,10 @@ class Placer implements TabPlacer {
     this.onCreate?.()
     return { created: true, windowId: wid }
   }
-  async place(windowId: number, url: string, timeoutMs: number): Promise<Placement> {
+  async place(windowId: number, url: string, signal?: AbortSignal): Promise<Placement> {
     this.calls.push({ windowId, url })
-    this.timeouts.push(timeoutMs)
+    this.signals.push(signal)
+    this.onDispatch?.()
     if (this.answer === 'create') return this.create(windowId, url)
     if (this.answer === 'throw') throw new Error('Execution context was destroyed')
     if (this.answer === 'hang')
@@ -105,12 +107,11 @@ class Placer implements TabPlacer {
     return { created: false, helper: this.answer }
   }
 }
-function setup(timeout = 1000) {
+function setup() {
   const ctx = new Ctx()
   const placer = new Placer(ctx)
   const published: Page[] = []
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
-    timeoutMs: timeout,
     onAdmit: (p) => published.push(p),
     placer,
   })
@@ -118,24 +119,28 @@ function setup(timeout = 1000) {
   const anchor = ctx.add(2)
   published.length = 0
   const notes: string[] = []
-  const open = () =>
+  const open = (signal?: AbortSignal) =>
     windows.open({
       newWindow: false,
       windowOf: anchor as unknown as Page,
       onNote: (n) => notes.push(n),
+      signal,
     })
   return { ctx, placer, windows, published, anchor, notes, open }
 }
 const settle = () => new Promise((r) => setTimeout(r, 20))
+function cancelOnDispatch(placer: Placer): AbortSignal {
+  const request = new AbortController()
+  placer.onDispatch = () => request.abort(new Error('cancelled'))
+  return request.signal
+}
 
 describe('a requested window with the BroCrew helper', () => {
   it('places one inactive tab there: no CDP creation, no script, no note', async () => {
     const { ctx, placer, windows, published, notes, open } = setup()
     const page = await open()
     expect(placer.calls).toEqual([{ windowId: 2, url: page.url() }])
-    // The helper gets the time left on the call's own deadline, never a clock reading.
-    expect(placer.timeouts[0]).toBeGreaterThan(0)
-    expect(placer.timeouts[0]).toBeLessThanOrEqual(1000)
+    expect(placer.signals[0]?.aborted).toBe(false)
     expect(page.url()).toMatch(/^about:blank#new-tab-/)
     expect(await windows.windowId(page)).toBe(2)
     expect(published).toEqual([page])
@@ -182,10 +187,10 @@ describe('a requested window with the BroCrew helper', () => {
 })
 
 describe('an uncertain helper creation is never duplicated', () => {
-  it('a reply after the deadline fails the call; the late tab is closed and nothing else is created', async () => {
-    const { ctx, placer, published, open } = setup(30)
+  it('cancels the call, closes the late tab and creates nothing else', async () => {
+    const { ctx, placer, published, open } = setup()
     placer.answer = 'hang'
-    await expect(open()).rejects.toThrow(/timed out/)
+    await expect(open(cancelOnDispatch(placer))).rejects.toThrow('cancelled')
     placer.release!(true)
     await settle()
     expect(ctx.owned()).toHaveLength(1)
@@ -194,7 +199,7 @@ describe('an uncertain helper creation is never duplicated', () => {
     expect(published).toEqual([])
   })
   it('a worker restart after dispatch fails the call without a background creation; a tab that still arrives is closed', async () => {
-    const { ctx, placer, published, open } = setup(60)
+    const { ctx, placer, published, open } = setup()
     placer.answer = 'throw'
     await expect(open()).rejects.toThrow('Execution context was destroyed')
     expect(ctx.sent).not.toContain('Target.createTarget')
@@ -237,9 +242,10 @@ describe('an uncertain helper creation is never duplicated', () => {
     expect(published).toEqual([])
   })
   it('a late "nothing was created" answer releases the slot it held', async () => {
-    const { placer, windows, open } = setup(30)
+    const { placer, windows, open } = setup()
     placer.answer = 'hang'
-    for (let n = 0; n < 64; n++) await expect(open()).rejects.toThrow(/timed out/)
+    for (let n = 0; n < 64; n++)
+      await expect(open(cancelOnDispatch(placer))).rejects.toThrow('cancelled')
     const pending = placer.release
     await expect(windows.open({ newWindow: false })).rejects.toThrow('too many unresolved')
     pending!(false)

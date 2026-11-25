@@ -23,6 +23,8 @@ export function birthOf(pid: number): string | undefined {
     const args = ['-p', String(pid), '-o', 'lstart=']
     const out = execFileSync('ps', args, {
       encoding: 'utf8',
+      // This read runs in the synchronous registry mutex. Bound the time it can delay
+      // all registry work and Stop. An unanswered lookup leaves the contender in place.
       timeout: 2000,
       windowsHide: true,
       env: { ...process.env, LC_ALL: 'C', LANG: 'C', TZ: 'UTC' },
@@ -48,8 +50,8 @@ export const identity = (): ProcessIdentity => {
 }
 const pause = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5)
 const busy = () => new Error('Shared Chrome registry busy; try again.')
-/** Without a process birth there is no exit to wait for, so a contender that could not be
- * identified, even once, is kept but waited on only this long from then. */
+/** Without a process birth we cannot prove exit. Keep the contender and bound the wait
+ * while its identity remains unknown. */
 const UNIDENTIFIED_WAIT_MS = 2000
 /** On Windows each liveness answer starts a program, so contenders are asked a few times a second. */
 const ASK_AGAIN_MS = 250
@@ -130,9 +132,10 @@ export function withSharedLock<T>(
       if (ahead.length === 0) return fn()
       const now = Date.now()
       if (now >= end) throw busy()
-      for (const c of ahead)
-        if (observed.get(c.token) === 'unknown' && !unidentified.has(c.token))
-          unidentified.set(c.token, now)
+      for (const c of ahead) {
+        if (observed.get(c.token) === 'alive') unidentified.delete(c.token)
+        else if (!unidentified.has(c.token)) unidentified.set(c.token, now)
+      }
       if (ahead.some((c) => now - (unidentified.get(c.token) ?? now) >= UNIDENTIFIED_WAIT_MS))
         throw busy()
       if (now - asked >= ASK_AGAIN_MS) {

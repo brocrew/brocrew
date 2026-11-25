@@ -1,18 +1,18 @@
 import type { ProfileBrowser } from './browser/profileBrowser.js'
 
 export interface WindowTasks {
-  open(profile: string, url: string, allowed?: () => void): Promise<void>
+  open(profile: string, url: string, allowed?: () => void, signal?: AbortSignal): Promise<void>
 }
 
 // Opening a window never reserves a session or waits for the person.
 export function createWindowTasks({ browser }: { browser: ProfileBrowser }): WindowTasks {
   return {
-    async open(profile, url, allowed) {
+    async open(profile, url, allowed, signal) {
       await browser.exclusive(profile, async () => {
         allowed?.()
-        await browser.ensure(profile)
+        await browser.ensure(profile, signal)
         allowed?.()
-        const page = await browser.newPage(profile, { newWindow: false })
+        const page = await browser.newPage(profile, { newWindow: false, signal })
         allowed?.()
         await page
           .goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 })

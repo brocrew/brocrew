@@ -127,24 +127,28 @@ export async function flushFile(path: string, fs: AtomicWriteFs): Promise<void> 
   }
 }
 
-function retryingSync<T>(op: () => T): T {
+function retryingSync<T>(op: () => T, remainingRetryMs?: () => number): T {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return op()
     } catch (error) {
       const wait = RETRY_DELAYS_MS[attempt]
       if (wait === undefined || !isBrieflyHeld(error)) throw error
+      if (remainingRetryMs && wait >= remainingRetryMs()) throw error
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
+      if (remainingRetryMs && remainingRetryMs() <= 0) throw error
     }
   }
 }
 
-function syncAfterCommit(path: string): void {
-  const fd = retryingSync(() =>
-    openSync(
-      process.platform === 'win32' ? path : dirname(path),
-      process.platform === 'win32' ? 'r+' : 'r',
-    ),
+function syncAfterCommit(path: string, remainingRetryMs?: () => number): void {
+  const fd = retryingSync(
+    () =>
+      openSync(
+        process.platform === 'win32' ? path : dirname(path),
+        process.platform === 'win32' ? 'r+' : 'r',
+      ),
+    remainingRetryMs,
   )
   try {
     fsyncSync(fd)
@@ -155,7 +159,7 @@ function syncAfterCommit(path: string): void {
 
 export interface AtomicWriteStage {
   readonly temporary: string
-  commit(exclusive?: boolean): void
+  commit(exclusive?: boolean, remainingRetryMs?: () => number): void
   discard(): void
 }
 
@@ -199,16 +203,16 @@ export function stageAtomicWriteSync(
   }
   return {
     temporary,
-    commit(exclusive = false) {
+    commit(exclusive = false, remainingRetryMs) {
       if (!active) throw new Error(`${temporary}: already published or discarded`)
       if (exclusive) {
-        retryingSync(() => linkSync(temporary, path))
+        retryingSync(() => linkSync(temporary, path), remainingRetryMs)
         discard()
       } else {
-        retryingSync(() => renameSync(temporary, path))
+        retryingSync(() => renameSync(temporary, path), remainingRetryMs)
         active = false
       }
-      syncAfterCommit(path)
+      syncAfterCommit(path, remainingRetryMs)
     },
     discard,
   }

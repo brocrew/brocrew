@@ -84,6 +84,147 @@ function browserFixture(overrides: Partial<ConstructorParameters<typeof ChromeBr
   })
   return { browser, acquire, release, launch, context }
 }
+function pendingFallback(disconnectFirst = false, holdSweepAfterAbort = false) {
+  const entered = deferred()
+  const exited = deferred()
+  const sweepCanSettle = deferred()
+  if (!holdSweepAfterAbort) sweepCanSettle.resolve()
+  const sweep = vi.fn(
+    (_dir: string, signal?: AbortSignal) =>
+      new Promise<void>((_resolve, reject) => {
+        signal!.addEventListener(
+          'abort',
+          () => {
+            void sweepCanSettle.promise.then(() => reject(signal!.reason))
+          },
+          { once: true },
+        )
+        entered.resolve()
+      }),
+  )
+  const f = browserFixture({
+    closeMs: 20,
+    killChrome: sweep,
+  })
+  f.context.close = vi.fn(async () => {
+    if (disconnectFirst) f.context.emit('close')
+    await exited.promise
+    if (!disconnectFirst) f.context.emit('close')
+  })
+  return { ...f, entered, exited, sweep, sweepCanSettle }
+}
+it.each(['request cancellation', 'Chrome exit'] as const)(
+  'ends a pending fallback process listing on %s',
+  async (end) => {
+    const request = new AbortController()
+    const f = pendingFallback()
+    await f.browser.ensure('fern')
+    vi.useFakeTimers()
+    const mutate = vi.fn()
+    const closing = f.browser.exclusive('fern', async () => {
+      await f.browser.close('fern', request.signal)
+      mutate()
+    })
+    await vi.advanceTimersByTimeAsync(20)
+    await f.entered.promise
+    if (end === 'request cancellation') {
+      request.abort(new Error('cancelled'))
+      await expect(closing).rejects.toThrow('cancelled')
+      expect(mutate).not.toHaveBeenCalled()
+      expect(f.release).not.toHaveBeenCalled()
+      f.exited.resolve()
+      await f.browser.exclusive('fern', () => f.browser.close('fern'))
+    } else {
+      f.exited.resolve()
+      await closing
+      expect(mutate).toHaveBeenCalledOnce()
+    }
+    expect(f.context.close).toHaveBeenCalledOnce()
+    expect(f.release).toHaveBeenCalledOnce()
+  },
+)
+it('cancels a download policy fallback without running the tool', async () => {
+  const f = pendingFallback()
+  const request = new AbortController()
+  const send = vi.fn().mockResolvedValueOnce({}).mockRejectedValue(new Error('policy failed'))
+  f.context.driver.newBrowserCDPSession = async () => ({ on() {}, send })
+  await f.browser.ensure('fern')
+  vi.useFakeTimers()
+  const tool = vi.fn(async () => {})
+  const call = f.browser.agentCall(['fern'], tool, request.signal)
+  await vi.advanceTimersByTimeAsync(20)
+  await f.entered.promise
+  request.abort(new Error('cancelled'))
+  await expect(call).rejects.toThrow('cancelled')
+  expect(tool).not.toHaveBeenCalled()
+  f.exited.resolve()
+  await f.browser.close('fern')
+})
+it('shares one process sweep and lets a queued download caller cancel', async () => {
+  const f = pendingFallback()
+  const send = vi.fn().mockResolvedValueOnce({}).mockRejectedValue(new Error('policy failed'))
+  f.context.driver.newBrowserCDPSession = async () => ({ on() {}, send })
+  await f.browser.ensure('fern')
+  vi.useFakeTimers()
+  const tool = vi.fn(async () => {})
+  const first = f.browser.agentCall(['fern'], tool)
+  const failed = expect(first).rejects.toThrow('policy failed')
+  await vi.advanceTimersByTimeAsync(20)
+  await f.entered.promise
+  const closing = f.browser.close('fern')
+  const request = new AbortController()
+  const queued = f.browser.agentCall(['fern'], tool, request.signal)
+  await vi.advanceTimersByTimeAsync(20)
+  request.abort(new Error('cancelled'))
+  await expect(queued).rejects.toThrow('cancelled')
+  expect(tool).not.toHaveBeenCalled()
+  expect(f.sweep).toHaveBeenCalledOnce()
+  expect(f.release).not.toHaveBeenCalled()
+  f.exited.resolve()
+  await Promise.all([failed, closing])
+  expect(f.release).toHaveBeenCalledOnce()
+})
+it('Settings deletion waits for a pending close after the context disconnects', async () => {
+  const f = pendingFallback(true)
+  const request = new AbortController()
+  await f.browser.ensure('fern')
+  vi.useFakeTimers()
+  const closing = f.browser.close('fern', request.signal)
+  await vi.advanceTimersByTimeAsync(20)
+  await f.entered.promise
+  expect(f.browser.state('fern')).toBeNull()
+  request.abort(new Error('cancelled'))
+  await expect(closing).rejects.toThrow('cancelled')
+  const remove = vi.fn()
+  const deleting = f.browser.removeWhenIdle('fern', remove)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(remove).not.toHaveBeenCalled()
+  f.exited.resolve()
+  await deleting
+  expect(remove).toHaveBeenCalledOnce()
+  expect(f.context.close).toHaveBeenCalledOnce()
+})
+it('an overlapping close cannot release the lease while an aborted sweep is settling', async () => {
+  const f = pendingFallback(false, true)
+  const send = vi.fn().mockResolvedValueOnce({}).mockRejectedValue(new Error('policy failed'))
+  f.context.driver.newBrowserCDPSession = async () => ({ on() {}, send })
+  await f.browser.ensure('fern')
+  vi.useFakeTimers()
+  const first = expect(f.browser.agentCall(['fern'], async () => {})).rejects.toThrow(
+    'policy failed',
+  )
+  await vi.advanceTimersByTimeAsync(20)
+  await f.entered.promise
+  const second = f.browser.close('fern')
+  await vi.advanceTimersByTimeAsync(0)
+  f.exited.resolve()
+  await vi.advanceTimersByTimeAsync(20)
+  expect(f.sweep).toHaveBeenCalledOnce()
+  expect(f.release).not.toHaveBeenCalled()
+  f.sweepCanSettle.resolve()
+  await Promise.all([first, second])
+  expect(f.release).toHaveBeenCalledOnce()
+})
 it('acquires before lock awaits and retains a slow launch lease until Chrome ends', async () => {
   const lock = deferred<boolean>()
   const f = browserFixture({ lockHeld: () => lock.promise })
@@ -383,7 +524,7 @@ it('retains the lease between context close and confirmed Chrome end', async () 
   await f.browser.ensure('fern')
   const close = f.browser.close('fern')
   await closing.promise
-  expect(release).toHaveReturnedWith(false)
+  expect(release).not.toHaveBeenCalled()
   finish.resolve()
   await close
   expect(release).toHaveLastReturnedWith(true)

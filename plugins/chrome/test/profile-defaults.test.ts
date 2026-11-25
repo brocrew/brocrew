@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { BrowserContext } from 'playwright-core'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createChromeBrowser } from '../src/index.js'
 import { HELPER_ID } from '../src/extensions.js'
 import { silentLogger } from '../src/logger.js'
@@ -75,6 +75,7 @@ describe('sync and extensions are on by default', () => {
 
 class Context extends EventEmitter {
   sent: string[] = []
+  acceptHelper = false
   pages() {
     return []
   }
@@ -91,7 +92,10 @@ class Context extends EventEmitter {
         send: async (method: string) => {
           this.sent.push(method)
           if (method === 'Extensions.getExtensions') return { extensions: [] }
-          if (method === 'Extensions.loadUnpacked') throw new Error('Method not available.')
+          if (method === 'Extensions.loadUnpacked') {
+            if (this.acceptHelper) return { id: HELPER_ID }
+            throw new Error('Method not available.')
+          }
           if (method === 'Extensions.uninstall') return {}
           return {}
         },
@@ -105,6 +109,7 @@ class Context extends EventEmitter {
 async function launch(
   set?: { allowExtensions?: boolean; allowSync?: boolean },
   before?: (store: ReturnType<typeof createProfileStore>) => void,
+  acceptHelper = false,
 ) {
   const dir = home()
   const store = createProfileStore({ home: dir })
@@ -113,6 +118,7 @@ async function launch(
   before?.(store)
   const launches: ChromiumLaunchOptions[] = []
   const context = new Context()
+  context.acceptHelper = acceptHelper
   const browser = createChromeBrowser(store, silentLogger, undefined, {
     downloadsRoot: path.join(dir, 'downloads'),
     lockHeld: async () => false,
@@ -123,12 +129,20 @@ async function launch(
     },
   })
   await browser.ensure('fern')
+  const profile = store.get('fern')
+  if (profile?.allowExtensions && profile.helper !== 'off')
+    await vi.waitFor(() => expect(context.sent).toContain('Extensions.loadUnpacked'))
   const state = browser.state('fern')
   await browser.closeAll()
   return { args: launches[0].args ?? [], sent: context.sent, state, store }
 }
 
 describe('what a default profile launches with', () => {
+  it('opens the profile while an optional helper worker is still starting', async () => {
+    const { state, sent } = await launch(undefined, undefined, true)
+    expect(state?.generation).toEqual(expect.any(Number))
+    expect(sent).toContain('Extensions.loadUnpacked')
+  })
   it('no --disable-sync or --disable-extensions, and the helper is tried in a visible profile', async () => {
     const { args, sent, state } = await launch()
     expect(args).not.toContain('--disable-sync')

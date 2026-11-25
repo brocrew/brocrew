@@ -2,14 +2,22 @@ import { execFile } from 'node:child_process'
 import path from 'node:path'
 export type Platform = NodeJS.Platform
 export type Signal = 'SIGTERM' | 'SIGKILL'
-export type RunProgram = (file: string, args: readonly string[]) => Promise<string | null>
-export const realRun: RunProgram = (file, args) =>
-  new Promise((resolve) => {
+export type RunProgram = (
+  file: string,
+  args: readonly string[],
+  signal?: AbortSignal,
+) => Promise<string | null>
+export const realRun: RunProgram = (file, args, signal) =>
+  new Promise((resolve, reject) => {
+    signal?.throwIfAborted()
     execFile(
       file,
       [...args],
-      { maxBuffer: 16 * 1024 * 1024, timeout: 10000, windowsHide: true },
-      (error, stdout) => resolve(error ? null : stdout),
+      { maxBuffer: 16 * 1024 * 1024, windowsHide: true, signal },
+      (error, stdout) => {
+        if (signal?.aborted) reject(signal.reason)
+        else resolve(error ? null : stdout)
+      },
     )
   })
 export const BROWSER_EXE = /^(google chrome|chromium|chrome|msedge|microsoft[- ]edge)/i
@@ -98,20 +106,24 @@ export function parseCimCsv(csv: string): string {
 export async function processList(
   platform: Platform = process.platform,
   run: RunProgram = realRun,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (platform === 'win32') {
-    const out = await run('powershell', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      WINDOWS_LIST_SCRIPT,
-    ])
+    const out = await run(
+      'powershell',
+      ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LIST_SCRIPT],
+      signal,
+    )
     return out === null ? '' : parseCimCsv(out)
   }
-  return (await run('ps', ['-axo', 'pid=,command='])) ?? ''
+  return (await run('ps', ['-axo', 'pid=,command='], signal)) ?? ''
 }
-export async function commandOfPid(pid: number, run: RunProgram = realRun): Promise<string | null> {
-  const out = await run('ps', ['-p', String(pid), '-o', 'command='])
+export async function commandOfPid(
+  pid: number,
+  run: RunProgram = realRun,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const out = await run('ps', ['-p', String(pid), '-o', 'command='], signal)
   return out === null ? null : out.trim() || null
 }
 export interface BrowserProcess {
@@ -156,6 +168,7 @@ export interface EndDeps {
   platform?: Platform
   list?: () => Promise<string>
   run?: RunProgram
+  signal?: AbortSignal
   kill?: (pid: number, signal: Signal) => void
   sleep?: (ms: number) => Promise<void>
   now?: () => number
@@ -178,13 +191,14 @@ export async function endBrowsersOf(
   const platform = deps.platform ?? process.platform
   if (platform === 'win32') return
   const run = deps.run ?? realRun
-  const list = deps.list ?? (() => processList(platform, run))
+  const list = deps.list ?? (() => processList(platform, run, deps.signal))
   const kill = deps.kill ?? ((pid: number, signal: Signal) => process.kill(pid, signal))
   const sleep = deps.sleep ?? sleepFor
   const now = deps.now ?? Date.now
   const mine = async (): Promise<BrowserProcess[]> =>
     browserProcessesOf(await list(), dir, platform)
   const signal = (pids: number[], sig: Signal): void => {
+    deps.signal?.throwIfAborted()
     for (const pid of pids) {
       try {
         kill(pid, sig)

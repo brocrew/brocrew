@@ -4,9 +4,8 @@ import { once } from 'node:events'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { startHttpMcpServer } from '../src/shared/httpMcpServer.js'
-import { currentRequestSignal } from '../../shared/request-signal.js'
+import { createToolServer } from '../src/shared/toolServer.js'
 
 it('cancels the active HTTP request when its MCP caller leaves', async () => {
   const entered = Promise.withResolvers<AbortSignal>(),
@@ -14,17 +13,24 @@ it('cancels the active HTTP request when its MCP caller leaves', async () => {
   const running = await startHttpMcpServer({
     port: 0,
     ssePingIntervalMs: 0,
-    createServer: () => {
-      const server = new Server({ name: 'test', version: '1' }, { capabilities: { tools: {} } })
-      server.setRequestHandler(CallToolRequestSchema, async () => {
-        const signal = currentRequestSignal()!
-        entered.resolve(signal)
-        await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }))
-        cancelled.resolve(signal.aborted)
-        return { content: [] }
-      })
-      return server
-    },
+    createServer: () =>
+      createToolServer({
+        name: 'test',
+        version: '1',
+        tools: [
+          {
+            definition: { name: 'hold', inputSchema: { type: 'object' } },
+            async execute(_args, { signal }) {
+              entered.resolve(signal!)
+              await new Promise((resolve) =>
+                signal!.addEventListener('abort', resolve, { once: true }),
+              )
+              cancelled.resolve(signal!.aborted)
+              return { content: [] }
+            },
+          },
+        ],
+      }),
   })
   const url = new URL(
     `http://127.0.0.1:${(running.httpServer.address() as { port: number }).port}/mcp`,

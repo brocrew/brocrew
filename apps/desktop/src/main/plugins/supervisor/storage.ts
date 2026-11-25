@@ -171,18 +171,18 @@ export class SupervisorStorage {
       refuse()
     }
   }
-  write(value: OwnerRecord): void {
-    this.publish(this.record, JSON.stringify(OwnerRecord.parse(value)))
+  write(value: OwnerRecord, remainingRetryMs?: () => number): void {
+    this.publish(this.record, JSON.stringify(OwnerRecord.parse(value)), remainingRetryMs)
   }
   writeStop(value: StopRecord): void {
     this.publish(this.stop, JSON.stringify(StopRecord.parse(value)))
   }
-  private publish(path: string, text: string): void {
+  private publish(path: string, text: string, remainingRetryMs?: () => number): void {
     this.check()
     const stage = stageAtomicWriteSync(path, text)
     try {
       this.check()
-      stage.commit()
+      stage.commit(undefined, remainingRetryMs)
     } finally {
       try {
         stage.discard()

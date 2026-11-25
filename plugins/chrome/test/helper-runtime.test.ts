@@ -52,8 +52,11 @@ it.skipIf(!executable)(
     const name = 'fern-ünï'
     fs.mkdirSync(path.join(home, name))
     const helper = () => browser.state(name)?.helper
+    const openWithHelper = async () => {
+      const anchor = await browser.newPage(name, { newWindow: true })
+      return browser.newPage(name, { newWindow: false, windowOf: anchor })
+    }
     await browser.ensure(name)
-    expect(helper(), lines.join('\n')).toBe('ready')
     const a = await browser.newPage(name, { newWindow: true })
     const b = await browser.newPage(name, { newWindow: true })
     const windowA = await browser.windowId(name, a)
@@ -73,9 +76,11 @@ it.skipIf(!executable)(
       expect(await browser.windowId(name, page)).toBe(wanted)
       expect(notes).toEqual([])
     }
+    expect(helper(), lines.join('\n')).toBe('ready')
     // A second launch loads the helper again and it is ready.
     await browser.close(name)
     await browser.ensure(name)
+    await openWithHelper()
     expect(helper(), lines.join('\n')).toBe('ready')
 
     // The person switches it off in chrome://extensions, which calls chrome.management.
@@ -136,6 +141,7 @@ it.skipIf(!executable)(
     await browser.turnHelperOn(name)
     expect(helperSwitch).toBe('turning-on')
     await browser.ensure(name)
+    await openWithHelper()
     expect(helper(), lines.join('\n')).toBe('ready')
     expect(helperSwitch).toBe('on')
     process.stdout.write(`helper runtime log:\n${lines.join('\n')}\n`)

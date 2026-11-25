@@ -148,6 +148,8 @@ export function inspectChrome(
           win
             ? ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LIST_SCRIPT]
             : ['-axo', 'pid=,command='],
+          // These synchronous lease and migration callers cannot handle Stop while the child
+          // runs. Bound that blockage. A failed listing leaves the lease and files in place.
           { encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
         )
     if (!text?.trim()) return 'unknown'
@@ -232,6 +234,8 @@ export function createSharedProfileStore(
     const s = directoryStat(p)
     if (!s) return undefined
     const dev = String(s.dev)
+    // The macOS volume reader's 2 s bound limits how long an unresponsive mount can
+    // block this synchronous metadata operation. An unknown volume prevents the write.
     if (!volumes.has(dev)) volumes.set(dev, (o.readVolumeIdentity ?? readVolumeIdentity)(p, dev))
     const volume = volumes.get(dev)
     if (volume !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(volume))

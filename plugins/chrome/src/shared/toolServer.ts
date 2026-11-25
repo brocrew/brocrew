@@ -6,6 +6,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { dispatchTool, type ToolDefinition } from '../../../shared/tool-dispatch.js'
+import { currentRequestSignal } from '../../../shared/request-signal.js'
 export { PublicToolError } from '../../../shared/tool-dispatch.js'
 export type { ToolDefinition } from '../../../shared/tool-dispatch.js'
 export type ToolActivity =
@@ -57,16 +58,18 @@ export function createToolServer(options: ToolServerOptions): Server {
   }))
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name: toolName, arguments: args } = request.params
+    const disconnected = currentRequestSignal()
+    const signal = disconnected ? AbortSignal.any([extra.signal, disconnected]) : extra.signal
     let active = true
     let progress = 0
     return dispatchTool(tools, toolName, args, async (tool, parsed) => {
       try {
         return await tool.execute(parsed, {
           ...context,
-          signal: extra.signal,
+          signal,
           activity(stage) {
             const progressToken = request.params._meta?.progressToken
-            if (active && !extra.signal.aborted && progressToken !== undefined)
+            if (active && !signal.aborted && progressToken !== undefined)
               void extra
                 .sendNotification({
                   method: 'notifications/progress',
