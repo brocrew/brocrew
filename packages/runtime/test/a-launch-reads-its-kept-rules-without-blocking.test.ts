@@ -32,18 +32,21 @@ const STALL_FLOOR_MS = 250
 
 let root: string
 let path: string | undefined
+/** How many seconds the stand-in git takes to answer `ls-files`; read from beside it at each call. */
+const gitTakes = (seconds: number) => writeFileSync(join(root, 'bin', 'git-seconds'), `${seconds}`)
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'brobot2-kept-no-block-'))
   path = process.env['PATH']
   const bin = join(root, 'bin')
   mkdirSync(bin)
   const git = join(bin, 'git')
+  gitTakes(1)
   writeFileSync(
     git,
     [
       '#!/bin/sh',
       'for word in "$@"; do',
-      '  if [ "$word" = "ls-files" ]; then sleep 1; exit 1; fi',
+      '  if [ "$word" = "ls-files" ]; then sleep "$(cat "$(dirname "$0")/git-seconds")"; exit 1; fi',
       'done',
       'exit 128',
       '',
@@ -103,6 +106,29 @@ describe.skipIf(process.platform === 'win32')(
       expect(settings).toMatchObject({ permissions: { allow: ['Bash(make build *)'] } })
       expect(longestGap).toBeLessThan(STALL_FLOOR_MS)
     })
+
+    it(
+      '🔴 git slower than any fixed timer still gives its answer, and the folder keeps its allow rules (405, 418)',
+      { timeout: 60_000 },
+      async () => {
+        // Cards 405 and 418: a 2 s timer killed a slow git, and the kill read as "carried", so the
+        // launch dropped the folder's allow rules. Git's own exit ends the wait (card 197 rule).
+        gitTakes(3)
+        const project = join(root, 'project')
+        mkdirSync(join(project, '.claude'), { recursive: true })
+        writeFileSync(
+          join(project, '.claude', 'settings.local.json'),
+          JSON.stringify({ permissions: { allow: ['Bash(make build *)'] } }),
+        )
+        mkdirSync(join(root, 'home'))
+        const started = Date.now()
+        const { settings } = await launchedWhileTicking(project)
+        // ⚑ The premise: the launch waited past the old 2 s timer for git's own answer…
+        expect(Date.now() - started).toBeGreaterThanOrEqual(2_900)
+        // …and kept the rules, because git said the file is not the repository's.
+        expect(settings).toMatchObject({ permissions: { allow: ['Bash(make build *)'] } })
+      },
+    )
 
     it('⚑ THE CONTROL — a folder with no `allow` to gate asks git nothing, and launches at once', async () => {
       const project = join(root, 'project')

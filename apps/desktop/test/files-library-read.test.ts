@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { serialize } from 'node:v8'
 import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
+import { filesLibraryRevision } from '../src/main/db/files-library-windows'
 import {
   filesLibraryFixture,
   libraryContext,
@@ -333,20 +334,16 @@ it('pages unique groups across interleaved keeps and preserves an immutable popu
   f.owner('a')
   const root = f.store.rootOf('a')!.piece
   for (let i = 0; i < 250; i++) f.keep(`keep-${i}`, root, sha(String(i % 125)), { at: i })
-  const first = files(
-    f.engine.read({ operation: 'query', query: workspaceQuery, size: 17 }, libraryContext),
-  )
+  // The app's own revision over this database (card 349), so only the write below makes it stale.
+  const revision = filesLibraryRevision(f.db, () => true)
+  const now = () => ({ ...libraryContext, hostRevision: revision()! })
+  const first = files(f.engine.read({ operation: 'query', query: workspaceQuery, size: 17 }, now()))
   expect([first.totalFiles, first.totalKeeps, first.complete]).toEqual([17, 34, false])
   f.keep('later', root, sha('later'), { at: 999 })
   let page = first
   const seen = first.files.map((one) => one.file.sha256)
   while (page.next !== null) {
-    page = files(
-      f.engine.read(
-        { operation: 'page', cursor: page.next, size: 17 },
-        { ...libraryContext, hostRevision: '1' },
-      ),
-    )
+    page = files(f.engine.read({ operation: 'page', cursor: page.next, size: 17 }, now()))
     expect(page.stale).toBe(true)
     expect(page.totalFiles).toBeLessThanOrEqual(125)
     seen.push(...page.files.map((one) => one.file.sha256))
