@@ -177,12 +177,15 @@ describe('a late discovery failure describes the request’s current ending', ()
     server.failHeldReplies()
     // Hold only the return of a real HTTP discovery, so Add is ready to commit in one continuation.
     const seam = host as unknown as {
-      whatAServerOffers(name: string, url: string): Promise<readonly string[]>
-      itsNameIsRegistered(name: string): boolean
-      mcpServerRequestsBeingDecided: Set<string>
+      mcpServerRequests: {
+        whatAServerOffers(name: string, url: string): Promise<readonly string[]>
+        itsNameIsRegistered(name: string): boolean
+        mcpServerRequestsBeingDecided: Set<string>
+      }
       slots: Map<string, { phase: string }>
     }
-    const offers = seam.whatAServerOffers.bind(host)
+    const decisions = seam.mcpServerRequests
+    const offers = decisions.whatAServerOffers.bind(decisions)
     let calls = 0
     let releaseFailure: (() => void) | undefined
     let releaseAdd: (() => void) | undefined
@@ -192,7 +195,7 @@ describe('a late discovery failure describes the request’s current ending', ()
     const order: string[] = []
     const decisionSnapshots: { registered: boolean; waiting: boolean; starting: boolean }[] = []
     const answerSnapshots: { registered: boolean; waiting: boolean }[] = []
-    vi.spyOn(seam, 'whatAServerOffers').mockImplementation((name, url) => {
+    vi.spyOn(decisions, 'whatAServerOffers').mockImplementation((name, url) => {
       const first = ++calls === 1
       return new Promise((resolve, reject) => {
         void offers(name, url).then(
@@ -253,10 +256,10 @@ describe('a late discovery failure describes the request’s current ending', ()
       order.push('Add inserted')
       return row
     })
-    const unmark = seam.mcpServerRequestsBeingDecided.delete.bind(
-      seam.mcpServerRequestsBeingDecided,
+    const unmark = decisions.mcpServerRequestsBeingDecided.delete.bind(
+      decisions.mcpServerRequestsBeingDecided,
     )
-    vi.spyOn(seam.mcpServerRequestsBeingDecided, 'delete').mockImplementation((requestId) => {
+    vi.spyOn(decisions.mcpServerRequestsBeingDecided, 'delete').mockImplementation((requestId) => {
       if (armed && requestId === id) {
         order.push('decision formed')
         decisionSnapshots.push({
@@ -271,8 +274,8 @@ describe('a late discovery failure describes the request’s current ending', ()
       }
       return unmark(requestId)
     })
-    const nameIsRegistered = seam.itsNameIsRegistered.bind(host)
-    vi.spyOn(seam, 'itsNameIsRegistered').mockImplementation((name) => {
+    const nameIsRegistered = decisions.itsNameIsRegistered.bind(decisions)
+    vi.spyOn(decisions, 'itsNameIsRegistered').mockImplementation((name) => {
       const registered = nameIsRegistered(name)
       if (armed && !registered && freeNameCuts === 0) {
         freeNameCuts++
