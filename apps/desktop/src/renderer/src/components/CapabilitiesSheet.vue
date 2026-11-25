@@ -706,6 +706,8 @@ function onKey(event: KeyboardEvent): void {
   </SheetShell>
 </template>
 
+<style scoped src="./sheet-field-presentation.css"></style>
+
 <style scoped>
 .icon {
   width: 14px;
@@ -805,35 +807,9 @@ function onKey(event: KeyboardEvent): void {
   flex: 1 1 auto;
 }
 
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
 .capability {
   padding-bottom: var(--space-6);
   border-bottom: var(--border-width) solid var(--line);
-}
-
-.lbl {
-  display: flex;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.stored {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-style: normal;
-  letter-spacing: 0;
-  opacity: 0.8;
-  text-transform: none;
 }
 
 .grants {
@@ -866,23 +842,5 @@ function onKey(event: KeyboardEvent): void {
   color: var(--muted);
   font-size: var(--type-caption);
   font-style: normal;
-}
-
-.note {
-  display: flex;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  line-height: 1.5;
-}
-
-.note.err {
-  color: var(--danger);
-}
-
-.note .icon {
-  flex: 0 0 auto;
-  margin-top: 1px;
 }
 </style>
