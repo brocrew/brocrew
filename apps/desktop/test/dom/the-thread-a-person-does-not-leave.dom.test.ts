@@ -1,7 +1,7 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import {
@@ -18,6 +18,7 @@ import {
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
+import { givenAnswer } from './what-this-agent-was-given.fixture'
 import {
   META,
   contrast,
@@ -29,7 +30,6 @@ import {
   record,
   unmountAll,
   visible,
-  type Mounted,
 } from './harness'
 
 /**
@@ -202,9 +202,6 @@ const ownsText = (el: Element): boolean =>
 const textBearing = (root: HTMLElement): HTMLElement[] =>
   [root, ...root.querySelectorAll<HTMLElement>('*')].filter((el) => ownsText(el) && visible(el))
 
-/** The root itself, so a walk includes it rather than only its descendants. */
-const root = (el: HTMLElement): HTMLElement => el
-
 /** Every element carrying a `data-cy`, visible, inside `root` — the addresses a fact can have. */
 const hooked = (root: HTMLElement): HTMLElement[] =>
   [root, ...root.querySelectorAll<HTMLElement>('[data-cy]')].filter(
@@ -264,48 +261,6 @@ async function openEveryFold(body: HTMLElement): Promise<void> {
 const headedBy = (el: Element): Subject | null =>
   (el.closest('[data-subject]') as HTMLElement | null)?.dataset.subject as Subject | null
 
-/**
- * ⚑ **583, relay 2 · "only ONE tab is in the DOM at a time."**
- *
- * ⛔ **Every walk in §2 and §5 below used to read one static mount** — `AgentInstructionsSheet`
- * drew all five `told.layers`, the compiled bundle and the provider/refused lists in one flowing
- * document, so a query against the whole subtree saw everything the sheet could ever show. `583`
- * regrouped that document into a tab strip where `showing`/`current` gate a `v-if`/`v-else-if`/
- * `v-else`, so a query against one static mount now sees exactly ONE owner's rows — a fact that
- * moved to a tab nobody pressed is a fact these walks would silently stop seeing.
- *
- * ⚠️ **So the walk presses, rather than reads.** `walkEveryToldTab` visits every `told-tab-<key>`
- * in turn, opens every `told-block-toggle` it finds there (the `as sent` tab needs no press: its
- * account layer is open by construction), and calls back once per stop — which is the same
- * `openEveryFold` idea one surface over, aimed at a strip instead of a list of discloures.
- */
-async function pressTold(view: Mounted, key: string): Promise<void> {
-  view.q(`told-tab-${key}`).click()
-  await nextTick()
-}
-
-/** Open every closed block on whichever tab is on screen right now. */
-async function openEveryToldBlock(host: HTMLElement): Promise<void> {
-  for (const b of host.querySelectorAll<HTMLElement>('[data-cy="told-block-toggle"]')) b.click()
-  await nextTick()
-}
-
-/**
- * Press every tab of the instructions sheet in turn, opening every block each one draws, and call
- * `visit` once per stop — so a walk that used to run over one mount now runs over every state the
- * tab strip can be in.
- */
-async function walkEveryToldTab(view: Mounted, visit: () => void): Promise<void> {
-  const keys = [...view.host.querySelectorAll<HTMLElement>('[data-cy^="told-tab-"]')].map((b) =>
-    b.dataset.cy!.slice('told-tab-'.length),
-  )
-  for (const key of keys) {
-    await pressTold(view, key)
-    await openEveryToldBlock(view.host)
-    visit()
-  }
-}
-
 function info(over: Record<string, unknown> = {}) {
   return mount(
     SessionDrawer,
@@ -324,7 +279,10 @@ function pane(over: Record<string, unknown> = {}) {
   )
 }
 
-afterEach(unmountAll)
+afterEach(() => {
+  unmountAll()
+  vi.unstubAllGlobals()
+})
 
 /* ------------------------------------------------------------- §1 · the grouping is the teaching */
 
@@ -429,11 +387,13 @@ describe('§2 · every fact on the index is under the subject the ruling gives i
   })
 
   it('⛔ the WIDE surface is headed by one subject, and carries no fact from the other', async () => {
+    vi.stubGlobal('api', { runtime: { whatThisAgentWasGiven: async () => givenAnswer() } })
     const view = pane()
     view.q('told-index').click()
     await nextTick()
 
-    const sheet = view.q('agent-sheet')
+    const sheet = view.q('input-popup')
+    await expect.poll(() => view.all('input-provider-about').length).toBe(1)
     expect(sheet.dataset.subject, 'the sheet declares no subject').toBe('agent')
 
     // ⚑ **Measured by exclusion, and paired** (`193`): every conversation-side hook is asserted
@@ -453,25 +413,25 @@ describe('§2 · every fact on the index is under the subject the ruling gives i
       'no conversation fact was on the index to pair the absence with',
     ).toBeGreaterThan(2)
 
-    // ⚑ **583 relay 2 · re-asked on every tab, not on one static mount.** Before the tab strip
-    // this sheet was one flowing document and a single query saw everything it could ever draw; a
-    // conversation fact that leaked onto the SECOND or THIRD tab would have passed a check that
-    // only ever looked at the mount as it first rendered. `walkEveryToldTab` presses each tab (and
-    // opens what it finds) so the absence holds at every stop, not only at the landing one.
-    await walkEveryToldTab(view, () => {
+    for (const tab of sheet.querySelectorAll<HTMLButtonElement>('[data-cy^="input-tab-"]')) {
+      tab.click()
+      await nextTick()
+      for (const details of sheet.querySelectorAll('details')) details.open = true
+      await nextTick()
       for (const { entry, selector } of conversationFacts) {
         expect(
           sheet.querySelector(selector),
           `${entry.cy} is the conversation's and it is inside the agent's sheet`,
         ).toBeNull()
       }
-    })
+    }
 
-    // For the paired positive, press `as sent` and verify the sheet draws the agent’s
-    // composed prompt. It is not visible on the landing tab.
-    await pressTold(view, 'as-sent')
-    expect(sheet.querySelector('[data-cy="told-composition"]')).not.toBeNull()
-    expect(sheet.querySelector('[data-cy="session-instructions"]')).not.toBeNull()
+    view.q('input-tab-1').click()
+    await nextTick()
+    const composition = view.q('told-composition')
+    composition.querySelector<HTMLButtonElement>('[data-cy="doc-view-raw"]')?.click()
+    await nextTick()
+    expect(composition.textContent).toContain(COMPOSED)
   })
 })
 
@@ -600,12 +560,12 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
   it('🔴 the pane, the transcript and the drawer are all still mounted under the sheet', async () => {
     const view = pane()
     const before = view.q('reading-surface')
-    expect(view.all('agent-sheet'), 'the sheet is open before anything was pressed').toHaveLength(0)
+    expect(view.all('input-popup'), 'the sheet is open before anything was pressed').toHaveLength(0)
 
     view.q('told-index').click()
     await nextTick()
 
-    expect(view.all('agent-sheet'), 'the entry opened nothing').toHaveLength(1)
+    expect(view.all('input-popup'), 'the entry opened nothing').toHaveLength(1)
     // ⛔ **The ruling, as four elements.** *"A separate screen he has to navigate to does not."*
     expect(view.all('conversation-pane'), 'the pane unmounted').toHaveLength(1)
     expect(view.q('reading-surface'), 'the transcript is a different element').toBe(before)
@@ -623,10 +583,10 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
     // ⛔ **The sheet is INSIDE the app's own host rather than beside it**, which is what makes it
     // carry the layer's chrome — Escape, the backdrop, the focus trap, and the emergency stop
     // `OverlayHost` draws for every sheet in the app (`390`).
-    expect(host.contains(view.q('agent-sheet'))).toBe(true)
+    expect(host.contains(view.q('input-popup'))).toBe(true)
     // ⚑ **Whether that stop is REACHABLE with this panel in front of it is a different question**,
     // and it is asked where it is asked of every other sheet: `a-stop-a-modal-cannot-cover`'s §2,
-    // which needs the spawn-safety read seeded and gained an `AgentInstructionsSheet` row in this
+    // which needs the spawn-safety read seeded and gained an `AgentInputPopup` row in this
     // dispatch. ⛔ Asserting it here with no seed would draw no stop at all and pass on an
     // absence — the shape `193` is about.
   })
@@ -637,11 +597,11 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
     entry.focus()
     entry.click()
     await nextTick()
-    expect(view.q('agent-sheet')).not.toBeNull()
+    expect(view.q('input-popup')).not.toBeNull()
 
     view.q('close-overlay').click()
     await nextTick()
-    expect(view.all('agent-sheet'), 'the sheet did not close').toHaveLength(0)
+    expect(view.all('input-popup'), 'the sheet did not close').toHaveLength(0)
     // ⛔ **Focus is given back by `OverlayHost`'s own `onUnmounted`** — the reader is standing
     // where they were, which is the other half of not losing the thread.
     expect(document.activeElement, 'focus was left on the body').toBe(view.q('told-index'))
@@ -672,7 +632,7 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
     )
     view.q('told-index').click()
     await nextTick()
-    expect(view.all('agent-sheet'), 'the entry opened nothing').toHaveLength(1)
+    expect(view.all('input-popup'), 'the entry opened nothing').toHaveLength(1)
 
     // ⛔ **The RECORD's id, which is what the guard reads** — `createSessionRecord` mints it and
     // `meta.sessionId` is the host's echo of the same fact. A fixture that moved only the echo
@@ -687,7 +647,7 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
     await nextTick()
 
     expect(
-      view.all('agent-sheet'),
+      view.all('input-popup'),
       'the previous conversation’s instructions are over this one’s transcript',
     ).toHaveLength(0)
     // …and the pane really swapped, so this is a guard rather than an unmount.
@@ -697,26 +657,21 @@ describe('§4 · the entry opens wide over a transcript that stays where it was'
 
 /* ------------------------------------------- §5 · the block chooses its own face and its own scale */
 
-describe('§5 · independently mountable means it brings its own typography', () => {
-  it('🔴 the block sets a reading size on its own root — it does not inherit one', () => {
-    // ⛔ **`525`'s named refactor cost, as an assertion.** It emitted `<dt>`/`<dd>` fragments into
-    // `SessionInfo`'s `<dl>` and took that component's mono 8.5 px root, which is why every
-    // sentence in it was a micro-label. ⚑ A root that declares nothing would render at whatever
-    // mounted it — the defect, exactly — so this asks the ENGINE what the block came out at inside
-    // a sheet that sets no size of its own.
-    // ⛔ **Mounted inside the trap the defect really was** — a mono `--text-4xs` box, which is
-    // `SessionInfo`'s own root and what this block inherited for four dispatches
-    // (`a-control-must-be-trapped-the-way-the-subject-is`). A mount into a bare div would inherit
-    // the app's body default, which happens to BE the reading size, and the assertion would hold
-    // over a component that declares nothing at all.
-    const view = mount(
+describe('the reader on the overlay', () => {
+  function reader(style?: string) {
+    return mount(
       defineComponent({
         setup() {
           return () =>
-            h('div', { style: 'font-family: var(--font-mono); font-size: var(--text-4xs)' }, [
-              h(AgentInstructionsSheet as never, {
+            h('div', { style, 'data-chat-theme': 'light' }, [
+              h(AgentInputPopup, {
+                sessionId: 'sess_1',
+                provider: 'claude',
+                who: 'Ada',
+                profile: null,
+                state: null,
+                startLoaded: false,
                 instructions: INFO.instructions,
-                relaunched: false,
                 ...ASKED,
               }),
             ])
@@ -725,159 +680,60 @@ describe('§5 · independently mountable means it brings its own typography', ()
       {},
       { width: 1200, height: 900 },
     )
-    const block = view.q('agent-instructions')
-    // ⚑ The trap really is one: the box around the sheet is at the size this block used to take.
-    const trap = view.host.firstElementChild!
-    expect(px(trap), 'the trap does not hold the old size').toBe(tokenPx('--text-4xs', block))
-    expect(px(block), 'the block took the size of whatever mounted it').toBe(
-      tokenPx('--text-base', block),
-    )
-    expect(getComputedStyle(block).fontFamily).toBe(tokenFace('--font-sans', block))
+  }
+
+  it('sets its reading size inside a host using micro-labels', () => {
+    const view = reader('font-size: var(--text-4xs)')
+    const body = view.q('input-popup-body')
+    expect(px(view.host.firstElementChild!)).toBe(tokenPx('--text-4xs', body))
+    expect(px(body)).toBe(tokenPx('--type-body', body))
+    expect(px(body)).toBeGreaterThan(px(view.host.firstElementChild!))
   })
 
-  it('🔴 …and it heads ITSELF, so it cannot be dropped into a mixed surface unnoticed', async () => {
-    // ⛔ **Two surfaces declare `agent`, and both have to.** The sheet is what a person opens; the
-    // block is what a test — or a future surface — mounts on its own. ⚠️ A block that relied on its
-    // host to declare the subject would carry the ruling only as far as the host it happens to
-    // have, and `HO-050` §1.1's rail is about the element that HEADS a surface.
-    const view = mount(
-      AgentInstructionsSheet,
-      { instructions: INFO.instructions, relaunched: false, ...ASKED },
-      { width: 1200, height: 900 },
-    )
-    const block = view.q('agent-instructions')
-    expect(block.dataset.subject, 'the block declares no subject of its own').toBe('agent')
-    // ⚑ **583 relay 2 · `told-sentence` moved behind the `as sent` tab** — it is the account's own
-    // lead line and that account now lives on its own tab rather than at the top of one flowing
-    // document, so it has to be pressed into view before it can be found under `block` at all.
-    await pressTold(view, 'as-sent')
-    // ⚑ …and it is the NEAREST head for everything inside it, which is what makes it the one that
-    // would catch a conversation fact added to this component.
-    const inside = block.querySelector<HTMLElement>('[data-cy="told-sentence"]')!
-    expect(headedBy(inside)).toBe('agent')
-    expect(inside.closest('[data-subject]')).toBe(block)
+  it('heads its own launch evidence', async () => {
+    const view = reader()
+    const popup = view.q('input-popup')
+    const evidence = view.q('input-launch-evidence') as HTMLDetailsElement
+    evidence.open = true
+    await nextTick()
+    const composition = view.q('told-composition')
+    expect(visible(composition)).toBe(true)
+    expect(headedBy(composition)).toBe('agent')
+    expect(composition.closest('[data-subject]')).toBe(popup)
   })
 
-  it('⛔ a path NAMES the monospace face — it no longer arrives from the panel that hosted it', async () => {
-    // ⚠️ **The defect a move creates and only a mount can see.** With a root of its own the block
-    // is `--font-sans`; a `.path` that inherited its face would render a terminal path in a
-    // reading face, and every string assertion in the repo would still pass.
-    const view = mount(
-      AgentInstructionsSheet,
-      { instructions: INFO.instructions, relaunched: false, ...ASKED },
-      { width: 1200, height: 900 },
+  it('uses monospace for paths and the reading face for the summary', async () => {
+    const view = reader()
+    const body = view.q('input-popup-body')
+    for (const fold of body.querySelectorAll<HTMLDetailsElement>('details')) fold.open = true
+    await nextTick()
+    const paths = [...body.querySelectorAll('.path, .bb-mono')].filter(visible)
+    const mono = tokenFace('--font-mono', body)
+    const sans = tokenFace('--font-sans', body)
+    expect(paths.length).toBeGreaterThan(2)
+    expect(mono).not.toBe(sans)
+    for (const path of paths) expect(getComputedStyle(path).fontFamily).toBe(mono)
+    expect(getComputedStyle(view.q('told-composition').querySelector('summary')!).fontFamily).toBe(
+      sans,
     )
-    const root = view.q('agent-instructions')
-    // ⛔ **Resolved beside `root` rather than beside a path itself.** `root` is the one element
-    // that survives every tab switch below; a probe planted beside a `.path` from a tab the walk
-    // has since left would read a DETACHED subtree's computed style, which Chromium reports as an
-    // empty string rather than as the face that was actually painted.
-    const mono = tokenFace('--font-mono', root)
-    const sans = tokenFace('--font-sans', root)
-    expect(mono, 'the two faces are the same, so this rule is about nothing').not.toBe(sans)
-
-    // ⚑ **583 relay 2 · checked on every tab while it is live, not off one mount collected after
-    // the fact.** A `.path` used to sit in whichever of the five always-open sections drew it; now
-    // the factory/learned file, the provider's own list and the refused list are each behind their
-    // own tab, so the walk visits every one and asserts each path's face WHILE that tab is still
-    // the one in the DOM — the same reason `told-composition` needed a press two tests up.
-    let pathCount = 0
-    let sentenceFace = ''
-    await walkEveryToldTab(view, () => {
-      for (const path of root.querySelectorAll<HTMLElement>('.path')) {
-        pathCount += 1
-        expect(getComputedStyle(path).fontFamily).toBe(mono)
-      }
-      const sentence = view.all('told-sentence')[0]
-      if (sentence) sentenceFace = getComputedStyle(sentence).fontFamily
-    })
-    expect(pathCount, 'no path was drawn at all').toBeGreaterThan(2)
-    // ⛔ The pair, on the `as sent` tab that holds it now: its lead sentence is NOT mono, so the
-    // assertion above is about the paths rather than about a block that is mono throughout.
-    expect(sentenceFace, 'the as-sent tab was never visited').not.toBe('')
-    expect(sentenceFace).toBe(sans)
   })
 
-  it('🔴 …and it is READABLE on the paper the overlay layer puts it on', async () => {
-    // ⛔ **`346`'s class, and this repo has paid for it twice.** `OverlayHost` carries
-    // `data-chat-theme="light"` for everything it hosts, so a sheet added today is light because it
-    // was hosted rather than because somebody remembered — and `color` INHERITS as a RESOLVED
-    // colour, which is how five sheets once computed a near-white ink on their own roots and were
-    // saved only by every text element happening to declare a colour of its own.
-    // ⚠️ **A near-white sentence on white paper passes every assertion in this file**, which is why
-    // the sensor here is contrast rather than a class name
-    // (`an-alpha-fill-in-a-light-scope-is-not-a-light-surface`).
-    const view = mount(
-      defineComponent({
-        setup() {
-          return () =>
-            h('div', { 'data-chat-theme': 'light' }, [
-              h(AgentInstructionsSheet as never, {
-                instructions: INFO.instructions,
-                relaunched: false,
-                ...ASKED,
-              }),
-            ])
-        },
-      }),
-      {},
-      { width: 1200, height: 900 },
-    )
-    const worst: { where: string; ratio: number }[] = []
-    // ⚑ **583 relay 2 · sampled across every tab, not off one static mount.** Before the tab strip
-    // this sheet drew all five `told.layers`, the compiled bundle and both lists in one document,
-    // so a single walk covered everything it could paint. `583` gates that behind `showing`/
-    // `current`, so a colour that only ever appears on the second or third tab — the provider's
-    // own scope chip, the refused-file italics — would have been invisible to a walk that read one
-    // mount and never pressed anything. ⛔ **Not deduped by element identity**: Vue PATCHES an
-    // unkeyed node (e.g. `.lead-short`) in place across sibling group tabs rather than replacing
-    // it, so the same element can carry a DIFFERENT sentence on the next tab — a Set keyed by the
-    // node would sample only the first tab's colour and silently skip every one after it.
-    await walkEveryToldTab(view, () => {
-      for (const el of textBearing(view.host.querySelector<HTMLElement>('.sheet-body')!)) {
-        const colour = parseColor(getComputedStyle(el).color)
-        if (colour === null) continue
-        const { fg, bg } = paintedInk(el, colour)
-        worst.push({ where: el.dataset.cy ?? el.className, ratio: contrast(fg, bg) })
-      }
-    })
-    expect(worst.length, 'nothing on the sheet had ink to read').toBeGreaterThan(20)
-    const faintest = worst.reduce((a, b) => (b.ratio < a.ratio ? b : a))
-    // ⛔ **3:1 is the floor this app's own paper tests use for its quietest register** — muted meta
-    // on a card — and everything on a READING surface has to clear it.
-    // ⚑ **Measured at this commit the faintest is 5.62:1**, the `Open` button's caption, so the
-    // margin is 2.6 and the bound is not one a reflow could cross (standing rule 22: say what makes
-    // the number reachable and write the derivation down). ⚠️ The bound is deliberately the FLOOR
-    // rather than the measurement: pinning 5.62 would redden on any legitimate palette move.
-    expect(
-      faintest.ratio,
-      `${faintest.where} is ${faintest.ratio.toFixed(2)}:1 on paper`,
-    ).toBeGreaterThan(3)
-  })
+  it('keeps the disclosed paths and papers readable on the light overlay', async () => {
+    const view = reader()
+    const body = view.q('input-popup-body')
+    for (const fold of body.querySelectorAll<HTMLDetailsElement>('details')) fold.open = true
+    await nextTick()
+    expect(view.q('told-composition').querySelector('[data-cy="document-body"]')).not.toBeNull()
 
-  it('⚑ nothing on the sheet is under the 12 px floor, with every tab and paper open', async () => {
-    const view = mount(
-      AgentInstructionsSheet,
-      { instructions: INFO.instructions, relaunched: false, ...ASKED },
-      { width: 1200, height: 900 },
-    )
-    const body = view.host.querySelector<HTMLElement>('.sheet-body')!
-    const under: string[] = []
-    let walked = 0
-    // Walked across every tab, with each block's paper open, so the paper's own toolbar label is
-    // measured too. Not deduped by node: Vue reuses nodes across tabs.
-    await walkEveryToldTab(view, () => {
-      for (const el of [root(body), ...body.querySelectorAll<HTMLElement>('*')]) {
-        if (!ownsText(el) || !visible(el)) continue
-        walked += 1
-        if (px(el) < 12) under.push(`${el.dataset.cy ?? el.className}@${px(el)}`)
-      }
-    })
-    expect(walked, 'the walk measured nothing').toBeGreaterThan(20)
-    expect(
-      body.querySelector('.lbl'),
-      'no paper was opened, so its label was never measured',
-    ).not.toBeNull()
-    expect(under, 'text under the 12 px floor').toEqual([])
+    const leaves = textBearing(body)
+    expect(leaves.length).toBeGreaterThan(20)
+    const tooSmall = leaves.filter((el) => px(el) < 12)
+    expect(tooSmall.map((el) => el.dataset.cy ?? el.className)).toEqual([])
+    for (const el of leaves) {
+      const colour = parseColor(getComputedStyle(el).color)
+      expect(colour, el.textContent ?? '').not.toBeNull()
+      const { fg, bg } = paintedInk(el, colour!)
+      expect(contrast(fg, bg), el.textContent ?? '').toBeGreaterThan(3)
+    }
   })
 })

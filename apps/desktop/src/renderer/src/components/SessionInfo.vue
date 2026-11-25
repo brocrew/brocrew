@@ -11,8 +11,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import { agentName } from '../../../shared/runtime-ipc'
 import { whereItCameFrom } from '../lib/session-record'
-import { textViewFor } from '../../../shared/documents'
-import DocumentBody from './DocumentBody.vue'
+import DiskFilePreview from './DiskFilePreview.vue'
 import { PROFILE_OWNS } from '../lib/profile-words'
 import {
   ANOTHER_CALLER_IS_ON_IT,
@@ -542,16 +541,7 @@ const fileManager = fileManagerHere()
                 <div class="muted">
                   Read just now, from disk — not necessarily what the provider read at launch.
                 </div>
-                <DocumentBody
-                  :source="reading.result.text"
-                  :filename="reading.result.name"
-                  :raw="textViewFor(reading.result.name).raw"
-                  :source-only="textViewFor(reading.result.name).sourceOnly"
-                  compact
-                />
-                <div v-if="reading.result.truncated" class="cut">
-                  · cut at the size limit — this much was read
-                </div>
+                <DiskFilePreview :file="reading.result" />
               </template>
               <div v-else class="absent" data-cy="info-read-refusal">
                 {{ READ_WORDS[reading.result.reason] ?? reading.result.reason }}
@@ -623,7 +613,7 @@ const fileManager = fileManagerHere()
            has to leave it to find out what the agent was told has lost the thread… an index entry
            that opens wide satisfies both; a separate screen he has to navigate to does not."* The
            pane, the transcript and this drawer stay mounted underneath — see
-           `AgentInstructionsSheet.vue`, and `the-thread-a-person-does-not-leave.dom.test.ts`, which
+           `AgentInputPopup.vue`, and `the-thread-a-person-does-not-leave.dom.test.ts`, which
            asserts it rather than describing it.
 
            ⚠️ **It states what opens and counts nothing.** A tally here would be a second derivation
@@ -773,10 +763,6 @@ dd {
 
 .read .muted {
   margin-bottom: var(--space-3);
-}
-
-.cut {
-  color: var(--waiting);
 }
 
 .muted {

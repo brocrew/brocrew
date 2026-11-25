@@ -167,7 +167,7 @@ export const TAB_OF_HOOK = {
   'session-ref': 'info',
   // Everything the instructions block draws is deliberately absent. The Info tab is an index plus a
   // wide sheet: the composition, the layers, the memory rows, the provider list and their two folds
-  // are on `AgentInstructionsSheet`, which `ConversationPane` raises on the overlay layer. A hook the
+  // are on `AgentInputPopup`, which `ConversationPane` raises on the overlay layer. A hook the
   // drawer body does not mount must not be claimed by a tab, or `tabOfHook` would send a step to Info,
   // the read would find nothing, and the step would assert against an absence it caused.
   //

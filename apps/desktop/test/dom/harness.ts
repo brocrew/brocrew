@@ -528,23 +528,15 @@ export function record(events: TranscriptEvent[], sessionId = 'sess_1'): Session
   return r
 }
 
-/**
- * 🔴 **The agent's side, mounted on its own** (`527` §3.1).
- *
- * ⛔ **This is a thing no test could do before this dispatch.** `SessionInstructions` emitted
- * `<dt>`/`<dd>` fragments for `SessionInfo`'s `<dl>`, sized by a `font-size` inherited from that
- * component's root, so every file that wanted to assert what the block draws had to mount the
- * whole drawer on the Info tab and go looking. ⚑ `525` named the cost — *"must become
- * independently mountable"* — and seven test files are the evidence that it now is.
- *
- * ⚠️ **`relaunched: false` is the state, not a shortcut** — a fixture conversation really has no
- * earlier life (`SessionRecord.liveFrom === null`), and a test about the relaunch sentence passes
- * `true` and gets the other one.
- */
-export const toldProps = (
-  instructions: CreatedSession['instructions'],
-  over: Record<string, unknown> = {},
-): Record<string, unknown> => ({ instructions, relaunched: false, ...over })
+export const launchRecordProps = (instructions: CreatedSession['instructions']) => ({
+  sessionId: 'sess_1',
+  provider: 'claude' as const,
+  who: 'Ada',
+  profile: null,
+  state: null,
+  startLoaded: false,
+  instructions,
+})
 
 type ConversationPaneProps = InstanceType<typeof ConversationPane>['$props']
 type MutablePaneProps = {
@@ -600,8 +592,6 @@ export const drawerProps = (over: Record<string, unknown> = {}): Record<string, 
   // text or teleport root nodes"*, fourteen times a run, on a fragment root that swallows it.
   // 🔴 **That noise cost a real diagnosis**: it was read as naming the cause of two failures it
   // has nothing to do with, and the actual cause was a stale lookup table.
-  // ⚑ **`toldProps` above still sets it**, because `SessionInstructions` really does declare it —
-  // this line was the copy aimed at a component that had stopped listening.
   // ⛔ **`null` because a fresh fixture conversation has had no work read for it yet** (508) — the
   // state every real drawer is in on its first frame, and not a shortcut. ⚠️ A test about the Work
   // tab passes a reading and gets rows; a test that says nothing is asserting about a conversation

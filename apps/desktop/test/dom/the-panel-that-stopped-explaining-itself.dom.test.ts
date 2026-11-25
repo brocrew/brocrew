@@ -2,7 +2,7 @@ import type { SessionInstructions } from '../../src/shared/instruction-contracts
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileManagerWord } from '../../src/renderer/src/lib/message-paths'
 import { defineComponent, h, nextTick, ref } from 'vue'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import type {
   CreatedSession,
@@ -11,7 +11,7 @@ import type {
   RevealResult,
   SessionPathTarget,
 } from '../../src/shared/runtime-ipc'
-import { drawerProps, META, mount, unmountAll, type Mounted, toldProps } from './harness'
+import { drawerProps, META, mount, unmountAll, type Mounted } from './harness'
 
 /**
  * 🔴 **356 · the Info panel reads in two seconds, and the sentences are still there.**
@@ -77,44 +77,32 @@ function panel(over: Partial<CreatedSession> = {}, props: Record<string, unknown
   })
 }
 
-/**
- * 🔴 **The agent's side, on the surface it lives on since `527`** (`HO-050` §1.1).
- *
- * ⛔ **Not a weakening of anything below.** Every claim in this file about a provider-reported
- * file, its two affordances and its fold is unchanged; what moved is where the block is drawn.
- * `SessionInstructions` used to emit `<dt>`/`<dd>` into `SessionInfo`'s `<dl>`, so the only way to
- * reach it was to mount the whole drawer on the Info tab. ⚑ **The same arguments, deliberately**,
- * so that what changed in each test below is one identifier.
- */
+function inputProps(instructions: SessionInstructions, over: Record<string, unknown> = {}) {
+  return {
+    sessionId: 'sess_1',
+    provider: 'codex' as const,
+    who: 'Ada',
+    profile: null,
+    state: null,
+    startLoaded: false,
+    instructions,
+    ...over,
+  }
+}
+
 function told(over: Partial<CreatedSession> = {}, props: Record<string, unknown> = {}): Mounted {
-  return mount(AgentInstructionsSheet as never, toldProps(over.instructions ?? NOTHING, props), {
+  return mount(AgentInputPopup as never, inputProps(over.instructions ?? NOTHING, props), {
     width: 760,
     height: 900,
   })
 }
 
-/**
- * 🔴 **583 · the sheet is a TAB STRIP, and only one tab is in the DOM at a time.**
- *
- * Assertions run on the row’s owner tab among `told-tab-<key>`, with one tab drawn at a time.
- * Provider-reported rows are on `not-held` because the app holds none of their bytes;
- * `instructions-why` belongs on `as-sent` with the composition account.
- *
- * ⚑ **A press rather than a prop**, because that is what a person does: the landing tab is
- * whichever owner is drawn first, and reaching another one is a click. ⛔ **Asserted to exist
- * before it is clicked** — a `querySelector(…)?.click()` on a tab that was renamed would make
- * every assertion after it a measurement of an empty panel.
- *
- * ⚠️ **Any control, not only a tab.** A fold on the tab a person has landed on is the same
- * gesture with the same requirement — press something that is there, then let Vue render.
- */
 async function press(host: HTMLElement, cy: string): Promise<void> {
-  const el = host.querySelector<HTMLButtonElement>(`[data-cy="${cy}"]`)
-  expect(
-    el,
-    `nothing with data-cy="${cy}" is in the DOM, so nothing after this measured it`,
-  ).not.toBeNull()
-  el!.click()
+  const element = host.querySelector<HTMLElement>(`[data-cy="${cy}"]`)
+  expect(element).not.toBeNull()
+  const trigger = element instanceof HTMLDetailsElement ? element.querySelector('summary') : element
+  expect(trigger).not.toBeNull()
+  trigger!.click()
   await nextTick()
 }
 
@@ -200,39 +188,12 @@ describe('the prose is moved rather than deleted (356 §1)', () => {
       'the index has no disclosure at all',
     ).toBeGreaterThan(2)
 
-    // 🔴 **583 · the sheet's folds are now spread over its tabs, so the rule is walked over ALL of
-    // them.** ⛔ **Not a weakening and not a narrowing**: one mount used to hold every fold, so
-    // one query answered *did anything open unasked* for the whole sheet. With one tab in the DOM
-    // at a time, the same question needs every tab visited — and a run that only looked at the
-    // landing tab would let a fold that starts open on `not shown` through, which is precisely
-    // the state `356` §1 forbids and the state a person reaches in two clicks. ⚑ The `> 2` bound
-    // is the ORIGINAL one and it is still a bound on the sheet, summed rather than per tab: the
-    // folds it counted did not disappear, they were dealt out.
     const sheet = told({ instructions: REPORTED }).host
-    const tabs = [...sheet.querySelectorAll('[data-cy="told-tabs"] [role="tab"]')].map((el) =>
-      el.getAttribute('data-cy'),
-    )
-    expect(tabs.length, 'the sheet drew no tab strip, so this walked nothing').toBeGreaterThan(1)
-    let closed = 0
-    for (const tab of tabs) {
-      await press(sheet, tab!)
-      // ⛔ **The press is asserted to have LANDED, and without this the walk is a fiction.** A
-      // `pick` that stopped switching would leave the landing tab on screen for every iteration,
-      // and its one closed fold counted four times would clear the bound below while five folds
-      // on three other tabs went unread — the loop measuring the same panel over and over.
-      expect(
-        sheet.querySelector(`[data-cy="${tab!}"]`)?.getAttribute('aria-selected'),
-        `pressing ${tab!} did not select it`,
-      ).toBe('true')
-      expect(
-        [...sheet.querySelectorAll('[aria-expanded]')].map((el) =>
-          el.getAttribute('aria-expanded'),
-        ),
-        `the sheet opened one unasked on ${tab!}`,
-      ).not.toContain('true')
-      closed += sheet.querySelectorAll('[aria-expanded="false"]').length
-    }
-    expect(closed, 'the sheet has no disclosure at all').toBeGreaterThan(2)
+    const reported = sheet.querySelector<HTMLDetailsElement>('[data-cy="input-reported-files"]')
+    const launch = sheet.querySelector<HTMLDetailsElement>('[data-cy="input-launch-evidence"]')
+    expect(reported?.open).toBe(false)
+    expect(launch?.open).toBe(false)
+    for (const node of launch!.querySelectorAll('details')) expect(node.open).toBe(false)
   })
 })
 
@@ -256,7 +217,7 @@ describe('two affordances, and the panel says which is which (356 §1)', () => {
     // is no provider row either, so the absence below would be satisfied by a panel that draws
     // nothing at all. The pairing that makes it a measurement — the two paths — is on the same
     // tab, read after the same press.
-    await press(sheet.host, 'told-tab-not-held')
+    await press(sheet.host, 'input-reported-files')
     expect(sheet.host.querySelector('[data-cy="provider-open"]')).toBeNull()
     expect(
       [...sheet.host.querySelectorAll('[data-cy="provider-instruction"] .path')].map(
@@ -273,7 +234,7 @@ describe('two affordances, and the panel says which is which (356 §1)', () => {
     const onRevealPath = async (): Promise<RevealResult> => ({ ok: true, path: '/x' })
     const { host } = told({ instructions: REPORTED }, { onRevealPath })
     // ⚑ **583 · on the `not-held` tab, where the provider rows are drawn.**
-    await press(host, 'told-tab-not-held')
+    await press(host, 'input-reported-files')
 
     expect(host.querySelector('[data-cy="provider-open"]')).toBeNull()
     // …and the affordance that IS wired is drawn, so this is one button missing rather than both.
@@ -373,56 +334,37 @@ describe('a provider-reported file opens on the app’s own paper (356 §2)', ()
       ...over,
     })
 
-  it('⛔ the text is behind a press — the path is what the row shows', async () => {
-    const { host, all } = told({ instructions: REPORTED }, { onReadInstruction: read() })
-    // ⚑ **583 · the provider rows moved to the `not-held` tab, and the negative is taken THERE.**
-    // ⛔ Read on the landing tab it would be an absence on a panel that draws no provider row at
-    // all — true, and about nothing. Here the row is on screen, closed, which is the state
-    // *"the text is behind a press"* is a claim about.
-    await press(host, 'told-tab-not-held')
-    expect(all('provider-instruction').length, 'the provider rows are not on this tab').toBe(2)
-
-    expect(host.textContent).not.toContain('End every reply with WORKER.')
-    all('provider-open')[1]?.click()
+  async function openPreview(m: Mounted, index: number) {
+    m.all('provider-open')[index]!.click()
     await nextTick()
     await nextTick()
+    return m.q('provider-read')
+  }
 
-    expect(host.textContent).toContain('End every reply with WORKER.')
+  async function reportedReader(onReadInstruction = read()) {
+    const m = told({ instructions: REPORTED }, { onReadInstruction })
+    await press(m.host, 'input-reported-files')
+    return m
+  }
+
+  it('keeps the text behind Open and lists both reported paths at rest', async () => {
+    const m = await reportedReader()
+    expect(m.all('provider-instruction')).toHaveLength(2)
+    expect(m.host.textContent).not.toContain('End every reply with WORKER.')
+
+    const preview = await openPreview(m, 1)
+    expect(preview.textContent).toContain('End every reply with WORKER.')
   })
 
-  it('⛔ …and it opens on the standard paper, with both views', async () => {
-    // 356 §2: *"BroBot has a document-viewer standard and it is not negotiable: Markdown / Raw
-    // views, on a white paper background… do not fork a second viewer."*
-    const { host, all } = told({ instructions: REPORTED }, { onReadInstruction: read() })
-    // ⚑ **583 · the provider rows are on the `not-held` tab.**
-    await press(host, 'told-tab-not-held')
-
-    all('provider-open')[0]?.click()
-    await nextTick()
-    await nextTick()
-
-    const paper = host.querySelector('[data-cy="provider-read"] [data-cy="document-body"]')
+  it('opens the standard paper with both views and labels the current bytes', async () => {
+    const m = await reportedReader()
+    const preview = await openPreview(m, 0)
+    const paper = preview.querySelector('[data-cy="document-body"]')
     expect(paper).not.toBeNull()
     expect(paper?.hasAttribute('data-on-white')).toBe(true)
     expect(paper?.querySelector('[data-cy="doc-view-markdown"]')).not.toBeNull()
     expect(paper?.querySelector('[data-cy="doc-view-raw"]')).not.toBeNull()
-  })
-
-  it('🔴 …and says the bytes are TODAY’s, not the ones the provider loaded', async () => {
-    // 357: "the preview must say **current file bytes**, not claim they are the exact bytes from
-    // launch." Without this the panel would be doing precisely what `SessionInfo`'s own comment
-    // forbids — showing today's file beside a conversation had with the one it was handed.
-    const { host, all } = told({ instructions: REPORTED }, { onReadInstruction: read() })
-    // ⚑ **583 · the provider rows are on the `not-held` tab.**
-    await press(host, 'told-tab-not-held')
-
-    all('provider-open')[0]?.click()
-    await nextTick()
-    await nextTick()
-
-    expect(host.querySelector('[data-cy="provider-read"]')?.textContent).toContain(
-      'not necessarily the text the provider loaded at launch',
-    )
+    expect(preview.textContent).toContain('Read from disk now.')
   })
 
   it('⛔ the read names the ROW’s index — the confinement, from this side of it', async () => {
@@ -439,7 +381,7 @@ describe('a provider-reported file opens on the app’s own paper (356 §2)', ()
     // ⚑ **583 · the provider rows are on the `not-held` tab.** ⛔ **And the index the press sends
     // is still the index into `instructions.provider`, not a position within a tab** — which is
     // the whole confinement: the row names itself and the caller resolves the path.
-    await press(host, 'told-tab-not-held')
+    await press(host, 'input-reported-files')
 
     all('provider-open')[1]?.click()
     await nextTick()
@@ -458,7 +400,7 @@ describe('a provider-reported file opens on the app’s own paper (356 §2)', ()
       },
     )
     // ⚑ **583 · the provider rows are on the `not-held` tab.**
-    await press(host, 'told-tab-not-held')
+    await press(host, 'input-reported-files')
 
     all('provider-open')[0]?.click()
     await nextTick()
@@ -497,30 +439,14 @@ describe('a disclosure is only drawn where it has something to disclose', () => 
       ],
     }
     const { host } = told({ instructions: injected })
-    await press(host, 'told-tab-as-sent')
-
-    expect(host.querySelector('[data-cy="instructions-why"]')).toBeNull()
-    // ⚑ **442 · and the COMPOSITION row's own disclosure is a DIFFERENT button** — it explains how
-    // the layers are ordered and is drawn on every conversation, so one gate shared between two
-    // folds with different subjects would have hidden whichever of them was true. ⛔ **Both are
-    // on `as sent` since `583`**, which is what makes the pair readable in one press: the two
-    // buttons are siblings, so *this one and not that one* is a claim about one screen.
-    expect(host.querySelector('[data-cy="told-why"]')).not.toBeNull()
-    // …and the block itself IS on screen, so this is a missing button rather than a missing block.
-    expect(host.querySelector('[data-cy="session-instructions"]')).not.toBeNull()
-    // 🔴 **583 · the file's row is on its owner's tab, and its PATH is behind the row's press.**
-    // ⛔ **Both halves are kept rather than one traded for the other.** A `CLAUDE.md` on the cwd
-    // chain belongs to `the-place` (`HO-009` §3: *"Belongs to the place, not the agent"*), so the
-    // row is asserted to be there and to be that kind — `data-kind`/`data-whose` rather than the
-    // heading, which is `163`'s rule — and then opened, because the full path moved inside
-    // `.opened` when seven sections of one bundle started printing a 104-character path seven
-    // times. ⚠️ The original claim was *the block is on screen with its real path on it*; it is
-    // the same claim, one press deeper.
-    await press(host, 'told-tab-the-place')
-    const row = host.querySelector('[data-cy="told-block"][data-kind="project-memory"]')
-    expect(row, 'the injected file is on no tab at all').not.toBeNull()
+    await press(host, 'input-launch-evidence')
+    expect(host.querySelector('[data-cy="instructions-note"]')).toBeNull()
+    expect(host.querySelector('[data-cy="told-composition"]')).not.toBeNull()
+    const row = host.querySelector<HTMLDetailsElement>(
+      '[data-cy="input-launch-source"][data-kind="project-memory"]',
+    )
     expect(row?.getAttribute('data-whose')).toBe('the-place')
-    row!.querySelector<HTMLButtonElement>('[data-cy="told-block-toggle"]')!.click()
+    row!.open = true
     await nextTick()
     expect(row?.textContent).toContain('/work/checkout/CLAUDE.md')
   })
@@ -543,12 +469,7 @@ describe('a disclosure is only drawn where it has something to disclose', () => 
       note: 'read at launch; searched 2 directories',
     }
     const { host } = told({ instructions: withNote })
-    await press(host, 'told-tab-as-sent')
-
-    expect(host.querySelector('[data-cy="instructions-why"]')).not.toBeNull()
-    // ⛔ **…and it really opens on the note**, which is what makes the button's presence mean
-    // *there is something to disclose* rather than *there is a button*.
-    await press(host, 'instructions-why')
+    await press(host, 'input-launch-evidence')
     expect(host.querySelector('[data-cy="instructions-note"]')?.textContent).toContain(
       'read at launch; searched 2 directories',
     )
@@ -614,8 +535,8 @@ describe('state does not outlive the conversation it belongs to', () => {
       defineComponent({
         setup() {
           return () =>
-            h(AgentInstructionsSheet as never, {
-              ...toldProps(instructions.value, {
+            h(AgentInputPopup as never, {
+              ...inputProps(instructions.value, {
                 onReadInstruction: async (): Promise<InstructionSourceResult> => ({
                   ok: true,
                   path: '/homes/default/codex/AGENTS.md',
@@ -635,7 +556,7 @@ describe('state does not outlive the conversation it belongs to', () => {
     return {
       host: view.host,
       show: async (next) => {
-        instructions.value = next
+        instructions.value = { ...next, provider: [...next.provider] }
         await nextTick()
         await nextTick()
       },
@@ -652,7 +573,7 @@ describe('state does not outlive the conversation it belongs to', () => {
     const { host, show } = swappableTold(A.instructions)
 
     // ⚑ **583 · the preview lives on the `not-held` tab.**
-    await press(host, 'told-tab-not-held')
+    await press(host, 'input-reported-files')
     host.querySelectorAll<HTMLButtonElement>('[data-cy="provider-open"]')[0]!.click()
     await nextTick()
     await nextTick()
@@ -662,7 +583,7 @@ describe('state does not outlive the conversation it belongs to', () => {
 
     // …and the block is still on screen, so this is a reset rather than an unmount. ⚑ Paired on the
     // sheet's own unconditional row since `527`, because that is the surface the reset happens on.
-    expect(host.querySelector('[data-cy="told-tabs"]')).not.toBeNull()
+    expect(host.querySelector('[data-cy="input-popup"]')).not.toBeNull()
 
     // 🔴 **583 · the absence is read back ON THE TAB THE PREVIEW WAS ON, and that is the whole
     // point of this test rather than a detail of it.** ⛔ The watcher also clears `tab`, so the
@@ -671,7 +592,6 @@ describe('state does not outlive the conversation it belongs to', () => {
     // by INDEX, and a person two clicks away would be reading the previous conversation's file
     // under the sentence *"Read just now, from disk"*. ⚑ Pressing back is what a person does, and
     // it is the only place the stale read could still be shown.
-    await press(host, 'told-tab-not-held')
     expect(host.textContent).not.toContain('A CONVERSATION AGO')
     expect(host.querySelector('[data-cy="provider-read"]')).toBeNull()
     // ⛔ **…and the rows the preview hangs off ARE drawn on that tab**, so the two absences above
@@ -680,7 +600,7 @@ describe('state does not outlive the conversation it belongs to', () => {
 
     // ⚑ **And the account of the composition survived the swap too** — the unconditional row this
     // pairing has used since `527`, now one tab over.
-    await press(host, 'told-tab-as-sent')
+    await press(host, 'input-launch-evidence')
     expect(host.querySelector('[data-cy="told-composition"]')).not.toBeNull()
   })
 

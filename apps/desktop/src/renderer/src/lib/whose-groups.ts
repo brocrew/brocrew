@@ -158,7 +158,6 @@ export interface WhoseGroup {
  */
 interface UnsplitBundle {
   readonly block: FileBlock
-  readonly says: string
 }
 
 /** What the sheet draws, once the account has had its say. */
@@ -196,50 +195,9 @@ function named(blocks: readonly ToldBlock[]): ToldBlock[] {
   }))
 }
 
-/**
- * ⚑ **Bytes, the way this surface has always counted them** — `layerBytes`' own encoder, so a
- * share and the size printed beside it cannot come from two different arithmetics.
- */
 function bytesOf(text: string): number {
   return new TextEncoder().encode(text).length
 }
-
-/**
- * 🔴 **The sentence for a bundle this app could not split** (583) — named, so a test can hold it
- * (standing rule 5).
- */
-export const COULD_NOT_TELL_WHICH_PART =
-  'This app did not get a map of this file from the launch that wrote it, so it is shown whole. ' +
-  'It carries both — BroCrew’s own rules and anything you wrote — and the headings inside it are ' +
-  'what tells them apart.'
-
-/**
- * 🔴 **What the *yours* group says when nobody has written any** (583, `HO-073` §2) — the state
- * every identity is in until somebody types something.
- *
- * ⛔ **It names the door, and the door exists** — `582` built it. ⚠️ **It names the ROUTE and not
- * a button on this sheet**, because there is no button on this sheet: a pointer clause is a
- * claim, and the claim this one makes is one a person can walk.
- */
-/**
- * 🔴 **What the *yours* group says when this sheet cannot speak for it at all** (found reviewing
- * this dispatch's own diff).
- *
- * ⛔ **`readSessionInstructions` returns `injected: []` for every non-Claude provider** — that
- * engine reads the published leaf itself — so on Codex the `configured` group is empty whether or
- * not a person has written rules, and their rules ARE in that agent's prompt.
- * ⚠️ **{@link NOTHING_OF_YOURS_YET} said the opposite of the truth there**, which is the worst
- * thing this sheet can do: tell a person a standing rule is not reaching an agent that is
- * following it. ⚑ **D-024 · R1 — keyed on NO FILE sent, not on nothing appended**: that provider
- * is now sent this conversation's own text, and still reads the file itself.
- */
-export const THIS_SHEET_CANNOT_SAY_WHAT_IS_YOURS =
-  'This provider reads the file BroCrew wrote for it, itself, so this sheet cannot say what of ' +
-  'yours reached it. Your standing rules for this agent are on its own sheet: Team, then the agent.'
-
-export const NOTHING_OF_YOURS_YET =
-  'Nothing of yours reaches this agent yet. You write standing rules for it on the agent’s own ' +
-  'sheet — Team, then the agent — and they join its instructions at its next conversation.'
 
 /**
  * ⚑ **The composed bundle's row, split into one block per section** — or one block for the whole
@@ -358,7 +316,7 @@ export function whoseGroups(
     blocksOf(item).forEach((block) => {
       const whose = whoseOf(item, block)
       if (whose === null) {
-        unsplit = { block, says: COULD_NOT_TELL_WHICH_PART }
+        unsplit = { block }
         return
       }
       blocks.get(whose)?.push({ ...block, whose })
