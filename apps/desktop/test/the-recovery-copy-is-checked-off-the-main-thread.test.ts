@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   truncateSync,
   writeFileSync,
 } from 'node:fs'
@@ -734,32 +735,42 @@ describe('the recovery copy is checked off the main thread', () => {
       }
     })
 
+    /**
+     * ⚠️ **Off the main thread, shown without a clock** (197). This database leaves almost nothing
+     * to copy, so compaction ends within one 10 ms heartbeat even on the main thread: a gap bound
+     * passed with it there (11 ms either way). So the test checks the worker itself: the production
+     * worker is asked to inspect, then to compact, and exits while its output still sits beside the
+     * untouched original, so before anything is installed.
+     */
     it('joins the production compaction worker before installing and reopening its output', async () => {
       const { file, db } = aLooseDatabase()
       const before = fileBytes(db)
       db.close()
-      const maintenance = workspaceCompaction(
-        (request) =>
-          new Worker(storageBundle, {
-            workerData: { maintenance: request },
-          }),
-      )
-      let copied = false
-      try {
-        const longest = await longestGapDuring(async () => {
-          expect(
-            await maintenance.run(
-              file,
-              async () => {},
-              async () => {
-                copied = true
-              },
-              () => {},
-            ),
-          ).toBe(true)
+      const original = statSync(file).size
+      const asked: string[] = []
+      let notYetInstalledAtExit: boolean | undefined
+      const maintenance = workspaceCompaction((request) => {
+        asked.push(request.kind)
+        const worker = new Worker(storageBundle, {
+          workerData: { maintenance: request },
         })
-        expect(longest).toBeLessThan(100)
-        expect(copied).toBe(true)
+        if (request.kind === 'compact')
+          worker.once('exit', () => {
+            notYetInstalledAtExit = existsSync(request.output) && statSync(file).size === original
+          })
+        return worker
+      })
+      try {
+        expect(
+          await maintenance.run(
+            file,
+            async () => {},
+            async () => {},
+            () => {},
+          ),
+        ).toBe(true)
+        expect(asked).toEqual(['inspect', 'compact'])
+        expect(notYetInstalledAtExit).toBe(true)
         const reopened = openDatabase(file)
         try {
           expect(fileBytes(reopened)).toBeLessThan(before)
