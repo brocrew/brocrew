@@ -2,7 +2,6 @@ import { personOpener } from './helpers/person-opens-session'
 import { callOn } from './helpers/call-agent-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
-import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
@@ -678,13 +677,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
           : [hit, transcriptHint, facts, 'Results may change when work is edited.']
         const reply = navigationReply(answer.text)
         expect(reply.prose).toBe(paragraphs.join('\n\n'))
-        const identity = store.agentIdentities().find((one) => one.slug === 'worker-1')
-        if (identity === undefined) throw new Error('fictional worker identity missing')
-        expect(reply.links).toEqual([
-          conversationLink(worker, 'conversation W2.1 · the work'),
-          agentLink(identity.id, 'Ada'),
-          pieceLink('work_fictional', 'W9.1', 'Matched'),
-        ])
+        expect(reply.links).toEqual([])
         expect(answer.text).not.toContain('PRIVATE_QUERY_CANARY')
         expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
       }

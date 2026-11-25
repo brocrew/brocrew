@@ -25,12 +25,6 @@ describe('host-owned navigation links', () => {
     expect(pieceLink(id, 'W1', 'Plan')).toBe(`[W1 · Plan](brocrew://piece/${encoded})`)
   })
 
-  it('exports the approved navigation description', () => {
-    expect(links.NAVIGATION_LINKS_DESCRIPTION).toBe(
-      'Use the returned navigation links; clicking them does not move work.',
-    )
-  })
-
   it('keeps the link on a receipt whose destination ID contains a closing parenthesis', () => {
     const destinationLink = conversationLink('session)', 'Plan')
     expect(destinationLink).toBe('[Plan](brocrew://conversation/session%29)')

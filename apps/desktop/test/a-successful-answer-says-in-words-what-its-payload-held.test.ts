@@ -504,9 +504,7 @@ describe('a successful answer says in words what its payload held', () => {
         `Task ${label} ${action} worker in a new conversation ${label} · Inventory project. Context: no current reading.`,
       )
       expect(given.text.split('\n')[0]).not.toContain('Survey the kept files')
-      expect(given.text).toContain(
-        `[${label} · Survey the kept files](brocrew://piece/${String(given.structured?.['piece'])})`,
-      )
+      expect(given.text).not.toContain('brocrew://')
     })
 
     it.each([
@@ -579,9 +577,7 @@ describe('a successful answer says in words what its payload held', () => {
       expect(taken.text.split('\n')[0]).toBe(
         `Took on ${taken.structured?.['label'] as string} under ${taken.structured?.['under'] as string} for the person.`,
       )
-      expect(taken.text).toContain(
-        `[${String(taken.structured?.['label'])} · A request with a memorable title](brocrew://piece/${String(taken.structured?.['piece'])})`,
-      )
+      expect(taken.text).not.toContain('brocrew://')
     })
 
     it('create_agent says the name this app chose, not the slug it was sent', async () => {

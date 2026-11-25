@@ -91,7 +91,7 @@ export class WorkSearch {
               task === undefined
                 ? conversationLink(hit.conversation, hit.address)
                 : pieceLink(task.piece, task.label, task.title ?? ''),
-            title: hit.title,
+            title: task === undefined ? hit.title : task.title,
             state: task?.state ?? '',
             last_active: new Date(hit.last_active_at).toISOString(),
             archived: this.archived.has(hit.conversation),

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { conversationLink } from './links'
+import { pieceLine } from './piece-called'
 import { refusalReason } from './refusals'
 import { workSearchRefusal } from './work-search-words'
 
@@ -293,7 +293,7 @@ export function pastWorkSearchInWords(
   const rows = result.hits.map((hit) => {
     const archive = hit.archived ? ' · archived' : ''
     const state = hit.state === '' ? '' : ` · ${hit.state}`
-    const lines = [`${conversationLink(hit.conversation, hit.line)}${state}${archive}`]
+    const lines = [`${hit.line}${state}${archive}`]
     lines.push(
       hit.matched_field === 'work title or brief'
         ? 'Matched a work title or brief.'
@@ -303,7 +303,7 @@ export function pastWorkSearchInWords(
       const reference = hit.turn.id ?? `event ${hit.turn.ordinal}`
       lines.push(`Recorded ${hit.turn.at} · ${reference}`)
     }
-    if (hit.piece !== null) lines.push(hit.link)
+    if (hit.piece !== null) lines.push(pieceLine(hit.label, hit.title))
     return lines.join('\n')
   })
   if (

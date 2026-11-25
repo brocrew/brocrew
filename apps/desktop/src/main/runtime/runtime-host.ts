@@ -7665,21 +7665,6 @@ export class RuntimeHost implements LiveHost {
     return admitted ? owner : address
   }
 
-  /** The recorded profile of an already named conversation, without opening it. */
-  navigationProfileForConversation(conversation: string): string | null {
-    return this.deps.store.identityOf(conversation)?.profileSlug ?? null
-  }
-
-  /** The stable identity behind an already named profile; reading creates nothing. */
-  navigationIdentity(profile: string): { readonly id: string; readonly name: string } | null {
-    const identity = this.deps.store
-      .agentIdentities()
-      .find((one) => one.slug === foldProfileName(profile))
-    return identity === undefined
-      ? null
-      : { id: identity.id, name: identity.displayName ?? identity.slug }
-  }
-
   /**
    * 🔴 **Which IDENTITIES this caller may be told about** (488, HO-020's `list_profiles`,
    * HO-031 §2.3) — the population {@link RuntimeHost.agentsVisibleTo} cannot reach.

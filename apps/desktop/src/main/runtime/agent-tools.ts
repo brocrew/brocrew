@@ -6,8 +6,6 @@ import { type AgentToolAnswer, type AgentToolDefinition, type AgentToolset } fro
 import { type AgentToolHost } from './tool-families/host'
 import { type Caller, agentCallerId } from './conversation-caller'
 import { type ListsAsLastRead, theEffortsSaid, theModelsSaid } from '../connections/model-rails'
-import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
-import { NAVIGATION_TOOL_NAMES, withNavigationLinks } from './tool-navigation-links'
 import { aLaunchRefused, aLaunchThatDidNotStart } from './tool-families/launch-failures'
 import { answerInWords } from './agent-tool-answer-words'
 import { createAnswerQuestionTool, createListQuestionsTool } from './tool-families/questions'
@@ -177,27 +175,8 @@ export function agentToolsFor(
       })
       const refused = refusalIn(one.name, answered.structured, said.text)
       if (refused !== null) host.noteRefusal(me, one.name, refused)
-      return withNavigationLinks(
-        one.name,
-        said,
-        {
-          conversationName: (id) => host.nameByItsWork(id),
-          conversationVisible: (id) => host.agentCard(id, by, me) !== null,
-          conversationProfile: (id) => host.navigationProfileForConversation?.(id) ?? null,
-          identity: (profile) => host.navigationIdentity?.(profile) ?? null,
-          piece: (spelled) => {
-            const read = host.pieceRecord(me, spelled, { exchange: false, limit: 0 })
-            if (read.is === 'no-piece-by-that-name') return null
-            const row = read.is === 'a-root' ? read.root : read.piece
-            return { id: row.piece, label: row.label, title: row.title }
-          },
-        },
-        args,
-      )
+      return said
     },
-    description: NAVIGATION_TOOL_NAMES.has(one.name)
-      ? `${one.description} ${NAVIGATION_LINKS_DESCRIPTION}`
-      : one.description,
   })
 
   return {

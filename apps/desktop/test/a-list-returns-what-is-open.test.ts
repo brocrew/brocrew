@@ -92,8 +92,6 @@ function theTools(
       if (id !== HELPER && id !== ME) throw new Error(`named an unexpected conversation: ${id}`)
       return 'Ada'
     },
-    navigationProfileForConversation: () => null,
-    navigationIdentity: () => null,
     whatToCallTheConversation: (conversation: string) => {
       if (conversation !== HELPER) throw new Error(`named an unexpected holder: ${conversation}`)
       return 'Ada'

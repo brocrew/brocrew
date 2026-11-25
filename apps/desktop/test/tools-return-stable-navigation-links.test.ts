@@ -8,11 +8,10 @@ import {
   agentLink as formattedAgentLink,
   conversationLink,
   pieceLink as formattedPieceLink,
-  NAVIGATION_LINKS_DESCRIPTION,
 } from '../src/shared/links'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
-describe('tool results carry stable navigation targets', () => {
+describe('agent tool replies keep their text without generated navigation links', () => {
   let world: AServiceWorld
   let host: ReturnType<AServiceWorld['aHost']>
   let caller: string
@@ -52,13 +51,6 @@ describe('tool results carry stable navigation targets', () => {
     expect(result.structured?.['outcome'], result.text).not.toBe('refused')
     return result
   }
-  const pieceLink = () =>
-    `[${label} · Read \\] the notes\\)](brocrew://piece/${encodeURIComponent(piece)})`
-  const agentLink = () => `[Ada \\] Newton\\)](brocrew://agent/${encodeURIComponent(identity)})`
-  const proves = (result: AgentToolAnswer, expected: string): void => {
-    expect(result.text).toContain(expected)
-  }
-
   for (const name of [
     'list_tasks',
     'list_agents',
@@ -69,15 +61,13 @@ describe('tool results carry stable navigation targets', () => {
     'give_work',
     'take_on_work',
   ] as const) {
-    it(`${name} returns a copyable link without changing the work record`, async () => {
+    it(`${name} keeps its reply without generated links or changes to the work record`, async () => {
       let result: AgentToolAnswer
-      let expected = pieceLink()
       if (name === 'list_tasks') result = await call(name, { piece })
       else if (name === 'list_agents') result = await call(name)
       else if (name === 'get_agent_status') result = await call(name, { agent: worker })
       else if (name === 'list_profiles') {
         result = await call(name)
-        expected = agentLink()
       } else if (name === 'search_work') {
         vi.spyOn(host, 'searchWork').mockResolvedValue({
           ok: true,
@@ -132,9 +122,6 @@ describe('tool results carry stable navigation targets', () => {
           brief: 'Read the notes.',
           definition_of_done: 'Notes are read.',
         })
-        const nextPiece = String(result.structured?.['piece'])
-        const nextLabel = String(result.structured?.['label'])
-        expected = `[${nextLabel} · Read \\] the notes\\)](brocrew://piece/${encodeURIComponent(nextPiece)})`
       } else {
         await host.send(caller, 'Please collect the notes.', world.window)
         result = await call(name, {
@@ -142,41 +129,47 @@ describe('tool results carry stable navigation targets', () => {
           brief: 'Collect the notes.',
           definition_of_done: 'Notes are collected.',
         })
-        expected = `[${String(result.structured?.['label'])} · Read \\] the notes\\)](brocrew://piece/${encodeURIComponent(String(result.structured?.['piece']))})`
-        const root = host.pieceBoard(caller).root
-        if (root === null) throw new Error('fictional root missing')
-        expect(result.text).toContain(`](brocrew://piece/${encodeURIComponent(root.piece)})`)
       }
-      proves(result, expected)
-      if (
-        name === 'list_tasks' ||
-        name === 'list_agents' ||
-        name === 'get_agent_status' ||
-        name === 'give_work' ||
-        name === 'search_work'
-      ) {
-        proves(result, agentLink())
-        expect(result.text).toContain(`](brocrew://conversation/${encodeURIComponent(worker)})`)
-      }
+      expect(result.text).not.toContain('brocrew://')
       expect(JSON.stringify([...world.ledger(caller), ...world.ledger(worker)])).not.toContain(
         'brocrew://',
       )
     })
   }
 
+  it('keeps task addresses without appending generated links', async () => {
+    const result = await call('list_tasks', { piece })
+    expect(result.text).toContain(label)
+    expect(result.text).toContain(title)
+    expect(result.text).not.toContain('brocrew://')
+  })
+
+  it('keeps authored web, app and resource links in the reply text', async () => {
+    const authored =
+      '[Guide](https://example.test/guide) [Earlier notes](brocrew://piece/fictional_notes) [Report](res_fictional_report)'
+    const path = join(world.folder, 'linked-notes.md')
+    writeFileSync(path, authored)
+    const kept = await call('update_work', { piece, resources: [path] })
+    const resource = (kept.structured?.['resources'] as { resource: string }[])[0]!.resource
+    const result = await call('read_document', { resource })
+    expect(result.text).toContain(authored)
+    await call('update_work', { piece, title: authored })
+    expect((await call('list_tasks', { piece })).text).toContain(authored)
+  })
+
   it('profiles name stable identities even after the agent is renamed', async () => {
     const before = await call('list_profiles')
-    proves(before, agentLink())
+    expect(before.text).toContain('Ada ] Newton)')
+    expect(before.text).not.toContain('brocrew://')
     world.db
       .prepare('UPDATE agent_identity SET display_name = ? WHERE id = ?')
       .run('Renamed', identity)
-    proves(
-      await call('list_profiles', { profile: 'helper' }),
-      `[Renamed](brocrew://agent/${encodeURIComponent(identity)})`,
-    )
+    const after = await call('list_profiles', { profile: 'helper' })
+    expect(after.text).toContain('Renamed')
+    expect(after.text).not.toContain('brocrew://')
   })
 
-  it('all navigation descriptions and the move offer distinguish opening from moving', () => {
+  it('tool descriptions omit navigation advertising while the person can still move a request', () => {
     const tools = agentToolsFor(host, caller).tools
     for (const name of [
       'give_work',
@@ -190,7 +183,7 @@ describe('tool results carry stable navigation targets', () => {
       'ask_question',
     ]) {
       const tool = tools.find((one) => one.name === name)
-      expect(tool?.description).toContain(NAVIGATION_LINKS_DESCRIPTION)
+      expect(tool?.description).not.toContain('Use the returned navigation links')
     }
     const offer = tools.find((one) => one.name === 'ask_question')?.input['move_to']
     expect(offer === undefined ? undefined : z.globalRegistry.get(offer)?.description).toContain(
@@ -213,7 +206,7 @@ describe('tool results carry stable navigation targets', () => {
     )
   })
 
-  it('a refusal naming an existing agent has its link only in the returned answer', async () => {
+  it('a refusal naming an existing agent has no generated links', async () => {
     const tool = agentToolsFor(host, caller).tools.find((one) => one.name === 'give_work')!
     const result = await tool.call({
       profile: 'helper',
@@ -222,7 +215,7 @@ describe('tool results carry stable navigation targets', () => {
       definition_of_done: 'Notes read.',
     })
     expect(result.structured).toMatchObject({ outcome: 'refused', rail: 'name-the-conversation' })
-    proves(result, agentLink())
+    expect(result.text).not.toContain('brocrew://')
     expect(JSON.stringify(world.ledger(caller))).not.toContain('brocrew://')
   })
 

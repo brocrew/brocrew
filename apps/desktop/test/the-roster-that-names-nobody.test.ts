@@ -1,6 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
-import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -259,23 +258,13 @@ describe('610 · the roster that names nobody', () => {
    */
   const runsOn = ' · on “default” at medium effort (requested)'
 
-  function expectRosterText(
-    text: string,
-    prose: string,
-    session: string,
-    title: string,
-    slug: string,
-  ): void {
+  function expectRosterText(text: string, prose: string, session: string, slug: string): void {
     const root = store.rootOf(session)
     const identity = store.agentIdentities().find((one) => one.slug === slug)
     if (root === null || identity === undefined) throw new Error('fictional roster records missing')
     const reply = navigationReply(text)
     expect(reply.prose).toBe(prose)
-    expect(reply.links).toEqual([
-      conversationLink(session, `conversation ${root.label} · ${title}`),
-      agentLink(identity.id, identity.displayName ?? slug),
-      pieceLink(root.piece, root.label, root.title ?? ''),
-    ])
+    expect(reply.links).toEqual([])
     expectIdsOnlyInLinkTargets(text, [session, root.piece, identity.id])
   }
 
@@ -295,7 +284,6 @@ describe('610 · the roster that names nobody', () => {
         listed.text,
         `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn}${lastActive(ada)} · holds W1`,
         ada,
-        'Ada',
         'ada',
       )
       expect((listed.structured.agents as AgentCard[])[0]?.whose).toEqual({
@@ -325,7 +313,6 @@ describe('610 · the roster that names nobody', () => {
         `conversation W1 · worker · worker · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
         worker,
         'worker',
-        'worker',
       )
 
       // ⚑ **The paired positive, one fact over** — `profileText`'s rule is that a display name
@@ -335,7 +322,6 @@ describe('610 · the roster that names nobody', () => {
         (await ask(worker, 'list_agents')).text,
         `conversation W1 · Ada · Ada (worker) · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
         worker,
-        'Ada',
         'worker',
       )
     })
@@ -351,7 +337,6 @@ describe('610 · the roster that names nobody', () => {
         (await ask(dev, 'list_agents')).text,
         `conversation W1 · Ada · Ada (Dev) · Claude · idle${runsOn}${lastActive(dev)} · holds W1`,
         dev,
-        'Ada',
         'dev',
       )
     })
@@ -362,7 +347,6 @@ describe('610 · the roster that names nobody', () => {
         (await ask(brobot, 'list_agents')).text,
         `conversation W1 · ${DEFAULT_PROFILE_LABEL} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
         brobot,
-        DEFAULT_PROFILE_LABEL,
         'brobot',
       )
     })
@@ -489,7 +473,6 @@ describe('610 · the roster that names nobody', () => {
         asked.text,
         `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn}${lastActive(ada)} · holds W1`,
         ada,
-        'Ada',
         'ada',
       )
       expect((asked.structured.agent as AgentCard).whose).toEqual({

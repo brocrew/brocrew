@@ -166,8 +166,6 @@ export interface AgentToolHost {
   tookItsPlace(sessionId: string): string | null
   whyWhatIsHeldWaits(sessionId: string, itsStopIsSaid?: boolean): string | null
   profilesVisibleTo(after?: string): ProfileReading
-  navigationIdentity?(profile: string): { readonly id: string; readonly name: string } | null
-  navigationProfileForConversation?(conversation: string): string | null
   agentRecord(profile: string, by: Caller, me: string | null): AgentRecordReading
   replyToParent(
     input: {

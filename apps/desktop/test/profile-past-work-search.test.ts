@@ -583,7 +583,7 @@ it('returns five distinct results and caps indexed message text', () => {
 it('exposes the real tool with archived results and rejects widened scope or malformed queries', async () => {
   const w = world()
   w.create('fictional-caller')
-  w.create('fictional-target', 'fictional-other-profile')
+  const target = w.create('fictional-target', 'fictional-other-profile')
   w.append('fictional-target', { type: 'assistant_message', text: 'archivequartz' })
   w.append(
     'fictional-target',
@@ -639,7 +639,9 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     hits: [expect.objectContaining({ archived: true })],
   })
   expect(answer.text).toContain('archived')
-  expect(answer.text).toContain('brocrew://conversation/')
+  expect(answer.text).not.toContain('brocrew://')
+  expect(answer.text).toContain('conversation ')
+  expect(answer.text).toContain(target.label)
   expect(answer.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
   expect(answer.text).not.toContain('last active')
   const transcript = await tool.call({ words: 'archivequartz', in: 'transcripts' })
@@ -654,6 +656,7 @@ it('exposes the real tool with archived results and rejects widened scope or mal
     ],
   })
   expect(transcript.text).toContain('Recorded 2027-01-15T08:00:00.000Z')
+  expect(transcript.text).not.toContain('brocrew://')
   const dated = await tool.call({ words: 'archivequartz', from: '2027-01-15', to: '2027-01-15' })
   expect(dated.structured).toMatchObject({
     outcome: 'ok',
@@ -754,6 +757,9 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
   for (const phrase of [title, brief]) {
     const page = await search.searchPastWork(caller, phrase)
     expect(pastWorkSearchResult.safeParse(page).success).toBe(true)
+    if (!page.ok) throw new Error('fictional search failed')
+    expect(pastWorkSearchInWords(page, false)).toContain(`${label} · ${title}`)
+    expect(pastWorkSearchInWords(page, false)).not.toContain('brocrew://')
     expect(page).toMatchObject({
       ok: true,
       hits: [
@@ -786,6 +792,25 @@ it('returns work titles and briefs alongside a bounded transcript read', async (
     caller,
     title,
   )
+  const read = await engine.read(caller, { words: brief })
+  if (!read.ok) throw new Error('fictional work search failed')
+  vi.spyOn(engine, 'read').mockResolvedValue({
+    ...read,
+    page: {
+      ...read.page,
+      hits: read.page.hits.map((hit) => ({
+        ...hit,
+        title: 'Conversation title',
+        matched_tasks: hit.matched_tasks.map((task) => ({ ...task, title: null })),
+      })),
+    },
+  })
+  const untitled = await search.searchPastWork(caller, brief)
+  if (!untitled.ok) throw new Error('fictional past-work search failed')
+  expect(untitled.hits[0]).toMatchObject({ piece, label, title: null })
+  const untitledText = pastWorkSearchInWords(untitled, false)
+  expect(untitledText.split('\n')).toContain(label)
+  expect(untitledText).not.toContain(`${label} · Conversation title`)
 })
 
 it.each([0, 1])('previews transcripts even when work is incomplete (%i)', async (skipped) => {

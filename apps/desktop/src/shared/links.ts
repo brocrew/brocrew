@@ -1,6 +1,4 @@
 export const LINK_TITLE_CHARS = 120
-export const NAVIGATION_LINKS_DESCRIPTION =
-  'Use the returned navigation links; clicking them does not move work.'
 
 export function linkTargetId(id: string): string {
   return encodeURIComponent(id).replace(
