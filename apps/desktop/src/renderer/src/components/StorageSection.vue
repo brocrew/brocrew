@@ -4,10 +4,13 @@ import type {
   CacheClearState,
   StorageOverview,
   StorageDirectory,
+  StorageEntry,
+  StorageFinishedWork,
   StorageLocation,
   StoragePartId,
 } from '../../../shared/storage'
 import { STORAGE_PARTS, storageError, storageSize } from '../lib/storage-words'
+import { agoWords } from '../lib/clock'
 import { platformHere } from '../lib/this-computer'
 import { readableError } from '../lib/session-record'
 import { useClientApi } from '../client-provider/injection'
@@ -35,6 +38,24 @@ const notice = computed(() =>
 )
 const workspaceFolders = ref<StorageDirectory | null>(null)
 const foldersLoading = ref(false)
+type FinishedEntry = Extract<StorageEntry, { bytes: number }> & {
+  readonly finished: StorageFinishedWork
+}
+const agentOutput = ref<StorageDirectory | null>(null)
+const finishedLoading = ref(false)
+/** The finished folders the person unticked: kept when Remove is pressed. */
+const kept = ref(new Set<string>())
+const finishedWork = computed(() =>
+  (agentOutput.value?.entries ?? []).filter((entry): entry is FinishedEntry =>
+    Boolean(!entry.isLink && entry.finished),
+  ),
+)
+const otherOutput = computed(() =>
+  (agentOutput.value?.entries ?? []).filter((entry) => entry.isLink || !entry.finished),
+)
+const toRemove = computed(() => finishedWork.value.filter((entry) => !kept.value.has(entry.name)))
+/** Ticked folders the last Remove kept, because something uses them again. */
+const inUseAgain = ref<FinishedEntry[]>([])
 const revealWord = /win/i.test(platformHere())
   ? 'Show in Explorer'
   : /mac/i.test(platformHere())
@@ -43,12 +64,14 @@ const revealWord = /win/i.test(platformHere())
 let live = true
 let request = 0
 let folderRequest = 0
+let finishedRequest = 0
 let stopCacheWatch: (() => void) | undefined
 onUnmounted(() => {
   live = false
   stopCacheWatch?.()
   request++
   folderRequest++
+  finishedRequest++
 })
 const parts = computed(() =>
   [...(overview.value?.parts ?? [])].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1)),
@@ -214,6 +237,66 @@ async function showFolders(event: Event) {
     if (live && mine === folderRequest) foldersLoading.value = false
   }
 }
+async function loadFinished() {
+  if (!storage) return
+  const mine = ++finishedRequest
+  agentOutput.value = null
+  finishedLoading.value = true
+  try {
+    const result = await storage.children(root('agent-output'), Infinity)
+    if (!live || mine !== finishedRequest) return
+    agentOutput.value = result
+    kept.value = new Set()
+    if (result.error || result.partial)
+      message.value = result.error
+        ? storageError(result.error)
+        : 'Some sizes could not be measured.'
+  } catch (error) {
+    if (live && mine === finishedRequest) message.value = readableError(error)
+  } finally {
+    if (live && mine === finishedRequest) finishedLoading.value = false
+  }
+}
+function showFinished(event: Event) {
+  if ((event.target as HTMLDetailsElement).open && !agentOutput.value && !finishedLoading.value)
+    void loadFinished()
+}
+function keepOrRemove(name: string) {
+  const next = new Set(kept.value)
+  if (!next.delete(name)) next.add(name)
+  kept.value = next
+}
+async function removeFinished() {
+  if (acting.value || !storage || toRemove.value.length === 0) return
+  actionBusy.value = true
+  cacheMessage.value = ''
+  const before = partBytes('agent-output')
+  const ticked = toRemove.value
+  inUseAgain.value = []
+  try {
+    const result = await storage.removeFinished(ticked.map((entry) => entry.name))
+    if (!live) return
+    if (!result.ok) {
+      message.value = storageError(result.error)
+      return
+    }
+    inUseAgain.value = ticked.filter((entry) => result.kept.includes(entry.name))
+    forgetFolders()
+    const measured = await measure()
+    if (!live) return
+    const after = partBytes('agent-output')
+    if (measured?.complete && before !== null && after !== null)
+      message.value = `${storageSize(Math.max(0, before - after))} freed.`
+    await loadFinished()
+  } catch (error) {
+    if (live) message.value = readableError(error)
+  } finally {
+    if (live) actionBusy.value = false
+  }
+}
+function partBytes(id: StoragePartId): number | null {
+  return overview.value?.parts.find((part) => part.id === id)?.bytes ?? null
+}
 function child(base: StorageLocation, name: string): StorageLocation {
   return { part: base.part, segments: [...base.segments, name] }
 }
@@ -359,6 +442,55 @@ onMounted(() => {
               and {{ workspaceFolders.smallerCount }} smaller items,
               {{ storageSize(workspaceFolders.smallerBytes) }}
             </p>
+          </div>
+        </details>
+        <details
+          v-if="part.id === 'agent-output'"
+          class="largest-folders"
+          data-cy="storage-finished-work"
+          @toggle="showFinished"
+        >
+          <summary>Finished work</summary>
+          <p v-if="finishedLoading" role="status">Measuring folders…</p>
+          <div v-if="agentOutput" class="folder-list">
+            <label v-for="entry in finishedWork" :key="entry.name" class="folder-row">
+              <input
+                type="checkbox"
+                :checked="!kept.has(entry.name)"
+                :disabled="acting"
+                @change="keepOrRemove(entry.name)"
+              /><span>{{ entry.finished.label }} · {{ entry.finished.title }}</span
+              ><span>{{ storageSize(entry.bytes) }}</span
+              ><span v-if="entry.lastWrittenAt !== undefined">{{
+                agoWords(entry.lastWrittenAt)
+              }}</span>
+            </label>
+            <template v-if="inUseAgain.length">
+              <p class="smaller-items">Kept, in use again:</p>
+              <div v-for="entry in inUseAgain" :key="entry.name" class="folder-row">
+                <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg
+                ><span>{{ entry.finished.label }} · {{ entry.finished.title }}</span
+                ><span>{{ storageSize(entry.bytes) }}</span>
+              </div>
+            </template>
+            <p v-if="finishedWork.length === 0" class="smaller-items">
+              Nothing finished to remove.
+            </p>
+            <p v-if="otherOutput.length" class="smaller-items">
+              and {{ otherOutput.length }} other folders,
+              {{ storageSize(otherOutput.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0)) }}
+            </p>
+            <button
+              v-if="finishedWork.length"
+              type="button"
+              class="bb-btn"
+              :disabled="acting || loading || toRemove.length === 0"
+              data-cy="storage-remove-finished"
+              @click="removeFinished"
+            >
+              Remove
+              {{ storageSize(toRemove.reduce((sum, entry) => sum + entry.bytes, 0)) }}
+            </button>
           </div>
         </details>
       </section>

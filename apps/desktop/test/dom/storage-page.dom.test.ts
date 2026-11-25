@@ -46,6 +46,7 @@ function setup(over: Partial<StorageBridge> = {}, available = true, injected = t
       return () => {}
     }),
     pruneBackups: vi.fn(async () => ({ ok: true as const })),
+    removeFinished: vi.fn(async () => ({ ok: true as const, kept: [] })),
     ...over,
   } satisfies StorageBridge
   const wrongBridge = (): never => {
@@ -61,6 +62,7 @@ function setup(over: Partial<StorageBridge> = {}, available = true, injected = t
           clearCache: wrongBridge,
           watchCacheClear: wrongBridge,
           pruneBackups: wrongBridge,
+          removeFinished: wrongBridge,
         }
       : bridge,
   })

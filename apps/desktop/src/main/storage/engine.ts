@@ -29,9 +29,14 @@ export interface StorageRoots {
 }
 export type StorageRequest =
   | { readonly kind: 'measure' }
-  | { readonly kind: 'children'; readonly location: StorageLocation }
+  | { readonly kind: 'children'; readonly location: StorageLocation; readonly limit?: number }
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
-export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
+  | { readonly kind: 'finished'; readonly names: readonly string[] }
+export type StorageReply =
+  | StorageOverview
+  | StorageDirectory
+  | { readonly path: string }
+  | { readonly finished: readonly string[] }
 type StorageRoot = { path: string; part: StoragePartId }
 const STORAGE_BOUNDS = { entries: Infinity, depth: 64 } as const
 /** A worker that reports no progress for this long is judged stalled; a slow walk that keeps reporting is not. */
@@ -45,6 +50,8 @@ export class StorageFailure extends Error {
 export const storageReason = (error: unknown): StorageError =>
   error instanceof StorageFailure ? error.reason : 'unavailable'
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === 'ENOENT'
+/** What a walk found besides bytes: why it is partial, and the newest change it saw. */
+type WalkState = { error?: StorageError; newest?: number }
 
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
@@ -145,7 +152,7 @@ export class StorageEngine {
     path: string,
     part: StoragePartId,
     segments: readonly string[],
-    state: { error?: StorageError },
+    state: WalkState,
     checkedParent = false,
     earlierRoots: readonly StorageRoot[] = [],
     rootState?: { started: boolean },
@@ -163,6 +170,7 @@ export class StorageEngine {
       if (stat.isSymbolicLink()) throw new StorageFailure('linked-path')
       const actual = await realpath(safe)
       if (!insideData(safe, actual)) throw new StorageFailure('outside-data')
+      state.newest = Math.max(state.newest ?? 0, stat.mtimeMs)
       if (stat.isFile()) {
         if (rootState) rootState.started = true
         return this.countedByEarlierRoot(actual, earlierRoots) ? 0 : stat.size
@@ -274,7 +282,7 @@ export class StorageEngine {
             id,
             bytes: state.error && bytes === 0 ? null : bytes,
             partial: state.error !== undefined,
-            ...state,
+            ...(state.error === undefined ? {} : { error: state.error }),
           })
         } catch (error) {
           parts.push({ id, bytes: bytes || null, partial: true, error: storageReason(error) })
@@ -292,7 +300,7 @@ export class StorageEngine {
     }
   }
 
-  async children(location: StorageLocation): Promise<StorageDirectory> {
+  async children(location: StorageLocation, limit = 10): Promise<StorageDirectory> {
     const empty = {
       location,
       entries: [],
@@ -311,7 +319,7 @@ export class StorageEngine {
       const keep = (entry: StorageEntry): void => {
         entries.push(entry)
         entries.sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.name.localeCompare(b.name))
-        if (entries.length > 10) {
+        if (entries.length > limit) {
           const smaller = entries.pop()!
           smallerCount++
           smallerBytes += smaller.bytes ?? 0
@@ -336,8 +344,15 @@ export class StorageEngine {
             (await this.emptyRecovery(entry.path, safe))
           )
             return true
-          const bytes = await this.size(entry.path, location.part, entry.segments, state)
-          keep({ name: entry.name, bytes, isDirectory: stat.isDirectory() })
+          const walked: WalkState = {}
+          const bytes = await this.size(entry.path, location.part, entry.segments, walked)
+          if (walked.error) state.error ??= walked.error
+          keep({
+            name: entry.name,
+            bytes,
+            isDirectory: stat.isDirectory(),
+            ...(walked.newest === undefined ? {} : { lastWrittenAt: walked.newest }),
+          })
         } catch (error) {
           const reason = storageReason(error)
           if (reason === 'cancelled') throw error

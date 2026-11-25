@@ -398,7 +398,9 @@ it('retains sized children that disappear before a late iterator error', async (
   disk.entries.set(win32.join(roots.workspace, 'first').toLowerCase(), { bytes: 7 })
   const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
   expect(listing).toMatchObject({ totalBytes: 7, partial: true, error: 'unavailable' })
-  expect(listing.entries).toEqual([{ name: 'first', bytes: 7, isDirectory: false }])
+  expect(listing.entries).toEqual([
+    { name: 'first', bytes: 7, isDirectory: false, lastWrittenAt: expect.any(Number) },
+  ])
 })
 
 it('preserves tied top-ten order and eviction totals regardless of directory order', async () => {

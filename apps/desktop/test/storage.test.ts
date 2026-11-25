@@ -32,6 +32,8 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 
 let folder: string
 let roots: StorageRoots
+/** Every measured entry says when anything inside it last changed. */
+const written = { lastWrittenAt: expect.any(Number) }
 beforeEach(async () => {
   folder = await mkdtemp(join(tmpdir(), 'brocrew-fictional-storage-'))
   const data = join(folder, 'data')
@@ -68,8 +70,8 @@ it('accounts for shared plugin data as a separate trusted plugin root and keeps 
   expect(
     (await new StorageEngine(roots).children({ part: 'plugins', segments: [] })).entries,
   ).toEqual([
-    { name: 'machine-shared', bytes: 23, isDirectory: true },
-    { name: 'plugins', bytes: 11, isDirectory: true },
+    { name: 'machine-shared', bytes: 23, isDirectory: true, ...written },
+    { name: 'plugins', bytes: 11, isDirectory: true, ...written },
   ])
   expect(
     (
@@ -173,7 +175,7 @@ it('returns the ten largest children and exact remainder, using recursive direct
   await file(join(roots.workspace, 'nested', 'file'), 50)
   const reading = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
   expect(reading.entries).toHaveLength(10)
-  expect(reading.entries[0]).toEqual({ name: 'nested', bytes: 50, isDirectory: true })
+  expect(reading.entries[0]).toEqual({ name: 'nested', bytes: 50, isDirectory: true, ...written })
   expect(reading.entries.map((entry) => entry.bytes)).toEqual([50, 12, 11, 10, 9, 8, 7, 6, 5, 4])
   expect(reading.smallerCount).toBe(3)
   expect(reading.smallerBytes).toBe(6)
@@ -278,7 +280,7 @@ it('never follows directory or file links, including a linked root and an ancest
   )
   const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
   expect(listing.entries).toEqual([
-    { name: 'safe', bytes: 7, isDirectory: false },
+    { name: 'safe', bytes: 7, isDirectory: false, ...written },
     { name: 'escape', bytes: null, isDirectory: false, isLink: true },
   ])
   expect(listing.error).toBe('linked-path')
@@ -322,7 +324,7 @@ it('includes the resolved external plugin root but never discovers or admits sib
   expect(reading.partial).toBe(false)
   expect(
     (await new StorageEngine(mapped).children({ part: 'plugins', segments: [] })).entries,
-  ).toEqual([{ name: 'installed', bytes: 17, isDirectory: true }])
+  ).toEqual([{ name: 'installed', bytes: 17, isDirectory: true, ...written }])
   await expect(
     new StorageEngine(mapped).reveal({ part: 'plugins', segments: ['installed'] }),
   ).resolves.toEqual({ path: await realpath(join(plugins, 'installed')) })
@@ -382,7 +384,7 @@ it('shows links under an external root without following them, including links b
   const mapped = { ...roots, plugins }
   const listing = await new StorageEngine(mapped).children({ part: 'plugins', segments: [] })
   expect(listing.entries).toEqual([
-    { name: 'safe', bytes: 5, isDirectory: false },
+    { name: 'safe', bytes: 5, isDirectory: false, ...written },
     { name: 'linked-workspace', bytes: null, isDirectory: false, isLink: true },
   ])
   expect(listing.totalBytes).toBe(5)
@@ -419,18 +421,18 @@ it('includes recovery under Backups only when that resolved folder has content',
   await mkdir(roots.recovery!)
   expect(
     (await new StorageEngine(roots).children({ part: 'backups', segments: [] })).entries,
-  ).toEqual([{ name: 'backups', bytes: 0, isDirectory: true }])
+  ).toEqual([{ name: 'backups', bytes: 0, isDirectory: true, ...written }])
   const zeroByteChild = join(roots.recovery!, 'zero-byte-child')
   await file(zeroByteChild, 0)
   expect(
     (await new StorageEngine(roots).children({ part: 'backups', segments: [] })).entries,
-  ).toContainEqual({ name: 'recovery', bytes: 0, isDirectory: true })
+  ).toContainEqual({ name: 'recovery', bytes: 0, isDirectory: true, ...written })
   await rm(zeroByteChild)
   await file(join(roots.recovery!, 'preserved', 'copy'), 9)
   const listing = await new StorageEngine(roots).children({ part: 'backups', segments: [] })
   expect(listing.entries).toEqual([
-    { name: 'recovery', bytes: 9, isDirectory: true },
-    { name: 'backups', bytes: 0, isDirectory: true },
+    { name: 'recovery', bytes: 9, isDirectory: true, ...written },
+    { name: 'backups', bytes: 0, isDirectory: true, ...written },
   ])
   expect(listing.totalBytes).toBe(9)
   await rm(roots.backups[0]!, { recursive: true })
@@ -447,9 +449,11 @@ it('lists grouped database and backup roots without exposing the rest of the dat
   await file(roots.database[0]!, 20)
   await file(join(roots.backups[0]!, 'copy'), 30)
   const listing = await new StorageEngine(roots).children({ part: 'database', segments: [] })
-  expect(listing.entries).toEqual([{ name: 'brobot2.sqlite', bytes: 20, isDirectory: false }])
+  expect(listing.entries).toEqual([
+    { name: 'brobot2.sqlite', bytes: 20, isDirectory: false, ...written },
+  ])
   const backups = await new StorageEngine(roots).children({ part: 'backups', segments: [] })
-  expect(backups.entries[0]).toEqual({ name: 'backups', bytes: 30, isDirectory: true })
+  expect(backups.entries[0]).toEqual({ name: 'backups', bytes: 30, isDirectory: true, ...written })
   expect(
     (await new StorageEngine(roots).children({ part: 'database', segments: ['resources'] })).error,
   ).toBe('invalid-location')
@@ -720,7 +724,7 @@ it('derives cache from actual session storage and supports contained browse and 
   expect((await engine.measure()).parts.find((part) => part.id === 'cache')?.bytes).toBe(24)
   expect(
     (await new StorageEngine(mapped).children({ part: 'cache', segments: [] })).entries,
-  ).toEqual([{ name: 'Cache_Data', bytes: 24, isDirectory: true }])
+  ).toEqual([{ name: 'Cache_Data', bytes: 24, isDirectory: true, ...written }])
   await expect(new StorageEngine(mapped).reveal({ part: 'cache', segments: [] })).resolves.toEqual({
     path: await realpath(cache),
   })

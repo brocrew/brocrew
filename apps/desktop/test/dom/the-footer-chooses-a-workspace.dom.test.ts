@@ -139,6 +139,7 @@ async function section(rows?: WorkspaceRow[], available = true) {
     clearCache: unusedStorage,
     watchCacheClear: unusedStorage,
     pruneBackups: unusedStorage,
+    removeFinished: unusedStorage,
   }
   const wrong = (): never => {
     rawCall()

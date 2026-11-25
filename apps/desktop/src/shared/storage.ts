@@ -38,13 +38,26 @@ export interface StorageOverview {
   readonly partial: boolean
   readonly error?: StorageError
 }
+/** The piece a finished worker folder was made for: nothing open still uses that folder. */
+export interface StorageFinishedWork {
+  readonly label: string
+  readonly title: string
+}
 export type StorageEntry = { readonly name: string } & (
-  | { readonly bytes: number; readonly isDirectory: boolean; readonly isLink?: false }
+  | {
+      readonly bytes: number
+      readonly isDirectory: boolean
+      readonly isLink?: false
+      /** Epoch ms of the newest change anywhere inside, when one was read. */
+      readonly lastWrittenAt?: number
+      /** Set only on agent output's own folders that can be removed. */
+      readonly finished?: StorageFinishedWork
+    }
   | { readonly bytes: null; readonly isDirectory: false; readonly isLink: true }
 )
 export interface StorageDirectory {
   readonly location: StorageLocation
-  /** At most ten immediate children, descending by recursively measured bytes. */
+  /** Immediate children, descending by recursively measured bytes: ten unless more were asked for. */
   readonly entries: readonly StorageEntry[]
   readonly smallerCount: number
   readonly smallerBytes: number
@@ -54,6 +67,10 @@ export interface StorageDirectory {
 }
 export type StorageAction =
   { readonly ok: true } | { readonly ok: false; readonly error: StorageError }
+/** A removal names the ticked folders it kept because something uses them again. */
+export type StorageRemoval =
+  | { readonly ok: true; readonly kept: readonly string[] }
+  | { readonly ok: false; readonly error: StorageError }
 export type CacheClearState = { readonly id: number } & (
   | { readonly status: 'clearing' | 'pending' | 'complete' }
   | { readonly status: 'failed'; readonly error: StorageError }
@@ -64,7 +81,7 @@ export type CacheClearReply =
   | { readonly ok: false; readonly error: StorageError }
 export interface StorageBridge {
   measure(): Promise<StorageOverview>
-  children(location: StorageLocation): Promise<StorageDirectory>
+  children(location: StorageLocation, limit?: number): Promise<StorageDirectory>
   reveal(location?: StorageLocation): Promise<StorageAction>
   clearCache(): Promise<CacheClearReply>
   watchCacheClear(
@@ -72,6 +89,8 @@ export interface StorageBridge {
     onError: (error: unknown) => void,
   ): () => void
   pruneBackups(): Promise<StorageAction>
+  /** Removes those of these worker folders, by name, that are still finished work. */
+  removeFinished(names: readonly string[]): Promise<StorageRemoval>
 }
 export const STORAGE_CHANNELS = {
   measure: 'storage:measure',
@@ -79,10 +98,19 @@ export const STORAGE_CHANNELS = {
   reveal: 'storage:reveal',
   clearCache: 'storage:clear-cache',
   pruneBackups: 'storage:prune-backups',
+  removeFinished: 'storage:remove-finished',
   watchCacheClear: 'storage:watch-cache-clear',
   unwatchCacheClear: 'storage:unwatch-cache-clear',
   cacheClearChanged: 'storage:cache-clear-changed',
 } as const
+
+/** A worker folder is named after the piece it was made for. */
+export const FINISHED_WORK_NAME = /^work_[a-z0-9-]{36}$/u
+
+/** How many children a read gives: ten by default, or every one. */
+export function isStorageLimit(value: unknown): value is number {
+  return value === Infinity || (Number.isSafeInteger(value) && (value as number) > 0)
+}
 
 export function isStorageLocation(value: unknown): value is StorageLocation {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
