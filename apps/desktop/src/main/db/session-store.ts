@@ -1,11 +1,8 @@
-import type { AppNotice } from '../../shared/app-notice'
 export type { ResumableSession, LiveSessionRow, RecordedSession } from './session-catalogue-read'
 import type { EventRow } from './ledger-row-types'
 export type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
 import {
   aStoredObject,
-  attachmentsStoredOn,
-  authorshipStoredOn,
   isAStoredId,
   noteUnreadRow,
   theQuestionItAsks,
@@ -14,19 +11,17 @@ import {
 export { toPersistedEvents } from './stored-event-codec'
 export type { WorkRow } from './work-ledger-read'
 import { type RowsUnread, rowsUnreadOnce, type SkipNote } from './rows-unread'
-import type { LedgerWalk, QuestionAskedEvent, RoutedRequest } from '../../shared/question-contracts'
+import type { QuestionAskedEvent, RoutedRequest } from '../../shared/question-contracts'
 import type {
   InstructionProposedEvent,
   InstructionSettledEvent,
-  QueuedMessageEvent,
   TheQuestionItAsks,
   TranscriptEvent,
-  UnqueuedMessageEvent,
 } from '../../shared/conversation-events'
 export { parseModelChoice, modelChoiceWritten } from './session-store-parts/model-choice-storage'
 export { THREAD_LEAD_EVENT_TYPES, type ThreadLeadRow } from './thread-lead-reader'
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
-import type { PieceRow, PieceWaitingOnWhoWrote, WorkGivenEvent } from '../../shared/task-contracts'
+import type { PieceRow } from '../../shared/task-contracts'
 import { aConversationTitle, titleFromOpeningMessage } from '../../shared/conversation-title'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
 import { createOwnNotesStore } from './own-notes'
@@ -36,61 +31,28 @@ import { createMethodChangeStore } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
 import { committedChangesOf } from './committed-changes'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
-import {
-  holderReconciliationReceipt,
-  reconciliationReceipt,
-  workRecoveryEvent,
-} from '../../shared/work-reconciliation'
 
 import { serviceRegistrationOf } from '../service-registration'
 import { moveOfferOf, moveReceiptOf } from '../../shared/move-request'
-import type { Provider, SessionStatus } from '@brobot2/shared'
-import { AN_ANSWER_HELD_THEN_LOST, theAnswerItCarries } from '../../shared/tasks'
-import { workEdge } from '../../shared/who-called-whom'
-import { createProviderLimitReader, type SessionReadPhases } from './provider-limit-reader'
+import { type SessionReadPhases } from './provider-limit-reader'
 export type { SessionReadPhases } from './provider-limit-reader'
 import { failureAtTurnEnd } from '../../shared/piece-fold'
 import { MAX_TURN_PARTS, theMessagesOf } from '../../shared/runtime-ipc'
-import {
-  conversationTree,
-  deleteTheTree,
-  providerSessionsOf,
-  whatTiesTheTreeOutside,
-} from './conversation-tree'
-import { forestListing } from './forest-listing'
 import { FOLD_TERM } from './fold-index'
 import { ensureQuestionCopies, fillQuestionCopies, questionCopiesReady } from './question-copies'
 import { ledgerWritesFor } from './ledger-write-stamp'
 import { type SnapshotFoldAnswers } from './ledger-fold-state'
-import { createDigestWindowRead } from './digest-window-read'
-import { A_RESTART_LEFT_THE_MESSAGE_WAITING } from './turn-evidence-read'
 
 import {
   type AskRow,
-  type BindingRow,
   CLOSED_TURNS_FOR_PROVIDER_FAILURE,
   type ClosedTurnRow,
   type ExchangeRow,
-  type ForestSessionRow,
-  type GivenPiece,
-  type GivenWorkRow,
-  inLabelOrder,
-  type KeptFileDbRow,
-  type KeptFileRow,
-  type KeptFilesAsked,
-  MAX_SCHEDULE_EVIDENCE_ROWS,
-  MAX_SCHEDULE_HISTORY_WALKED,
   type OpenTurnRow,
   PERSON_LAST_WROTE_WITHIN_TURNS,
   type PieceForAName,
   type ProviderFailureEpisode,
   type ProviderFailureEvidence,
-  type ProviderFailureNoticeProgress,
-  type QueuedPromptProgress,
-  type ResourceDbRow,
-  type ResourceRow,
-  type ScheduleEvidenceRow,
-  type SpawnedSessionRow,
   type WorkDbRow,
 } from './session-store-parts/session-store-rows'
 import type { SessionStore } from './session-store-parts/session-store-contract'
@@ -119,18 +81,13 @@ export { NULL_SESSION_STORE } from './session-store-parts/null-session-store'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import type { AppDatabase, AppStatement } from './connection'
 import { agentIdentityRowId } from './identity'
-import { newResourceId } from './ids'
 import {
-  aStallItsGiverCanBeToldOf,
   composeWhatEachPieceIsWaitingOn,
   TASK_IS_OPEN,
   theWaitItMarks,
   theWorkThatNamesItAmong,
-  waitsOnWhoWrote,
-  workGivenOut,
 } from '../../shared/tasks'
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
-import { aPersonsSince, permissionShaped, REQUEST_IS_OPEN } from '../../shared/questions'
 import {
   howWorkStopped,
   whoCancelledIt,
@@ -153,12 +110,9 @@ import {
 } from '../../shared/last-exchange'
 import { actedByFrom, type ActedBy } from '../../shared/who-did-it'
 import { waitingOnAPerson } from '../../shared/own-instructions'
-import { formOfName, type ResourceRole } from '../../shared/documents'
-import { workFileGroup } from '../../shared/work-file-groups'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
 
 export type { ForestedConversation, ForestedNode } from './forest-store'
-import type { ForestedNode } from './forest-store'
 
 export type { OpenTurn, LeftRunning, TurnAsItEnded } from './turn-evidence-read'
 import { createTurnReadsPart } from './session-store-parts/turn-reads'
@@ -166,19 +120,9 @@ import { createWorkStatementsPart } from './session-store-parts/work-statements'
 import { createLedgerEventsPart } from './session-store-parts/ledger-events'
 import { createAgentIdentitiesPart } from './session-store-parts/agent-identities'
 import { createPieceFoldsPart } from './session-store-parts/piece-folds'
-import type { StrandedMessages } from './session-store-parts/piece-folds'
-import {
-  ledgersSkippedOf,
-  noSuchConversation,
-  pieceStallOrdinals,
-  readOrSkip,
-  scheduleLevelFromRow,
-  skipTheLedger,
-  stalledInOrder,
-  theFoldIndexHolds,
-  underWhat,
-  walkLedgers,
-} from './session-store-parts/store-helpers'
+import { createWorkSettlingPart } from './session-store-parts/work-settling'
+import { createWorkGivenPart } from './session-store-parts/work-given'
+import { readOrSkip, theFoldIndexHolds } from './session-store-parts/store-helpers'
 export {
   aRowADeliveryCanStart,
   eachOrSkipped,
@@ -220,14 +164,10 @@ export function createSessionStore(
   })
   const {
     activeGeneration,
-    appendTx,
     foldQuestionsRaisedInSession,
     foldRoutedRequestsOfSession,
-    forgetTheKeptFoldsOf,
-    keptUntilItsLedgerGrows,
     namedByAPiece,
     questionsRaisedInSession,
-    reconciliationCut,
     routedRequestsOfSession,
     selectAProviderTurnsOpening,
     selectMaxOrdinal,
@@ -237,7 +177,6 @@ export function createSessionStore(
     selectRoutedRequestEvents,
     selectRoutedRequestEventsAfter,
     selectTheTurnsOpening,
-    sessionCatalogueRead,
     theFoldsMayBeKept,
     theKeptOnly,
   } = turnReads
@@ -251,12 +190,10 @@ export function createSessionStore(
     connection,
   })
   const {
-    bumpSequence,
     chainUp,
     namesRead,
     newestLineAbout,
     retitlesOf,
-    spawnSql,
     titleNow,
     workRowFrom,
     workRowWalked,
@@ -271,13 +208,7 @@ export function createSessionStore(
     connection,
     ledgerWrites,
   })
-  const {
-    firstPersonOpening,
-    selectBuildingSessions,
-    selectRunningSessions,
-    selectSessionsThatRouted,
-    theNewestTurn,
-  } = ledgerEvents
+  const { firstPersonOpening } = ledgerEvents
   const agentIdentities = createAgentIdentitiesPart({
     ...turnReads,
     ...workStatements,
@@ -305,29 +236,38 @@ export function createSessionStore(
     checkFoldState,
   })
   const {
-    foldMessagesWaitingIn,
     foldPiecesKept,
     foldPiecesOfSession,
-    foldReconciliationPieces,
-    messagesWaitingKept,
     oneWaitReadPerHolder,
-    piecesGivenBySession,
     piecesOfSession,
-    piecesThatDrove,
     questionStatesInSession,
-    reconciliationCutOrUnread,
-    reconciliationPiecesKept,
-    reconciliationReading,
-    selectEveryConversationAndStatus,
-    selectOwnersGivenWorkBy,
     selectStallsTold,
     selectStallsToldMoved,
     selectTheDecisionOn,
-    stallsToldToSession,
-    strandedMessages,
-    strandedMessageSteps,
     turnBlockPiecesOfSession,
   } = pieceFolds
+  const workSettling = createWorkSettlingPart({
+    ...turnReads,
+    ...workStatements,
+    ...ledgerEvents,
+    ...pieceFolds,
+    db,
+    readPhases,
+    oneSnapshot,
+    committed,
+    connection,
+  })
+  const { selectServiceBorn, selectServicesBorn } = workSettling
+  const workGiven = createWorkGivenPart({
+    ...turnReads,
+    ...workStatements,
+    ...agentIdentities,
+    ...pieceFolds,
+    db,
+    oneSnapshot,
+    committed,
+    ledgerWrites,
+  })
 
   const sessionModels = createSqliteSessionModels(db, now)
   const selectLastClosedTurn = db.prepare(
@@ -339,248 +279,12 @@ export function createSessionStore(
        WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
        ORDER BY ordinal DESC LIMIT ?`,
   )
-  const serviceBirth = (owner: string, readPayload = false): string =>
-    `SELECT ${readPayload ? "CASE WHEN length(payload) <= 2048 THEN payload ELSE '{}' END" : '1'}
-       FROM events INDEXED BY events_kind_owner_idx
-       WHERE type = 'service_registered' AND session_id = ${owner} AND generation = 0 AND ordinal = 0`
-  const scheduleLevelsSql = (owners: string) =>
-    `WITH levels AS MATERIALIZED (
-       SELECT session_id, created_at, generation, ordinal, payload
-         FROM events INDEXED BY events_kind_owner_idx
-        WHERE ${FOLD_TERM} AND type = 'scheduled_work'
-          AND ${owners}
-          AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.jobs') = 'array' ELSE 1 END
-     ), candidates AS MATERIALIZED (
-       SELECT session_id, payload FROM (
-         SELECT session_id, payload, row_number() OVER (
-                  PARTITION BY session_id ORDER BY created_at DESC, generation DESC, ordinal DESC
-                ) AS nth
-           FROM levels
-       ) WHERE nth = 1
-           AND CASE WHEN json_valid(payload)
-                    THEN json_array_length(payload, '$.jobs') > 0
-                         OR coalesce(json_extract(payload, '$.dropped'), 0) > 0
-                    ELSE 1 END
-     ), firsts AS MATERIALIZED (
-       SELECT l.session_id, json_extract(job.value, '$.id') AS id, min(l.created_at) AS at
-         FROM levels l JOIN candidates n ON n.session_id = l.session_id,
-              json_each(CASE WHEN json_valid(l.payload) THEN l.payload ELSE '{}' END, '$.jobs') job
-        WHERE json_type(job.value, '$.id') = 'text'
-        GROUP BY 1, 2
-     )
-     SELECT n.session_id, n.payload,
-            (SELECT json_group_object(f.id, f.at) FROM firsts f
-              WHERE f.session_id = n.session_id) AS first_listed,
-            (SELECT max(e.created_at) FROM events e INDEXED BY events_session_idx
-              WHERE e.session_id = n.session_id AND e.type = 'compaction') AS compacted_at
-       FROM candidates n`
-  const selectNewestScheduleLevels = db.prepare(
-    scheduleLevelsSql('(? IS NULL OR session_id IN (SELECT value FROM json_each(?)))'),
-  )
-  const selectNewestScheduleLevel = db.prepare(scheduleLevelsSql('session_id = ?'))
-  // The newest status row of a conversation's newest generation: one walk back down the index.
-  const selectLastStatusAt = db.prepare(
-    `SELECT created_at AS at FROM events INDEXED BY events_fold_idx
-      WHERE ${FOLD_TERM} AND session_id = ? AND type = 'status'
-      ORDER BY generation DESC, ordinal DESC LIMIT 1`,
-  )
-  const selectScheduleEvidenceRows = db.prepare(
-    `WITH walk AS MATERIALIZED (
-       SELECT ordinal, created_at, type, payload, generation
-         FROM events INDEXED BY events_fold_idx
-        WHERE ${FOLD_TERM} AND session_id = ?
-        ORDER BY generation DESC, ordinal DESC
-        LIMIT ?)
-     SELECT ordinal, created_at, type, payload, generation, NULL AS walked FROM (
-       SELECT ordinal, created_at, type, payload, generation,
-              row_number() OVER (PARTITION BY kind
-                                 ORDER BY created_at DESC, generation DESC,
-                                          ordinal DESC) AS newest
-         FROM (SELECT ordinal, created_at, type, payload, generation,
-                      CASE WHEN type = 'launched' THEN 'life'
-                           WHEN NOT json_valid(payload) THEN NULL
-                           WHEN type = 'scheduled_work' AND json_extract(payload, '$.reset') = 1
-                             THEN 'life'
-                           WHEN type = 'status'
-                             THEN CASE WHEN json_extract(payload, '$.state') IN ('ended', 'errored')
-                                       THEN 'life' END
-                           WHEN json_extract(payload, '$.receipt.tool') IN ('CronCreate', 'CronDelete')
-                             THEN 'receipt'
-                           WHEN json_type(payload, '$.receipt') IS NOT NULL THEN NULL
-                           WHEN json_extract(payload, '$.source') LIKE 'app/%'
-                             OR json_extract(payload, '$.source') LIKE 'this app%' THEN NULL
-                           ELSE 'level' END AS kind
-                 FROM walk
-                WHERE type IN ('scheduled_work', 'launched', 'status'))
-        WHERE kind IS NOT NULL)
-      WHERE newest <= ?
-     UNION ALL
-     SELECT NULL, NULL, NULL, NULL, NULL, count(*) FROM walk
-     ORDER BY created_at, ordinal, generation DESC`,
-  )
-  const selectPlacedConversationsAmong = db.prepare(
-    `SELECT provider_session.id AS id, identity.slug AS profile_slug,
-            provider_session.provider AS provider, provider_session.status AS status,
-            provider_session.created_at AS created_at,
-            provider_session.updated_at AS updated_at,
-            provider_session.parent_session_id AS parent_session_id
-       FROM json_each(@ids) asked
-       JOIN provider_session ON provider_session.id = asked.value
-       JOIN agent_identity identity ON identity.id = provider_session.agent_identity_id
-      WHERE provider_session.id NOT IN (SELECT value FROM json_each(@hidden))
-      ORDER BY asked.key`,
-  )
-
-  /** Each placed conversation's node with the pieces it holds; parents and givers named against `drawn`. */
-  function forestNodesAmong(
-    placed: readonly ForestSessionRow[],
-    drawn: ReadonlySet<string>,
-  ): LedgerWalk<ForestedNode> {
-    const unread = rowsUnreadOnce()
-    const waiting = oneWaitReadPerHolder(unread)
-    const identityOfGiver = identitiesOnce()
-    return walkLedgers(
-      'every-conversation-this-app-placed',
-      placed,
-      (sessionId, noteSkip, row) => {
-        return [
-          {
-            node: 'a-conversation',
-            conversation: row.id,
-            under: underWhat(row.parent_session_id, drawn),
-            identity: row.profile_slug,
-            provider: row.provider as Provider,
-            status: row.status as SessionStatus,
-            startedAt: row.created_at,
-            updatedAt: row.updated_at,
-          },
-          ...composeWhatEachPieceIsWaitingOn(piecesOfSession(sessionId, noteSkip), waiting).map(
-            (piece) => ({
-              node: 'a-task' as const,
-              under: { is: 'a-conversation' as const, conversation: row.id },
-              givenBy: underWhat(piece.giver, drawn),
-              work: workEdge(piece, row.profile_slug, identityOfGiver(piece.giver)),
-            }),
-          ),
-        ]
-      },
-      unread,
-    )
-  }
-
-  function digestThroughOrdinal(id: string, generation: number): number {
-    return (
-      (selectMaxOrdinal.get(id, generation) as { max_ordinal: number | null } | undefined)
-        ?.max_ordinal ?? -1
-    )
-  }
-  const digestRead = createDigestWindowRead(db, activeGeneration, digestThroughOrdinal)
-  const countConversationsHeldByNoAgent = db.prepare(
-    `SELECT count(*) AS n FROM provider_session WHERE agent_identity_id IS NULL`,
-  )
   const selectTurnBlockCandidates = db.prepare(
     `SELECT id AS piece, owner_session_id AS owner FROM work
       WHERE given_by_session_id = ?
         AND (? IS NULL OR (created_at, id) < (SELECT created_at, id FROM work WHERE id = ?))
       ORDER BY created_at DESC, id DESC LIMIT ?`,
   )
-  const selectReconciliationOwners = db.prepare('SELECT DISTINCT owner_session_id AS id FROM work')
-  const selectReconciliationOwnersWithFailures = db.prepare(
-    `SELECT owner_session_id AS id FROM work
-      UNION
-      SELECT session_id AS id FROM events INDEXED BY events_kind_owner_idx
-      WHERE type = 'work_reconciliation'
-        AND CASE WHEN json_valid(payload)
-          THEN json_extract(payload, '$.kind') = 'provider-turn-failed' ELSE 0 END`,
-  )
-  const selectReconciliationOwnerReceipts = db.prepare(`SELECT payload, created_at FROM events
-    WHERE type = 'work_reconciliation' AND session_id = ? ORDER BY generation, ordinal`)
-  const selectReconciliationReceipts = db.prepare(
-    `SELECT payload, created_at FROM events INDEXED BY events_work_piece_idx
-      WHERE session_id = ? AND type = 'work_reconciliation'
-        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
-        AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
-      ORDER BY generation, ordinal`,
-  )
-  const selectUnreadReconciliationReceipt = db.prepare(
-    `SELECT 1 FROM events INDEXED BY events_work_piece_idx
-      WHERE session_id = ? AND type = 'work_reconciliation'
-        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.kind') IS NOT 'provider-turn-failed' ELSE 1 END
-        AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END IS NULL
-      LIMIT 1`,
-  )
-  // RC3 can replan an explicit retraction. A newer unread queue row can supersede it.
-  const selectReconciliationMessage = db.prepare(
-    `SELECT generation, ordinal, payload FROM events
-      WHERE session_id = @target AND type IN ('message_queued', 'message_unqueued')
-        AND CASE WHEN json_valid(payload) THEN
-              CASE WHEN json_type(payload, '$.messageId') IS 'text'
-                THEN json_extract(payload, '$.messageId') = @messageId ELSE @needsDisposition END
-              ELSE @needsDisposition END
-      ORDER BY generation DESC, ordinal DESC LIMIT 1`,
-  )
-  const selectTurnAfterReconciliation = db.prepare(
-    `SELECT e.payload, t.id AS turn, t.closed_at FROM events e LEFT JOIN turn t ON t.id = e.turn_id
-      WHERE e.session_id = ? AND e.generation = ? AND e.ordinal > ?
-        AND e.type IN ('user_turn', 'provider_turn', 'launched', 'reopened')
-      ORDER BY e.ordinal LIMIT 1`,
-  )
-
-  function readQueuedPromptProgress(
-    target: string,
-    messageId: string,
-    appNotice: AppNotice,
-    needsDisposition: boolean,
-  ): ProviderFailureNoticeProgress {
-    const message = selectReconciliationMessage.get({
-      target,
-      messageId,
-      needsDisposition: needsDisposition ? 1 : 0,
-    }) as { generation: number; ordinal: number; payload: string } | undefined
-    if (message === undefined) return 'missing'
-    let event: QueuedMessageEvent | UnqueuedMessageEvent | null
-    try {
-      event = JSON.parse(message.payload) as QueuedMessageEvent | UnqueuedMessageEvent | null
-    } catch {
-      return 'not-delivered'
-    }
-    if (event === null) return 'not-delivered'
-    if (needsDisposition) {
-      if (event.messageId !== messageId) return 'not-delivered'
-      const subjectOnItsTurn =
-        event.type === 'message_unqueued' &&
-        event.reason === 'sent' &&
-        event.appNotice === undefined
-      if (event.appNotice !== appNotice && !subjectOnItsTurn) return 'not-delivered'
-    }
-    if (event.type === 'message_queued') return 'pending'
-    if (needsDisposition && event.type === 'message_unqueued' && event.reason === 'retracted')
-      return 'retracted'
-    if (event.reason !== 'sent') return 'not-delivered'
-    const opened = selectTurnAfterReconciliation.get(
-      target,
-      message.generation,
-      message.ordinal,
-    ) as { payload: string; turn: string | null; closed_at: number | null } | undefined
-    if (opened === undefined || opened.turn === null) return 'not-delivered'
-    const turn = JSON.parse(opened.payload) as TranscriptEvent
-    if (
-      turn.type !== 'user_turn' ||
-      !theMessagesOf(turn).some((one) => one.text === event.text && one.appNotice === appNotice)
-    )
-      return 'not-delivered'
-    return opened.closed_at === null ? 'running' : 'turn-ended'
-  }
-
-  function queuedPromptProgress(
-    target: string,
-    messageId: string,
-    appNotice: AppNotice,
-  ): QueuedPromptProgress {
-    const progress = readQueuedPromptProgress(target, messageId, appNotice, false)
-    return progress === 'retracted' ? 'not-delivered' : progress
-  }
-
   const selectTurnBlockInstructions = db.prepare(
     `SELECT session_id AS conversation, created_at AS at, ordinal, json_valid(payload) AS readable, payload
        FROM events WHERE session_id = ? AND type IN ('instruction_proposed', 'instruction_settled')
@@ -620,15 +324,6 @@ export function createSessionStore(
                           AND CASE WHEN json_valid(payload)
                                 THEN json_extract(payload, '$.requestId') END = @request)
       ORDER BY ordinal DESC LIMIT 1`,
-  )
-  // Prefer the recent date range over a scan of every error, without requiring a named index.
-  const { providerLimitsSeen, readAheadProviderWalls } = createProviderLimitReader(
-    db,
-    connection,
-    activeGeneration,
-    readPhases,
-    noteUnreadRow,
-    theFoldIndexHolds,
   )
   for (const read of [
     selectPieceEvents,
@@ -818,17 +513,12 @@ export function createSessionStore(
                  AND routed.generation = coalesce((SELECT active FROM derived_generation g
                                                     WHERE g.session_id = routed.session_id), 0)))`,
   )
-  const selectLegacyStallCut = db.prepare(
-    'SELECT generation, through_ordinal FROM work_legacy_stall_cut WHERE session_id = ?',
-  )
   const piecesKeptOnly = theKeptOnly(foldPiecesKept)
   const piecesAtHand = (owner: string) => piecesKeptOnly(owner)?.answer ?? null
   const routedRequestsKeptOnly = theKeptOnly(foldRoutedRequestsOfSession)
   const routedRequestsAtHand = (sessionId: string) =>
     routedRequestsKeptOnly(sessionId)?.answer ?? null
   const questionsRaisedAtHand = theKeptOnly(foldQuestionsRaisedInSession)
-  let selectNewestRecovery: AppStatement | undefined
-
   function piecesForAName(
     conversation: string,
     generation: number,
@@ -880,19 +570,6 @@ export function createSessionStore(
     return { pieces, waiting }
   }
 
-  // Keep only the local fold here; related questions and workers are composed by each caller.
-  const waitingOnWhoWrote = keptUntilItsLedgerGrows((owner, noteSkip) =>
-    piecesOfSession(owner, noteSkip).filter(waitsOnWhoWrote),
-  )
-
-  function piecesWaitingOnWhoWroteIn(
-    owner: string,
-    noteSkip?: SkipNote,
-  ): readonly PieceWaitingOnWhoWrote[] {
-    // A clean uncounted read can be kept; an unread row still prevents either fold being kept.
-    return waitingOnWhoWrote(owner, noteSkip ?? (() => {}))
-  }
-
   function doneConditionOfRoot(root: WorkDbRow): string | null {
     const found = workSql().doneCondition.get(
       root.owner_session_id,
@@ -932,34 +609,6 @@ export function createSessionStore(
       theRootThatNames(conversation, generation) ??
       theWorkThatNamesItAmong(piecesForAName(conversation, generation, unread))
     )
-  }
-
-  function walkWorkGivenBy<Row extends { readonly givenAt: number; readonly piece: string }>(
-    sessionId: string,
-    map: (piece: PieceRow, candidate: GivenWorkRow) => Row,
-  ): LedgerWalk<Row> {
-    const unread = rowsUnreadOnce()
-    const owners = selectOwnersGivenWorkBy.all(sessionId) as GivenWorkRow[]
-    const waiting = oneWaitReadPerHolder(unread)
-    const walked = walkLedgers(
-      'every-conversation-this-one-gave-work-to',
-      owners,
-      (owner, noteSkip, candidate) =>
-        composeWhatEachPieceIsWaitingOn(
-          [...piecesOfSession(owner, noteSkip)].filter((piece) => piece.giver === sessionId),
-          waiting,
-        ).map((piece) => map(piece, candidate)),
-      unread,
-    )
-    return {
-      walk: walked.walk,
-      ledgers: walked.ledgers,
-      rowsUnread: walked.rowsUnread,
-      ...ledgersSkippedOf(walked.ledgersSkipped),
-      rows: [...walked.rows].sort(
-        (left, right) => left.givenAt - right.givenAt || (left.piece < right.piece ? -1 : 1),
-      ),
-    }
   }
 
   function lastEndedTurnOf(sessionId: string, noteSkip?: SkipNote): LastEndedTurn | null {
@@ -1298,679 +947,16 @@ export function createSessionStore(
     return { ...asked, at: row.created_at, turn }
   }
 
-  const selectOwnersOfGivenPieces = db.prepare(
-    `SELECT DISTINCT owner_session_id AS id FROM work WHERE parent_id IS NOT NULL`,
-  )
-  // A first-life birth remains evidence even when its payload cannot be read.
-  const legacyService = `s.parent_session_id IS NULL
-    AND NOT EXISTS (
-      SELECT 1 FROM work AS w WHERE w.owner_session_id = s.id AND w.parent_id IS NULL
-    )`
-  const selectServicesBorn = db.prepare(
-    `SELECT s.id, s.agent_identity_id AS identity, i.created_at AS incarnation,
-            s.parent_session_id AS parent, s.created_at AS created,
-            (${serviceBirth('s.id', true)}) AS birth
-       FROM provider_session AS s
-       LEFT JOIN agent_identity AS i ON i.id = s.agent_identity_id
-       WHERE (${legacyService}) OR EXISTS (${serviceBirth('s.id')})`,
-  )
-  const selectServiceBorn = db.prepare(
-    `SELECT 1 AS yes FROM provider_session AS s
-      WHERE s.id = ? AND ((${legacyService}) OR EXISTS (${serviceBirth('s.id')}))`,
-  )
-  const selectHoldsAGivenPiece = db.prepare(
-    `SELECT 1 AS yes FROM work WHERE owner_session_id = ? AND parent_id IS NOT NULL LIMIT 1`,
-  )
-  const selectOwnersOfPiecesAConversationGave = db.prepare(
-    `SELECT DISTINCT owner_session_id AS id FROM work WHERE given_by_session_id IS NOT NULL`,
-  )
-  const selectConversationHeld = db.prepare(`SELECT 1 AS yes FROM provider_session WHERE id = ?`)
-  const selectALostAnswerRecorded = db.prepare(
-    `SELECT 1 AS yes FROM events
-      WHERE session_id = ? AND type = 'reply_undelivered'
-        AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
-      LIMIT 1`,
-  )
-  function settleHeldMessages(
-    stranded: StrandedMessages['stranded'],
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-  ): number {
-    let settled = 0
-    for (const held of stranded) {
-      if (running.has(held.session_id)) continue
-      try {
-        const generation = activeGeneration(held.session_id)
-        const max = selectMaxOrdinal.get(held.session_id, generation) as
-          { max_ordinal: number | null } | undefined
-        appendTx(
-          held.session_id,
-          (max?.max_ordinal ?? -1) + 1,
-          {
-            type: 'message_unqueued',
-            messageId: held.message_id,
-            reason: 'abandoned',
-            text: held.text ?? '',
-            detail: A_RESTART_LEFT_THE_MESSAGE_WAITING,
-            ...authorshipStoredOn(held.payload),
-            ...attachmentsStoredOn(held.payload),
-          },
-          at,
-          generation,
-          true,
-        )
-        const answer = theAnswerItCarries(authorshipStoredOn(held.payload))
-        if (
-          answer !== null &&
-          !running.has(answer.owner) &&
-          selectConversationHeld.get(answer.owner) !== undefined &&
-          selectALostAnswerRecorded.get(answer.owner, answer.piece) === undefined
-        ) {
-          const itsGeneration = activeGeneration(answer.owner)
-          const itsMax = selectMaxOrdinal.get(answer.owner, itsGeneration) as
-            { max_ordinal: number | null } | undefined
-          try {
-            appendTx(
-              answer.owner,
-              (itsMax?.max_ordinal ?? -1) + 1,
-              {
-                type: 'reply_undelivered',
-                piece: answer.piece,
-                parent: held.session_id,
-                because: AN_ANSWER_HELD_THEN_LOST,
-              },
-              at,
-              itsGeneration,
-              true,
-            )
-          } catch (error) {
-            console.warn(
-              `messages: could not record that ${answer.owner}'s answer to ${answer.label} was lost: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            )
-          }
-        }
-        settled += 1
-      } catch (error) {
-        skipTheLedger(held.session_id, error, unread?.in(held.session_id))
-      }
-    }
-    return settled
-  }
-  const settleHeldMessagesTx = db.transaction(settleHeldMessages)
-  const settleStrandedMessagesTx = db.transaction(
-    (
-      at: number,
-      running: ReadonlySet<string>,
-      unread?: RowsUnread,
-      owners?: ReadonlySet<string>,
-    ): number => {
-      const { stranded, torn } = strandedMessages(owners)
-      for (const one of torn) noteUnreadRow(one.session_id, one.ordinal, undefined)
-      return settleHeldMessages(stranded, at, running, unread)
-    },
-  )
-
-  function* settleStrandedMessagesInSteps(
-    at: number,
-    running: ReadonlySet<string>,
-    unread?: RowsUnread,
-    owners?: ReadonlySet<string>,
-  ): Generator<() => void, number> {
-    const { stranded, torn } = yield* strandedMessageSteps(owners)
-    for (const one of torn) yield () => noteUnreadRow(one.session_id, one.ordinal, undefined)
-    let settled = 0
-    for (const held of stranded) {
-      yield () => {
-        settled += settleHeldMessagesTx([held], at, running, unread)
-      }
-    }
-    return settled
-  }
-
-  const settleRestartedWorkTx = db.transaction(
-    (
-      at: number,
-      running: ReadonlySet<string>,
-      unread?: RowsUnread,
-      wokenForAJob?: ReadonlySet<string>,
-      diedInTheBackground?: Set<string>,
-      continuing?: ReadonlySet<string>,
-      owners?: ReadonlySet<string>,
-    ): number => {
-      let written = 0
-      // Named owners are looked up one by one, so a repair sliced per owner reads no whole table.
-      const holders =
-        owners === undefined
-          ? (selectOwnersOfGivenPieces.all() as { id: string }[])
-          : [...owners]
-              .filter((id) => selectHoldsAGivenPiece.get(id) !== undefined)
-              .map((id) => ({ id }))
-      const services =
-        owners === undefined
-          ? new Set((selectServicesBorn.all() as { id: string }[]).map(({ id }) => id))
-          : new Set(
-              holders
-                .filter(({ id }) => selectServiceBorn.get(id) !== undefined)
-                .map(({ id }) => id),
-            )
-      for (const worker of holders) {
-        if (running.has(worker.id)) continue
-        try {
-          const woken = wokenForAJob?.has(worker.id) === true
-          const listed = piecesOfSession(worker.id, unread?.in(worker.id)).filter(
-            (piece) =>
-              piece.state === 'waiting' ||
-              piece.state === 'working' ||
-              piece.parkedOver === 'working',
-          )
-          const open = services.has(worker.id)
-            ? listed.filter((piece) => piece.state !== 'waiting')
-            : listed
-          if (woken && open.some((piece) => piece.inTheBackground !== undefined)) {
-            diedInTheBackground?.add(worker.id)
-          }
-          const named = open.filter((piece) => !(woken && piece.inTheBackground !== undefined))
-          const undriven = named.map((piece) => piece.piece)
-          if (undriven.length === 0) continue
-          if (named.some((piece) => piece.inTheBackground !== undefined)) {
-            diedInTheBackground?.add(worker.id)
-          }
-          if (continuing?.has(worker.id) === true) continue
-          const generation = activeGeneration(worker.id)
-          const max = selectMaxOrdinal.get(worker.id, generation) as
-            { max_ordinal: number | null } | undefined
-          appendTx(
-            worker.id,
-            (max?.max_ordinal ?? -1) + 1,
-            { type: 'work_restarted', pieces: undriven },
-            at,
-            generation,
-            false,
-          )
-          written += 1
-        } catch (error) {
-          skipTheLedger(worker.id, error, unread?.in(worker.id))
-        }
-      }
-      return written
-    },
-  )
-
-  const identitiesOnce = (): ((sessionId: string | null) => string | null) => {
-    const known = new Map<string, string | null>()
-    return (sessionId) => {
-      if (sessionId === null) return null
-      if (known.has(sessionId)) return known.get(sessionId) ?? null
-      const row = spawnSql().identityOfSession.get(sessionId) as
-        { profile_slug: string } | undefined
-      const identity = row?.profile_slug ?? null
-      known.set(sessionId, identity)
-      return identity
-    }
-  }
-
-  const resourceFrom = (row: ResourceDbRow): ResourceRow => ({
-    resource: row.id,
-    piece: row.work_id,
-    role: row.role as ResourceRole,
-    title: row.title,
-    summary: row.summary,
-    name: row.name,
-    sha256: row.sha256,
-    bytes: row.bytes,
-    addedBy: row.added_by_session_id,
-    createdAt: row.created_at,
-  })
-
-  const treeOf = (
-    asked: Extract<KeptFilesAsked, { readonly scope: 'tree' }>,
-  ): { readonly holder: string; readonly givers: string } => ({
-    holder: asked.holder,
-    givers: JSON.stringify(asked.givers),
-  })
-
-  const onTheirPieces = (
-    rows: readonly KeptFileDbRow[],
-  ): readonly { readonly file: KeptFileRow; readonly numbers: readonly number[] }[] => {
-    type Named = {
-      readonly numbers: readonly number[]
-      readonly title: string | null
-      readonly returned: ReadonlySet<string> | null
-      readonly mainResult: string | null
-    } | null
-    const pieces = new Map<string, Named>()
-    const replies = new Map<string, ReadonlyMap<string, PieceRow> | null>()
-    const generations = new Map<string, number>()
-    const retitles = new Map<string, ReadonlyMap<string, Record<string, unknown>>>()
-    const newestRetitle = (
-      piece: WorkDbRow,
-      generation: number,
-    ): Record<string, unknown> | null => {
-      let owners = retitles.get(piece.owner_session_id)
-      if (owners === undefined) {
-        owners = retitlesOf(piece.owner_session_id, generation)
-        retitles.set(piece.owner_session_id, owners)
-      }
-      return owners.get(piece.id) ?? null
-    }
-    const named = (id: string): Named => {
-      const known = pieces.get(id)
-      if (known !== undefined) return known
-      const row = workSql().byId.get(id) as WorkDbRow | undefined
-      let found: Named = null
-      if (row !== undefined) {
-        let generation = generations.get(row.owner_session_id)
-        if (generation === undefined) {
-          generation = activeGeneration(row.owner_session_id)
-          generations.set(row.owner_session_id, generation)
-        }
-        let owned = replies.get(row.owner_session_id)
-        if (owned === undefined) {
-          let unread = false
-          const folded = piecesOfSession(row.owner_session_id, () => {
-            unread = true
-          })
-          owned = unread ? null : new Map(folded.map((piece) => [piece.piece, piece]))
-          replies.set(row.owner_session_id, owned)
-        }
-        const returned =
-          row.parent_id === null
-            ? new Set<string>()
-            : owned === null || !owned.has(row.id)
-              ? null
-              : new Set(owned.get(row.id)!.resources)
-        const documents =
-          returned === null
-            ? []
-            : [...returned].filter((id) => {
-                const resource = workSql().resourceById.get(id) as ResourceDbRow | undefined
-                if (resource?.work_id !== row.id || resource.role !== 'made') return false
-                const form = formOfName(resource.name)
-                return form === 'markdown' || form === 'page'
-              })
-        found = {
-          numbers: [...chainUp(row)].reverse().map((each) => each.number),
-          title: titleNow(row, generation, newestRetitle),
-          returned,
-          mainResult: documents.includes(owned?.get(row.id)?.resultDocument ?? '')
-            ? owned!.get(row.id)!.resultDocument!
-            : documents.length === 1
-              ? documents[0]!
-              : null,
-        }
-      }
-      pieces.set(id, found)
-      return found
-    }
-    return rows.flatMap((row) => {
-      const on = named(row.work_id)
-      if (on === null) return []
-      const group = workFileGroup(
-        { role: row.role as ResourceRole, form: formOfName(row.name) },
-        on.returned === null ? null : on.returned.has(row.id),
-      )
-      return [
-        {
-          file: {
-            ...(group === null ? {} : { group }),
-            ...(on.mainResult === row.id ? { mainResult: true as const } : {}),
-            resource: resourceFrom(row),
-            label: pieceCalled(on.numbers),
-            pieceTitle: on.title,
-            addedByIdentity: row.added_by_identity,
-          },
-          numbers: on.numbers,
-        },
-      ]
-    })
-  }
-
-  /** Label order, then creation time and id within each piece. */
-  const namedFiles = (rows: readonly KeptFileDbRow[]): readonly KeptFileRow[] => {
-    return [...onTheirPieces(rows)]
-      .sort(
-        (a, b) =>
-          inLabelOrder(a.numbers, b.numbers) ||
-          a.file.resource.createdAt - b.file.resource.createdAt ||
-          (a.file.resource.resource < b.file.resource.resource ? -1 : 1),
-      )
-      .map((one) => one.file)
-  }
-
-  /** {@link SessionStore.numberUnder}, in its own transaction. */
-  const numberUnderTx = db.transaction((parent: string): number => bumpSequence(parent))
-
-  const recordGiveTx = db.transaction(
-    (given: GivenPiece, ordinal: number, event: WorkGivenEvent, at: number) => {
-      workSql().insert.run(
-        given.piece,
-        given.parent,
-        given.number,
-        given.owner,
-        given.givenBy,
-        given.title,
-        given.brief,
-        given.folder,
-        at,
-      )
-      for (const input of given.inputs) {
-        committed.kept(given.piece, input.resource)
-        workSql().insertResource.run(
-          input.resource,
-          given.piece,
-          'input',
-          input.title,
-          null,
-          input.name,
-          input.sha256,
-          input.bytes,
-          given.givenBy,
-          at,
-        )
-      }
-      appendTx(given.owner, ordinal, event, at, activeGeneration(given.owner), true)
-    },
-  )
-
   return {
     ...ownNotesStore,
     ...turnReads.methods,
     ...workStatements.methods,
     ...ledgerEvents.methods,
     ...agentIdentities.methods,
+    ...workSettling.methods,
+    ...workGiven.methods,
     ...sessionModels,
 
-    stalledWorkNobodyWasToldAbout(counted, noOpenPieces, work) {
-      const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
-      const unread = counted ?? rowsUnreadOnce()
-      const told = new Map<string, ReadonlySet<string>>()
-      const toldAbout = (giver: string): ReadonlySet<string> => {
-        const held = told.get(giver)
-        if (held !== undefined) return held
-        const receipts = stallsToldToSession(giver, unread.in(giver))
-        told.set(giver, receipts)
-        return receipts
-      }
-      const waiting = oneWaitReadPerHolder(unread, work)
-      const walked = walkLedgers(
-        'every-conversation-that-was-given-work',
-        holders,
-        (sessionId, noteSkip) =>
-          oneSnapshot && db.inTransaction && noOpenPieces?.(sessionId)
-            ? []
-            : composeWhatEachPieceIsWaitingOn(
-                work === undefined
-                  ? piecesOfSession(sessionId, noteSkip)
-                  : work.ownedBy(sessionId, noteSkip),
-                waiting,
-              ).filter(
-                (piece) =>
-                  aStallItsGiverCanBeToldOf(piece) && !toldAbout(piece.giver).has(piece.piece),
-              ),
-        unread,
-      )
-      return {
-        walk: walked.walk,
-        ledgers: walked.ledgers,
-        rowsUnread: walked.rowsUnread,
-        ...ledgersSkippedOf(walked.ledgersSkipped),
-        rows: [...walked.rows].sort((left, right) => {
-          if (left.stalledAt !== right.stalledAt) {
-            if (left.stalledAt === null) return 1
-            if (right.stalledAt === null) return -1
-            return left.stalledAt - right.stalledAt
-          }
-          return left.piece < right.piece ? -1 : 1
-        }),
-      }
-    },
-    stalledWorkAPersonGave(counted) {
-      const holders = selectOwnersOfGivenPieces.all() as { id: string }[]
-      const unread = counted ?? rowsUnreadOnce()
-      const waits = oneWaitReadPerHolder(unread)
-      const found = walkLedgers(
-        'every-conversation-that-was-given-work',
-        holders,
-        (holder, noteSkip) =>
-          composeWhatEachPieceIsWaitingOn(
-            piecesOfSession(holder, noteSkip).filter((piece) => piece.giver === null),
-            waits,
-          ).filter((piece) => piece.state === 'stalled' && piece.stalledAt !== null),
-        unread,
-      )
-      return stalledInOrder(found)
-    },
-    stalledWorkItsGiverWasToldAbout(counted, noOpenPieces, work) {
-      const holders = selectOwnersOfPiecesAConversationGave.all() as { id: string }[]
-      const unread = counted ?? rowsUnreadOnce()
-      const told = new Map<string, ReadonlySet<string>>()
-      const wasToldOf = (giver: string, piece: string): boolean => {
-        let receipts = told.get(giver)
-        if (receipts === undefined) {
-          receipts = stallsToldToSession(giver, unread.in(giver))
-          told.set(giver, receipts)
-        }
-        return receipts.has(piece)
-      }
-      const waits = oneWaitReadPerHolder(unread, work)
-      const found = walkLedgers(
-        'every-conversation-that-was-given-work',
-        holders,
-        (holder, noteSkip) =>
-          oneSnapshot && db.inTransaction && noOpenPieces?.(holder)
-            ? []
-            : composeWhatEachPieceIsWaitingOn(
-                work === undefined
-                  ? piecesOfSession(holder, noteSkip)
-                  : work.ownedBy(holder, noteSkip),
-                waits,
-              ).filter(
-                (piece) => aStallItsGiverCanBeToldOf(piece) && wasToldOf(piece.giver, piece.piece),
-              ),
-        unread,
-      )
-      return stalledInOrder(found)
-    },
-    piecesWaitingOnWhoWrote() {
-      // An answered turn creates no request. Real asks are in questionsAPersonMustAnswer.
-      return { rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }
-    },
-    piecesWaitingOnWhoWroteIn(owner, unread) {
-      return piecesWaitingOnWhoWroteIn(owner, unread?.in(owner))
-    },
-    providerLimitsSeen,
-    readAheadProviderWalls,
-    messagesWaitingIn(sessionId, unread, maximumRows) {
-      return oneSnapshot && maximumRows === undefined
-        ? messagesWaitingKept(sessionId, unread?.in(sessionId))
-        : foldMessagesWaitingIn(sessionId, unread?.in(sessionId), maximumRows)
-    },
-
-    startupRepairOwners(phase) {
-      if (phase === 'builds')
-        return (selectBuildingSessions.all() as { session_id: string }[]).map(
-          (row) => row.session_id,
-        )
-      if (phase === 'runs')
-        return (selectRunningSessions.all() as { id: string }[]).map(({ id }) => id)
-      if (phase === 'requests')
-        return (selectSessionsThatRouted.all() as { id: string }[]).map(({ id }) => id)
-      if (phase === 'work')
-        return (selectOwnersOfGivenPieces.all() as { id: string }[]).map(({ id }) => id)
-      return [
-        ...new Set(
-          [
-            ...(selectEveryConversationAndStatus.all() as { id: string }[]),
-            ...(selectSessionsThatRouted.all() as { id: string }[]),
-            ...(selectOwnersOfGivenPieces.all() as { id: string }[]),
-          ].map(({ id }) => id),
-        ),
-      ]
-    },
-    settleStrandedMessagesInSteps,
-    settleStrandedMessages(at, running, unread, owners) {
-      return settleStrandedMessagesTx(at, running, unread, owners)
-    },
-    settleRestartedWork(
-      at,
-      running,
-      unread,
-      wokenForAJob,
-      diedInTheBackground,
-      continuing,
-      owners,
-    ) {
-      return settleRestartedWorkTx(
-        at,
-        running,
-        unread,
-        wokenForAJob,
-        diedInTheBackground,
-        continuing,
-        owners,
-      )
-    },
-    questionsAPersonMustAnswer(unread) {
-      const candidates = selectSessionsThatRouted.all() as { id: string }[]
-      const walked = walkLedgers(
-        'every-conversation-that-routed',
-        candidates,
-        routedRequestsOfSession,
-        unread,
-      )
-      return {
-        walk: walked.walk,
-        ledgers: walked.ledgers,
-        rowsUnread: walked.rowsUnread,
-        ...ledgersSkippedOf(walked.ledgersSkipped),
-        rows: walked.rows
-          .filter(
-            (request) =>
-              REQUEST_IS_OPEN[request.state] &&
-              (request.escalatedAt !== null || request.went.is === 'the-person-the-asker-named') &&
-              request.went.is !== 'the-person-the-channel-left-it-with',
-          )
-          .sort(
-            (left, right) => (aPersonsSince(left) ?? left.at) - (aPersonsSince(right) ?? right.at),
-          ),
-      }
-    },
-
-    decisionsAwaitingAPerson(unread) {
-      const candidates = selectSessionsThatRouted.all() as { id: string }[]
-      const walked = walkLedgers(
-        'every-conversation-that-routed',
-        candidates,
-        routedRequestsOfSession,
-        unread,
-      )
-      return {
-        walk: walked.walk,
-        ledgers: walked.ledgers,
-        rowsUnread: walked.rowsUnread,
-        ...ledgersSkippedOf(walked.ledgersSkipped),
-        rows: permissionShaped(walked.rows)
-          .filter((request) => REQUEST_IS_OPEN[request.state])
-          .sort((left, right) => left.at - right.at),
-      }
-    },
-
-    numberUnder(parent) {
-      return numberUnderTx(parent)
-    },
-
-    recordGive(given, ordinal, event, at) {
-      recordGiveTx(given, ordinal, event, at)
-    },
-
-    reconciliationOwners(includeProviderFailureNotices = false) {
-      const owners = includeProviderFailureNotices
-        ? selectReconciliationOwnersWithFailures
-        : selectReconciliationOwners
-      return (owners.all() as { id: string }[]).map((one) => one.id)
-    },
-    reconciliationWork(holders, unread) {
-      const owners =
-        holders === undefined
-          ? (selectReconciliationOwners.all() as { id: string }[]).map((one) => one.id)
-          : [...holders]
-      return owners.flatMap((owner) => {
-        const pieces = this.openPiecesOf(owner, unread)
-        const root = workSql().rootOwnedBy.get(owner) as WorkDbRow | undefined
-        const rows = root === undefined ? [] : [workRowWalked(root)]
-        for (const piece of pieces) {
-          const row = workSql().byId.get(piece.piece) as WorkDbRow | undefined
-          if (row !== undefined) rows.push(workRowWalked(row))
-        }
-        return rows
-      })
-    },
-    reconciliationReceiptsForOwner(owner) {
-      return (
-        selectReconciliationOwnerReceipts.all(owner) as { payload: string; created_at: number }[]
-      ).map((row) => {
-        const receipt = holderReconciliationReceipt(JSON.parse(row.payload), row.created_at)
-        if (receipt === null) throw new Error('an incident receipt could not be read')
-        return receipt
-      })
-    },
-    reconciliationRecovery(owner) {
-      const row = (selectNewestRecovery ??= db.prepare(
-        `SELECT payload FROM events WHERE session_id = ? AND type = 'work_recovery'
-        ORDER BY generation DESC, ordinal DESC LIMIT 1`,
-      )).get(owner) as { payload: string } | undefined
-      if (row === undefined) return null
-      const read = workRecoveryEvent(JSON.parse(row.payload))
-      if (read === null) throw new Error('a recovery receipt could not be read')
-      return read
-    },
-    reconciliationDrivenByTurn(owner, turn) {
-      const before = reconciliationCut(owner, turn)
-      if (before === null) return []
-      const unread = rowsUnreadOnce()
-      const folded =
-        before === undefined
-          ? piecesOfSession(owner, unread.in(owner))
-          : foldPiecesOfSession(owner, unread.in(owner), false, before)
-      if (unread.count !== 0 || unread.ledgersSkipped !== 0)
-        throw new Error('the cut work could not be read')
-      return piecesThatDrove(owner, folded, this.recordedTurnOpening(owner, turn))
-    },
-    reconciliationPieces(owner, unread) {
-      if (!oneSnapshot)
-        return reconciliationReading(owner, foldReconciliationPieces(owner, unread?.in(owner)))
-      const newestTurn = theNewestTurn(owner)
-      const before = newestTurn === null ? null : reconciliationCutOrUnread(owner, newestTurn)
-      const kept = reconciliationPiecesKept(owner, unread?.in(owner))
-      if (kept.newestTurn === newestTurn && kept.before === before)
-        return reconciliationReading(owner, kept)
-      // A turn moved without a fold row: what was kept is read again, and kept in its place.
-      reconciliationPiecesKept.forget(owner)
-      return reconciliationReading(owner, reconciliationPiecesKept(owner, unread?.in(owner)))
-    },
-
-    reconciliationReceipts(owner, piece) {
-      if (selectUnreadReconciliationReceipt.get(owner) !== undefined)
-        throw new Error('an incident receipt could not be read')
-      return (
-        selectReconciliationReceipts.all(owner, piece) as { payload: string; created_at: number }[]
-      ).map((row) => {
-        const receipt = reconciliationReceipt(JSON.parse(row.payload), row.created_at)
-        if (receipt === null) throw new Error('an incident receipt could not be read')
-        return receipt
-      })
-    },
-    queuedPromptProgress,
-    providerFailureNoticeProgress(target, messageId) {
-      return readQueuedPromptProgress(target, messageId, 'a-provider-turn-failed', true)
-    },
-    reconciliationDelivery(target, messageId) {
-      const progress = queuedPromptProgress(target, messageId, 'a-work-wait-needs-attention')
-      return progress === 'missing' ? 'not-delivered' : progress
-    },
     workById(piece) {
       const row = workSql().byId.get(piece) as WorkDbRow | undefined
       return row === undefined ? null : workRowWalked(row)
@@ -2378,155 +1364,6 @@ export function createSessionStore(
       return typeof first?.piece === 'string' ? first.piece : null
     },
 
-    addResource(input, at) {
-      const id = newResourceId()
-      db.transaction(() => {
-        committed.kept(input.piece, id)
-        workSql().insertResource.run(
-          id,
-          input.piece,
-          input.role,
-          input.title,
-          input.summary,
-          input.name,
-          input.sha256,
-          input.bytes,
-          input.addedBy,
-          at,
-        )
-      })()
-      return { ...input, resource: id, createdAt: at }
-    },
-
-    resourcesOf(piece, after = null, limit = -1) {
-      return (
-        workSql().resourcesOf.all({
-          piece,
-          at: after?.createdAt ?? null,
-          id: after?.resource ?? null,
-          limit,
-        }) as ResourceDbRow[]
-      ).map(resourceFrom)
-    },
-
-    countResourcesAfter(piece, after) {
-      return (
-        workSql().countResourcesAfter.get({
-          piece,
-          at: after?.createdAt ?? null,
-          id: after?.resource ?? null,
-        }) as { total: number }
-      ).total
-    },
-
-    filesKept(asked) {
-      const rows = (
-        asked.scope === 'piece'
-          ? workSql().filesOnPiece.all(asked.piece)
-          : asked.scope === 'conversation'
-            ? workSql().filesAddedBy.all(asked.conversation)
-            : workSql().filesUnder.all(treeOf(asked))
-      ) as KeptFileDbRow[]
-      return namedFiles(rows)
-    },
-
-    filesKeptTogether(asked) {
-      const tree = workSql().filesUnder.all(treeOf(asked)) as KeptFileDbRow[]
-      const added = workSql().filesAddedBy.all(asked.holder) as KeptFileDbRow[]
-      const treeIds = new Set(tree.map((row) => row.id))
-      const addedIds = new Set(added.map((row) => row.id))
-      const union = new Map([...tree, ...added].map((row) => [row.id, row]))
-      const files = namedFiles([...union.values()])
-      return {
-        tree: files.filter((row) => treeIds.has(row.resource.resource)),
-        added: files.filter((row) => addedIds.has(row.resource.resource)),
-      }
-    },
-
-    keptFilesNewestFirst(asked, page) {
-      const rows = (
-        asked.scope === 'tree'
-          ? workSql().newestKeptUnder.all({
-              ...treeOf(asked),
-              from: page.olderThan,
-              limit: page.limit,
-            })
-          : workSql().newestKeptAnywhere.all({ from: page.olderThan, limit: page.limit })
-      ) as KeptFileDbRow[]
-      return { rows: onTheirPieces(rows).map((one) => one.file), through: rows.at(-1)?.id ?? null }
-    },
-
-    keptFilesBefore(asked, olderThan, cap) {
-      const counted = (
-        asked.scope === 'tree'
-          ? workSql().keptUnderCount.get({ ...treeOf(asked), from: olderThan, cap })
-          : workSql().keptAnywhereCount.get({ from: olderThan, cap })
-      ) as { total: number }
-      return counted.total
-    },
-
-    madeBy(profileSlug, limit) {
-      const identityId = agentIdentityRowId(profileSlug)
-      return {
-        rows: onTheirPieces(workSql().madeBy.all(identityId, limit) as KeptFileDbRow[]).map(
-          (one) => one.file,
-        ),
-        total: (workSql().madeByCount.get(identityId) as { total: number }).total,
-      }
-    },
-
-    resource(id) {
-      const row = workSql().resourceById.get(id) as ResourceDbRow | undefined
-      return row === undefined ? null : resourceFrom(row)
-    },
-
-    untitledResources(limit) {
-      return (workSql().untitledResources.all(limit) as ResourceDbRow[]).map(resourceFrom)
-    },
-
-    titleResource(id, title) {
-      return workSql().titleResource.run(title, id).changes > 0
-    },
-
-    titledResources(after, limit, keptBefore) {
-      const rows = workSql().titledResources.all({ after, limit, keptBefore }) as (ResourceDbRow & {
-        at: number
-      })[]
-      return rows.map((row) => ({ at: row.at, row: resourceFrom(row) }))
-    },
-
-    retitleResource(id, was, title) {
-      return workSql().retitleResource.run({ id, was, title }).changes > 0
-    },
-
-    activityWindow(from, to) {
-      return digestRead.activityWindow(from, to)
-    },
-
-    digestWindow(from, to) {
-      return digestRead.digestWindow(from, to)
-    },
-
-    conversationsHeldByNoAgent() {
-      return (countConversationsHeldByNoAgent.get() as { n: number }).n
-    },
-
-    forestListing(asked) {
-      return forestListing(db, asked)
-    },
-
-    forestNodesOf(conversations, drawn, hidden) {
-      const placed = selectPlacedConversationsAmong.all({
-        ids: JSON.stringify(conversations),
-        hidden: JSON.stringify(hidden),
-      }) as ForestSessionRow[]
-      const found = new Set(placed.map((row) => row.id))
-      return {
-        nodes: forestNodesAmong(placed, drawn),
-        gone: conversations.filter((id) => !found.has(id)),
-      }
-    },
-
     routedRequestsOf(sessionId, unread) {
       return routedRequestsOfSession(sessionId, unread?.in(sessionId))
     },
@@ -2702,185 +1539,6 @@ export function createSessionStore(
         .flatMap((row) => [...routedRequestsOfSession(row.id, unread?.in(row.id))])
         .filter((request) => request.parent === parentSessionId)
         .sort((left, right) => left.at - right.at)
-    },
-
-    workReportedTo(sessionId) {
-      if (!oneSnapshot) return stallsToldToSession(sessionId)
-      // Read with a note so a complete fold is kept; a ledger with an unread row is read as before.
-      let unread = false
-      const told = stallsToldToSession(sessionId, () => {
-        unread = true
-      })
-      return unread ? stallsToldToSession(sessionId) : told
-    },
-    legacyOrdinaryStallWasReported(owner, piece, giver) {
-      const cut = selectLegacyStallCut.get(owner) as
-        { generation: number; through_ordinal: number } | undefined
-      if (cut === undefined || cut.generation !== activeGeneration(owner)) return false
-      let unread = false
-      const pieces = piecesOfSession(owner, () => {
-        unread = true
-      })
-      const ordinal = pieceStallOrdinals.get(pieces)?.get(piece)
-      if (unread || ordinal === undefined || ordinal > cut.through_ordinal) return false
-      try {
-        let told = false
-        for (const id of workerReplacementChain(giver)) {
-          let incomplete = false
-          const receipts = stallsToldToSession(id, () => {
-            incomplete = true
-          })
-          if (incomplete) return false
-          if (receipts.has(piece)) told = true
-        }
-        return told
-      } catch {
-        return false
-      }
-    },
-
-    workGivenOutBy(sessionId) {
-      return walkWorkGivenBy(sessionId, (piece, candidate) =>
-        workGivenOut(piece, candidate.identity),
-      )
-    },
-
-    workThisOneGaveOut(sessionId) {
-      const giver = identitiesOnce()(sessionId)
-      return walkWorkGivenBy(sessionId, (piece, candidate) =>
-        workEdge(piece, candidate.identity, giver),
-      )
-    },
-
-    workThisOneWasGiven(sessionId) {
-      const mine = spawnSql().conversationBinding.get(sessionId) as BindingRow | undefined
-      const identity = mine?.identity ?? null
-      const identityOfGiver = identitiesOnce()
-      const unread = rowsUnreadOnce()
-      const waiting = oneWaitReadPerHolder(unread)
-      return walkLedgers(
-        'every-piece-of-work-this-one-was-given',
-        [{ id: sessionId }],
-        (held, noteSkip) =>
-          composeWhatEachPieceIsWaitingOn(piecesOfSession(held, noteSkip), waiting).map((piece) =>
-            workEdge(piece, identity, identityOfGiver(piece.giver)),
-          ),
-        unread,
-      )
-    },
-
-    conversationTree(root) {
-      return conversationTree(db, root)
-    },
-
-    whatTiesTheTreeOutside(tree) {
-      return whatTiesTheTreeOutside(db, tree)
-    },
-
-    providerSessionsOf(conversation) {
-      return providerSessionsOf(db, conversation)
-    },
-
-    deleteTheTree(tree) {
-      const deleted = deleteTheTree(db, tree)
-      for (const id of tree) {
-        forgetTheKeptFoldsOf(id)
-        ledgerWrites.delete(id)
-      }
-      return deleted
-    },
-
-    spawnedBy(sessionId) {
-      if (spawnSql().conversationBinding.get(sessionId) === undefined) return noSuchConversation()
-      const children = spawnSql().spawnedBy.all(sessionId) as SpawnedSessionRow[]
-      return walkLedgers('every-conversation-this-one-spawned', children, (id, _noteSkip, row) => [
-        {
-          conversation: id,
-          identity: row.identity,
-          provider: row.provider as Provider,
-        },
-      ])
-    },
-
-    conversationBinding(sessionId) {
-      const row = spawnSql().conversationBinding.get(sessionId) as BindingRow | undefined
-      if (row === undefined) return null
-      return {
-        provider: row.provider as Provider,
-        identity: row.identity,
-      }
-    },
-
-    piecesGivenBy(sessionId, unread) {
-      return piecesGivenBySession(sessionId, unread)
-    },
-
-    newestScheduleLevels(owners) {
-      const selected = owners === undefined ? null : JSON.stringify([...owners])
-      const rows = selectNewestScheduleLevels.all(selected, selected) as {
-        session_id: string
-        payload: string
-        first_listed: string | null
-        compacted_at: number | null
-      }[]
-      return rows.flatMap((row) => {
-        const level = scheduleLevelFromRow(row)
-        return level === null ? [] : [level]
-      })
-    },
-
-    newestScheduleLevel(sessionId) {
-      const row = selectNewestScheduleLevel.get(sessionId) as
-        Parameters<typeof scheduleLevelFromRow>[0] | undefined
-      return row === undefined ? null : scheduleLevelFromRow(row)
-    },
-
-    lastStatusAt(sessionId) {
-      const row = selectLastStatusAt.get(sessionId) as { at: number } | undefined
-      return row === undefined ? null : row.at
-    },
-
-    scheduleEvidenceRows(sessionId) {
-      const answered = selectScheduleEvidenceRows.all(
-        sessionId,
-        MAX_SCHEDULE_HISTORY_WALKED + 1,
-        MAX_SCHEDULE_EVIDENCE_ROWS,
-      ) as {
-        ordinal: number
-        created_at: number
-        type: string
-        payload: string
-        walked: number | null
-      }[]
-      const walked = answered.find((row) => row.walked !== null)?.walked ?? 0
-      const rows = answered.filter((row) => row.walked === null)
-      const given = new Set<string>()
-      // How many rows of each kind were read: one that reached the cap may have more behind it.
-      const read = { life: 0, receipt: 0, level: 0 }
-      const kept = rows.flatMap((row): ScheduleEvidenceRow[] => {
-        let payload: unknown
-        try {
-          payload = JSON.parse(row.payload) as unknown
-        } catch {
-          return []
-        }
-        if (row.type !== 'scheduled_work') read.life += 1
-        else if (typeof payload === 'object' && payload !== null && 'receipt' in payload) {
-          read.receipt += 1
-        } else read.level += 1
-        const key = `${String(row.created_at)}:${String(row.ordinal)}:${row.type}`
-        if (given.has(key)) return []
-        given.add(key)
-        return [{ ordinal: row.ordinal, at: row.created_at, rowType: row.type, payload }]
-      })
-      const cut =
-        Math.max(read.life, read.receipt, read.level) >= MAX_SCHEDULE_EVIDENCE_ROWS ||
-        walked > MAX_SCHEDULE_HISTORY_WALKED
-      return { rows: kept, cut }
-    },
-
-    recordedOne(sessionId) {
-      return sessionCatalogueRead.recordedOne(sessionId)
     },
   }
 }

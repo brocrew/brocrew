@@ -865,9 +865,9 @@ describe('403 · a decision only a person can make', () => {
       // `permissionShaped` would have walked straight past it.
       const path: [string, string][] = [
         [
-          'session-store.ts · decisionsAwaitingAPerson',
+          'work-settling.ts · decisionsAwaitingAPerson',
           bodyIn(
-            sourceOf(join(mainRoot, 'db'), 'session-store.ts'),
+            sourceOf(join(mainRoot, 'db', 'session-store-parts'), 'work-settling.ts'),
             '    decisionsAwaitingAPerson(unread) {',
             '\n    },',
           ),
