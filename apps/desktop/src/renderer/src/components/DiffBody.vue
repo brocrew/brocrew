@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ROLE_PROPERTIES } from '../lib/text-roles'
+import SegmentedControl from './SegmentedControl.vue'
 
 /**
  * A diff, on paper (096 — 092's §5 ruling made real).
@@ -30,6 +31,10 @@ const props = withDefaults(
 )
 
 const view = ref<'unified' | 'split'>('unified')
+const VIEWS = [
+  { value: 'unified', label: 'Unified', cy: 'diff-view-unified' },
+  { value: 'split', label: 'Split', cy: 'diff-view-split' },
+] as const
 
 /** One rendered line of the diff. `hunk` is the `@@` header, which is chrome rather than content. */
 interface Line {
@@ -99,26 +104,7 @@ const pairs = computed(() =>
   <div class="diff-paper" data-cy="diff-body" :data-view="view" :style="ROLE_PROPERTIES">
     <div class="diff-bar">
       <span class="lbl" :title="filename">{{ filename }}</span>
-      <span class="seg-group">
-        <button
-          class="seg"
-          :class="{ on: view === 'unified' }"
-          type="button"
-          data-cy="diff-view-unified"
-          @click="view = 'unified'"
-        >
-          Unified
-        </button>
-        <button
-          class="seg"
-          :class="{ on: view === 'split' }"
-          type="button"
-          data-cy="diff-view-split"
-          @click="view = 'split'"
-        >
-          Split
-        </button>
-      </span>
+      <SegmentedControl v-model="view" class="views" tone="paper" size="tight" :options="VIEWS" />
     </div>
     <div class="diff-scroll">
       <p v-if="banner" class="diff-banner" :class="bannerLevel" data-cy="diff-banner">
@@ -196,36 +182,8 @@ const pairs = computed(() =>
   white-space: nowrap;
 }
 
-.seg-group {
-  display: inline-flex;
-  flex: 0 0 auto;
+.views {
   margin-left: auto;
-  padding: var(--space-1);
-  border: var(--border-width) solid var(--paper-line);
-  border-radius: var(--radius-xs);
-  background: var(--paper-seg-bg);
-}
-
-.seg {
-  display: inline-flex;
-  height: 18px;
-  align-items: center;
-  padding: 0 var(--space-4);
-  border: 0;
-  border-radius: var(--radius-seg-tight);
-  background: transparent;
-  color: var(--paper-muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-}
-
-.seg:hover {
-  color: var(--paper-ink);
-}
-
-.seg.on {
-  background: var(--accent-solid-bg);
-  color: var(--accent-ink);
 }
 
 .diff-scroll {

@@ -16,6 +16,7 @@ import { copyPressed } from '../composables/useMessagePaths'
 import { escaped } from '../lib/named-in-a-reply'
 import { copyPathMarkup } from '../lib/the-paths-a-message-names'
 import DocumentBody from './DocumentBody.vue'
+import DocumentViewerFrame from './DocumentViewerFrame.vue'
 import KeptFileDrawing from './KeptFileDrawing.vue'
 
 /**
@@ -44,10 +45,6 @@ import KeptFileDrawing from './KeptFileDrawing.vue'
  * 🔴 **D-032 · a kept picture or PDF is DRAWN**, by {@link KeptFileDrawing} alone: a picture as an
  * `<img>`, a PDF in Chromium's own viewer, from main's bytes and type. Its docblock holds the rules.
  * ⚑ Show in Finder is offered for any file this app keeps, by its id.
- *
- * ⚠️ **The chrome — Esc, the backdrop, the focus trap, focus returned — belongs to `OverlayHost`**,
- * which wraps this. Nothing here re-implements any of it, exactly as `WorkflowOutputViewer` and
- * `ImageViewer` do not.
  *
  * ## ⛔ Where the bytes come from
  *
@@ -144,6 +141,30 @@ const notDrawnSays = computed((): string | null => {
   }
 })
 
+/** A kept picture or PDF this window can draw, when main handed one over for this very file. */
+const drawnFile = computed(() => {
+  const drawing = props.drawing ?? null
+  return props.result.ok && drawing?.ok && drawing.resourceId === props.result.resourceId
+    ? drawing
+    : null
+})
+
+/** Why nothing is drawn, when neither text nor a picture is on the stage. */
+const refusal = computed(() => {
+  const result = props.result
+  if (!result.ok)
+    return {
+      text: REFUSAL[result.reason] ?? 'That file could not be opened.',
+      cy: 'canonical-document-refusal',
+    }
+  if (result.text !== null || drawnFile.value !== null) return null
+  // A form that encodes no text, and no door to draw it by: it is kept and listed, and this says so
+  // rather than drawing an empty file.
+  return notDrawnSays.value
+    ? { text: notDrawnSays.value, cy: 'canonical-document-undrawn' }
+    : { text: NOT_DRAWN[result.form], cy: 'canonical-document-not-drawn' }
+})
+
 /**
  * ⚑ **D-032 · Show in Finder, for any file this app keeps** — not for an id it keeps nothing by,
  * nor when it keeps no folder: there is nothing to show.
@@ -199,11 +220,20 @@ async function copyPath(event: MouseEvent): Promise<void> {
   revealSaid.value = null
   if ((await copyPressed(event)) !== null) revealSaid.value = "That path didn't copy. Try again."
 }
+
+const notes = computed(() =>
+  revealSaid.value ? [{ text: revealSaid.value, cy: 'canonical-document-revealed' }] : [],
+)
 </script>
 
 <template>
-  <div class="doc-read" data-cy="canonical-document-viewer">
-    <header class="viewer-head">
+  <DocumentViewerFrame
+    data-cy="canonical-document-viewer"
+    :notes="notes"
+    :refusal="refusal"
+    @close="emit('close')"
+  >
+    <template #head>
       <div class="heading">
         <!-- ⚑ **UI-002 · the file's title, first** (`07` §3) — its first heading, or its name. -->
         <strong v-if="told" class="title" data-cy="canonical-document-title" :title="told.title">{{
@@ -238,18 +268,8 @@ async function copyPath(event: MouseEvent): Promise<void> {
         <svg class="icon"><use href="#i-folder" /></svg>
         Show in {{ fileManager }}
       </button>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
+    </template>
 
-    <p v-if="revealSaid" class="revealed" data-cy="canonical-document-revealed">{{ revealSaid }}</p>
     <slot name="provenance" />
     <!-- 🔴 **635 · the stage branches on the FORM** (`HO-097` §1.3: *"show each type the way a
          person expects"*). ⛔ **And viewing never executes**: text is rendered by `DocumentBody`
@@ -263,49 +283,11 @@ async function copyPath(event: MouseEvent): Promise<void> {
       />
     </div>
     <!-- 🔴 D-032 · a kept picture or PDF, drawn by the one component that may: see its docblock. -->
-    <KeptFileDrawing
-      v-else-if="result.ok && drawing?.ok && drawing.resourceId === result.resourceId"
-      :drawing="drawing"
-      :finder="reveal !== undefined"
-    />
-    <p v-else-if="result.ok && notDrawnSays" class="refusal" data-cy="canonical-document-undrawn">
-      {{ notDrawnSays }}
-    </p>
-    <!-- ⚠️ **A form that encodes no text, and no door to draw it by.** ⛔ It is KEPT, its piece's
-         record lists it, and every agent can read about it — this view says so rather than drawing
-         an empty file. -->
-    <p v-else-if="result.ok" class="refusal" data-cy="canonical-document-not-drawn">
-      {{ NOT_DRAWN[result.form] }}
-    </p>
-    <p v-else class="refusal" data-cy="canonical-document-refusal">
-      {{ REFUSAL[result.reason] ?? 'That file could not be opened.' }}
-    </p>
-  </div>
+    <KeptFileDrawing v-else-if="drawnFile" :drawing="drawnFile" :finder="reveal !== undefined" />
+  </DocumentViewerFrame>
 </template>
 
 <style scoped>
-/* `WorkflowOutputViewer`'s frame, to the declaration — two document panels that sat differently
-   over the conversation would read as two different kinds of thing opening, which they are not.
-   ⚠️ `--drawer-solid` and never `--surface-1`: that token was used twice and declared nowhere, and
-   both document panels painted `transparent` over the transcript until `125` found it. */
-.doc-read {
-  display: flex;
-  max-width: min(900px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--drawer-solid);
-}
-
-.viewer-head {
-  display: flex;
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
 .heading {
   display: flex;
   min-width: 0;
@@ -337,8 +319,6 @@ async function copyPath(event: MouseEvent): Promise<void> {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
   /* ⚠️ D-032 · an agent's file name may hold direction overrides: kept to itself, never spilling. */
   unicode-bidi: isolate;
 }
@@ -374,40 +354,13 @@ async function copyPath(event: MouseEvent): Promise<void> {
   height: 11px;
 }
 
-.icon-button {
-  margin-left: auto;
-}
-
 .copy-path {
   display: inline-flex;
   flex: 0 0 auto;
   margin-left: auto;
 }
 
-.copy-path + .finder,
-.finder + .icon-button,
-.copy-path + .icon-button {
+.copy-path + .finder {
   margin-left: 0;
-}
-
-.revealed {
-  margin: 0;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.stage {
-  min-height: 0;
-  padding: var(--space-5);
-  overflow: auto;
-}
-
-.refusal {
-  margin: 0;
-  padding: var(--space-6) var(--space-5);
-  color: var(--muted);
-  font-size: var(--type-caption);
 }
 </style>
