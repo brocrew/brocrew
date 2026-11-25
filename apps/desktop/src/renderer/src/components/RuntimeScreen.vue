@@ -2805,6 +2805,11 @@ async function readTheCast(): Promise<void> {
     castFacts.update({ reading: { ...reading, atWork: doing } })
   }
 }
+/**
+ * A burst of pushes reads the band once more after the read in flight, not once per push. Opening
+ * a conversation calls {@link readTheCast} itself, so a switch never waits behind a slow read.
+ */
+const rereadTheCast = oneReadAtATime(readTheCast)
 
 // ⚑ **Opening a conversation re-reads immediately** — a band just opened is read, never one left
 // from before; every move after that is pushed (W4.74).
@@ -3056,6 +3061,11 @@ async function readSelectedIdentity(): Promise<void> {
     // Keep the last reading for this selection when the host cannot answer.
   }
 }
+/**
+ * Every retitle is announced only as `work`, so pushes keep reading the title, one read in flight
+ * and one owed. A new selection and a rename read it directly.
+ */
+const rereadSelectedIdentity = oneReadAtATime(readSelectedIdentity)
 
 watch(
   selectedForIdentity,
@@ -3120,7 +3130,7 @@ onMounted(() => {
     })
   stopHearingIdentityEvents = runtime().onEvent((message) => {
     if (message.event.type !== 'user_turn' || firstHumanMessageOf(message.event) === null) return
-    if (selectedForIdentity.value?.sessionId === message.sessionId) void readSelectedIdentity()
+    if (selectedForIdentity.value?.sessionId === message.sessionId) void rereadSelectedIdentity()
     personIdentityRevision.value += 1
   })
   stopHearingStates = listenProviderStates(runtime(), store, (message) => {
@@ -3150,7 +3160,7 @@ onMounted(() => {
       // announces nothing and keeps the tick, which is why no third subject was added (`534`'s own
       // rule: do not add a subject nothing reads)*, and `631`'s two task lists are the reader that
       // rule was waiting for.
-      void readTheCast()
+      void rereadTheCast()
       void readOwnForest()
       // Refresh the Team forest when a conversation opens, ends or is spawned, rather than waiting for arrival or its periodic tick. `readWhoIsWorking` runs only while the page is visible.
       void readWhoIsWorking()
@@ -3173,11 +3183,11 @@ onMounted(() => {
     // conversations' ledgers, so the reader asks the question it already asks and gets the whole
     // answer — which is this channel's contract rather than an economy.
     work: () => {
-      void readSelectedIdentity()
+      void rereadSelectedIdentity()
       workRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
-      void readTheCast()
+      void rereadTheCast()
       void readOwnForest()
       // ⚑ **D-016 · commit 7 · R2 — and the rail's list, for the work that names each
       // conversation**, which a give, a reply, a take-back, a close or a retitle moves and nothing
@@ -3202,7 +3212,7 @@ onMounted(() => {
     // and this one are the same function rather than two readers of one store.
     // ⚑ **UI-012 · and the model lists** — a last pick, a default or a hand-added model moved.
     agents: () => {
-      void readSelectedIdentity()
+      void rereadSelectedIdentity()
       agentIdentityRevision.value += 1
       teamProfileGraph.markStale()
       filesLibrary.markStale()
