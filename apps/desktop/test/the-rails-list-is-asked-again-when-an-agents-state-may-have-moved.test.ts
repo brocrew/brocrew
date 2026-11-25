@@ -129,7 +129,7 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
 
     // The control: this is the work arm and not a neighbour. It runs the work readers, and it
     // does not run the conversations arm's `readTheRoom`.
-    expect(arm).toContain('void readTheCast()')
+    expect(arm).toContain('void rereadTheCast()')
     expect(arm).toContain('void readWhoIsWorking()')
     expect(arm).toContain('void readTheWork()')
     expect(arm).not.toContain('readTheRoom')
