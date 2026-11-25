@@ -42,7 +42,7 @@ interface DeliveryBoundary {
   slots: Map<string, { session: LiveFixture | null }>
   arrivals: Map<string, Promise<void>>
   askAgainOnceItArrived: Set<string>
-  aDeliveryIsAboutToDriveIt(piece: PieceRow): boolean
+  stallNotices: { aDeliveryIsAboutToDriveIt(piece: PieceRow): boolean }
   itWaitsForItsLimit(session: LiveFixture, aPersonsOwn: boolean): boolean
   deliver(session: LiveFixture, event: RuntimeEvent): void
 }
@@ -223,7 +223,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
   it.each([7, 20])(
     'launches %i conversations without reading limits for their empty mailboxes',
     async (n) => {
-      const checks = vi.spyOn(boundary, 'aDeliveryIsAboutToDriveIt')
+      const checks = vi.spyOn(boundary.stallNotices, 'aDeliveryIsAboutToDriveIt')
       const owners: LiveFixture[] = []
       resetCounts()
       for (let i = 0; i < n; i++) {
@@ -272,10 +272,10 @@ describe('stall deliveries read limits only for automatic mail', () => {
     await limitFrom(session, FINITE_LIMIT)
     session.mailbox.push(message({ drives: piece.piece }), message({ piece: piece.piece }))
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
     expect(counts()).toEqual({ limits: 1, launches: 1 })
     expect(session.mailbox).toHaveLength(2)
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
     expect(counts()).toEqual({ limits: 1, launches: 0 })
     expect(limits.mock.calls).toHaveLength(1)
   })
@@ -285,7 +285,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
     await limitFrom(session)
     session.mailbox.push(message({ drives: piece.piece }))
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(true)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(true)
     expect(counts()).toEqual({ limits: 1, launches: 1 })
   })
 
@@ -300,7 +300,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
         ...(order === 'person first' ? [person, automatic] : [automatic, person]),
       )
       resetCounts()
-      expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(true)
+      expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(true)
       expect(counts()).toEqual({ limits: 0, launches: 0 })
     },
   )
@@ -313,7 +313,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
       message({ piece: 'other', drives: piece.piece }),
     )
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
     expect(counts()).toEqual({ limits: 0, launches: 0 })
   })
 
@@ -322,7 +322,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
     await limitFrom(session, FINITE_LIMIT)
     session.mailbox.push(message({ drives: 'other', interrupting: { askedBy: null } }))
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
     expect(counts()).toEqual({ limits: 1, launches: 1 })
   })
 
@@ -332,11 +332,11 @@ describe('stall deliveries read limits only for automatic mail', () => {
     session.mailbox.push(message({ drives: 'other' }))
     const interrupted = { ...piece, aTurnMayGoBackToIt: true as const }
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(interrupted)).toBe(true)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(interrupted)).toBe(true)
     expect(counts()).toEqual({ limits: 1, launches: 1 })
     session.itsSignInMovedOn = true
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt(interrupted)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(interrupted)).toBe(false)
     expect(counts()).toEqual({ limits: 0, launches: 0 })
   })
 
@@ -349,7 +349,9 @@ describe('stall deliveries read limits only for automatic mail', () => {
       if (path === 'held replacement') session.holdingQueue = 1
       if (path === 'running return') session.turnOpened = true
       resetCounts()
-      expect(boundary.aDeliveryIsAboutToDriveIt({ ...piece, aTurnMayGoBackToIt: true })).toBe(true)
+      expect(
+        boundary.stallNotices.aDeliveryIsAboutToDriveIt({ ...piece, aTurnMayGoBackToIt: true }),
+      ).toBe(true)
       expect(boundary.askAgainOnceItArrived.has(session.id)).toBe(path === 'arrival')
       expect(counts()).toEqual({ limits: 0, launches: 0 })
     },
@@ -360,15 +362,22 @@ describe('stall deliveries read limits only for automatic mail', () => {
     await limitFrom(session, FINITE_LIMIT)
     session.mailbox.push(message({ drives: piece.piece }))
     resetCounts()
-    expect(boundary.aDeliveryIsAboutToDriveIt({ ...piece, giver: null })).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt({ ...piece, giver: null })).toBe(false)
     expect(
-      boundary.aDeliveryIsAboutToDriveIt({ ...piece, state: 'working', stalledBecause: null }),
+      boundary.stallNotices.aDeliveryIsAboutToDriveIt({
+        ...piece,
+        state: 'working',
+        stalledBecause: null,
+      }),
     ).toBe(false)
     expect(
-      boundary.aDeliveryIsAboutToDriveIt({ ...piece, stalledBecause: 'message_never_sent' }),
+      boundary.stallNotices.aDeliveryIsAboutToDriveIt({
+        ...piece,
+        stalledBecause: 'message_never_sent',
+      }),
     ).toBe(false)
     const status = vi.spyOn(session.handle, 'status').mockReturnValue('ended')
-    expect(boundary.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
+    expect(boundary.stallNotices.aDeliveryIsAboutToDriveIt(piece)).toBe(false)
     status.mockRestore()
     expect(counts()).toEqual({ limits: 0, launches: 0 })
   })
