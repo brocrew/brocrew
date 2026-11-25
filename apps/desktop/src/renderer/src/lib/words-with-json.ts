@@ -93,3 +93,9 @@ function matchingClose(text: string, open: number): number {
   }
   return -1
 }
+
+/** The two views of words that carry JSON, as the message cards' switch offers them. */
+export const WORDS_VIEWS = [
+  { value: 'readable', label: 'Readable', cy: 'words-view-readable' },
+  { value: 'raw', label: 'Raw', cy: 'words-view-raw' },
+] as const

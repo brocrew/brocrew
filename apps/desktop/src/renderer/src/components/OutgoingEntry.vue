@@ -47,13 +47,13 @@ import type { RequestDraft } from '../lib/session-record'
 import { THIS_CONVERSATION_FIRST } from '../lib/from-outside'
 import { openTheDocumentSaid } from '../lib/the-document-a-report-names'
 import { namedBy, type FilesOnScreen } from '../lib/files-kept'
-import { jsonInWords } from '../lib/words-with-json'
+import { jsonInWords, WORDS_VIEWS } from '../lib/words-with-json'
 import type { AgentIdentity, UserInputResponse } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import OutsideCard from './OutsideCard.vue'
 import MarkdownWords from './MarkdownWords.vue'
 import WorkFacts from './WorkFacts.vue'
-import WordsViews from './WordsViews.vue'
+import SegmentedControl from './SegmentedControl.vue'
 import ReadableWords from './ReadableWords.vue'
 import FileRows from './FileRows.vue'
 import QuestionCard from './QuestionCard.vue'
@@ -525,12 +525,27 @@ async function takeItBack(piece: string): Promise<void> {
           {{ openTheDocumentSaid(index, handedBack.unread.length) }}
         </button>
       </template>
-      <WordsViews v-if="jsonParts" v-model="view" class="views" />
+      <SegmentedControl
+        v-if="jsonParts"
+        v-model="view"
+        :options="WORDS_VIEWS"
+        size="meta"
+        class="views"
+        aria-label="How the words are shown"
+        data-cy="words-views"
+      />
       <span class="time" :class="{ beside: jsonParts }">{{ clockTime(item.at) }}</span>
     </div>
     <!-- A give's brief that carries JSON still reads two ways. -->
     <div v-if="give && jsonParts" class="msg-meta">
-      <WordsViews v-model="view" class="views" />
+      <SegmentedControl
+        v-model="view"
+        :options="WORDS_VIEWS"
+        size="meta"
+        class="views"
+        aria-label="How the words are shown"
+        data-cy="words-views"
+      />
     </div>
     <WorkFacts v-if="card.facts" :reading="card.facts" />
     <!-- ⚑ **A give's title, above its brief** — the piece's own name, as the tree lists it. -->

@@ -4,13 +4,13 @@
  * Readable | Raw, Unified | Split. Every switch between views is this control.
  *
  * `tone="paper"` draws it on a white paper toolbar; the default draws it on the panel's chrome.
- * `size="tight"` fits a 30 px paper bar.
+ * `size="tight"` fits a 30 px paper bar; `size="meta"` fits a message card's meta row.
  */
 withDefaults(
   defineProps<{
     options: readonly { value: T; label: string; cy: string }[]
     tone?: 'chrome' | 'paper'
-    size?: 'regular' | 'tight'
+    size?: 'regular' | 'tight' | 'meta'
   }>(),
   { tone: 'chrome', size: 'regular' },
 )
@@ -84,6 +84,17 @@ const view = defineModel<T>({ required: true })
   height: 18px;
   padding: 0 var(--space-4);
   border-radius: var(--radius-seg-tight);
+}
+
+.meta {
+  padding: 1px;
+  border-radius: var(--radius-xs);
+}
+
+.meta .seg {
+  height: 16px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-2xs);
 }
 
 /* Ink on a solid accent fill: `--accent-ink`, never the badge's white, which fails on dark's pale

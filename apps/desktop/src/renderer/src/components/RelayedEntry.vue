@@ -5,11 +5,11 @@ import { fullTime } from '../lib/clock'
 import { pieceSays, RELAYED_MARK, relayedSender } from '../lib/relayed-turn'
 import { fromOutside, THIS_CONVERSATION } from '../lib/from-outside'
 import { MESSAGE_KIND_WORD } from '../lib/outgoing-card'
-import { jsonInWords } from '../lib/words-with-json'
+import { jsonInWords, WORDS_VIEWS } from '../lib/words-with-json'
 import OutsideCard from './OutsideCard.vue'
 import MarkdownWords from './MarkdownWords.vue'
 import { workIsWith } from '../lib/where-the-work-is'
-import WordsViews from './WordsViews.vue'
+import SegmentedControl from './SegmentedControl.vue'
 import ReadableWords from './ReadableWords.vue'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { RelayedItem, TranscriptItem } from '../lib/transcript'
@@ -181,7 +181,15 @@ const view = ref<'readable' | 'raw'>('readable')
       <!-- In the META row, never inside the body — 001's rule: the message's `textContent` has to
            be exactly what went to the provider, which is what a copy, a search or an assertion
            gets. Putting the clock in the body once turned "PINGPONG" into "PINGPONG00:55". -->
-      <WordsViews v-if="jsonParts" v-model="view" class="views" />
+      <SegmentedControl
+        v-if="jsonParts"
+        v-model="view"
+        :options="WORDS_VIEWS"
+        size="meta"
+        class="views"
+        aria-label="How the words are shown"
+        data-cy="words-views"
+      />
       <span class="time" :class="{ beside: jsonParts }">{{ clockTime(item.at) }}</span>
     </div>
     <ReadableWords
