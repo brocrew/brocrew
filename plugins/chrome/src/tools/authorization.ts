@@ -2,6 +2,7 @@ import { createWindowTasks } from '../windows.js'
 import { ToolError } from './schema.js'
 import type { ToolDef, ToolDeps } from './common.js'
 import type { TabState } from '../tabs.js'
+import type { ProfileBrowser } from '../browser/profileBrowser.js'
 
 const unavailable = () =>
   new ToolError('profile is unavailable — check Settings → Plugins → Chrome')
@@ -12,8 +13,8 @@ type SharedAccess = {
 export function sharedAccess(deps: Pick<ToolDeps, 'store'>): SharedAccess | undefined {
   return (deps.store as unknown as { shared?: SharedAccess }).shared
 }
-const browserIdentities = new WeakMap<object, object>()
-export function browserIdentity(browser: object): object {
+const browserIdentities = new WeakMap<ProfileBrowser, ProfileBrowser>()
+export function browserIdentity(browser: ProfileBrowser): ProfileBrowser {
   return browserIdentities.get(browser) ?? browser
 }
 const checks = new WeakMap<ToolDeps, () => void>()
@@ -202,7 +203,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
     ...def,
     async run(args, deps) {
       const call = deps.browser.agentCall
-      if (!call) return def.run(args, deps)
+      if (!call || def.downloadRouting === false) return def.run(args, deps)
       let profiles: string[]
       if (typeof args.profile === 'string') profiles = [args.profile]
       else if (typeof args.tabId === 'string')

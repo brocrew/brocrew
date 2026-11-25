@@ -31,7 +31,7 @@ export interface ProfileBrowser {
     },
   ): Promise<Page>
   knownWindowId?(profile: string, page: Page): number | undefined
-  windowId(profile: string, page: Page): Promise<number>
+  windowId(profile: string, page: Page, signal?: AbortSignal): Promise<number>
   /** The person turned the BroCrew helper on in the Chrome panel. */
   turnHelperOn(profile: string, signal?: AbortSignal): Promise<void>
   usePage(profile: string, page: Page, signal?: AbortSignal): Promise<void>

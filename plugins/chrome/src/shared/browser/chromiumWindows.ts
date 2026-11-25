@@ -185,6 +185,9 @@ export class ChromiumWindows {
       await this.detach(session)
     }
   }
+  admittedPages(): Iterable<Page> {
+    return this.pages.keys()
+  }
   knownWindowId(page: Page): number | undefined {
     return this.pages.get(page)?.windowId
   }

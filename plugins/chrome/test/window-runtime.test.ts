@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
 import { launchPersistentChromium } from '../src/shared/browser/browser-launch.js'
 import { createProfileStore } from '../src/profiles/store.js'
@@ -15,10 +15,15 @@ import { loadConfig } from '../src/config.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
-type RuntimeTab = { tabId: string; windowId: number; url: string; title: string }
+type RuntimeTab = {
+  tabId: string
+  windowId: number
+  url: string
+  title: string
+  notes?: string[]
+}
 type OpenResult = RuntimeTab & {
   note?: string
-  loadError?: string
 }
 type RuntimeReply<Name extends string> = Name extends 'list_tabs'
   ? RuntimeTab[]
@@ -210,12 +215,23 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       windowOf: first.tabId,
     })
     expect(first.url).toBe(url)
-    expect(second.title).toBe('Fictional local fixture')
+    await vi.waitFor(async () => {
+      const tabs = await a.call('list_tabs', { profile: 'fern' })
+      expect(tabs.find((tab) => tab.tabId === second.tabId)).toMatchObject({
+        url,
+        title: 'Fictional local fixture',
+      })
+    })
     const missing = await a.call('open_tab', {
       profile: 'fern',
       url: path.join(a.home, 'missing fixture.html'),
     })
-    expect(missing.loadError).toBeDefined()
+    await vi.waitFor(async () => {
+      const tabs = await a.call('list_tabs', { profile: 'fern' })
+      expect(tabs.find((tab) => tab.tabId === missing.tabId)?.notes).toEqual([
+        expect.stringContaining('ERR_FILE_NOT_FOUND'),
+      ])
+    })
     await a.call('close_tab', { tabId: missing.tabId })
     await a.call('navigate', { tabId: second.tabId, url: file })
     await a.call('navigate', { tabId: first.tabId, url })

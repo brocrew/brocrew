@@ -871,10 +871,10 @@ export class ChromeBrowser implements ProfileBrowser {
   knownWindowId(profile: string, page: Page): number | undefined {
     return this.entries.get(profile)?.windows?.knownWindowId(page)
   }
-  async windowId(profile: string, page: Page): Promise<number> {
+  async windowId(profile: string, page: Page, signal?: AbortSignal): Promise<number> {
     const windows = this.entries.get(profile)?.windows
     if (!windows) throw new Error('profile is not open')
-    return windows.windowId(page)
+    return windows.windowId(page, signal)
   }
   async usePage(profile: string, page: Page, signal?: AbortSignal): Promise<void> {
     const windows = this.entries.get(profile)?.windows
@@ -884,6 +884,7 @@ export class ChromeBrowser implements ProfileBrowser {
   onPage(profile: string, cb: (page: Page) => void): () => void {
     const e = this.entry(profile)
     e.pageListeners.add(cb)
+    for (const page of e.windows?.admittedPages() ?? []) cb(page)
     return () => e.pageListeners.delete(cb)
   }
   onClosed(profile: string, cb: (generation: number) => void): () => void {

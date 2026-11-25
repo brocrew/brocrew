@@ -1,5 +1,5 @@
 import { browserIdentity, fenceToolDefs } from './authorization.js'
-import { describeError, generationOf, tabId, titleOf, usableProfile } from './common.js'
+import { cacheTabTitle, describeError, generationOf, tabId, usableProfile } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
 const WATCH_MS = 6 * 60 * 60 * 1000
 const watched = new WeakMap<object, Set<string>>()
@@ -61,7 +61,7 @@ export function buildShowTabDefs(): ToolDef[] {
             focused = true
           }, failed)
           watchWindow(deps, profile)
-          const title = (tab.title = await titleOf(tab.page))
+          const title = await cacheTabTitle(tab)
           return {
             json: {
               tabId: id,

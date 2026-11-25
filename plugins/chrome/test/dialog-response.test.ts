@@ -128,12 +128,16 @@ describe('dialogs require an explicit answer', () => {
     })
     const opened = (await h.call('open_tab', { profile: 'p', url: 'about:blank' })).json as {
       tabId: string
-      dialog: string
-      loadError: string
     }
-    expect(opened.dialog).toContain(opened.tabId)
-    expect(opened.dialog).toMatch(/confirm.*Continue\?.*handle_dialog/)
-    expect(opened.loadError).toContain('handle_dialog')
+    const { json } = await h.call('list_tabs', { profile: 'p' })
+    expect(json).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tabId: opened.tabId,
+          dialog: expect.stringMatching(/confirm.*Continue\?.*handle_dialog/),
+        }),
+      ]),
+    )
     expect(d.dismiss).not.toHaveBeenCalled()
     await h.call('handle_dialog', { tabId: opened.tabId, accept: false })
     expect(d.dismiss).toHaveBeenCalledOnce()

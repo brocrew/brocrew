@@ -16,7 +16,7 @@ afterEach(async () => {
       fs.rmSync(root, { recursive: true, force: true })
   }
 })
-it('reports completed page load and screenshot work through the production tool handlers', async () => {
+it('reports tab placement, navigation and screenshot progress through the production tool handlers', async () => {
   const h = harness()
   fixtures.push(h)
   h.profile('fern', { enabled: true })
@@ -29,7 +29,7 @@ it('reports completed page load and screenshot work through the production tool 
       { activity: (stage) => stages.push(stage) },
     )
   const { tabId } = JSON.parse(opened.content[0].text)
-  expect(stages).toEqual(['browser-ready', 'page-ready', 'page-loaded'])
+  expect(stages).toEqual(['browser-ready', 'page-ready'])
   stages.length = 0
   await tools
     .find((t) => t.definition.name === 'navigate')!

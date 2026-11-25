@@ -1,4 +1,4 @@
-import { fenceToolDefs, sharedAccess } from './authorization.js'
+import { browserIdentity, fenceToolDefs, sharedAccess } from './authorization.js'
 import { PublicToolError } from '../shared/toolServer.js'
 import { WindowTargetError } from '../shared/browser/chromiumWindows.js'
 import { LocalFileGuardError } from '../localFileGuard.js'
@@ -13,9 +13,9 @@ import { MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, mimeFor } from '../files.js'
 import { MAX_TEXT, ToolError, jsonSchemaOf, parseArgs } from './schema.js'
 import {
   DEFAULT_NETWORK_LIMIT,
-  DEFAULT_TIMEOUT_MS,
   KEY,
   MAX_SCREENSHOT_BYTES,
+  cacheTabTitle,
   checkUrl,
   checkDownloadUrl,
   describeError,
@@ -46,6 +46,7 @@ import {
   withNotes,
 } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
+import { openTab } from './openTab.js'
 import { buildProfileToolDefs } from './profileTools.js'
 import { buildShowTabDefs } from './showTab.js'
 import { PENDING_DOWNLOAD_MS } from '../tabs.js'
@@ -208,88 +209,9 @@ export function buildToolDefs(): ToolDef[] {
         return { json: { deleted: name } }
       },
     },
+    openTab,
     {
-      spec: {
-        name: 'open_tab',
-        description:
-          'Open a background tab at a URL or absolute local path. Returns tabId, windowId (null while unknown), url and title. windowOf selects an existing tab’s window and fails clearly if the helper cannot place it there; it never opens elsewhere as a fallback. Otherwise use Chrome’s most recently active available window. Chrome is never brought forward. newWindow:true opens a separate window.',
-        props: {
-          profile: profileName,
-          url,
-          windowOf: {
-            ...tabId,
-            description:
-              'Open in this live tab’s window, in the same profile. Fails if the helper cannot place it there. Cannot accompany newWindow:true.',
-          },
-          newWindow: {
-            type: 'boolean',
-            description: 'Open in a new window.',
-          },
-        },
-        required: ['profile', 'url'],
-      },
-      async run(a, deps) {
-        const name = a.profile as string
-        const target = checkUrl(a.url as string)
-        if (a.windowOf !== undefined && a.newWindow === true)
-          throw new ToolError('give either newWindow:true or windowOf, not both')
-        const selectedAnchor = () => {
-          if (a.windowOf === undefined) return undefined
-          const tab = deps.tabs.resolve(a.windowOf as string, generationOf(deps))
-          if (tab.profile !== name)
-            throw new ToolError('windowOf must name a tab in the requested profile')
-          return tab
-        }
-        selectedAnchor()
-        usableProfile(deps, name)
-        deps.tabs.watch(name, deps.browser)
-        const out = await deps.browser.exclusive(name, async () => {
-          usableProfile(deps, name)
-          selectedAnchor()
-          const { generation } = await deps.browser.ensure(name, deps.signal)
-          deps.activity?.('browser-ready')
-          usableProfile(deps, name)
-          let openingNote: string | undefined
-          const page = await deps.browser.newPage(name, {
-            newWindow: a.newWindow === true,
-            windowOf: selectedAnchor()?.page,
-            signal: deps.signal,
-            onNote: (note) => {
-              openingNote = note
-            },
-          })
-          const tab = deps.tabs.add(name, generation, page)
-          try {
-            deps.activity?.('page-ready')
-            usableProfile(deps, name)
-            let loadError: string | undefined
-            try {
-              await page.goto(target, {
-                waitUntil: 'domcontentloaded',
-                timeout: DEFAULT_TIMEOUT_MS,
-              })
-              deps.activity?.('page-loaded')
-            } catch (e) {
-              loadError = openDialogNote(tab) ?? describeError(e)
-            }
-            const title = (tab.title = await titleAfterLoad(page))
-            return {
-              tabId: tab.id,
-              windowId: deps.browser.knownWindowId?.(name, page) ?? null,
-              url: page.url(),
-              title,
-              ...(openingNote ? { note: openingNote } : {}),
-              ...(openDialogNote(tab) ? { dialog: openDialogNote(tab) } : {}),
-              ...(loadError ? { loadError } : {}),
-            }
-          } catch (error) {
-            throw new ToolError(`TAB_CREATED ${tab.id}: ${describeError(error)}`)
-          }
-        })
-        return { json: out }
-      },
-    },
-    {
+      downloadRouting: false,
       spec: {
         name: 'list_tabs',
         description:
@@ -297,8 +219,14 @@ export function buildToolDefs(): ToolDef[] {
         props: { profile: profileName },
       },
       async run(a, deps) {
-        if (a.profile !== undefined) usableProfile(deps, a.profile as string)
-        const tabs = deps.tabs.list(generationOf(deps), a.profile as string | undefined)
+        const profile = a.profile as string | undefined
+        if (profile !== undefined) usableProfile(deps, profile)
+        const browser = browserIdentity(deps.browser)
+        const profiles = profile === undefined ? deps.store.list().map((p) => p.name) : [profile]
+        for (const name of profiles) {
+          if (deps.browser.state(name)) deps.tabs.watch(name, browser)
+        }
+        const tabs = deps.tabs.list(generationOf(deps), profile)
         return {
           json: tabs.map((t) => ({
             tabId: t.id,
@@ -384,7 +312,7 @@ export function buildToolDefs(): ToolDef[] {
           deps.activity?.('page-loaded')
           return {
             url: page.url(),
-            title: (tab.title = navigationError ? await titleOf(page) : await titleAfterLoad(page)),
+            title: await cacheTabTitle(tab, navigationError ? titleOf : titleAfterLoad),
             status: res ? res.status() : null,
             ...(navigationError ? { navigationError } : {}),
           }

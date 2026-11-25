@@ -49,6 +49,8 @@ export interface TabState {
   generation: number
   page: Page
   title?: string
+  navigationRevision: number
+  titlePublication: number
   refs: Set<string> | null
   console: Ring<ConsoleLine>
   network: Ring<NetworkEntry>
@@ -128,6 +130,8 @@ export class TabRegistry {
       profile,
       generation,
       page,
+      navigationRevision: 0,
+      titlePublication: 0,
       refs: null,
       console: createRing<ConsoleLine>(),
       network: createRing<NetworkEntry>(),
@@ -188,7 +192,10 @@ export class TabRegistry {
       tab.closed = true
     })
     page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame()) tab.refs = null
+      if (frame === page.mainFrame()) {
+        tab.refs = null
+        tab.navigationRevision++
+      }
     })
     page.on('download', (download) => {
       const beganAt = Date.now()
