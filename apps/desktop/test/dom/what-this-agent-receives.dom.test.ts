@@ -3,8 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, provide } from 'vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
-import AppNoticeEntry from '../../src/renderer/src/components/AppNoticeEntry.vue'
-import ContinuationEntry from '../../src/renderer/src/components/ContinuationEntry.vue'
+import AppMessageEntry from '../../src/renderer/src/components/AppMessageEntry.vue'
 import WorkReportEntry from '../../src/renderer/src/components/WorkReportEntry.vue'
 import ModelGotSwitch from '../../src/renderer/src/components/ModelGotSwitch.vue'
 import {
@@ -333,7 +332,7 @@ describe('F144 · every row the model received opens with what the model got', (
   it('the switch sits under an app notice, a reply and the go-ahead in the conversation', async () => {
     const item = { at: 1, ordinal: 4, sent: 'This app says:\nIt was taken back.' }
     const notice = mount(
-      AppNoticeEntry as never,
+      AppMessageEntry as never,
       {
         item: {
           ...item,
@@ -350,7 +349,7 @@ describe('F144 · every row the model received opens with what the model got', (
     unmountAll()
 
     const goAhead = mount(
-      ContinuationEntry as never,
+      AppMessageEntry as never,
       { item: { at: 1, kind: 'continuation', id: 'c1', text: 'Go ahead.' } },
       { width: 700 },
     )
