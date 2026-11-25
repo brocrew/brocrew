@@ -137,9 +137,6 @@ type RequestSettled =
   | { readonly is: 'gone' }
   | { readonly is: 'starting' }
 
-/** How long a decision waits, at most, for a start of the asking conversation already under way. */
-const A_DECISION_WAITS_FOR_A_START_MS = 5_000
-
 /** How many starts in a row a piece's ending waits out, at most, for the copies it ends. */
 const AN_ENDING_WAITS_OUT_STARTS = 3
 
@@ -189,7 +186,6 @@ const ASKS_SAID_CHARS = 80
 const NO_LONGER_WAITING = 'the agent is no longer waiting for an answer to this'
 
 export {
-  A_DECISION_WAITS_FOR_A_START_MS,
   A_PERSON_DID_IT,
   AN_ENDING_WAITS_OUT_STARTS,
   ANSWERED_FIRST,

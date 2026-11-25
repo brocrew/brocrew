@@ -1120,7 +1120,6 @@ import {
   ItsAskerIsStarting,
   type ApprovalCommitted,
   type RequestSettled,
-  A_DECISION_WAITS_FOR_A_START_MS,
   AN_ENDING_WAITS_OUT_STARTS,
   type PassedUpCopies,
   ANSWERED_FIRST,
@@ -1421,7 +1420,6 @@ export class RuntimeHost implements LiveHost {
   private readonly recordStartAttempt: ((line: StartAttemptLine) => void) | undefined
   private readonly monotonicNow: () => number
   private readonly deliveryWaitMs: number
-  private readonly endingWaitMs: number
   /** ⚑ 708 · see {@link DEFAULT_COMMAND_LIST_WAIT_MS}. */
   private readonly commandListWaitMs: number
   private readonly afterALimitResetsMs: number
@@ -2204,7 +2202,6 @@ export class RuntimeHost implements LiveHost {
       store: () => this.deps.store,
       resourcesRoot: () => this.deps.resourcesRoot?.(),
       modelCatalogues: () => this.modelCatalogues,
-      deliveryWaitMs: () => this.deliveryWaitMs,
       runningAs: (sessionId) => this.runningAs(sessionId),
       heldBy: (conversation) => this.heldBy(conversation),
       theTurnDrives: (conversation) => {
@@ -2361,7 +2358,6 @@ export class RuntimeHost implements LiveHost {
     this.recordStartAttempt = deps.recordStartAttempt
     this.monotonicNow = deps.monotonicNow ?? (() => performance.now())
     this.deliveryWaitMs = deps.deliveryWaitMs ?? DEFAULT_DELIVERY_WAIT_MS
-    this.endingWaitMs = deps.endingWaitMs ?? A_DECISION_WAITS_FOR_A_START_MS
     this.commandListWaitMs = deps.commandListWaitMs ?? DEFAULT_COMMAND_LIST_WAIT_MS
     this.afterALimitResetsMs = deps.afterALimitResetsMs ?? AFTER_THE_RESET_MS
     this.lookAtTheLimitAgainMs = deps.lookAtTheLimitAgainMs ?? LOOK_AT_THE_LIMIT_AGAIN_MS
@@ -11678,8 +11674,9 @@ export class RuntimeHost implements LiveHost {
   /**
    * Before `row`'s piece ends, for a caller that may end it: the starts under way of the
    * conversations holding an open copy passed up of its owner's questions about it, waited out —
-   * each for {@link endingWaitMs} at most, and at most {@link AN_ENDING_WAITS_OUT_STARTS} in a
-   * row. A start holds its conversation's next ordinal, so a copy's row cannot go in the piece's
+   * each until it has arrived, and at most {@link AN_ENDING_WAITS_OUT_STARTS} in a row. ⚑ No
+   * clock of its own (card 197): a start ends on its launch's progress window, its exit, a cancel
+   * or the quit, and a slow PC's start that is still moving is not a reason to refuse the ending. A start holds its conversation's next ordinal, so a copy's row cannot go in the piece's
    * transaction until then ({@link theCopiesToEnd}). ⛔ `null` when no such start is under way, and
    * the caller then goes on in the same tick: an ending with nothing to wait for is not deferred,
    * so it reaches its giver in the order it always has.
@@ -11694,8 +11691,7 @@ export class RuntimeHost implements LiveHost {
   private async waitOutTheStarts(row: WorkRow, startingNow: readonly SessionSlot[]): Promise<void> {
     let starting = startingNow
     for (let round = 0; round < AN_ENDING_WAITS_OUT_STARTS && starting.length > 0; round++) {
-      const landed = Promise.all(starting.map((slot) => slot.arrived))
-      if (!(await settledWithin(landed, this.endingWaitMs))) return
+      await Promise.all(starting.map((slot) => slot.arrived))
       starting = this.theStartsAnEndingWaitsFor(row)
     }
   }
@@ -25992,9 +25988,8 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     this.answeredInThisRun.set(key, outcome)
     try {
       const slot = this.slots.get(askedBy)
-      if (slot !== undefined && slot.session === null) {
-        await withDeadline(slot.arrived, this.deliveryWaitMs, 'the asking conversation starting')
-      }
+      // The asker's start holds its next ordinal; the decision waits for it to arrive (card 197).
+      if (slot !== undefined && slot.session === null) await slot.arrived
       const actor = whoDidIt(by)
       const shows = this.writeRecord(askedBy, 'events', () => {
         if (move !== undefined) {
@@ -31947,14 +31942,15 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   }
 
   /**
-   * Waits out, for a while at most, a start of the asking conversation already under way, which
-   * holds its first ordinal. Answers whether no start is under way now.
+   * Waits out a start of the asking conversation already under way, which holds its first
+   * ordinal, until it has arrived (card 197: no clock of its own; the start ends on its own
+   * progress window, exit, cancel or the quit). Answers whether no start is under way now.
    */
   private async untilItsAskerHasArrived(conversation: string): Promise<boolean> {
     for (let waited = 0; waited < 3; waited += 1) {
       const slot = this.slots.get(conversation)
       if (slot === undefined || slot.session !== null) return true
-      if (!(await settledWithin(slot.arrived, A_DECISION_WAITS_FOR_A_START_MS))) return false
+      await slot.arrived
     }
     const slot = this.slots.get(conversation)
     return slot === undefined || slot.session !== null

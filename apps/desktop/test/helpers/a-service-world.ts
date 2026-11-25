@@ -165,7 +165,6 @@ export interface AServiceWorld {
     archived?: ConstructorParameters<typeof RuntimeHost>[0]['archived']
     interruptWaitMs?: number
     deliveryWaitMs?: number
-    endingWaitMs?: number
     startGapMs?: number
     launchTimeoutMs?: number
     beforePreparingHome?: (profile: string | undefined) => Promise<void> | undefined
@@ -421,7 +420,6 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         ...(opts.statesMoved === undefined ? {} : { statesMoved: opts.statesMoved }),
         ...(opts.interruptWaitMs === undefined ? {} : { interruptWaitMs: opts.interruptWaitMs }),
         ...(opts.deliveryWaitMs === undefined ? {} : { deliveryWaitMs: opts.deliveryWaitMs }),
-        ...(opts.endingWaitMs === undefined ? {} : { endingWaitMs: opts.endingWaitMs }),
         ...(opts.startGapMs === undefined ? {} : { startGapMs: opts.startGapMs }),
         ...(opts.launchTimeoutMs === undefined ? {} : { launchTimeoutMs: opts.launchTimeoutMs }),
       })

@@ -1,5 +1,4 @@
 import type { Provider } from '@brobot2/shared'
-import { withDeadline } from '@brobot2/runtime'
 import { newWorkId } from '../db/ids'
 import type { SessionStore } from '../db/session-store'
 import type { GivenFolder, ProtectedPlaceNotice } from '../../shared/work-folders'
@@ -40,7 +39,6 @@ export interface GiveWorkHost {
   readonly store: () => SessionStore
   readonly resourcesRoot: () => string | undefined
   readonly modelCatalogues: () => ModelCatalogues
-  readonly deliveryWaitMs: () => number
   readonly runningAs: (sessionId: string) => GivingConversation | null
   readonly heldBy: (conversation: string) => readonly HeldPiece[]
   readonly theTurnDrives: (conversation: string) => string | null
@@ -136,11 +134,18 @@ export class GiveWork {
         : this.theListAGiveChoosesFrom(input, speaking)
     const choosing = asking === null ? null : await asking
     // A service starting is waited for before admission, so its row goes into a conversation
-    // that has arrived.
+    // that has arrived. ⚑ Until it arrives (card 197): its start ends on its own progress window.
+    // The same settling chain the bounded wait had, without its clock, so the admission still
+    // runs in the turn it did relative to the service's handover.
     for (let waited = 0; waited < 3; waited += 1) {
       const starting = h.theServiceStartAGiveMeets(input)
       if (starting === null) break
-      await withDeadline(starting, h.deliveryWaitMs(), 'a service starting').catch(() => {})
+      await new Promise<void>((resolve) => {
+        void starting.then(
+          () => resolve(),
+          () => resolve(),
+        )
+      })
     }
     const giver = speaking === null ? null : h.runningAs(speaking)
     if (by === THE_APP_ITSELF || giver === null) {

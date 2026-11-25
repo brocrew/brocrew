@@ -41,6 +41,37 @@ describe('a late discovery failure describes the request’s current ending', ()
       .ledger(asker)
       .filter((one) => one.type === 'mcp_server_request_settled' && one.requestId === requestId)
 
+  it('a deny pressed while the asker starts slowly waits for its start, then ends the request', async () => {
+    const server = await world.server()
+    const id = await ask(server.url)
+    await host.close(asker, world.window)
+    const arrival = world.gate()
+    world.startWait = arrival.promise
+    const start = host.resumeSession(asker, world.window)
+    void start.catch(() => undefined)
+    await expect.poll(() => world.launches.length).toBe(2)
+    // Card 197: past the 3 × 5 s the decision used to give the start before "press it again".
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let decided: unknown
+    const deny = executeRuntimeCommand(host, world.window, {
+      kind: 'decideMcpServerRequest',
+      requestId: id,
+      approve: false,
+    }).then((done) => (decided = done))
+    try {
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(decided).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+    world.startWait = null
+    arrival.release()
+    await start
+    await deny
+    expect(decided).not.toMatchObject({ stillOpen: true })
+    expect(endings(id)).toMatchObject([{ ending: 'refused' }])
+  })
+
   it('Add superseding a held approval remains ended when that discovery later fails', async () => {
     const server = await world.server()
     const id = await ask(server.url)

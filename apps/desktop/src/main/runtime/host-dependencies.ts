@@ -490,11 +490,6 @@ export interface RuntimeHostDeps {
    */
   deliveryWaitMs?: number
   /**
-   * How long a piece's ending waits, at most, for each start under way of a conversation holding a
-   * copy passed up of a question about it — {@link A_DECISION_WAITS_FOR_A_START_MS} when not given.
-   */
-  endingWaitMs?: number
-  /**
    * 🔴 **708 · how long a person's command waits for the provider to say which commands it has** —
    * see {@link DEFAULT_COMMAND_LIST_WAIT_MS}.
    */

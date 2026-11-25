@@ -65,12 +65,19 @@ const NEWER_WORDS_AFTER_A_DELETE =
   'newer words about this conversation’s jobs took their place when a delete stopped it'
 
 /**
+ * How old a first brief is before its giver hears that the handoff is still unconfirmed
+ * ({@link RuntimeHost.reconcileFirstBriefs}). ⚑ Two of the 60 s work sweeps, so a handoff gets a
+ * full sweep to confirm first. ⛔ It tells, and never refuses, stops or redelivers anything (card
+ * 197). It is also the giver's only signal for a start that never reaches its launch clock: home
+ * preparation runs before that progress clock, so a start stuck there would otherwise be silent.
+ */
+const FIRST_BRIEF_OBSERVATION_MS = 120_000
+/**
  * 🔴 **How long a launch waits before each conversation it starts because the restart stopped its
  * background work** ({@link RuntimeHost.wakeWhatTheRestartStopped}) — and the same again between
  * one such start and the next. ⚑ One start at a time: a busy restart with many of them spreads them
  * over this, never spawning them all at once while the window is still opening.
  */
-const FIRST_BRIEF_OBSERVATION_MS = 120_000
 const RESTART_WAKE_GAP_MS = 5_000
 
 /**

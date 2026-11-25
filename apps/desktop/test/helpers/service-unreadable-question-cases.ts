@@ -6,7 +6,7 @@ import type { AServiceWorld } from './a-service-world'
 
 interface QuestionContext {
   world(): AServiceWorld
-  aQuestionPassedUpTwice(opts: { readonly endingWaitMs?: number }): Promise<{
+  aQuestionPassedUpTwice(): Promise<{
     host: RuntimeHost
     boss: string
     caller: string
@@ -56,7 +56,7 @@ export function registerUnreadableQuestionCases({
     'names the unreadable question ledger and cause on %s',
     async (ending) => {
       const { host, boss, caller, service, one, original, copy, outer } =
-        await aQuestionPassedUpTwice({})
+        await aQuestionPassedUpTwice()
       const row = world()
         .db.prepare(
           `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = 'question_asked'
@@ -114,7 +114,7 @@ export function registerUnreadableQuestionCases({
   ] as const)(
     'names the unreadable %s row and its cause when closing',
     async (kind, broken, cause) => {
-      const { host, boss, caller, service, one, copy } = await aQuestionPassedUpTwice({})
+      const { host, boss, caller, service, one, copy } = await aQuestionPassedUpTwice()
       const row = world()
         .db.prepare(
           `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = ?
@@ -141,7 +141,7 @@ export function registerUnreadableQuestionCases({
   )
 
   it('returns the question ledger read exception when handing back', async () => {
-    const { host, caller, service, one } = await aQuestionPassedUpTwice({})
+    const { host, caller, service, one } = await aQuestionPassedUpTwice()
     const read = world().store.questionsRaisedIn.bind(world().store)
     const failed = vi.spyOn(world().store, 'questionsRaisedIn').mockImplementation((id, unread) => {
       if (id === caller) throw new Error('fictional disk I/O error')
@@ -168,7 +168,7 @@ export function registerUnreadableQuestionCases({
 
   it('passed up twice, keep a piece a person takes back open while a copy in between is no well-formed question; restored, it ends with all three', async () => {
     const { host, boss, caller, service, one, original, copy, outer } =
-      await aQuestionPassedUpTwice({})
+      await aQuestionPassedUpTwice()
     // The caller's copy loses its prompt; its row is still JSON. A note from its giver grows its
     // record, so what was read of it before is read again.
     const row = world()

@@ -482,9 +482,7 @@ describe('a service is reached through the piece it is on', () => {
       })
     })
 
-    const aQuestionPassedUpTwice = async (opts: {
-      readonly endingWaitMs?: number
-    }): Promise<{
+    const aQuestionPassedUpTwice = async (): Promise<{
       host: RuntimeHost
       boss: string
       caller: string
@@ -498,9 +496,7 @@ describe('a service is reached through the piece it is on', () => {
       world.anAgent('boss', 'nothing kept')
       world.anAgent('caller', 'nothing kept')
       world.store.setDefaultApprovalMode('auto')
-      const host = world.aHost(
-        opts.endingWaitMs === undefined ? {} : { endingWaitMs: opts.endingWaitMs },
-      )
+      const host = world.aHost()
       const boss = await world.aPersonOpens(host, 'boss')
       const helping = accepted(await world.gives(host, boss, 'caller', { title: 'Book a room' }))
       const caller = helping.owner
@@ -548,7 +544,7 @@ describe('a service is reached through the piece it is on', () => {
 
     it('passed up twice, keep a piece a person takes back open while the routing of the copy in between names nobody it went to; restored, it ends with all three', async () => {
       const { host, boss, caller, service, one, original, copy, outer } =
-        await aQuestionPassedUpTwice({})
+        await aQuestionPassedUpTwice()
       // The caller's routing of its copy loses its parent; its row is still JSON, and every
       // question row is whole. A note from its giver grows its record, so it is read again.
       const row = world.db
@@ -581,9 +577,9 @@ describe('a service is reached through the piece it is on', () => {
       ])
     })
 
-    it('passed up twice, keep a piece a person takes back open while a conversation that passed it up is starting; started, it ends with all three', async () => {
+    it('passed up twice, a piece a person takes back waits for a conversation that passed it up to finish starting, however slow, then ends with all three', async () => {
       const { host, boss, caller, service, one, original, copy, outer } =
-        await aQuestionPassedUpTwice({ endingWaitMs: 50 })
+        await aQuestionPassedUpTwice()
       await host.look(boss, world.window, true)
       await host.close(boss, world.window)
       const gate = aGate()
@@ -594,22 +590,28 @@ describe('a service is reached through the piece it is on', () => {
         await vi.waitFor(() => {
           expect(world.resumesAsked).toBeGreaterThan(asked)
         })
-        expect(await host.takeBackForAPerson(one.label, world.window)).toEqual({
-          ok: false,
-          rail: 'a-conversation-with-its-questions-is-starting',
+        // A slow PC's start: still moving well past any flat clock the take-back used to keep.
+        let tookBack: Awaited<ReturnType<RuntimeHost['takeBackForAPerson']>> | undefined
+        const taking = host.takeBackForAPerson(one.label, world.window).then((done) => {
+          tookBack = done
+          return done
         })
+        await new Promise((resolve) => setTimeout(resolve, 6_000))
+        expect(tookBack).toBeUndefined()
         expect(stateOf(service, one.piece)).not.toBe('withdrawn')
         expect([stateIn(service, original), stateIn(caller, copy), stateIn(boss, outer)]).toEqual([
           'open',
           'open',
           'open',
         ])
+        world.resumesWait = null
+        gate.release()
+        expect(await taking).toMatchObject({ ok: true })
       } finally {
         world.resumesWait = null
         gate.release()
       }
       await starting
-      expect(await host.takeBackForAPerson(one.label, world.window)).toMatchObject({ ok: true })
       expect([stateIn(service, original), stateIn(caller, copy), stateIn(boss, outer)]).toEqual([
         'work-withdrawn',
         'work-withdrawn',

@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type {
   AgentToolset,
@@ -98,7 +98,6 @@ describe('a to-do for a person', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      endingWaitMs: 1_000,
       readProviderConfig: fixtureProviderConfig,
       statesMoved: () => undefined,
     })
@@ -729,39 +728,40 @@ describe('a to-do for a person', () => {
     }
 
     for (const [how, ending, end] of IN_THE_CHAIN) {
-      it(`when the piece is ${how} while a conversation that passed it up stays starting, nothing ends and the same call ends it once it has started`, async () => {
+      it(`when the piece is ${how} while a conversation that passed it up starts slowly, the same call waits however long and then ends it`, async () => {
         const { brobot, ada, bea, label, original, copy, copyOfTheCopy } =
           await aChainOfTwoPassers()
+        const allThree = () => [
+          stateOf(bea, original),
+          stateOf(ada, copy),
+          stateOf(brobot, copyOfTheCopy),
+        ]
         await stopped(brobot)
         let letItStart = (): void => {}
         resumesWait = new Promise<void>((resolve) => (letItStart = resolve))
         const asked = resumesAsked
         const starting = host.send(brobot, 'Carry on.', window)
         await waitFor(() => resumesAsked > asked, 'BroBot’s start to be under way')
-        expect(await end(bea, ada, label)).toMatchObject({
-          outcome: 'refused',
-          rail: 'a-conversation-with-its-questions-is-starting',
-          retryable: true,
-          remedy: 'make-the-same-call-when-this-settles',
-          reason: `${ending === 'work-replied' ? 'Not sent: ' : ''}${label} wasn't ${how}: a conversation with a question about it is still starting. Try again in a moment.`,
-        })
+        // A slow PC's start (card 197): well past the 3 × 5 s the ending used to give it.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        let answer: Awaited<ReturnType<typeof end>> | undefined
+        const answered = end(bea, ada, label).then((done) => (answer = done))
+        try {
+          await vi.advanceTimersByTimeAsync(20_000)
+          expect(answer).toBeUndefined()
+        } finally {
+          vi.useRealTimers()
+        }
         expect(
           store.events(bea).filter((entry) => entry.event.type === ENDS_THE_PIECE[ending]),
         ).toEqual([])
-        expect([
-          stateOf(bea, original),
-          stateOf(ada, copy),
-          stateOf(brobot, copyOfTheCopy),
-        ]).toEqual(['open', 'open', 'open'])
+        expect(allThree()).toEqual(['open', 'open', 'open'])
         letItStart()
         await starting
-        expect(await end(bea, ada, label)).toMatchObject({ outcome: 'ok' })
+        await answered
+        expect(answer).toMatchObject({ outcome: 'ok' })
         await settle()
-        expect([
-          stateOf(bea, original),
-          stateOf(ada, copy),
-          stateOf(brobot, copyOfTheCopy),
-        ]).toEqual([ending, ending, ending])
+        expect(allThree()).toEqual([ending, ending, ending])
       })
     }
 
