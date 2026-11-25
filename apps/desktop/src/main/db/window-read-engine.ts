@@ -64,7 +64,9 @@ export class WindowReadEngine {
       query.kind === 'routes' ||
       query.kind === 'listing' ||
       query.kind === 'publication' ||
-      query.kind === 'incidents'
+      query.kind === 'incidents' ||
+      // Work and Files read the same piece folds; they use them only when asked to reuse.
+      ((query.kind === 'work-given' || query.kind === 'files') && query.reuse !== undefined)
     if (keepsFolds) {
       if (query.reuse === undefined || !this.tokensGiven.has(query.reuse.token)) {
         this.answers.clear()

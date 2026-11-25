@@ -12683,6 +12683,8 @@ export class RuntimeHost implements LiveHost {
   ): Promise<T> {
     const reader = this.deps.windowReader
     if (reader === undefined) throw new WindowReadMissed('worker-gone')
+    // Set when an attempt's reused folds were overtaken by a rewrite; Work and Files then read cold.
+    let rewriteSeen = false
     for (let attempt = 0; attempt < (joinOnly ? 1 : 2); attempt++) {
       if (this.launches.closed) throw new WindowReadUnavailable()
       if (signal?.aborted === true) throw new WindowReadUnavailable()
@@ -12731,7 +12733,10 @@ export class RuntimeHost implements LiveHost {
           (query.kind === 'routes' ||
             query.kind === 'listing' ||
             query.kind === 'publication' ||
-            query.kind === 'incidents') &&
+            query.kind === 'incidents' ||
+            // Work and Files read cold after a rewrite overtook a reused read, so the second
+            // snapshot can still be composed while a writer keeps rewriting.
+            ((query.kind === 'work-given' || query.kind === 'files') && !rewriteSeen)) &&
           previous !== undefined
         ) {
           const changed = this.deps.windowWriterStamp?.changedOwners?.(previous.stamp, before)
@@ -12838,6 +12843,7 @@ export class RuntimeHost implements LiveHost {
       // A writer that moves during every read still gets the last snapshot, kept under its origin
       // so the next read asks again; a refused publication would ask again at once. Leads alone
       // stay refused: a thread reopened from them must not miss a row, and reopens without them.
+      if (rewritten) rewriteSeen = true
       if (
         current ||
         (query.kind !== 'leads' && oneWriter && !rewritten && attempt === (joinOnly ? 0 : 1))
@@ -16318,7 +16324,18 @@ export class RuntimeHost implements LiveHost {
   }
 
   filesKeptForWindow(conversation: string): Promise<FilesKept> {
-    return this.keptFiles.filesKeptForWindow(conversation)
+    return this.keptFiles.filesKeptForWindow(conversation, async (query) => {
+      let result: WindowReadResult
+      try {
+        result = await this.freshWindowQuery(query, (read) => read)
+      } catch (error) {
+        // With no writer stamp to name what changed, the worker reads its own snapshot cold.
+        if (!(error instanceof WindowReadMissed) || error.missed !== 'writer-unsampled') throw error
+        result = await this.deps.windowReader!.read(query)
+      }
+      if (result.kind !== 'files') throw new WindowReadUnavailable()
+      return result
+    })
   }
 
   filesLibraryForWindow(

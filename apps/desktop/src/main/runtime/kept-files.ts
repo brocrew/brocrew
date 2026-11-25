@@ -25,7 +25,12 @@ import type {
   SessionStore,
   WorkRow,
 } from '../db/session-store'
-import { WindowReadUnavailable, type WindowStoreReader } from '../db/window-read-protocol'
+import {
+  WindowReadUnavailable,
+  type WindowReadQuery,
+  type WindowReadResult,
+  type WindowStoreReader,
+} from '../db/window-read-protocol'
 import {
   MOST_BYTES_A_WINDOW_DRAWS,
   MOST_PIXELS_A_WINDOW_DRAWS,
@@ -510,18 +515,26 @@ export class KeptFiles {
     }
   }
 
-  /** The two opening lists share a worker snapshot; no ledger read falls back to main. */
-  async filesKeptForWindow(conversation: string): Promise<FilesKept> {
+  /**
+   * The two opening lists share a worker snapshot; no ledger read falls back to main. `read` is the
+   * host's window read, which lets the worker reuse the piece folds it keeps for the other reads.
+   */
+  async filesKeptForWindow(
+    conversation: string,
+    read: (
+      query: Extract<WindowReadQuery, { kind: 'files' }>,
+    ) => Promise<Extract<WindowReadResult, { kind: 'files' }>>,
+  ): Promise<FilesKept> {
     if (this.deps.store.conversationBinding(conversation) === null)
       return { ok: false, reason: 'no-such-conversation' }
-    const reader = this.deps.windowReader
-    if (reader === undefined || this.operations.isClosed()) throw new WindowReadUnavailable()
-    const result = await reader.read({
+    if (this.deps.windowReader === undefined || this.operations.isClosed())
+      throw new WindowReadUnavailable()
+    const result = await read({
       kind: 'files',
       sessionId: conversation,
       givers: [...this.operations.theIdsItStandsFor(conversation)],
     })
-    if (result.kind !== 'files' || this.operations.isClosed()) throw new WindowReadUnavailable()
+    if (this.operations.isClosed()) throw new WindowReadUnavailable()
     return {
       ok: true,
       files: result.tree.map((row) => this.operations.keptFileOf(row, result.roster)),

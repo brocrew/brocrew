@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
-import { openDatabase } from '../src/main/db/connection'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore } from '../src/main/db/session-store'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
@@ -108,6 +108,116 @@ it('carries the full canonical walk across cold reads, malformed rows and an ext
     kind: 'work-given',
     work: f.store.workGivenOutBy('unknown'),
   })
+})
+
+it.each(['work', 'files'] as const)(
+  "reads %s through the worker's kept piece folds, and a rewritten ledger again",
+  async (kind) => {
+    const f = fixture()
+    f.keep('fictional-report', 'given', 'b'.repeat(64), { by: 'holder' })
+    f.db
+      .prepare(
+        `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<3000)
+        INSERT INTO events (id,session_id,generation,ordinal,type,payload,created_at)
+        SELECT 'status-' || i, 'holder', 0, i+10, 'status', '{"type":"status","state":"idle"}', 2
+        FROM n`,
+      )
+      .run()
+    const engine = new WindowReadEngine(f.file)
+    const worker = (engine as unknown as { db: AppDatabase }).db
+    const prepare = worker.prepare.bind(worker)
+    let rows = 0
+    vi.spyOn(worker, 'prepare').mockImplementation((sql) => {
+      const statement = prepare(sql)
+      if (sql.includes('json_remove')) {
+        const iterate = statement.iterate.bind(statement)
+        vi.spyOn(statement, 'iterate').mockImplementation(function* (...args) {
+          for (const row of iterate(...args)) yield (rows++, row)
+        })
+      }
+      return statement
+    })
+    const { host } = hostWith(f, {
+      read: async (input) => engine.read(input),
+      close: async () => engine.close(),
+    })
+    const read = () =>
+      kind === 'work' ? host.workGivenBy('giver') : host.filesKeptForWindow('giver')
+    const cold = await read()
+    expect(rows).toBeGreaterThanOrEqual(3000)
+    await host.readForWindow(() => undefined, 'listing')
+    rows = 0
+    for (let i = 0; i < 3; i++) expect(await read()).toEqual(cold)
+    expect(rows).toBe(0)
+    // An append is carried forward; a rewrite of an existing row reads that ledger again.
+    f.db
+      .prepare(
+        "UPDATE events SET type='work_replied', payload=? WHERE session_id='holder' AND ordinal=3010",
+      )
+      .run(
+        JSON.stringify({
+          type: 'work_replied',
+          piece: 'given',
+          outcome: 'done',
+          summary: 'Fictional result',
+          resources: ['fictional-report'],
+        }),
+      )
+    const corrected = await read()
+    expect(corrected).not.toEqual(cold)
+    expect(rows).toBeGreaterThanOrEqual(3000)
+  },
+)
+
+it('reads Files cold when the writer cannot be sampled during a main-store transaction', async () => {
+  const f = fixture()
+  const engine = new WindowReadEngine(f.file)
+  const { host } = hostWith(f, {
+    read: async (input) => engine.read(input),
+    close: async () => engine.close(),
+  })
+  const before = await host.filesKeptForWindow('giver')
+  f.db.exec('BEGIN')
+  try {
+    expect(await host.filesKeptForWindow('giver')).toEqual(before)
+  } finally {
+    f.db.exec('ROLLBACK')
+  }
+})
+
+it('reads Work cold after a rewrite overtakes its reused read', async () => {
+  const f = fixture()
+  const ordinal = f.store.nextOrdinal('holder')
+  const reply = {
+    type: 'work_replied' as const,
+    piece: 'given',
+    outcome: 'done' as const,
+    summary: 'Fictional result',
+    resources: [],
+  }
+  f.store.append('holder', ordinal, reply, 3)
+  const engine = new WindowReadEngine(f.file)
+  const asked: boolean[] = []
+  const { host } = hostWith(f, {
+    read: async (input) => {
+      if (input.kind === 'work-given') {
+        asked.push('reuse' in input)
+        f.db
+          .prepare("UPDATE events SET payload=? WHERE session_id='holder' AND ordinal=?")
+          .run(
+            JSON.stringify({ ...reply, outcome: asked.length === 1 ? 'failed' : 'blocked' }),
+            ordinal,
+          )
+      }
+      return engine.read(input)
+    },
+    close: async () => engine.close(),
+  })
+  await host.readForWindow(() => undefined, 'listing')
+  const answer = await host.workGivenBy('giver')
+  expect(asked).toEqual([true, false])
+  expect(answer.rows[0]?.outcome).toBe('blocked')
+  expect(answer).toEqual(createSessionStore(f.db).workGivenOutBy('giver'))
 })
 
 it('executes the window command in a real worker and handles input before its held reply', async () => {

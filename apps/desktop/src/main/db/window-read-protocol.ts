@@ -53,7 +53,13 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
-  z.object({ kind: z.literal('work-given'), sessionId: conversationId }).strict(),
+  z
+    .object({
+      kind: z.literal('work-given'),
+      sessionId: conversationId,
+      reuse: foldReuse.optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('activity'),
@@ -67,6 +73,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
       kind: z.literal('files'),
       sessionId: z.string().min(1).max(512),
       givers: z.array(z.string().min(1).max(512)),
+      reuse: foldReuse.optional(),
     })
     .strict(),
   z

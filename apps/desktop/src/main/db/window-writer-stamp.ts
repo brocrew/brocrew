@@ -298,8 +298,6 @@ export function windowWriterSampler(
     }
   })
   const sampler: WindowWriterSampler = (query) => {
-    // Files name their rows from one worker snapshot and do not use this writer stamp.
-    if (query.kind === 'files') return null
     try {
       if (shared.suspended > 0 || !db.open || db.inTransaction || !noRetainedCursor()) return null
       const schema = db.pragma('main.schema_version', { simple: true }) as number
@@ -389,7 +387,9 @@ export function windowWriterSampler(
             : query.kind === 'routes' ||
                 query.kind === 'listing' ||
                 query.kind === 'publication' ||
-                query.kind === 'incidents'
+                query.kind === 'incidents' ||
+                query.kind === 'work-given' ||
+                query.kind === 'files'
               ? row.complete
               : row.changes,
         dataVersion: row.version,
