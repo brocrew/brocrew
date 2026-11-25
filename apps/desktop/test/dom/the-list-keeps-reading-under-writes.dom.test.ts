@@ -182,7 +182,7 @@ it('keeps the exact Recent total with the accepted coverage, then recovers it af
 
   read.mockResolvedValue(answer(6, 7, ['kept'], true))
   await refresh(view)
-  expect(count()).toBe('1 shown')
+  expect(count()).toBe('1 of 1')
 
   read.mockResolvedValue(answer(6, 8, ['kept']))
   await refresh(view)
@@ -195,6 +195,29 @@ it('keeps the exact Recent total with the accepted coverage, then recovers it af
   read.mockResolvedValue(answer(7, 9, ['kept', 'new']))
   await refresh(view)
   expect(count()).toBe('2 of 2')
+})
+
+it('keeps the Recent total on an overtaken full answer while it reads again', async () => {
+  const read = vi.fn().mockResolvedValue(answer(1, 1, ['kept', 'older']))
+  const view = rail(read)
+  await tick()
+  const count = () => view.q('rail-count-recent').textContent?.trim()
+  expect(count()).toBe('2 of 2')
+
+  read.mockResolvedValue(answer(1, 2, ['kept', 'older', 'new'], true))
+  await refresh(view)
+  expect(count()).toBe('3 of 3')
+  expect(read).toHaveBeenCalledTimes(2)
+
+  read.mockResolvedValue(answer(1, 3, ['kept', 'older', 'new']))
+  await vi.advanceTimersByTimeAsync(1_000)
+  await tick()
+  expect(read).toHaveBeenCalledTimes(3)
+  expect(count()).toBe('3 of 3')
+
+  read.mockRejectedValue(new Error('fictional read failure'))
+  await refresh(view)
+  expect(count()).toBe('3 shown')
 })
 
 it('cancels a retry when the app closes', async () => {

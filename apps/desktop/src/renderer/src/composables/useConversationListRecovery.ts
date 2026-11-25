@@ -256,10 +256,11 @@ export function useRecoveredConversationList(
           : [...answer.resumable, ...answer.unresumable],
         providerReadAt,
       )
+      // An overtaken full answer still covers every conversation it draws; its re-read follows.
       listing.value = {
         resumable,
         unresumable,
-        complete: answer?.published.covers.complete === true && !answer.refresh,
+        complete: answer?.published.covers.complete === true,
       }
       accepted = true
       // A dispatch floor cannot replace states pushed after that floor, even before this caller joined.
