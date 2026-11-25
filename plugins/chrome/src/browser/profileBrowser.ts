@@ -2,17 +2,20 @@ import type { Page, Download } from 'playwright-core'
 import type { HelperState } from './brocrewHelper.js'
 export interface ProfileBrowser {
   /** One admitted agent call; private routing covers its entire lifetime. */
-  agentCall?<T>(profiles: readonly string[], fn: () => Promise<T>): Promise<T>
+  agentCall?<T>(profiles: readonly string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T>
   privateDownloadsActive?(profile: string): boolean
   downloadIsPrivate?(profile: string, download: Download): Promise<boolean>
   downloadFileIsPrivate?(profile: string, file: string): boolean
   deletePrivateDownload?(profile: string, download: Download): Promise<void>
   cancelPrivateDownload?(profile: string, download: Download): Promise<void>
-  ensure(profile: string): Promise<{
+  ensure(
+    profile: string,
+    signal?: AbortSignal,
+  ): Promise<{
     generation: number
   }>
-  close(profile: string): Promise<void>
-  removeWhenIdle(profile: string, remove: () => void): Promise<void>
+  close(profile: string, signal?: AbortSignal): Promise<void>
+  removeWhenIdle(profile: string, remove: () => void, signal?: AbortSignal): Promise<void>
   state(profile: string): {
     generation: number
     /** The BroCrew helper in this browser; absent when this browser has none. */
@@ -24,13 +27,14 @@ export interface ProfileBrowser {
       newWindow: boolean
       windowOf?: Page
       onNote?: (note: string) => void
+      signal?: AbortSignal
     },
   ): Promise<Page>
   knownWindowId?(profile: string, page: Page): number | undefined
   windowId(profile: string, page: Page): Promise<number>
   /** The person turned the BroCrew helper on in the Chrome panel. */
-  turnHelperOn(profile: string): Promise<void>
-  usePage(profile: string, page: Page): Promise<void>
+  turnHelperOn(profile: string, signal?: AbortSignal): Promise<void>
+  usePage(profile: string, page: Page, signal?: AbortSignal): Promise<void>
   onPage(profile: string, cb: (page: Page) => void): () => void
   onClosed(profile: string, cb: (generation: number) => void): () => void
   waitAllPagesClosed(profile: string, timeoutMs: number): Promise<'pages-closed' | 'timeout'>
@@ -45,6 +49,7 @@ export interface ProfileBrowser {
     savedFile?: () => string | undefined,
     onprogress?: () => void,
     existing?: { download: Download; signal?: AbortSignal },
+    signal?: AbortSignal,
   ): Promise<T>
 }
 export class BrowserNotFoundError extends Error {

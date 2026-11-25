@@ -7,6 +7,7 @@ import { assertOwnProfileDir } from '../shared/browser/launchGuard.js'
 import fs from 'node:fs'
 import { open as openFile, readlink } from 'node:fs/promises'
 import path from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { BrowserContext, CDPSession, Page, Download } from 'playwright-core'
 import { launchPersistentChromium } from '../shared/browser/browser-launch.js'
 import type { ChromiumLaunchOptions } from '../shared/browser/browser-launch.js'
@@ -37,6 +38,9 @@ import {
   processList,
 } from './processes.js'
 import type { EndDeps, Platform } from './processes.js'
+import { untilAbort } from './waitForBrowser.js'
+// A native lock can belong to another Chrome whose exit we do not control. Allow a brief
+// handoff before reporting it busy. The managed close of our own context is awaited separately.
 export const LOCK_WAIT_MS = 5000
 export const CLOSE_MS = 10000
 export const EXIT_GRACE_MS = 1500
@@ -65,17 +69,25 @@ export interface ChromeBrowserOptions {
   noTestType?: boolean
   browser?: BrowserChoice
   launchContext?: (opts: ChromiumLaunchOptions) => Promise<BrowserContext>
-  lockHeld?: (dir: string) => Promise<boolean>
+  lockHeld?: (dir: string, signal?: AbortSignal) => Promise<boolean>
   lockWaitMs?: number
   closeMs?: number
   exitGraceMs?: number
-  killChrome?: (dir: string) => Promise<void>
+  killChrome?: (dir: string, signal?: AbortSignal) => Promise<void>
   pollMs?: number
+}
+interface ClosingBrowser {
+  ctx: BrowserContext
+  generation: number
+  closed: Promise<boolean>
+  exited: AbortSignal
+  sweep?: Promise<boolean>
 }
 interface Entry {
   name: string
   barrier: TransitionBarrier
   ctx: BrowserContext | null
+  closing?: ClosingBrowser
   extensions: boolean
   sync: boolean
   generation: number
@@ -120,6 +132,7 @@ export async function lockHeldByLiveChrome(
     platform?: Platform
     readLink?: (p: string) => Promise<string>
     commandOf?: (pid: number) => Promise<string | null>
+    signal?: AbortSignal
     openLockfile?: (file: string) => Promise<{
       close(): Promise<void>
     }>
@@ -128,7 +141,7 @@ export async function lockHeldByLiveChrome(
   if ((deps.platform ?? process.platform) === 'win32')
     return lockfileBusy(path.join(dir, 'lockfile'), deps.openLockfile ?? ((p) => openFile(p, 'r+')))
   const readLink = deps.readLink ?? ((p: string) => readlink(p))
-  const commandOf = deps.commandOf ?? commandOfPid
+  const commandOf = deps.commandOf ?? ((pid) => commandOfPid(pid, undefined, deps.signal))
   let target: string
   try {
     target = await readLink(path.join(dir, 'SingletonLock'))
@@ -162,12 +175,12 @@ export class ChromeBrowser implements ProfileBrowser {
   private readonly serializer: KeyedSerializer = createKeyedSerializer()
   private readonly logger: Logger
   private readonly launchContext: (opts: ChromiumLaunchOptions) => Promise<BrowserContext>
-  private readonly lockHeld: (dir: string) => Promise<boolean>
+  private readonly lockHeld: NonNullable<ChromeBrowserOptions['lockHeld']>
   private readonly lockWaitMs: number
   private readonly closeMs: number
   private readonly exitGraceMs: number
   private readonly pollMs: number
-  private readonly killChrome: (dir: string) => Promise<void>
+  private readonly killChrome: NonNullable<ChromeBrowserOptions['killChrome']>
   private generations = 0
   private shuttingDown = false
   private readonly choice: BrowserChoice
@@ -175,12 +188,13 @@ export class ChromeBrowser implements ProfileBrowser {
     this.logger = opts.logger ?? silentLogger
     this.choice = opts.browser ?? browserChoice()
     this.launchContext = opts.launchContext ?? launchPersistentChromium
-    this.lockHeld = opts.lockHeld ?? ((dir) => lockHeldByLiveChrome(dir))
+    this.lockHeld = opts.lockHeld ?? ((dir, signal) => lockHeldByLiveChrome(dir, { signal }))
     this.lockWaitMs = opts.lockWaitMs ?? LOCK_WAIT_MS
     this.closeMs = opts.closeMs ?? CLOSE_MS
     this.exitGraceMs = opts.exitGraceMs ?? EXIT_GRACE_MS
     this.pollMs = opts.pollMs ?? WAIT_POLL_MS
-    this.killChrome = opts.killChrome ?? ((dir) => killChromeOf(dir))
+    this.killChrome =
+      opts.killChrome ?? ((dir, signal) => killChromeOf(dir, KILL_GRACE_MS, { signal }))
   }
   private entry(profile: string): Entry {
     let e = this.entries.get(profile)
@@ -239,7 +253,10 @@ export class ChromeBrowser implements ProfileBrowser {
       ...(e.helper ? { helper: e.helper.state } : {}),
     }
   }
-  async ensure(profile: string): Promise<{
+  async ensure(
+    profile: string,
+    signal?: AbortSignal,
+  ): Promise<{
     generation: number
   }> {
     if (this.shuttingDown) throw new Error('the server is shutting down')
@@ -247,6 +264,7 @@ export class ChromeBrowser implements ProfileBrowser {
     if (this.entries.get(profile)?.removing) throw new ProfileInUseError()
     const authorization = this.opts.authorization?.(profile)
     const check = () => {
+      signal?.throwIfAborted()
       if (this.opts.profileExists?.(profile) === false) throw new Error('profile does not exist')
       if (this.shuttingDown || this.opts.authorization?.(profile) !== authorization)
         throw new Error('profile authorization changed')
@@ -259,12 +277,13 @@ export class ChromeBrowser implements ProfileBrowser {
       const sync = this.opts.syncFor?.(profile) === true
       if (
         e.ctx &&
+        !e.closing &&
         e.extensions === extensions &&
         e.sync === sync &&
         e.authorization === authorization
       )
         return { generation: e.generation }
-      if (e.ctx) await e.barrier.transition(() => this.closeNow(e))
+      if (e.ctx || e.closing) await e.barrier.transition(() => this.closeNow(e, signal))
       check()
       // Take admission before the first launch await, including lock inspection.
       this.releaseLease(e)
@@ -272,9 +291,9 @@ export class ChromeBrowser implements ProfileBrowser {
       const lease = this.opts.acquireLease?.(profile) ?? null
       e.lease = lease
       try {
-        await this.waitForLock(dir)
+        await this.waitForLock(dir, signal)
         check()
-        const generation = await this.launch(e, dir, extensions, sync, authorization, check)
+        const generation = await this.launch(e, dir, extensions, sync, authorization, check, signal)
         check()
         return { generation }
       } catch (error) {
@@ -284,11 +303,12 @@ export class ChromeBrowser implements ProfileBrowser {
       }
     })
   }
-  private async waitForLock(dir: string): Promise<void> {
+  private async waitForLock(dir: string, signal?: AbortSignal): Promise<void> {
     const deadline = Date.now() + this.lockWaitMs
-    while (await this.lockHeld(dir)) {
+    while (await this.lockHeld(dir, signal)) {
+      signal?.throwIfAborted()
       if (Date.now() >= deadline) throw new ProfileInUseError()
-      await new Promise((r) => setTimeout(r, 100))
+      await delay(100, undefined, { signal })
     }
   }
   private async launch(
@@ -298,6 +318,7 @@ export class ChromeBrowser implements ProfileBrowser {
     sync: boolean,
     authorization: string | undefined,
     check: () => void,
+    signal?: AbortSignal,
   ): Promise<number> {
     const stagingDir = this.privateDownloadStage(dir)
     const helped = extensions && this.opts.helperSource !== undefined
@@ -352,7 +373,7 @@ export class ChromeBrowser implements ProfileBrowser {
     try {
       check()
     } catch (error) {
-      await ctx.close().catch(() => undefined)
+      await this.closeNow(e, signal, ctx).catch(() => undefined)
       throw error
     }
     let nativeDownloads: Entry['downloads']
@@ -367,7 +388,7 @@ export class ChromeBrowser implements ProfileBrowser {
       )
       check()
     } catch (error) {
-      await this.endDownloadBrowser(ctx, dir)
+      await this.closeNow(e, signal, ctx)
       new PrivateDownloadFiles(this.downloadRoot(dir)).removeEmpty(stagingDir)
       throw error
     }
@@ -412,7 +433,8 @@ export class ChromeBrowser implements ProfileBrowser {
     e.initial = windowContext.pages()
     ctx.on('close', () => this.ended(e, ctx, generation))
     ctx.browser()?.on('disconnected', () => this.ended(e, ctx, generation))
-    if (e.helper) await (helperSwitch() === 'turning-on' ? e.helper.turnOn() : e.helper.install())
+    // The optional worker can start after Chrome. Only explicit window placement waits for it.
+    if (e.helper) void (helperSwitch() === 'turning-on' ? e.helper.turnOn() : e.helper.install())
     check()
     this.logger.info('browser launched', {
       generation,
@@ -429,7 +451,7 @@ export class ChromeBrowser implements ProfileBrowser {
     }
   }
   private releaseLease(e: Entry, lease = e.lease): void {
-    if (!lease || e.lease !== lease) return
+    if (e.closing || !lease || e.lease !== lease) return
     try {
       if (lease.release() !== false) e.lease = null
     } catch {
@@ -472,23 +494,6 @@ export class ChromeBrowser implements ProfileBrowser {
   private privateDownloadStage(profileDir: string): string {
     return fs.mkdtempSync(path.join(this.downloadRoot(profileDir), 'stage-'))
   }
-  private async endDownloadBrowser(
-    ctx: BrowserContext,
-    profileDir: string,
-    isCurrent: () => boolean = () => true,
-  ): Promise<void> {
-    let closed = false
-    await settledWithin(
-      ctx.close().then(() => {
-        closed = true
-      }),
-      this.closeMs,
-    )
-    if (!closed) {
-      if (!isCurrent()) throw new Error('Plugin unavailable. Try again.')
-      await this.killChrome(profileDir)
-    }
-  }
   private async nativeDownloads(
     ctx: BrowserContext,
     dir: string,
@@ -501,7 +506,9 @@ export class ChromeBrowser implements ProfileBrowser {
     check()
     let ending: Promise<void> | undefined
     const end = (): Promise<void> =>
-      (ending ??= this.endDownloadBrowser(ctx, profileDir, isCurrent))
+      (ending ??= isCurrent()
+        ? this.closeNow(e)
+        : settledWithin(ctx.close(), this.closeMs).then(() => undefined))
     const files = new PrivateDownloadFiles(this.downloadRoot(profileDir))
     const router: DownloadRouter = new DownloadRouter({
       dir,
@@ -537,7 +544,11 @@ export class ChromeBrowser implements ProfileBrowser {
       eventsEnabled: true,
     }
   }
-  private async applyDownloadBehavior(e: Entry): Promise<void> {
+  private async applyDownloadBehavior(
+    e: Entry,
+    signal?: AbortSignal,
+    releasing = false,
+  ): Promise<void> {
     const d = e.downloads,
       ctx = e.ctx
     if (!d || !ctx) return
@@ -552,10 +563,14 @@ export class ChromeBrowser implements ProfileBrowser {
         d.privateMode = policy.behavior !== 'default'
       })
       .catch(async (error: unknown) => {
-        await this.endDownloadBrowser(ctx, this.dir(e.name), () => e.ctx === ctx)
+        if (e.ctx === ctx) await this.closeNow(e, signal)
         throw error
       })
-    await d.chain
+    try {
+      await (signal ? untilAbort(d.chain, signal) : d.chain)
+    } catch (error) {
+      if (!releasing || error !== signal?.reason) throw error
+    }
   }
   privateDownloadsActive(profile: string): boolean {
     const e = this.entries.get(profile)
@@ -625,10 +640,16 @@ export class ChromeBrowser implements ProfileBrowser {
       return
     await unwrapBrowserHandle(download).cancel()
   }
-  async agentCall<T>(profiles: readonly string[], fn: () => Promise<T>): Promise<T> {
+  async agentCall<T>(
+    profiles: readonly string[],
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const entries = [...new Set(profiles)].map((name) => this.entry(name))
-    const applyAll = async () => {
-      const results = await Promise.allSettled(entries.map((e) => this.applyDownloadBehavior(e)))
+    const applyAll = async (releasing = false) => {
+      const results = await Promise.allSettled(
+        entries.map((e) => this.applyDownloadBehavior(e, signal, releasing)),
+      )
       const failed = results.find((result) => result.status === 'rejected')
       if (failed?.status === 'rejected') throw failed.reason
     }
@@ -638,7 +659,7 @@ export class ChromeBrowser implements ProfileBrowser {
       return await fn()
     } finally {
       for (const e of entries) e.agentCalls--
-      await applyAll()
+      await applyAll(true)
     }
   }
   async captureDownloads<T>(
@@ -648,6 +669,7 @@ export class ChromeBrowser implements ProfileBrowser {
     savedFile?: () => string | undefined,
     onprogress?: () => void,
     existing?: { download: Download; signal?: AbortSignal },
+    signal?: AbortSignal,
   ): Promise<T> {
     const e = this.entries.get(profile)
     const d = e?.downloads
@@ -657,7 +679,6 @@ export class ChromeBrowser implements ProfileBrowser {
       if (e.ctx !== ctx || !this.authorized(e)) throw new Error('profile authorization changed')
     }
     check()
-    const apply = () => this.applyDownloadBehavior(e)
     d.captures++
     const held: {
       session?: Promise<CDPSession>
@@ -680,7 +701,7 @@ export class ChromeBrowser implements ProfileBrowser {
     let unobserve = () => {}
     const stopObserving = () => unobserve()
     try {
-      await apply()
+      await this.applyDownloadBehavior(e, signal)
       check()
       if (existing && onprogress && !existing.signal?.aborted) {
         const file = this.artifactPath(existing.download)
@@ -703,32 +724,72 @@ export class ChromeBrowser implements ProfileBrowser {
       capture.end(completed, savedGuid)
       void held.session?.then((s) => s.detach()).catch(() => undefined)
       d.captures--
-      await apply()
+      await this.applyDownloadBehavior(e, signal, true)
     }
   }
-  private async closeNow(e: Entry): Promise<void> {
-    const ctx = e.ctx
+  private finishClose(e: Entry, closing: ClosingBrowser): void {
+    if (e.closing !== closing) return
+    e.closing = undefined
+    if (e.ctx === closing.ctx) this.ended(e, closing.ctx, closing.generation)
+    else this.releaseLease(e)
+  }
+  private async closeNow(
+    e: Entry,
+    signal?: AbortSignal,
+    ctx = e.closing?.ctx ?? e.ctx,
+  ): Promise<void> {
     if (!ctx) {
       this.releaseLease(e)
       return
     }
-    const { generation } = e
-    const closed = settledWithin(ctx.close(), this.closeMs).then((ok) => ({
-      ok,
+    if (!e.closing) {
+      const exit = new AbortController()
+      const closing: ClosingBrowser = {
+        ctx,
+        generation: e.generation,
+        exited: exit.signal,
+        closed: Promise.resolve()
+          .then(() => ctx.close())
+          .then(
+            async () => {
+              exit.abort()
+              await closing.sweep
+              this.finishClose(e, closing)
+              return true
+            },
+            () => false,
+          ),
+      }
+      e.closing = closing
+    }
+    const closing = e.closing
+    const { generation } = closing
+    const closed = settledWithin(closing.closed, this.closeMs).then(async (finished) => ({
+      ok: finished && (await closing.closed),
     }))
     let graceTimer: ReturnType<typeof setTimeout> | undefined
+    let startGrace!: () => void
     const lingering = new Promise<{
       ok: false
       lingered: true
     }>((resolve) => {
-      e.endedHooks.push(() => {
+      startGrace = () => {
         graceTimer = setTimeout(() => resolve({ ok: false, lingered: true }), this.exitGraceMs)
         graceTimer.unref?.()
-      })
+      }
     })
-    const first = await Promise.race([closed, lingering])
-    if (graceTimer) clearTimeout(graceTimer)
-    if (!first.ok) {
+    if (e.ctx === ctx) e.endedHooks.push(startGrace)
+    else startGrace()
+    let first: Awaited<typeof closed> | Awaited<typeof lingering>
+    try {
+      const waiting = Promise.race([closed, lingering])
+      first = await (signal ? untilAbort(waiting, signal) : waiting)
+    } finally {
+      if (graceTimer) clearTimeout(graceTimer)
+      const index = e.endedHooks.indexOf(startGrace)
+      if (index >= 0) e.endedHooks.splice(index, 1)
+    }
+    if (!first.ok && e.closing === closing) {
       this.logger.warn(
         'lingered' in first
           ? 'Chrome disconnected but did not exit, ending the process'
@@ -738,18 +799,40 @@ export class ChromeBrowser implements ProfileBrowser {
           ...('lingered' in first ? { graceMs: this.exitGraceMs } : { closeMs: this.closeMs }),
         },
       )
-      await this.killChrome(this.dir(e.name)).catch(() =>
-        this.logger.warn('ending the Chrome process failed', { generation }),
-      )
+      // One sweep owns this generation. A later caller can resume an aborted sweep
+      // only after the earlier listing has settled.
+      while (e.closing === closing && !closing.exited.aborted) {
+        signal?.throwIfAborted()
+        const stopping = signal ? AbortSignal.any([signal, closing.exited]) : closing.exited
+        closing.sweep ??= this.killChrome(this.dir(e.name), stopping).then(
+          () => true,
+          () => {
+            if (stopping.aborted) {
+              if (closing.exited.aborted) return true
+              closing.sweep = undefined
+              return false
+            }
+            this.logger.warn('ending the Chrome process failed', { generation })
+            return true
+          },
+        )
+        const ended = await (signal ? untilAbort(closing.sweep, signal) : closing.sweep)
+        if (ended) break
+      }
     }
-    if (e.ctx === ctx) this.ended(e, ctx, generation)
-    this.releaseLease(e)
+    const sweep = closing.sweep
+    if (sweep) await (signal ? untilAbort(sweep, signal) : sweep)
+    // An abandoned caller must not write or delete. A later close can finish the same teardown.
+    signal?.throwIfAborted()
+    this.finishClose(e, closing)
   }
-  async close(profile: string): Promise<void> {
+  async close(profile: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
     const e = this.entries.get(profile)
     if (!e) return
     await this.lifecycle(e, async () => {
-      if (e.ctx) await e.barrier.transition(() => this.closeNow(e))
+      signal?.throwIfAborted()
+      if (e.ctx || e.closing) await e.barrier.transition(() => this.closeNow(e, signal))
       else this.releaseLease(e)
     })
   }
@@ -759,10 +842,8 @@ export class ChromeBrowser implements ProfileBrowser {
       [...this.entries.values()].map((e) => this.closeNow(e).catch(() => undefined)),
     )
   }
-  async newPage(
-    profile: string,
-    opts: { newWindow: boolean; windowOf?: Page; onNote?: (note: string) => void },
-  ): Promise<Page> {
+  async newPage(profile: string, opts: Parameters<ProfileBrowser['newPage']>[1]): Promise<Page> {
+    opts.signal?.throwIfAborted()
     const e = this.entries.get(profile)
     const ctx = e?.ctx
     if (e && !this.authorized(e)) throw new Error('profile authorization changed')
@@ -779,12 +860,13 @@ export class ChromeBrowser implements ProfileBrowser {
     })
   }
   /** The person turned the helper on: installed now in a running visible profile, else at its next. */
-  async turnHelperOn(profile: string): Promise<void> {
+  async turnHelperOn(profile: string, signal?: AbortSignal): Promise<void> {
     const e = this.entries.get(profile)
     if (this.opts.authorization) this.opts.authorization(profile)
     if (e?.ctx && !this.authorized(e)) throw new Error('profile authorization changed')
     this.opts.rememberHelper?.(profile, 'turning-on')
-    await this.entries.get(profile)?.helper?.turnOn()
+    const turningOn = e?.helper?.turnOn()
+    if (turningOn) await (signal ? untilAbort(turningOn, signal) : turningOn)
   }
   knownWindowId(profile: string, page: Page): number | undefined {
     return this.entries.get(profile)?.windows?.knownWindowId(page)
@@ -794,10 +876,10 @@ export class ChromeBrowser implements ProfileBrowser {
     if (!windows) throw new Error('profile is not open')
     return windows.windowId(page)
   }
-  async usePage(profile: string, page: Page): Promise<void> {
+  async usePage(profile: string, page: Page, signal?: AbortSignal): Promise<void> {
     const windows = this.entries.get(profile)?.windows
     if (!windows) throw new Error('profile is not open')
-    await windows.used(page)
+    await windows.used(page, signal)
   }
   onPage(profile: string, cb: (page: Page) => void): () => void {
     const e = this.entry(profile)
@@ -864,7 +946,7 @@ export class ChromeBrowser implements ProfileBrowser {
     return this.serializer.runExclusive(profile, fn)
   }
   /** A person may remove closed data only while no browser work can acquire it. */
-  removeWhenIdle(profile: string, remove: () => void): Promise<void> {
+  removeWhenIdle(profile: string, remove: () => void, signal?: AbortSignal): Promise<void> {
     return this.exclusive(profile, async () => {
       const e = this.entry(profile)
       const busy = () =>
@@ -876,7 +958,9 @@ export class ChromeBrowser implements ProfileBrowser {
       if (e.removing || busy()) throw new ProfileInUseError()
       e.removing = true
       try {
-        if (await this.lockHeld(this.dir(profile))) throw new ProfileInUseError()
+        if (e.closing) await this.closeNow(e, signal)
+        if (await this.lockHeld(this.dir(profile), signal)) throw new ProfileInUseError()
+        signal?.throwIfAborted()
         if (busy()) throw new ProfileInUseError()
         remove()
       } finally {

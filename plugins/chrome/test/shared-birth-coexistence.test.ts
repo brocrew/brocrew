@@ -15,6 +15,7 @@ const roots: string[] = []
 const nativeBirth = '638980000000000000'
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.resetAllMocks()
   vi.unstubAllGlobals()
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
@@ -102,11 +103,9 @@ it('waits on an identified live contender past two seconds and enters once it is
   expect(fs.existsSync(c.other)).toBe(false)
 })
 
-it('keeps a contender whose birth reads fail even now and then, and waits on it only two seconds', () => {
-  const c = contend((elapsed, call) => {
-    if (elapsed >= 3000) return reusedBirth
-    if (call % 2 === 0) throw new Error('fictional birth read failure')
-    return liveBirth
+it('keeps a continuously unidentified contender and waits on it only two seconds', () => {
+  const c = contend(() => {
+    throw new Error('fictional birth read failure')
   })
   const work = vi.fn()
   expect(() => withSharedLock(c.root, c.owner, work)).toThrow(
@@ -114,4 +113,21 @@ it('keeps a contender whose birth reads fail even now and then, and waits on it 
   )
   expect(work).not.toHaveBeenCalled()
   expect(fs.existsSync(c.other)).toBe(true)
+})
+
+it('clears the unknown wait each time the current process birth is confirmed', () => {
+  let now = Date.now()
+  vi.spyOn(Date, 'now').mockImplementation(() => now)
+  vi.spyOn(Atomics, 'wait').mockImplementation((_view, _index, _value, ms) => {
+    now += ms ?? 0
+    return 'timed-out'
+  })
+  const c = contend((elapsed, call) => {
+    if (elapsed >= 3000) return reusedBirth
+    if (call % 2 === 0) throw new Error('fictional birth read failure')
+    return liveBirth
+  })
+  expect(withSharedLock(c.root, c.owner, () => 'entered')).toBe('entered')
+  expect(now - c.started).toBeGreaterThanOrEqual(3000)
+  expect(fs.existsSync(c.other)).toBe(false)
 })

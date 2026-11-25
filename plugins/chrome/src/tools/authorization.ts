@@ -211,7 +211,7 @@ export function fenceToolDefs(defs: ToolDef[]): ToolDef[] {
             .profile,
         ]
       else profiles = deps.store.list().map((p) => p.name)
-      return deps.browser.agentCall!(profiles, () => def.run(args, deps))
+      return deps.browser.agentCall!(profiles, () => def.run(args, deps), deps.signal)
     },
   }))
 }

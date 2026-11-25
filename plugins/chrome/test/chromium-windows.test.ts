@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { BrowserContext, Page } from 'playwright-core'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ChromiumWindows } from '../src/shared/browser/chromiumWindows.js'
 
 class Pg extends EventEmitter {
@@ -34,6 +34,7 @@ class Ctx extends EventEmitter {
   popupFirst = false
   hang = ''
   release: (() => void) | undefined
+  onHang: (() => void) | undefined
   hangDetach = false
   closeAnchor = false
   invalidId = false
@@ -64,6 +65,7 @@ class Ctx extends EventEmitter {
     if (this.hang === 'session')
       await new Promise<void>((resolve) => {
         this.release = resolve
+        this.onHang?.()
       })
     const page = raw as unknown as Pg
     return {
@@ -76,6 +78,7 @@ class Ctx extends EventEmitter {
         if (this.hang === method)
           await new Promise<void>((resolve) => {
             this.release = resolve
+            this.onHang?.()
           })
         if (this.fail === method) throw new Error('protocol failed')
         if (method === 'Browser.getWindowForTarget')
@@ -155,13 +158,17 @@ describe('context window selection', () => {
     expect(ctx.listenerCount('page')).toBe(2)
     expect(ctx.detached).toBeGreaterThan(0)
   })
-  it('bounds stalled creation/detach and closes only its late-created page', async () => {
+  it('cancels a stalled creation and closes only its late-created page even if detach hangs', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 1000 })
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
+    const request = new AbortController()
     ctx.hang = 'Target.createTarget'
+    ctx.onHang = () => request.abort(new Error('cancelled'))
     ctx.hangDetach = true
     const began = Date.now()
-    await expect(windows.open({ newWindow: false })).rejects.toThrow(/timed out|in time/)
+    await expect(windows.open({ newWindow: false, signal: request.signal })).rejects.toThrow(
+      'cancelled',
+    )
     expect(Date.now() - began).toBeLessThan(1500)
     expect(ctx.listenerCount('page')).toBe(1) // only the context-scoped ownership/recency observer
     const old = ctx.all[0]
@@ -170,12 +177,27 @@ describe('context window selection', () => {
     expect(old.closed).toBe(false)
     expect(ctx.all.at(-1)!.closed).toBe(true)
   })
-  it('bounds read-only window identity when Chrome stops answering', async () => {
+  it('ends a pending window identity read when Chrome closes', async () => {
     const ctx = new Ctx()
-    const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 20 })
+    const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
     ctx.hang = 'Browser.getWindowForTarget'
-    await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
+    ctx.onHang = () => ctx.emit('close')
+    await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('the browser is closed')
     ctx.release!()
+  })
+
+  it('admits a tab when Chrome answers after ten seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      const { ctx, windows } = setup()
+      ctx.hang = 'Target.createTarget'
+      const opening = windows.open({ newWindow: false }).catch((error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(10_001)
+      ctx.release!()
+      expect(await opening).toBe(ctx.pages().at(-1))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses background target creation when no existing window remains', async () => {
@@ -191,7 +213,6 @@ it('a targeted window that closes during creation fails: the owned tab alone is 
   const ctx = new Ctx()
   const original = ctx.pages()[0]
   const windows = new ChromiumWindows(ctx as unknown as BrowserContext, {
-    timeoutMs: 30,
     placer: {
       async place(windowId, url) {
         ctx.add(windowId, url)
@@ -230,13 +251,15 @@ it('a tab it opens knows its window and becomes the most recent one with no seco
   expect(windows.knownWindowId(page)).toBe(2)
   expect(await windows.latest()).toBe(page)
 })
-it('bounds CDP session acquisition and detaches a session which arrives after the deadline', async () => {
+it('cancels CDP session acquisition and detaches a session which arrives later', async () => {
   const ctx = new Ctx()
-  const windows = new ChromiumWindows(ctx as unknown as BrowserContext, { timeoutMs: 20 })
+  const windows = new ChromiumWindows(ctx as unknown as BrowserContext)
   await new Promise((r) => setTimeout(r, 5))
   const before = ctx.detached
+  const request = new AbortController()
   ctx.hang = 'session'
-  await expect(windows.windowId(ctx.pages()[0])).rejects.toThrow('timed out')
+  ctx.onHang = () => request.abort(new Error('cancelled'))
+  await expect(windows.windowId(ctx.pages()[0], request.signal)).rejects.toThrow('cancelled')
   ctx.release!()
   await new Promise((r) => setTimeout(r, 5))
   expect(ctx.detached - before).toBe(1)

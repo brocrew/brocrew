@@ -148,7 +148,7 @@ export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
   await deps.browser.operate(tab.profile, async () => {
     deps.tabs.resolve(id, generationOf(deps))
     usableProfile(deps, tab.profile)
-    await deps.browser.usePage(tab.profile, tab.page)
+    await deps.browser.usePage(tab.profile, tab.page, deps.signal)
     deps.tabs.resolve(id, generationOf(deps))
     usableProfile(deps, tab.profile)
   })
@@ -184,7 +184,7 @@ export async function onTab<T>(
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       requireNoDialog(tab)
-      if (waitForWindow) await deps.browser.usePage(tab.profile, tab.page)
+      if (waitForWindow) await deps.browser.usePage(tab.profile, tab.page, deps.signal)
       else {
         const notes = tab.notes
         void deps.browser.usePage(tab.profile, tab.page).catch((error: unknown) => {

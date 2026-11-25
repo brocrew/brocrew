@@ -70,7 +70,12 @@ export function buildProfileToolDefs(): ToolDef[] {
             )
           )
             return { json: { status: 'already-installed', id } }
-          await deps.windows.open(name, webStoreUrl(id), () => usableProfile(deps, name))
+          await deps.windows.open(
+            name,
+            webStoreUrl(id),
+            () => usableProfile(deps, name),
+            deps.signal,
+          )
           return {
             json: {
               status: 'opened',
@@ -82,7 +87,12 @@ export function buildProfileToolDefs(): ToolDef[] {
         }
         if (/^https?:/i.test(source)) throw new ToolError('only Chrome Web Store URLs are accepted')
         checkUnpackedFolder(source, deps.guard())
-        await deps.windows.open(name, 'chrome://extensions', () => usableProfile(deps, name))
+        await deps.windows.open(
+          name,
+          'chrome://extensions',
+          () => usableProfile(deps, name),
+          deps.signal,
+        )
         return {
           json: {
             status: 'opened',
@@ -135,8 +145,11 @@ export function buildProfileToolDefs(): ToolDef[] {
           )
         )
           throw new ToolError('that extension is not installed in this profile')
-        await deps.windows.open(name, `chrome://extensions/?id=${id}`, () =>
-          usableProfile(deps, name),
+        await deps.windows.open(
+          name,
+          `chrome://extensions/?id=${id}`,
+          () => usableProfile(deps, name),
+          deps.signal,
         )
         return {
           json: {
@@ -186,7 +199,8 @@ export function buildProfileToolDefs(): ToolDef[] {
         const wasOpen = await deps.browser.exclusive(name, async () => {
           usableProfile(deps, name)
           const open = deps.browser.state(name) !== null
-          await deps.browser.close(name)
+          await deps.browser.close(name, deps.signal)
+          deps.signal?.throwIfAborted()
           usableProfile(deps, name)
           diskAccess(deps, name, true, () => {
             usableProfile(deps, name)

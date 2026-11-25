@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createHash, randomUUID } from 'node:crypto'
+import { EventEmitter } from 'node:events'
 import fs, { existsSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -52,7 +53,7 @@ it('the historical shared ledger refuses a destructive proposal if adapter proje
   ).rejects.toThrow()
   expect(await ledger.revision(installId)).toBe(0)
 })
-type Reply = {
+type Reply = EventEmitter & {
   locals: Record<string, unknown>
   status(code: number): Reply
   json(value: unknown): void
@@ -123,16 +124,16 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
         const path = new URL(input, 'http://127.0.0.1').pathname
         let status = 0,
           body: unknown
-        const reply: Reply = {
+        const reply: Reply = Object.assign(new EventEmitter(), {
           locals: {},
-          status(value) {
+          status(value: number) {
             status = value
             return reply
           },
-          json(value) {
+          json(value: unknown) {
             body = value
           },
-        }
+        })
         if (path === '/profiles' || path === '/tabs') {
           await reads.get('/v1' + path)!({ params: { name: '' }, body: {} }, reply)
           return Response.json(body, { status })

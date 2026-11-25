@@ -66,6 +66,7 @@ class Fixture extends EventEmitter {
   loadFails = false
   loadId = HELPER_ID
   startsWorker = true
+  workerDelayMs = 1
   protocol: unknown = undefined
   refuse = false
   landIn: number | undefined
@@ -123,7 +124,7 @@ class Fixture extends EventEmitter {
                     )
                   this.workers.push(worker)
                   this.emit('serviceworker', worker)
-                }, 1)
+                }, this.workerDelayMs)
               return { id: this.loadId }
             }
             throw new Error(method)
@@ -215,9 +216,46 @@ describe('the shipped helper extension', () => {
 })
 
 describe('installing the helper', () => {
+  it('installs even when Chrome starts its worker after five seconds', async () => {
+    vi.useFakeTimers()
+    try {
+      const { fixture, helper } = setup()
+      fixture.workerDelayMs = 5_001
+      const installing = helper.install()
+      await vi.advanceTimersByTimeAsync(fixture.workerDelayMs)
+      expect(await installing).toBe('ready')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('stops waiting for a worker when Chrome closes', async () => {
+    const { fixture, helper } = setup()
+    fixture.startsWorker = false
+    const installing = helper.install()
+    await vi.waitFor(() => expect(methods(fixture)).toContain('Extensions.loadUnpacked'))
+    fixture.emit('close')
+    expect(await installing).toBe('unavailable')
+    expect(fixture.listenerCount('serviceworker')).toBe(0)
+    expect(fixture.detached).toBe(fixture.sessions)
+  })
+  it('turns on a fresh helper even when the ordinary install is still waiting for a worker', async () => {
+    const { fixture, helper } = setup()
+    fixture.startsWorker = false
+    const installing = helper.install()
+    await vi.waitFor(() => expect(methods(fixture)).toContain('Extensions.loadUnpacked'))
+    fixture.startsWorker = true
+    expect(await helper.turnOn()).toBe('ready')
+    await installing
+    expect(helper.state).toBe('ready')
+    expect(methods(fixture).filter((method) => method === 'Extensions.loadUnpacked')).toHaveLength(
+      2,
+    )
+    expect(methods(fixture)).toContain('Extensions.uninstall')
+    expect(fixture.listenerCount('serviceworker')).toBe(0)
+  })
   it('copies verified files into the profile, loads them over the pipe and checks the worker', async () => {
     const { fixture, helper, profileDir } = setup()
-    expect(await helper.install(1000)).toBe('ready')
+    expect(await helper.install()).toBe('ready')
     const folder = path.join(profileDir, 'brocrew-helper', HELPER_VERSION)
     expect(fixture.sent.find((s) => s.method === 'Extensions.loadUnpacked')!.params).toEqual({
       path: folder,
@@ -237,7 +275,7 @@ describe('installing the helper', () => {
     fs.writeFileSync(path.join(folder, 'extra.js'), 'planted')
     fs.writeFileSync(path.join(home, 'elsewhere.js'), 'outside')
     fs.symlinkSync(path.join(home, 'elsewhere.js'), path.join(folder, 'worker.js'))
-    expect(await helper.install(1000)).toBe('unavailable')
+    expect(await helper.install()).toBe('unavailable')
     expect(fs.readdirSync(folder).sort()).toEqual(['extra.js', 'worker.js'])
     expect(fs.lstatSync(path.join(folder, 'worker.js')).isSymbolicLink()).toBe(true)
     expect(fs.readFileSync(path.join(home, 'elsewhere.js'), 'utf8')).toBe('outside')
@@ -294,15 +332,15 @@ describe('installing the helper', () => {
       }
       return driver
     }
-    expect(await helper.install(1000)).toBe('unavailable')
+    expect(await helper.install()).toBe('unavailable')
     expect(methods(fixture)).not.toContain('Extensions.loadUnpacked')
     expect(methods(fixture)).not.toContain('Extensions.uninstall')
   })
   it('loads nothing in a profile where BroCrew remembers the person turned it off', async () => {
     const { fixture, helper } = setup({ off: true })
-    expect(await helper.install(1000)).toBe('off')
+    expect(await helper.install()).toBe('off')
     expect(fixture.sessions).toBe(0)
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'off' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'off' })
     expect(methods(fixture)).not.toContain('Extensions.loadUnpacked')
   })
   it('reads the switch Chrome recorded in the last session, list or bit-mask form', () => {
@@ -333,13 +371,12 @@ describe('installing the helper', () => {
   it.each([
     ['Chrome refuses the load', (f: Fixture) => (f.loadFails = true)],
     ['another id comes back', (f: Fixture) => (f.loadId = 'a'.repeat(32))],
-    ['no worker starts', (f: Fixture) => (f.startsWorker = false)],
     ['the worker speaks another protocol', (f: Fixture) => (f.protocol = 2)],
   ])('is unavailable, never throwing, when %s', async (_, fault) => {
     const { fixture, helper } = setup()
     fault(fixture)
-    expect(await helper.install(1000)).toBe('unavailable')
-    expect(await helper.place(1, MARKER, 1000)).toEqual({
+    expect(await helper.install()).toBe('unavailable')
+    expect(await helper.place(1, MARKER)).toEqual({
       created: false,
       helper: 'unavailable',
     })
@@ -349,100 +386,94 @@ describe('installing the helper', () => {
     ['after a successful install', (f: Fixture) => f],
     ['after the person turned it off', (f: Fixture) => (f.installed = false)],
     ['after Chrome refused the load', (f: Fixture) => (f.loadFails = true)],
-  ])(
-    'a detach Chrome never answers cannot hold the install past its deadline, %s',
-    async (_, set) => {
-      const { fixture, helper } = setup()
-      set(fixture)
-      fixture.detachHangs = true
-      const began = Date.now()
-      await helper.install(300)
-      expect(Date.now() - began).toBeLessThan(600)
-      await helper.turnOn(300)
-      expect(Date.now() - began).toBeLessThan(1200)
-    },
-  )
+  ])('a missing detach reply does not hold a completed install or Turn on, %s', async (_, set) => {
+    const { fixture, helper } = setup()
+    set(fixture)
+    fixture.detachHangs = true
+    const began = Date.now()
+    await helper.install()
+    expect(Date.now() - began).toBeLessThan(600)
+    await helper.turnOn()
+    expect(Date.now() - began).toBeLessThan(1200)
+  })
   it('stops when the profile changes mid-install', async () => {
     let allowed = true
     const { fixture, helper } = setup({ allowed: () => allowed })
     fixture.on('serviceworker', () => (allowed = false))
-    expect(await helper.install(1000)).toBe('unavailable')
+    expect(await helper.install()).toBe('unavailable')
   })
   it.each([
-    ['an install', (helper: BrocrewHelper) => helper.install(300), {}],
-    ['a Turn on after a restart', (helper: BrocrewHelper) => helper.turnOn(300), { off: true }],
-  ])(
-    'a disk that stalls while the files are copied does not use up the time Chrome has to answer, %s',
-    async (_, start, opts) => {
-      const { helper } = setup(opts)
-      const mkdtemp = fs.mkdtempSync
-      let stalls = 0
-      // The disk blocks longer than the whole budget, as one did on a busy hosted Windows runner.
-      const stall = vi.spyOn(fs, 'mkdtempSync').mockImplementation(((
-        ...args: Parameters<typeof fs.mkdtempSync>
-      ) => {
-        stalls++
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400)
-        return mkdtemp(...args)
-      }) as typeof fs.mkdtempSync)
-      try {
-        expect(await start(helper)).toBe('ready')
-      } finally {
-        stall.mockRestore()
-      }
-      expect(stalls).toBe(1)
-      expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
-    },
-  )
+    ['an install', (helper: BrocrewHelper) => helper.install(), {}],
+    ['a Turn on after a restart', (helper: BrocrewHelper) => helper.turnOn(), { off: true }],
+  ])('a slow disk copy still lets Chrome load the helper, %s', async (_, start, opts) => {
+    const { helper } = setup(opts)
+    const mkdtemp = fs.mkdtempSync
+    let stalls = 0
+    // The disk blocks longer than the whole budget, as one did on a busy hosted Windows runner.
+    const stall = vi.spyOn(fs, 'mkdtempSync').mockImplementation(((
+      ...args: Parameters<typeof fs.mkdtempSync>
+    ) => {
+      stalls++
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400)
+      return mkdtemp(...args)
+    }) as typeof fs.mkdtempSync)
+    try {
+      expect(await start(helper)).toBe('ready')
+    } finally {
+      stall.mockRestore()
+    }
+    expect(stalls).toBe(1)
+    expect(await helper.place(7, MARKER)).toEqual({ created: true, windowId: 7 })
+  })
 })
 
 describe('placing a tab with the helper', () => {
   it('asks the live worker for an inactive tab in the requested window', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
+    await helper.install()
+    expect(await helper.place(7, MARKER)).toEqual({ created: true, windowId: 7 })
     expect(fixture.workers[0].created).toEqual([{ windowId: 7, url: MARKER, active: false }])
   })
   it('wakes a worker that slept for five minutes, while Chrome says the helper is on', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.sleep()
     const loads = () => methods(fixture).filter((m) => m === 'Extensions.loadUnpacked').length
     expect(loads()).toBe(1)
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
+    expect(await helper.place(7, MARKER)).toEqual({ created: true, windowId: 7 })
     expect(loads()).toBe(2)
     expect(fixture.detached).toBe(fixture.sessions)
   })
   it('notices an off switch made in chrome://extensions when the worker stops, and remembers it', async () => {
     const { fixture, helper, remembered } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.installed = false
     fixture.sleep()
     await settle()
     expect(helper.state).toBe('off')
     expect(remembered.off).toBe(true)
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'off' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'off' })
     expect(methods(fixture).filter((m) => m === 'Extensions.loadUnpacked')).toHaveLength(1)
   })
   it('never reloads a helper the person turned off while it slept, and remembers off', async () => {
     const { fixture, helper, remembered } = setup()
-    await helper.install(1000)
+    await helper.install()
     // It slept while still on; the person switches it off later, so only the next tab finds out.
     fixture.sleep()
     await settle()
     expect(remembered.off).toBe(false)
     fixture.installed = false
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'off' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'off' })
     expect(methods(fixture).filter((m) => m === 'Extensions.loadUnpacked')).toHaveLength(1)
     expect(helper.state).toBe('off')
     expect(remembered.off).toBe(true)
   })
   it('never reloads when Chrome cannot say whether the helper is on', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.sleep()
     fixture.getExtensionsMissing = true
-    expect(await helper.place(7, MARKER, 1000)).toEqual({
+    expect(await helper.place(7, MARKER)).toEqual({
       created: false,
       helper: 'unavailable',
     })
@@ -450,65 +481,79 @@ describe('placing a tab with the helper', () => {
   })
   it('works again when the person switches it back on in chrome://extensions in the same session', async () => {
     const { fixture, helper, remembered } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.sleep()
     fixture.installed = false
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'off' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'off' })
     fixture.installed = true
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
+    expect(await helper.place(7, MARKER)).toEqual({ created: true, windowId: 7 })
     expect(helper.state).toBe('ready')
     expect(remembered.off).toBe(false)
   })
   it('a Turn on that Chrome refuses leaves the request for the next launch', async () => {
     const { fixture, helper, remembered } = setup({ off: true })
     fixture.loadFails = true
-    expect(await helper.turnOn(1000)).toBe('unavailable')
+    expect(await helper.turnOn()).toBe('unavailable')
     // Nothing recorded: the caller's "turning on" stays until a helper answers.
     expect(remembered.calls).toEqual([])
   })
   it('a Turn on installs fresh over a disabled copy Chrome still lists', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.installed = false
     fixture.sleep()
     // Uninstall clears it; the fixture's next load enables it again.
-    expect(await helper.turnOn(1000)).toBe('ready')
+    expect(await helper.turnOn()).toBe('ready')
   })
   it('after a restart it stays off until the person presses Turn on, which installs it fresh', async () => {
     const { fixture, helper, remembered } = setup({ off: true })
-    expect(await helper.install(1000)).toBe('off')
+    expect(await helper.install()).toBe('off')
     // Chrome dropped it at start, so chrome://extensions has nothing to switch on.
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'off' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'off' })
     expect(methods(fixture)).not.toContain('Extensions.loadUnpacked')
-    expect(await helper.turnOn(1000)).toBe('ready')
+    expect(await helper.turnOn()).toBe('ready')
     expect(remembered.off).toBe(false)
     expect(methods(fixture).indexOf('Extensions.uninstall')).toBeLessThan(
       methods(fixture).indexOf('Extensions.loadUnpacked'),
     )
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: true, windowId: 7 })
+    expect(await helper.place(7, MARKER)).toEqual({ created: true, windowId: 7 })
   })
   it('a refusal from Chrome means nothing was created', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.refuse = true
-    expect(await helper.place(7, MARKER, 1000)).toEqual({ created: false, helper: 'refused' })
+    expect(await helper.place(7, MARKER)).toEqual({ created: false, helper: 'refused' })
   })
   it('an evaluation that fails or never answers after dispatch is uncertain and throws', async () => {
     const { fixture, helper } = setup()
-    await helper.install(1000)
+    await helper.install()
     fixture.evaluateFails = true
-    await expect(helper.place(7, MARKER, 1000)).rejects.toThrow()
+    await expect(helper.place(7, MARKER)).rejects.toThrow()
     fixture.evaluateFails = false
     fixture.evaluateHangs = true
-    await expect(helper.place(7, MARKER, 30)).rejects.toThrow('timeout')
+    const placing = helper.place(7, MARKER)
+    fixture.emit('close')
+    await expect(placing).rejects.toThrow('closed')
+  })
+  it('keeps a late refusal observable after the caller cancels a dispatched evaluation', async () => {
+    const { fixture, helper } = setup()
+    await helper.install()
+    const reply = Promise.withResolvers<unknown>()
+    const evaluate = vi.spyOn(fixture.workers[0], 'evaluate').mockReturnValue(reply.promise)
+    const request = new AbortController()
+    const placing = helper.place(7, MARKER, request.signal)
+    expect(evaluate).toHaveBeenCalledOnce()
+    request.abort()
+    reply.resolve({ ok: false, created: false })
+    await expect(placing).resolves.toEqual({ created: false, helper: 'refused' })
   })
   it('dispatches nothing once the profile changes or extensions are turned off', async () => {
     let allowed = true
     const { fixture, helper } = setup({ allowed: () => allowed })
-    await helper.install(1000)
+    await helper.install()
     allowed = false
     const before = fixture.evaluated.length
-    expect(await helper.place(7, MARKER, 1000)).toEqual({
+    expect(await helper.place(7, MARKER)).toEqual({
       created: false,
       helper: 'unavailable',
     })

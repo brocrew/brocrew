@@ -8,6 +8,8 @@ export interface ShutdownDeps {
   platform?: NodeJS.Platform
   setTimeout?: (fn: () => void, ms: number) => unknown
 }
+// Stop gives the browser the host's 1.5 s POSIX signal grace to flush. The guardian then
+// kills remaining process groups, even if a browser could not answer its close request.
 export const SHUTDOWN_CAP_MS = 1500
 export function installShutdownSignals(deps: ShutdownDeps): () => void {
   const exit = deps.exit ?? ((code: number) => process.exit(code))

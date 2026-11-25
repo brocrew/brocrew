@@ -201,7 +201,8 @@ export function buildToolDefs(): ToolDef[] {
           temporary: rec.temporary,
         })
         await deps.browser.exclusive(name, async () => {
-          await deps.browser.close(name)
+          await deps.browser.close(name, deps.signal)
+          deps.signal?.throwIfAborted()
           deps.store.remove(name)
         })
         return { json: { deleted: name } }
@@ -245,13 +246,14 @@ export function buildToolDefs(): ToolDef[] {
         const out = await deps.browser.exclusive(name, async () => {
           usableProfile(deps, name)
           selectedAnchor()
-          const { generation } = await deps.browser.ensure(name)
+          const { generation } = await deps.browser.ensure(name, deps.signal)
           deps.activity?.('browser-ready')
           usableProfile(deps, name)
           let openingNote: string | undefined
           const page = await deps.browser.newPage(name, {
             newWindow: a.newWindow === true,
             windowOf: selectedAnchor()?.page,
+            signal: deps.signal,
             onNote: (note) => {
               openingNote = note
             },
@@ -959,6 +961,8 @@ export function buildToolDefs(): ToolDef[] {
             save,
             () => savedFile,
             () => deps.activity?.('download-received'),
+            undefined,
+            deps.signal,
           )
         })
         return withNotes(value, notes)
@@ -1013,6 +1017,7 @@ export function buildToolDefs(): ToolDef[] {
             () => savedFile,
             () => deps.activity?.('download-received'),
             waiting ? { download: waiting.download, signal: deps.signal } : undefined,
+            deps.signal,
           ),
         }
       },
@@ -1056,7 +1061,7 @@ export function buildToolDefs(): ToolDef[] {
         const t = tab
         return {
           json: await deps.browser.operate(t.profile, async () => {
-            await deps.browser.usePage(t.profile, t.page)
+            await deps.browser.usePage(t.profile, t.page, deps.signal)
             deps.tabs.resolve(t.id, generationOf(deps))
             usableProfile(deps, t.profile)
             return fetchToDisk(

@@ -1,3 +1,4 @@
+import { readFileSync, renameSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,11 @@ import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { recordDrainTrace, type DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { ownerDiagnosticLine } from '../src/main/plugins/supervisor/protocol'
 import { captureLog } from './lib/log-file'
+
+vi.mock('node:fs', async (original) => {
+  const fs = await original<typeof import('node:fs')>()
+  return { ...fs, renameSync: vi.fn(fs.renameSync) }
+})
 
 let parent = ''
 let captured: Awaited<ReturnType<typeof captureLog>> | undefined
@@ -157,6 +163,52 @@ it('starts no further stopped-record try once a whole pause no longer fits in th
     { state: 'failed', attempt: 1, errno: 'EPERM' },
   ])
   expect(tries).toBe(1)
+})
+it('stops atomic rename retries when the next wait would outlast the drain', async () => {
+  parent = await realpath(
+    await mkdtemp(
+      join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-rename-'),
+    ),
+  )
+  const root = join(parent, 'plugins')
+  const supervisor = await PluginSupervisor.start({ root, workspaceRoots: [], drainWithin: 10_000 })
+  owner = supervisor
+  const fs = await vi.importActual<typeof import('node:fs')>('node:fs')
+  let now = performance.now()
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  const waits: number[] = []
+  vi.spyOn(Atomics, 'wait').mockImplementation((_view, _index, _value, ms) => {
+    waits.push(ms ?? 0)
+    now += ms ?? 0
+    return 'timed-out'
+  })
+  const attempts: number[] = []
+  vi.mocked(renameSync).mockImplementation((from, to) => {
+    if (
+      to !== join(root, 'supervisor', 'owner.json') ||
+      JSON.parse(readFileSync(from, 'utf8')).phase !== 'stopped'
+    )
+      return fs.renameSync(from, to)
+
+    if (attempts.length === 0) now += supervisor.remainingDrainMs() - 175
+    attempts.push(Math.round(supervisor.remainingDrainMs()))
+    throw Object.assign(new Error('fictional held record'), { code: 'EPERM' })
+  })
+  try {
+    expect(await supervisor.shutdown()).toBe(true)
+    await supervisor.closed
+    owner = undefined
+    expect(attempts).toEqual([175, 125, 25])
+    expect(waits).toEqual([50, 100])
+    const storage = new SupervisorStorage(root, [], false)
+    try {
+      expect(storage.read()?.phase).toBe('draining')
+    } finally {
+      storage.close()
+    }
+  } finally {
+    vi.mocked(renameSync).mockImplementation(fs.renameSync)
+  }
 })
 it('records a legacy restart-required phase diagnostic without prescribing a reboot', () => {
   const text = ownerDiagnosticLine({
