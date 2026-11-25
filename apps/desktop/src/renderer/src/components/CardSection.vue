@@ -135,7 +135,15 @@ const bodyId = useId()
   color: var(--drawer-card-ink, var(--accent-text-soft));
 }
 
+/*
+ * ⚠️ **A flex box, not a line of text** (487). As a plain block, the act sat on a line with a
+ * body-size strut, and baseline alignment of its smaller text made that line taller than the
+ * title's under some fonts (20.39 against 20.30 px in DejaVu Sans before Inter loaded). Centred
+ * as a flex item, it is only as tall as itself, whatever the font.
+ */
 .action {
+  display: flex;
+  align-items: center;
   margin-left: auto;
 }
 
