@@ -294,7 +294,12 @@ describe('words in the second accent, on their fills', () => {
       part?.closest('[data-cy="overlay-host"]'),
       'the viewer opens in the overlay',
     ).toBeTruthy()
-    expectOn('the part', part, part!.closest('.child-work')!, 'var(--drawer-solid)')
+    expectOn(
+      'the part',
+      part,
+      part!.closest('[data-cy="child-work-viewer"]')!,
+      'var(--drawer-solid)',
+    )
     // What is painted under it includes the overlay's wash: the panel is see-through only when the
     // theme makes it so, and then the wash shows.
     expect(

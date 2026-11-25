@@ -4,7 +4,8 @@
  * sub-agent's record and a tool's whole answer all sit in this one frame, so they read as the same
  * kind of thing opening.
  *
- * The head carries what the caller puts in `head` and the close button. `notes` are the stated
+ * The head carries what the caller puts in `head`, then `actions` and the close button at its end.
+ * `notes` are the stated
  * limits under it (a cut file, unreadable lines); `refusal` says why there is nothing to show. The
  * default slot is the body; a `.stage` there is the one scroller.
  *
@@ -24,18 +25,19 @@ const emit = defineEmits<{ close: [] }>()
 <template>
   <div class="viewer-frame">
     <header class="viewer-head">
-      <div class="head-main">
-        <slot name="head" />
+      <slot name="head" />
+      <div class="head-end">
+        <slot name="actions" />
+        <button
+          class="icon-button"
+          type="button"
+          aria-label="Close"
+          data-cy="close-overlay"
+          @click="emit('close')"
+        >
+          <svg class="icon"><use href="#i-x" /></svg>
+        </button>
       </div>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
     </header>
     <p v-for="note in notes" :key="note.cy" class="note" :data-cy="note.cy">{{ note.text }}</p>
     <slot />
@@ -64,11 +66,10 @@ const emit = defineEmits<{ close: [] }>()
   gap: var(--space-4);
 }
 
-.head-main {
+.head-end {
   display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
   align-items: center;
+  margin-left: auto;
   gap: var(--space-4);
 }
 
