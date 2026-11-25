@@ -104,6 +104,8 @@ export type PersonsQueueKind =
 
 /** One thing a person now owes an answer or a decision to. */
 export interface PersonsQueueRow extends QueueQuestionContext {
+  readonly liveCard?: AttentionRequest['card']
+  readonly cardProvider?: AttentionRequest['provider']
   /**
    * ⛔ **Which of the two populations this is** — see {@link PersonsQueueKind}. ⚠️ The row's chain,
    * its age and its words all differ by it, and a surface reads this rather than inferring the kind

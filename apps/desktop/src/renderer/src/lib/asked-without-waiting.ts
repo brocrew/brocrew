@@ -6,8 +6,7 @@
  * it is busy (`store.send`'s own rule) — and the card says so in those words, so nobody reads a
  * press as unblocking anything.
  *
- * ⛔ This is not the question CARD (`UserInputCard`), which answers a request the provider is
- * holding open; see `RuntimeEvent`'s `assistant_message.questions`.
+ * ⛔ These choices use the conversation’s message door. A request the provider holds open uses its answer door.
  */
 
 /** One question as the message carries it — `AssistantItem.questions`. */

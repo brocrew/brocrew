@@ -19,7 +19,7 @@ import {
   isRedline,
   percentText,
 } from '../lib/context-meter'
-import { FILES_DID_NOT_ANSWER, fileKindOf, fileTitleSays } from '../lib/files-kept'
+import { FILES_DID_NOT_ANSWER } from '../lib/files-kept'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
@@ -44,6 +44,7 @@ import RunningNowCard from './RunningNowCard.vue'
 import type { OpenPanelRun } from '../lib/panel-runs'
 import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
+import FileRows from './FileRows.vue'
 import SessionBot from './SessionBot.vue'
 import TaskList from './TaskList.vue'
 import ConversationTasks from './ConversationTasks.vue'
@@ -193,12 +194,6 @@ const showAllTasks = computed(() =>
 )
 /** ⚑ A copied path says so for a moment on the Copy control itself. */
 const copied = ref(false)
-/** ⚑ W4.183 · a tile's type tag (PNG, PDF…), from its file name. */
-const formatOf = (file: { name: string }): string => {
-  const dot = file.name.lastIndexOf('.')
-  return dot > 0 ? file.name.slice(dot + 1).toUpperCase() : ''
-}
-const kindOf = fileKindOf
 /** ⚑ "Workspace ⌄" shows the folder's path under the two buttons. */
 const pathShown = ref(false)
 async function copyPath(): Promise<void> {
@@ -829,38 +824,13 @@ const fileManager = fileManagerHere()
         </label>
         <p v-if="files.why" class="files-why" data-cy="card-files-why">{{ files.why }}</p>
         <template v-else>
-          <ul class="file-tiles" data-cy="card-file-tiles">
-            <li v-for="file in files.tiles" :key="file.resourceId">
-              <component
-                :is="props.canOpenDocument ? 'button' : 'div'"
-                v-bind="props.canOpenDocument ? { type: 'button' } : {}"
-                class="file-tile"
-                :class="{ flat: !props.canOpenDocument }"
-                data-cy="card-file"
-                :data-document="file.resourceId"
-                :data-role="file.role"
-                :title="fileTitleSays(file)"
-                @click="props.canOpenDocument && emit('openDocument', file.resourceId)"
-              >
-                <span class="file-tile-top">
-                  <span class="file-tile-tag" :title="file.pieceTitle ?? file.label">{{
-                    file.label
-                  }}</span>
-                  <span v-if="formatOf(file)" class="file-tile-format">{{ formatOf(file) }}</span>
-                </span>
-                <span class="file-tile-glyph" :data-kind="kindOf(file)" aria-hidden="true">
-                  <svg class="icon">
-                    <use
-                      :href="
-                        kindOf(file) === 'image' || kindOf(file) === 'svg' ? '#i-image' : '#i-file'
-                      "
-                    />
-                  </svg>
-                </span>
-                <span class="file-tile-name">{{ file.title }}</span>
-              </component>
-            </li>
-          </ul>
+          <FileRows
+            class="recent-files"
+            :files="files.tiles"
+            :can-open="props.canOpenDocument === true"
+            collection="card"
+            @open-document="emit('openDocument', $event)"
+          />
           <p class="files-caption" data-cy="card-files-caption">
             {{ files.tiles.length }} of {{ files.matching.length }}
             {{ files.matching.length === 1 ? 'file' : 'files'
@@ -1357,115 +1327,8 @@ button.run-effort[aria-expanded='true'] {
   font-size: var(--type-caption);
 }
 
-.file-tiles {
-  display: grid;
-  margin: var(--space-4) 0 0;
-  padding: 0;
-  gap: var(--space-3);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  list-style: none;
-}
-
-.file-tile {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--space-3) var(--space-3) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--accent-mix-5);
-  color: inherit;
-  font: inherit;
-  gap: var(--space-3);
-  text-align: center;
-}
-
-.file-tile:not(.flat) {
-  cursor: pointer;
-}
-
-.file-tile:not(.flat):hover {
-  border-color: var(--accent-border);
-  background: var(--accent-mix-12);
-}
-
-.file-tile-top {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
-}
-
-.file-tile-tag {
-  overflow: hidden;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--accent-mix-12);
-  color: var(--accent-text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-tile-format {
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-/*
- * Near the panel's 360px minimum width, show the four newest files in two columns so names retain space and the displayed count remains accurate.
- */
-@container agent-card (max-width: 439px) {
-  .file-tiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.file-tile-glyph {
-  display: grid;
-  width: 30px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: color-mix(
-    in srgb,
-    var(--_tint, var(--accent)) 12%,
-    var(--panel)
-  ); /* raw: mixes the tint this element sets for itself */
-  color: var(--_tint, var(--accent));
-  place-items: center;
-}
-
-.file-tile-glyph[data-kind='image'] {
-  --_tint: var(--success);
-}
-
-.file-tile-glyph[data-kind='pdf'] {
-  --_tint: var(--danger);
-}
-
-.file-tile-glyph[data-kind='svg'] {
-  --_tint: var(--waiting);
-}
-
-.file-tile-glyph .icon {
-  width: 18px;
-  height: 18px;
-}
-
-.file-tile-name {
-  display: -webkit-box;
-  overflow: hidden;
-  width: 100%;
-  -webkit-box-orient: vertical;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  -webkit-line-clamp: 2;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
+.recent-files {
+  max-width: none;
 }
 
 .files-caption {

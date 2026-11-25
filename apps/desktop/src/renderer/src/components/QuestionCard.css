@@ -1,0 +1,412 @@
+.question-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-6);
+}
+
+.question-head {
+  display: flex;
+  min-height: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  gap: var(--space-2) var(--space-4);
+}
+
+.question-head .icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+}
+
+.who {
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-bold);
+}
+
+.piece {
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-bold);
+}
+
+.state {
+  color: var(--faint);
+  font-size: var(--type-caption);
+}
+
+.time {
+  margin-left: auto;
+  color: var(--faint);
+  font: var(--type-caption) / 1 var(--font-mono);
+}
+
+.via,
+.aside,
+.not-here {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  line-height: var(--leading-tight);
+  overflow-wrap: anywhere;
+}
+
+:deep(.md-lead) {
+  font-weight: var(--fw-bold);
+}
+
+.words {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-reading);
+  line-height: var(--leading-reading);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.words.folded :deep(.md-chat) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.more,
+.press {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--type-caption);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.more:hover,
+.more:focus-visible,
+.press:hover,
+.press:focus-visible {
+  color: var(--text-soft);
+  text-decoration-style: solid;
+}
+
+.part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ask {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  white-space: normal;
+}
+
+.header {
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--faint);
+  font-size: var(--type-caption);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.mode {
+  margin-left: var(--space-3);
+  color: var(--faint);
+  font-size: var(--type-caption);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.option {
+  min-height: var(--control-h);
+  padding: var(--space-6);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--wash-2);
+  color: var(--text-soft);
+  font-size: var(--type-caption);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.option:hover:not(:disabled),
+.option.selected {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+  color: var(--accent-text);
+}
+
+.option:disabled {
+  opacity: 0.6;
+}
+
+.options.described {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.option .label {
+  display: block;
+}
+
+.option .tick {
+  width: 11px;
+  height: 11px;
+  margin-right: var(--space-2);
+  vertical-align: -1px;
+}
+
+.options.described .label {
+  font-weight: var(--fw-semibold);
+}
+
+.option .describe {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+}
+
+.option.selected .describe,
+.option:hover:not(:disabled) .describe {
+  color: var(--accent-text);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 0;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.chip {
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--text-soft);
+  font-size: var(--type-caption);
+}
+
+.box {
+  width: 100%;
+  min-height: var(--control-h);
+  max-height: calc(6 * var(--leading-normal) * 1em + 2 * var(--space-3));
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-5);
+  border: var(--border-width) solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text);
+  field-sizing: content;
+  font: inherit;
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+  resize: none;
+}
+
+.box:focus-visible {
+  border-color: var(--accent);
+}
+
+.send {
+  align-self: flex-start;
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-6);
+  border: var(--border-width) solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-solid-bg);
+  color: var(--accent-ink);
+  font-size: var(--type-small);
+  font-weight: var(--fw-semibold);
+}
+
+.send:disabled {
+  opacity: 0.6;
+}
+
+.aside.failed,
+.state.failed {
+  color: var(--danger);
+}
+
+.queue-question {
+  padding: var(--space-4);
+}
+
+.queue-question .question-head {
+  gap: var(--space-3);
+}
+
+.queue-question .question-head > .icon {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--wash-2);
+  color: var(--text-soft);
+}
+
+.queue-question .who {
+  color: var(--text-soft);
+  font-size: var(--type-small);
+}
+
+.queue-question [data-cy='question-context'] {
+  padding: var(--space-6);
+  border-left: var(--border-accent-width) solid var(--line-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--wash-2);
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+}
+
+.queue-question [data-cy='question-context'] :deep(.md-lead) {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--text-soft);
+}
+
+.queue-question .more {
+  min-height: 28px;
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  text-decoration: none;
+}
+
+.queue-question .more:hover {
+  background: var(--wash-2);
+}
+
+.queue-question .part {
+  padding-top: var(--space-6);
+  border-top: var(--border-width) solid var(--line);
+  gap: var(--space-4);
+}
+
+.queue-question .option {
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--type-small);
+  font-weight: var(--fw-semibold);
+}
+
+.queue-question .box {
+  min-height: var(--control-h-touch);
+  padding: var(--space-5) var(--space-6);
+  font-size: var(--type-small);
+}
+
+.queue-question .press {
+  align-self: stretch;
+  padding-top: var(--space-6);
+  border-top: var(--border-width) solid var(--line);
+  border-radius: 0;
+  text-align: left;
+  text-decoration: none;
+}
+
+.queue-question .press:hover,
+.queue-question .press:focus-visible {
+  text-decoration: underline;
+}
+
+.provider-question {
+  max-width: var(--measure-message);
+  margin: 0 auto var(--space-10);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-md);
+}
+.provider-question .option {
+  min-height: 28px;
+  padding: var(--space-1) var(--space-3);
+}
+.grant {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--type-small);
+  overflow-x: auto;
+  white-space: pre;
+}
+.provider-actions .send,
+.provider-actions .option {
+  display: grid;
+  gap: var(--space-1);
+}
+.provider-actions .aside {
+  flex-basis: 100%;
+}
+.compact,
+.compact .part,
+.compact .options {
+  gap: var(--space-2);
+}
+.compact .words {
+  font-size: var(--type-small);
+  line-height: var(--leading-normal);
+}
+.compact .option,
+.compact .box {
+  min-height: 26px;
+  padding: 3px var(--space-3);
+}
+.quick-choices {
+  padding: 0;
+  flex-flow: row wrap;
+  align-items: center;
+}
+.quick-choices > .words,
+.quick-choices > .aside,
+.quick-choices > .grant {
+  flex-basis: 100%;
+}
+.quick-choices .part,
+.quick-choices .options {
+  display: contents;
+}
+.quick-choices .option {
+  min-height: 26px;
+  padding: 2px var(--space-3);
+  font-size: var(--type-caption);
+}
+.quick-choices .option small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.choices-only {
+  gap: 0;
+}
+.choices-only .option {
+  min-height: 24px;
+  padding-block: 2px;
+}

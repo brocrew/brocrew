@@ -319,8 +319,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   respondUserInput: {
     how: 'handed-over',
     note:
-      '`response.answers` is built by `UserInputCard.answer()` on `Object.create(null)`, and each ' +
-      'value comes out of `chosen()`, which returns `value.filter(…)` — a FRESH plain array, even ' +
+      '`response.answers` is built by `answerOf` on `Object.create(null)`, and each ' +
+      'value is a string or a fresh array, even ' +
       'when the draft holding it is a `reactive(new Map())`. Measured, not assumed. ⚠️ **And it ' +
       'has a second producer too** (473): `answerFor`’s three user-input arms, reached from the ' +
       "overview and the person’s queue. Two of them are closed literals — `{kind:'reject'}` and " +
@@ -330,8 +330,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
       'producers rather than the one somebody happened to look at.',
     producers: [
       {
-        at: 'src/renderer/src/components/UserInputCard.vue',
-        builds: "emit('respond', props.item.request.id, { kind: 'answer', answers: payload })",
+        at: 'src/renderer/src/lib/question-card.ts',
+        builds: 'answers[part.id] = useSingleValues && !part.multiSelect ? first : [...values]',
       },
       {
         at: 'src/renderer/src/lib/attention.ts',

@@ -1,3 +1,4 @@
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 import type {
   LedgerWalk,
   LedgerWalkKind,
@@ -30,13 +31,7 @@ import type { QueuedItem } from '../../src/renderer/src/lib/transcript'
 import { foldWindow, type WindowState } from '../../src/renderer/src/lib/transcript-window'
 import { workReading } from '../../src/renderer/src/lib/work-report'
 import { aNoticeALaterFactRetracted } from '../../src/main/runtime/reply-rails'
-import {
-  chainReading,
-  chainSentence,
-  escalationChain,
-  aPersonsSince,
-  NOTHING_NAMED_THE_WORK,
-} from '../../src/shared/questions'
+import {} from '../../src/shared/questions'
 import {
   DEFAULT_PROFILE_ID,
   type AgentIdentities,
@@ -61,6 +56,9 @@ import {
   visible,
   type Mounted,
   type Rgba,
+  permission as permissionEvent,
+  permissionButtons,
+  permissionOnQueue,
 } from './harness'
 
 /**
@@ -762,53 +760,23 @@ function routed(
 function asked(
   over: Partial<RoutedRequest> & { requestId: string; askedBy: string },
 ): PersonsQuestion {
-  const request = routed(over)
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy: 'the-provider',
-    offered: null,
-    asked: null,
-  }
+  return routedProviderQuestion(routed(over), NAME)
 }
 
 /** ⚑ One live attention row, as `attention.ts` projects it — `persons-queue.dom.test.ts`' shape. */
-function live(over: Partial<AttentionRequest> = {}): AttentionRequest {
-  const [sessionId = '', requestId = ''] = KEY.split(':')
-  return {
-    key: KEY,
-    sessionId,
-    requestId,
-    itemId: `item_${requestId}`,
-    kind: 'permission',
-    where: 'worker-7',
-    hasACommander: false,
-    provider: 'claude',
-    profileId: null,
-    who: null,
-    standing: 'waiting: permission',
-    asked: 'run a command',
-    scope: [],
-    underDisclosed: false,
-    detailOmitted: null,
-    noPositive: null,
-    at: 1_700_000_000_000,
-    decisions: [
-      { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-      { kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } },
-      { kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } },
-    ],
-    limit: null,
-    sent: false,
-    refused: null,
-    ...over,
-  }
+function live(marked = false): AttentionRequest {
+  const event = permissionEvent('req_1')
+  return permissionOnQueue('sess_worker-7', {
+    ...event,
+    ...(marked
+      ? {
+          defaultToNo: true as const,
+          suppressAlwaysAllowRule: true as const,
+          providerReason: 'this could delete the index',
+        }
+      : {}),
+    scope: { ...event.scope, availableDecisions: ['allow', 'deny', 'cancel'] },
+  })
 }
 
 function walked<Row>(rows: readonly Row[], walk: LedgerWalkKind): LedgerWalk<Row> {
@@ -858,19 +826,25 @@ const MARKS = [GRANT_WITHHELD, DEFAULT_IS_NO, inTheProvidersWords('this could de
 
 describe('§5 · 700 §5 GAP 1 — the person’s queue draws the marks, and does not dim a refusal-first ask (PersonsQueue)', () => {
   it('🔴 a marked ask: the three lines, in order, before the answers, in the quiet ink — Deny not dimmed', async () => {
-    supply(live({ marksSay: MARKS, refusesFirst: true }))
+    supply(live(true))
     const m = await overlay()
     const queueCard = m.q('persons-queue')
     expect(queueCard.dataset.place).toBe('overlay')
-    const lines = m.all(`persons-queue-mark-${KEY}`)
+    const lines = [
+      ...m
+        .q(`persons-queue-row-${KEY}`)
+        .querySelectorAll<HTMLElement>(
+          '[data-cy="permission-grant-withheld"], [data-cy="permission-default-no"], [data-cy="permission-provider-reason"]',
+        ),
+    ]
     expect(lines.map(words)).toEqual(MARKS)
-    const answers = m.all(`persons-queue-answer-${KEY}`)
+    const answers = permissionButtons(m.q(`persons-queue-row-${KEY}`))
     // The request's own answers first, in the card's order; Cancel, a broader choice, is under the
     // row's more options after them.
     expect(answers.map((a) => words(a.querySelector('strong')))).toEqual([
       'Deny',
-      'Allow',
-      'Cancel',
+      'Cancel turn',
+      'Approve',
     ])
     const first = answers[0] as HTMLElement
     // ⚑ Each line visible, in the order given, and every one BEFORE the first answer.
@@ -895,9 +869,11 @@ describe('§5 · 700 §5 GAP 1 — the person’s queue draws the marks, and doe
     expect(same(muted, text)).toBe(false)
     for (const line of lines) expect(same(ink(line), muted)).toBe(true)
     // ⛔ …and no refusal is dimmed: Deny's word is drawn as Allow's is.
-    expect(answers.filter((a) => a.classList.contains('deny'))).toHaveLength(0)
+    expect(
+      answers.filter((a) => a.classList.contains('deny') && !a.classList.contains('refuse-first')),
+    ).toHaveLength(0)
     const deny = ink(first.querySelector('strong') as HTMLElement)
-    const allow = ink((answers[1] as HTMLElement).querySelector('strong') as HTMLElement)
+    const allow = ink(m.q('permission-allow').querySelector('strong')!)
     expect(same(deny, allow), `Deny ${show(deny)} vs Allow ${show(allow)}`).toBe(true)
     expect(same(allow, text)).toBe(true)
   })
@@ -905,13 +881,21 @@ describe('§5 · 700 §5 GAP 1 — the person’s queue draws the marks, and doe
   it('⛔ the control: an unmarked ask draws no mark and DIMS its refusals', async () => {
     supply(live())
     const m = await overlay()
-    expect(m.all(`persons-queue-mark-${KEY}`)).toHaveLength(0)
-    const answers = m.all(`persons-queue-answer-${KEY}`)
+    expect([
+      ...m
+        .q(`persons-queue-row-${KEY}`)
+        .querySelectorAll<HTMLElement>(
+          '[data-cy="permission-grant-withheld"], [data-cy="permission-default-no"], [data-cy="permission-provider-reason"]',
+        ),
+    ]).toHaveLength(0)
+    const answers = permissionButtons(m.q(`persons-queue-row-${KEY}`))
     expect(answers).toHaveLength(3)
     // Deny, Allow, then Cancel under the row's more options.
-    expect(answers.map((a) => a.classList.contains('deny'))).toEqual([true, false, true])
-    const allow = ink((answers[1] as HTMLElement).querySelector('strong') as HTMLElement)
-    for (const refusal of [answers[0]!, answers[2]!]) {
+    expect(
+      answers.map((a) => a.classList.contains('deny') && !a.classList.contains('refuse-first')),
+    ).toEqual([false, true, true])
+    const allow = ink(m.q('permission-allow').querySelector('strong')!)
+    for (const refusal of [answers[1]!, answers[2]!]) {
       const word = ink(refusal.querySelector('strong') as HTMLElement)
       expect(same(word, allow), `${show(word)} is drawn as Allow is`).toBe(false)
     }

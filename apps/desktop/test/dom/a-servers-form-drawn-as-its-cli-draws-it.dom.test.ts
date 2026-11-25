@@ -265,10 +265,18 @@ describe('§2 · Home at 972 px — the same request’s row', () => {
   it('⚑ draws *Allow* · *Deny* · *Cancel*, each over the server’s line, whole — as it did before `737`', async () => {
     const row = homeRow(zeroFieldCard())
     const m = await home(row)
-    const buttons = m.all('attention-decide-sess_home')
-    expect(buttons.map((button) => text(wordOf(button)))).toEqual(['Allow', 'Deny', 'Cancel'])
+    const buttons = [
+      ...m
+        .q('attention-request-sess_home')
+        .querySelectorAll<HTMLElement>('[data-permission-decision]'),
+    ]
+    expect(buttons.map((button) => text(wordOf(button)))).toEqual([
+      'Allow',
+      'Deny',
+      'Cancel request',
+    ])
     const lines = buttons.map((button) => {
-      const line = button.querySelector<HTMLElement>('[data-cy="attention-effect"]')
+      const line = button.querySelector<HTMLElement>('small')
       expect(line, `no line under ${text(wordOf(button))}`).not.toBeNull()
       return line!
     })

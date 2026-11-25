@@ -8,7 +8,7 @@ import {
   externalMcpElicitationPrompt,
 } from '../../../../packages/runtime/src/codex/external-mcp'
 import PermissionCard from '../../src/renderer/src/components/PermissionCard.vue'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import type {
   PermissionItem,
   UserInputItem,
@@ -96,7 +96,7 @@ function theCard(over: Record<string, unknown> = {}): UserInputItem & { at: numb
 
 describe('605 §1 · the card names the server and says what it cannot name', () => {
   it('🔴 a person reads WHO is asking, and that BroBot cannot say which call it is', () => {
-    const m = mount(UserInputCard, { item: theCard() }, { width: 900, height: 700 })
+    const m = mount(QuestionCard, { item: theCard() }, { width: 900, height: 700 })
     const said = m.q('user-input-card').textContent ?? ''
 
     // ⛔ **The server, because the frame names one** — `HO-090` §3.1's second route, and the
@@ -110,7 +110,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
 
   it('⛔ it names no tool and no call, and claims no check this app did not perform', () => {
     const said = (
-      mount(UserInputCard, { item: theCard() }).q('user-input-card').textContent ?? ''
+      mount(QuestionCard, { item: theCard() }).q('user-input-card').textContent ?? ''
     ).toLowerCase()
     // 🔴 **`HO-090` §3.2** — never a call, never a guess, never an implication that the approval
     // is narrower than it is.
@@ -124,7 +124,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
   })
 
   it('⚑ the server’s own words are marked as the server’s, and come AFTER the admission', () => {
-    const said = mount(UserInputCard, { item: theCard() }).q('user-input-card').textContent ?? ''
+    const said = mount(QuestionCard, { item: theCard() }).q('user-input-card').textContent ?? ''
     expect(said).toContain('kibana says: Which index should I search?')
     // ⛔ **`414`'s rule**: *"an attribution that follows the words it attributes is a footnote."*
     // So this app's own sentence is read first and the server's words follow it.
@@ -139,7 +139,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
     // ⚑ **Measured as a property a person perceives, never as a CSS declaration**
     // (`a-scoped-class-matches-nothing-in-another-component`): the same words with the break and
     // without it, and the one with the break is TALLER because it occupies more lines.
-    const broken = mount(UserInputCard, { item: theCard() }, { width: 760, height: 620 })
+    const broken = mount(QuestionCard, { item: theCard() }, { width: 760, height: 620 })
     const asOneLine = theCard()
     const joined = {
       ...asOneLine,
@@ -148,7 +148,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
         prompt: asOneLine.request.prompt.replace('\n\n', ' '),
       },
     }
-    const run = mount(UserInputCard, { item: joined }, { width: 760, height: 620 })
+    const run = mount(QuestionCard, { item: joined }, { width: 760, height: 620 })
     // ⚠️ **The PARAGRAPH and not the card.** The card is a flex child of a fixed-height host and
     // stretches to fill it, so its box is the same either way — a measurement that would have
     // passed on nothing (`a-positive-assertion-must-differ-from-the-default`, arriving as a
@@ -166,8 +166,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
   it('⚠️ a server that sent no message draws no empty quotation', () => {
     // ⛔ An absent sentence is not a blank one, and `kibana says:` over nothing invents a silence.
     const said =
-      mount(UserInputCard, { item: theCard({ message: '' }) }).q('user-input-card').textContent ??
-      ''
+      mount(QuestionCard, { item: theCard({ message: '' }) }).q('user-input-card').textContent ?? ''
     expect(said).toContain('kibana is asking you something')
     expect(said).not.toContain('kibana says:')
   })
@@ -175,7 +174,7 @@ describe('605 §1 · the card names the server and says what it cannot name', ()
 
 describe('605 §2 · the form is drawn as the questions it is', () => {
   it('🔴 every field the server declared is a control a person can answer', () => {
-    const m = mount(UserInputCard, { item: theCard() }, { width: 900, height: 700 })
+    const m = mount(QuestionCard, { item: theCard() }, { width: 900, height: 700 })
     // ⚑ The ids are the server's own property names — what the answer is filed under.
     expect(visible(m.q('user-input-question-index'))).toBe(true)
     expect(visible(m.q('user-input-question-deep'))).toBe(true)
@@ -186,7 +185,7 @@ describe('605 §2 · the form is drawn as the questions it is', () => {
   })
 
   it('⛔ …and the card still says what happens after, which is criterion 20’s third clause', () => {
-    const m = mount(UserInputCard, { item: theCard() }, { width: 900, height: 700 })
+    const m = mount(QuestionCard, { item: theCard() }, { width: 900, height: 700 })
     // ⚑ **It comes with the vocabulary rather than being written again for one provider** — the
     // reason `605` published a `user_input_request` instead of inventing a card.
     expect(m.q('user-input-after').textContent?.trim()).toBe(WHAT_COMES_AFTER_IS_NOT_OURS)

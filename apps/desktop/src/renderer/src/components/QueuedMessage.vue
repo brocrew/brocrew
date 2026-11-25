@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AttachmentChips from './AttachmentChips.vue'
 import type { HandedPath } from '../../../shared/attachment-contracts'
 
 import { MOVE_SEND_UNCONFIRMED } from '../../../shared/move-request'
@@ -428,17 +429,7 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
            BroBot, never rendered as the person's own words (`214`). Here it does one more job —
            this is the only surface that says what is about to go, and a waiting message that hid
            its attachments made the injection invisible in the one window that is still undoable. -->
-        <ul v-if="item.attachments?.length" class="attached" data-cy="queued-attachments">
-          <li v-for="handed in item.attachments" :key="handed.path" :data-kind="handed.kind">
-            <span class="by">This app attached</span>
-            <span class="what mono" :data-cy="`queued-attached-${handed.kind}`">{{
-              handed.path
-            }}</span>
-            <em v-if="handed.outsideCwd" class="outside" data-cy="queued-attached-outside"
-              >outside this conversation’s folder</em
-            >
-          </li>
-        </ul>
+        <AttachmentChips :attachments="item.attachments ?? []" presentation="queued" />
         <!-- 🔴 **Neither control is offered on a row the person did not write** (406, from the
            review). ⛔ Both are person-only affordances and both are actively wrong here:
            *Cancel it* would destroy a child's already-recorded reply on its way to the parent —
@@ -648,44 +639,6 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
 
 .msg.ended .msg-body {
   color: var(--faint);
-}
-
-/* ⛔ **The same register as the SENT bubble's strip**, because it is the same fact at two moments —
-   and it had to be written out, because the markup was copied and the CSS was not (found in
-   review, measured: `list-style: disc`, `padding-left: 40px`, a 16px UA margin and full-size body
-   ink, beside an identical strip two turns below that had none of that). ⚑ A waiting attachment
-   that looked like a different kind of thing from a sent one would make somebody wonder whether it
-   was going to go the same way. */
-.attached {
-  display: grid;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  gap: var(--space-1);
-  list-style: none;
-}
-
-.attached li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-}
-
-.attached .by {
-  color: var(--faint);
-}
-
-.attached .what {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-}
-
-.attached .outside {
-  color: var(--faint);
-  font-style: normal;
 }
 
 /* ⚑ **688** — `ContinuationEntry`'s `.why`, the register BroBot's own explanation is said in there. */

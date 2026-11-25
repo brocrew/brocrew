@@ -1,31 +1,40 @@
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
-import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
+import {
+  attentionToACardNobodyHolds,
+  type AttentionRequest,
+} from '../../src/renderer/src/lib/attention'
 import { scene } from '../capture'
 
 const NOW = Date.now()
-const request = (n: number, where: string, provider: 'claude' | 'codex'): AttentionRequest => ({
-  key: `req-${n}`,
-  sessionId: `sess_${n}`,
-  requestId: `r${n}`,
-  itemId: `i${n}`,
-  kind: 'permission',
-  where,
-  hasACommander: false,
-  provider,
-  profileId: 'designer',
-  who: 'Ada',
-  standing: 'waiting: permission',
-  asked: 'Run the test suite',
-  scope: ['npm test', 'in /work/sample-site'],
-  underDisclosed: false,
-  detailOmitted: null,
-  noPositive: null,
-  at: NOW - 120_000 * n,
-  decisions: [],
-  limit: null,
-  sent: false,
-  refused: null,
-})
+function request(n: number, where: string, provider: 'claude' | 'codex'): AttentionRequest {
+  const row = attentionToACardNobodyHolds(
+    `sess_${n}`,
+    {
+      asked: {
+        type: 'permission_request',
+        id: `r${n}`,
+        kind: 'command',
+        action: 'Run the test suite',
+        detail: 'npm test',
+        scope: {
+          cwd: '/work/sample-site',
+          paths: [],
+          networkHosts: [],
+          persistence: 'once',
+          amendments: [],
+          availableDecisions: ['allow', 'deny'],
+          underDisclosed: false,
+        },
+      },
+      provider,
+      profileId: 'designer',
+    },
+    { sent: false, refused: null },
+    () => 'Ada',
+  )
+  if (!row) throw new Error('The sample permission produced no attention row')
+  return { ...row, key: `req-${n}`, where, at: NOW - 120_000 * n }
+}
 
 /** 🎨 Home's attention queue, one row per conversation asking. Fake data. */
 scene('row-attention', async (stage) => {

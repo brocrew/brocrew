@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 // the barrel takes this whole file down at load. `permission.ts` imports nothing but zod.
 import { ALWAYS_HONOURED, publishedOffer } from '../../../../packages/runtime/src/permission'
 import PermissionCard from '../../src/renderer/src/components/PermissionCard.vue'
-import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
+import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
 import { attentionQueue } from '../../src/renderer/src/lib/attention'
 import { noPositiveSays, permissionDecisionFor } from '../../src/renderer/src/lib/permission-offer'
 import type {
@@ -26,7 +26,7 @@ import { contrast, mount, paintedInk, parseColor, record, unmountAll, visible } 
 /**
  * # 🔴 482 · the sentences, as a person reads them on the two cards
  *
- * ⛔ **`478` F3: *"`PermissionCard` says it in one word (Cancel turn), and `UserInputCard`'s
+ * ⛔ **`478` F3: *"`PermissionCard` says it in one word (Cancel turn), and `QuestionCard`'s
  * Approve says nothing at all."*** The queue has drawn the effect line under every button since
  * `434`; the surfaces a person actually answers on drew the word and stopped.
  *
@@ -181,13 +181,13 @@ describe('§1 · every button on a permission card says what it does, in the que
   })
 })
 
-/* ------------------------------------------------------------- §2 · UserInputCard, joined */
+/* ------------------------------------------------------------- §2 · QuestionCard, joined */
 
 describe('§2 · both of a question card’s controls say what they do', () => {
   it('🔴 Approve says what the OFFER says, which is the decision the overview is handed', () => {
     const request = asking({ consent: 'stop-planning' })
     const offer = userInputOffer(request)
-    const m = mount(UserInputCard, { item: inputItem(request) })
+    const m = mount(QuestionCard, { item: inputItem(request) })
 
     expect(smallIn(m.q('user-input-answer'))).toBe(offer.positiveDoes)
     expect(smallIn(m.q('user-input-answer'))).toBe(whatThisAnswerDoes(offer.decisions[0] as never))
@@ -198,10 +198,10 @@ describe('§2 · both of a question card’s controls say what they do', () => {
   it('⚑ …and a DIFFERENT consent moves the line, so the line is about this request', () => {
     // `a-comparison-tested-where-both-sides-agree`: without this, one sentence for every card
     // would satisfy the test above.
-    const planning = mount(UserInputCard, {
+    const planning = mount(QuestionCard, {
       item: inputItem(asking({ consent: 'start-planning' })),
     })
-    const grant = mount(UserInputCard, {
+    const grant = mount(QuestionCard, {
       item: inputItem(asking({ permission: { paths: [], network: false } })),
     })
     expect(smallIn(planning.q('user-input-answer'))).not.toBe(smallIn(grant.q('user-input-answer')))
@@ -211,7 +211,7 @@ describe('§2 · both of a question card’s controls say what they do', () => {
     const request = asking({
       questions: [{ id: 'q', prompt: 'which?', options: [{ label: 'Yes' }, { label: 'No' }] }],
     })
-    const m = mount(UserInputCard, { item: inputItem(request) })
+    const m = mount(QuestionCard, { item: inputItem(request) })
     const button = m.q('user-input-answer')
     expect(button.querySelector('strong')?.textContent?.trim()).toBe('Answer')
     expect(smallIn(button)).toBe(userInputOffer(request).positiveDoes)
@@ -231,7 +231,7 @@ describe('§3 · the line is quieter than the word, and legible on a FILLED cont
     expect(word && line).toBeTruthy()
     expect(px(line as Element)).toBeLessThan(px(word as Element))
 
-    const input = mount(UserInputCard, { item: inputItem(asking()) })
+    const input = mount(QuestionCard, { item: inputItem(asking()) })
     const approve = input.q('user-input-answer')
     expect(px(approve.querySelector('small') as Element)).toBeLessThan(
       px(approve.querySelector('strong') as Element),
@@ -246,7 +246,7 @@ describe('§3 · the line is quieter than the word, and legible on a FILLED cont
     const permission = mount(PermissionCard, {
       item: permissionItem(WIDE_SCOPE.availableDecisions),
     })
-    const input = mount(UserInputCard, { item: inputItem(asking()) })
+    const input = mount(QuestionCard, { item: inputItem(asking()) })
     const lines = [
       permission.q('permission-allow').querySelector('small'),
       permission.q('permission-cancel').querySelector('small'),

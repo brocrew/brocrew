@@ -62,12 +62,7 @@ export type {
   NoAnswerHere,
   PersonsQueueWorld,
 } from './persons-queue-rows'
-export {
-  actionLinesOf,
-  broaderLinesOf,
-  isAPrimaryAnswer,
-  personsQueueView,
-} from './persons-queue-view'
+export { personsQueueView } from './persons-queue-view'
 export type { PersonsQueueView } from './persons-queue-view'
 export {
   providerLimitsView,

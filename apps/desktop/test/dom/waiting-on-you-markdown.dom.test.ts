@@ -25,7 +25,10 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
   it('keeps the added note punctuation with its filename and outside its code text', async () => {
     if (theme === 'crew-night') wearTheme(theme)
     const m = await aWaitingPageWithMarkdown()
-    const context = m.host.querySelector('.pq-asked-context')!
+    const provider = m.q('persons-queue-asked-sess_glint:req_provider')
+    provider.querySelector<HTMLButtonElement>('[data-cy="question-more"]')!.click()
+    await nextTick()
+    const context = provider.querySelector('[data-cy="question-context"]')!
     const code = context.querySelector('code')!
     const group = code.parentElement!
     expect(code.textContent).toBe('summary.md')
@@ -50,11 +53,11 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     await page.viewport(1180, 1000)
     if (theme === 'crew-night') wearTheme(theme)
     const m = await aWaitingPageWithMarkdown()
-    m.q('question-more').click()
+    for (const button of m.all('question-more')) button.click()
     await nextTick()
     for (const selector of [
       '[data-cy="question-words"]',
-      '[data-cy="persons-queue-asked-sess_glint:req_provider"] .pq-asked-words',
+      '[data-cy="persons-queue-asked-sess_glint:req_provider"] [data-cy="question-words"]',
     ]) {
       const words = m.host.querySelector(selector)!
       expect(words.querySelector('strong')?.textContent).toBe('Choose a draft')
@@ -64,16 +67,17 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
       expect(words.textContent).toContain('/work/sample/notes.md')
       expect(words.textContent).not.toContain('**')
     }
-    for (const selector of ['[data-cy="question-context"]', '.pq-asked-context']) {
-      const context = m.host.querySelector(selector)!
+    const contexts = m.all('question-context')
+    expect(contexts).toHaveLength(2)
+    for (const context of contexts) {
       expect(context.textContent).toContain('Added:')
       expect(context.querySelector('strong')?.textContent).toBe('after review')
     }
     expect(m.host.querySelector('.ask .md-chat strong')?.textContent).toBe('the short draft')
-    expect(m.host.querySelector('.pq-asked-part .md-chat strong')?.textContent).toBe(
-      'the short draft',
-    )
-    expect(m.host.querySelector('.pq-request-what strong')?.textContent).toBe(
+    expect(
+      m.host.querySelector('[data-cy="persons-queue-asked-part"] .md-chat strong')?.textContent,
+    ).toBe('the short draft')
+    expect(m.host.querySelector('[data-cy="permission-action"] strong')?.textContent).toBe(
       'Run the preview check',
     )
     expect(m.host.querySelector('.todo-text strong')?.textContent).toBe('Check the preview')
@@ -83,7 +87,7 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
   it('keeps approval commands literal, including markdown punctuation', async () => {
     if (theme === 'crew-night') wearTheme(theme)
     const m = await aWaitingPageWithMarkdown()
-    const command = m.host.querySelector('.pq-request-line code')!
+    const command = m.host.querySelector('[data-cy="permission-detail"]')!
     expect(command.textContent).toBe(LITERAL_COMMAND)
     expect(command.querySelector('strong, a, .md-chat')).toBeNull()
   })
@@ -117,8 +121,8 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
       .toBeGreaterThan(0)
     for (const selector of [
       '[data-cy="question-words"]',
-      '.pq-asked-part',
-      '[data-cy="persons-queue-asked-sess_glint:req_provider"] .pq-asked-words',
+      '[data-cy="persons-queue-asked-part"]',
+      '[data-cy="persons-queue-asked-sess_glint:req_provider"] [data-cy="question-words"]',
       '.todo-text',
     ]) {
       const words = m.host.querySelector(selector)!

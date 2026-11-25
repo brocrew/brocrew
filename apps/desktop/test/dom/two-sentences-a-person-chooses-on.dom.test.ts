@@ -1,19 +1,17 @@
-import type {
-  LedgerWalk,
-  PersonsDecision,
-  RequestOnlyAPersonCanSettle,
-  RoutedRequest,
-} from '../../src/shared/question-contracts'
+import { permissionDecisionRow, routedPermission } from '../helpers/queue-fixtures'
+import type { LedgerWalk, PersonsDecision } from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
-import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
+import {
+  attentionToACardNobodyHolds,
+  type AttentionRequest,
+} from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { userInputOffer, whatThisAnswerDoes } from '../../src/renderer/src/lib/user-input-offer'
 import type { UserInputRequestEvent } from '../../src/renderer/src/lib/transcript'
-import { decisionReading, readingSentence } from '../../src/shared/questions'
-import { mount, unmountAll, visible, type Mounted } from './harness'
+import { mount, permission, permissionOnQueue, unmountAll, visible, type Mounted } from './harness'
 
 /**
  * # 🔴 478 · the two sentences, as a person actually reads them
@@ -60,74 +58,23 @@ function walked<Row>(rows: readonly Row[]): LedgerWalk<Row> {
   }
 }
 
-function routed(requestId: string, askedBy: string): RoutedRequest {
-  return {
-    parent: 'sess_pm-alpha',
-    went: {
-      is: 'the-person-the-channel-left-it-with',
-      to: 'a-person',
-      because: 'a-permission-decision',
-    },
-    at: NOW,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-    requestId,
-    askedBy,
-  }
-}
-
-/** The `a-decision` population row — what puts a decision on the person's queue at all. */
 function decisionRow(requestId: string, askedBy: string): PersonsDecision {
-  // ⚑ **611 · the ARM re-stated as a literal**, because `RequestOnlyAPersonCanSettle` narrows
-  // `went` to the refused arm and `RoutedRequest` allows all three — the same lines
-  // `persons-queue.dom.test.ts` writes, for the same reason.
-  const request = {
-    ...routed(requestId, askedBy),
-    went: {
-      is: 'the-person-the-channel-left-it-with',
-      to: 'a-person',
-      because: 'a-permission-decision',
-    },
-  } as const satisfies RequestOnlyAPersonCanSettle
-  const reading = decisionReading(request.askedBy, NAME)
-  return {
-    request,
-    reading,
-    sentence: readingSentence(reading),
-    says: 'a command or file approval, which is a person’s to give',
-    work: [],
-  }
+  return permissionDecisionRow(routedPermission(askedBy, requestId, NOW, 'sess_pm-alpha'), NAME)
 }
 
-/** The live attention row that makes it answerable where it stands (434). */
-function live(key: string, over: Partial<AttentionRequest> = {}): AttentionRequest {
-  const [sessionId = '', requestId = ''] = key.split(':')
-  return {
-    key,
+function consent(
+  sessionId: string,
+  requestId: string,
+  request: UserInputRequestEvent,
+): AttentionRequest {
+  const row = attentionToACardNobodyHolds(
     sessionId,
-    requestId,
-    itemId: `item_${requestId}`,
-    kind: 'permission',
-    where: 'worker-7',
-    hasACommander: false,
-    provider: 'claude',
-    profileId: null,
-    who: null,
-    standing: 'waiting: permission',
-    asked: 'run a command',
-    scope: [],
-    underDisclosed: false,
-    detailOmitted: null,
-    // ⚑ **487 · overridable like every other field here** — null is a request that can be allowed.
-    noPositive: null,
-    at: NOW,
-    decisions: [],
-    limit: null,
-    sent: false,
-    refused: null,
-    ...over,
-  }
+    { asked: { ...request, id: requestId }, provider: 'claude', profileId: 'default' },
+    { sent: false, refused: null },
+    NAME,
+  )
+  if (!row) throw new Error('fixture did not produce a consent card')
+  return row
 }
 
 function supply(rows: readonly AttentionRequest[]): void {
@@ -163,42 +110,29 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-/**
- * Every answer's effect the queue drew, in the card's order, as a person reads them with each row's
- * more options open: a primary answer's on the line its button is described by (*"Allow: …"*), a
- * broader answer's in the `<small>` inside its own button.
- */
-async function effectLines(host: HTMLElement): Promise<{ text: string; el: HTMLElement }[]> {
-  for (const more of host.querySelectorAll<HTMLDetailsElement>('details.pq-more')) more.open = true
-  await nextTick()
+/** Read the consequence inside each actual answer control. */
+function effectLines(host: HTMLElement): { text: string; el: HTMLElement }[] {
   return [
     ...host.querySelectorAll<HTMLElement>(
-      '.pq-more-body > .pq-does, .pq-more-body button.pq-answer small',
+      '[data-permission-decision] small, [data-cy="user-input-answer-does"], [data-cy="user-input-reject-does"]',
     ),
-  ].map((el) => ({
-    text: el.classList.contains('pq-does')
-      ? el.innerText.trim().replace(/^[^:]*: /, '')
-      : el.innerText.trim(),
-    el,
-  }))
+  ].map((el) => ({ text: el.innerText.trim(), el }))
 }
 
 describe('478 · the effect line is on the control, inside it, and readable', () => {
   it('🔴 a permission row draws every answer’s own effect, Cancel’s included', async () => {
     await page.viewport(1180, 808)
+    const event = permission('req_p')
     supply([
-      live('sess_worker-7:req_p', {
-        decisions: [
-          { kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } },
-          { kind: 'permission', label: 'Deny', decision: { outcome: 'deny' } },
-          { kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } },
-        ],
+      permissionOnQueue('sess_worker-7', {
+        ...event,
+        scope: { ...event.scope, availableDecisions: ['allow', 'deny', 'cancel'] },
       }),
     ])
     view = mount(PersonsQueue, {}, { width: 1180, height: 808 })
     await nextTick()
 
-    const lines = await effectLines(view.host)
+    const lines = effectLines(view.host)
     // ⛔ **Read from the production function, never spelled here** — a third copy of the copy is
     // the `214` §3 defect this dispatch is a descendant of.
     expect(lines.map((line) => line.text)).toEqual([
@@ -213,18 +147,17 @@ describe('478 · the effect line is on the control, inside it, and readable', ()
     // ⚠️ **The measurement this file exists for.** `478` made the Cancel line three times its old
     // length, and a `<small>` that overflows its button is a sentence a person cannot finish.
     await page.viewport(1180, 808)
+    const event = permission('req_p')
     supply([
-      live('sess_worker-7:req_p', {
-        decisions: [
-          { kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } },
-          { kind: 'permission', label: 'Allow', decision: { outcome: 'allow' } },
-        ],
+      permissionOnQueue('sess_worker-7', {
+        ...event,
+        scope: { ...event.scope, availableDecisions: ['cancel', 'allow'] },
       }),
     ])
     view = mount(PersonsQueue, {}, { width: 1180, height: 808 })
     await nextTick()
 
-    const lines = await effectLines(view.host)
+    const lines = effectLines(view.host)
     const longest = lines.reduce((a, b) => (a.text.length >= b.text.length ? a : b))
     expect(longest.text).toBe(
       whatThisAnswerDoes({ kind: 'permission', label: 'Cancel', decision: { outcome: 'cancel' } }),
@@ -254,14 +187,14 @@ describe('478 · the effect line is on the control, inside it, and readable', ()
     const enter = asking({ consent: 'start-planning' })
     const leave = asking({ consent: 'stop-planning' })
     supply([
-      live('sess_a:req_grant', { kind: 'question', decisions: userInputOffer(grant).decisions }),
-      live('sess_b:req_enter', { kind: 'question', decisions: userInputOffer(enter).decisions }),
-      live('sess_c:req_leave', { kind: 'question', decisions: userInputOffer(leave).decisions }),
+      consent('sess_a', 'req_grant', grant),
+      consent('sess_b', 'req_enter', enter),
+      consent('sess_c', 'req_leave', leave),
     ])
     view = mount(PersonsQueue, {}, { width: 1180, height: 808 })
     await nextTick()
 
-    const approvals = (await effectLines(view.host))
+    const approvals = effectLines(view.host)
       .map((line) => line.text)
       .filter((text) => text !== whatThisAnswerDoes({ kind: 'reject', label: 'Reject' }))
     expect(approvals).toHaveLength(3)

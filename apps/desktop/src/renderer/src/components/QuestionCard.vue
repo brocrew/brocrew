@@ -18,7 +18,21 @@ import { MOVE_IT, DO_IT_HERE } from '../../../shared/move-request'
  */
 import { computed, nextTick, onBeforeUnmount, reactive, ref, useId, watch } from 'vue'
 import type { UserInputResponse } from '../../../shared/runtime-ipc'
-import type { RequestDraft } from '../lib/session-record'
+import type { RequestDraft, TakenWithoutThisWindow } from '../lib/session-record'
+import type { TranscriptItem, UserInputItem } from '../lib/transcript'
+import { inTheAgentsWords } from '../lib/permission-offer'
+import { escaped } from '../lib/named-in-a-reply'
+import {
+  ANSWERED_IN_THE_OTHER_WINDOW,
+  ANSWERED_ONCE_A_WINDOW_TAKES_IT,
+  TAKE_IT_OVER_TO_ANSWER_HERE,
+} from '../lib/taking-over'
+import {
+  WHAT_COMES_AFTER_IS_NOT_OURS,
+  userInputOffer,
+  whatThisAnswerDoes,
+  type AttentionDecision,
+} from '../lib/user-input-offer'
 import { BODY_WAS_CUT } from '../lib/outgoing-card'
 import {
   ADDED_BESIDE,
@@ -35,18 +49,28 @@ import {
   oneAnswer,
   pick,
   pickedOf,
+  providerQuestion,
   setTyped,
   typedOf,
   type QuestionCardReading,
   type QuestionPart,
   type QuestionState,
 } from '../lib/question-card'
-import { useClientMessagePaths, type PathsHere } from '../composables/useMessagePaths'
+import { useClientMessagePaths, usePathsIn, type PathsHere } from '../composables/useMessagePaths'
+import PathsInText from './PathsInText.vue'
 import MarkdownWords from './MarkdownWords.vue'
 import FileRows from './FileRows.vue'
 
 const props = defineProps<{
-  reading: QuestionCardReading
+  reading?: QuestionCardReading
+  item?: UserInputItem & Partial<Pick<TranscriptItem, 'at'>>
+  ownAgent?: string | null
+  takenWithoutThisWindow?: TakenWithoutThisWindow | null
+  compact?: boolean
+  choicesOnly?: boolean
+  queueOffers?: readonly AttentionDecision[]
+  queueSent?: boolean
+  readOnly?: boolean
   /** The outer exchange heading already names the recipient. */
   withoutRecipient?: boolean
   withoutFiles?: boolean
@@ -62,6 +86,9 @@ const props = defineProps<{
   paths?: PathsHere | null
   /** Queue cards resolve paths in their asking conversation. */
   pathSessionId?: string
+  addedContext?: string | null
+  inlineQueueChoices?: boolean
+  hideChoiceEffects?: boolean
 }>()
 
 const queuePaths = useClientMessagePaths(
@@ -70,7 +97,9 @@ const queuePaths = useClientMessagePaths(
 )
 
 const emit = defineEmits<{
-  /** ⛔ Emitted, never performed — the frame's surface sends it. */
+  /** Emitted through the existing door for each answering surface. */
+  respond: [requestId: string, response: UserInputResponse]
+  takeItOver: []
   answer: [response: UserInputResponse]
   move: [decision: 'move' | 'here']
   openConversation: [sessionId: string]
@@ -86,29 +115,81 @@ const ownDraft = reactive<RequestDraft>({
 const draft = computed(() => props.draft ?? ownDraft)
 
 /** ⚑ How it stands — the record's in-flight mark makes an open question *answer sent*. */
+const reading = computed(
+  () =>
+    props.reading ?? {
+      ...providerQuestion(props.item!, props.ownAgent ?? null, !props.readOnly),
+      context: props.addedContext ?? null,
+    },
+)
+const waitingElsewhere = computed(
+  () =>
+    props.item !== undefined &&
+    props.takenWithoutThisWindow != null &&
+    reading.value.state === 'open',
+)
+const offer = computed(() => props.item && userInputOffer(props.item.request))
+const shortcuts = computed(() => props.queueOffers !== undefined)
+const rejectsHere = computed(
+  () => props.queueOffers?.some((decision) => decision.kind === 'reject') ?? true,
+)
+const grant = computed(() => props.item?.request.permission)
+const grantPaths = usePathsIn(
+  () => props.paths ?? queuePaths.value,
+  () => [grant.value?.cwd ?? '', ...(grant.value?.paths ?? [])].map(escaped),
+)
+const agentSays = computed(() => {
+  const reason = grant.value?.agentReason
+  return reason ? inTheAgentsWords(props.ownAgent ?? null, reason) : null
+})
+const verdict = computed(() => {
+  if (reading.value.state === 'answered') return 'Answered'
+  if (reading.value.state === 'declined') return 'Rejected'
+  return reading.value.state === 'closed' ? 'Not answered' : 'Needs your answer'
+})
 const moving = ref(false)
 const state = computed<QuestionState>(() =>
-  props.reading.state === 'open' && (draft.value.sent || moving.value)
+  reading.value.state === 'open' &&
+  ((shortcuts.value ? props.queueSent : draft.value.sent) || moving.value)
     ? 'sending'
-    : props.reading.state,
+    : reading.value.state,
 )
 /** ⚑ The presses and the box are drawn — answerable here, and not closed. */
 const live = computed(
-  () => props.reading.answerable && (state.value === 'open' || state.value === 'sending'),
+  () =>
+    reading.value.answerable &&
+    !waitingElsewhere.value &&
+    (state.value === 'open' || state.value === 'sending'),
 )
 /** ⚑ …and live — nothing is on its way. */
 const open = computed(() => live.value && state.value === 'open')
-const onePress = computed(() => answersAtOnePress(props.reading.parts))
-const complete = computed(() => answerOf(props.reading.parts, draft.value.answers) !== null)
-/** ⚑ *Send* — always beside several parts or choices; beside a one-press question once words are typed. */
-const showSend = computed(
-  () => props.reading.move === undefined && live.value && (!onePress.value || complete.value),
+const onePress = computed(
+  () => (!props.item || shortcuts.value) && answersAtOnePress(reading.value.parts),
 )
+const quickChoices = computed(
+  () =>
+    props.inlineQueueChoices === true &&
+    onePress.value &&
+    props.queueOffers?.some((decision) => decision.kind === 'answer') === true,
+)
+const response = computed<UserInputResponse | null>(() =>
+  props.item && reading.value.parts.length === 0
+    ? { kind: 'answer', answers: {} }
+    : answerOf(reading.value.parts, draft.value.answers, props.item !== undefined),
+)
+const complete = computed(() => response.value !== null)
+/** ⚑ *Send* — always beside several parts or choices; beside a one-press question once words are typed. */
+const showSend = computed(() => {
+  if (reading.value.move !== undefined || !live.value || props.choicesOnly) return false
+  if (shortcuts.value)
+    return props.queueOffers?.some((decision) => decision.kind === 'approve') ?? false
+  return !onePress.value || complete.value
+})
 /** ⚑ **Why *Send* is off**, while it is — each of several parts, or one pick of several. */
 const hint = computed(() => {
   if (!open.value || complete.value) return null
-  if (props.reading.parts.length > 1) return ANSWER_EACH_PART
-  return props.reading.parts[0]?.multiSelect === true ? PICK_AT_LEAST_ONE : null
+  if (reading.value.parts.length > 1) return ANSWER_EACH_PART
+  return reading.value.parts[0]?.multiSelect === true ? PICK_AT_LEAST_ONE : null
 })
 
 /** Ids this card's labels hang on; one card to a page can share part ids with another. */
@@ -119,15 +200,36 @@ const askId = (index: number): string => `${idBase}-ask-${index}`
 function asks(part: QuestionPart): boolean {
   return Boolean(part.header || part.prompt || (live.value && part.multiSelect))
 }
+
+function describesReadOnlyPart(part: QuestionPart): string {
+  return [
+    part.multiSelect ? 'takes several answers' : '',
+    part.typed
+      ? part.options.length === 0
+        ? 'takes a typed answer'
+        : 'also takes an answer of your own'
+      : '',
+    part.secret ? 'the answer is hidden' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
 /** What names a part's own box: its ask line, else the question's words it shares them with. */
 function boxLabel(part: QuestionPart, index: number): string | undefined {
   if (asks(part)) return askId(index)
-  return props.reading.words !== null && !props.reading.wordsMissing ? wordsId : undefined
+  return reading.value.words !== null && !reading.value.wordsMissing ? wordsId : undefined
 }
 
 /** ⚑ Lit by a press only — words typed in the box are the box's, whatever they spell. */
 function chosen(part: QuestionPart, label: string): boolean {
   return pickedOf(part, draft.value.answers).includes(label)
+}
+
+function queuedChoice(part: QuestionPart, label: string): AttentionDecision | undefined {
+  return props.queueOffers?.find(
+    (decision) =>
+      decision.kind === 'answer' && decision.questionId === part.id && decision.option === label,
+  )
 }
 
 function move(decision: 'move' | 'here'): void {
@@ -136,16 +238,38 @@ function move(decision: 'move' | 'here'): void {
   emit('move', decision)
 }
 watch(
-  () => [props.reading.state, props.reading.refused, draft.value.sent] as const,
-  ([state, refused, sent], [, , wasSent]) => {
-    if (state !== 'open' || refused !== null || (wasSent && !sent)) moving.value = false
+  () => [reading.value.state, reading.value.refused, draft.value.sent] as const,
+  ([state, refused, sent], [, previousRefusal, wasSent]) => {
+    if (
+      state !== 'open' ||
+      (refused !== null && refused !== previousRefusal) ||
+      (wasSent && !sent)
+    ) {
+      moving.value = false
+    }
   },
 )
 
+function submit(response: UserInputResponse): void {
+  if (props.item) {
+    if (!shortcuts.value) draft.value.sent = true
+    emit('respond', props.item.request.id, response)
+  } else {
+    emit('answer', response)
+  }
+}
+
+const boxHook = (part: QuestionPart): string =>
+  !props.item
+    ? 'question-box'
+    : part.options.length > 0
+      ? `user-input-other-${part.id}`
+      : `user-input-answer-${part.id}`
+
 function press(part: QuestionPart, label: string): void {
-  if (!open.value) return
+  if (!open.value || (shortcuts.value && !queuedChoice(part, label))) return
   if (onePress.value) {
-    emit('answer', oneAnswer(part, label))
+    submit(props.item ? { kind: 'answer', answers: { [part.id]: label } } : oneAnswer(part, label))
     return
   }
   pick(part, draft.value.answers, label)
@@ -157,9 +281,7 @@ function type(part: QuestionPart, text: string): void {
 
 function send(): void {
   if (!open.value) return
-  // ⚑ Built at the press, from the draft's own strings — never a proxied list.
-  const response = answerOf(props.reading.parts, draft.value.answers)
-  if (response !== null) emit('answer', response)
+  if (response.value !== null) submit(response.value)
 }
 
 /** ⚑ Enter sends what is ready; Shift+Enter is a new line. */
@@ -177,7 +299,7 @@ const overflows = ref(false)
 const folded = computed(() => props.fold === true && !unfolded.value)
 const foldable = computed(
   () =>
-    props.fold === true && (unfolded.value || overflows.value || props.reading.context !== null),
+    props.fold === true && (unfolded.value || overflows.value || reading.value.context !== null),
 )
 function measure(): void {
   const el = wordsEl.value?.querySelector<HTMLElement>('.md-chat')
@@ -207,7 +329,7 @@ watch(
 )
 onBeforeUnmount(() => watcher?.disconnect())
 watch(
-  () => props.reading.words,
+  () => reading.value.words,
   () => void nextTick(measure),
 )
 </script>
@@ -215,66 +337,98 @@ watch(
 <template>
   <section
     class="question-card"
-    :class="{ 'queue-question': props.fold }"
-    data-cy="question-card"
+    :class="{
+      'queue-question': props.fold,
+      compact,
+      'choices-only': choicesOnly,
+      'quick-choices': quickChoices,
+      'provider-question': item && !fold,
+    }"
+    data-question-card
+    :data-cy="item ? 'user-input-card' : 'question-card'"
+    :data-verdict="item ? verdict : undefined"
     :data-state="state"
-    :data-request-id="props.reading.requestId ?? undefined"
+    :data-request-id="reading.requestId ?? undefined"
   >
-    <header class="question-head" data-cy="question-head">
+    <header
+      v-if="!choicesOnly && !shortcuts && !(compact && readOnly)"
+      class="question-head"
+      data-cy="question-head"
+    >
       <svg class="icon" aria-hidden="true"><use href="#i-question" /></svg>
-      <strong class="who"
-        ><span data-cy="question-asker">{{ props.reading.asker }}</span>
+      <strong v-if="item" data-cy="user-input-verdict">{{ verdict }}</strong>
+      <strong v-else class="who"
+        ><span data-cy="question-asker">{{ reading.asker }}</span>
         <template v-if="!withoutRecipient"
-          >{{ ' ' + props.reading.verb + ' ' }}
-          <span data-cy="question-asked-of">{{ props.reading.askedOf }}</span></template
+          >{{ ' ' + reading.verb + ' ' }}
+          <span data-cy="question-asked-of">{{ reading.askedOf }}</span></template
         ></strong
       >
-      <strong v-if="props.reading.piece" class="piece" data-cy="question-piece">{{
-        props.reading.piece
+      <strong v-if="reading.piece" class="piece" data-cy="question-piece">{{
+        reading.piece
       }}</strong>
       <span
-        v-if="QUESTION_STATE_WORD[state]"
+        v-if="!item && QUESTION_STATE_WORD[state]"
         class="state"
         :class="{ failed: state === 'failed' }"
         data-cy="question-state"
         >{{ QUESTION_STATE_WORD[state] }}</span
       >
-      <span v-if="props.reading.answeredBy" class="state" data-cy="question-answered">{{
-        props.reading.answeredBy
+      <span v-if="!item && reading.answeredBy" class="state" data-cy="question-answered">{{
+        reading.answeredBy
       }}</span>
-      <span v-if="props.reading.at" class="time" :title="props.reading.atTitle ?? undefined">{{
-        props.reading.at
+      <span v-if="reading.at" class="time" :title="reading.atTitle ?? undefined">{{
+        reading.at
       }}</span>
     </header>
-    <p v-if="props.reading.via" class="via" data-cy="question-via">{{ props.reading.via }}</p>
+    <p v-if="reading.via" class="via" data-cy="question-via">{{ reading.via }}</p>
 
-    <p v-if="props.reading.wordsMissing" class="not-here" data-cy="question-not-here">
+    <p v-if="reading.wordsMissing" class="not-here" data-cy="question-not-here">
       {{ WORDS_NOT_FOUND }}
     </p>
     <div
-      v-else-if="props.reading.words !== null"
+      v-else-if="reading.words !== null"
       :id="wordsId"
       ref="wordsEl"
       class="words"
       :class="{ folded }"
-      data-cy="question-words"
+      :data-cy="
+        item ? 'user-input-prompt' : choicesOnly ? 'structured-question-text' : 'question-words'
+      "
       :data-folded="String(folded)"
     >
-      <MarkdownWords :text="props.reading.words" :paths="props.paths ?? queuePaths" />
+      <MarkdownWords :text="reading.words" :paths="props.paths ?? queuePaths" />
+    </div>
+    <p
+      v-if="grantPaths.failure.value"
+      class="message-path-failure"
+      role="status"
+      data-cy="message-path-failure"
+    >
+      {{ grantPaths.failure.value }}
+    </p>
+    <p v-if="agentSays" class="aside" data-cy="user-input-agent-reason">{{ agentSays }}</p>
+    <div v-if="grant" class="grant" data-cy="user-input-permission" @click="grantPaths.clicked">
+      <div v-if="grant.reason">{{ grant.reason }}</div>
+      <div v-if="grant.cwd">cwd: <PathsInText :text="grant.cwd" :found="grantPaths" /></div>
+      <div v-for="path in grant.paths" :key="path">
+        <PathsInText :text="path" :found="grantPaths" />
+      </div>
+      <div v-if="grant.network">network access requested</div>
     </div>
     <FileRows
-      v-if="!withoutFiles"
-      :files="props.reading.files ?? []"
+      v-if="!withoutFiles && !item"
+      :files="reading.files ?? []"
       :can-open="canOpenDocument ?? false"
       :paths="props.paths ?? queuePaths"
       @open-document="emit('openDocument', $event)"
     />
     <!-- ⛔ A cut body SAYS it was cut, in words and outside the words' box (`678`). -->
-    <p v-if="props.reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
+    <p v-if="reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
     <!-- ⚑ What the conversation that passed it up added — beside the words, never instead. -->
-    <div v-if="props.reading.context && !folded" class="aside" data-cy="question-context">
+    <div v-if="reading.context && !folded" class="aside" data-cy="question-context">
       <MarkdownWords
-        :text="props.reading.context"
+        :text="reading.context"
         :lead="ADDED_BESIDE"
         :paths="props.paths ?? queuePaths"
       />
@@ -290,10 +444,10 @@ watch(
       {{ folded ? 'Read full question' : 'Show less' }}
     </button>
 
-    <p v-if="props.reading.move && !props.reading.movedTo" data-cy="move-offer">
-      This fits {{ props.reading.move.destinationName }}. Move it there, or do it here?
+    <p v-if="reading.move && !reading.movedTo" data-cy="move-offer">
+      This fits {{ reading.move.destinationName }}. Move it there, or do it here?
     </p>
-    <div v-if="props.reading.move && live" class="options" data-cy="move-actions">
+    <div v-if="reading.move && live" class="options" data-cy="move-actions">
       <button type="button" data-cy="move-it" :disabled="!open" @click="move('move')">
         {{ moving ? 'Moving…' : MOVE_IT }}
       </button>
@@ -302,37 +456,60 @@ watch(
       </button>
     </div>
     <MarkdownWords
-      v-if="props.reading.movedTo?.receiptLine"
-      :text="props.reading.movedTo.receiptLine"
+      v-if="reading.movedTo?.receiptLine"
+      :text="reading.movedTo.receiptLine"
       data-cy="moved-to"
     />
     <button
-      v-else-if="props.reading.movedTo"
+      v-else-if="reading.movedTo"
       type="button"
       data-cy="moved-to"
-      @click="emit('openConversation', props.reading.movedTo.sessionId)"
+      @click="emit('openConversation', reading.movedTo.sessionId)"
     >
-      Moved to {{ props.reading.move?.destinationName }}.
+      Moved to {{ reading.move?.destinationName }}.
     </button>
-    <template v-for="(part, index) in props.reading.move ? [] : props.reading.parts" :key="index">
+    <template v-for="(part, index) in reading.move ? [] : reading.parts" :key="index">
       <!-- ⚑ A part with nothing to show — its words are the question's, and it offers no choice and
            no box here — draws nothing, so a one-part free-form question says its words once. -->
       <div
-        v-if="part.header || part.prompt || part.options.length > 0 || (live && part.typed)"
+        v-if="
+          part.header || part.prompt || part.options.length > 0 || ((live || item) && part.typed)
+        "
         class="part"
-        :data-cy="`question-part-${part.id}`"
+        :data-cy="
+          item
+            ? `user-input-question-${part.id}`
+            : readOnly
+              ? 'persons-queue-asked-part'
+              : `question-part-${part.id}`
+        "
+        :data-multi-select="item ? String(part.multiSelect) : undefined"
       >
         <div v-if="asks(part)" :id="askId(index)" class="ask">
-          <span v-if="part.header" class="header">{{ part.header }}</span
+          <span
+            v-if="part.header"
+            class="header"
+            :data-cy="item ? `user-input-header-${part.id}` : undefined"
+            >{{ part.header }}</span
           >{{ ' '
           }}<MarkdownWords
             v-if="part.prompt"
             :text="part.prompt"
             :paths="props.paths ?? queuePaths"
-          />{{ ' ' }}<span v-if="live && part.multiSelect" class="mode">{{ PICK_SEVERAL }}</span>
+          />{{ ' '
+          }}<span
+            v-if="(item || live) && part.multiSelect"
+            class="mode"
+            :data-cy="item ? `user-input-mode-${part.id}` : undefined"
+            >{{ PICK_SEVERAL }}</span
+          >
         </div>
         <div
-          v-if="live && part.options.length > 0"
+          v-if="
+            (live || item || choicesOnly) &&
+            part.options.length > 0 &&
+            (!shortcuts || part.options.some((option) => queuedChoice(part, option.label)))
+          "
           class="options"
           :class="{ described: part.options.some((option) => option.description) }"
         >
@@ -342,16 +519,29 @@ watch(
             class="option"
             :class="{ selected: !onePress && chosen(part, option.label) }"
             type="button"
-            :disabled="!open"
+            :disabled="!open || (shortcuts && !queuedChoice(part, option.label))"
             :aria-pressed="part.multiSelect || !onePress ? chosen(part, option.label) : undefined"
-            data-cy="question-option"
+            :data-cy="
+              item
+                ? `user-input-choice-${part.id}`
+                : choicesOnly
+                  ? 'asked-choice'
+                  : 'question-option'
+            "
+            :title="
+              choicesOnly
+                ? 'Sends this as a message'
+                : quickChoices && !hideChoiceEffects && queuedChoice(part, option.label)
+                  ? whatThisAnswerDoes(queuedChoice(part, option.label)!)
+                  : undefined
+            "
             :data-option="option.label"
             @click="press(part, option.label)"
           >
             <span class="label">
               <!-- A staged pick is marked by a tick as well as by colour. -->
               <svg
-                v-if="!onePress && chosen(part, option.label)"
+                v-if="(!item || part.multiSelect) && !onePress && chosen(part, option.label)"
                 class="icon tick"
                 aria-hidden="true"
                 data-cy="question-option-tick"
@@ -361,6 +551,9 @@ watch(
               {{ option.label }}
             </span>
             <span v-if="option.description" class="describe">{{ option.description }}</span>
+            <small v-if="!hideChoiceEffects && queuedChoice(part, option.label)" class="describe">{{
+              whatThisAnswerDoes(queuedChoice(part, option.label)!)
+            }}</small>
           </button>
         </div>
         <!-- ⚑ **Chips a person reads, not presses** — a question this surface does not answer, or one
@@ -374,21 +567,33 @@ watch(
             :data-option="option.label"
           >
             {{ option.label }}
+            <small v-if="readOnly && option.description"> — {{ option.description }}</small>
           </li>
         </ul>
-        <template v-if="live && part.typed">
+        <p v-if="readOnly && describesReadOnlyPart(part)" class="aside">
+          {{ describesReadOnlyPart(part) }}
+        </p>
+        <template v-if="(live || item) && part.typed && !shortcuts">
           <!-- ⚑ A secret part's words are masked as they are typed, and never echoed. -->
           <input
-            v-if="part.secret"
+            v-if="part.secret || item"
             class="box"
-            type="password"
-            data-cy="question-box"
+            :type="part.secret ? 'password' : 'text'"
+            :data-cy="boxHook(part)"
             :aria-labelledby="boxLabel(part, index)"
             :value="typedOf(part, draft.answers)"
             :disabled="!open"
-            :placeholder="part.options.length > 0 ? TYPE_YOUR_OWN : TYPE_YOUR_ANSWER"
+            :placeholder="
+              item
+                ? part.options.length > 0
+                  ? 'Other — type your own answer'
+                  : ''
+                : part.options.length > 0
+                  ? TYPE_YOUR_OWN
+                  : TYPE_YOUR_ANSWER
+            "
             @input="type(part, ($event.target as HTMLInputElement).value)"
-            @keydown="onKey"
+            @keydown="!item && onKey($event)"
           />
           <textarea
             v-else
@@ -403,17 +608,97 @@ watch(
             @keydown="onKey"
           ></textarea>
         </template>
+        <p
+          v-if="
+            item &&
+            open &&
+            part.multiSelect &&
+            pickedOf(part, draft.answers).length === 0 &&
+            typedOf(part, draft.answers).trim() === ''
+          "
+          class="aside"
+          :data-cy="`user-input-empty-${part.id}`"
+        >
+          Nothing chosen yet — Answer stays off until you pick at least one.
+        </p>
       </div>
     </template>
 
-    <p v-if="hint !== null" class="aside" data-cy="question-hint">{{ hint }}</p>
+    <p v-if="!item && hint !== null" class="aside" data-cy="question-hint">{{ hint }}</p>
     <!-- ⛔ **The answer bounced and the question is still there** — the host's words, above the
          presses that are live again. -->
-    <p v-if="props.reading.refused && open" class="aside" data-cy="question-refused">
-      {{ props.reading.refused }}
+    <p
+      v-if="reading.refused && open"
+      class="aside"
+      :data-cy="item ? 'user-input-refused' : 'question-refused'"
+    >
+      {{ reading.refused }}
     </p>
+    <div v-if="waitingElsewhere" class="aside" data-cy="user-input-answered-elsewhere">
+      <p>
+        {{
+          takenWithoutThisWindow === 'by-no-window'
+            ? ANSWERED_ONCE_A_WINDOW_TAKES_IT
+            : ANSWERED_IN_THE_OTHER_WINDOW
+        }}
+      </p>
+      <button
+        v-if="takenWithoutThisWindow === 'by-no-window'"
+        class="send"
+        type="button"
+        data-cy="user-input-take-it-over"
+        @click="emit('takeItOver')"
+      >
+        {{ TAKE_IT_OVER_TO_ANSWER_HERE }}
+      </button>
+    </div>
+    <div
+      v-if="item && (state === 'answered' || state === 'declined' || state === 'closed')"
+      class="aside"
+      data-cy="user-input-answered"
+    >
+      <span v-if="item.answered">{{ item.answered }}</span>
+      <span v-if="reading.answeredBy" data-cy="user-input-answered-by">
+        {{ reading.answeredBy }}</span
+      >
+      <span v-if="reading.note"> {{ reading.note }}</span>
+    </div>
+    <div
+      v-if="offer && live && (!shortcuts || queueOffers?.length)"
+      class="options provider-actions"
+    >
+      <button
+        v-if="showSend"
+        class="send"
+        type="button"
+        data-cy="user-input-answer"
+        :disabled="!open || !complete"
+        @click="send"
+      >
+        <strong>{{ offer.positive }}</strong>
+        <small data-cy="user-input-answer-does">{{ offer.positiveDoes }}</small>
+      </button>
+      <button
+        v-if="rejectsHere"
+        class="option"
+        type="button"
+        data-cy="user-input-reject"
+        :title="quickChoices && !hideChoiceEffects ? offer.rejectDoes : undefined"
+        :disabled="!open"
+        @click="open && submit({ kind: 'reject' })"
+      >
+        <strong>Reject</strong>
+        <small v-if="!hideChoiceEffects" data-cy="user-input-reject-does">{{
+          offer.rejectDoes
+        }}</small>
+      </button>
+      <component :is="shortcuts ? 'details' : 'div'" class="aside">
+        <summary v-if="shortcuts">Details</summary>
+        <p data-cy="user-input-after">{{ WHAT_COMES_AFTER_IS_NOT_OURS }}</p>
+      </component>
+    </div>
     <button
-      v-if="showSend"
+      v-else-if="showSend"
       class="send"
       type="button"
       data-cy="question-send"
@@ -422,367 +707,26 @@ watch(
     >
       {{ SEND }}
     </button>
-    <p v-if="props.reading.note" class="aside" data-cy="question-note">
-      {{ props.reading.note }}
-    </p>
+    <p v-if="!item && reading.note" class="aside" data-cy="question-note">{{ reading.note }}</p>
     <p
-      v-if="props.reading.receipt !== null"
+      v-if="reading.receipt !== null"
       class="aside"
       :class="{ failed: state === 'failed' }"
       data-cy="question-receipt"
     >
-      {{ props.reading.receipt }}
+      {{ reading.receipt }}
     </p>
     <button
-      v-if="props.reading.where"
+      v-if="reading.where"
       class="press"
       type="button"
       data-cy="question-where"
-      :data-held="String(props.reading.where.held)"
-      @click="emit('openConversation', props.reading.where.conversation)"
+      :data-held="String(reading.where.held)"
+      @click="emit('openConversation', reading.where.conversation)"
     >
-      {{ props.reading.where.action }}
+      {{ reading.where.action }}
     </button>
   </section>
 </template>
 
-<style scoped>
-.question-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-6);
-}
-
-.question-head {
-  display: flex;
-  min-height: 20px;
-  flex-wrap: wrap;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-2) var(--space-4);
-}
-
-.question-head .icon {
-  width: 11px;
-  height: 11px;
-  flex: 0 0 auto;
-}
-
-.who {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-.piece {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-.state {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-}
-
-.via,
-.aside,
-.not-here {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-  overflow-wrap: anywhere;
-}
-
-:deep(.md-lead) {
-  font-weight: var(--fw-bold);
-}
-
-.words {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.words.folded :deep(.md-chat) {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-}
-
-.more,
-.press {
-  align-self: flex-start;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--type-caption);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.more:hover,
-.more:focus-visible,
-.press:hover,
-.press:focus-visible {
-  color: var(--text-soft);
-  text-decoration-style: solid;
-}
-
-.part {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.ask {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  white-space: normal;
-}
-
-.header {
-  margin-right: var(--space-3);
-  padding: 0 var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--faint);
-  font-size: var(--type-caption);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.mode {
-  margin-left: var(--space-3);
-  color: var(--faint);
-  font-size: var(--type-caption);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.option {
-  min-height: var(--control-h);
-  padding: var(--space-6);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--wash-2);
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
-.option:hover:not(:disabled),
-.option.selected {
-  border-color: var(--accent);
-  background: var(--accent-fill);
-  color: var(--accent-text);
-}
-
-.option:disabled {
-  opacity: 0.6;
-}
-
-.options.described {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.option .label {
-  display: block;
-}
-
-.option .tick {
-  width: 11px;
-  height: 11px;
-  margin-right: var(--space-2);
-  vertical-align: -1px;
-}
-
-.options.described .label {
-  font-weight: var(--fw-semibold);
-}
-
-.option .describe {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-.option.selected .describe,
-.option:hover:not(:disabled) .describe {
-  color: var(--accent-text);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  padding: 0;
-  margin: 0;
-  gap: var(--space-2);
-  list-style: none;
-}
-
-.chip {
-  padding: var(--space-1) var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-pill);
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-}
-
-.box {
-  width: 100%;
-  min-height: var(--control-h);
-  max-height: calc(6 * var(--leading-normal) * 1em + 2 * var(--space-3));
-  box-sizing: border-box;
-  padding: var(--space-3) var(--space-5);
-  border: var(--border-width) solid var(--control-border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--text);
-  field-sizing: content;
-  font: inherit;
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-  resize: none;
-}
-
-.box:focus-visible {
-  border-color: var(--accent);
-}
-
-.send {
-  align-self: flex-start;
-  min-height: var(--control-h);
-  padding: var(--space-2) var(--space-6);
-  border: var(--border-width) solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--accent-solid-bg);
-  color: var(--accent-ink);
-  font-size: var(--type-small);
-  font-weight: var(--fw-semibold);
-}
-
-.send:disabled {
-  opacity: 0.6;
-}
-
-.aside.failed,
-.state.failed {
-  color: var(--danger);
-}
-
-.queue-question {
-  padding: var(--space-4);
-}
-
-.queue-question .question-head {
-  gap: var(--space-3);
-}
-
-.queue-question .question-head > .icon {
-  width: 24px;
-  height: 24px;
-  box-sizing: border-box;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  background: var(--wash-2);
-  color: var(--text-soft);
-}
-
-.queue-question .who {
-  color: var(--text-soft);
-  font-size: var(--type-small);
-}
-
-.queue-question [data-cy='question-context'] {
-  padding: var(--space-6);
-  border-left: var(--border-accent-width) solid var(--line-strong);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--wash-2);
-  font-size: var(--type-small);
-  line-height: var(--leading-normal);
-  white-space: pre-wrap;
-}
-
-.queue-question [data-cy='question-context'] :deep(.md-lead) {
-  display: block;
-  margin-bottom: var(--space-2);
-  color: var(--text-soft);
-}
-
-.queue-question .more {
-  min-height: 28px;
-  padding: var(--space-2) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-  text-decoration: none;
-}
-
-.queue-question .more:hover {
-  background: var(--wash-2);
-}
-
-.queue-question .part {
-  padding-top: var(--space-6);
-  border-top: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
-.queue-question .option {
-  padding: var(--space-4) var(--space-6);
-  border-radius: var(--radius-md);
-  font-size: var(--type-small);
-  font-weight: var(--fw-semibold);
-}
-
-.queue-question .box {
-  min-height: var(--control-h-touch);
-  padding: var(--space-5) var(--space-6);
-  font-size: var(--type-small);
-}
-
-.queue-question .press {
-  align-self: stretch;
-  padding-top: var(--space-6);
-  border-top: var(--border-width) solid var(--line);
-  border-radius: 0;
-  text-align: left;
-  text-decoration: none;
-}
-
-.queue-question .press:hover,
-.queue-question .press:focus-visible {
-  text-decoration: underline;
-}
-</style>
+<style scoped src="./QuestionCard.css"></style>

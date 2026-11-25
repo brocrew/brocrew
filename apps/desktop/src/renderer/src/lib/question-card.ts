@@ -16,6 +16,7 @@ import type {
   QuestionTool,
   ToolItem,
   TranscriptItem,
+  UserInputItem,
 } from './transcript'
 import { argumentExcerpt } from './argument-excerpt'
 import { pieceSays } from './relayed-turn'
@@ -87,6 +88,7 @@ export interface QuestionPart {
   readonly multiSelect: boolean
   readonly typed: boolean
   readonly secret: boolean
+  readonly providerPart?: true
 }
 
 export interface QuestionWords {
@@ -152,6 +154,46 @@ function partOf(part: AskedPart, words: string | null): QuestionPart {
     multiSelect: part.multiSelect === true,
     typed: part.options.length === 0 || part.allowOther === true,
     secret: part.secret === true,
+  }
+}
+
+export function providerQuestion(
+  item: UserInputItem & Partial<Pick<TranscriptItem, 'at'>>,
+  agent: string | null,
+  answerable: boolean,
+): QuestionCardReading {
+  const state: QuestionState =
+    item.answered === 'answered'
+      ? 'answered'
+      : item.answered === 'rejected'
+        ? 'declined'
+        : item.note !== null
+          ? 'closed'
+          : 'open'
+  return {
+    requestId: item.request.id,
+    asker: agent ?? AN_UNNAMED_ASKER,
+    verb: ASKED_WORD,
+    askedOf: A_PERSON_ADDRESSED,
+    piece: null,
+    via: null,
+    at: item.at == null ? null : clockTime(item.at),
+    atTitle: item.at == null ? null : fullTime(item.at),
+    words: item.request.prompt,
+    wordsAreCut: false,
+    wordsMissing: false,
+    context: null,
+    parts: item.request.questions.map((part) => ({
+      ...partOf(part, item.request.prompt),
+      providerPart: true,
+    })),
+    state,
+    answeredBy: item.answered === null ? null : whoAnsweredIt(item.by),
+    answerable,
+    refused: item.refused,
+    note: item.note,
+    receipt: null,
+    where: null,
   }
 }
 
@@ -340,7 +382,10 @@ export function pickedOf(
 ): readonly string[] {
   const value = draft.get(part.id)
   const values = Array.isArray(value) ? value : typeof value === 'string' ? [value] : []
-  return values.filter((one) => typeof one === 'string' && one.trim() !== '')
+  return values.filter(
+    (one) =>
+      typeof one === 'string' && (one.trim() !== '' || (part.providerPart && part.multiSelect)),
+  )
 }
 
 export function typedOf(part: QuestionPart, draft: ReadonlyMap<string, string | string[]>): string {
@@ -389,13 +434,15 @@ export function setTyped(
 export function answerOf(
   parts: readonly QuestionPart[],
   draft: ReadonlyMap<string, string | string[]>,
+  useSingleValues = false,
 ): UserInputResponse | null {
   if (!fileable(parts)) return null
-  const answers: Record<string, string[]> = Object.create(null)
+  const answers: Record<string, string | string[]> = Object.create(null)
   for (const part of parts) {
     const values = chosenOf(part, draft)
-    if (values.length === 0) return null
-    answers[part.id] = values.map((value) => `${value}`)
+    const first = values[0]
+    if (first === undefined) return null
+    answers[part.id] = useSingleValues && !part.multiSelect ? first : [...values]
   }
   return { kind: 'answer', answers }
 }
