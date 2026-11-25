@@ -122,6 +122,7 @@ function aScreen(readMs = 0) {
     readTheWorkspace,
     readWhatIsWaiting: vi.fn(async () => {}),
     looking: null,
+    document: { visibilityState: 'visible' },
     setInterval,
     queueMicrotask: (run: () => void) => {
       void Promise.resolve().then(run)

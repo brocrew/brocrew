@@ -140,6 +140,7 @@ function fixture() {
     if (timer === undefined) throw new Error('the screen has no actionable look timer')
     runInNewContext(timer, {
       looking: null,
+      document: { visibilityState: 'visible' },
       setInterval,
       LOOK_EVERY_MS,
       lookForWhatIsYours: look,
