@@ -156,7 +156,3 @@ export function stub(answer: (query: LibraryQuery) => LibraryPage = () => page()
     },
   }
 }
-
-export function countScan(): void {
-  scans++
-}

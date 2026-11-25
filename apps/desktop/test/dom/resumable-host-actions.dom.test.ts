@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
+import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import type {
   AdoptionReport,
   ExportedSession,
   ImportedRecording,
   ResumableSessionInfo,
+  LibraryPage,
   UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible } from './harness'
+import { recordingPage } from './library-recording-fixture'
 
 function session(sessionId = 'fictional-one'): ResumableSessionInfo {
   return {
@@ -66,6 +68,7 @@ function deferred<T>() {
 function host(rows = [session()]) {
   const runtime = {
     listResumable: vi.fn(async (): Promise<ResumableSessionInfo[]> => rows),
+    listLibrary: vi.fn(async () => recordingPage(rows)),
     listUnresumable: vi.fn(async (): Promise<UnresumableSessionInfo[]> => []),
     exportSession: vi.fn<
       (input: { sessionId: string; exportKind: 'native' | 'bundle' }) => Promise<ExportedSession>
@@ -96,71 +99,69 @@ afterEach(() => {
 })
 
 describe('recorded conversations host actions', () => {
-  it('says looking while both lists load, then shows the empty result', async () => {
+  it('says Reading while the Library loads, then shows the empty result', async () => {
     const runtime = host([])
-    const loading = deferred<UnresumableSessionInfo[]>()
-    runtime.listUnresumable.mockReturnValueOnce(loading.promise)
-    const view = mount(ResumableSessions, {})
+    const loading = deferred<LibraryPage>()
+    runtime.listLibrary.mockReturnValueOnce(loading.promise)
+    const view = mount(SessionLibrary, {})
     await nextTick()
-    expect(view.host.textContent).toContain('looking…')
-    expect(view.all('resumable-empty')).toHaveLength(0)
-    loading.resolve([])
-    await expect.poll(() => view.all('resumable-empty').length).toBe(1)
-    expect(visible(view.q('resumable-empty'))).toBe(true)
-    expect(view.q('resumable-empty').textContent).toContain('Nothing recorded yet.')
+    expect(view.host.textContent).toContain('Reading…')
+    expect(view.all('library-empty')).toHaveLength(0)
+    loading.resolve(recordingPage([]))
+    await expect.poll(() => view.all('library-empty').length).toBe(1)
+    expect(visible(view.q('library-empty'))).toBe(true)
+    expect(view.q('library-empty').textContent).toContain('No conversations yet.')
     expect(runtime.listResumable).toHaveBeenCalledTimes(1)
-    expect(runtime.listUnresumable).toHaveBeenCalledTimes(1)
+    expect(runtime.listLibrary).toHaveBeenCalledTimes(1)
   })
 
-  it('recovers from a list failure using refresh and opens an unresumable recording', async () => {
+  it('recovers from a list failure using Check homes and opens an unresumable recording', async () => {
     const runtime = host([])
-    runtime.listUnresumable.mockRejectedValueOnce(
-      new Error('Recorded conversations are unavailable.'),
-    )
+    runtime.listLibrary.mockRejectedValueOnce(new Error('Recorded conversations are unavailable.'))
     const open = vi.fn()
-    const view = mount(ResumableSessions, { onOpen: open })
-    await expect.poll(() => view.all('resumable-error').length).toBe(1)
-    expect(view.q('resumable-error').textContent).toContain(
-      'Recorded conversations are unavailable.',
-    )
-    expect(view.all('resumable-empty')).toHaveLength(0)
-    runtime.listUnresumable.mockResolvedValueOnce([
-      {
-        sessionId: 'fictional-restored',
-        provider: 'codex',
-        cwd: '/fictional/restored',
-        status: 'ended',
-        running: 'not-running',
-        state: { is: 'idle' },
-        named: null,
-        profileId: null,
-        adoptedAt: null,
-        updatedAt: Date.now(),
-        hasTranscript: true,
-        foundInUserHome: false,
-        restoredFromBundle: true,
-        lastEnding: 'completed',
-        reason: 'Restored from a bundle; there is no provider session to resume.',
-      },
-    ])
-    view.q('refresh-resumable').click()
-    await expect.poll(() => view.all('unresumable-row').length).toBe(1)
+    const view = mount(SessionLibrary, {
+      onRead: (row: { recordId: string }) => open(row.recordId),
+    })
+    await expect.poll(() => view.all('library-error').length).toBe(1)
+    expect(view.q('library-error').textContent).toContain('Recorded conversations are unavailable.')
+    expect(view.all('library-empty')).toHaveLength(0)
+    const restored: UnresumableSessionInfo = {
+      sessionId: 'fictional-restored',
+      provider: 'codex',
+      cwd: '/fictional/restored',
+      status: 'ended',
+      running: 'not-running',
+      state: { is: 'idle' },
+      named: null,
+      profileId: null,
+      adoptedAt: null,
+      updatedAt: Date.now(),
+      hasTranscript: true,
+      foundInUserHome: false,
+      restoredFromBundle: true,
+      lastEnding: 'completed',
+      reason: 'Restored from a bundle; there is no provider session to resume.',
+    }
+    runtime.listLibrary.mockResolvedValueOnce(recordingPage([restored]))
+    runtime.listUnresumable.mockResolvedValueOnce([restored])
+    view.q('library-check-homes').click()
+    await expect.poll(() => view.all('library-row-fictional-restored').length).toBe(1)
     expect(view.all('resumable-error')).toHaveLength(0)
-    expect(view.q('unresumable-profile').textContent).toContain('from a bundle')
-    expect(view.q('unresumable-reason').textContent).toContain('no provider session to resume')
-    expect(visible(view.q('sessions-open-fictional-restored'))).toBe(true)
-    view.q('sessions-open-fictional-restored').click()
+    expect(view.q('library-row-fictional-restored').textContent).toContain('restored from a bundle')
+    expect(view.all('library-why-fictional-restored')).toHaveLength(0)
+    expect(visible(view.q('library-read-fictional-restored'))).toBe(true)
+    view.q('library-read-fictional-restored').click()
     expect(open.mock.calls).toEqual([['fictional-restored']])
     expect(runtime.listResumable).toHaveBeenCalledTimes(2)
-    expect(runtime.listUnresumable).toHaveBeenCalledTimes(2)
+    expect(runtime.listLibrary).toHaveBeenCalledTimes(2)
   })
 
   it('locks both export choices on the busy row while another row can still export', async () => {
     const runtime = host([session(), session('fictional-two')])
     const exporting = deferred<ExportedSession>()
     runtime.exportSession.mockReturnValueOnce(exporting.promise)
-    const view = mount(ResumableSessions, {})
-    await expect.poll(() => view.all('resumable-row').length).toBe(2)
+    const view = mount(SessionLibrary, {})
+    await expect.poll(() => view.host.querySelectorAll('[data-cy^="library-row-"]').length).toBe(2)
     const native = view.q('export-native-fictional-one') as HTMLButtonElement
     const bundle = view.q('export-bundle-fictional-one') as HTMLButtonElement
     expect(visible(native)).toBe(true)
@@ -198,8 +199,8 @@ describe('recorded conversations host actions', () => {
   it('reports an export failure and lets the person retry with a bundle', async () => {
     const runtime = host()
     runtime.exportSession.mockRejectedValueOnce(new Error('The export destination is unwritable.'))
-    const view = mount(ResumableSessions, {})
-    await expect.poll(() => view.all('resumable-row').length).toBe(1)
+    const view = mount(SessionLibrary, {})
+    await expect.poll(() => view.host.querySelectorAll('[data-cy^="library-row-"]').length).toBe(1)
     view.q('export-native-fictional-one').click()
     await expect
       .poll(() => view.q('export-result').textContent)
@@ -225,8 +226,8 @@ describe('recorded conversations host actions', () => {
     )
     const importing = deferred<ImportedRecording>()
     runtime.importRecordedSession.mockReturnValueOnce(importing.promise)
-    const view = mount(ResumableSessions, {})
-    await expect.poll(() => view.all('resumable-row').length).toBe(1)
+    const view = mount(SessionLibrary, {})
+    await expect.poll(() => view.host.querySelectorAll('[data-cy^="library-row-"]').length).toBe(1)
     view.q('import-messages-fictional-one').click()
     await expect
       .poll(() => view.q('import-result-fictional-one').textContent)
@@ -250,17 +251,17 @@ describe('recorded conversations host actions', () => {
       readable: true,
       note: 'Imported three prior messages.',
     })
-    await expect.poll(() => view.host.textContent).toContain('looking…')
+    await expect.poll(() => runtime.listResumable.mock.calls.length).toBe(2)
+    expect(retry.disabled).toBe(true)
     rereading.resolve([{ ...session(), hasTranscript: true }])
-    await expect.poll(() => view.all('resumable-row').length).toBe(1)
+    await expect.poll(() => view.host.querySelectorAll('[data-cy^="library-row-"]').length).toBe(1)
     await expect.poll(() => view.all('import-messages-fictional-one').length).toBe(0)
     expect(view.q('import-result-fictional-one').textContent).toContain(
       'Imported three prior messages.',
     )
-    expect(view.q('resumable-adopted').textContent).not.toContain('prior messages not imported yet')
     expect(view.q('sessions-open-fictional-one').textContent).toContain('Open')
     expect(runtime.listResumable).toHaveBeenCalledTimes(2)
-    expect(runtime.listUnresumable).toHaveBeenCalledTimes(2)
+    expect(runtime.listLibrary).toHaveBeenCalledTimes(2)
   })
 
   it('retries a failed scan, rereads the lists, and explains records it could not adopt', async () => {
@@ -268,33 +269,32 @@ describe('recorded conversations host actions', () => {
     runtime.adoptSessions.mockRejectedValueOnce(new Error('The scan could not read the folder.'))
     const scanning = deferred<AdoptionReport>()
     runtime.adoptSessions.mockReturnValueOnce(scanning.promise)
-    const view = mount(ResumableSessions, {})
-    await expect.poll(() => view.all('resumable-row').length).toBe(1)
-    view.q('scan-sessions').click()
+    const view = mount(SessionLibrary, {})
+    await expect.poll(() => view.host.querySelectorAll('[data-cy^="library-row-"]').length).toBe(1)
+    view.q('library-check-homes').click()
     await expect
-      .poll(() => view.q('resumable-error').textContent)
+      .poll(() => view.q('library-scan-error').textContent)
       .toContain('The scan could not read the folder.')
     expect(runtime.listResumable).toHaveBeenCalledTimes(1)
-    const retry = view.q('scan-sessions') as HTMLButtonElement
+    const retry = view.q('library-check-homes') as HTMLButtonElement
     expect(retry.disabled).toBe(false)
     retry.click()
     await nextTick()
     expect(retry.disabled).toBe(true)
-    expect(retry.textContent).toContain('scanning…')
-    expect(view.all('resumable-error')).toHaveLength(0)
+    expect(retry.textContent).toContain('Checking…')
     retry.click()
     expect(runtime.adoptSessions).toHaveBeenCalledTimes(2)
     scanning.resolve(scanReport)
     await expect.poll(() => retry.disabled).toBe(false)
-    expect(view.q('scan-summary').textContent).toContain('nothing new to adopt — see below')
-    const skipped = view.q('scan-skipped') as HTMLDetailsElement
-    expect(skipped.textContent).toContain('1 found but not adopted — why')
+    expect(view.q('library-scan-note').textContent).toContain('nothing new to adopt — see below')
+    const skipped = view.q('library-skipped') as HTMLDetailsElement
+    expect(skipped.textContent).toContain('1 could not be read')
     skipped.querySelector('summary')!.click()
     await nextTick()
     expect(skipped.open).toBe(true)
     expect(skipped.textContent).toContain('/fictional/unreadable-conversation.jsonl')
     expect(skipped.textContent).toContain('No conversation id was recorded.')
     expect(runtime.listResumable).toHaveBeenCalledTimes(2)
-    expect(runtime.listUnresumable).toHaveBeenCalledTimes(2)
+    expect(runtime.listLibrary).toHaveBeenCalledTimes(2)
   })
 })

@@ -139,12 +139,12 @@ const PAGE: LibraryPage = {
 async function library(): Promise<HTMLElement> {
   window.api = api({
     listLibrary: async () => PAGE,
-    listResumable: async () => [recorded('sess_recorded', 'codex')],
+    listResumable: async () => [],
     listUnresumable: async () => [],
   })
   const m = mount(SessionLibrary, {})
   await expect.poll(() => m.all(`library-row-${ENTRY.id}`).length).toBe(1)
-  await expect.poll(() => m.all('resumable-row').length).toBe(1)
+  await expect.poll(() => m.all(`library-row-${ENTRY.id}`).length).toBe(1)
   return m.host
 }
 
@@ -261,13 +261,6 @@ const SURFACES: { name: string; draw: () => Promise<Drawn> }[] = [
     draw: async () => {
       const one = (await library()).querySelector(`[data-cy="library-row-${ENTRY.id}"]`)!
       return item(one, 'full', 'claude')
-    },
-  },
-  {
-    name: 'All conversations, Recorded conversations',
-    draw: async () => {
-      const one = (await library()).querySelector('[data-session-id="sess_recorded"]')!
-      return item(one, 'compact', 'codex')
     },
   },
   {

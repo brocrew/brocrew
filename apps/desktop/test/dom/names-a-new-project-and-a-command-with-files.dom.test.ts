@@ -1,17 +1,13 @@
 import type { HandedPath } from '../../src/shared/attachment-contracts'
-import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { defineComponent, h, nextTick, provide, type Component } from 'vue'
-import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
+import { defineComponent, h, nextTick, type Component } from 'vue'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
-import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { aCommandTakesNoAttachmentsYet } from '../../src/renderer/src/lib/a-command-with-files'
 import { attentionQueue } from '../../src/renderer/src/lib/attention'
@@ -27,12 +23,9 @@ import {
 import type { IdentityUse } from '../../src/shared/agent-roster'
 import {
   DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
   agentName,
   type AgentIdentities,
   type AgentIdentity,
-  type ResumableSessionInfo,
-  type UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES } from '../../src/shared/tasks'
 import { drawnReady } from './drawn'
@@ -151,145 +144,6 @@ describe('§1 · R41 (`712` F-4) — the identity a person reads is NAMED', () =
     expect(words(who)).toBe('worker')
     expect(words(who.parentElement!)).toMatch(/ · worker$/)
     expect(m.q('attention-request-sess_n').querySelector('[data-cy="attention-who"]')).toBeNull()
-  })
-
-  /* ---------------------------------------------------------------- the reopen list */
-
-  const RESUMABLE: ResumableSessionInfo = {
-    provider: 'claude',
-    cwd: '/tmp/work',
-    status: 'idle',
-    approvalMode: null,
-    profileId: 'developer',
-    reasoningEffort: null,
-    model: null,
-    planMode: null,
-    adoptedAt: null,
-    hasTranscript: true,
-    lastEnding: 'completed',
-    updatedAt: 1_700_000_001_000,
-    running: 'not-running',
-    state: { is: 'idle' },
-    // ⚑ D-016 · commit 7 · R2 — a conversation holding no piece.
-    named: null,
-    sessionId: 'sess_dev',
-    ref: { provider: 'claude', sessionId: 'dev-thread', cwd: '/tmp/work', rotation: 0 },
-    child: null,
-    resumeRefusal: null,
-  } as ResumableSessionInfo
-  const RECORDED: UnresumableSessionInfo = {
-    sessionId: 'sess_ours',
-    provider: 'claude',
-    cwd: '/tmp/work',
-    status: 'ended',
-    running: 'not-running',
-    state: { is: 'idle' },
-    named: null,
-    profileId: 'developer',
-    adoptedAt: null,
-    updatedAt: 1_700_000_001_000,
-    hasTranscript: true,
-    lastEnding: 'completed',
-    foundInUserHome: false,
-    restoredFromBundle: false,
-    reason: 'its provider ref did not survive',
-  }
-  const THEIRS: UnresumableSessionInfo = {
-    ...RECORDED,
-    sessionId: 'sess_theirs',
-    profileId: null,
-    adoptedAt: 1_700_000_000_000,
-    foundInUserHome: true,
-    reason: 'it was found in your own provider home, which this app only reads',
-  }
-  async function reopenList(
-    identities: readonly AgentIdentity[] | null,
-    resumable: ResumableSessionInfo[] = [RESUMABLE],
-    unresumable: UnresumableSessionInfo[] = [RECORDED, THEIRS],
-  ): Promise<Mounted> {
-    stubbed().api = {
-      runtime: {
-        listResumable: () => Promise.resolve(resumable),
-        listUnresumable: () => Promise.resolve(unresumable),
-      },
-    }
-    const client = {
-      ...createDesktopProviderApi(
-        () => window.api.runtime,
-        () => undefined,
-      ),
-      providerCatalogue: async () => PROVIDER_DESCRIPTORS,
-      get sessions() {
-        return window.api.runtime
-      },
-    }
-    const m = mount(
-      defineComponent({
-        setup() {
-          provide(CLIENT_PROVIDERS, client)
-          return () => h(ResumableSessions, { identities })
-        },
-      }),
-      {},
-      { width: 640 },
-    )
-    await settle()
-    return m
-  }
-
-  it('🔴 the reopen list: *Ada* on a row that can come back AND on one that cannot', async () => {
-    const m = await reopenList(ROSTER)
-    // Both rows draw their agent in the shared row, once, with no *agent:* prefix.
-    expect(words(m.q('resumable-profile'))).toBe('Ada')
-    const [ours] = m.all('unresumable-profile')
-    expect(words(ours!)).toBe('Ada')
-    expect(words(ours!.closest('[data-cy="unresumable-row"]')!)).not.toContain('agent:')
-  })
-
-  it('⚑ THE CONTROLS — before the roster lands: the slug, and BroBot’s own word for BroBot', async () => {
-    const m = await reopenList(null, [
-      RESUMABLE,
-      { ...RESUMABLE, sessionId: 's2', profileId: null },
-    ])
-    expect(m.all('resumable-profile').map(words)).toEqual(['developer', DEFAULT_PROFILE_LABEL])
-  })
-
-  it('⛔ a conversation restored from a BUNDLE is not named from this roster — another machine ran it', async () => {
-    // ⚑ **As the store builds them**: an import sets `adoptedAt`, so a bundle that names no profile
-    // is ALSO `foundInUserHome` (`adopted_at !== null && profile_id === null`) — the state 714's
-    // second review found this list read as *from Claude's own folder*.
-    const restored: UnresumableSessionInfo = {
-      ...RECORDED,
-      sessionId: 'sess_bundle',
-      adoptedAt: 1_700_000_000_000,
-      restoredFromBundle: true,
-      reason: 'it was restored from a bundle, which this app only reads',
-    }
-    const nobody: UnresumableSessionInfo = {
-      ...restored,
-      sessionId: 's2',
-      profileId: null,
-      foundInUserHome: true,
-    }
-    const m = await reopenList(ROSTER, [], [restored, nobody])
-    const [asDeveloper, asNobody] = m.all('unresumable-profile')
-    // ⚑ The slug its bundle carries is THAT machine's; this machine's *Ada* is someone else — and,
-    // as `LibraryEntry` rules for a restored row, it ran as nobody of ours.
-    expect(words(asDeveloper!)).toBe('from a bundle')
-    expect(words(asDeveloper!)).not.toContain('Ada')
-    // ⚑ …and one that names no profile is still a bundle's, not the person's own folder.
-    expect(words(asNobody!)).toBe('from a bundle')
-  })
-
-  it('⛔ a conversation from the person’s own folder ran as NO agent, and says where it came from', async () => {
-    const m = await reopenList(ROSTER)
-    const theirs = m.all('unresumable-profile')[1]!
-    expect(words(theirs)).toBe("from Claude's own folder")
-    expect(words(theirs)).not.toContain('agent')
-    expect(words(theirs)).not.toContain(DEFAULT_PROFILE_LABEL)
-    // Its row is titled by its folder, never by an agent it did not run as.
-    const row = theirs.closest('[data-cy="unresumable-row"]')!.querySelector('.conversation-row')!
-    expect(words(row)).not.toContain(DEFAULT_PROFILE_LABEL)
   })
 
   /* ---------------------------------------------------------- the pane: Agent panel + Info tab */

@@ -33,7 +33,6 @@ function templateOf(path: string): string {
 const CONVERSATION_SURFACES = [
   'SideRail.vue',
   'SessionLibraryRow.vue',
-  'ResumableSessions.vue',
   'CommandPalette.vue',
   'ForestCard.vue',
   'TeamWorkspace.vue',

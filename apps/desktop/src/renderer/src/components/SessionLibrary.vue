@@ -21,6 +21,7 @@ import { useHomeScan } from '../lib/home-scan'
 import { useClientApi } from '../client-provider/injection'
 import { useLibraryRowActions } from '../composables/useLibraryRowActions'
 import { useProviderNames } from '../composables/useProviderNames'
+import { useRecordedLibraryActions } from '../composables/useRecordedLibraryActions'
 import {
   NO_FILTERS,
   activeConstraints,
@@ -42,7 +43,6 @@ import FacetBar from './FacetBar.vue'
 import LibraryBundleRestore from './LibraryBundleRestore.vue'
 import LibraryEmptyState from './LibraryEmptyState.vue'
 import LibrarySourceGuide from './LibrarySourceGuide.vue'
-import ResumableSessions from './ResumableSessions.vue'
 import SessionLibraryRow from './SessionLibraryRow.vue'
 /**
  * All known conversations in one search-first index, merging our records and provider homes.
@@ -58,10 +58,6 @@ import SessionLibraryRow from './SessionLibraryRow.vue'
  */
 const props = withDefaults(
   defineProps<{
-    /**
-     * 🔴 **714 · R41 — the roster, forwarded to the recorded list** so its rows NAME whose each
-     * conversation is. Read nowhere here.
-     */
     identities?: readonly AgentIdentity[] | null
   }>(),
   { identities: null },
@@ -73,8 +69,6 @@ const emit = defineEmits<{
    * view, and reads one it holds no ledger for.
    */
   read: [entry: LibraryEntry]
-  /** ⚑ **D-017b · forwarded from the recorded list below** — open one conversation by id. */
-  open: [sessionId: string]
   /** Open the confirmation that lists what deleting this conversation would remove. */
   delete: [sessionId: string]
   /** These conversations were archived from a row: a view of any of them should close. */
@@ -83,14 +77,7 @@ const emit = defineEmits<{
   searchCaller: [sessionId: string]
 }>()
 
-/** The recorded list, so the screen can ask it to re-read when the host says something moved. */
-const reopenList = ref<InstanceType<typeof ResumableSessions> | null>(null)
-
-defineExpose({
-  refreshResumable: (): void => void reopenList.value?.refresh(),
-  /** Read the rows again: a conversation was archived or deleted from a sheet over this page. */
-  reread: (): void => void load(),
-})
+defineExpose({ reread })
 
 const page = ref<LibraryPage | null>(null)
 const query = ref('')
@@ -116,25 +103,6 @@ const filters = ref<LibraryFilters>({ ...NO_FILTERS })
 const applied = ref({ filters: { ...NO_FILTERS }, query: '' })
 const loading = ref(false)
 const error = ref<string | null>(null)
-/**
- * ⚑ **The same scan the rail runs, not a second one** (`120` §7). See {@link useHomeScan} — it is
- * on this screen because `adoptSessions()` back-fills the very `child` descent the **Kind** facet
- * reads, and a filter whose data source lives behind a collapsed link on another screen answers off
- * a stale column without saying so.
- */
-/**
- * ⛔ **The scan button's label, once** (329 §4.3, `310`'s rule for `credential-words.ts`).
- *
- * The head's disclosure has to name this control to say what it is NOT, and a second copy of the
- * word in prose would be a label that could be edited on the button while the sentence went on
- * saying the old thing — *"a lie that no test comparing a string to itself could catch"*.
- *
- * ⚠️ **Local to this file rather than shared with the rail**, which calls the same act *"scan for
- * existing conversations"*. Those two labels are already different and 120 §7 shared what it ruled
- * had to be shared — the call and the REPORT (`scanSummary`). Hoisting one file's button text into
- * a module both read would not make the labels agree; it would only make it harder to see that they
- * do not. Reported rather than fixed.
- */
 const CHECK_HOMES = 'Check homes'
 const selectedClientApi = useClientApi()
 const nameOfProvider = useProviderNames(selectedClientApi)
@@ -155,9 +123,24 @@ const {
 } = useLibraryRowActions({
   api: selectedClientApi,
   nameOfProvider,
-  reload: load,
+  reload: reread,
   archived: (conversations) => emit('archived', conversations),
 })
+
+const recorded = useRecordedLibraryActions(() => selectedClientApi.sessions, reread)
+const {
+  recordings,
+  unavailable,
+  error: recordedError,
+  exports,
+  exporting,
+  imports,
+  importing: importingMessages,
+} = recorded
+
+async function reread(): Promise<void> {
+  await Promise.all([load(), recorded.refresh()])
+}
 
 /**
  * Which read the list is showing.
@@ -236,7 +219,7 @@ watch([query, filters], () => {
   debounce = window.setTimeout(() => void load(), 180)
 })
 
-onMounted(() => void load())
+onMounted(() => void reread())
 // A pending keystroke must not fire into a component that is gone.
 onUnmounted(() => window.clearTimeout(debounce))
 
@@ -381,7 +364,7 @@ function dropConstraint(constraint: Constraint): void {
 async function checkHomes(): Promise<void> {
   // The re-read runs INSIDE the busy flag (review): the button must not re-enable while its own
   // follow-up is still fetching, on this surface any more than on the rail's.
-  const result = await homeScan.scan(load)
+  const result = await homeScan.scan(reread)
   if (result === null) return
   scanError.value = 'error' in result ? result.error : null
 }
@@ -397,6 +380,26 @@ async function checkHomes(): Promise<void> {
  * what its own tests say it means.
  */
 const scanError = ref<string | null>(null)
+
+const unlistedReadFailures = computed(() =>
+  page.value ? Math.max(0, page.value.skippedTotal - page.value.skipped.length) : 0,
+)
+const unreadable = computed(() => {
+  const findings = new Map<string, LibraryPage['skipped'][number] & { notAdopted: boolean }>()
+  for (const item of page.value?.skipped ?? []) {
+    findings.set(JSON.stringify([item.provider, item.path, item.reason]), {
+      ...item,
+      notAdopted: false,
+    })
+  }
+  for (const item of homeScan.lastScan.value?.skipped ?? []) {
+    findings.set(JSON.stringify([item.provider, item.path, item.reason]), {
+      ...item,
+      notAdopted: true,
+    })
+  }
+  return findings
+})
 
 /** The recency bands, in order, with the empty ones dropped rather than drawn as bare headings. */
 const groups = computed(() => {
@@ -538,6 +541,14 @@ const groups = computed(() => {
                 :archiving="archiving[entry.id]"
                 :restore-refused="restoreRefused[entry.id]"
                 :archive-refused="archiveRefused[entry.id]"
+                :recording="entry.recordId ? recordings.get(entry.recordId) : undefined"
+                :unavailable="entry.recordId ? unavailable.get(entry.recordId) : undefined"
+                :export-result="entry.recordId ? exports[entry.recordId] : undefined"
+                :exporting="entry.recordId ? exporting[entry.recordId] : false"
+                :messages-result="entry.recordId ? imports[entry.recordId] : undefined"
+                :importing-messages="entry.recordId ? importingMessages[entry.recordId] : false"
+                @export="recorded.exportSession"
+                @import-messages="recorded.importMessages"
                 @read="(entry) => emit('read', entry)"
                 @rebuild="rebuildEntry"
                 @import="importEntry"
@@ -548,34 +559,30 @@ const groups = computed(() => {
             </template>
           </ul>
 
-          <details v-if="page && page.skippedTotal > 0" class="skipped" data-cy="library-skipped">
-            <summary>{{ page.skippedTotal }} could not be read</summary>
+          <p v-if="recordedError" class="recorded-error" role="alert" data-cy="resumable-error">
+            {{ recordedError }}
+          </p>
+
+          <details
+            v-if="unreadable.size + unlistedReadFailures > 0"
+            class="skipped"
+            data-cy="library-skipped"
+          >
+            <summary>{{ unreadable.size + unlistedReadFailures }} could not be read</summary>
             <ul>
-              <li v-for="item in page.skipped" :key="item.path" class="mono">
-                <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason }}
+              <li v-for="[key, item] in unreadable" :key="key" class="mono">
+                <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason
+                }}<template v-if="item.notAdopted"> — Found but not adopted.</template>
               </li>
             </ul>
-            <p v-if="page.skippedTotal > page.skipped.length" class="more mono">
-              …and {{ page.skippedTotal - page.skipped.length }} more not listed here.
+            <p v-if="unlistedReadFailures > 0" class="more mono">
+              …and {{ unlistedReadFailures }} more not listed here.
             </p>
           </details>
-
-          <section class="reopen" data-cy="library-reopen">
-            <h2>Recorded conversations</h2>
-
-            <p v-if="searching || filtered" class="reopen-scope" data-cy="library-reopen-scope">
-              Not filtered by your search or filters.
-            </p>
-            <ResumableSessions
-              ref="reopenList"
-              :identities="props.identities"
-              @open="(sessionId) => emit('open', sessionId)"
-            />
-          </section>
         </div>
       </div>
       <aside class="library-aside">
-        <LibraryBundleRestore :reload="load" />
+        <LibraryBundleRestore :reload="reread" />
 
         <LibrarySourceGuide
           :home-scan="homeScan"
@@ -657,6 +664,13 @@ const groups = computed(() => {
    would have stayed pale blue on paper — the `--wash-4` shape, caught before it shipped. */
 .counts .only {
   color: var(--accent-text-soft);
+}
+
+.recorded-error {
+  margin: var(--space-2) 0 0;
+  color: var(--danger-text-notice);
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
 }
 
 .head-actions {
@@ -830,33 +844,6 @@ const groups = computed(() => {
 
 .skipped .more {
   margin: var(--space-3) 0 0;
-}
-
-/* ⚑ **The reopen list's own band** (151). A rule and a heading, and nothing else: the list inside
-   brings its own layout — unchanged from the day it was written for a surface with room — and the
-   only thing this page owes it is a place and a name. */
-.reopen {
-  margin-top: var(--space-9);
-  padding-top: var(--space-6);
-  border-top: var(--border-width) solid var(--line);
-}
-
-.reopen h2 {
-  margin: 0 0 var(--space-4);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-section);
-  letter-spacing: var(--tracking-wider);
-  text-transform: uppercase;
-}
-
-/* ⚠️ It sits under the heading and above the list, in the muted voice the rest of the page uses
-   for what a surface CANNOT do — loud enough to be read before the rows, quiet enough not to
-   compete with the miss above it. */
-.reopen-scope {
-  margin: calc(var(--space-4) * -1) 0 var(--space-5);
-  color: var(--muted);
-  font-size: var(--type-caption);
 }
 
 .lib-headingbar {

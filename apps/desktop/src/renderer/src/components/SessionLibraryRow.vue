@@ -43,10 +43,19 @@ export function originChipOf(
 </script>
 
 <script setup lang="ts">
-import type { ImportedFromHome, LibraryEntry } from '../../../shared/runtime-ipc'
+import type {
+  ExportedSession,
+  ImportedFromHome,
+  ImportedRecording,
+  LibraryEntry,
+  ResumableSessionInfo,
+  UnresumableSessionInfo,
+} from '../../../shared/runtime-ipc'
+import { computed } from 'vue'
 import { childLabel } from '../lib/child-descent'
 import { calendarDay } from '../lib/clock'
 import { describeDerived } from '../lib/derived-state'
+import { endingLabel } from '../lib/ending'
 import { basenameOf } from '../lib/paths'
 import type { ConversationRowView } from '../lib/conversation-row'
 import ConversationRow from './ConversationRow.vue'
@@ -63,6 +72,12 @@ const props = defineProps<{
   archiving?: boolean
   restoreRefused?: string
   archiveRefused?: string
+  recording?: ResumableSessionInfo
+  unavailable?: UnresumableSessionInfo
+  exportResult?: ExportedSession | string
+  exporting?: boolean
+  messagesResult?: ImportedRecording | string
+  importingMessages?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -72,6 +87,8 @@ const emit = defineEmits<{
   archive: [entry: LibraryEntry]
   restore: [entry: LibraryEntry]
   delete: [entry: LibraryEntry]
+  export: [sessionId: string, kind: 'native' | 'bundle']
+  importMessages: [sessionId: string]
 }>()
 
 /**
@@ -105,27 +122,31 @@ function canImport(entry: LibraryEntry): boolean {
   )
 }
 
-/**
- * A row that offers no action at all, and therefore the one place the store's own
- * `unresumableReason` earns its space.
- *
- * ⚠️ **It answers "why can it not be carried on", NOT "why is there nothing to read"** — those are
- * two questions and the store composes only the first (`whyNotResumable`). So the line names the
- * question it is answering rather than being printed as an explanation of the emptiness, which
- * would be this surface inventing a fact for the one reason it exists not to. On every other row
- * kind it is either null, or said louder by a button standing next to it.
- *
- * ⚠️ **`canRebuild` is in the list, and it was missing** (105 review). A row can be unreadable and
- * `failed` at once — the store reaches `failed` off the failure column before it ever looks at
- * whether anything is present — and that row was drawing "Can't be carried on" directly above a
- * live **Try again**. The sentence is not false there, but its whole justification is that the row
- * has nothing to offer, and a button is something to offer.
- */
-function offersNothing(entry: LibraryEntry): boolean {
-  return (
-    !entry.readable && !canImport(entry) && !canRebuild(entry) && entry.unresumableReason !== null
+const continuationReason = computed(() => {
+  if (props.recording?.resumeRefusal) return props.recording.resumeRefusal
+  const { entry, unavailable } = props
+  if (entry.recordId === null) return canImport(entry) ? null : entry.unresumableReason
+  if (unavailable?.reason !== entry.unresumableReason) return entry.unresumableReason
+  // A file discovered in a personal folder can still be an app recording with a separate refusal.
+  if (
+    entry.origin === 'user-home' &&
+    unavailable?.foundInUserHome &&
+    !unavailable.restoredFromBundle
   )
-}
+    return null
+  if (entry.origin === 'restored' && unavailable?.restoredFromBundle && entry.readable) return null
+  return entry.unresumableReason
+})
+
+const lastTurn = computed(() => endingLabel(props.entry.lastEnding)?.sentence)
+const adoptedFromAgent = computed(() => {
+  const { recording, unavailable } = props
+  return (
+    (recording?.adoptedAt ?? unavailable?.adoptedAt) != null &&
+    !unavailable?.foundInUserHome &&
+    !unavailable?.restoredFromBundle
+  )
+})
 
 /**
  * **The row is the target** (104) — read is safe, read-only and the common case, so it does not
@@ -183,7 +204,15 @@ function rowView(entry: LibraryEntry): ConversationRowView {
             },
           ]
         : []),
-      { key: 'origin', text: origin.label, tone: origin.kind },
+      adoptedFromAgent.value
+        ? {
+            key: 'origin',
+            text: 'adopted',
+            tone: 'imported',
+            hint: "Found in an agent's folder",
+            cy: 'resumable-adopted',
+          }
+        : { key: 'origin', text: origin.label, tone: origin.kind },
       ...(entry.archivedAt !== undefined
         ? [
             {
@@ -224,6 +253,9 @@ function size(bytes: number | null): string {
     class="row"
     :class="{ readable: entry.readable }"
     :data-origin="entry.origin"
+    :data-session-id="entry.recordId"
+    :data-recorded-status="recording?.status"
+    :data-adopted="adoptedFromAgent ? '' : undefined"
     :data-cy="`library-row-${entry.id}`"
     @click="rowClick(entry, $event)"
   >
@@ -266,8 +298,33 @@ function size(bytes: number | null): string {
         {{ outcomeNote }}
       </p>
 
-      <p v-if="offersNothing(entry)" class="why" :data-cy="`library-why-${entry.id}`">
-        Can't be carried on: {{ entry.unresumableReason }}
+      <p v-if="continuationReason" class="why" :data-cy="`library-why-${entry.id}`">
+        Can't be carried on: {{ continuationReason }}
+      </p>
+
+      <p
+        v-if="messagesResult"
+        class="outcome"
+        :data-outcome="typeof messagesResult === 'string' ? 'unreadable' : messagesResult.outcome"
+        :data-cy="`import-result-${entry.recordId}`"
+      >
+        {{ typeof messagesResult === 'string' ? messagesResult : messagesResult.note }}
+      </p>
+
+      <p
+        v-if="exportResult"
+        class="outcome exported"
+        :data-outcome="typeof exportResult === 'string' ? 'unreadable' : undefined"
+        data-cy="export-result"
+      >
+        <template v-if="typeof exportResult === 'string'">{{ exportResult }}</template>
+        <template v-else>
+          {{ exportResult.path }} ·
+          {{
+            exportResult.resumable ? 'a provider can resume this' : 'a copy, not a restored session'
+          }}
+          — {{ exportResult.note }}
+        </template>
       </p>
 
       <p
@@ -292,6 +349,38 @@ function size(bytes: number | null): string {
     </div>
 
     <div v-if="entry.readable || canImport(entry) || entry.recordId !== null" class="row-act">
+      <template v-if="recording">
+        <button
+          type="button"
+          class="read-cue"
+          :disabled="exporting"
+          :data-cy="`export-native-${recording.sessionId}`"
+          @click="emit('export', recording.sessionId, 'native')"
+        >
+          export file
+        </button>
+        <button
+          type="button"
+          class="read-cue"
+          :disabled="exporting"
+          :data-cy="`export-bundle-${recording.sessionId}`"
+          @click="emit('export', recording.sessionId, 'bundle')"
+        >
+          export bundle
+        </button>
+        <button
+          v-if="recording.adoptedAt && !recording.hasTranscript"
+          type="button"
+          class="read-cue"
+          :disabled="importingMessages"
+          :data-cy="`import-messages-${recording.sessionId}`"
+          title="Copy its messages into BroCrew"
+          @click="emit('importMessages', recording.sessionId)"
+        >
+          {{ importingMessages ? 'importing…' : 'import messages' }}
+        </button>
+      </template>
+
       <button
         v-if="entry.recordId !== null && entry.archivedAt !== undefined"
         type="button"
@@ -338,14 +427,17 @@ function size(bytes: number | null): string {
       </button>
 
       <button
-        v-else-if="entry.readable"
+        v-if="entry.readable || entry.recordId !== null"
         type="button"
         class="read-cue"
         :aria-label="`${entry.recordId ? 'Open' : 'Read'} ${label(entry)}`"
-        :data-cy="`library-read-${entry.id}`"
+        :aria-description="lastTurn"
+        :title="lastTurn"
+        :data-cy="entry.readable ? `library-read-${entry.id}` : `sessions-open-${entry.recordId}`"
         @click="emit('read', entry)"
       >
-        {{ entry.recordId ? 'Open' : 'Read' }} <span aria-hidden="true">›</span>
+        {{ entry.recordId ? 'Open' : 'Read' }}
+        <span v-if="entry.readable" aria-hidden="true">›</span>
       </button>
     </div>
   </li>
@@ -503,6 +595,10 @@ function size(bytes: number | null): string {
 
 .outcome[data-outcome='imported'] {
   color: var(--success-text);
+}
+
+.exported {
+  overflow-wrap: anywhere;
 }
 
 .why {
