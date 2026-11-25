@@ -176,7 +176,7 @@ describe('the actual screen publishes actionables without awaiting the limits la
     const once = source.indexOf('async function lookAtTheQueueOnce(')
     const onceEnd = source.indexOf('\n}\n', once)
     if (once < 0 || onceEnd < once) throw new Error('screen look round missing')
-    const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)'
+    const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce, { spaced: true })'
     expect(source).toContain(coalesced)
     const first = deferred<object>()
     const slowLimits = deferred<void>()
