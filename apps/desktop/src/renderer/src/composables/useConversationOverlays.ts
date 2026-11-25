@@ -77,15 +77,6 @@ export function useConversationOverlays(
    */
   const toolsFor = ref<string | null>(null)
   /**
-   * 🔴 **Whether the agent's side is open wide, and for WHICH conversation** (`527`, `HO-050` §1.1).
-   *
-   * ⚠️ **The session id rides the value**, exactly as `viewing` and `toolsFor` do and for the same
-   * reason `067` found: switching conversation while a sheet is open must not leave one
-   * conversation's composed instructions floating over another's transcript. ⛔ With the id in the
-   * value that is unreachable rather than corrected by a watcher.
-   */
-  const instructionsFor = ref<string | null>(null)
-  /**
    * The sheet's own precondition, as ONE computed: this conversation, and a session to be about.
    *
    * ⚑ **It needs nothing else.** The sheet is not told which provider it is drawing — how a tool
@@ -93,23 +84,7 @@ export function useConversationOverlays(
    */
   const toolsOpen = computed(() => toolsFor.value === props.record.sessionId)
 
-  /**
-   * The sheet's precondition: this conversation, and a session described well enough to have any.
-   *
-   * ⛔ **`meta` and not merely the id.** `record.meta` is null until the host answers the create, and
-   * `SessionInstructions` takes `instructions` as a REQUIRED prop — a sheet opened in that window
-   * would be a sheet about nothing. ⚑ The index entry that opens it lives inside the drawer, which
-   * is itself behind `props.record.meta`, so today nothing can press it that early; the guard is
-   * here because the press is two components away and this is where the answer is.
-   */
-  const instructionsOpen = computed(() =>
-    instructionsFor.value === props.record.sessionId ? props.record.meta : null,
-  )
-
-  /**
-   * 🔴 **F093 · "What this agent receives"**, opened from the Open tab's door — scoped to the
-   * conversation that opened it, exactly as {@link instructionsFor} is, and for the same reason.
-   */
+  // Keep the reader attached to the conversation that opened it.
   const inputsFor = ref<string | null>(null)
   const inputsOpen = computed(() =>
     inputsFor.value === props.record.sessionId ? props.record.meta : null,
@@ -370,9 +345,7 @@ export function useConversationOverlays(
     viewing,
     openFor,
     toolsFor,
-    instructionsFor,
     toolsOpen,
-    instructionsOpen,
     inputsFor,
     inputsOpen,
     workflowFor,

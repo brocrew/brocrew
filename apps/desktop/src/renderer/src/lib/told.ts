@@ -300,9 +300,3 @@ export function toldView(
     withheld: drawable.withheld,
   }
 }
-
-/** `1,204 B` / `12.3 KB` — the size of what is on screen, said the way the rows below say it. */
-export function layerBytes(text: string): string {
-  const bytes = new TextEncoder().encode(text).length
-  return bytes < 1024 ? `${String(bytes)} B` : `${(bytes / 1024).toFixed(1)} KB`
-}

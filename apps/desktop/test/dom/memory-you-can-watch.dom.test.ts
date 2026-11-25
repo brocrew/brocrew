@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
-import SessionInstructions from '../../src/renderer/src/components/SessionInstructions.vue'
+import LaunchInstructionEvidence from '../../src/renderer/src/components/LaunchInstructionEvidence.vue'
 
 import { mount, paneProps, record, unmountAll } from './harness'
 
@@ -243,11 +243,11 @@ describe('318 §2.2 · the panel says what it is not', () => {
    * — the sentence, and the claim it makes, are exactly what they were.
    */
   it('says the store is not a reading, once, where the store is', async () => {
-    const view = mount(SessionInstructions, { instructions: withStore }, { width: 380 })
-    view.q('told-tab-learned').click()
+    const view = mount(LaunchInstructionEvidence, { instructions: withStore }, { width: 380 })
+    ;(view.q('input-launch-evidence') as HTMLDetailsElement).open = true
     await nextTick()
     const said = view.q('memory-store-not-a-reading').textContent ?? ''
-    expect(said).toContain('which of these the agent has actually looked up')
+    expect(said).toContain('which ones the agent opened')
     // ⛔ **It is about LOOKING UP, not about reaching the model.** A row in the same block can say
     // the provider put a file in the prompt, and a blanket "not what the agent has read" would have
     // contradicted it two lines down — found reviewing this diff.
@@ -265,8 +265,8 @@ describe('318 §2.2 · the panel says what it is not', () => {
    * named) is unchanged by which tab carries the sentence.
    */
   it('names no provider', async () => {
-    const view = mount(SessionInstructions, { instructions: withStore }, { width: 380 })
-    view.q('told-tab-learned').click()
+    const view = mount(LaunchInstructionEvidence, { instructions: withStore }, { width: 380 })
+    ;(view.q('input-launch-evidence') as HTMLDetailsElement).open = true
     await nextTick()
     const said = view.q('memory-store-not-a-reading').textContent!.toLowerCase()
     expect(said).not.toContain('claude')
@@ -290,7 +290,7 @@ describe('318 §2.2 · the panel says what it is not', () => {
    */
   it('is absent when there is no store to be wrong about', async () => {
     const view = mount(
-      SessionInstructions,
+      LaunchInstructionEvidence,
       {
         instructions: {
           ...withStore,
@@ -308,10 +308,10 @@ describe('318 §2.2 · the panel says what it is not', () => {
       },
       { width: 380 },
     )
-    view.q('told-tab-learned').click()
+    ;(view.q('input-launch-evidence') as HTMLDetailsElement).open = true
     await nextTick()
     expect(view.all('memory-store-not-a-reading')).toHaveLength(0)
     // 193: the panel really did render, so the absence above is about the sentence and not the mount.
-    expect(view.q('session-instructions').textContent).toContain('CLAUDE.md')
+    expect(view.q('input-launch-source').textContent).toContain('CLAUDE.md')
   })
 })

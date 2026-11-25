@@ -9,7 +9,7 @@ import {
   TAB_OF_HOOK,
   TAB_OF_HOOK_PREFIX,
 } from '../../../../scripts/lib/tab-flow.mjs'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import AgentBookButton from '../../src/renderer/src/components/AgentBookButton.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
@@ -22,7 +22,7 @@ import {
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
-import { META, drawerProps, mount, toldProps, unmountAll } from './harness'
+import { META, drawerProps, mount, unmountAll } from './harness'
 
 /**
  * **The tab-flow table, checked against the app it describes** (097, from 083 §5.6).
@@ -420,34 +420,6 @@ describe('the tab-flow table describes the drawer this app actually renders', ()
     ).toBeGreaterThan(Object.keys(TAB_OF_HOOK).length / 2)
   })
 
-  /**
-   * 🔴 **527 · re-aimed, and the assertion turned over.**
-   *
-   * ⛔ **What it pinned:** *every hook the instructions block draws is claimed by `info`*, because
-   * the block was welded into `SessionInfo`'s `<dl>` and the Info tab was the only way to reach it.
-   * ⚑ **`HO-050` §1.1 moved it to a sheet on the overlay layer**, so the fact changed rather than
-   * its spelling — standing rule 26, and the repair is to re-aim rather than to delete.
-   *
-   * ⛔ **What it pins now:** *not one of them is claimed by any tab.* That is the same instrument
-   * measuring the same hazard from the other side. `tabOfHook` answering `info` for a hook the
-   * drawer body no longer mounts would send a live step to the Info tab, the read would find
-   * nothing, and the step would assert against an absence it caused — 097's class, which this whole
-   * table exists to remove. ⚠️ Deleting the test would have left exactly that unguarded.
-   *
-   * ⚑ **And the entry that REACHES it is the half that stays on the tab**, asserted below: a sheet
-   * nothing on the Info tab can open would be the *"separate screen"* the PO ruled against.
-   *
-   * ⚑ **583 · re-aimed a second time, and the claim is still unchanged.** `HO-073` §4 regrouped
-   * the sheet by WHOSE each block is and gave it its OWN tab strip (`told-tab-<key>` inside
-   * `told-tabs`) — a second, unrelated set of tabs nested inside the one Info entry this table
-   * already treats as opaque. ⛔ **Only one of the sheet's tabs is in the document at a time**, so
-   * a fixture that used to see every row in one render now has to press each of the sheet's own
-   * tabs before reading — the union across all of them is what "the instructions block's hooks"
-   * means now, and `tabOfHook` still has to answer `null` for every one of them. ⚠️ **The
-   * `injected-<kind>` family this test used to name by hook is gone**: 583 replaced it with a
-   * single `told-block` hook per row plus a `data-kind` attribute, so "a per-file row was drawn"
-   * is now read off that attribute rather than off a hook name.
-   */
   it('the instructions block’s hooks are claimed by NO tab — asked of the component, not of a list', async () => {
     const instructions = {
       injected: [
@@ -482,52 +454,29 @@ describe('the tab-flow table describes the drawer this app actually renders', ()
       note: 'read at launch',
     }
     const sheet = mount(
-      AgentInstructionsSheet as never,
-      toldProps(instructions as CreatedSession['instructions']),
+      AgentInputPopup,
+      {
+        instructions: instructions as CreatedSession['instructions'],
+        sessionId: 'sess_1',
+        provider: 'claude',
+        who: 'Ada',
+        profile: null,
+        state: null,
+        startLoaded: false,
+      },
       { width: 760, height: 900 },
     )
+    await nextTick()
+    const evidence = sheet.q('input-launch-evidence')
+    expect(evidence.querySelector('[data-kind="agent-memory"]')).not.toBeNull()
+    expect(evidence.querySelector('[data-cy="refused-instruction"]')).not.toBeNull()
+    expect(
+      sheet.q('input-reported-files').querySelector('[data-cy="provider-instruction"]'),
+    ).not.toBeNull()
 
-    // ⚑ **583 · every one of the SHEET's own tabs, not the one that happens to land first.**
-    // `told-tabs` lists every drawn owner plus `not-read` and `as-sent` in one strip regardless of
-    // which is showing, so the keys are read once, up front, and are stable across the presses
-    // below — only the panel underneath swaps. Landing on `configured` (this fixture wrote no
-    // `factory`-owned file) would on its own see nothing but `told-nothing-of-yours`; the walk
-    // this test is guarding is over what the OTHER tabs mount, which a single render cannot show.
-    const tabKeys = [...sheet.host.querySelectorAll('[data-cy^="told-tab-"]')].map((el) =>
-      el.getAttribute('data-cy')!.slice('told-tab-'.length),
+    const ours = [...sheet.host.querySelectorAll<HTMLElement>('[data-cy]')].map(
+      (el) => el.dataset.cy!,
     )
-    expect(tabKeys.length, 'the sheet drew no tabs at all').toBeGreaterThan(1)
-
-    const hooks = new Set<string>()
-    const kinds = new Set<string>()
-    for (const key of tabKeys) {
-      sheet.q(`told-tab-${key}`).click()
-      await nextTick()
-      for (const el of sheet.host.querySelectorAll<HTMLElement>('[data-cy]')) {
-        hooks.add(el.getAttribute('data-cy')!)
-      }
-      // ⚑ **The per-file distinction now lives in an ATTRIBUTE, not a hook name** — `told-block`
-      // is one hook shared by every row, and `data-kind` is what used to be spelled
-      // `injected-<kind>`. See the docblock above.
-      for (const el of sheet.host.querySelectorAll<HTMLElement>('[data-cy="told-block"]')) {
-        kinds.add(el.getAttribute('data-kind')!)
-      }
-    }
-
-    // Non-vacuity first, and it is the assertion that matters most: a fixture the component ignored
-    // would render no instruction rows at all and every check below would be over the empty set.
-    // ⛔ **`injected-` dropped from the filter** — 583 removed that whole family, so it would only
-    // ever match nothing and keeping it would be a filter describing a hook the app no longer has.
-    const ours = [...hooks].filter(
-      (hook) => hook.startsWith('told-') || hook.includes('instruction'),
-    )
-    expect(ours.length, 'the fixture rendered no instructions block at all').toBeGreaterThan(8)
-    // ⛔ …and the family really is a family: at least one row's `data-kind` carries the kind of
-    // file it is — `injected-agent-memory` no longer exists as a hook (see above), so the same
-    // claim is made by reading the attribute the replacement row carries.
-    expect(kinds, 'no per-file row was drawn').toContain('agent-memory')
-    expect(ours, 'the refusal 170 ruled on was not drawn').toContain('refused-instruction')
-
     const stillClaimed = ours.filter((hook) => claimed(hook) !== null)
     expect(
       stillClaimed,

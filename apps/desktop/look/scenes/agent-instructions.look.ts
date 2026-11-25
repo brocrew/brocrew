@@ -2,10 +2,10 @@ import type {
   InjectedInstruction,
   SessionInstructions,
 } from '../../src/shared/instruction-contracts'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 
 import type { WhoseText } from '../../src/shared/whose-text'
-import { toldProps } from '../../test/dom/harness'
+import { givenAnswer } from '../../test/dom/what-this-agent-was-given.fixture'
 import { defineComponent, h } from 'vue'
 import { scene } from '../capture'
 
@@ -73,10 +73,21 @@ const OnTheOverlay = defineComponent({
     h(
       'div',
       { 'data-chat-theme': 'light', style: 'width:100%;height:100%;background:var(--chat-bg)' },
-      [h(AgentInstructionsSheet as never, toldProps(TOLD))],
+      [
+        h(AgentInputPopup, {
+          sessionId: 'sess_1',
+          provider: 'claude',
+          who: 'Designer',
+          profile: 'designer',
+          state: null,
+          startLoaded: false,
+          instructions: TOLD,
+        }),
+      ],
     ),
 })
 
 scene('agent-instructions', (stage) => {
+  window.api = { runtime: { whatThisAgentWasGiven: async () => givenAnswer() } } as never
   stage.mount(OnTheOverlay, {}, { width: 880 })
 })

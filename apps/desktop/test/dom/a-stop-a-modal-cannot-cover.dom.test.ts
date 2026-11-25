@@ -3,7 +3,6 @@ import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import { page } from 'vitest/browser'
 import { assertDrawn, drawnReady } from './drawn'
 import { defineComponent, h, nextTick, type PropType, type VNode } from 'vue'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import AllFilesDialog from '../../src/renderer/src/components/AllFilesDialog.vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
@@ -318,38 +317,6 @@ const PATHS = [
     cy: 'session-tools',
     open: () => h(SessionTools, { tools: TOOLS }),
   },
-  // 527 · the pane's seventh host. ⚑ **`HO-050` §1.1's wide surface** — the agent's composed
-  // instructions, its memory and the files the provider loaded, opened from the Info tab's index
-  // entry. ⛔ **Its widest state is the one measured**: the sheet caps at
-  // `min(780px, 100% - 2 × --lane-clear)`, and the second term IS this file's gutter — so a sheet
-  // that stopped deriving from `--lane-w` would sit on the stop at the narrow widths.
-  {
-    host: 'ConversationPane',
-    panel: 'AgentInstructionsSheet',
-    cy: 'agent-sheet',
-    open: () =>
-      h(AgentInstructionsSheet, {
-        relaunched: false,
-        instructions: {
-          injected: [
-            {
-              kind: 'workspace-instructions',
-              path: '/work/checkout/CLAUDE.md',
-              text: 'Use conventional commits.',
-              bytes: 1240,
-              truncated: false,
-            },
-          ],
-          agentMemory: [],
-          provider: [{ path: '/work/checkout/AGENTS.md', scope: 'project' as const }],
-          refused: [],
-          note: 'read at launch; searched 2 directories',
-          recallsReported: false,
-          writesReported: false,
-          composed: '# BroBot\n\nAnswer in short sentences.',
-        },
-      }),
-  },
   // W4.183 · the agent panel's two popups, at their widest: every piece, and every file.
   {
     host: 'SessionPanel',
@@ -396,6 +363,24 @@ const PATHS = [
         profile: null,
         state: null,
         startLoaded: true,
+        instructions: {
+          injected: [
+            {
+              kind: 'workspace-instructions',
+              path: '/work/checkout/CLAUDE.md',
+              text: 'Use conventional commits.',
+              bytes: 1240,
+              truncated: false,
+            },
+          ],
+          agentMemory: [],
+          provider: [{ path: '/work/checkout/AGENTS.md', scope: 'project' as const }],
+          refused: [],
+          note: 'read at launch; searched 2 directories',
+          recallsReported: false,
+          writesReported: false,
+          composed: '# BroBot\n\nAnswer in short sentences.',
+        },
       }),
   },
   // 510 · the pane's sixth host, and the reading pane's third — ⛔ **640 · and since the fold,

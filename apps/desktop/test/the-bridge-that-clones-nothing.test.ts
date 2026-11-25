@@ -388,7 +388,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
       '`target` is a `SessionPathTarget`, an OBJECT handed in whole, which is the half ' +
       '`setSessionSetting` and `respondPermission` share. All four producers are literals written at the press: `{ of: ' +
       "'cwd' }`, `{ of: 'home' }` and `{ of: 'config-file', name: file.name }` in `SessionInfo`, " +
-      "and `{ of: 'instruction-source', index }` in `SessionInstructions`. 🔴 A proxy here would " +
+      "and `{ of: 'instruction-source', index }` in `ReportedInstructionFiles`. 🔴 A proxy here would " +
       'be SILENT rather than loud — the store catches and answers `no-path`, which the panel ' +
       'renders as *this conversation does not report that file*. ⚑ Measured in §8, planted.',
     producers: [
@@ -402,7 +402,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
         builds: "{ of: 'config-file', name: file.name }",
       },
       {
-        at: 'src/renderer/src/components/SessionInstructions.vue',
+        at: 'src/renderer/src/components/ReportedInstructionFiles.vue',
         builds: "ask({ of: 'instruction-source', index })",
       },
     ],

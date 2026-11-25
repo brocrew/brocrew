@@ -270,7 +270,7 @@ describe('§0 · the prose reader, and a census is only as good as it', () => {
       'apps/desktop/src/main/runtime/factory-text.ts',
       'apps/desktop/src/shared/told.ts',
       'packages/runtime/src/codex/codex-runtime.ts',
-      'apps/desktop/src/renderer/src/components/SessionInstructions.vue',
+      'apps/desktop/src/renderer/src/components/ConversationPane.vue',
     ]) {
       expect(proseSpans(path, read(path)).length, path).toBeGreaterThan(20)
     }

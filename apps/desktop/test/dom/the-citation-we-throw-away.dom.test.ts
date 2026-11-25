@@ -2,7 +2,7 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import SessionInstructions from '../../src/renderer/src/components/SessionInstructions.vue'
+import LaunchInstructionEvidence from '../../src/renderer/src/components/LaunchInstructionEvidence.vue'
 import type { MemoryRecallEntry } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
@@ -229,8 +229,8 @@ describe('319 §2.1 · the panel points at the row, and only where the row exist
    * either arm. Only the route to the element moved; nothing here is weaker for having to walk it.
    */
   async function learnedTab(instructions: Record<string, unknown>): Promise<Mounted> {
-    const view = mount(SessionInstructions, { instructions }, { width: 380 })
-    view.q('told-tab-learned').click()
+    const view = mount(LaunchInstructionEvidence, { instructions }, { width: 380 })
+    ;(view.q('input-launch-evidence') as HTMLDetailsElement).open = true
     await nextTick()
     return view
   }
@@ -241,9 +241,9 @@ describe('319 §2.1 · the panel points at the row, and only where the row exist
     // ⚑ **The first clause survives 319 unchanged**, because its literal claim is still true: this
     // panel reports a STORE and never a reading (009, 305). What went false was the dead end it
     // implied, and that is what the second clause repairs.
-    expect(said).toContain('which of these the agent has actually looked up')
+    expect(said).toContain('which ones the agent opened')
     expect(view.q('memory-store-recall-is-shown').textContent).toContain(
-      'says so in the conversation',
+      'Recalls appear in the conversation.',
     )
   })
 
@@ -261,7 +261,7 @@ describe('319 §2.1 · the panel points at the row, and only where the row exist
     expect(view.all('memory-store-recall-is-shown')).toHaveLength(0)
     // 193: paired positive on the same element, so the absence is about the flag and not the mount.
     expect(view.q('memory-store-not-a-reading').textContent).toContain(
-      'which of these the agent has actually looked up',
+      'which ones the agent opened',
     )
   })
 
@@ -280,7 +280,7 @@ describe('319 §2.1 · the panel points at the row, and only where the row exist
       expect(said).not.toContain('claude')
       expect(said).not.toContain('codex')
       // The paired positive: the sentence really rendered, on both arms.
-      expect(said).toContain('actually looked up')
+      expect(said).toContain('the agent opened')
     }
   })
 })

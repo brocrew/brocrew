@@ -3,9 +3,9 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
+import LaunchInstructionEvidence from '../../src/renderer/src/components/LaunchInstructionEvidence.vue'
 
-import { mount, paneProps, record, toldProps, unmountAll, type Mounted } from './harness'
+import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
 /**
  * 330 · 🔴 **A memory write that read as an ordinary file, drawn in a browser.**
@@ -74,29 +74,12 @@ const NOTHING: SessionInstructions = {
   composed: null,
 }
 
-/**
- * ⚑ **The block on its own since `527` §3.1**, rather than the whole drawer on the Info tab. It
- * emitted `<dt>`/`<dd>` fragments into `SessionInfo`'s `<dl>` until this dispatch and had no root
- * of its own to mount — `525`'s named refactor cost, paid by `HO-050` §1.1's split.
- */
 function openInfo(instructions: SessionInstructions): Mounted {
-  return mount(AgentInstructionsSheet as never, toldProps(instructions), { width: 760 })
+  return mount(LaunchInstructionEvidence, { instructions }, { width: 760 })
 }
 
-/**
- * 🔴 **583 · the tab the memory-store sentences moved BEHIND** (`HO-073` §4). `WHOSE_LAYER` maps
- * `agent-store` to `learned` (`whose-text.ts`), and `SessionInstructions.vue` only draws
- * `memory-store-not-a-reading` / `-recall-is-shown` / `-write-is-shown` inside
- * `showing.whose === 'learned'` now — one owner's page is in the DOM at a time, so a mount that
- * used to read these off the sheet directly must press this tab first, exactly the reach
- * `the-memory-a-fresh-identity-does-not-have.dom.test.ts` already takes for the sentence next to
- * these on the same tab (`TOLD_REMEMBERS_NOTHING`).
- */
-const LEARNED = 'learned'
-
-/** Press one tab and let the panel re-render — `m.q` throws by name if the tab is not in the strip. */
-async function press(m: Mounted, key: string): Promise<void> {
-  m.q(`told-tab-${key}`).click()
+async function openEvidence(view: Mounted): Promise<void> {
+  ;(view.q('input-launch-evidence') as HTMLDetailsElement).open = true
   await nextTick()
 }
 
@@ -164,8 +147,8 @@ describe('330 §4 · the panel points at the write', () => {
     // `the-memory-a-fresh-identity-does-not-have.dom.test.ts` §2.1 already uses for this exact
     // pairing: *"paired on the TAB the negatives were taken on… the group's own one-line answer,
     // which every drawn group carries."*
-    await press(view, LEARNED)
-    const control = view.q(`told-group-says-${LEARNED}`)
+    await openEvidence(view)
+    const control = view.q('told-remembers-nothing')
     expect((control.textContent ?? '').trim().length).toBeGreaterThan(0)
     expect(view.all('memory-store-write-is-shown')).toHaveLength(0)
     expect(view.all('memory-store-not-a-reading')).toHaveLength(0)
@@ -189,14 +172,14 @@ describe('330 §4 · the panel points at the write', () => {
     // the LANDING tab** — `firstTab()` picks the first drawn owner in `WHOSE_TEXT` order and
     // `configured` is always drawn, ahead of `learned`. Both mounts below have to press through.
     const off = openInfo(store)
-    await press(off, LEARNED)
+    await openEvidence(off)
     expect(off.q('memory-store-not-a-reading')).not.toBeNull()
     expect(off.all('memory-store-write-is-shown')).toHaveLength(0)
 
     const on = openInfo({ ...store, writesReported: true })
-    await press(on, LEARNED)
+    await openEvidence(on)
     expect(on.q('memory-store-write-is-shown').textContent).toContain(
-      'the conversation shows the write itself',
+      'Writes appear in the conversation.',
     )
   })
 
@@ -225,7 +208,7 @@ describe('330 §4 · the panel points at the write', () => {
       writesReported: boolean,
     ): Promise<[number, number]> => {
       const view = openInfo({ ...store, recallsReported, writesReported })
-      await press(view, LEARNED)
+      await openEvidence(view)
       return [
         view.all('memory-store-recall-is-shown').length,
         view.all('memory-store-write-is-shown').length,

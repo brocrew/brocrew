@@ -2228,85 +2228,58 @@ async function closeAnySheet(cdp) {
   )
 }
 
-/**
- * The agent's side, open wide. The composition, layers, memory rows and provider list are not on
- * the Info tab; it holds an index and this entry is the door. A step that read those hooks without
- * pressing it would assert against an absence it caused. `scripts/test/info-disclosure-reach.test.mjs`
- * pins the press before the read, because a live-only guard is dark to `ci`.
- */
 async function ensureToldOpen(cdp) {
   await ensureInfoOpen(cdp)
   await clickWhenReady(cdp, 'told-index')
   await waitFor(
-    'the agent’s instructions, open wide',
+    'the shared instructions reader',
     async () =>
-      await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=agent-sheet]'))`),
+      await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=input-popup]'))`),
     10_000,
   )
 }
 
-/**
- * Only one owner's instruction rows are mounted at a time. Select the required tab before reading
- * its rows and wait for aria-selected, not for rows to appear: an empty tab is a valid state that
- * negative assertions must be able to inspect.
- */
-async function showToldTab(cdp, cy) {
-  await clickWhenReady(cdp, cy)
+async function openLaunchRecord(cdp) {
   await waitFor(
-    `the ${cy} tab to take the press`,
+    'the instructions request tabs',
     async () =>
       await cdp.evaluate(`
-        const tab = document.querySelector('[data-cy="${cy}"]')
-        return tab !== null && tab.getAttribute('aria-selected') === 'true'`),
+      const tab = document.querySelector('[role=tab][data-position=system-prompt], [role=tab][data-position=files-and-folder]')
+      if (!tab) return false
+      tab.click()
+      return true`),
+    30_000,
+  )
+  await waitFor(
+    'the launch record in the instructions reader',
+    async () =>
+      await cdp.evaluate(`
+      const record = document.querySelector('[data-cy=input-launch-evidence]')
+      if (!record) return false
+      record.open = true
+      return true`),
     10_000,
   )
 }
 
-/**
- * Open one row of the tab on screen, read what the press reveals (path, provenance, redirection line,
- * document), and close it again. At rest a row shows only its name, chips and size.
- *
- * The `told-block` hook is written literally and only the KIND is interpolated, so a check that did
- * not run cannot look like a pass. Closed before returning: rows can be 64 KiB, and the next read
- * must not run against a page still rendering.
- */
-async function readToldBlock(cdp, kind, at = 0) {
-  // Unscoped by the panel, deliberately: `told-block` is drawn only by `SessionInstructions.vue`,
-  // and a panel scope in a helper would sit above every `ensureToldOpen` call, which
-  // `scripts/test/info-disclosure-reach.test.mjs` reads as a block-read with no opener. That census
-  // does not strip prose, so this comment must not spell out the selector.
-  const press = `
-    const rows = [...document.querySelectorAll('[data-cy=told-block][data-kind=${kind}]')]
-    const row = rows[${at}]
-    if (!row) throw new Error('no ${kind} row at ${at} — the tab has ' + rows.length)
-    const toggle = row.querySelector('[data-cy=told-block-toggle]')
-    if (!toggle) throw new Error('the ${kind} row at ${at} has no toggle to open it')
-    toggle.click()
-    return true`
-  await cdp.evaluate(press)
-  const said = await waitFor(
-    `the ${kind} row at ${at} to open`,
-    async () =>
-      await cdp.evaluate(`
-        const norm = (el) => (el ? el.textContent.replace(/\\s+/g, ' ').trim() : null)
-        const row = [...document.querySelectorAll('[data-cy=told-block][data-kind=${kind}]')][${at}]
-        const label = row ? row.querySelector('[data-cy=told-block-label]') : null
-        if (!label) return null
-        return {
-          label: norm(label),
-          // The row's OWN path, which is the first one under the opened head — a redirected row
-          // carries a second inside its link line, and that one is read from its own hook below.
-          path: norm(row.querySelector('.where .path')),
-          link: norm(row.querySelector('[data-cy=told-block-link]')),
-          cut: norm(row.querySelector('[data-cy=told-block-truncated-says]')),
-          // Bounded: a project file on step 65's chain is 64 KiB of one repeated character and no
-          // assertion in this file looks past the head of a document.
-          body: norm(row.querySelector('[data-cy=document-body]'))?.slice(0, 4000) ?? null,
-        }`),
-    15_000,
-  )
-  await cdp.evaluate(press)
-  return said
+async function readLaunchFile(cdp, kind, index = 0) {
+  return await cdp.evaluate(`
+    const record = document.querySelector('[data-cy=input-launch-evidence]')
+    if (!record || !record.open) throw new Error('the launch record is closed')
+    const rows = [...record.querySelectorAll('[data-kind]')]
+      .filter((row) => row.dataset.kind === ${JSON.stringify(kind)})
+    const row = rows[${index}]
+    if (!row) throw new Error('the launch record has no matching file')
+    row.open = true
+    const norm = (el) => el?.textContent.replace(/\\s+/g, ' ').trim() ?? null
+    const content = {
+      label: norm(row.querySelector('[data-cy=told-block-label]')),
+      path: norm(row.querySelector('[data-cy=told-block-path]')),
+      link: norm(row.querySelector('[data-cy=told-block-link]')),
+      body: norm(row.querySelector('[data-cy=document-body]'))?.slice(0, 4000) ?? null,
+    }
+    row.open = false
+    return content`)
 }
 
 async function ensureInfoOpen(cdp) {
@@ -15363,36 +15336,14 @@ async function main() {
       })
       await ensureToldOpen(cdp)
 
-      // Assert the instructions block exists before interpreting missing rows. Select the owning
-      // tab before reading: profile and agent memory are learned, project files are the-place,
-      // refused files are not-read. Every compiled row uses told-block with data-kind and
-      // data-whose, not an injected-kind hook.
-      await waitFor(
-        'the drawer’s instructions block',
-        async () =>
-          await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tabs = document.querySelector('[data-cy=told-tabs]')
-            return block !== null && tabs !== null`),
-        30_000,
-      )
-
-      // ── §1a · the linked file is NOT on `not read` — the budget's drops still are ─────
-      // The tab has to be there, and a missing one is the defect rather than a harness timeout, so the
-      // press is caught and re-thrown as the sentence this step has always said about a source the app
-      // declined without mentioning.
-      await showToldTab(cdp, 'told-tab-not-read').catch(() => {
-        throw new Error(
-          'the sheet has no "not read" tab at all, so it says nothing about the files the ' +
-            'budget dropped — 170’s defect exactly',
-        )
-      })
+      await openLaunchRecord(cdp)
+      await clickWhenReady(cdp, 'left-out-files')
       const refusedRows = await waitFor(
         'the files the walk would not read',
         async () =>
           await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            if (!block) return null
+            const block = document.querySelector('[data-cy=input-launch-evidence]')
+            if (!block?.open) return null
             const norm = (el) => el.textContent.replace(/\\s+/g, ' ').trim()
             // ⚠️ Every hook below is written LITERALLY rather than built from a variable — the
             // tab-flow walk refuses a name it cannot read, on the grounds that a check which
@@ -15409,26 +15360,11 @@ async function main() {
         throw new Error(`a linked CLAUDE.md is still refused, which 733 (R93) ended: "${refused}"`)
       }
 
-      // ── §1b · the redirected memory shows its TEXT and names the REAL target ────────────────
-      // Both of this section's files are the agent's, so they are behind one press. Which owner a row
-      // landed under is asserted off `data-whose`, not the heading above it: a memory filed under
-      // BroBot's own would be a provenance error.
-      await showToldTab(cdp, 'told-tab-learned')
-      const learned = await waitFor(
-        'the agent’s own rows on the sheet',
-        async () =>
-          await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tab = document.querySelector('[data-cy=told-tab-learned]')
-            if (!block || !tab || tab.getAttribute('aria-selected') !== 'true') return null
-            return {
-              rows: [...block.querySelectorAll('[data-cy=told-block]')].map((el) => ({
-                kind: el.dataset.kind,
-                whose: el.dataset.whose,
-              })),
-            }`),
-        30_000,
-      )
+      const learned = await cdp.evaluate(`
+        const block = document.querySelector('[data-cy=input-launch-evidence]')
+        return { rows: [...block.querySelectorAll('[data-kind]')].map((el) => ({
+          kind: el.dataset.kind, whose: el.dataset.whose,
+        })) }`)
       const asTheAgents = (kind) =>
         learned.rows.some((row) => row.kind === kind && row.whose === 'learned')
       if (!asTheAgents('agent-memory')) {
@@ -15437,7 +15373,7 @@ async function main() {
       // And the text, which is what the model actually received: naming the target without it would be
       // half the disclosure. The row is collapsed by default, so it has to be opened; one open also
       // shows the path and the redirection line.
-      const agentMemory = await readToldBlock(cdp, 'agent-memory')
+      const agentMemory = await readLaunchFile(cdp, 'agent-memory')
       if (agentMemory.path !== join(home, 'memory', 'MEMORY.md')) {
         throw new Error(`the agent-memory row names ${agentMemory.path}`)
       }
@@ -15461,7 +15397,7 @@ async function main() {
             'had stopped loading anything at all, which is why this one exists',
         )
       }
-      const ordinary = await readToldBlock(cdp, 'profile-memory')
+      const ordinary = await readLaunchFile(cdp, 'profile-memory')
       if (ordinary.path !== profileMemory) {
         throw new Error(`the ordinary row names ${ordinary.path}`)
       }
@@ -15469,7 +15405,7 @@ async function main() {
       // is `told-block-label`; the group heading says whose a row is, this says which of that owner's
       // things it is (*profile memory* and *a note the agent was asked to write* are two provenances
       // under one owner).
-      if (!/profile memory/.test(ordinary.label ?? '')) {
+      if (!/profile memory/i.test(ordinary.label ?? '')) {
         throw new Error(`the ordinary row is not labelled: "${ordinary.label}"`)
       }
       // One shot per tab, because one tab is what a person can see: no single frame covers the
@@ -15497,40 +15433,20 @@ async function main() {
       // survives while the outermost gives way. A reader that dropped everything would pass the three
       // checks above.
       //
-      // These rows belong to the place, and their paths are behind the press. They are opened one at
-      // a time: every file on this chain is 64 KiB of one repeated character, and rendering four at
-      // once is not needed to answer which files were sent.
-      await showToldTab(cdp, 'told-tab-the-place').catch(() => {
-        throw new Error(
-          'the sheet has no tab for the folder’s own files at all, so every project file was ' +
-            'dropped along with the outermost one — the budget is being spent in prompt order again',
-        )
-      })
-      const placed = await waitFor(
-        'the folder’s own rows on the sheet',
-        async () =>
-          await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tab = document.querySelector('[data-cy=told-tab-the-place]')
-            if (!block || !tab || tab.getAttribute('aria-selected') !== 'true') return null
-            return {
-              rows: [...block.querySelectorAll('[data-cy=told-block]')]
-                .map((el) => el.dataset.kind)
-                .filter((kind) => kind === 'project-memory').length,
-            }`),
-        30_000,
-      )
+      const placed = await cdp.evaluate(`
+        const block = document.querySelector('[data-cy=input-launch-evidence]')
+        return { rows: block.querySelectorAll('[data-kind=project-memory]').length }`)
       const sent = []
       let followed = null
       for (let at = 0; at < placed.rows; at += 1) {
-        const row = await readToldBlock(cdp, 'project-memory', at)
+        const row = await readLaunchFile(cdp, 'project-memory', at)
         sent.push(row.path)
         if (row.path === refusedPath) followed = row
       }
       // The followed link is disclosed: sent, on the folder's tab, saying BroBot followed it and to
       // where, with the text it led to.
       if (
-        !followed?.link?.includes('BroBot followed it') ||
+        !followed?.link?.startsWith('Read from ') ||
         !followed.link.includes(decoy) ||
         !followed.body?.includes(`${tag}-DECOY`)
       ) {
@@ -15666,23 +15582,15 @@ async function main() {
       // Show the source the provider received in the instructions drawer. Sending it in the system
       // prompt without displaying its existence would hide custom context from the person.
       await ensureToldOpen(cdp)
-      // The memory rows are the agent's, and one owner's rows are in the DOM at a time. The press is
-      // caught rather than thrown from: a `learned` tab that never arrives is the panel showing no
-      // agent-memory row, and reporting it as a timed-out hook would blame the harness for the product.
-      await showToldTab(cdp, 'told-tab-learned').catch(() => null)
+      await openLaunchRecord(cdp)
       const atRest = await waitFor(
         'the agent-memory row on the second conversation',
         async () =>
           await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tab = document.querySelector('[data-cy=told-tab-learned]')
-            if (!block || !tab || tab.getAttribute('aria-selected') !== 'true') return null
-            const row = block.querySelector('[data-cy=told-block][data-kind=agent-memory]')
-            if (!row) return null
-            return {
-              whose: row.dataset.whose,
-              reach: Boolean(row.querySelector('[data-cy=memory-reach-prompt]')),
-            }`),
+            const block = document.querySelector('[data-cy=input-launch-evidence]')
+            const row = block?.querySelector('[data-cy=input-launch-memory-file][data-kind=agent-memory]')
+            if (!block?.open || !row) return null
+            return { whose: row.dataset.whose, reach: row.dataset.reach === 'prompt' }`),
         30_000,
       ).catch(() => null)
       if (!atRest) {
@@ -15695,7 +15603,7 @@ async function main() {
         throw new Error(`the agent's own memory is filed under "${atRest.whose}", not the agent`)
       }
       // At rest the row shows its name, reach chip and size; the path and label open with the press.
-      const shown = await readToldBlock(cdp, 'agent-memory')
+      const shown = await readLaunchFile(cdp, 'agent-memory')
       if (shown.path !== index) throw new Error(`the drawer names ${shown.path}, not ${index}`)
       // Both halves of provenance are asserted: the model wrote this file, and the provider, not
       // BroBot, loads it. The second half is read from a hook, not copy: `memory-reach-prompt` is
@@ -15706,7 +15614,7 @@ async function main() {
       // The provenance line is `told-block-label` (`LABELS[kind]`), one press away. Both halves of
       // the regex pair are kept: *written by BroBot* is the wording the bundle and workspace file
       // carry, so a memory relabelled as ours still reds this line.
-      if (!/written by the agent/.test(shown.label ?? '')) {
+      if (!/written by the agent/i.test(shown.label ?? '')) {
         throw new Error(`the agent-memory row does not say who wrote this file: "${shown.label}"`)
       }
       // The mirror negative the DOM test makes too: this row is the one thing on the panel that is
@@ -15719,7 +15627,7 @@ async function main() {
       if (!atRest.reach) {
         throw new Error(
           'the agent-memory row does not say the PROVIDER put this in the prompt — no ' +
-            `[data-cy=memory-reach-prompt] beside: "${shown.label}"`,
+            `[data-reach=prompt] beside: "${shown.label}"`,
         )
       }
 
@@ -16218,156 +16126,41 @@ async function main() {
       // ---- 3b · and the drawer says so, in the provider's own half of the block ----
       await ensureToldOpen(cdp)
 
-      // Reads are spread across three tabs, one owner's rows at a time:
-      //  - the provider's list, scope labels and opaque layer are `not shown` (`whose-text.ts`);
-      //  - the composition, its two disclosures and the note are `as sent`;
-      //  - the paired negative below walks every tab.
-      // The strip is walked first, before anything is opened, so the count is of rows drawn at rest.
-      const strip = await waitFor(
-        'the owners this sheet has tabs for',
+      await waitFor(
+        'the shared Overview’s launch summary',
         async () =>
           await cdp.evaluate(`
-            const tabs = document.querySelector('[data-cy=told-tabs]')
-            if (!tabs) return null
-            return { keys: [...tabs.querySelectorAll('[data-cy^=told-tab-]')].map((el) => el.dataset.cy) }`),
+          return Boolean(document.querySelector('[data-cy=input-launch]'))`),
         30_000,
       )
-      // Non-vacuity for the negative: a strip that came back empty would walk zero tabs, find zero
-      // rows and pass.
-      for (const needed of ['told-tab-not-held', 'told-tab-as-sent']) {
-        if (!strip.keys.includes(needed)) {
-          throw new Error(
-            `the sheet offers no ${needed} tab, so every read below would be over nothing: ` +
-              JSON.stringify(strip.keys),
-          )
-        }
-      }
-      const injected = []
-      // The agent's own memory is the provider's door, not an append. `agent-memory`,
-      // `agent-memory-note` and `agent-memory-topic` arrive on `SessionInstructions.agentMemory`, a
-      // separate field so this list keeps meaning what BroBot appended (`runtime-ipc.ts`,
-      // `InjectedInstructionKind`); on Codex it is `readCodexAgentMemory`'s read of the home's
-      // `memories/`. Counting every `told-block` would read memory left in BroBot's home by an earlier
-      // Codex step as "BroBot injected 2 file(s)". So the set-aside is by kind, off the row's own
-      // `data-kind`, not by the `learned` owner: `profile-memory` is learned too and is one of the
-      // injected rows BroBot appends. Every other kind still counts (`project-memory`,
-      // `repository-conventions`, an unsplit bundle), so a build appending AGENTS.md itself is red.
-      const PROVIDER_LOADS = new Set(['agent-memory', 'agent-memory-note', 'agent-memory-topic'])
-      const providerLoaded = []
-      // This conversation's own text is not a file, and it is sent. The sheet draws it as
-      // `this-conversation` rows (`whose-groups.ts`, `conversationBlocks`). The negative below is
-      // that BroBot appends no file for this provider, so the set-aside is by kind and every file
-      // kind still counts. The kind is required below, so the set-aside is never over nothing.
-      const THIS_CONVERSATION = 'this-conversation'
-      const conversationText = []
-      for (let at = 0; at < strip.keys.length; at += 1) {
-        // Pressed by position in the strip, never by a `[data-cy=…]` built from the key: the hook walk
-        // (`hook-reach.test.mjs`) refuses a hook it cannot read, so a check that silently did not run
-        // cannot look like one that passed.
-        await cdp.evaluate(`
-          const tabs = [...document.querySelectorAll('[data-cy=told-tabs] [data-cy^=told-tab-]')]
-          const tab = tabs[${at}]
-          if (!tab) throw new Error('the tab strip lost a tab at ${at} mid-walk')
-          tab.click()
-          return true`)
-        const on = await waitFor(
-          `the ${strip.keys[at]} tab`,
-          async () =>
-            await cdp.evaluate(`
-              const tabs = [...document.querySelectorAll('[data-cy=told-tabs] [data-cy^=told-tab-]')]
-              const tab = tabs[${at}]
-              if (!tab || tab.getAttribute('aria-selected') !== 'true') return null
-              const block = document.querySelector('[data-cy=session-instructions]')
-              if (!block) return null
-              // Every row this tab draws, whatever its owner — a bundle this app could not split
-              // is drawn on every tab and is an appended file like any other.
-              return { rows: [...block.querySelectorAll('[data-cy=told-block]')].map((el) => el.dataset.kind) }`),
-          15_000,
-        )
-        for (const kind of on.rows) {
-          if (PROVIDER_LOADS.has(kind)) providerLoaded.push(`${strip.keys[at]}: ${kind}`)
-          else if (kind === THIS_CONVERSATION) conversationText.push(`${strip.keys[at]}: ${kind}`)
-          else injected.push(`${strip.keys[at]}: ${kind}`)
-        }
-      }
-
-      // The as-sent tab shows the composed input and its two folds, so the person can inspect the
-      // final rendered context.
-      await showToldTab(cdp, 'told-tab-as-sent')
-      // The provenance is a label on the panel and a paragraph behind a disclosure. Both are read
-      // below, because losing either is a defect: without the long form the panel loses its
-      // provenance, and without the label it shows an unattributed list. The press is pinned by
-      // `scripts/test/info-disclosure-reach.test.mjs`.
-      await clickWhenReady(cdp, 'instructions-why')
-      const said = await waitFor(
-        'the drawer’s instructions block',
-        async () =>
-          await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tab = document.querySelector('[data-cy=told-tab-as-sent]')
-            if (!block || !tab || tab.getAttribute('aria-selected') !== 'true') return null
-            const norm = (el) => (el ? el.textContent.replace(/\\s+/g, ' ').trim() : null)
-            // Hooks written LITERALLY, for the tab-flow walk's reason (097 finding 8).
-            return {
-              why: norm(block.querySelector('[data-cy=instructions-why-body]')),
-              note: norm(block.querySelector('[data-cy=instructions-note]')),
-              // 442 · 🔴 **What this block SAYS it is showing** (HO-024 §4 #24). The layer
-              // list is drawn on every conversation now, and the two lines below are the ones
-              // criterion 24 turns on: the scope sentence, and — on a provider whose files BroBot
-              // does not append — the positive statement that it appended nothing. D-024 · R1: a
-              // Codex launch is now sent this conversation's own text, so that statement is read
-              // here to be required ABSENT, and the composition below is read instead.
-              // ⛑ **583 corrected the scope of this read.** 442 put the composition in the Info
-              // list BESIDE the block, so these were read from the document; 583 moved it onto
-              // this tab, INSIDE the panel — and the same commit (acbf5a7b) then lifted the scope
-              // sentence OUT of it, above the tabs, a sibling of this panel inside
-              // agent-instructions (442 §2.2: a tab is a press). 722 · so told-sentence is read off
-              // the sheet that owns this panel: a panel-scoped read is null by construction, and
-              // that null is what 722's batch reported. told-appended-nothing is still in the panel.
-              // ⛔ No backticks in here: this comment is inside a page-side template literal and
-              // one would end it (brobot2-page-side-templates-take-no-backticks).
-              told: norm(block.closest('[data-cy=agent-instructions]')?.querySelector('[data-cy=told-sentence]')),
-              appendedNothing: norm(block.querySelector('[data-cy=told-appended-nothing]')),
-              // D-024 · R1 · the composition itself, which a Codex launch now has: this
-              // conversation's own text under its own header, and no file's. Hook written
-              // LITERALLY, for the tab-flow walk's reason (097 finding 8).
-              composed: norm(block.querySelector('[data-cy=told-layer-app-composed]')),
-            }`),
-        30_000,
-      ).catch(() => null)
-      if (!said) {
-        throw new Error(
-          'the instructions block is not on the agent’s sheet at all — a Codex session that ' +
-            'loaded an AGENTS.md and shows nothing is 158 undone, and the model has instructions ' +
-            'the user cannot see',
-        )
-      }
-
-      // What the provider read for itself, and the layers this app can name and not show: one tab,
-      // because BroBot holds none of these bytes.
-      await showToldTab(cdp, 'told-tab-not-held')
-      const reported = await waitFor(
-        'what the provider says it read for itself',
-        async () =>
-          await cdp.evaluate(`
-            const block = document.querySelector('[data-cy=session-instructions]')
-            const tab = document.querySelector('[data-cy=told-tab-not-held]')
-            if (!block || !tab || tab.getAttribute('aria-selected') !== 'true') return null
-            const norm = (el) => (el ? el.textContent.replace(/\\s+/g, ' ').trim() : null)
-            return {
-              lead: norm(block.querySelector('[data-cy=provider-instructions-lead]')),
-              provider: [...block.querySelectorAll('[data-cy=provider-instruction]')].map(norm),
-              // 356 §3 · the LAYER each reported file belongs to, read off the attribute rather
-              // than out of the sentence (163's rule: a test that parses prose passes on a
-              // placeholder).
-              scopes: [...block.querySelectorAll('[data-cy=provider-scope]')].map(
-                (el) => el.dataset.scope,
-              ),
-              absent: norm(block.querySelector('[data-cy=provider-instructions-absent]')),
-              opaque: norm(block.querySelector('[data-cy=told-layer-provider-base]')),
-            }`),
-        30_000,
-      )
+      const reported = await cdp.evaluate(`
+        const list = document.querySelector('[data-cy=input-reported-files]')
+        list.open = true
+        const norm = (el) => el?.textContent.replace(/\\s+/g, ' ').trim() ?? null
+        return {
+          launch: norm(document.querySelector('[data-cy=input-launch]')),
+          copy: norm(document.querySelector('[data-cy=input-provider-about] summary')),
+          lead: norm(list.querySelector('[data-cy=provider-instructions-lead]')),
+          provider: [...list.querySelectorAll('[data-cy=provider-instruction]')].map(norm),
+          scopes: [...list.querySelectorAll('[data-cy=provider-scope]')].map((el) => el.dataset.scope),
+          absent: norm(list.querySelector('[data-cy=provider-instructions-absent]')),
+        }`)
+      await openLaunchRecord(cdp)
+      const said = await cdp.evaluate(`
+        const block = document.querySelector('[data-cy=input-launch-evidence]')
+        const composition = block.querySelector('[data-cy=told-composition]')
+        composition.open = true
+        const norm = (el) => el?.textContent.replace(/\\s+/g, ' ').trim() ?? null
+        return {
+          note: norm(block.querySelector('[data-cy=instructions-note]')),
+          appendedNothing: norm(composition.querySelector('[data-cy=told-appended-nothing]')),
+          composed: norm(composition.querySelector('[data-cy=document-body]')),
+          sourceKinds: [...block.querySelectorAll('[data-cy=input-launch-source], [data-cy=told-unsplit]')]
+            .map((el) => el.dataset.kind ?? 'unsplit'),
+          providerLoaded: [...block.querySelectorAll('[data-cy=input-launch-memory-file]')].map((el) => el.dataset.kind),
+        }`)
+      const conversationText = said.sourceKinds.filter((kind) => kind === 'this-conversation')
+      const injected = said.sourceKinds.filter((kind) => kind !== 'this-conversation')
       if (!reported.provider.some((row) => row.includes(agentsFile))) {
         throw new Error(
           `the block does not name ${agentsFile}. provider rows: ${JSON.stringify(reported.provider)}`,
@@ -16377,12 +16170,6 @@ async function main() {
       // BroBot appended it.
       if (!/reported by the provider/i.test(reported.lead ?? '')) {
         throw new Error(`the block does not say whose list this is: "${reported.lead}"`)
-      }
-      // The long form, behind the disclosure this step opened. What must survive is the claim: the
-      // provider chose these files, and this app did not fetch them to build the list. It does not
-      // claim the whole app holds none of their text, which the Open button makes false.
-      if (!/did not fetch them to build the list/i.test(said.why ?? '')) {
-        throw new Error(`the disclosure does not say who fetched what: "${said.why}"`)
       }
       // The note says what is sent, both halves: this conversation's own text (`main/index.ts` passes
       // `thisConversation`), and that the provider reads its own instruction files. The text opens
@@ -16417,10 +16204,7 @@ async function main() {
       // this step silently. What the block said is still reported here, so the row `69b` waits on is
       // in this run's output.
       const profileLayer = `scopes ${JSON.stringify(reported.scopes)} · absent: ${JSON.stringify(reported.absent)}`
-      // Paired negative: we appended no project memory of our own, so no injected row may claim we did.
-      // Otherwise a build appending AGENTS.md itself (which this provider forbids) would pass.
-      // The walk above pressed every tab and this counts what it found; that beats a prefix scan
-      // because `told-block` is one hook for all eight kinds.
+      // Paired negative: we appended no project memory of our own, so the launch record must not show an injected file.
       if (injected.length > 0) {
         throw new Error(
           `BroBot injected ${injected.length} file(s) into a Codex session: ` +
@@ -16432,7 +16216,7 @@ async function main() {
       if (conversationText.length === 0) {
         throw new Error(
           'the sheet draws no row of this conversation’s own text, which every Codex launch is ' +
-            `sent since D-024 — strip ${JSON.stringify(strip.keys)}`,
+            `sent since D-024. Source kinds: ${JSON.stringify(said.sourceKinds)}`,
         )
       }
       // The same fact from the layer list, so the two halves cannot disagree: the rows above say no
@@ -16462,23 +16246,20 @@ async function main() {
       }
       // The scope sentence is the deliverable even if nothing else lands. Asserted on the live app
       // because it is a claim about what the reader is looking at.
-      if (!/most recent launch/i.test(said.told ?? '')) {
+      if (!/what its last launch gave it/i.test(reported.launch ?? '')) {
         throw new Error(
-          `the block does not say what launch it is describing: ${JSON.stringify(said.told)}`,
+          `the block does not say what launch it is describing: ${JSON.stringify(reported.launch)}`,
         )
       }
-      // The opaque layer is drawn: if omitted, the rest of the block reads as a complete account of
-      // the prompt.
-      if (!reported.opaque) {
-        throw new Error('the provider’s own instruction layer is not on the panel at all')
+      if (!/stored provider text/i.test(reported.copy ?? '')) {
+        throw new Error('the Overview does not distinguish the stored provider text')
       }
       await cdp.screenshot('codex-instructions-181')
       return (
         `codex reported ${reported.provider.length} instruction file(s) including ${agentsFile}, ` +
         `BroBot appended none — only this conversation's own text (${conversationText.length} ` +
-        `row(s)), and the layer list shows that text and no file, names the provider's own opaque ` +
-        `layer, and scopes itself to the most recent launch — and the reply carried ${token} ` +
-        `· the agent's own memory, which the provider loads: ${JSON.stringify(providerLoaded)} ` +
+        `row(s)), and the reader separates that launch record from stored provider text. ` +
+        `The reply carried ${token}. Provider memory: ${JSON.stringify(said.providerLoaded)} ` +
         `· 69b: ${profileLayer}`
       )
     },
