@@ -94,7 +94,6 @@ export function useRuntimeScreenReadings({
     limitsLane,
     lookAfterAQueueNotice,
     lookForWhatIsYours,
-    readTheWorkspace,
     readWhatIsWaiting,
     refreshLimitsDisplay,
     closeActionableReads,
@@ -736,13 +735,6 @@ export function useRuntimeScreenReadings({
         void readOwnForest()
         // Refresh the Team forest when a conversation opens, ends or is spawned, rather than waiting for arrival or its periodic tick. `readWhoIsWorking` runs only while the page is visible.
         void readWhoIsWorking()
-        // 🔴 **571 · and the rail's live signal**, whose `open` half is a count of conversations that
-        // are not over — which is the exact fact this subject announces. ⛔ **The `needsYou` half
-        // announces nothing and keeps the tick.** ⚠️ **638 · the REASON changed and the fact did
-        // not**: a third subject exists now, and `needsYou` is not it — that half is a person's
-        // queue, whose writers `638` did not survey, so giving it this arm would be a subject
-        // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).
-        void readTheWorkspace()
         // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived:
         // on the tick's terms, so a notice leaves the limits walk on its own cadence.
         lookAfterAQueueNotice()
@@ -794,12 +786,8 @@ export function useRuntimeScreenReadings({
         // terms, like the arm above.
         lookAfterAQueueNotice()
       },
-      // ⚑ **What a person must answer may have moved**: the queue and the rail's needs-you count are
-      // read again, each through its one-at-a-time read, so a burst costs at most one more look. The
-      // queue is asked on the tick's terms, and the five-second look stays until this arm is proven.
       persons: () => {
         lookAfterAQueueNotice()
-        void readTheWorkspace()
       },
     })
     stopHearingLimits = runtime().onLimitsDisplayChanged((message) => {
@@ -807,15 +795,9 @@ export function useRuntimeScreenReadings({
       if (message.why === 'scope') void refreshLimitsDisplay()
     })
     void lookForWhatIsYours()
-    // ⚑ **571 · the rail's live signal reads on the SAME first pass and the SAME tick** — see
-    // {@link readTheWorkspace} for why it rides this cadence rather than getting one of its own.
-    void readTheWorkspace()
-    // ⚑ **636 · and the three waits, on the same first pass and the same tick**, for the reason one
-    // line up — see {@link readWhatIsWaiting}.
     void readWhatIsWaiting()
     looking = setInterval(() => {
       void lookForWhatIsYours(true)
-      void readTheWorkspace()
       void readWhatIsWaiting()
     }, LOOK_EVERY_MS)
     void readProcessMemory()

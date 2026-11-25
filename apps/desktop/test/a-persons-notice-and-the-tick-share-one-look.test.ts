@@ -206,14 +206,13 @@ describe('a persons notice and the tick share one look at the queue', () => {
     for (const reader of READERS) expect(screen.readsOf(reader), reader).toBe(2)
     release()
     await settle()
-    // The rail's needs-you count is asked on the notice too, through its own one-at-a-time read.
-    expect(screen.readTheWorkspace).toHaveBeenCalledTimes(1 + 5)
     // One owed round, asked after the last notice, so it saw every change they announced. It
     // starts one look tick after round 2 started, with the next tick's own ask.
     for (const reader of READERS) expect(screen.readsOf(reader), reader).toBe(2)
     await vi.advanceTimersByTimeAsync(LOOK_EVERY_MS)
     for (const reader of READERS) expect(screen.readsOf(reader), reader).toBe(3)
     expect(screen.refs.escalated?.value).toEqual(expect.objectContaining({ rows: ['round 3'] }))
+    expect(screen.readTheWorkspace).not.toHaveBeenCalled()
   })
 
   it('coalesces an idle notice burst into one combined call and preserves failed parts', async () => {

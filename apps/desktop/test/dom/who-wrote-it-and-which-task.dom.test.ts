@@ -454,7 +454,6 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
     const m = mount(
       WaitingOnYou,
       {
-        attention: [],
         needsYou: [],
         clock: T,
       },

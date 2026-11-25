@@ -292,6 +292,28 @@ const REPLY: WaitingOnWhoWrote = {
   answeredAt: NOW - 300_000,
 }
 
+const DECISIONS = ASKERS.map((asker, index) =>
+  decision(asker.session, `req_${String(index)}`, NOW - 60_000 * (index + 1)),
+)
+
+export function waitingCardReaders(rowsUnread = 0) {
+  return {
+    questionsForAPerson: async () => ({
+      ...walked([...QUESTIONS, TODO], 'every-conversation-that-routed'),
+      rowsUnread,
+    }),
+    decisionsForAPerson: async () => walked(DECISIONS, 'every-conversation-that-routed'),
+    stalledWorkForAPerson: async () => walked([STALL], 'every-conversation-that-was-given-work'),
+    stoppedWorkForAPerson: async () => walked(STOPS, 'every-conversation-that-was-given-work'),
+    waitingOnWhoWroteForAPerson: async () =>
+      walked([REPLY], 'every-conversation-that-was-given-work'),
+    workIncidentsForAPerson: async () =>
+      walked([INCIDENT, RECOVERY], 'every-conversation-that-was-given-work'),
+    instructionAsksForAPerson: async () => [ASK],
+    mcpServerRequestsForAPerson: async () => [SERVER],
+  }
+}
+
 /**
  * Fill the queue with a card of every kind (with `every`, every kind the page draws; with `oneWall`,
  * one provider's usage), then mount the page at `width` by `height`.
@@ -332,12 +354,7 @@ export async function aWaitingPageWithEveryCard(
   )
   usePersonsQueue().supply(
     walked(every ? [...QUESTIONS, TODO] : [], 'every-conversation-that-routed'),
-    walked(
-      ASKERS.map((asker, at) =>
-        decision(asker.session, `req_${String(at)}`, NOW - 60_000 * (at + 1)),
-      ),
-      'every-conversation-that-routed',
-    ),
+    walked(DECISIONS, 'every-conversation-that-routed'),
     {
       held: new Set<string>(),
       answerable: new Map(),

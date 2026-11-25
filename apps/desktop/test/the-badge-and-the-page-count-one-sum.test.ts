@@ -41,10 +41,17 @@ describe('what a person owes outside this window', () => {
     expect(owedHere(empty, null)).toBe(0)
   })
 
-  it('is what both the badge and the page count with', () => {
-    for (const file of ['composables/useRuntimeAttention.ts', 'components/WaitingOnYou.vue']) {
-      const source = readFileSync(new URL(`../src/renderer/src/${file}`, import.meta.url), 'utf8')
-      expect(source, file).toMatch(/onlyYou\s*[:=][^\n]*owedHere\(persons, /)
-    }
+  it('passes the same queue summary to the Waiting on you page and rail', () => {
+    const screen = readFileSync(
+      new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url),
+      'utf8',
+    )
+    const attention = readFileSync(
+      new URL('../src/renderer/src/composables/useRuntimeAttention.ts', import.meta.url),
+      'utf8',
+    )
+    expect(attention).toMatch(/onlyYou:\s*owedHere\(persons, /)
+    expect(screen).toContain(':needs-you="homeNeedsYou.total"')
+    expect(screen).toContain(':attention="homeNeedsYou"')
   })
 })

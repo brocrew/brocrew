@@ -174,7 +174,7 @@ describe('limits polling without delaying person asks', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(one.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
     for (const name of actionable) expect(one.store[name]).toHaveBeenCalledTimes(12)
-    expect(one.readTheWorkspace).toHaveBeenCalledTimes(12)
+    expect(one.readTheWorkspace).not.toHaveBeenCalled()
     expect(one.readWhatIsWaiting).toHaveBeenCalledTimes(12)
   })
 

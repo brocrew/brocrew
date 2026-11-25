@@ -4,7 +4,7 @@ import { agentName, type AgentIdentities } from '../../../shared/runtime-ipc'
 import { aProviderNotChosenSays } from '../lib/front-door-words'
 import { providersNotChosenIn } from '../lib/agent-store'
 import { owedByList, owedHere, type WaitingList } from '../lib/owed-here'
-import { homeAttention, permissionsIntro } from '../lib/home-attention'
+import { homeAttention, permissionsIntro, type HomeAttention } from '../lib/home-attention'
 import { isAnApproval, stopKey, usePersonsQueue } from '../lib/persons-queue'
 import { usageSays, usageTitle } from '../lib/usage-limit'
 import { limitsDisplayLabel, limitsDisplayWords } from '../lib/limits-display'
@@ -29,6 +29,8 @@ const props = withDefaults(
   defineProps<{
     /** The cards on this window's conversations that no host read lists, built by `RuntimeScreen`. */
     needsYou?: AttentionRequest[]
+    /** The queue summary shared with the rail when mounted in the runtime screen. */
+    attention?: HomeAttention
     /** The clock the ages are measured against; it ticks only while something is waiting. */
     clock?: number
     /** The last roster read, for the agents no other agent can start until a person chooses. */
@@ -75,12 +77,14 @@ const notChosen = computed(() =>
 const onlyYou = computed(() => owedHere(persons, props.agents))
 
 /** Every summary on this page, decided in one place. */
-const attention = computed(() =>
-  homeAttention({
-    requests: props.needsYou,
-    onlyYou: onlyYou.value,
-    unread: persons.mayBeShort.value,
-  }),
+const attention = computed(
+  () =>
+    props.attention ??
+    homeAttention({
+      requests: props.needsYou,
+      onlyYou: onlyYou.value,
+      unread: persons.mayBeShort.value,
+    }),
 )
 
 /**
