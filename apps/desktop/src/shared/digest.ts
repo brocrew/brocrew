@@ -137,8 +137,6 @@ export const DIGEST_EVENT_TYPES = [
   'message_unqueued',
 ] as const
 
-export type DigestEventType = (typeof DIGEST_EVENT_TYPES)[number]
-
 /**
  * ⚑ **What a line is ABOUT** — a closed vocabulary, so a surface can order and key rows without
  * reading their prose, and so a test can assert a kind is drawn without pinning a sentence.

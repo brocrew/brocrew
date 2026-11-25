@@ -37,8 +37,6 @@ export interface GuardedFile {
   readAll(): Buffer
   close(): void
 }
-export const DEFAULT_ROOTS = []
-export const FALLBACK_ROOTS = []
 export const DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 type PathApi = typeof path.posix
 const pathFor = (platform: NodeJS.Platform): PathApi =>
@@ -64,24 +62,6 @@ const mountOf = (env: NodeJS.ProcessEnv): string =>
 export function defaultRoots(env: NodeJS.ProcessEnv = process.env): string[] {
   const chosen = env.LOCAL_FILE_WORKSPACE?.trim()
   return chosen ? [chosen] : []
-}
-export function defaultWorkspace(
-  env: NodeJS.ProcessEnv = process.env,
-  opts: ConfigOpts = {},
-): string {
-  const platform = opts.platform ?? process.platform
-  const win = platform === 'win32'
-  return pathFor(platform).resolve(
-    expand(
-      defaultRoots(env)[0] ??
-        (() => {
-          throw new LocalFileGuardError('No file root was configured')
-        })(),
-      homeOf(env, opts, win),
-      pathFor(platform),
-      win,
-    ),
-  )
 }
 export function configFromEnv(
   env: NodeJS.ProcessEnv = process.env,

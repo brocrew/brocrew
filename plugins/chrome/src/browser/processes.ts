@@ -159,11 +159,6 @@ export function browserProcessesOf(
   }
   return found
 }
-export const browserPidsOf = async (
-  dir: string,
-  list: () => Promise<string>,
-  platform: Platform = process.platform,
-): Promise<number[]> => browserProcessesOf(await list(), dir, platform).map((p) => p.pid)
 export interface EndDeps {
   platform?: Platform
   list?: () => Promise<string>

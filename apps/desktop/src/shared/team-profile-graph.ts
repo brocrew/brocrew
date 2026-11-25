@@ -216,7 +216,6 @@ export type TeamProfileGraphResult = z.infer<typeof teamProfileGraphResult>
 export type GraphNode = z.infer<typeof graphNode>
 export type GraphEdge = z.infer<typeof graphEdge>
 export type GraphCoverage = z.infer<typeof graphCoverage>
-export type GraphMetrics = z.infer<typeof graphMetrics>
 export type GraphPhase = z.infer<typeof graphPhase>
 export type KindQuality = z.infer<typeof graphKindQuality>
 export type GraphUnavailable = z.infer<typeof graphUnavailableResult>

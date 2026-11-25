@@ -100,10 +100,8 @@ export type BackgroundWorkEvent = Extract<RuntimeEvent, { type: 'background_work
 export type ScheduledWorkEvent = Extract<RuntimeEvent, { type: 'scheduled_work' }>
 /** One scheduling call the provider ran, as a `scheduled_work` row carries it. */
 export type ScheduleReceipt = NonNullable<ScheduledWorkEvent['receipt']>
-export type ProviderCommandsEvent = Extract<RuntimeEvent, { type: 'provider_commands' }>
 export type ToolInventoryEvent = Extract<RuntimeEvent, { type: 'tool_inventory' }>
 export type MemoryRecallEvent = Extract<RuntimeEvent, { type: 'memory_recall' }>
-export type ProviderLimitClearEvent = Extract<RuntimeEvent, { type: 'provider_limit_clear' }>
 export type ProviderUsageEvent = Extract<RuntimeEvent, { type: 'provider_usage' }>
 /** ⚑ **F074 — the usage limit a turn ended on**, as the `turn` event carries it. */
 export type TurnLimit = NonNullable<Extract<RuntimeEvent, { type: 'turn' }>['limit']>

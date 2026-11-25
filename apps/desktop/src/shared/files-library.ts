@@ -90,7 +90,6 @@ const group = z.strictObject({
   file: libraryKeep,
   matchingKeeps: z.number().int().positive(),
 })
-export type LibraryFile = z.infer<typeof group>
 const metrics = z.strictObject({
   rows: z.number().int().nonnegative(),
   bytes: z.number().int().nonnegative(),

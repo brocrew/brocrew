@@ -26,7 +26,3 @@ export async function localPluginArchive(
   verifyPluginDigest(bytes, release.archive, PLUGIN_LIMITS.archiveBytes)
   return bytes
 }
-/** Allows only explicit appData-relative build inputs, never cwd/workspace/env selections. */
-export function localReleaseRoot(appData: string): string {
-  return join(appData, '@brobot2', 'plugin-release-input', 'v1')
-}

@@ -48,4 +48,3 @@ export const LaunchConfig = z
         !value.lifecycle.fixtureSource &&
         !value.lifecycle.devSource),
   )
-export type PluginLaunchConfig = z.infer<typeof LaunchConfig>

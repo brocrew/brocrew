@@ -285,9 +285,6 @@ export function alreadyStagedAs(path: string, staged: readonly string[]): string
  */
 export const IDENTITY_ORIGINS = ['a-person', 'this-app', 'an-agent'] as const
 
-/** One of {@link IDENTITY_ORIGINS}. */
-export type IdentityOrigin = (typeof IDENTITY_ORIGINS)[number]
-
 /**
  * Display spelling of the default agent's name. Keep the profile id as the key
  * on the wire and on disk; this label only capitalises its displayed name.

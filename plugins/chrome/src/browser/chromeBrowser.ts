@@ -30,13 +30,7 @@ import {
   unwrapBrowserHandle,
 } from './profileBrowser.js'
 import type { ProfileBrowser } from './profileBrowser.js'
-import {
-  browserPidsOf,
-  commandOfPid,
-  endBrowsersOf,
-  lockfileBusy,
-  processList,
-} from './processes.js'
+import { commandOfPid, endBrowsersOf, lockfileBusy } from './processes.js'
 import type { EndDeps, Platform } from './processes.js'
 import { untilAbort } from './waitForBrowser.js'
 // A native lock can belong to another Chrome whose exit we do not control. Allow a brief
@@ -152,13 +146,6 @@ export async function lockHeldByLiveChrome(
   if (!Number.isInteger(pid) || pid <= 0) return false
   const command = await commandOf(pid)
   return command !== null && /chrom|msedge|microsoft[- ]edge/i.test(command)
-}
-export async function chromePidsOf(
-  dir: string,
-  psList?: () => Promise<string>,
-  platform: Platform = process.platform,
-): Promise<number[]> {
-  return browserPidsOf(dir, psList ?? (() => processList(platform)), platform)
 }
 export async function killChromeOf(
   dir: string,

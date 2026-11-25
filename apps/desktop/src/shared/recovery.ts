@@ -158,5 +158,3 @@ export const RECOVERY_CHANNELS = {
   /** Main to the window: a {@link RecoveryProgress}. */
   progress: 'recovery:progress',
 } as const
-
-export type RecoveryChannel = (typeof RECOVERY_CHANNELS)[keyof typeof RECOVERY_CHANNELS]
