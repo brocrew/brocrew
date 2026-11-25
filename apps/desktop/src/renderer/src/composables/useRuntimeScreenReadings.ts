@@ -102,6 +102,8 @@ export function useRuntimeScreenReadings({
   } = attention
   let stopHearingLimits: (() => void) | null = null
   let looking: ReturnType<typeof setInterval> | null = null
+  /** A tick skipped while the window was out of view, owed as one look when it is back in view. */
+  let aLookWasSkipped = false
 
   /** The time window Recent activity reads, as the person chose it. */
   const activityWindowMs = ref<number>(DEFAULT_ACTIVITY_WINDOW_MS)
@@ -468,6 +470,11 @@ export function useRuntimeScreenReadings({
 
   /** ⚑ This window coming back to the front glances at once, rather than at the next tick. */
   function glanceOnReturn(): void {
+    if (aLookWasSkipped && document.visibilityState === 'visible') {
+      aLookWasSkipped = false
+      void lookForWhatIsYours(true)
+      void readWhatIsWaiting()
+    }
     if (document.visibilityState === 'visible' && document.hasFocus()) {
       void glance()
       // ⚑ And the programs, so one updated in a terminal is what the new-conversation form says.
@@ -800,7 +807,13 @@ export function useRuntimeScreenReadings({
     })
     void lookForWhatIsYours()
     void readWhatIsWaiting()
+    // Out of view, the tick reads nothing; pushes still arrive, and coming back looks once. A visible
+    // window without focus keeps the tick, because a child's reply reaches no push.
     looking = setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        aLookWasSkipped = true
+        return
+      }
       void lookForWhatIsYours(true)
       void readWhatIsWaiting()
     }, LOOK_EVERY_MS)
