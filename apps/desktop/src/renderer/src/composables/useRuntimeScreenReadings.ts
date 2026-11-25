@@ -677,9 +677,7 @@ export function useRuntimeScreenReadings({
    * drop a subject we do not know, ask nothing during a quit, and a reader per subject by TYPE — and
    * this is the wiring, kept here because this component owns the two surfaces that draw the answers.
    *
-   * ⚠️ **`refreshResumable` on BOTH surfaces, exactly as every retired call site did**: the rail and
-   * the library fold the same two reads, and a channel that refreshed one of them would be the
-   * disagreement `151` paired them to prevent.
+   * The rail and Library refresh the conversation data each displays.
    */
   let stopListening: (() => void) | null = null
   let stopProviderFacts: (() => void) | null = null
@@ -725,7 +723,7 @@ export function useRuntimeScreenReadings({
         teamProfileGraph.markStale()
         filesLibrary.markStale()
         void rail.value?.refreshResumable().then(lookAgainIfItMoved)
-        void library.value?.refreshResumable()
+        void library.value?.reread()
         // 🔴 **547 · and the band on the drawer's first tab**, which draws the SPAWN half of that
         // same announcement. ⛔ **`543` §5.3 measured that this is the half a push can carry**: a
         // child appears when a `provider_session` row is written, and `attachHeldSession` announces

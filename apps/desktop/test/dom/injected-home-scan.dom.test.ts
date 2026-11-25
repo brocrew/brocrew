@@ -13,7 +13,7 @@ afterEach(() => {
   delete stubbed().api
 })
 
-it('both scan surfaces capture the injected sessions capability and share its pending adoption', async () => {
+it('the Library scans through the injected capability and waits for both reads', async () => {
   stub()
   stubbed().api!.runtime.adoptSessions = () => {
     throw new Error('global adoption must not be used')
@@ -36,17 +36,6 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   let adoptionCaptures = 0
   const libraryReads: LibraryQuery[] = []
   const listReads = { open: 0, closed: 0 }
-  const completed = new Map<number, Set<'open' | 'closed'>>()
-  let completedPairs = 0
-  async function list(which: 'open' | 'closed'): Promise<never[]> {
-    const ordinal = ++listReads[which]
-    await Promise.resolve()
-    const pair = completed.get(ordinal) ?? new Set<'open' | 'closed'>()
-    pair.add(which)
-    completed.set(ordinal, pair)
-    if (pair.size === 2) completedPairs++
-    return []
-  }
   const sessions = {
     get adoptSessions() {
       adoptionCaptures++
@@ -58,11 +47,13 @@ it('both scan surfaces capture the injected sessions capability and share its pe
     },
     listResumable(): ReturnType<ClientSessionApi['listResumable']> {
       expect(this).toBe(sessions)
-      return list('open')
+      listReads.open++
+      return Promise.resolve([])
     },
     listUnresumable(): ReturnType<ClientSessionApi['listUnresumable']> {
       expect(this).toBe(sessions)
-      return list('closed')
+      listReads.closed++
+      return Promise.resolve([])
     },
     listLibrary(input: LibraryQuery) {
       expect(this).toBe(sessions)
@@ -92,26 +83,24 @@ it('both scan surfaces capture the injected sessions capability and share its pe
   await nextTick()
   await nextTick()
   const captured = adoptionCaptures
-  expect(captured).toBe(2)
+  expect(captured).toBe(1)
   expect(listReads).toEqual({ open: 1, closed: 1 })
-  expect(completedPairs).toBe(1)
-  expect(reads - completedPairs).toBe(3)
   expect(libraryReads).toHaveLength(1)
+  expect(reads).toBe(3)
   expect(m.all('library-row-claude:unimported')).toHaveLength(1)
   m.q('library-check-homes').click()
-  m.q('scan-sessions').click()
+  expect(m.all('scan-sessions')).toHaveLength(0)
+  m.q('library-check-homes').click()
   expect(calls).toBe(1)
   release(REPORT)
   await nextTick()
   await nextTick()
   await nextTick()
   expect(m.q('library-scan-note').textContent).toContain('8 descents recorded')
-  expect(m.q('scan-summary').textContent).toContain('8 descents recorded')
   expect(adoptionCaptures).toBe(captured)
   expect(calls).toBe(1)
   expect(listReads).toEqual({ open: 2, closed: 2 })
-  expect(completedPairs).toBe(2)
-  expect(reads - completedPairs).toBe(4)
+  expect(reads).toBe(5)
   expect(libraryReads).toEqual([libraryReads[0], libraryReads[0]])
   expect(m.all('library-error')).toHaveLength(0)
   expect(m.all('resumable-error')).toHaveLength(0)

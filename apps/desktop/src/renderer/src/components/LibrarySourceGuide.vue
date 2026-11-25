@@ -3,7 +3,6 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { ALL_PROVIDER_FOLDERS } from '../../../shared/runtime-ipc'
 import { scanSummary, type HomeScan } from '../lib/home-scan'
 import { ago } from '../lib/library-page-notes'
-import ProviderLabel from './ProviderLabel.vue'
 
 /** Where the library's rows come from, and what the last home scan found. */
 const props = defineProps<{
@@ -67,19 +66,6 @@ onUnmounted(() => {
     <p v-if="scanError" class="scan-failed" data-cy="library-scan-error">
       The homes could not be checked: {{ scanError }}
     </p>
-
-    <details
-      v-if="homeScan.lastScan.value && homeScan.lastScan.value.skipped.length > 0"
-      class="scan-skipped"
-      data-cy="library-scan-skipped"
-    >
-      <summary>{{ homeScan.lastScan.value.skipped.length }} found but not adopted — why</summary>
-      <ul>
-        <li v-for="item in homeScan.lastScan.value.skipped" :key="item.path" class="mono">
-          <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason }}
-        </li>
-      </ul>
-    </details>
   </section>
 </template>
 
@@ -115,23 +101,6 @@ onUnmounted(() => {
   line-height: var(--leading-normal);
 }
 
-/* The scan's own rejects, in the shape the rail already draws them. Quiet, and closed by default:
-   it is a footnote about files, not a failure. */
-.scan-skipped {
-  margin: var(--space-2) 0 0;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-.scan-skipped summary {
-  cursor: pointer;
-}
-
-.scan-skipped ul {
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-5);
-}
 .source-guide .reads {
   margin: 0;
 }

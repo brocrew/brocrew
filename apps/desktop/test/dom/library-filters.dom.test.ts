@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
-import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
 import SessionLibrary, {
   narrowingDeclaredBy,
   windowNoteCta,
@@ -18,7 +17,6 @@ import {
   scans,
   REPORT,
   stub,
-  countScan,
 } from './library-filter-fixture'
 
 /**
@@ -701,7 +699,7 @@ describe('one scan, surfaced twice (120 §7)', () => {
 
 /* ------------------------------------------------------------------ 8 · one scan */
 
-describe('⛔ Check homes is the SAME operation the rail runs (120 §7)', () => {
+describe('Check homes', () => {
   it('Sessions runs it, and re-reads the list the scan just changed', async () => {
     const m = await open()
     expect(scans).toBe(0)
@@ -716,38 +714,6 @@ describe('⛔ Check homes is the SAME operation the rail runs (120 §7)', () => 
     // …and it reports what it did, in the sentence the rail uses. Including the number that made
     // putting this button here worth doing.
     expect(m.q('library-scan-note').textContent).toContain('8 descents recorded')
-  })
-
-  it('…and the rail runs the same one, and says the same thing about it', async () => {
-    // The behavioural half of "one operation, surfaced twice". The structural half — that there is
-    // exactly ONE call site in the whole renderer — is `library-filters.test.ts`.
-    stub()
-    const rail = mount(ResumableSessions, {}, { width: 300, height: 600 })
-    await nextTick()
-    await nextTick()
-    rail.q('scan-sessions').click()
-    await nextTick()
-    await nextTick()
-    await nextTick()
-    expect(scans).toBe(1)
-    const railText = rail.q('scan-summary').textContent?.trim() ?? ''
-    expect(railText).toContain('8 descents recorded')
-
-    // ⛔ **Word for word, and COMPARED** (review). Two `toContain`s over different substrings of
-    // one sentence do not assert that it is one sentence, which is the whole of "never forked".
-    rail.unmount()
-    const library = await open()
-    library.q('library-check-homes').click()
-    await nextTick()
-    await nextTick()
-    await nextTick()
-    // The library's line prefixes the summary with its own freshness stamp, so the summary is the
-    // tail — and the tail has to be identical, not merely overlapping.
-    const libraryText = library.q('library-scan-note').textContent?.trim() ?? ''
-    expect(libraryText).toContain('1 adopted, 8 already known')
-    expect(libraryText.endsWith(railText), `"${libraryText}" does not end with "${railText}"`).toBe(
-      true,
-    )
   })
 
   it('⛔ a scan that fails says so WITHOUT claiming the list is partial', async () => {
@@ -833,44 +799,6 @@ describe('⛔ Check homes is the SAME operation the rail runs (120 §7)', () => 
     expect(box.open).toBe(true)
   })
 
-  it('⛔ …and a press on the OTHER surface joins that run rather than starting a second', async () => {
-    /**
-     * **The concurrency hole 121 opened by adding the second button** (review). The busy flag is
-     * per-surface — deliberately, so each reports its own press — and both surfaces are mounted at
-     * once: `SideRail` keeps `ResumableSessions` under a `v-show`. So two `adoptSessions()` passes
-     * could interleave over the same homes, and that pass adopts by asking the store first, which
-     * is a check-then-write. The run in flight is now shared; a second press joins it.
-     */
-    let release: ((value: AdoptionReport) => void) | undefined
-    stub()
-    stubbed().api!.runtime.adoptSessions = () => {
-      countScan()
-      return new Promise<AdoptionReport>((resolve) => {
-        release = resolve
-      })
-    }
-    const library = mount(SessionLibrary, {}, { width: 1100, height: 900 })
-    const rail = mount(ResumableSessions, {}, { width: 300, height: 600 })
-    await nextTick()
-    await nextTick()
-
-    library.q('library-check-homes').click()
-    await nextTick()
-    rail.q('scan-sessions').click()
-    await nextTick()
-
-    // ⛔ ONE pass over the homes, not two.
-    expect(scans).toBe(1)
-
-    // …and both surfaces get the answer, which is why joining beats refusing.
-    release!(REPORT)
-    await nextTick()
-    await nextTick()
-    await nextTick()
-    expect(library.q('library-scan-note').textContent).toContain('8 descents recorded')
-    expect(rail.q('scan-summary').textContent).toContain('8 descents recorded')
-  })
-
   it('⛔ the freshness line has a clock, so it does not read "0m ago" for ever', async () => {
     /**
      * `ago()` reads the wall clock, which is not a reactive dependency — so `lastChecked` was a
@@ -939,7 +867,7 @@ describe('⛔ Check homes is the SAME operation the rail runs (120 §7)', () => 
     await nextTick()
 
     expect(m.q('library-scan-note').textContent).toContain('see below')
-    const panel = m.q('library-scan-skipped')
+    const panel = m.q('library-skipped')
     expect(panel.textContent).toContain('archived in Codex')
     expect(panel.textContent).toContain('/homes/x.jsonl')
   })
@@ -953,6 +881,6 @@ describe('⛔ Check homes is the SAME operation the rail runs (120 §7)', () => 
     await nextTick()
     await nextTick()
     m.q('library-scan-note')
-    expect(m.all('library-scan-skipped')).toEqual([])
+    expect(m.all('library-skipped')).toEqual([])
   })
 })

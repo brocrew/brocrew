@@ -4,12 +4,7 @@ import { nextTick } from 'vue'
 import { userEvent } from 'vitest/browser'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import type {
-  AdoptionReport,
-  LibraryPage,
-  ResumableSessionInfo,
-  UnresumableSessionInfo,
-} from '../../src/shared/runtime-ipc'
+import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import {
@@ -21,6 +16,7 @@ import {
   visible,
   type Mounted,
 } from './harness'
+import { recordingPage } from './library-recording-fixture'
 import { heldRecord, ordinaryRowBase, stubbed } from './ordinary-rail-rows.fixture'
 
 beforeAll(answerTheCatalogue) // Rows name providers as the window's catalogue supplies them.
@@ -530,99 +526,29 @@ describe('the row survives the column it lives in (126)', () => {
 
 /* ------------------------------------------------- 5 · the page kept everything */
 
-/**
- * ⛔ **The assertion that stops the fix becoming a deletion** (acceptance 3).
- *
- * ⚠️ **And the ticket's diagnosis was one step off, which changes what this has to prove.**
- * `ResumableSessions.vue` was described as *"the Sessions PAGE component, embedded"* in the rail. It
- * was not: `SideRail.vue` was its ONLY mount point in the whole app, and the Sessions page is
- * `SessionLibrary.vue`, which never rendered it. So the target home, the approval mode, the recorded
- * reasoning effort, the import control (119) and the only two export controls in the product (089)
- * existed at exactly one place — a 200px column — and thinning the rail without moving them would
- * have deleted every one of them. 151 gave the surface the page it never had.
- */
-describe('the Sessions page kept everything the rail stopped showing (151 §4)', () => {
-  const REPORT: AdoptionReport = {
-    found: 0,
-    adopted: 0,
-    alreadyKnown: 0,
-    imported: 0,
-    descentsLearned: 0,
-    named: 0,
-    skipped: [],
-  }
-
-  const EMPTY_PAGE: LibraryPage = {
-    entries: [],
-    matched: 0,
-    counts: {
-      total: 0,
-      ours: 0,
-      userHome: 0,
-      restored: 0,
-      imported: 0,
-      notImported: 0,
-      onlyHere: 0,
-      providers: [],
+it('keeps recorded controls and the existing search on the one Library row', async () => {
+  ;(window as unknown as { api?: unknown }).api = {
+    runtime: {
+      listLibrary: async () => recordingPage([READABLE, USER_HOME]),
+      listResumable: async () => [READABLE],
     },
-    skipped: [],
-    skippedTotal: 0,
   }
-
-  async function page(): Promise<Mounted> {
-    ;(window as unknown as { api?: unknown }).api = {
-      runtime: {
-        listLibrary: () => Promise.resolve(EMPTY_PAGE),
-        adoptSessions: () => Promise.resolve(REPORT),
-        listResumable: () => Promise.resolve([READABLE]),
-        listUnresumable: () => Promise.resolve([USER_HOME]),
-        importUserHomeSession: () => Promise.reject(new Error('not used here')),
-        rebuildLedger: () => Promise.reject(new Error('not used here')),
-      },
-    }
-    const m = mount(SessionLibrary, {}, { width: 1100, height: 900 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    await nextTick()
-    return m
+  const m = mount(SessionLibrary, {}, { width: 1100, height: 900 })
+  await expect.poll(() => m.all('export-native-sess_child').length).toBe(1)
+  const row = m.q('library-row-sess_child')
+  expect(row.textContent).toContain('/Users/alex/dev/acme/billing-api')
+  expect(m.q('library-child-sess_child').textContent?.trim()).toBe('sub-agent · Turing')
+  expect(row.contains(m.q('export-native-sess_child'))).toBe(true)
+  expect(row.contains(m.q('export-bundle-sess_child'))).toBe(true)
+  for (const hook of [
+    'library-search',
+    'library-facet-provider',
+    'library-counts',
+    'library-check-homes',
+  ]) {
+    expect(visible(m.q(hook))).toBe(true)
   }
-
-  it('⛔ every fact the rail dropped is still on the page, on the same row', async () => {
-    const m = await page()
-    const section = m.q('library-reopen')
-    expect(visible(section)).toBe(true)
-
-    const said = m.q('resumable-sessions').textContent ?? ''
-    expect(said, 'the full working directory').toContain('/Users/alex/dev/acme/billing-api')
-    expect(said, 'the target home').toContain('reviewer')
-    expect(said, 'the adopted mark').toContain('adopted')
-    expect(said, 'the recorded approval mode').toContain('approvals: ask')
-    expect(said, 'the recorded reasoning effort').toContain('reasoning:')
-    expect(m.q('resumable-child-sess_child').textContent?.trim()).toBe('sub-agent · Turing')
-    // The controls, which exist nowhere else in the app.
-    expect(visible(m.q('export-native-sess_child'))).toBe(true)
-    expect(visible(m.q('export-bundle-sess_child'))).toBe(true)
-    expect(visible(m.q('scan-sessions'))).toBe(true)
-    // 154 §2b · one noun, and this control's own `title` has said "conversations" all along, so
-    // the label was the inconsistency inside a single button.
-    expect(m.q('scan-sessions').textContent?.trim()).toBe('scan for existing conversations')
-    // …and the unresumable half, with the refusal in full rather than ellipsized.
-    expect(m.q('unresumable-reason').textContent).toContain("Claude's own folder")
-  })
-
-  it('⚑ and the library above it is untouched — the page was added to, not rearranged', async () => {
-    const m = await page()
-    // The surfaces 119/120/121 built are still the page's own head and body: this ticket appended a
-    // band under the list, and asserting that here is what keeps "we did not thin the page" honest.
-    expect(visible(m.q('library-counts'))).toBe(true)
-    expect(visible(m.q('library-search'))).toBe(true)
-    expect(visible(m.q('library-facet-provider'))).toBe(true)
-    // ⛔ **The reopen band is BELOW the list, not in place of it.**
-    const list = m.q('library-empty')
-    expect(m.q('library-reopen').getBoundingClientRect().top).toBeGreaterThan(
-      list.getBoundingClientRect().top,
-    )
-  })
+  expect(m.all('library-reopen')).toHaveLength(0)
 })
 
 /**
@@ -771,46 +697,21 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(said).not.toContain('own folder')
   })
 
-  it('⛔ and the Sessions page still has the row, with the controls the rail never had', async () => {
+  async function mountLibrary(rows: UnresumableSessionInfo[]) {
     ;(window as unknown as { api?: unknown }).api = {
       runtime: {
-        listLibrary: () =>
-          Promise.resolve({
-            entries: [],
-            matched: 0,
-            counts: {
-              total: 0,
-              ours: 0,
-              userHome: 0,
-              restored: 0,
-              imported: 0,
-              notImported: 0,
-              onlyHere: 0,
-              providers: [],
-            },
-            skipped: [],
-            skippedTotal: 0,
-          } satisfies LibraryPage),
-        adoptSessions: () =>
-          Promise.resolve({
-            found: 0,
-            adopted: 0,
-            alreadyKnown: 0,
-            imported: 0,
-            descentsLearned: 0,
-            named: 0,
-            skipped: [],
-          } satisfies AdoptionReport),
-        listResumable: () => Promise.resolve([]),
-        listUnresumable: () => Promise.resolve([USER_HOME]),
-        importUserHomeSession: () => Promise.reject(new Error('not used here')),
-        rebuildLedger: () => Promise.reject(new Error('not used here')),
+        listLibrary: async () => recordingPage(rows),
+        listResumable: async () => [],
+        listUnresumable: async () => rows,
       },
     }
-    const m = mount(SessionLibrary, {}, { width: 1100, height: 900 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    await nextTick()
+    const view = mount(SessionLibrary, {}, { width: 1100, height: 900 })
+    await expect.poll(() => view.all(rows.length ? 'library-rows' : 'library-empty').length).toBe(1)
+    return view
+  }
+
+  it('⛔ and the Sessions page still has the row, with the controls the rail never had', async () => {
+    const m = await mountLibrary([USER_HOME])
 
     // ⛔ **THE assertion that stops this fix becoming a deletion.** The same row, by the same id,
     // on the surface `119`/`120`/`121` were built for.
@@ -821,7 +722,9 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
     expect(said, 'the full working directory, which the rail reduced to a label').toContain(
       '/Users/alex/dev/other/thing',
     )
-    expect(said, 'and the whole refusal, unellipsized').toContain("Claude's own folder")
+    expect(said).toContain('imported')
+    expect(kept!.querySelector('.conversation-row')).not.toBeNull()
+    expect(m.q('library-read-sess_userhome').textContent).toContain('Open')
 
     // ⚑ **The page's own noun, and it has to agree with the item that navigates here** (§2b).
     expect(m.q('session-library').textContent).toContain('All conversations')
@@ -830,174 +733,44 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
   it('⚠️ …and the page says the same noun when it is holding nothing at all (§2b)', async () => {
     // The copy sweep reached this sentence too, and a string nothing asserts is a string the next
     // rename walks past. Both host lists empty, which is the only state that renders it.
-    ;(window as unknown as { api?: unknown }).api = {
-      runtime: {
-        listLibrary: () =>
-          Promise.resolve({
-            entries: [],
-            matched: 0,
-            counts: {
-              total: 0,
-              ours: 0,
-              userHome: 0,
-              restored: 0,
-              imported: 0,
-              notImported: 0,
-              onlyHere: 0,
-              providers: [],
-            },
-            skipped: [],
-            skippedTotal: 0,
-          } satisfies LibraryPage),
-        adoptSessions: () => Promise.reject(new Error('not used here')),
-        listResumable: () => Promise.resolve([]),
-        listUnresumable: () => Promise.resolve([]),
-        importUserHomeSession: () => Promise.reject(new Error('not used here')),
-        rebuildLedger: () => Promise.reject(new Error('not used here')),
-      },
-    }
-    const m = mount(SessionLibrary, {}, { width: 1100, height: 900 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    await nextTick()
+    const m = await mountLibrary([])
 
-    const said = m.q('resumable-empty').textContent ?? ''
+    const said = m.q('library-empty').textContent ?? ''
     // ⚑ **D-017b** — *"becomes resumable"* went with the reopen: the page lists what is recorded.
-    expect(said).toContain('Nothing recorded yet.')
+    expect(said).toContain('No conversations yet.')
     expect(said).not.toContain('A session')
   })
 })
 
-/* --------------------------------------------- 222 · a word that tells endings apart */
-
-/**
- * # ⛔ `220` finding 2, on the Sessions page
- *
- * ⚑ **D-017b** — the rail's half went: a rail row says the one state the host derives and never how
- * a turn ended, so the page is where an ending is read.
- *
- * > **No active row returned. Three closed threads were hidden, and all corresponding Sessions rows
- * > said `ended`, with no interrupted or unfinished distinction.**
- *
- * ⚑ **The fixtures below are that report:** three conversations with the SAME status, whose only
- * difference is how their last turn ended. If the surfaces cannot tell them apart, these fail.
- *
- * ⚠️ **A real engine, and it has to be.** What is asserted is a rendered cell's text, its title
- * attribute and its resolved colour — the third of which no SSR string has.
- */
-describe('222 · three endings behind one status word', () => {
-  const CUT_OFF: ResumableSessionInfo = {
+it('keeps distinct turn endings on Open with hover and accessible descriptions', async () => {
+  const finished = {
     ...OPENABLE,
-    sessionId: 'sess_cutoff',
-    cwd: '/Users/alex/dev/cut-off',
-    ref: {
-      provider: 'claude',
-      sessionId: 'thread-cut',
-      cwd: '/Users/alex/dev/cut-off',
-      rotation: 0,
+    sessionId: 'finished',
+    status: 'ended' as const,
+    lastEnding: 'completed' as const,
+  }
+  const cut = { ...finished, sessionId: 'cut', lastEnding: 'ended' as const }
+  const unknown = { ...finished, sessionId: 'unknown', lastEnding: 'unknown' as const }
+  const imported = { ...USER_HOME, lastEnding: 'interrupted' as const }
+  const rows = [finished, cut, unknown, imported]
+  ;(window as unknown as { api?: unknown }).api = {
+    runtime: {
+      listLibrary: async () => recordingPage(rows),
+      listResumable: async () => rows.slice(0, 3),
     },
-    status: 'ended',
-    lastEnding: 'ended',
   }
-  const NEVER_SAW: ResumableSessionInfo = {
-    ...OPENABLE,
-    sessionId: 'sess_unknown',
-    cwd: '/Users/alex/dev/never-saw',
-    ref: {
-      provider: 'claude',
-      sessionId: 'thread-unknown',
-      cwd: '/Users/alex/dev/never-saw',
-      rotation: 0,
-    },
-    status: 'ended',
-    lastEnding: 'unknown',
+  const view = mount(SessionLibrary, {}, { width: 1100 })
+  await expect.poll(() => view.all('library-read-finished').length).toBe(1)
+  expect(view.q('library-read-finished').title).toBe('its last turn finished')
+  expect(view.q('library-read-cut').title).toBe('it stopped while a turn was still running')
+  expect(view.q('library-read-unknown').title).toBe(
+    'a turn was still running, and this app never saw how it ended',
+  )
+  expect(view.q(`library-read-${imported.sessionId}`).title).toBe(
+    'its last turn was stopped before it finished',
+  )
+  for (const row of rows) {
+    const open = view.q(`library-read-${row.sessionId}`)
+    expect(open.getAttribute('aria-description')).toBe(open.title)
   }
-  /** The control: same status, and it FINISHED. Without it the two above prove nothing. */
-  const FINISHED: ResumableSessionInfo = {
-    ...OPENABLE,
-    sessionId: 'sess_finished',
-    status: 'ended',
-    lastEnding: 'completed',
-  }
-
-  it('⛔ the Sessions page names all three, beside a status that says the same word for each', async () => {
-    ;(window as unknown as { api?: unknown }).api = {
-      runtime: {
-        listLibrary: () =>
-          Promise.resolve({
-            entries: [],
-            matched: 0,
-            counts: {
-              total: 0,
-              ours: 0,
-              userHome: 0,
-              restored: 0,
-              imported: 0,
-              notImported: 0,
-              onlyHere: 0,
-              providers: [],
-            },
-            skipped: [],
-            skippedTotal: 0,
-          } satisfies LibraryPage),
-        adoptSessions: () => Promise.reject(new Error('not used here')),
-        listResumable: () => Promise.resolve([FINISHED, CUT_OFF, NEVER_SAW]),
-        // ⚑ **The other half of the list, which has its own cell** (222). A row that cannot be
-        // reopened is exactly as likely to have been cut off mid-turn, and this page is the only
-        // place that ending is ever readable.
-        listUnresumable: () => Promise.resolve([{ ...USER_HOME, lastEnding: 'interrupted' }]),
-        importUserHomeSession: () => Promise.reject(new Error('not used here')),
-        rebuildLedger: () => Promise.reject(new Error('not used here')),
-      },
-    }
-    const m = mount(SessionLibrary, {}, { width: 1100, height: 900 })
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await nextTick()
-    await nextTick()
-
-    const cell = (id: string): HTMLElement => m.q(`resumable-ending-${id}`)
-    // ⚑ **THE finding, as one assertion.** One status word; three endings.
-    for (const id of ['sess_finished', 'sess_cutoff', 'sess_unknown']) {
-      expect(m.q(`resumable-status-${id}`).textContent?.trim(), id).toBe('ended')
-    }
-    expect(cell('sess_finished').textContent?.trim()).toBe('finished')
-    expect(cell('sess_cutoff').textContent?.trim()).toBe('cut off')
-    expect(cell('sess_unknown').textContent?.trim()).toBe('unknown')
-    // ⚑ **And the ENUM beside the word.** `data-ending` is the app's own answer to *which* ending
-    // this is; the text is a human word that is free to be reworded. A cell whose attribute and
-    // whose word disagreed would be the drift 099 is about, inside one element.
-    expect(cell('sess_cutoff').getAttribute('data-ending')).toBe('ended')
-    expect(cell('sess_unknown').getAttribute('data-ending')).toBe('unknown')
-    expect(cell('sess_finished').getAttribute('data-ending')).toBe('completed')
-    expect(cell('sess_unknown').getAttribute('title')).toBe(
-      'a turn was still running, and this app never saw how it ended',
-    )
-
-    // ⛔ **Painted, and only the unfinished ones.** `--waiting` is this app's "there is something
-    // here for you"; a finished row must stay in the muted ink of the meta line around it, or the
-    // list shouts at its own ordinary case. Measured, not read off the class list.
-    const ink = (id: string): string => {
-      const colour = parseColor(getComputedStyle(cell(id)).color)
-      expect(colour, `${id} resolved no colour at all`).not.toBeNull()
-      return colour!.join(',')
-    }
-    expect(ink('sess_cutoff')).toBe(ink('sess_unknown'))
-    expect(ink('sess_finished')).not.toBe(ink('sess_cutoff'))
-    // ⛔ **And the unresumable half, whose only home this is** — a cell missing here is an ending
-    // with nowhere left to be read.
-    expect(m.q(`unresumable-status-${USER_HOME.sessionId}`).textContent?.trim()).toBe('ended')
-    expect(m.q(`unresumable-ending-${USER_HOME.sessionId}`).textContent?.trim()).toBe('interrupted')
-
-    // …and the amber is legible where it is drawn, which is the only reason to check a colour.
-    const cut = cell('sess_cutoff')
-    const { fg, bg } = paintedInk(cut, parseColor(getComputedStyle(cut).color)!)
-    expect(contrast(fg, bg)).toBeGreaterThan(3)
-  })
 })
-
-/*
- * ⚑ **D-017b · `692 · a conversation the quit closed` is GONE, and so are its two tests.** A
- * conversation the quit left open was drawn under its own `kept-open-session-` hook with an *open*
- * note and a press that opened it without starting it. ⛔ There is no kept-open population any more:
- * it is a row of the one list like every other, and its press is §2's one press.
- */

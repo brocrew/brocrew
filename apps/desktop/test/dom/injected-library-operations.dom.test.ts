@@ -161,8 +161,7 @@ it('keeps injected import busy through its refresh and preserves payload and out
   expect(button.disabled).toBe(true)
   expect(sessions.listLibrary).toHaveBeenCalledTimes(2)
   refresh.resolve(page())
-  await ready()
-  expect(button.disabled).toBe(false)
+  await expect.poll(() => button.disabled).toBe(false)
   expect(view.q('library-outcome-claude:unimported').textContent).toContain(
     'Fictional import complete',
   )
@@ -189,8 +188,7 @@ it('keeps injected rebuild busy through refresh and preserves its receiver and p
   expect(button.disabled).toBe(true)
   expect(sessions.listLibrary).toHaveBeenCalledTimes(2)
   refresh.resolve(page())
-  await ready()
-  expect(button.disabled).toBe(false)
+  await expect.poll(() => button.disabled).toBe(false)
   expect(view.q('library-outcome-codex:behind').textContent).not.toBe('')
   expect(raw.rebuildLedger).not.toHaveBeenCalled()
   expect(raw.listLibrary).not.toHaveBeenCalled()

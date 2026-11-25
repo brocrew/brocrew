@@ -8,8 +8,9 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import { createDesktopProviderApi } from '../../src/renderer/src/client-provider/desktop'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
-import ResumableSessions from '../../src/renderer/src/components/ResumableSessions.vue'
+import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
 import { mount, unmountAll } from './harness'
+import { recordingPage } from './library-recording-fixture'
 
 function recorded(sessionId: string): ResumableSessionInfo {
   return {
@@ -50,8 +51,9 @@ const exported = (kind: 'native' | 'bundle', path: string): ExportedSession => (
   note: `Supplied ${kind} meaning.`,
 })
 function surface() {
-  const listing = vi.fn(async () => [recorded('fern-a'), recorded('fern-b')])
-  const unresumable = vi.fn(async () => [])
+  const recordings = [recorded('fern-a'), recorded('fern-b')]
+  const listing = vi.fn(async () => recordings)
+  const listLibrary = vi.fn(async () => recordingPage(recordings))
   const wrongExport = vi.fn(async () => exported('bundle', '/wrong/window'))
   const wrongImport = vi.fn(async (): Promise<ImportedRecording> => ({
     outcome: 'skipped',
@@ -61,14 +63,13 @@ function surface() {
   Reflect.set(window, 'api', {
     runtime: {
       listResumable: listing,
-      listUnresumable: unresumable,
       exportSession: wrongExport,
       importRecordedSession: wrongImport,
     },
   })
   const transport = {
     listResumable: listing,
-    listUnresumable: unresumable,
+    listLibrary,
     exportSession: vi.fn<ClientSessionApi['exportSession']>(async function (this: unknown, input) {
       expect(this).toBe(transport)
       if (input.exportKind === 'reading') throw new Error('No readable export offered here')
@@ -88,9 +89,7 @@ function surface() {
   // This surface exercises the listed reads and two gestures only.
   const supplier = vi.fn(() => transport as unknown as ClientSessionApi | undefined)
   const api = createDesktopProviderApi(
-    (): never => {
-      throw new Error('No provider read expected')
-    },
+    () => ({ providerCatalogue: async () => [] }) as unknown as typeof window.api.runtime,
     () => undefined,
     () => undefined,
     supplier,
@@ -99,16 +98,18 @@ function surface() {
     defineComponent({
       setup() {
         provide(CLIENT_PROVIDERS, api)
-        return () => h(ResumableSessions)
+        return () => h(SessionLibrary)
       },
     }),
     {},
     { width: 1000 },
   )
-  return { view, transport, supplier, listing, unresumable, wrongExport, wrongImport }
+  return { view, transport, supplier, listing, listLibrary, wrongExport, wrongImport }
 }
 async function ready(out: ReturnType<typeof surface>) {
-  await expect.poll(() => out.view.all('resumable-row').length).toBe(2)
+  await expect
+    .poll(() => out.view.host.querySelectorAll('[data-cy^="library-row-"]').length)
+    .toBe(2)
   expect(out.transport.exportSession).not.toHaveBeenCalled()
   expect(out.transport.importRecordedSession).not.toHaveBeenCalled()
 }
@@ -178,7 +179,7 @@ it('refreshes only from supplied readable=true and holds import busy through tha
     [{ sessionId: 'fern-a' }],
     [{ sessionId: 'fern-a' }],
   ])
-  expect(out.unresumable).toHaveBeenCalledTimes(2)
+  expect(out.listLibrary).toHaveBeenCalledTimes(2)
   expect(out.wrongImport).not.toHaveBeenCalled()
 })
 it.each(['export', 'import'] as const)(
