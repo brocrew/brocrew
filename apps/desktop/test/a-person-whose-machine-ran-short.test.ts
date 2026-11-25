@@ -84,13 +84,7 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 import { AuthUnavailableError, FakeProviderSessions, ResumeError } from '@brobot2/runtime'
-import {
-  provisionCodexAuth,
-  reprovisionCodexAuth,
-  CodexRuntime,
-  createSpawnTransportFactory,
-  probeCodexAuthInHome,
-} from '@brobot2/runtime/codex'
+import { provisionCodexAuth, reprovisionCodexAuth, CodexRuntime, createSpawnTransportFactory, probeCodexAuthInHome } from '@brobot2/runtime/codex'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -98,17 +92,15 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, withoutItsClassName } from '../src/main/runtime/ipc'
 import { prepareProviderHome } from '../src/main/connections/homes'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { readableError } from '../src/renderer/src/lib/session-record'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import {
-  aSpawnRefusedAfterItsPipes,
-  aSpawnThatRanOutOf,
-} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import { aSpawnRefusedAfterItsPipes, aSpawnThatRanOutOf } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import { callAs } from './helpers/call-tool'
 
 /**
  * # 🔴 710 · R52 — a shortage at a person's own New Conversation is a person's sentence
@@ -290,15 +282,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
     )
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   /** ⚑ Claude: the SDK's real `query()`, on the adapter's own spawn seam. */
   const claudeStartOver = async (child: () => unknown): Promise<Error> => {

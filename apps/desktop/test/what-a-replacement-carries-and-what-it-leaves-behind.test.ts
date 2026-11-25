@@ -15,16 +15,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { RuntimeHost as ProductRuntimeHost } from '../src/main/runtime/runtime-host'
 import type { WorkReconciler } from '../src/main/runtime/work-reconciliation'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * Losing a provider session does not move the recorded work. Replacement records from earlier
@@ -102,15 +98,8 @@ describe('what a replacement carries, and what it leaves behind', () => {
     return sessionId
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   const turnsIn = (sessionId: string): number =>
     ledger(sessionId).filter((event) => event.type === 'turn').length

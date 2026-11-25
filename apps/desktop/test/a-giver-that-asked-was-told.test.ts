@@ -13,16 +13,12 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * # 🔴 719 · a giver that asked was told — R69 and R70
@@ -137,15 +133,8 @@ describe('719 · a giver that asked was told', () => {
     return sessionId
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   const cardsOn = (id: string): number =>
     events(id).filter((event) => event.type === 'permission_request').length

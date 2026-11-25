@@ -16,7 +16,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { stalledPiecesSaid } from '../src/main/runtime/spawn-rails'
 import { undrivenSentence } from '../src/shared/tasks'
@@ -24,6 +24,7 @@ import { readOfferedResource } from '../src/main/resources/resources'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * # The survivors the tree landing left — four mutation rows that no test killed
@@ -240,15 +241,8 @@ describe('the survivors the tree landing left', () => {
         await host.close(await personOpens(profile, approvalMode), window)
     }
 
-    const callOn = async (
-      caller: string,
-      name: ToolName,
-      args: Record<string, unknown> = {},
-    ): Promise<Record<string, unknown>> => {
-      const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-      if (tool === undefined) throw new Error(`no such tool: ${name}`)
-      return (await tool.call(args)).structured as Record<string, unknown>
-    }
+    const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+      callAs(host, caller, name, args)
 
     /**
      * ⚑ Every way words reach a conversation — a busy one HOLDS them, an idle one takes a turn.

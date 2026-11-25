@@ -1,10 +1,4 @@
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  neutralHostDeps,
-  fixtureDatabase,
-  waitFor,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, neutralHostDeps, fixtureDatabase, waitFor } from './lib/host-fixture'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -14,7 +8,7 @@ import type { Provider } from '@brobot2/shared'
 
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
@@ -24,6 +18,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { callAs } from './helpers/call-tool'
 
 /**
  * A real host over a real SQLite ledger, with the runtime the group chooses, and the helpers every
@@ -84,15 +79,8 @@ const mount = (
   const window = new RecordingSink('webContents:1')
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
   return {
     get host() {
       return host

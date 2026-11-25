@@ -11,26 +11,14 @@ import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  createSessionStore,
-  type ForestedConversation,
-  type SessionStore,
-} from '../src/main/db/session-store'
+import { createSessionStore, type ForestedConversation, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  type ForestConversation,
-  type ForestTask,
-  type NamedConversation,
-} from '../src/shared/the-whole-forest'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { type ForestConversation, type ForestTask, type NamedConversation } from '../src/shared/the-whole-forest'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * # D-034 — the forest says, for each conversation, whose place it stands in
@@ -131,15 +119,8 @@ describe('D-034 — the forest says, for each conversation, whose place it stand
     return sessionId
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   const turnsIn = (sessionId: string): number =>
     ledger(sessionId).filter((event) => event.type === 'turn').length

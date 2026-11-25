@@ -8,30 +8,19 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  FakeSessionHandle,
-  ResumeOptions,
-  RuntimeEvent,
-  SessionRef,
-  StartOptions,
-  UserInputResponse,
-} from '@brobot2/runtime'
+import type { FakeSessionHandle, ResumeOptions, RuntimeEvent, SessionRef, StartOptions, UserInputResponse } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 const mint = vi.hoisted(() => ({ next: null as (() => string) | null }))
 vi.mock('../src/main/db/ids', async (importOriginal) => {
@@ -173,15 +162,8 @@ describe('679 · a question is known by who asked it', () => {
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
 
-  const callOn = async (
-    sessionId: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (sessionId: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, sessionId, name, args)
 
   const latestHandle = (): FakeSessionHandle => {
     const handle = handles.at(-1)

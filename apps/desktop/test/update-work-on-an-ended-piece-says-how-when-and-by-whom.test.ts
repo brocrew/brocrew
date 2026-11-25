@@ -11,22 +11,13 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { type EndedPieceDetail } from '../src/main/runtime/runtime-host'
-import {
-  agentToolsFor,
-  anEndedPieceSaid,
-  refuseTool,
-  type ToolName,
-} from '../src/main/runtime/agent-tools'
+import { anEndedPieceSaid, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { sameLocalDay } from '../src/shared/local-time'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * F059 · `update_work` on a piece that has ended says how, when and by whom it ended (`1abdb8ab`).
@@ -233,15 +224,8 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     await host.close(await personOpens(profileId), window)
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)

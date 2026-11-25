@@ -1,32 +1,22 @@
 import { giveToSeededWorker, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-  UserInputResponse,
-} from '@brobot2/runtime'
+import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions, UserInputResponse } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { callAs } from './helpers/call-tool'
 
 /**
  * 🔴 **D-009 · a model's OWN question stays the model's.**
@@ -150,15 +140,8 @@ describe('D-009 · a model’s own question stays the model’s', () => {
   })
 
   /** ⚑ Through the CURRENT host, so a call after a relaunch is the next launch's own door. */
-  const callOn = async (
-    sessionId: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (sessionId: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, sessionId, name, args)
 
   const personOpens = async (
     profileId: string,

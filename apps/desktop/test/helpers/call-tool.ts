@@ -1,5 +1,5 @@
 import type { AgentToolset } from '@brobot2/runtime'
-import type { ToolName } from '../../src/main/runtime/agent-tools'
+import { agentToolsFor, type AgentToolHost, type ToolName } from '../../src/main/runtime/agent-tools'
 
 /** Calls one tool and returns its whole answer: the sentence and what it structures. */
 export async function answerOn(
@@ -30,6 +30,16 @@ export async function callOn(
   const tool = toolset.tools.find((one) => one.name === name)
   if (tool === undefined) throw new Error(`no such tool: ${name}`)
   return (await tool.call(args)).structured as Record<string, unknown>
+}
+
+/** Calls one tool as a conversation of a host and returns its structured answer. */
+export async function callAs(
+  host: AgentToolHost,
+  caller: string,
+  name: ToolName,
+  args: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return callOn(agentToolsFor(host, caller), name, args)
 }
 
 export function lastToolset(toolsets: readonly AgentToolset[]): AgentToolset {

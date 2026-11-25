@@ -8,19 +8,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import {
-  waitFor,
-  type TranscriptEvent,
-  fixtureFolder,
-  fixtureDatabase,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { waitFor, type TranscriptEvent, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callAs } from './helpers/call-tool'
 
 /**
  * # 🔴 724 · small true words, for the model and the lists
@@ -111,15 +103,8 @@ describe('724 · small true words, for the model and the lists', () => {
     return sessionId
   }
 
-  const callOn = async (
-    caller: string,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = agentToolsFor(host, caller).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
+  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
+    callAs(host, caller, name, args)
 
   const cardsOn = (id: string): number =>
     events(id).filter((event) => event.type === 'permission_request').length
