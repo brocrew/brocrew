@@ -615,7 +615,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
     const first = handedOver(sessionId, places[0])
     const note = handedOver(sessionId, places[1])
     expect(first).toContain('in conversation W1 · BroBot.')
-    expect(note).toContain(`in conversation W1 · ${FIRST} If the task's title`)
+    expect(note).toContain(`in conversation W1 · ${FIRST}\n`)
     nativeFile = join(userData, 'provider-homes', 'claude', 'projects', 'p', 'transcript.jsonl')
     mkdirSync(dirname(nativeFile), { recursive: true })
     const file = rewritten(

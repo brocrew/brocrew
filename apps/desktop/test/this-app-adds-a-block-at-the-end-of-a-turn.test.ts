@@ -869,7 +869,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(after).toContain('and 6 more: list_tasks')
       expect(after).not.toContain('task ' + ended.label + ' · ')
       const empty = composedEndOfTheCurrentLife(await personOpens('worker', provider))
-      expect(empty).not.toContain('Check this work and make any needed updates.')
+      expect(empty).not.toContain(TURN_BLOCK_WORDS.helpersHeading)
+      expect(empty.split(TURN_BLOCK_WORDS.updateGivenWork)).toHaveLength(2)
     }
 
     it('omits the unreadable given task and leaves the work list incomplete', async () => {
@@ -974,9 +975,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       db.prepare(
         "DELETE FROM events WHERE session_id = ? AND type IN ('work_retitled','work_status_set')",
       ).run(pm)
-      expect(composed()).toContain(
-        `Your current work: task ${rootWork.label} · untitled · status: none,`,
-      )
+      expect(composed()).toContain(`Your current work: task ${rootWork.label} · untitled,`)
       const append = (type: string, payload: string) => {
         const id = `root-line-${counter++}`
         db.prepare(
@@ -997,9 +996,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           by: pm,
         }),
       )
-      expect(composed()).toContain(
-        `Your current work: task ${rootWork.label} · Known work · status: Known status,`,
-      )
+      expect(composed()).toContain(`Your current work: task ${rootWork.label} · Known work,`)
       for (const [type, payload] of [
         [
           'work_retitled',
@@ -1016,10 +1013,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(store.turnBlockRootLines(rootWork.piece)).toBeNull()
         const words = composed()
         expect(words).toContain(TURN_BLOCK_WORDS.currentUnavailable)
-        expect(words).not.toContain('status: none')
+        expect(words).not.toContain('Known status')
         expect(words).not.toContain('Known work')
         db.prepare('DELETE FROM events WHERE id = ?').run(id)
-        expect(composed()).toContain('Known work · status: Known status,')
+        expect(composed()).toContain('Known work,')
       }
     })
 
@@ -1677,7 +1674,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         store.questionsRaisedIn = raisedBefore
       }
       // The reconciler's read also makes the two-line giver notice available.
-      expect(before.split('\n')).toHaveLength(10)
+      expect(before.split('\n')).toHaveLength(11)
       expect(before).toContain('Waiting on you:')
       expect(before).toContain("Questions you're waiting on:")
       expect(before).toContain(`- ${one} to the person, asked just now: “${QUESTION_ONE}”`)
@@ -1694,11 +1691,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
       ])
       expect(lines[7]).toBe('Waiting on you:')
-      expect(lines[8]).toMatch(/^- .+ gave you task W\S+ and is waiting for it\.$/)
-      expect(lines[9]).toMatch(
-        /^Your current work: task W\S+ · the work this dispatch is about · status: none,/,
-      )
-      expect(lines).toHaveLength(10)
+      expect(lines[8]).toMatch(/^- .+ gave you the current task and is waiting for it\.$/)
+      expect(lines[9]).toMatch(/^Your current work: task W\S+ · the work this dispatch is about,/)
+      expect(lines[10]).toBe('Check this work and make any needed updates.')
+      expect(lines).toHaveLength(11)
     })
 
     it('a new question is read immediately, and direct ledger writes invalidate the cached views', async () => {

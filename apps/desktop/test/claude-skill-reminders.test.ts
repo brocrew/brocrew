@@ -141,7 +141,7 @@ it.each(memoryFixtures)(
         await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
         const lines = endpoint.sends.at(-1)?.split('\n') ?? []
         const current = lines.find((line) => line.startsWith('Your current work: task '))
-        expect(current).toContain(`${title} If the task's title`)
+        expect(current?.endsWith(title)).toBe(true)
         const nudge = lines.find((line) => line.startsWith(MEMORY_NUDGE))
         expect(nudge).toBe(hasFolder ? `${MEMORY_NUDGE}\`${folder}\`.` : undefined)
         if (!hasFolder) {
