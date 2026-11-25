@@ -771,7 +771,13 @@ describe('437 · a question a worker can ask its parent', () => {
       const { worker, workerTools, piece } = await aWorkerHoldingWork()
       const workerSurface = new RecordingSink('webContents:9')
       host.claimSession(worker, workerSurface)
-      const said = await startAsking(workerTools, { piece, question: 'which one?' })
+      const choice = 'Change something'
+      const note = 'Align the example block with the heading.'
+      const said = await startAsking(workerTools, {
+        piece,
+        question: 'Does this example look right?',
+        options: [choice, 'Keep it'],
+      })
       expect(said.outcome, JSON.stringify(said)).toBe('ok')
       const requestId =
         store.routedRequestsOf(worker).filter((one) => one.went.is === 'the-parent')[0]
@@ -779,7 +785,7 @@ describe('437 · a question a worker can ask its parent', () => {
       const ack = await host.respondUserInput(
         worker,
         requestId,
-        { kind: 'answer', answers: { answer: ['the person decided'] } },
+        { kind: 'answer', answers: { answer: [choice, note] } },
         workerSurface,
       )
       expect(ack.outcome, JSON.stringify(ack)).toBe('taken')
@@ -795,7 +801,8 @@ describe('437 · a question a worker can ask its parent', () => {
           ledger(worker).some(
             (event) =>
               (event.type === 'user_turn' || event.type === 'message_queued') &&
-              event.text.includes('the person decided'),
+              event.text.includes(choice) &&
+              event.text.includes(note),
           ),
         'the person’s answer reaching the worker',
       )

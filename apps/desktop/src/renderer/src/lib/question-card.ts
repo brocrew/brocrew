@@ -406,10 +406,12 @@ export function pick(
   part: QuestionPart,
   draft: Map<string, string | string[]>,
   label: string,
+  keepWords = false,
 ): void {
   if (!part.multiSelect) {
-    draft.set(part.id, label)
-    draft.delete(ownKey(part))
+    if (keepWords && draft.get(part.id) === label) draft.delete(part.id)
+    else draft.set(part.id, label)
+    if (!keepWords) draft.delete(ownKey(part))
     return
   }
   const next = new Set(pickedOf(part, draft))
@@ -425,10 +427,11 @@ export function setTyped(
   part: QuestionPart,
   draft: Map<string, string | string[]>,
   text: string,
+  keepPick = false,
 ): void {
   if (text === '') draft.delete(ownKey(part))
   else draft.set(ownKey(part), text)
-  if (!part.multiSelect) draft.delete(part.id)
+  if (!part.multiSelect && !keepPick) draft.delete(part.id)
 }
 
 export function answerOf(

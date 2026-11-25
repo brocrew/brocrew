@@ -307,6 +307,15 @@ const routed = (
 
 const choices = (...labels: string[]): { label: string }[] => labels.map((label) => ({ label }))
 
+const change = 'Change something'
+const note = 'Align the example block with the heading.'
+const changePart = {
+  id: 'answer',
+  prompt: 'Does this example look right?',
+  options: choices(change, 'Keep it'),
+  allowOther: true,
+}
+
 /** One part of a question as the host's row carries it — the question's own words unless told. */
 const partOf = (id: string, over: Record<string, unknown> = {}): Record<string, unknown> => ({
   id,
@@ -381,6 +390,19 @@ async function page(
 }
 
 describe('a question is answered on the page of the conversation that asked it', () => {
+  it('sends the selected option and separately written note through the conversation pane', async () => {
+    const responded: Responded = []
+    const m = await page(pageEvents({ questions: [changePart] }), responded)
+    await press(optionIn(m.q('outgoing'), change))
+    expect(responded).toEqual([])
+    await typeInto(m.q('question-box') as HTMLTextAreaElement, note)
+    await press(m.q('question-send'))
+
+    expect(responded.map(([id, response]) => [id, flat(response)])).toEqual([
+      ['req_a', { answer: [change, note] }],
+    ])
+  })
+
   it('🔴 an option pressed on a question asked of a person answers it through the pane, and one on a question for an agent presses nothing', async () => {
     const responded: Responded = []
     const m = await page(pageEvents(), responded)
@@ -546,21 +568,23 @@ describe('a question asked with no options, one press, several parts and several
     expect(m.answers).toHaveLength(2)
   })
 
-  it('⚑ beside a one-press question the box is for a person’s own words, and Send comes only once they are typed', async () => {
+  it('allows an option alone or words alone when the question offers both', async () => {
     const m = card(
       readingOf(ofAPerson([partOf('q1', { options: choices('Yes', 'No'), allowOther: true })])),
     )
     const box = m.q('question-box') as HTMLTextAreaElement
-    expect(box.placeholder).toBe('Or answer in your own words')
-    expect(m.all('question-send')).toHaveLength(0)
+    expect(box.placeholder).toBe('Your answer')
+    expect(sendOf(m).disabled).toBe(true)
 
     await press(optionIn(m.host, 'Yes'))
+    expect(m.answers).toEqual([])
+    expect(optionIn(m.host, 'Yes').getAttribute('aria-pressed')).toBe('true')
+    await press(sendOf(m))
     expect(m.answers.map(flat)).toEqual([{ q1: ['Yes'] }])
-    // A one-press question lights nothing: the press answered.
-    expect(m.host.querySelectorAll('.option.selected')).toHaveLength(0)
 
+    await press(optionIn(m.host, 'Yes'))
+    expect(sendOf(m).disabled).toBe(true)
     await typeInto(box, 'Maybe')
-    expect(sendOf(m).disabled).toBe(false)
     keydown(box, { key: 'Enter' })
     expect(m.answers.map(flat)).toEqual([{ q1: ['Yes'] }, { q1: ['Maybe'] }])
     unmountAll()
@@ -978,6 +1002,34 @@ const optionsOn = (m: Mounted): HTMLButtonElement[] => [
 const REFUSED = 'That answer was not usable.'
 
 describe('a question on Waiting on you is answered on its card', () => {
+  it('sends the written note and selected option through the Waiting on you answer door', async () => {
+    const calls: [string, UserInputResponse][] = []
+    const m = await queue(
+      [
+        queued(null, {
+          prompt: changePart.prompt,
+          context: null,
+          passedUp: false,
+          parts: [changePart],
+        }),
+      ],
+      {
+        answer: async (row, response) => {
+          calls.push([row.key, response])
+          return null
+        },
+      },
+    )
+    await typeInto(m.q('question-box') as HTMLTextAreaElement, note)
+    await press(optionIn(m.q('question-card'), change))
+    expect(calls).toEqual([])
+    await press(m.q('question-send'))
+
+    expect(calls.map(([key, response]) => [key, flat(response)])).toEqual([
+      [KEY, { answer: [change, note] }],
+    ])
+  })
+
   it('🔴 the host’s words come back on the queue card when an answer is not taken, and one press is all it lets through', async () => {
     let release: () => void = () => {}
     const hold = new Promise<void>((resolve) => {

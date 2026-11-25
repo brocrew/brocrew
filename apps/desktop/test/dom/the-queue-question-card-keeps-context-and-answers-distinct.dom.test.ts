@@ -181,7 +181,7 @@ describe('the queue question separates its context from answering', () => {
     m.q('question-more').click()
     await nextTick()
     m.all('question-option')[1]!.click()
-    expect(m.answers).toEqual([{ kind: 'answer', answers: { schedule: ['Full weekend'] } }])
+    expect(m.answers).toEqual([])
     const box = m.q('question-box') as HTMLTextAreaElement
     box.value = 'Saturday morning'
     box.dispatchEvent(new Event('input', { bubbles: true }))
@@ -190,7 +190,9 @@ describe('the queue question separates its context from answering', () => {
     await nextTick()
     expect(box.value).toBe('Saturday morning')
     m.q('question-send').click()
-    expect(m.answers[1]).toEqual({ kind: 'answer', answers: { schedule: ['Saturday morning'] } })
+    expect(m.answers).toEqual([
+      { kind: 'answer', answers: { schedule: ['Full weekend', 'Saturday morning'] } },
+    ])
     m.q('question-where').click()
     expect(m.opened).toEqual(['workshop'])
   })

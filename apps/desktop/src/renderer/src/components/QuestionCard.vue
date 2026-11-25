@@ -163,8 +163,15 @@ const live = computed(
 )
 /** ⚑ …and live — nothing is on its way. */
 const open = computed(() => live.value && state.value === 'open')
+const combinesChoiceAndWords = computed(() => {
+  const parts = reading.value.parts
+  return !props.item && !props.choicesOnly && answersAtOnePress(parts) && parts[0]?.typed === true
+})
 const onePress = computed(
-  () => (!props.item || shortcuts.value) && answersAtOnePress(reading.value.parts),
+  () =>
+    !combinesChoiceAndWords.value &&
+    (!props.item || shortcuts.value) &&
+    answersAtOnePress(reading.value.parts),
 )
 const quickChoices = computed(
   () =>
@@ -272,11 +279,11 @@ function press(part: QuestionPart, label: string): void {
     submit(props.item ? { kind: 'answer', answers: { [part.id]: label } } : oneAnswer(part, label))
     return
   }
-  pick(part, draft.value.answers, label)
+  pick(part, draft.value.answers, label, combinesChoiceAndWords.value)
 }
 
 function type(part: QuestionPart, text: string): void {
-  setTyped(part, draft.value.answers, text)
+  setTyped(part, draft.value.answers, text, combinesChoiceAndWords.value)
 }
 
 function send(): void {
@@ -603,7 +610,9 @@ watch(
             :aria-labelledby="boxLabel(part, index)"
             :value="typedOf(part, draft.answers)"
             :disabled="!open"
-            :placeholder="part.options.length > 0 ? TYPE_YOUR_OWN : TYPE_YOUR_ANSWER"
+            :placeholder="
+              part.options.length > 0 && !combinesChoiceAndWords ? TYPE_YOUR_OWN : TYPE_YOUR_ANSWER
+            "
             @input="type(part, ($event.target as HTMLTextAreaElement).value)"
             @keydown="onKey"
           ></textarea>
