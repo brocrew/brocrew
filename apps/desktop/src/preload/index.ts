@@ -852,6 +852,9 @@ const api = Object.freeze({
         loadedItems: one.loadedItems,
         fileCount: one.fileCount,
         contextUsed: one.contextUsed,
+        ...(one.kind === 'starved'
+          ? { timerLateMs: one.timerLateMs, frameLateMs: one.frameLateMs }
+          : {}),
       })),
       health:
         report.health === null
