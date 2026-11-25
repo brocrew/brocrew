@@ -1072,7 +1072,11 @@ describe('670 §6 · the plan go-ahead tells its two cases apart', () => {
       text: GO_AHEAD_MESSAGE,
       attribution: 'app_authored',
       sent: GO_AHEAD_MESSAGE,
-      promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
+      promptUpdates: {
+        'memory:claude:': 'seen',
+        'memory:codex:': 'seen',
+        'memory-nudge': 'checked',
+      },
     })
     await answerEveryCard(sessionId)
     await waitFor(() => handle.status() === 'idle', 'the go-ahead’s turn to end')

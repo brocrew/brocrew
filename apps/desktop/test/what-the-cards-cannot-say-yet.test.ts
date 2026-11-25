@@ -525,7 +525,11 @@ describe('687 · what the cards cannot say yet', () => {
         text: GO_AHEAD_MESSAGE,
         attribution: 'app_authored',
         sent: GO_AHEAD_MESSAGE,
-        promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
+        promptUpdates: {
+          'memory:claude:': 'seen',
+          'memory:codex:': 'seen',
+          'memory-nudge': 'checked',
+        },
       })
     })
   })
