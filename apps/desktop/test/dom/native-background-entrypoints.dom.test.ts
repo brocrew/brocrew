@@ -83,6 +83,27 @@ it.each([
     expect(checkInput().querySelector('[data-cy=run-state]')?.textContent).toContain(
       'Reading notes',
     )
+    if (!unfinished) {
+      applyEvent(session.value.transcript, {
+        type: 'background_work',
+        source: 'fixture',
+        progress: { id: 'route-task', run: { progress: '' } },
+      })
+      await tick()
+      expect(checkInput().querySelector('[data-cy=run-no-output]')?.textContent).toBe(
+        'No output yet.',
+      )
+      applyEvent(session.value.transcript, {
+        type: 'background_work',
+        source: 'fixture',
+        ended: { id: 'route-task', outcome: 'completed', run: { result: 'Route checked' } },
+      })
+      await tick()
+      expect(checkInput().querySelector('[data-cy=run-no-output]')).toBeNull()
+      expect(checkInput().querySelector('[data-cy=run-state]')?.textContent).toContain(
+        'Route checked',
+      )
+    }
     m.q('close-overlay').click()
     await tick()
     if (unfinished) {

@@ -127,10 +127,9 @@ export function useConversationOverlays(
       : undefined,
   )
   function backgroundRun(id: string) {
-    return (
-      transcript.value.background.running.find((one) => one.id === id) ??
-      transcript.value.background.history?.find((one) => one.id === id)
-    )
+    const past = transcript.value.background.history?.find((one) => one.id === id)
+    if (past?.outcome !== undefined || past?.unfinished) return past
+    return transcript.value.background.running.find((one) => one.id === id) ?? past
   }
   const readingBackground = ref<{ sessionId: string; id: string } | null>(null)
   const backgroundFor = computed(() =>

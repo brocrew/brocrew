@@ -1664,6 +1664,8 @@ onUnmounted(() => {
           <RunInput
             v-if="overlays.backgroundFor"
             :pending-output="
+              !overlays.backgroundFor.outcome &&
+              !overlays.backgroundFor.unfinished &&
               transcript.background.running.some((work) => work.id === overlays.backgroundFor?.id)
             "
             :text="overlays.backgroundFor.run?.input"
