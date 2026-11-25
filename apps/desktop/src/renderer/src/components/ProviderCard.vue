@@ -1661,4 +1661,5 @@ defineExpose({ beginSetup })
   </p>
 </template>
 
+<style scoped src="./fold-heading-presentation.css"></style>
 <style scoped src="./ProviderCard.css"></style>

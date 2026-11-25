@@ -317,18 +317,14 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
   </SheetShell>
 </template>
 
+<style scoped src="./sheet-field-presentation.css"></style>
+
 <style scoped>
 .icon {
   width: 14px;
   height: 14px;
 }
 
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-3);
-}
 .kind {
   border: 0;
   padding: 0;
@@ -344,60 +340,11 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
   grid-column: 2;
 }
 
-.lbl {
-  display: flex;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.stored {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-style: normal;
-  letter-spacing: 0;
-  opacity: 0.8;
-  text-transform: none;
-}
-
-.field input,
-.field select {
-  width: 100%;
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--text);
-  font-family: inherit;
-  font-size: var(--type-caption);
-}
-
 [data-cy='new-agent-slug'] {
   font-family: var(--font-mono);
 }
 
 .field.refused input {
   border-color: var(--danger);
-}
-
-.note {
-  display: flex;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  line-height: 1.5;
-}
-
-.note.err {
-  color: var(--danger);
-}
-
-.note .icon {
-  flex: 0 0 auto;
-  margin-top: 1px;
 }
 </style>
