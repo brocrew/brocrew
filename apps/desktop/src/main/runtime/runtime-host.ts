@@ -133,6 +133,7 @@ import {
   resolveConversationAddress,
 } from './conversation-address'
 import { renameConversation } from './rename-conversation'
+import { appendWorkReplyInTransaction } from './reply-commit'
 import { sendReceipt, type SendFacts } from './send-receipt'
 import { outboundQuestionText } from './outbound-question-words'
 import {
@@ -9698,44 +9699,33 @@ export class RuntimeHost implements LiveHost {
     )
     const ordinal = this.takeLedgerOrdinal(session)
     const at = this.now()
-    // ⚑ **The resources' rows and the reply's row in ONE transaction**, so a crash cannot leave a
-    // reply naming resources nothing records, or resources with no reply. ⚠️ {@link record} swallows
-    // a write that failed and reports it to the window, as every row this app writes; a session
-    // already failing is not written to at all — and then the reply names no resources, because
-    // none was recorded.
-    const repliedWith = (rows: readonly ResourceRow[]): WorkRepliedEvent => ({
+    const reply: Omit<WorkRepliedEvent, 'resources' | 'resultDocument'> = {
       type: 'work_replied',
       piece: piece.piece,
       outcome: input.outcome,
-      summary: textWithOverflowResource(summary.inline, rows[overflowIndex]?.resource),
+      summary: summary.inline,
       ...(input.savedMethod === undefined ? {} : { savedMethod: input.savedMethod }),
-      resources: rows.map((one) => one.resource),
-      ...(rows[resultIndex] === undefined ? {} : { resultDocument: rows[resultIndex]!.resource }),
       // ⚑ **Absent, never false** — a reply that did not claim it leaves no key at all.
       ...(input.needsUserAction ? { needsUserAction: true as const } : {}),
-    })
-    let resources: readonly ResourceRow[] = []
-    let passedUp: () => void = () => undefined
-    this.record(
-      session,
-      () => {
-        const committed = this.deps.store.atomically(() => {
-          const rows = this.recordMadeFiles(piece.piece, kept.files, speaking, at)
-          if (overflow !== null) rows.push(this.recordOverflow(piece.piece, overflow, speaking, at))
-          this.deps.store.append(session.id, ordinal, repliedWith(rows), at)
-          // ⚑ …and the questions passed up about the piece end in the same transaction.
-          return {
-            rows,
-            passedUp: this.endTheCopies(copies.copies, 'work-replied'),
-          }
-        })
-        resources = committed.rows
-        passedUp = committed.passedUp
-      },
+    }
+    const { resources, entry, publishQuestionEndings } = this.writeRecord(
+      session.id,
       'events,work_resource',
+      () =>
+        appendWorkReplyInTransaction(
+          this.deps.store,
+          { conversation: session.id, ordinal, at, reply, resultIndex, overflowIndex },
+          () => {
+            const rows = this.recordMadeFiles(piece.piece, kept.files, speaking, at)
+            if (overflow !== null)
+              rows.push(this.recordOverflow(piece.piece, overflow, speaking, at))
+            return rows
+          },
+          () => this.endTheCopies(copies.copies, 'work-replied'),
+        ),
     )
     this.rememberLedgerOrdinal(session, ordinal)
-    const replied = repliedWith(resources)
+    const replied = entry.event
     const overflowResource = resources[overflowIndex]
     const hasOverflow =
       overflow === null || overflowResource === undefined
@@ -9746,8 +9736,8 @@ export class RuntimeHost implements LiveHost {
               file: { ...overflow.file, resource: overflowResource.resource },
             },
           }
-    this.emitOurs(session, { sessionId: session.id, ordinal, at, event: replied })
-    passedUp()
+    this.emitOurs(session, entry)
+    publishQuestionEndings()
     // 🔴 **638 · work was ANSWERED** — one of the transitions that take a row out of
     // {@link TASK_IS_OPEN}, so it closes the giver's *waiting on a worker* too. ⚑ Announced before
     // the delivery is awaited, because what moved is the LEDGER and the delivery is a separate fact.

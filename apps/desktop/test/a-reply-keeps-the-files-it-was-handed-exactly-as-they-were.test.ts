@@ -197,6 +197,42 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       expect(keptHashes()).toEqual(paths.map((path) => shaOf(readFileSync(path))).sort())
     })
 
+    it('records the actual overflow ID alongside a separately selected result document', async () => {
+      const { worker, task } = await workWasGiven()
+      const paths = [wrote('notes.md', '# Notes'), wrote('result.md', '# Result')]
+      const summary = 'The full result. '.repeat(150)
+      const landed = await reply(worker, {
+        piece: task,
+        outcome: 'done',
+        summary,
+        resource_paths: paths,
+        result_document: paths[1],
+      })
+      expect(landed.outcome).toBe('ok')
+      const rows = store.resourcesOf(task)
+      const result = rows.find(({ name }) => name === 'result.md')
+      const overflow = rows.find(({ name }) => name === 'summary.txt')
+      if (result === undefined || overflow === undefined) {
+        throw new Error('the result document or summary attachment was not recorded')
+      }
+      expect(rows).toHaveLength(3)
+      expect(landed.result_document).toBe(result.resource)
+      expect(landed.resources).toContain(overflow.resource)
+      expect(landed.receipt).toMatchObject({
+        attachments: [
+          { resource: rows.find(({ name }) => name === 'notes.md')?.resource, name: 'notes.md' },
+          { resource: result.resource, name: 'result.md' },
+          { resource: overflow.resource, name: 'summary.txt', overflowField: 'summary' },
+        ],
+      })
+      const event = ledger(worker).find((one) => one.type === 'work_replied')
+      expect(event).toMatchObject({
+        resources: landed.resources,
+        resultDocument: result.resource,
+        summary: expect.stringContaining(overflow.resource),
+      })
+    })
+
     it('records an optional main document by returned id in the same reply and preserves it on a fresh host', async () => {
       const { worker, task } = await workWasGiven()
       const paths = [wrote('notes.md', '# Notes'), wrote('result.html', '<title>Result</title>')]
