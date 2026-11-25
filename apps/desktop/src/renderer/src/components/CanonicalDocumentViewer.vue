@@ -255,6 +255,8 @@ const notes = computed(() =>
           <span :title="fullTime(told.keptAt)">{{ clockTime(told.keptAt) }}</span>
         </p>
       </div>
+    </template>
+    <template #actions>
       <!-- eslint-disable-next-line vue/no-v-html -- the shared Copy path control; the path is escaped. -->
       <span v-if="result.ok" class="copy-path" @click="copyPath" v-html="copyControl"></span>
       <!-- ⚑ D-032 · Show in the file manager, for any kept file: the id goes to main. -->
@@ -333,7 +335,6 @@ const notes = computed(() =>
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  margin-left: auto;
   padding: var(--space-1) var(--space-4);
   border: var(--border-width) solid var(--line-strong);
   border-radius: var(--radius-2xs);
@@ -357,10 +358,5 @@ const notes = computed(() =>
 .copy-path {
   display: inline-flex;
   flex: 0 0 auto;
-  margin-left: auto;
-}
-
-.copy-path + .finder {
-  margin-left: 0;
 }
 </style>
