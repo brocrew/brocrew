@@ -17,6 +17,7 @@ import {
   cloneFindings,
   changedLineOverlap,
   classifyCloneFindings,
+  existedOnBase,
   knipKeys,
 } from './gate.mjs'
 
@@ -112,7 +113,10 @@ test('both static import spans are visible non-logic matches without changing na
   assert.equal(result.nativeFindings.length, 1)
   assert.deepEqual(result.importOnlyRecords, result.nativeFindings)
   assert.deepEqual(result.countedFindings, [])
-  assert.equal(result.summary, '1 native NEW; 0 untouched; 1 import-only; 0 counted NEW')
+  assert.equal(
+    result.summary,
+    '1 native NEW; 0 untouched; 0 existing; 1 import-only; 0 counted NEW',
+  )
   assert.equal(result.classifications[0].kind, 'import-only')
   classifyCloneFindings(value, assumeChanged, readSource)
   assert.equal(JSON.stringify(value), original)
@@ -256,7 +260,10 @@ test('classification conserves multiplicity and reports empty NEW without readin
   assert.equal(result.nativeFindings.length, 3)
   assert.equal(result.importOnlyRecords.length, 2)
   assert.equal(result.countedFindings.length, 1)
-  assert.equal(result.summary, '3 native NEW; 0 untouched; 2 import-only; 1 counted NEW')
+  assert.equal(
+    result.summary,
+    '3 native NEW; 0 untouched; 0 existing; 2 import-only; 1 counted NEW',
+  )
   assert.equal(read, 4)
   const empty = statementCase("import { x } from './module'", undefined, { isNew: false }).value
   assert.deepEqual(
@@ -287,7 +294,10 @@ test('a re-paired native NEW record counts only when either endpoint overlaps an
     ['counted', 'counted', 'untouched'],
   )
   assert.deepEqual(result.countedFindings, result.nativeFindings.slice(0, 2))
-  assert.equal(result.summary, '3 native NEW; 1 untouched; 0 import-only; 2 counted NEW')
+  assert.equal(
+    result.summary,
+    '3 native NEW; 1 untouched; 0 existing; 0 import-only; 2 counted NEW',
+  )
   assert.equal(JSON.stringify(value), original)
 })
 
@@ -341,6 +351,29 @@ test('Git overlap uses candidate line boundaries, including moves and new paths'
     assert.equal(overlaps(span('deleted-line.ts', 1, 19)), false)
     assert.equal(overlaps(span('new file.ts', 1)), true)
     assert.equal(overlaps(span('untracked.ts', 1)), true)
+
+    const onBase = (name, start, end) => ({ name: path.join('/base', name), start, end })
+    const existed = existedOnBase(
+      base,
+      report([
+        { firstFile: onBase('original.ts', 8, 12), secondFile: onBase('deleted-line.ts', 5, 9) },
+        { firstFile: onBase('original.ts', 5, 7), secondFile: onBase('original.ts', 15, 17) },
+        { firstFile: onBase('original.ts', 6, 6), secondFile: onBase('original.ts', 15, 15) },
+      ]),
+      '/base',
+      source,
+    )
+    const pair = (first, second) => ({ firstFile: span(...first), secondFile: span(...second) })
+    assert.equal(existed(pair([renamed, 9, 13], ['deleted-line.ts', 4, 8])), true)
+    assert.equal(existed(pair(['deleted-line.ts', 4, 8], [renamed, 9, 13])), true)
+    assert.equal(existed(pair([renamed, 10, 13], ['deleted-line.ts', 5, 8])), true)
+    assert.equal(existed(pair([renamed, 9, 14], ['deleted-line.ts', 4, 8])), false)
+    assert.equal(existed(pair([renamed, 9, 13], ['deleted-line.ts', 3, 8])), false)
+    assert.equal(existed(pair([renamed, 6, 8], [renamed, 16, 18])), true)
+    assert.equal(existed(pair([renamed, 5, 8], [renamed, 16, 18])), false)
+    assert.equal(existed(pair(['new file.ts', 1, 1], [renamed, 9, 13])), false)
+    // Line 7 replaced line 6, so that endpoint keeps no base line: a rewrite, not the old pair.
+    assert.equal(existed(pair([renamed, 7, 7], [renamed, 16, 16])), false)
   } finally {
     fs.rmSync(source, { recursive: true, force: true })
   }
@@ -554,7 +587,12 @@ function nativeCase(change) {
     return {
       before,
       after,
-      classification: classifyCloneFindings(after, changedLineOverlap(base, source)),
+      classification: classifyCloneFindings(
+        after,
+        changedLineOverlap(base, source),
+        undefined,
+        existedOnBase(base, before, source, source),
+      ),
     }
   } finally {
     const captureRoot = process.env.CODE_HEALTH_NATIVE_EVIDENCE
@@ -601,6 +639,38 @@ test(
     assert.ok(after.statistics.total.newClones > 0)
     assert.ok(cloneFindings(after).length > 0)
     assert.ok(classification.countedFindings.length > 0)
+  },
+)
+
+const renameLine = (text, from, to) => {
+  assert.ok(text.includes(from))
+  return text.replace(from, to)
+}
+
+test(
+  'native NEW from a renamed line inside an existing pair is existing, not counted',
+  { timeout: 120000 },
+  () => {
+    const { after, classification } = nativeCase(({ write }) => {
+      write('a.ts', renameLine(block(100), 'value100_11 =', 'renamed100_11 ='))
+    })
+    assert.ok(after.statistics.total.newClones > 0)
+    assert.equal(classification.nativeFindings.length, after.statistics.total.newClones)
+    assert.ok(classification.existingRecords.length > 0)
+    assert.equal(classification.countedFindings.length, 0)
+  },
+)
+
+test(
+  'native new copy of an existing pair is counted beside an edited old pair',
+  { timeout: 120000 },
+  () => {
+    const { classification } = nativeCase(({ write }) => {
+      write('a.ts', renameLine(block(100), 'value100_11 =', 'renamed100_11 ='))
+      write('e.ts', block(100))
+    })
+    assert.ok(classification.countedFindings.length > 0)
+    for (const finding of classification.countedFindings) assert.match(finding, /\/e\.ts:/)
   },
 )
 

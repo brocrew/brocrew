@@ -147,7 +147,23 @@ function importEndpoint(file, source) {
     : 'non-import syntax or trivia only'
 }
 
-export function changedLineOverlap(base, cwd = root) {
+// Git quotes paths containing special characters even with core.quotePath=false.
+function gitPath(text) {
+  const escapes = { a: '\x07', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' }
+  return text.startsWith('"')
+    ? text
+        .slice(1, -1)
+        .replace(/\\([0-7]{3}|.)/g, (_, escaped) =>
+          escaped.length === 3
+            ? String.fromCharCode(parseInt(escaped, 8))
+            : (escapes[escaped] ?? escaped),
+        )
+    : text
+}
+
+// Each changed file of the zero-context diff from base: its base and candidate paths (null when
+// added or deleted) and its hunks as [oldStart, oldCount, newStart, newCount].
+function gitChanges(base, cwd) {
   const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 })
   const patch = git(
     '-c',
@@ -166,41 +182,59 @@ export function changedLineOverlap(base, cwd = root) {
     '--',
   )
   const untracked = new Set(git('ls-files', '-z', '--others', '--exclude-standard').split('\0'))
-  const ranges = new Map()
+  const files = []
   let file
   for (const line of patch.split('\n')) {
-    if (line.startsWith('diff --git ')) file = undefined
-    if (file === undefined && line.startsWith('+++ ')) {
-      const header = line.slice(4).replace(/\t$/, '')
-      // Git quotes paths containing special characters even with core.quotePath=false.
-      const escapes = { a: '\x07', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' }
-      const name = header.startsWith('"')
-        ? header
-            .slice(1, -1)
-            .replace(/\\([0-7]{3}|.)/g, (_, escaped) =>
-              escaped.length === 3
-                ? String.fromCharCode(parseInt(escaped, 8))
-                : (escapes[escaped] ?? escaped),
-            )
-        : header
-      file = name.startsWith('b/') ? name.slice(2) : null
+    if (line.startsWith('diff --git ')) {
+      file = { from: undefined, to: undefined, hunks: [], header: true }
+      files.push(file)
+      continue
     }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line)
-    if (file && hunk) {
-      const start = Number(hunk[1])
-      const count = Number(hunk[2] ?? 1)
-      if (count === 0) continue
-      if (!ranges.has(file)) ranges.set(file, [])
-      ranges.get(file).push([start, start + count - 1])
+    if (!file) continue
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line)
+    if (hunk) {
+      file.header = false
+      file.hunks.push([1, 2, 3, 4].map((n) => Number(hunk[n] ?? 1)))
+      continue
     }
+    if (!file.header) continue
+    const side = (prefix) => {
+      const name = gitPath(line.slice(4).replace(/\t$/, ''))
+      return name.startsWith(prefix) ? name.slice(2) : null
+    }
+    if (line.startsWith('--- ')) file.from = side('a/')
+    if (line.startsWith('+++ ')) file.to = side('b/')
+    if (line.startsWith('rename from ')) file.from = gitPath(line.slice(12))
+    if (line.startsWith('rename to ')) file.to = gitPath(line.slice(10))
   }
+  return { files, untracked }
+}
+
+const relativeTo = (dir, file) =>
+  path.relative(dir, path.resolve(dir, file)).split(path.sep).join('/')
+// A half-open native span ending at column zero stops before that line.
+const lastLine = (file) =>
+  file.endLoc?.line === file.end && file.endLoc.column === 0 && file.end > file.start
+    ? file.end - 1
+    : file.end
+
+// Candidate line ranges each file added or modified.
+function changedRanges(files) {
+  const ranges = new Map()
+  for (const { to, hunks } of files) {
+    if (!to) continue
+    for (const [, , start, count] of hunks)
+      if (count > 0) ranges.set(to, [...(ranges.get(to) ?? []), [start, start + count - 1]])
+  }
+  return ranges
+}
+
+export function changedLineOverlap(base, cwd = root) {
+  const { files, untracked } = gitChanges(base, cwd)
+  const ranges = changedRanges(files)
   return (file) => {
-    const name = path.relative(cwd, path.resolve(cwd, file.name)).split(path.sep).join('/')
-    // A half-open native span ending at column zero stops before that line.
-    const end =
-      file.endLoc?.line === file.end && file.endLoc.column === 0 && file.end > file.start
-        ? file.end - 1
-        : file.end
+    const name = relativeTo(cwd, file.name)
+    const end = lastLine(file)
     return (
       untracked.has(name) ||
       (ranges.get(name)?.some(([start, last]) => file.start <= last && end >= start) ?? false)
@@ -208,15 +242,71 @@ export function changedLineOverlap(base, cwd = root) {
   }
 }
 
+// Carries a base line to the candidate through the hunks. A line inside a changed hunk keeps its
+// offset into the hunk, clamped to the hunk's candidate lines.
+function carryLine(hunks, line, edge) {
+  let shift = 0
+  for (const [oldStart, oldCount, newStart, newCount] of hunks) {
+    if (oldCount === 0 ? line <= oldStart : line < oldStart) break
+    const first = newCount === 0 ? newStart + 1 : newStart
+    const last = first + newCount - 1
+    if (line < oldStart + oldCount) {
+      const offset = first + line - oldStart
+      return edge === 'start' ? Math.min(offset, Math.max(first, last)) : Math.min(offset, last)
+    }
+    shift = first + newCount - (oldCount === 0 ? oldStart + 1 : oldStart + oldCount)
+  }
+  return line + shift
+}
+
+/**
+ * Whether a candidate clone pair already existed on the base: both endpoints lie inside the two
+ * endpoints of one pair the plain base scan reported, carried to candidate lines through the diff,
+ * and each endpoint keeps at least one unchanged base line. Native fingerprints change when any
+ * token inside a pair changes, so an edited old pair reads as NEW natively; a grown pair extends
+ * past the carried span, and a rewritten one keeps no base line, so both stay counted.
+ */
+export function existedOnBase(base, baseReport, baseRoot, cwd = root) {
+  const { files } = gitChanges(base, cwd)
+  const changed = changedRanges(files)
+  const carried = new Map()
+  for (const { from, to, hunks } of files) if (from) carried.set(from, { name: to, hunks })
+  const spans = baseReport.duplicates.map((clone) =>
+    [clone.firstFile, clone.secondFile].map((file) => {
+      const name = relativeTo(baseRoot, file.name)
+      const { name: to, hunks } = carried.get(name) ?? { name, hunks: [] }
+      return to && [to, carryLine(hunks, file.start, 'start'), carryLine(hunks, lastLine(file))]
+    }),
+  )
+  const inside = (file, span) => {
+    if (!span) return false
+    const [name, start, end] = span
+    const last = lastLine(file)
+    if (relativeTo(cwd, file.name) !== name || file.start < start || last > end) return false
+    const ranges = changed.get(name) ?? []
+    for (let line = file.start; line <= last; line++)
+      if (!ranges.some(([first, final]) => first <= line && line <= final)) return true
+    return false
+  }
+  return (clone) =>
+    spans.some(
+      ([a, b]) =>
+        (inside(clone.firstFile, a) && inside(clone.secondFile, b)) ||
+        (inside(clone.firstFile, b) && inside(clone.secondFile, a)),
+    )
+}
+
 export function classifyCloneFindings(
   report,
   overlapsChangedLines,
   readSource = (file) => fs.readFileSync(file),
+  existed = () => false,
 ) {
   const nativeFindings = cloneFindings(report)
   const sources = new Map()
   const countedFindings = []
   const untouchedRecords = []
+  const existingRecords = []
   const importOnlyRecords = []
   const classifications = []
   let next = 0
@@ -233,6 +323,15 @@ export function classifyCloneFindings(
       })
       continue
     }
+    if (existed(clone)) {
+      existingRecords.push(finding)
+      classifications.push({
+        finding,
+        kind: 'existing',
+        endpoints: ['inside a base pair', 'inside a base pair'],
+      })
+      continue
+    }
     const endpoints = files.map((file) => {
       if (!sources.has(file.name)) sources.set(file.name, importSource(file.name, readSource))
       return importEndpoint(file, sources.get(file.name))
@@ -246,9 +345,10 @@ export function classifyCloneFindings(
     nativeFindings,
     countedFindings,
     untouchedRecords,
+    existingRecords,
     importOnlyRecords,
     classifications,
-    summary: `${nativeFindings.length} native NEW; ${untouchedRecords.length} untouched; ${importOnlyRecords.length} import-only; ${countedFindings.length} counted NEW`,
+    summary: `${nativeFindings.length} native NEW; ${untouchedRecords.length} untouched; ${existingRecords.length} existing; ${importOnlyRecords.length} import-only; ${countedFindings.length} counted NEW`,
   }
 }
 
@@ -344,6 +444,44 @@ const lineCount = (file) => {
   return text.split('\n').length - (text.endsWith('\n') || text === '' ? 1 : 0)
 }
 
+// A plain scan of the base tree with the same configuration, for the pairs that already existed.
+// The checkout is removed afterwards; its report stays with the output.
+function scanBaseClones(base, out) {
+  const tree = path.join(out, 'tree')
+  fs.mkdirSync(out)
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(out, 'index') }
+  try {
+    execFileSync('git', ['read-tree', base], { cwd: root, env })
+    execFileSync('git', ['checkout-index', '--all', `--prefix=${tree}/`], { cwd: root, env })
+    const args = [
+      '--prefix',
+      here,
+      'run',
+      '--silent',
+      'scan:clones',
+      '--',
+      tree,
+      '--absolute',
+      '--config',
+      path.join(here, 'jscpd.json'),
+      '--output',
+      out,
+      '--reporters',
+      'json',
+      '--fail-on-empty',
+    ]
+    run('jscpd', args, out, (s) => s === 0, 'npm')
+    const report = readJson('jscpd base', path.join(out, 'jscpd-report.json'), (r) =>
+      Array.isArray(r?.duplicates),
+    )
+    cloneFindings(report)
+    return { report, tree }
+  } finally {
+    fs.rmSync(tree, { recursive: true, force: true })
+    fs.rmSync(path.join(out, 'index'), { force: true })
+  }
+}
+
 const TOOLS = {
   jscpd(files, out, reference) {
     const nativeOut = path.join(out, 'jscpd')
@@ -405,7 +543,13 @@ const TOOLS = {
         Array.isArray(r.runs[0].results) &&
         r.runs[0].results.length === report.duplicates.length,
     )
-    const classification = classifyCloneFindings(report, changedLineOverlap(reference.base))
+    const base = scanBaseClones(reference.base, path.join(out, 'jscpd-base'))
+    const classification = classifyCloneFindings(
+      report,
+      changedLineOverlap(reference.base),
+      undefined,
+      existedOnBase(reference.base, base.report, base.tree),
+    )
     return {
       native: true,
       now: report.duplicates.length,
