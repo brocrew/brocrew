@@ -12,17 +12,21 @@ name: Release
 on:
   push:
     tags: ['v*', '!v*-mac-signing-check.*']
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: >-
+    release-${{ github.event_name == 'workflow_dispatch' &&
+    github.ref == 'refs/heads/recover/final039-publication' && 'refs/tags/v0.2.39' || github.ref }}
   cancel-in-progress: false
 
 jobs:
   plan:
     name: What this tag releases
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -303,18 +307,26 @@ jobs:
           REPO: ${{ needs.plan.outputs.repo }}
           VERSION: ${{ needs.plan.outputs.version }}
           BROCREW_WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
-        run: |
+        run: &draft-release |
           set -euo pipefail
           tag="v$VERSION"
+          if [[ -n "${RECOVERY_PREDECESSOR:-}" ]]; then
+            [[ "$(gh api "repos/$REPO/commits/tags/$tag" --jq .sha)" == "$RELEASE_SOURCE" ]]
+            [[ "$(gh release view --repo "$REPO" --json tagName --jq .tagName)" == "$RECOVERY_PREDECESSOR" ]]
+          fi
           gh api --paginate "repos/$REPO/releases" --jq ".[] | select(.tag_name == \"$tag\") | .draft" > existing
           while read -r draft; do
+            if [[ -n "${RECOVERY_PREDECESSOR:-}" ]]; then
+              echo "$tag already has a release. Review it before taking further action."
+              exit 1
+            fi
             if [ "$draft" != true ]; then
               echo "$tag is already published; push a new version tag."
               exit 1
             fi
             gh release delete "$tag" --repo "$REPO" --yes
           done < existing
-          node scripts/beta-release.mjs notes "$tag" "$GITHUB_SHA" > notes.md
+          node scripts/beta-release.mjs notes "$tag" "${RELEASE_SOURCE:-$GITHUB_SHA}" > notes.md
           gh release create "$tag" --repo "$REPO" --draft --verify-tag \
             --title "$(node scripts/beta-release.mjs title "$tag")" --notes-file notes.md \
             "release/BroCrew-Setup-$VERSION-x64.exe" \
@@ -351,4 +363,95 @@ jobs:
           TAG: v${{ needs.plan.outputs.version }}
           DRAFT_ID: ${{ needs.draft.outputs.id }}
           DRAFT_ASSETS: ${{ needs.draft.outputs.assets }}
-        run: node scripts/publish-release.mjs
+        run: &publish-release node scripts/publish-release.mjs
+
+  verify-final039:
+    name: Verify the original Final039 assets and corrected upgrades
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.repository == 'brocrew/brocrew' &&
+      github.ref == 'refs/heads/recover/final039-publication'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tag: ${{ steps.runs.outputs.tag }}
+      source: ${{ steps.runs.outputs.source }}
+      version: ${{ steps.runs.outputs.version }}
+      predecessor: ${{ steps.runs.outputs.predecessor }}
+      original-run: ${{ steps.runs.outputs.originalRun }}
+      original-artifacts: ${{ steps.runs.outputs.originalArtifacts }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: runs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { verifyFinal039Runs } = require('./scripts/lib/final039-recovery.mjs')
+            const verified = await verifyFinal039Runs(github, context.repo)
+            for (const [key, value] of Object.entries(verified)) core.setOutput(key, value)
+            core.info(JSON.stringify(verified))
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: upgrade-path-*-${{ steps.runs.outputs.correctedAttempt }}
+          run-id: ${{ steps.runs.outputs.correctedRun }}
+          github-token: ${{ github.token }}
+          path: upgrade-evidence
+      - uses: actions/github-script@v8
+        env:
+          ATTEMPT: ${{ steps.runs.outputs.correctedAttempt }}
+        with:
+          script: |
+            const { readFileSync } = require('node:fs')
+            const { verifyFinal039UpgradeReceipt } = require('./scripts/lib/final039-recovery.mjs')
+            for (const platform of ['mac', 'windows']) {
+              const file = `upgrade-evidence/upgrade-path-${platform}-${process.env.ATTEMPT}/original-assets.json`
+              verifyFinal039UpgradeReceipt(JSON.parse(readFileSync(file, 'utf8')), platform)
+              core.info(`${platform}: original artifact binding verified`)
+            }
+
+  recover-final039:
+    name: Draft and publish Final039 with the original signed assets
+    needs: verify-final039
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-desktop
+        with:
+          install: 'false'
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.verify-final039.outputs.original-artifacts }}
+          run-id: ${{ needs.verify-final039.outputs.original-run }}
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: release
+      - name: Draft with the original signed files
+        id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.verify-final039.outputs.version }}
+          RELEASE_SOURCE: ${{ needs.verify-final039.outputs.source }}
+          RECOVERY_PREDECESSOR: ${{ needs.verify-final039.outputs.predecessor }}
+          BROCREW_WINDOWS_SIGNED: 'true'
+        run: *draft-release
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.verify-final039.outputs.tag }}
+          RECOVERY_PREDECESSOR: ${{ needs.verify-final039.outputs.predecessor }}
+          RELEASE_SOURCE: ${{ needs.verify-final039.outputs.source }}
+          DRAFT_ID: ${{ steps.draft.outputs.id }}
+          DRAFT_ASSETS: ${{ steps.draft.outputs.assets }}
+        run: *publish-release

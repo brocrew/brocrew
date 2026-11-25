@@ -135,23 +135,26 @@ describe('the workflows · run on a public repository, whatever it is named, and
 
   const pluginGuardOf = (platform) =>
     `    if: github.repository == 'brocrew/brocrew' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/gate/plugin-v2-${platform}-')`
-  const checkWorkflowGuards = (yaml, platform = null) => {
+  const recoveryGuard = `    if: >-
+      github.event_name == 'workflow_dispatch' && github.repository == 'brocrew/brocrew' &&
+      github.ref == 'refs/heads/recover/final039-publication'`
+  const checkWorkflowGuards = (yaml, restricted = null) => {
     let ordinary = yaml
-    if (platform !== null) {
+    if (restricted !== null) {
       const jobsAt = yaml.indexOf('\njobs:\n')
-      if (jobsAt < 0 || !['mac', 'windows'].includes(platform))
-        throw new Error('Workflow repository guard differs')
+      if (jobsAt < 0) throw new Error('Workflow repository guard differs')
+      const [name, guard] = restricted
       const jobs = [...yaml.slice(jobsAt).matchAll(/^ {2}(\w[\w-]*):\n/gm)]
-      const reviews = jobs.filter((job) => job[1] === 'plugin-v2-review')
-      if (reviews.length !== 1) throw new Error('Workflow repository guard differs')
-      const index = jobs.indexOf(reviews[0])
-      const start = jobsAt + reviews[0].index
+      const matches = jobs.filter((job) => job[1] === name)
+      if (matches.length !== 1) throw new Error('Workflow repository guard differs')
+      const index = jobs.indexOf(matches[0])
+      const start = jobsAt + matches[0].index
       const end = index + 1 < jobs.length ? jobsAt + jobs[index + 1].index : yaml.length
       const block = yaml.slice(start, end)
-      const conditions = block.match(/^ {4}if:.*$/gm) ?? []
-      if (conditions.length !== 1 || conditions[0] !== pluginGuardOf(platform))
+      const conditions = block.match(/^ {4}if:.*(?:\n {6}.*)*/gm) ?? []
+      if (conditions.length !== 1 || conditions[0] !== guard)
         throw new Error('Workflow repository guard differs')
-      ordinary = yaml.slice(0, start) + yaml.slice(end)
+      ordinary = yaml.slice(0, start) + block.replace(guard, '') + yaml.slice(end)
     }
     expect(ordinary).not.toMatch(/github\.repository\s*==/)
     expect(yaml).not.toContain('BROBOT_PUBLIC_CHECKS')
@@ -222,7 +225,11 @@ describe('the workflows · run on a public repository, whatever it is named, and
     for (const workflow of ['public-checks', 'download-counts', 'release', 'windows', 'macos']) {
       const yaml = read(`.github/workflows/${workflow}.yml`)
       const platform = { windows: 'windows', macos: 'mac' }[workflow] ?? null
-      checkWorkflowGuards(yaml, platform)
+      const restricted =
+        workflow === 'release'
+          ? ['verify-final039', recoveryGuard]
+          : platform && ['plugin-v2-review', pluginGuardOf(platform)]
+      checkWorkflowGuards(yaml, restricted)
     }
   })
 
@@ -234,6 +241,7 @@ describe('the workflows · run on a public repository, whatever it is named, and
     (workflow, platform) => {
       const yaml = read(`.github/workflows/${workflow}.yml`)
       const guard = pluginGuardOf(platform)
+      const restricted = ['plugin-v2-review', guard]
       const repository = "github.repository == 'brocrew/brocrew'"
       const event = "github.event_name == 'workflow_dispatch'"
       const prefix = `startsWith(github.ref, 'refs/heads/gate/plugin-v2-${platform}-')`
@@ -252,21 +260,41 @@ describe('the workflows · run on a public repository, whatever it is named, and
       ]) {
         const changed = yaml.replace(guard, changedGuard)
         expect(changed, label).not.toBe(yaml)
-        expect(() => checkWorkflowGuards(changed, platform), label).toThrow()
+        expect(() => checkWorkflowGuards(changed, restricted), label).toThrow()
       }
       const ordinaryLeak = yaml.replace(
         '\njobs:\n',
         `\njobs:\n  ordinary-repository-leak:\n    if: ${repository}\n    runs-on: ubuntu-latest\n    steps: []\n`,
       )
       expect(ordinaryLeak).not.toBe(yaml)
-      expect(() => checkWorkflowGuards(ordinaryLeak, platform)).toThrow()
+      expect(() => checkWorkflowGuards(ordinaryLeak, restricted)).toThrow()
       const missingReview = yaml.replace('  plugin-v2-review:\n', '  another-review:\n')
       expect(missingReview).not.toBe(yaml)
-      expect(() => checkWorkflowGuards(missingReview, platform)).toThrow()
+      expect(() => checkWorkflowGuards(missingReview, restricted)).toThrow()
       const duplicateReview = `${yaml}\n  plugin-v2-review:\n${guard}\n    steps: []\n`
-      expect(() => checkWorkflowGuards(duplicateReview, platform)).toThrow()
+      expect(() => checkWorkflowGuards(duplicateReview, restricted)).toThrow()
     },
   )
+
+  it('allows only the exact Final039 verification guard in release.yml', () => {
+    const yaml = read('.github/workflows/release.yml')
+    const restricted = ['verify-final039', recoveryGuard]
+    const repository = "github.repository == 'brocrew/brocrew'"
+    expect(() => checkWorkflowGuards(yaml, restricted)).not.toThrow()
+    for (const changed of [
+      yaml.replace(recoveryGuard, '    if: true'),
+      yaml.replace(recoveryGuard, recoveryGuard.replace(repository, 'true')),
+      yaml.replace(recoveryGuard, recoveryGuard.replace('workflow_dispatch', 'push')),
+      yaml.replace(recoveryGuard, recoveryGuard.replace('recover/final039-publication', 'main')),
+      yaml.replace('  verify-final039:\n', '  ordinary-release-check:\n'),
+      `${yaml}\n  verify-final039:\n${recoveryGuard}\n    steps: []\n`,
+      yaml.replace('  plan:\n', `  plan:\n    if: ${repository}\n`),
+      yaml.replace('      - id: runs\n', `      - id: runs\n        if: ${repository}\n`),
+    ]) {
+      expect(changed).not.toBe(yaml)
+      expect(() => checkWorkflowGuards(changed, restricted)).toThrow()
+    }
+  })
 
   it('reads only its own secrets, and only the download job may write', () => {
     const secrets = [

@@ -73,6 +73,9 @@ const published = (changes = {}) => ({
 /** Runs the publish step with these answers; its exit status, output and the calls it made. */
 function publish({
   tagged = SHA,
+  source,
+  predecessor,
+  latest = predecessor,
   release = { status: 200, body: draft() },
   patch = published(),
 } = {}) {
@@ -84,6 +87,7 @@ function publish({
     JSON.stringify({
       'GET repos/brocrew/brocrew/commits/v0.2.27': { status: 200, body: { sha: tagged } },
       [`GET ${RELEASE}`]: release,
+      'GET repos/brocrew/brocrew/releases/latest': { status: 200, body: { tag_name: latest } },
       [`PATCH ${RELEASE}`]: patch,
     }),
   )
@@ -99,6 +103,11 @@ function publish({
   for (const [name, value] of Object.entries(step.env)) {
     env[name] = value.replace(/\$\{\{ (.+?) \}\}/g, (_, expression) => supplied[expression])
   }
+  if (source) {
+    env.GITHUB_SHA = 'f'.repeat(40)
+    env.RELEASE_SOURCE = source
+  }
+  if (predecessor) env.RECOVERY_PREDECESSOR = predecessor
   Object.assign(env, { GH_CALLS: join(root, 'calls'), GH_ANSWERS: join(root, 'answers.json') })
   const result = spawnSync('bash', ['-c', step.run], { cwd: repo, env, encoding: 'utf8' })
   const calls = readFileSync(env.GH_CALLS, 'utf8')
@@ -139,6 +148,22 @@ describe('release.yml publishes the approved draft by its id', () => {
       expect(run.status).toBe(0)
       expect(run.stdout).toBe('Published https://github.com/brocrew/brocrew/releases/tag/v0.2.27\n')
       expect(run.calls).toEqual([...READS, PUBLISH])
+    },
+  )
+
+  itOnPosix(
+    'recovery checks latest after checking the signed source and the finished draft',
+    () => {
+      const predecessor = 'v0.2.26'
+      const latestRead = { args: ['api', 'repos/brocrew/brocrew/releases/latest'], input: null }
+      const current = publish({ source: SHA, predecessor })
+      expect(current.status).toBe(0)
+      expect(current.calls).toEqual([...READS, latestRead, PUBLISH])
+
+      const superseded = publish({ source: SHA, predecessor, latest: 'v0.2.28' })
+      expect(superseded.status).toBe(1)
+      expect(superseded.stderr).toContain('latest is v0.2.28, expected v0.2.26')
+      expect(superseded.calls).toEqual([...READS, latestRead])
     },
   )
 

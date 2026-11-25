@@ -29,12 +29,16 @@ function filesOf(assets) {
 }
 
 /** Stops before publishing unless `tag` is at `sha` and the draft's files are the recorded ones. */
-function check({ repo, tag, sha, id, assets }) {
+function check({ repo, tag, sha, id, assets, predecessor }) {
   const tagged = api(`repos/${repo}/commits/${tag}`).sha
   if (tagged !== sha) throw new Error(`${tag} points at ${tagged}, not ${sha}`)
   const draft = api(`repos/${repo}/releases/${id}`)
   if (filesOf(draft.assets) !== filesOf(assets)) {
     throw new Error(`its files changed since the draft job: ${filesOf(draft.assets)}`)
+  }
+  if (predecessor) {
+    const latest = api(`repos/${repo}/releases/latest`).tag_name
+    if (latest !== predecessor) throw new Error(`latest is ${latest}, expected ${predecessor}`)
   }
 }
 
@@ -49,9 +53,9 @@ function stateOf(repo, id) {
 }
 
 /** Publishes draft `id` as `tag` at `sha` if the tag and the draft's files are as it was made. */
-export function publishDraft({ repo, tag, sha, id, assets }) {
+export function publishDraft({ repo, tag, sha, id, assets, predecessor }) {
   try {
-    check({ repo, tag, sha, id, assets })
+    check({ repo, tag, sha, id, assets, predecessor })
   } catch (error) {
     throw new Error(`Release ${id} was not published: ${error.message}`, { cause: error })
   }
@@ -74,14 +78,22 @@ export function publishDraft({ repo, tag, sha, id, assets }) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { REPO, TAG, GITHUB_SHA, DRAFT_ID, DRAFT_ASSETS } = process.env
+  const {
+    REPO,
+    TAG,
+    RELEASE_SOURCE = process.env.GITHUB_SHA,
+    DRAFT_ID,
+    DRAFT_ASSETS,
+    RECOVERY_PREDECESSOR,
+  } = process.env
   try {
     const url = publishDraft({
       repo: REPO,
       tag: TAG,
-      sha: GITHUB_SHA,
+      sha: RELEASE_SOURCE,
       id: DRAFT_ID,
       assets: JSON.parse(DRAFT_ASSETS),
+      predecessor: RECOVERY_PREDECESSOR,
     })
     console.log(`Published ${url}`)
   } catch (error) {
