@@ -499,6 +499,30 @@ describe.runIf(process.platform === 'darwin')('Darwin recovery copy', () => {
     expect(readFileSync(join(folder, 'copy'))).toEqual(readFileSync(source))
     expect(readdirSync(folder).sort()).toEqual(['copy', 'source'])
   })
+  it('asks full-copy admission before cp -c on a volume that cannot clone', async () => {
+    const folder = aFolder(),
+      source = join(folder, 'source')
+    writeFileSync(source, 'Fictional data.')
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    // An HFS+ or exFAT volume reports a filesystem type other than the boot volume's APFS.
+    vi.mocked(statfs).mockImplementation(async (path) => ({
+      ...(await actual.statfs(path)),
+      type: path === '/' ? 26 : 25,
+    }))
+    const refusal = Object.assign(new Error('Not enough room for a full scratch copy.'), {
+      code: 'ENOSPC',
+    })
+    try {
+      await expect(
+        nodeFs.cloneFile(source, join(folder, 'copy'), undefined, () => {
+          throw refusal
+        }),
+      ).rejects.toBe(refusal)
+      expect(readdirSync(folder)).toEqual(['source'])
+    } finally {
+      vi.mocked(statfs).mockReset()
+    }
+  })
   it('propagates command failure after child exit and removes only its partial staging', async () => {
     const folder = aFolder(),
       source = join(folder, 'source-directory')

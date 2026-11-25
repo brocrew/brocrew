@@ -80,7 +80,10 @@ export interface RecoveryFs {
   rename(from: string, to: string): Promise<void>
   /** `mode` is `fs.constants.COPYFILE_*`. */
   copyFile(from: string, to: string, mode?: number): Promise<void>
-  /** Exclusive copy-on-write attempt; Darwin uses the platform's `cp -c`. */
+  /**
+   * Exclusive copy-on-write attempt; Darwin uses the platform's `cp -c`, which falls back to a full
+   * copy where the volume can't clone, so `beforeFullCopy` runs first there.
+   */
   cloneFile(
     from: string,
     to: string,
@@ -167,7 +170,12 @@ export const nodeFs: RecoveryFs = {
   readdir: (path) => nodeFsPromises.readdir(path),
 }
 
-async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal): Promise<void> {
+async function cloneRecoveryFile(
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+  beforeFullCopy?: () => void,
+): Promise<void> {
   signal?.throwIfAborted()
   if (process.platform !== 'darwin') {
     await nodeFsPromises.copyFile(
@@ -179,6 +187,15 @@ async function cloneRecoveryFile(from: string, to: string, signal?: AbortSignal)
   }
   if (await pathExists(to))
     throw Object.assign(new Error(`${to} already exists`), { code: 'EEXIST' })
+  // `cp -c` makes a full copy, without saying so, on a volume that can't clone (HFS+, exFAT, FAT).
+  // Only APFS clones, and the boot volume is APFS, so another filesystem type means a full copy.
+  if (beforeFullCopy !== undefined) {
+    const [here, boot] = await Promise.all([
+      nodeFsPromises.statfs(dirname(to)),
+      nodeFsPromises.statfs('/'),
+    ])
+    if (here.type !== boot.type) beforeFullCopy()
+  }
   const staging = await nodeFsPromises.mkdtemp(join(dirname(to), '.copy-'))
   const copy = join(staging, 'copy')
   let failure: unknown
