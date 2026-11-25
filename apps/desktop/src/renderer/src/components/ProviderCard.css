@@ -155,28 +155,6 @@
   text-transform: uppercase;
   line-height: var(--leading-normal);
 }
-/* The heading itself, unstyled: its icon, its word and the chevron, pressable. */
-.fold {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  gap: var(--space-2);
-}
-/* Down while open, right while folded. */
-.chevron {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  flex: none;
-  transform: rotate(90deg);
-}
-.chevron.folded {
-  transform: none;
-}
 /* The content lays out as the part's own children, folded or not. */
 .part-body {
   display: contents;

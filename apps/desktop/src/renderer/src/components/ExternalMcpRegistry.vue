@@ -346,6 +346,8 @@ function onKey(event: KeyboardEvent): void {
   </SheetShell>
 </template>
 
+<style scoped src="./sheet-field-presentation.css"></style>
+
 <style scoped>
 .spacer {
   flex: 1;
@@ -401,41 +403,8 @@ function onKey(event: KeyboardEvent): void {
   font-size: var(--type-caption);
 }
 
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.lbl {
-  display: flex;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.stored {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-style: normal;
-  letter-spacing: 0;
-  opacity: 0.8;
-  text-transform: none;
-}
-
 .field input {
-  width: 100%;
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--text);
   font-family: var(--font-mono);
-  font-size: var(--type-caption);
 }
 
 /* 🔴 **524 · the two answers, and the radio must undo `.field input`.** ⛔ That rule is written for
@@ -457,23 +426,5 @@ function onKey(event: KeyboardEvent): void {
   padding: 0;
   border: 0;
   background: none;
-}
-
-.note {
-  display: flex;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  line-height: 1.5;
-}
-
-.note.err {
-  color: var(--danger);
-}
-
-.note .icon {
-  flex: 0 0 auto;
-  margin-top: 1px;
 }
 </style>
