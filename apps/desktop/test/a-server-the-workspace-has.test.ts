@@ -1,7 +1,8 @@
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { sessionStoreSource } from './lib/session-store-source'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -589,7 +590,7 @@ describe('524 · a server the workspace has', () => {
       // the sentence and that census are about the same act.
       expect(EXTERNAL_MCP_REACH_IS_FIXED).toContain('cannot be edited afterwards')
       expect(EXTERNAL_MCP_REACH_IS_FIXED).toContain('remove it and add it again')
-      const store = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
+      const store = sessionStoreSource()
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/^\s*\/\/.*$/gm, ' ')
       // ⚑ **The positive control first** — without it an empty read passes the negative below.
