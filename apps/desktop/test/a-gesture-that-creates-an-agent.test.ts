@@ -385,7 +385,7 @@ describe('§3 · the identity’s default provider — every writer, measured', 
         .map((each) => each.file)
         .sort(),
       'a statement that moves `provider` arrived somewhere new — say which door it is',
-    ).toEqual(['main/db/session-store.ts'])
+    ).toEqual(['main/db/session-store-parts/work-statements.ts'])
     // ⛔ **No MIGRATION moves it, and that is 433's own decision rather than an accident.** A
     // migration filling BroBot's NULL would move what `RuntimeScreen.frontDoorProvider` starts —
     // that column is its FIRST term — on a database whose owner never asked. `SEEDED_PROVIDERS`
@@ -398,9 +398,9 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     // columns. ⛔ The *one per question* claim is what this measures, so the set lists are spelled
     // out below rather than left to a length.
     expect(updates.filter((each) => each.file.endsWith('.ts')).map((each) => each.file)).toEqual([
-      'main/db/session-store.ts',
-      'main/db/session-store.ts',
-      'main/db/session-store.ts',
+      'main/db/session-store-parts/work-statements.ts',
+      'main/db/session-store-parts/work-statements.ts',
+      'main/db/session-store-parts/work-statements.ts',
     ])
     const setList = (sql: string): string => sql.slice(sql.indexOf('SET'))
     expect(
@@ -415,7 +415,7 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     // row — `ensureIdentityRow`, which every creation and every first launch goes through.
     expect([
       ...new Set(inserts.filter((each) => /\bprovider\b/.test(each.sql)).map((each) => each.file)),
-    ]).toEqual(['main/db/session-store.ts'])
+    ]).toEqual(['main/db/session-store-parts/work-statements.ts'])
   })
 
   it('🔴 THE FINDING · `agent_identity` is EMPTY on a fresh database, so a person CAN name BroBot', () => {

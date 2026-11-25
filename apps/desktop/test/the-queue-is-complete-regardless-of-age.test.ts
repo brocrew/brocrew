@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { sessionStoreSource } from './lib/session-store-source'
 
 /**
  * 🔴 **434 · HO-025 criterion 17 — the attention queue is COMPLETE REGARDLESS OF AGE.**
@@ -162,13 +163,7 @@ describe('§2 · the read shape, pinned — a window added later is a red line',
    * `session-store.ts` discusses `created_at` in the prose around these statements —
    * `a-source-census-must-strip-prose-before-it-asserts`.
    */
-  const store = join(here, '../src/main/db')
-  const source = [
-    'session-store.ts',
-    ...readdirSync(join(store, 'session-store-parts')).map((file) => `session-store-parts/${file}`),
-  ]
-    .map((file) => readFileSync(join(store, file), 'utf8'))
-    .join('\n')
+  const source = sessionStoreSource()
 
   function statement(name: string, text = source): string {
     const at = text.indexOf(`const ${name} = db.prepare(`)

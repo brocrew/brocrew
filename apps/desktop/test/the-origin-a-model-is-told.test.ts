@@ -32,6 +32,7 @@ import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { sessionStoreSource } from './lib/session-store-source'
 
 /**
  * ⚑ D-011 · a PM called Pam that gave the receiver W1.3 — for the pure composer's tests. ⚑ D-016:
@@ -830,7 +831,7 @@ describe('414 · the origin a model is told', () => {
       // walks`, failed honestly. ⚑ **So the first half pins the READER**: the day somebody widens
       // that SELECT is the day the plant below becomes reachable, and this is the assertion that
       // fires on the same commit.
-      const reader = codeOnly(readFileSync(join(mainRoot, '../main/db/session-store.ts'), 'utf8'))
+      const reader = codeOnly(sessionStoreSource())
       // ⚑ **D-016 · the reader is the identity's own row** — `agent_profile` is no longer joined, so
       // the one column is pinned whole, up to the `FROM`: a second column breaks the match.
       expect(reader).toMatch(

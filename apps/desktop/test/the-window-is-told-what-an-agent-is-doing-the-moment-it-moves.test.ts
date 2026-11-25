@@ -32,6 +32,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
+import { sessionStoreSource } from './lib/session-store-source'
 
 /**
  * # D-019 · the window is told what an agent is doing the moment it moves
@@ -881,14 +882,7 @@ const differences = (one: readonly string[], other: readonly string[]): string[]
 ]
 
 describe('D-019 · the three lists of row types a wait read selects say the same words', () => {
-  const storeText = [
-    'session-store.ts',
-    ...readdirSync(join(SRC, 'main/db/session-store-parts')).map(
-      (file) => `session-store-parts/${file}`,
-    ),
-  ]
-    .map((file) => readFileSync(join(SRC, 'main/db', file), 'utf8'))
-    .join('\n')
+  const storeText = sessionStoreSource()
   const questionsText = readFileSync(join(SRC, 'shared/questions.ts'), 'utf8')
 
   it('the three lists of row types a wait read selects say the same words', () => {
