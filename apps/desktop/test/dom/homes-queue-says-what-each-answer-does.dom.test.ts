@@ -266,11 +266,18 @@ function drawnAnswers(row: Element) {
       '[data-permission-decision], [data-cy="user-input-answer"], ' +
         '[data-cy="user-input-reject"], button[data-cy^="user-input-choice-"]',
     ),
-  ].map((button) => ({
-    word: button.querySelector('strong, .label')?.textContent?.trim() ?? '',
-    effect: button.querySelector<HTMLElement>('small')?.innerText.trim() ?? '',
-    el: button,
-  }))
+  ].map((button) => {
+    const frame = button.closest<HTMLElement>('.option') ?? button
+    const label = button.matches('.label') ? button : button.querySelector('strong, .label')
+    const line = frame.querySelector<HTMLElement>('small')!
+    return {
+      word: label?.textContent?.trim() ?? '',
+      effect: line?.innerText.trim() ?? '',
+      el: button,
+      frame,
+      line,
+    }
+  })
 }
 
 describe('481 · every answer on Home says what it does, in the queue’s own words', () => {
@@ -554,8 +561,8 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     const opacity = (answer: { el: HTMLElement }): number =>
       Number(getComputedStyle(answer.el).opacity)
     expect(opacity(dead[0]!)).toBeLessThan(opacity(live[0]!))
-    const effectColor = (answer: { el: HTMLElement }): string =>
-      getComputedStyle(answer.el.querySelector('small')!).color
+    const effectColor = (answer: { line: HTMLElement }): string =>
+      getComputedStyle(answer.line).color
     expect(effectColor(dead[0]!)).not.toBe(effectColor(live[0]!))
     // ⚑ And the row still says why, rather than showing words over controls that do nothing.
     expect(view.q('attention-sent').innerText).toContain('answer sent')
@@ -574,8 +581,8 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     const drawn = answers(view.host, 'sess_perm')
     const allow = drawn.find((answer) => answer.word === 'Approve')!
     const cancel = drawn.find((answer) => answer.word === 'Cancel turn')!
-    const paint = (answer: { el: HTMLElement }, selector: string): string =>
-      getComputedStyle(answer.el.querySelector(selector)!).color
+    const paint = (answer: { frame: HTMLElement }, selector: string): string =>
+      getComputedStyle(answer.frame.querySelector(selector)!).color
     expect(paint(cancel, 'strong, .label')).not.toBe(paint(allow, 'strong, .label'))
     expect(paint(cancel, 'small')).toBe(paint(allow, 'small'))
   })
@@ -634,15 +641,15 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
         )!
         for (const answer of answers(mounted.host, request.sessionId)) {
           expect(
-            answer.el.getBoundingClientRect().right,
+            answer.frame.getBoundingClientRect().right,
             `${width}px ${request.sessionId} control`,
           ).toBeLessThanOrEqual(row.getBoundingClientRect().right + 0.5)
         }
       }
       for (const request of requests) {
         for (const answer of answers(mounted.host, request.sessionId)) {
-          const line = answer.el.querySelector<HTMLElement>('small')!
-          const box = answer.el.getBoundingClientRect()
+          const line = answer.line
+          const box = answer.frame.getBoundingClientRect()
           const rect = line.getBoundingClientRect()
           expect(rect.height, `${width}px ${request.sessionId}`).toBeGreaterThan(0)
           expect(rect.right, `${width}px ${request.sessionId}`).toBeLessThanOrEqual(box.right + 0.5)
@@ -669,7 +676,9 @@ describe('481 · every answer on Home says what it does, in the queue’s own wo
     view = mount(AttentionQueue, { requests, now: NOW }, { width: 900, height: 1600 })
     await nextTick()
 
-    const boxes = answers(view.host, 'sess_perm').map((answer) => answer.el.getBoundingClientRect())
+    const boxes = answers(view.host, 'sess_perm').map((answer) =>
+      answer.frame.getBoundingClientRect(),
+    )
     expect(boxes.length).toBeGreaterThan(2)
     for (const [index, box] of boxes.entries()) {
       if (index === 0) continue

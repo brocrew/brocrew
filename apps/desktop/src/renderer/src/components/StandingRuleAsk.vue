@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
 /**
  * One ask from an agent to set an identity's rules: who asked and about what (the caller's own
  * line), the reason it gave, labelled as its claim, the proposed rules, and Approve and Refuse.
@@ -27,8 +28,8 @@ const emit = defineEmits<{ decide: [approve: boolean] }>()
 <template>
   <li class="ask bb-request" :class="{ compact }" :data-cy="cy">
     <p class="ask-who"><slot name="who" /></p>
-    <p class="ask-why" :data-cy="whyCy">It said: “{{ why }}”</p>
-    <pre class="ask-text">{{ text }}</pre>
+    <MarkdownWords class="ask-why" :data-cy="whyCy" lead="It said:" :text="'“' + why + '”'" />
+    <MarkdownWords class="ask-text" :text="text" />
     <div class="ask-controls">
       <button type="button" :disabled="busy" :data-cy="approveCy" @click="emit('decide', true)">
         Approve

@@ -27,6 +27,7 @@ import InstructionAsks from './InstructionAsks.vue'
 import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import QuestionCard from './QuestionCard.vue'
 import PermissionCard from './PermissionCard.vue'
 import WhatComesAfter from './WhatComesAfter.vue'
@@ -402,13 +403,13 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                an agent's own words about work a person is deciding on. ⚠️ **It recovers the LINE
                and not the assignment**: the rest is behind the button beside it, where the work
                report draws the text unshortened. -->
-          <p
+          <MarkdownWords
             class="pq-stall-what"
             :title="work.what"
             :data-cy="`persons-queue-stall-what-${work.key}`"
-          >
-            {{ work.what }}
-          </p>
+            :text="work.what"
+            :session-id="work.sessionId"
+          />
           <!-- ⛔ **What the button DOES is said before it is pressed** — `openingAction`, the same
                two words the rows below use, because a person reading one card may not be told the
                same act in two vocabularies. -->

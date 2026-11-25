@@ -406,7 +406,7 @@ describe('the main panel shows the conversation, or its whole tree', () => {
     await nextTick()
     // ⚑ A sub agent's chip selects it.
     m.q('cast-children-strip')
-      .querySelector<HTMLButtonElement>('button[data-conversation="sess_amara"]')!
+      .querySelector<HTMLElement>('[role="button"][data-conversation="sess_amara"]')!
       .click()
     await nextTick()
     expect(opened).toEqual(['sess_arjun', 'sess_amara'])

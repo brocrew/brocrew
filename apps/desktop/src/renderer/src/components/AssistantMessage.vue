@@ -16,7 +16,7 @@ import {
 import type { PathsHere } from '../composables/useMessagePaths'
 import type { AssistantItem, TranscriptItem } from '../lib/transcript'
 
-/** Stream plain text while growing; render Markdown once settled, including interrupted tails. */
+/** Growing and settled replies share the conversation formatter. */
 const props = defineProps<{
   item: AssistantItem & Pick<TranscriptItem, 'at'>
   /** Who is speaking, as the header shows it. */
@@ -141,17 +141,15 @@ const noteId = computed(() => `asked-note-${props.item.id}`)
         :data-at="item.streaming ? '' : clockTime(item.at)"
         :title="item.streaming ? '' : fullTime(item.at)"
       >
-        <template v-if="item.streaming"
-          >{{ item.text }}<span class="stream-caret" aria-hidden="true"></span
-        ></template>
         <MarkdownWords
-          v-else
           data-cy="assistant-markdown"
           :text="item.text"
+          :streaming="item.streaming"
           :paths="props.paths"
           :documents="props.documents"
           @open-document="(resourceId) => emit('openDocument', resourceId)"
         />
+        <span v-if="item.streaming" class="stream-caret" aria-hidden="true"></span>
       </div>
       <div
         v-if="displayedQuestions.length > 0"

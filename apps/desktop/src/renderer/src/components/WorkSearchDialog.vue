@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vButtonKeys } from '../lib/button-keys'
 import { TASK_STATES } from '../../../shared/task-contracts'
 import type { TaskState } from '../../../shared/task-contracts'
 
@@ -13,6 +14,7 @@ import {
   type WorkSearchPalettePage,
 } from '../lib/work-search-palette'
 import OverlayHost from './OverlayHost.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
   conversation: string
@@ -103,18 +105,22 @@ async function runSearch(more = false): Promise<void> {
         </p>
         <ol class="hits" data-cy="work-search-hits">
           <li v-for="hit in result.hits" :key="hit.piece">
-            <component
-              :is="props.canOpen === false ? 'div' : 'button'"
-              v-bind="props.canOpen === false ? {} : { type: 'button' }"
+            <div
+              v-bind="props.canOpen === false ? {} : { role: 'button', tabindex: 0 }"
               class="hit"
               :title="hit.title ?? hit.label"
               data-cy="work-search-hit"
               @click="props.canOpen !== false && emit('openWork', hit)"
+              v-button-keys
             >
               <strong
-                >{{ hit.label }}<template v-if="hit.title"> · {{ hit.title }}</template
-                ><template v-if="hit.clipped.title"> (clipped)</template></strong
+                >{{ hit.label }}<template v-if="hit.clipped.title"> (clipped)</template></strong
               >
+              <MarkdownWords
+                v-if="hit.title"
+                :text="hit.title"
+                :session-id="hit.owner.conversation"
+              />
               <span
                 >{{
                   hit.state === null
@@ -123,17 +129,29 @@ async function runSearch(more = false): Promise<void> {
                 }}
                 · {{ hit.owner.name ?? hit.owner.profile ?? 'an agent this app cannot name' }}</span
               >
-              <span v-if="hit.definition_of_done">Done when: {{ hit.definition_of_done }}</span>
-              <span v-if="hit.status"
-                >Status: {{ hit.status
-                }}<template v-if="hit.clipped.status"> (clipped)</template></span
-              >
-              <span v-if="hit.result"
-                >Result: {{ hit.result.outcome
-                }}<template v-if="hit.result.summary"> · {{ hit.result.summary }}</template
-                ><template v-if="hit.clipped.result"> (clipped)</template></span
-              >
-            </component>
+              <MarkdownWords
+                v-if="hit.definition_of_done"
+                lead="Done when:"
+                :text="hit.definition_of_done"
+                :session-id="hit.owner.conversation"
+              />
+              <div v-if="hit.status">
+                <MarkdownWords
+                  lead="Status:"
+                  :text="hit.status"
+                  :session-id="hit.owner.conversation"
+                /><span v-if="hit.clipped.status"> (clipped)</span>
+              </div>
+              <div v-if="hit.result">
+                <span>Result: {{ hit.result.outcome }}</span>
+                <MarkdownWords
+                  v-if="hit.result.summary"
+                  :text="hit.result.summary"
+                  :session-id="hit.owner.conversation"
+                />
+                <span v-if="hit.clipped.result"> (clipped)</span>
+              </div>
+            </div>
           </li>
         </ol>
         <p v-if="result.rows_unread > 0 || result.ledgers_skipped > 0" data-cy="work-search-unread">

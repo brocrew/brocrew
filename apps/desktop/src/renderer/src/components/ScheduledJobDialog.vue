@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
 import { computed, useId } from 'vue'
 import { scheduleLine, SCHEDULE_PROMPT_CHARS, SCHEDULE_WHEN_CHARS } from '../lib/scheduled-work'
 import {
@@ -55,7 +56,7 @@ const longerCopy = computed(
         The available copy is longer than expected; it is shown here in full.
       </p>
       <template v-if="prompt !== null">
-        <pre class="bb-reader job-prompt" data-cy="scheduled-job-prompt">{{ prompt }}</pre>
+        <MarkdownWords class="bb-reader job-prompt" data-cy="scheduled-job-prompt" :text="prompt" />
         <p
           v-if="prompt.trim() === ''"
           class="bb-caption bb-muted"

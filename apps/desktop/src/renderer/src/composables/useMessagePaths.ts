@@ -53,13 +53,19 @@ export function runtimePathCalls(
   }
 }
 
-/** Capture once during setup; later asks keep this client's operations. */
+/** Capture this client during setup; bind its path operations only when they are enabled. */
 export function useClientMessagePaths(
   sessionId: () => string | null,
   enabled: () => boolean = () => true,
 ): ComputedRef<PathsHere | null> {
-  const calls = runtimePathCalls(useClientApi().sessions)
-  return useMessagePaths(sessionId, () => (enabled() ? calls : null))
+  const client = useClientApi()
+  let calls: PathCalls | null | undefined
+  if (enabled()) calls = runtimePathCalls(client.sessions)
+  return useMessagePaths(sessionId, () => {
+    if (!enabled()) return null
+    if (calls === undefined) calls = runtimePathCalls(client.sessions)
+    return calls
+  })
 }
 
 function fileManagerHere(): string {

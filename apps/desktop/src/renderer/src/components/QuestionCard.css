@@ -148,14 +148,14 @@
   text-align: left;
 }
 
-.option:hover:not(:disabled),
+.option:hover:not(:has(button:disabled)),
 .option.selected {
   border-color: var(--accent);
   background: var(--accent-fill);
   color: var(--accent-text);
 }
 
-.option:disabled {
+.option:has(button:disabled) {
   opacity: 0.6;
 }
 
@@ -188,7 +188,7 @@
 }
 
 .option.selected .describe,
-.option:hover:not(:disabled) .describe {
+.option:hover:not(:has(button:disabled)) .describe {
   color: var(--accent-text);
 }
 
@@ -419,4 +419,17 @@
 
 .foot-spacer {
   flex: 1;
+}
+
+/* The choice keeps a native button; its description can contain independent links. */
+.option-label {
+  width: 100%;
+  min-width: 1ch;
+  min-height: 1lh;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
 }

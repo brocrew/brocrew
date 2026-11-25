@@ -13,6 +13,8 @@ import {
 } from '../lib/tool-answer'
 import type { ToolItem, TranscriptItem } from '../lib/transcript'
 import ToolEntry from './ToolEntry.vue'
+import MarkdownWords from './MarkdownWords.vue'
+import type { PathsHere } from '../composables/useMessagePaths'
 
 /**
  * Show the complete tool answer the agent received.
@@ -49,12 +51,14 @@ import ToolEntry from './ToolEntry.vue'
  * always saying *Markdown*: it says `Transcript`, because that is what it draws. This says
  * `Readable`, because what it draws is the same characters with the indentation a person needs.
  *
- * ⚠️ **Nothing is hidden behind the formatter.** A part that is not JSON is shown exactly as it
- * arrived in BOTH views, and the Raw view is always one press away — see {@link asPrettyJson}.
+ * Prose uses the conversation’s `MarkdownWords` formatter. JSON keeps its indentation, and the
+ * Raw view keeps the exact receipt one press away — see {@link asPrettyJson}.
  */
 const props = defineProps<{
   /** The tool's own name, as the row shows it. */
   name: string
+  /** Reuse the conversation’s existing path resolutions and open actions. */
+  paths?: PathsHere | null
   /** What this app is holding for that call — `null` is a fact, and `absence` says which one. */
   answer: ToolAnswer | null
   /**
@@ -99,7 +103,13 @@ const frame = computed(() =>
     ? {
         is: ToolEntry,
         slot: 'answer',
-        props: { item: props.call, opened: true, canOpenChild: false, canOpenOutput: false },
+        props: {
+          item: props.call,
+          paths: props.paths,
+          opened: true,
+          canOpenChild: false,
+          canOpenOutput: false,
+        },
       }
     : { is: 'div', slot: 'default', props: {} },
 )
@@ -141,7 +151,7 @@ const frame = computed(() =>
             data-cy="tool-answer-short-form"
           >
             <p class="short-form-head">{{ SHORT_FORM_KEPT }}</p>
-            <p class="short-form-body">{{ props.shortForm }}</p>
+            <MarkdownWords class="short-form-body" :text="props.shortForm" :paths="props.paths" />
           </section>
 
           <template v-if="!absence">
@@ -186,16 +196,19 @@ const frame = computed(() =>
                         partSizeNote(part)
                       }}</span>
                     </p>
-                    <!-- ⚠️ Two faces, one rule: characters that parse as JSON get the monospace block and
-                         the indentation, everything else gets the reading face and its own line breaks. -->
+                    <!-- JSON stays data; prose uses the same Markdown component as the conversation. -->
                     <pre
                       v-if="pretty[index] !== null"
                       class="part-body json"
                       :data-cy="`tool-answer-body-${index}`"
                       >{{ pretty[index] }}</pre>
-                    <pre v-else class="part-body words" :data-cy="`tool-answer-body-${index}`">{{
-                      part.text
-                    }}</pre>
+                    <MarkdownWords
+                      v-else
+                      class="part-body words"
+                      :data-cy="`tool-answer-body-${index}`"
+                      :text="part.text"
+                      :paths="props.paths"
+                    />
                     <!-- ⛔ **A COUNT, never an ellipsis** (092) — and it says the END is missing, which is
                          the opposite end from a command's tail and is stated rather than left to guess. -->
                     <p

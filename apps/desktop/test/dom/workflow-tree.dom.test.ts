@@ -583,7 +583,11 @@ describe("the drawer's workflow row (108)", () => {
     const rows = [...section.querySelectorAll<HTMLButtonElement>('[data-cy=panel-row]')]
     // One row, not twenty-two — the same restraint, asserted where the drawer actually draws it.
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.disabled, 'the workflow row is disabled and cannot be clicked').toBe(false)
+    expect(rows[0]!.getAttribute('aria-disabled'), 'the workflow row can be clicked').not.toBe(
+      'true',
+    )
+    expect(rows[0]!.getAttribute('role')).toBe('button')
+    expect(rows[0]!.tabIndex).toBe(0)
     expect(rows[0]!.getAttribute('title')).toBe('Show this in the conversation')
     expect(rows[0]!.textContent).toContain('demo-panel')
   })

@@ -52,6 +52,14 @@ function popup(cy: string): HTMLElement {
   return element!
 }
 
+function formattedPrompt(): string {
+  return promptWords(popup('scheduled-job-prompt').innerText)
+}
+
+function promptWords(source: string): string {
+  return source.replace(/[ \t]+\n/g, '\n').trimEnd()
+}
+
 describe('scheduled jobs open their full available prompt', () => {
   it.each([
     { viewportWidth: 1180, viewportHeight: 840, cardWidth: 320 },
@@ -81,7 +89,7 @@ describe('scheduled jobs open their full available prompt', () => {
       expect(box.top).toBe(0)
       expect(box.width).toBeCloseTo(window.innerWidth, 0)
       expect(box.height).toBeCloseTo(window.innerHeight, 0)
-      expect(popup('scheduled-job-prompt').textContent).toBe(SCHEDULE_PROMPT)
+      expect(formattedPrompt()).toBe(promptWords(SCHEDULE_PROMPT))
       const dialog = popup('scheduled-job-dialog').getBoundingClientRect()
       expect(dialog.left).toBeGreaterThanOrEqual(220)
       expect(dialog.right).toBeLessThanOrEqual(viewportWidth - 220)
@@ -187,7 +195,7 @@ describe('scheduled jobs open their full available prompt', () => {
     expect(
       page.getByRole('dialog', { name: 'Scheduled job' }).element().getAttribute('aria-modal'),
     ).toBe('true')
-    expect(popup('scheduled-job-prompt').textContent).toBe(SCHEDULE_PROMPT)
+    expect(formattedPrompt()).toBe(promptWords(SCHEDULE_PROMPT))
     expect(getComputedStyle(popup('scheduled-job-prompt')).whiteSpace).toBe('pre-wrap')
     expect(popup('scheduled-job-expression').textContent).toBe('21 12 8 10 *')
     expect(popup('scheduled-job-copy-note').textContent).toContain(
@@ -570,7 +578,7 @@ describe('scheduled jobs open their full available prompt', () => {
       expect(m.q(`schedule-asks-${one.id}`).textContent).toBe(one.preview)
       m.q(`schedule-open-${one.id}`).click()
       await settled()
-      expect(popup('scheduled-job-prompt').textContent).toBe(one.shown)
+      expect(formattedPrompt()).toBe(promptWords(one.shown))
       expect(document.querySelector('[data-cy="scheduled-job-missing-prompt"]')).toBeNull()
       if (one.annotation === null)
         expect(document.querySelector('[data-cy="scheduled-job-blank-prompt"]')).toBeNull()
@@ -743,7 +751,7 @@ describe('scheduled jobs open their full available prompt', () => {
     await settled()
     m.q('schedule-open-bakery').click()
     await settled()
-    expect(popup('scheduled-job-prompt').textContent).toBe(SCHEDULE_PROMPT)
+    expect(formattedPrompt()).toBe(promptWords(SCHEDULE_PROMPT))
     m.q('schedule-fold').click()
     await settled()
     expect(m.q('schedule-fold').getAttribute('aria-expanded')).toBe('false')
@@ -752,7 +760,7 @@ describe('scheduled jobs open their full available prompt', () => {
     await settled()
     m.q('schedule-open-bakery').click()
     await settled()
-    expect(popup('scheduled-job-prompt').textContent).toBe(SCHEDULE_PROMPT)
+    expect(formattedPrompt()).toBe(promptWords(SCHEDULE_PROMPT))
     m.unmount()
     await settled()
     expect(document.querySelector('[data-cy="overlay-host"]')).toBeNull()

@@ -203,15 +203,12 @@ const props = withDefaults(
     /** Whether THIS session's handle can be asked at all — `canReadCommandOutput`. */
     canWatchCommands?: boolean
     /**
-     * ⛔ **Whether this conversation can be asked what its tools answered** (462) — one boolean for
-     * every row, because `SessionLiveness.canReadToolAnswer` is a property of the conversation's
-     * handle rather than of any one call.
-     *
-     * ⚠️ **A plain prop and not a `tailFor`-shaped function**, and the asymmetry with its neighbour
-     * is the point: a tail is polled per call while a card is open, so the pane has to be asked per
-     * call; an answer is read ONCE, when a person presses a button, so nothing here needs a lookup.
+     * Whether this conversation's handle can be asked for tool answers. The pane supplies
+     * per-call availability for answers already opened; neither fact polls a row.
      */
     canReadToolAnswers?: boolean
+    /** A whole answer already opened and still held by the pane. */
+    canReadToolAnswer?: (callId: string) => boolean
     /**
      * ⛔ **Whether this surface can open the drawer on the memory store** (318 §2.3).
      *
@@ -467,6 +464,9 @@ const latestSignInNotice = computed(() => {
   }
   return null
 })
+
+const answerAvailable = (callId: string): boolean =>
+  props.canReadToolAnswer?.(callId) ?? props.canReadToolAnswers
 
 defineEmits<{
   signIn: []
@@ -782,6 +782,8 @@ defineExpose({ focusItem })
       >
         <ToolRun
           :members="row.members"
+          :paths="props.paths"
+          :can-read-answer-for="answerAvailable"
           :can-read-answer="props.canReadToolAnswers"
           @open-answer="(callId, name) => $emit('openToolAnswer', callId, name)"
         />
@@ -923,7 +925,7 @@ defineExpose({ focusItem })
           :draft-for="props.draftFor"
           :can-answer="props.canAnswerQuestions"
           :paths="props.paths"
-          :can-read-answer="props.canReadToolAnswers"
+          :can-read-answer="answerAvailable(row.item.callId)"
           :take-back="props.takeBack"
           @open-conversation="(sessionId, briefOf) => $emit('openConversation', sessionId, briefOf)"
           @open-document="(resourceId) => $emit('openDocument', resourceId)"
@@ -934,13 +936,14 @@ defineExpose({ focusItem })
         <ToolEntry
           v-else-if="row.item.kind === 'tool'"
           :item="row.item"
+          :paths="props.paths"
           :tail="props.tailFor?.(row.item.callId) ?? null"
           :can-watch="props.canWatchCommands"
           :output-capability="props.outputCapability"
           :background-output-capability="props.backgroundOutputCapability"
           :can-stop="props.canStopCommands"
           :stopping="props.stoppingCall?.(row.item.callId) ?? false"
-          :can-read-answer="props.canReadToolAnswers"
+          :can-read-answer="answerAvailable(row.item.callId)"
           :can-open-child="props.canOpenChildWork"
           :can-open-output="props.canOpenWorkflowOutput"
           @open-output="(taskId, workflow) => $emit('openWorkflowOutput', taskId, workflow)"

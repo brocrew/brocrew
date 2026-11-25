@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick } from 'vue'
 import RecentActivity from '../../src/renderer/src/components/RecentActivity.vue'
 import SinceYouWereLastHere from '../../src/renderer/src/components/SinceYouWereLastHere.vue'
@@ -165,7 +166,20 @@ describe('Recent activity', () => {
     await nextTick()
     expect(opened).toEqual([lines[2]!.conversation])
     // A line with no conversation to open is not a link.
-    expect((drawn[3] as HTMLButtonElement).disabled).toBe(true)
+    expect(drawn[3]!.getAttribute('aria-disabled')).toBe('true')
+    expect(drawn[3]!.tabIndex).toBe(-1)
+    drawn[3]!.click()
+    await nextTick()
+    expect(opened).toEqual([lines[2]!.conversation])
+    const row = drawn[1]!
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
+    row.focus()
+    expect(document.activeElement).toBe(row)
+    await userEvent.keyboard('{Enter}')
+    expect(opened).toEqual([lines[2]!.conversation, lines[2]!.conversation])
+    await userEvent.keyboard(' ')
+    expect(opened).toEqual([lines[2]!.conversation, lines[2]!.conversation, lines[2]!.conversation])
     expect(m.q('activity-claimed-note').textContent?.trim()).toBe(
       'Reported outcomes come from the agent.',
     )

@@ -176,7 +176,7 @@ describe('indexed human answer history', () => {
     const record = createSessionRecord('s')
     openWindow(record, page)
     page.entries.forEach((row) => acceptEvent(record, { ...row, sessionId: 's' }))
-    expect(panelWords(record.control)?.text).toBe('My answer')
+    expect(panelWords(record.control)?.text).toBe('## My answer')
     human('New pending question')
     expect(store.latestHumanAnswers('s').latest).toMatchObject({
       prompt: 'New pending question',

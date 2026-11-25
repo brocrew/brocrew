@@ -414,9 +414,15 @@ watch(
     >
       {{ grantPaths.failure.value }}
     </p>
-    <p v-if="agentSays" class="aside" data-cy="user-input-agent-reason">{{ agentSays }}</p>
+    <MarkdownWords
+      v-if="agentSays"
+      class="aside"
+      data-cy="user-input-agent-reason"
+      :text="agentSays"
+      :paths="props.paths ?? queuePaths"
+    />
     <div v-if="grant" class="grant" data-cy="user-input-permission" @click="grantPaths.clicked">
-      <div v-if="grant.reason">{{ grant.reason }}</div>
+      <MarkdownWords v-if="grant.reason" :text="grant.reason" :paths="props.paths ?? queuePaths" />
       <div v-if="grant.cwd">cwd: <PathsInText :text="grant.cwd" :found="grantPaths" /></div>
       <div v-for="path in grant.paths" :key="path">
         <PathsInText :text="path" :found="grantPaths" />
@@ -520,32 +526,35 @@ watch(
           class="options"
           :class="{ described: part.options.some((option) => option.description) }"
         >
-          <button
+          <div
             v-for="option in part.options"
             :key="option.label"
             class="option"
             :class="{ selected: !onePress && chosen(part, option.label) }"
-            type="button"
-            :disabled="!open || (shortcuts && !queuedChoice(part, option.label))"
-            :aria-pressed="part.multiSelect || !onePress ? chosen(part, option.label) : undefined"
-            :data-cy="
-              item
-                ? `user-input-choice-${part.id}`
-                : choicesOnly
-                  ? 'asked-choice'
-                  : 'question-option'
-            "
-            :title="
-              choicesOnly
-                ? 'Sends this as a message'
-                : quickChoices && !hideChoiceEffects && queuedChoice(part, option.label)
-                  ? whatThisAnswerDoes(queuedChoice(part, option.label)!)
-                  : undefined
-            "
-            :data-option="option.label"
             @click="press(part, option.label)"
           >
-            <span class="label">
+            <button
+              class="option-label label"
+              type="button"
+              :disabled="!open || (shortcuts && !queuedChoice(part, option.label))"
+              :aria-pressed="part.multiSelect || !onePress ? chosen(part, option.label) : undefined"
+              :data-cy="
+                item
+                  ? `user-input-choice-${part.id}`
+                  : choicesOnly
+                    ? 'asked-choice'
+                    : 'question-option'
+              "
+              :title="
+                choicesOnly
+                  ? 'Sends this as a message'
+                  : quickChoices && !hideChoiceEffects && queuedChoice(part, option.label)
+                    ? whatThisAnswerDoes(queuedChoice(part, option.label)!)
+                    : undefined
+              "
+              :data-option="option.label"
+              @click.stop="press(part, option.label)"
+            >
               <!-- A staged pick is marked by a tick as well as by colour. -->
               <svg
                 v-if="(!item || part.multiSelect) && !onePress && chosen(part, option.label)"
@@ -556,12 +565,17 @@ watch(
                 <use href="#i-check" />
               </svg>
               {{ option.label }}
-            </span>
-            <span v-if="option.description" class="describe">{{ option.description }}</span>
+            </button>
+            <MarkdownWords
+              v-if="option.description"
+              class="describe"
+              :text="option.description"
+              :paths="props.paths ?? queuePaths"
+            />
             <small v-if="!hideChoiceEffects && queuedChoice(part, option.label)" class="describe">{{
               whatThisAnswerDoes(queuedChoice(part, option.label)!)
             }}</small>
-          </button>
+          </div>
         </div>
         <!-- ⚑ **Chips a person reads, not presses** — a question this surface does not answer, or one
            that is over. -->
@@ -574,7 +588,11 @@ watch(
             :data-option="option.label"
           >
             {{ option.label }}
-            <small v-if="readOnly && option.description"> — {{ option.description }}</small>
+            <MarkdownWords
+              v-if="readOnly && option.description"
+              :text="option.description"
+              :paths="props.paths ?? queuePaths"
+            />
           </li>
         </ul>
         <p v-if="readOnly && describesReadOnlyPart(part)" class="aside">

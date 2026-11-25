@@ -55,7 +55,7 @@ describe('human turns keep their own final answers', () => {
       final('Background answer'),
       ended,
     ])
-    expect(panelWords(state)?.text).toBe('First answer')
+    expect(panelWords(state)?.text).toBe('**First answer**')
     expect(state.humanAnswers.latest?.prompt).toBe('First question')
     expect(
       state.items

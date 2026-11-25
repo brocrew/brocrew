@@ -389,11 +389,11 @@ describe('the panel renders as a way in, and says so when there is nothing (037)
       { type: 'sub_agent', agentId: 'a1', phase: 'started', parentToolCallId: 'call_1' },
     )
     expect(sessionPanel(reachable).agents).toHaveLength(1)
-    expect(await render(reachable)).not.toContain('disabled')
+    expect(await render(reachable)).toMatch(/data-cy="panel-row"[^>]*aria-disabled="false"/)
 
     // It is still LISTED — the panel's job is to say the agent is running — and now unreachable in
     // both views, because the item it would jump to is drawn in neither.
     expect(sessionPanel(superseded).agents).toHaveLength(1)
-    expect(await render(superseded)).toContain('disabled')
+    expect(await render(superseded)).toMatch(/data-cy="panel-row"[^>]*aria-disabled="true"/)
   })
 })

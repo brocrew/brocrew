@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vButtonKeys } from '../lib/button-keys'
 import ConversationRow from './ConversationRow.vue'
 import { computed } from 'vue'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
@@ -179,7 +180,8 @@ function subtitles(card: CastCard) {
       )
     : (piecesByConversation.value.get(card.conversation) ?? []).map((piece) => ({
         key: piece.piece,
-        text: `${piece.label} · ${piece.title}`,
+        text: piece.title,
+        lead: `${piece.label} ·`,
       }))
 }
 
@@ -344,15 +346,15 @@ function chipWord(card: CastCard): string | undefined {
         <ol v-if="agents.length" class="agent-chips" data-cy="cast-children-strip">
           <li v-for="card in agents" :key="`chip-${card.conversation}`">
             <!-- A chip opens that agent's conversation; parent navigation goes back up. Draw it as a control only when the caller can open the conversation. -->
-            <component
-              :is="canOpen ? 'button' : 'span'"
-              v-bind="canOpen ? { type: 'button', title: `Open ${card.name}` } : {}"
+            <div
+              v-bind="canOpen ? { role: 'button', tabindex: 0, title: `Open ${card.name}` } : {}"
               class="agent-chip"
               :aria-description="asTheRailSays(card.conversation, card.facets).detail"
               :class="{ flat: !canOpen }"
               :data-worker="listedCard(card)?.worker ? true : undefined"
               :data-conversation="card.conversation"
               @click="canOpen && emit('openConversation', card.conversation)"
+              v-button-keys
             >
               <!-- Show plate, name, state and profile, with a chevron when it can be opened. Separate the run settings below with a line. -->
               <ConversationRow
@@ -433,7 +435,7 @@ function chipWord(card: CastCard): string | undefined {
                   }}</span></span
                 >
               </span>
-            </component>
+            </div>
           </li>
         </ol>
         <p v-if="!agents.length && hiddenIdleCount" class="quiet" data-cy="cast-idle-empty">

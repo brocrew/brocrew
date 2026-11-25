@@ -123,7 +123,10 @@ describe('Graph file counts retain their own scope and explicitly enter the work
     expect(bare.querySelector('[data-cy="forest-task-files"]')).toBeNull()
     // ⛔ The line itself stays words: only the count is a press.
     const words = line(m, 'work_1').querySelector<HTMLElement>('[data-cy="forest-task"]')!
-    expect(words.tagName).toBe('SPAN')
+    expect(words.getAttribute('role')).toBeNull()
+    expect(words.getAttribute('tabindex')).toBeNull()
+    expect(words.tabIndex).toBe(-1)
+    expect(words.matches('button, a[href], input, select, textarea, summary')).toBe(false)
     expect(words.closest('button')).toBeNull()
   })
   it('⛔ with the tree not read, no line counts anything — its task lines still draw', async () => {

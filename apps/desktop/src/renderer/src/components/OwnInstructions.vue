@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NOBODY_HAS_WRITTEN_ONE,
@@ -427,7 +428,11 @@ async function reviewChanges(): Promise<void> {
           <p v-if="card.personVersion !== null" class="identity-note">
             This replaced your rules from version {{ card.personVersion }}.
           </p>
-          <p class="identity-note">Reason: {{ card.version.said || 'No reason was recorded.' }}</p>
+          <MarkdownWords
+            class="identity-note"
+            lead="Reason:"
+            :text="card.version.said || 'No reason was recorded.'"
+          />
           <strong>Before</strong>
           <pre class="version-text">{{ card.before || 'No rules' }}</pre>
           <strong>After</strong>
@@ -589,7 +594,12 @@ async function reviewChanges(): Promise<void> {
               · brought back version {{ one.broughtBack }}
             </span>
           </p>
-          <p v-if="one.said" class="version-said">It said: “{{ one.said }}”</p>
+          <MarkdownWords
+            v-if="one.said"
+            class="version-said"
+            lead="It said:"
+            :text="'“' + one.said + '”'"
+          />
           <pre v-if="one.text !== ''" class="version-text">{{ one.text }}</pre>
           <p v-else class="identity-note" :data-cy="`own-instructions-emptied-${one.version}`">
             This version took the rules away.

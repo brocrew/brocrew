@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vButtonKeys } from '../lib/button-keys'
 import { useClientApi } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
 import { useProviderLabel } from '../composables/useProviderLabel'
@@ -884,11 +885,12 @@ const platform = platformHere()
               >
                 {{ section.workerHeads.get(row.sessionId)?.label }}
               </p>
-              <button
+              <div
                 class="rail-item"
                 :class="{ active: row.sessionId === onScreenId }"
                 :data-worker="row.worker ? true : undefined"
-                type="button"
+                role="button"
+                tabindex="0"
                 :data-cy="`open-session-${row.sessionId}`"
                 :data-session-id="row.sessionId"
                 :data-active="row.sessionId === onScreenId"
@@ -930,6 +932,7 @@ const platform = platformHere()
                       : undefined
                 "
                 @click="emit('select', row.sessionId)"
+                v-button-keys
               >
                 <ConversationRow
                   :row="railView(row)"
@@ -948,7 +951,7 @@ const platform = platformHere()
                     >
                   </template>
                 </ConversationRow>
-              </button>
+              </div>
             </template>
           </div>
           <button
@@ -1402,10 +1405,11 @@ const platform = platformHere()
   grid-template-columns: var(--space-12) minmax(0, 1fr) auto;
 }
 
-.rail-group-rows :deep(.rail-copy strong) {
+.rail-group-rows :deep(.rail-copy > strong),
+.rail-group-rows :deep(.rail-copy > .row-title-line > strong) {
   line-height: var(--leading-normal);
 }
-.rail-group-rows :deep(.rail-copy:not(.rail-brobot-copy) strong:not(.rail-canonical-title)) {
+.rail-group-rows :deep(.rail-copy:not(.rail-brobot-copy) > strong:not(.rail-canonical-title)) {
   overflow: visible;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -1413,7 +1417,7 @@ const platform = platformHere()
 .rail-group-rows :deep(.rail-brobot-copy strong) {
   line-height: var(--leading-snug);
 }
-.rail-scroll > .rail-section:not(.rail-conversations) :deep(.rail-copy strong) {
+.rail-scroll > .rail-section:not(.rail-conversations) :deep(.rail-copy > strong) {
   font-weight: var(--fw-normal);
 }
 /* Explanatory copy is bounded; its title retains the complete sentence. */

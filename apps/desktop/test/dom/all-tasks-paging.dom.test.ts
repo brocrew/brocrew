@@ -141,7 +141,12 @@ it('keeps root, ledger order, whole-set counts and newest open match across page
   const { m, titles, current, open } = show(read)
   await expect.poll(titles).toEqual([root.title, ...first.map((one) => one.title)])
   expect(current()).toBeUndefined()
-  expect(m.q('cast-taken-work').tagName).toBe('SPAN')
+  expect(m.q('cast-taken-work').getAttribute('role')).toBeNull()
+  expect(m.q('cast-taken-work').getAttribute('tabindex')).toBeNull()
+  expect(m.q('cast-taken-work').tabIndex).toBe(-1)
+  expect(m.q('cast-taken-work').matches('button, a[href], input, select, textarea, summary')).toBe(
+    false,
+  )
   expect(m.q('all-tasks-count').textContent?.trim()).toBe('21 of 22 tasks')
   for (const [filter, count] of Object.entries(counts))
     expect(m.q(`all-tasks-filter-${filter}`).querySelector('.list-filter-count')?.textContent).toBe(

@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { vButtonKeys } from '../lib/button-keys'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import { FOR_A_PERSON } from '../lib/outgoing-card'
 import type { CastTask } from '../lib/working-together'
 import AgentState from './AgentState.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * 🔴 **One list of pieces of work, one line each** — the rows `WorkingTogether` drew twice, once for the work
@@ -13,6 +15,7 @@ import AgentState from './AgentState.vue'
  */
 const props = defineProps<{
   tasks: readonly CastTask[]
+  conversation?: string
   /** ⚑ `false` where no caller can act on a press, so none is drawn. */
   canOpen: boolean
   /**
@@ -85,27 +88,6 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Strip Markdown marks for the plain-text work title: heading, quote and bullet leads, emphasis, inline code and link brackets. Preserve the original string on the row's `title`.
- */
-/*
- * ⚠️ **Patterns built from STRINGS, not regex literals** — `ssr-setup.render.test.ts` scrubs every
- * `<script setup>` for its listener census and cannot tell a regex literal from a division, so a
- * bracket or a backtick inside one broke its read.
- */
-const LEAD = new RegExp('^\\s{0,3}(?:#{1,6}\\s+|>\\s*|[-*+]\\s+)')
-const BOLD = new RegExp('(\\*\\*|__)(.+?)\\1', 'g')
-const ITALIC = new RegExp('(^|\\s)[*_](\\S(?:[^*_]*\\S)?)[*_](?=\\s|[.,;:!?)]|$)', 'g')
-const CODE = new RegExp('`([^`]+)`', 'g')
-const LINK = new RegExp('\\[([^\\]]+)\\]\\([^)]*\\)', 'g')
-const plainLine = (line: string): string =>
-  line
-    .replace(LEAD, '')
-    .replace(BOLD, '$2')
-    .replace(ITALIC, '$1$2')
-    .replace(CODE, '$1')
-    .replace(LINK, '$1')
-
-/**
  * ⚑ **Whether a press on this line would open a conversation** — `canOpen`, and a conversation that
  * gave the piece, which is the one a press opens. ⛔ D-016 · commit 6: a line given by a PERSON —
  * work its holder took on for them — has no giving conversation, so it is never a control, whatever
@@ -125,7 +107,7 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
       class="task"
       :class="{ current: rootIsCurrent }"
     >
-      <span
+      <div
         class="trow flat"
         data-cy="cast-taken-work"
         data-root="true"
@@ -140,13 +122,21 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
           <span class="tnum" :title="props.root.label">{{ props.root.label }}</span>
           <span class="tto" data-cy="cast-work-to" :title="FOR_A_PERSON">{{ FOR_A_PERSON }}</span>
         </span>
-        <span v-if="props.root.title" class="tsaid" data-cy="cast-work-said">{{
-          plainLine(props.root.title)
-        }}</span>
-      </span>
-      <p v-if="props.root.definitionOfDone" class="tbrief open">
-        Done when: {{ props.root.definitionOfDone }}
-      </p>
+        <MarkdownWords
+          v-if="props.root.title"
+          class="tsaid"
+          data-cy="cast-work-said"
+          :text="props.root.title"
+          :session-id="props.conversation"
+        />
+      </div>
+      <MarkdownWords
+        v-if="props.root.definitionOfDone"
+        class="tbrief open"
+        lead="Done when:"
+        :text="props.root.definitionOfDone"
+        :session-id="props.conversation"
+      />
     </li>
     <li
       v-for="one in shown"
@@ -154,21 +144,19 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
       class="task"
       :class="{ current: one === current }"
     >
-      <!-- ⛔ **A `<button>` only where a press would do something** — `118`'s rule, and
-           `WorkingTogether.vue`'s own shape for its chips. ⚠️ **`canOpen` was declared here at
-           631 and read by nothing**, so a drawer with no screen above it drew a full row of
-           controls that swallowed the press and went nowhere. ⚑ The row's FACTS are the same
-           either way; what `pressable` decides is whether it is a control at all. -->
-      <component
-        :is="pressable(one) ? 'button' : 'span'"
+      <!-- The row's keyboard action opens its giver. Render prose in a container so its own
+           links remain independent controls rather than buttons nested in a navigation button. -->
+      <div
         v-bind="
           pressable(one)
             ? {
-                type: 'button',
+                role: 'button',
+                tabindex: 0,
                 onClick: () => emit('openConversation', one.piece.from!),
               }
             : {}
         "
+        v-button-keys
         class="trow"
         :class="{ flat: !pressable(one) }"
         data-cy="cast-taken-work"
@@ -206,7 +194,12 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
             }}</span>
           </span>
         </span>
-        <span class="tsaid" data-cy="cast-work-said">{{ plainLine(one.piece.said) }}</span>
+        <MarkdownWords
+          class="tsaid"
+          data-cy="cast-work-said"
+          :text="one.piece.said"
+          :session-id="props.conversation ?? one.piece.from ?? undefined"
+        />
         <!-- ⚑ F083 · the current piece's wait, in the ledger's own sentence, under its pill. -->
         <span
           v-if="one === current && one.piece.reading.why"
@@ -214,18 +207,27 @@ const pressable = (one: CastTask): boolean => props.canOpen && one.piece.from !=
           data-cy="cast-work-why"
           >{{ one.piece.reading.why }}</span
         >
-      </component>
-      <p
+      </div>
+      <MarkdownWords
         v-if="(one === current || props.mode === 'all') && one.piece.reading.definitionOfDone"
         class="tbrief open"
         data-cy="cast-work-done"
-      >
-        Done when: {{ one.piece.reading.definitionOfDone }}
-      </p>
+        lead="Done when:"
+        :text="one.piece.reading.definitionOfDone"
+        :session-id="props.conversation ?? one.piece.from ?? undefined"
+      />
       <template v-if="one === current && briefOf(one)">
-        <p :ref="watchBrief" class="tbrief" :class="{ open: briefOpen }" data-cy="cast-work-brief">
-          {{ briefOf(one) }}
-        </p>
+        <div
+          :ref="watchBrief"
+          class="tbrief"
+          :class="{ open: briefOpen }"
+          data-cy="cast-work-brief"
+        >
+          <MarkdownWords
+            :text="briefOf(one)!"
+            :session-id="props.conversation ?? one.piece.from ?? undefined"
+          />
+        </div>
         <button
           v-if="briefCut || briefOpen"
           class="tmore"
