@@ -134,6 +134,7 @@ async function section(rows?: WorkspaceRow[], available = true) {
   }
   let storage: StorageBridge | undefined = {
     reveal,
+    freeSpace: unusedStorage,
     measure: unusedStorage,
     children: unusedStorage,
     clearCache: unusedStorage,

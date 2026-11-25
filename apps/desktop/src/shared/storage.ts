@@ -80,6 +80,7 @@ export type CacheClearReply =
   | { readonly ok: true; readonly operation: CacheClearState }
   | { readonly ok: false; readonly error: StorageError }
 export interface StorageBridge {
+  freeSpace(): Promise<number | null>
   measure(): Promise<StorageOverview>
   children(location: StorageLocation, limit?: number): Promise<StorageDirectory>
   reveal(location?: StorageLocation): Promise<StorageAction>
@@ -93,6 +94,7 @@ export interface StorageBridge {
   removeFinished(names: readonly string[]): Promise<StorageRemoval>
 }
 export const STORAGE_CHANNELS = {
+  freeSpace: 'storage:free-space',
   measure: 'storage:measure',
   children: 'storage:children',
   reveal: 'storage:reveal',

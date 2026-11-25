@@ -108,6 +108,9 @@ export function registerStorageIpc(
       if (requests.size === 0) running.delete(sender)
     }
   }
+  ipc.handle(STORAGE_CHANNELS.freeSpace, (event) =>
+    closed || !actions.isAppWindow(event) ? null : service.freeSpace(),
+  )
   ipc.handle(STORAGE_CHANNELS.measure, async (event): Promise<StorageOverview> => {
     const result = await read(event, { kind: 'measure' })
     return result.ok ? (result.value as StorageOverview) : failedOverview(result.error)

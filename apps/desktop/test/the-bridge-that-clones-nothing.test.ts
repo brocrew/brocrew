@@ -709,6 +709,7 @@ function preloadSurface(): Map<string, string> {
   expect([...storage.keys()].sort()).toEqual([
     'children',
     'clearCache',
+    'freeSpace',
     'measure',
     'pruneBackups',
     'removeFinished',
@@ -748,12 +749,13 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
   const invokes = (body: string): boolean =>
     body.includes('ipcRenderer.invoke') || /(?:^|[^\w.])command\(/.test(body)
 
-  it('Storage has six payload invokes and one local listener facade with internal ID invokes', () => {
+  it('Storage has seven payload invokes and one local listener facade with internal ID invokes', () => {
     expect(surface.has('storage')).toBe(false)
     const storage = [...surface].filter(([name]) => name.startsWith('storage.'))
     expect(storage.map(([name]) => name).sort()).toEqual([
       'storage.children',
       'storage.clearCache',
+      'storage.freeSpace',
       'storage.measure',
       'storage.pruneBackups',
       'storage.removeFinished',
@@ -761,7 +763,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       'storage.watchCacheClear',
     ])
     const actions = storage.filter(([name]) => name !== 'storage.watchCacheClear')
-    expect(actions).toHaveLength(6)
+    expect(actions).toHaveLength(7)
     for (const [name, body] of actions) {
       expect(invokes(body), name).toBe(true)
       expect(NOT_THE_WIRE.has(name), name).toBe(false)
@@ -788,12 +790,14 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     await bridge.reveal(location)
     await bridge.clearCache()
     await bridge.pruneBackups()
+    await bridge.freeSpace()
     expect(seen).toEqual([
       { channel: STORAGE_CHANNELS.measure, arguments: [] },
       { channel: STORAGE_CHANNELS.children, arguments: [location] },
       { channel: STORAGE_CHANNELS.reveal, arguments: [location] },
       { channel: STORAGE_CHANNELS.clearCache, arguments: [] },
       { channel: STORAGE_CHANNELS.pruneBackups, arguments: [] },
+      { channel: STORAGE_CHANNELS.freeSpace, arguments: [] },
     ])
     expect(seen[1]!.arguments[0]).not.toBe(location)
     await expect(bridge.children(reactive(location))).rejects.toThrow(
@@ -802,7 +806,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
     await expect(bridge.reveal(reactive(location))).rejects.toThrow(
       /would not survive ipcRenderer\.invoke/,
     )
-    expect(seen).toHaveLength(5)
+    expect(seen).toHaveLength(6)
   })
 
   function cacheBridge(readSnapshot: (id: unknown) => Promise<CacheClearState | null>) {

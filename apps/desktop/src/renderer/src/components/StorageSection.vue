@@ -16,6 +16,7 @@ import { readableError } from '../lib/session-record'
 import { useClientApi } from '../client-provider/injection'
 const storage = useClientApi().storage
 const overview = ref<StorageOverview | null>(null)
+const earlyFreeBytes = ref<number | null>()
 const directory = ref<StorageDirectory | null>(null)
 const location = ref<StorageLocation | null>(null)
 const loading = ref(false)
@@ -77,6 +78,11 @@ const parts = computed(() =>
   [...(overview.value?.parts ?? [])].sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1)),
 )
 const barTotal = computed(() => parts.value.reduce((sum, part) => sum + (part.bytes ?? 0), 0))
+const freeSpaceText = computed(() => {
+  const bytes = overview.value ? overview.value.freeBytes : earlyFreeBytes.value
+  if (bytes === undefined) return
+  return bytes === null ? 'Free space unavailable.' : `${storageSize(bytes)} free on this disk.`
+})
 const trail = computed(() =>
   location.value ? [STORAGE_PARTS[location.value.part].name, ...location.value.segments] : [],
 )
@@ -92,6 +98,15 @@ async function measure() {
   loading.value = true
   message.value = ''
   cacheMessage.value = ''
+  if (!overview.value) {
+    earlyFreeBytes.value = undefined
+    void storage
+      .freeSpace()
+      .catch(() => null)
+      .then((bytes) => {
+        if (live && mine === request && !overview.value) earlyFreeBytes.value = bytes
+      })
+  }
   try {
     const result = await storage.measure()
     if (!live || mine !== request) return
@@ -322,16 +337,16 @@ onMounted(() => {
     <p v-if="notice" class="storage-alert" role="status" data-cy="storage-message">
       {{ notice }}
     </p>
-    <section v-if="overview" class="storage-overview">
+    <section v-if="overview || freeSpaceText" class="storage-overview">
       <p class="storage-total">
-        BroCrew uses
-        <strong
-          >{{ storageSize(overview.totalBytes) }}{{ overview.partial ? ' measured.' : '.' }}</strong
-        ><span>{{
-          overview.freeBytes === null
-            ? 'Free space unavailable.'
-            : `${storageSize(overview.freeBytes)} free on this disk.`
-        }}</span
+        <template v-if="overview">
+          BroCrew uses
+          <strong
+            >{{ storageSize(overview.totalBytes)
+            }}{{ overview.partial ? ' measured.' : '.' }}</strong
+          >
+        </template>
+        <span v-if="freeSpaceText">{{ freeSpaceText }}</span
         ><a
           href="#"
           class="storage-open data-folder"
@@ -340,7 +355,12 @@ onMounted(() => {
           >{{ revealWord }}</a
         >
       </p>
-      <div class="storage-bar" role="img" aria-label="Disk use by part, largest first">
+      <div
+        v-if="overview"
+        class="storage-bar"
+        role="img"
+        aria-label="Disk use by part, largest first"
+      >
         <span
           v-for="part in parts"
           :key="part.id"

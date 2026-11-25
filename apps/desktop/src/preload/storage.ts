@@ -11,6 +11,8 @@ export function storageBridge(
 ): StorageBridge {
   let nextSubscription = 0
   return Object.freeze({
+    freeSpace: () =>
+      ipc.invoke(STORAGE_CHANNELS.freeSpace) as ReturnType<StorageBridge['freeSpace']>,
     measure: () => ipc.invoke(STORAGE_CHANNELS.measure) as ReturnType<StorageBridge['measure']>,
     children: (location: StorageLocation, limit?: number) =>
       (limit === undefined

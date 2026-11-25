@@ -858,6 +858,7 @@ it('the preload forwards only the declared Storage methods and typed locations',
   }
   const bridge = storageBridge(ipc)
   const location = { part: 'workspace' as const, segments: ['one'] }
+  await bridge.freeSpace()
   await bridge.measure()
   await bridge.children(location)
   await bridge.reveal(location)
@@ -865,6 +866,7 @@ it('the preload forwards only the declared Storage methods and typed locations',
   await bridge.pruneBackups()
   expect(Object.isFrozen(bridge)).toBe(true)
   expect(invoke.mock.calls).toEqual([
+    [STORAGE_CHANNELS.freeSpace],
     [STORAGE_CHANNELS.measure],
     [STORAGE_CHANNELS.children, location],
     [STORAGE_CHANNELS.reveal, location],

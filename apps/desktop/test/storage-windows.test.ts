@@ -439,3 +439,25 @@ it('stops on cancellation after an earlier child read error', async () => {
   expect(listing.error).toBe('cancelled')
   expect(checksAfterFailure).toBe(1)
 })
+
+it('keeps readable siblings when one branch exceeds the measurement depth', async () => {
+  const roots = storageRoots()
+  disk.entries.set(roots.data.toLowerCase(), { children: [] })
+  let branch = roots.workspace
+  for (let depth = 0; depth < 64; depth++) {
+    disk.entries.set(branch.toLowerCase(), { children: ['d', 'sibling'] })
+    disk.entries.set(win32.join(branch, 'sibling').toLowerCase(), { bytes: 2 })
+    branch = win32.join(branch, 'd')
+  }
+  disk.entries.set(branch.toLowerCase(), { children: ['beyond-depth'] })
+  disk.entries.set(win32.join(branch, 'beyond-depth').toLowerCase(), { bytes: 999 })
+  disk.entries.set(roots.database[0]!.toLowerCase(), { bytes: 23 })
+
+  const reading = await new StorageEngine(roots).measure()
+  expect(reading.parts.find((part) => part.id === 'workspace')).toMatchObject({
+    bytes: 128,
+    partial: true,
+    error: 'limit',
+  })
+  expect(reading).toMatchObject({ totalBytes: 151, partial: true })
+})

@@ -1,7 +1,7 @@
 import type { Worker } from 'node:worker_threads'
 import type { StorageError } from '../../shared/storage'
 import type { StorageReply, StorageRequest, StorageRoots } from './engine'
-import { STORAGE_STALL_TIMEOUT } from './engine'
+import { STORAGE_STALL_TIMEOUT, storageFreeBytes } from './engine'
 
 interface StorageWorker {
   once(...args: Parameters<Worker['once']>): void
@@ -25,6 +25,10 @@ export class StorageService {
     private readonly start: StorageWorkerFactory,
     private readonly stall = STORAGE_STALL_TIMEOUT,
   ) {}
+
+  freeSpace(): Promise<number | null> {
+    return storageFreeBytes(this.roots.data)
+  }
 
   run(request: StorageRequest, signal?: AbortSignal): Promise<Result> {
     if (this.closed || signal?.aborted) return Promise.resolve({ ok: false, error: 'cancelled' })

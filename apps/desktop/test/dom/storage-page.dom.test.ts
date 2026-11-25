@@ -31,9 +31,17 @@ const settle = async () => {
   await new Promise((done) => setTimeout(done, 0))
   await nextTick()
 }
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
 const rawCall = vi.fn()
 function setup(over: Partial<StorageBridge> = {}, available = true, injected = true) {
   const bridge = {
+    freeSpace: vi.fn(async () => overview.freeBytes),
     measure: vi.fn(async () => overview),
     children: vi.fn(async () => directory),
     reveal: vi.fn(async () => ({ ok: true as const })),
@@ -56,6 +64,7 @@ function setup(over: Partial<StorageBridge> = {}, available = true, injected = t
   Reflect.set(window, 'api', {
     storage: injected
       ? {
+          freeSpace: wrongBridge,
           measure: wrongBridge,
           children: wrongBridge,
           reveal: wrongBridge,
@@ -120,19 +129,34 @@ afterEach(() => {
   vi.restoreAllMocks()
   Reflect.deleteProperty(window, 'api')
 })
-it('measures on open, shows loading, and uses the returned sizes rather than mock figures', async () => {
-  let finish!: (value: StorageOverview) => void
-  const read = new Promise<StorageOverview>((resolve) => (finish = resolve))
-  const { m, bridge } = setup({ measure: vi.fn(() => read) })
-  await nextTick()
-  expect(m.all('storage-loading')).toHaveLength(1)
-  finish(overview)
+it('shows available space while measuring and replaces it with the completed reading', async () => {
+  const read = deferred<StorageOverview>()
+  const start = performance.now()
+  const { m, bridge } = setup({
+    freeSpace: vi.fn(async () => 12 * 1024 ** 3),
+    measure: vi.fn(() => read.promise),
+  })
+  const mounted = performance.now() - start
   await settle()
+  expect(m.all('storage-loading')).toHaveLength(1)
+  expect(m.host.textContent).toContain('12.0 GB free on this disk.')
+  expect(m.host.textContent).not.toContain('BroCrew uses')
+  expect(m.host.querySelectorAll('[data-part]')).toHaveLength(0)
+  const useful = performance.now() - start
+  read.resolve(overview)
+  await settle()
+  expect(bridge.freeSpace).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(bridge.freeSpace).mock.contexts[0]).toBe(bridge)
   expect(bridge.measure).toHaveBeenCalledTimes(1)
   expect(vi.mocked(bridge.measure).mock.contexts[0]).toBe(bridge)
   expect(m.all('storage-loading')).toHaveLength(0)
   expect(m.host.textContent).toContain('8.0 GB')
+  expect(m.host.textContent).toContain('16.0 GB free on this disk.')
   expect(m.host.querySelectorAll('[data-part]')).toHaveLength(8)
+  const complete = performance.now() - start
+  console.info(
+    `Storage deferred DOM: mount ${mounted.toFixed(1)} ms, useful ${useful.toFixed(1)} ms, complete ${complete.toFixed(1)} ms`,
+  )
   const retention = [...m.host.querySelectorAll('button')].find(
     (button) => button.textContent?.trim() === 'Keep the last 2',
   )!
@@ -145,16 +169,32 @@ it('keeps absent injected storage unavailable without reading the raw global or 
   await settle()
   expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
   expect(m.all('storage-loading')).toHaveLength(0)
+  expect(bridge.freeSpace).not.toHaveBeenCalled()
   expect(bridge.measure).not.toHaveBeenCalled()
   expect(bridge.watchCacheClear).not.toHaveBeenCalled()
 })
 
 it('uses the default desktop storage capability when there is no ancestor client', async () => {
-  const { m, bridge } = setup({}, true, false)
+  const free = deferred<number | null>()
+  const { m, bridge } = setup(
+    {
+      freeSpace: vi.fn(() => free.promise),
+      measure: vi.fn(async () => ({ ...overview, freeBytes: null, partial: true })),
+    },
+    true,
+    false,
+  )
   await settle()
+  expect(bridge.freeSpace).toHaveBeenCalledTimes(1)
   expect(bridge.measure).toHaveBeenCalledTimes(1)
   expect(bridge.watchCacheClear).toHaveBeenCalledTimes(1)
-  expect(m.host.textContent).toContain('8.0 GB')
+  expect(m.host.textContent).toContain('8.0 GB measured.')
+  expect(m.host.textContent).toContain('Free space unavailable.')
+  free.resolve(12 * 1024 ** 3)
+  await settle()
+  expect(m.host.textContent).toContain('8.0 GB measured.')
+  expect(m.host.textContent).toContain('Free space unavailable.')
+  expect(m.host.textContent).not.toContain('12.0 GB free on this disk.')
 })
 
 it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only on success', async () => {
@@ -218,17 +258,32 @@ it('uses the OS reveal bridge and remeasures only after a successful cache clear
   expect(m.q('storage-message').textContent).toBe('Cache cleared.')
 })
 it('keeps an unavailable or partial measurement honest and reports cache refusal', async () => {
+  const read = deferred<StorageOverview>()
   const { m, bridge } = setup({
-    measure: vi.fn(async () => ({
-      ...overview,
-      partial: true,
-      parts: overview.parts.map((part) =>
-        part.id === 'workspace' ? { ...part, bytes: null, partial: true } : part,
-      ),
-    })),
+    freeSpace: vi
+      .fn<StorageBridge['freeSpace']>()
+      .mockRejectedValue(new Error('Free space read failed')),
+    measure: vi.fn(() => read.promise),
     clearCache: vi.fn(async () => ({ ok: false as const, error: 'busy' as const })),
   })
   await settle()
+  expect(m.all('storage-loading')).toHaveLength(1)
+  expect(m.host.textContent).toContain('Free space unavailable.')
+  expect(m.host.textContent).not.toContain('BroCrew uses')
+  expect(m.host.querySelectorAll('[data-part]')).toHaveLength(0)
+  read.resolve({
+    ...overview,
+    totalBytes: overview.totalBytes - 1024 ** 3,
+    partial: true,
+    parts: overview.parts.map((part) =>
+      part.id === 'workspace' ? { ...part, bytes: null, partial: true } : part,
+    ),
+  })
+  await settle()
+  expect(m.all('storage-loading')).toHaveLength(0)
+  expect(m.host.textContent).toContain('7.0 GB measured.')
+  expect(m.host.textContent).toContain('16.0 GB free on this disk.')
+  expect(m.host.textContent).not.toContain('Free space unavailable.')
   expect(m.host.textContent).toContain('Unavailable')
   expect(m.q('storage-message').textContent).toContain('could not be measured')
   m.q('storage-clear-cache').click()
@@ -312,6 +367,8 @@ it('keeps pending cache work busy and applies real completion once despite an ol
 })
 
 it('shows retained pending and late failure on reopening without applying events to an unmounted Settings page', async () => {
+  const oldFree = deferred<number | null>()
+  const oldOverview = deferred<StorageOverview>()
   let current: CacheClearState = { id: 7, status: 'pending' }
   const listeners = new Set<(state: CacheClearState | null) => void>()
   const watch: StorageBridge['watchCacheClear'] = (listener) => {
@@ -321,7 +378,11 @@ it('shows retained pending and late failure on reopening without applying events
       listeners.delete(listener)
     }
   }
-  const first = setup({ watchCacheClear: watch })
+  const first = setup({
+    watchCacheClear: watch,
+    freeSpace: vi.fn(() => oldFree.promise),
+    measure: vi.fn(() => oldOverview.promise),
+  })
   await settle()
   expect(first.m.q('storage-message').textContent).toBe('Still clearing cache…')
   first.m.unmount()
@@ -329,9 +390,16 @@ it('shows retained pending and late failure on reopening without applying events
   current = { id: 7, status: 'failed', error: 'unavailable' }
   const reopened = setup({
     watchCacheClear: watch,
-    measure: vi.fn(async () => ({ ...overview, partial: true })),
+    measure: vi.fn(async () => ({ ...overview, freeBytes: 24 * 1024 ** 3, partial: true })),
   })
   await settle()
+  expect(reopened.m.host.textContent).toContain('24.0 GB free on this disk.')
+  oldFree.resolve(12 * 1024 ** 3)
+  oldOverview.resolve(overview)
+  await settle()
+  expect(first.m.host.textContent).toBe('')
+  expect(reopened.m.host.textContent).toContain('24.0 GB free on this disk.')
+  expect(reopened.m.host.textContent).toContain('8.0 GB measured.')
   expect(reopened.m.q('storage-message').textContent).toContain('Storage could not be read.')
   expect((reopened.m.q('storage-clear-cache') as HTMLButtonElement).disabled).toBe(false)
   expect(reopened.bridge.clearCache).not.toHaveBeenCalled()

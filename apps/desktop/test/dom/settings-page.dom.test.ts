@@ -53,6 +53,7 @@ async function settings(
   window.api = {
     ...window.api,
     storage: {
+      freeSpace: async () => 0,
       measure: async () => ({
         totalBytes: 0,
         freeBytes: 0,

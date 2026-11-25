@@ -53,6 +53,15 @@ const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).co
 /** What a walk found besides bytes: why it is partial, and the newest change it saw. */
 type WalkState = { error?: StorageError; newest?: number }
 
+export async function storageFreeBytes(path: string): Promise<number | null> {
+  try {
+    const fs = await statfs(path)
+    return fs.bavail * fs.bsize
+  } catch {
+    return null
+  }
+}
+
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
   private visited = 0
@@ -187,7 +196,7 @@ export class StorageEngine {
         const child = [...segments, entry.name]
         if (!this.allowed(part, child)) continue
         bytes += await this.size(join(actual, entry.name), part, child, state, true, earlierRoots)
-        if (state.error === 'limit') break
+        if (this.visited > this.bounds.entries) break
       }
       return bytes
     } catch (error) {
@@ -254,12 +263,7 @@ export class StorageEngine {
     let freeBytes: number | null = null
     try {
       await this.initialise()
-      try {
-        const fs = await statfs(this.canonicalData)
-        freeBytes = fs.bavail * fs.bsize
-      } catch {
-        // Individual parts can still be measured when the filesystem has no free-space reading.
-      }
+      freeBytes = await storageFreeBytes(this.canonicalData)
       for (const id of STORAGE_PART_IDS) {
         // A large or slow part must not spend the budget of every later part.
         this.visited = 0
