@@ -16,6 +16,7 @@ import {
   type WorkSearchResult,
 } from '../../shared/work-search'
 import type { PieceRow, StatusLine } from '../../shared/task-contracts'
+import { derivePieces } from '../../shared/tasks'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
 import {
@@ -24,6 +25,8 @@ import {
 } from '../runtime/conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
 import { LimitsReadUnavailable } from './limits-read-protocol'
+import type { EventRow } from './ledger-row-types'
+import { persistedEventsFrom } from './stored-event-codec'
 import { matchingWorkTitles, type WorkSearchTitleMatch } from './work-search-titles'
 import { agentIdentityRowId } from './identity'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
@@ -132,6 +135,56 @@ const DATE_SCOPE =
 const matches = (words: readonly string[], fields: readonly (string | null)[]): boolean => {
   const text = fields.join('\n').toLocaleLowerCase('en')
   return words.every((word) => text.includes(word))
+}
+
+function latestRecordedStatus(pieces: readonly PieceRow[], root: StatusLine | null) {
+  let latest: StatusLine | null = null
+  for (const { statusLine: status } of pieces) {
+    if (status !== null && (latest === null || status.at > latest.at)) latest = status
+  }
+  return latest === null || (root !== null && root.at > latest.at) ? root : latest
+}
+
+function titleStatusReader(db: Database.Database, now: () => number, budget: WorkSearchPageBudget) {
+  const measure = workSearchMaterialization(budget)
+  const bounded = measure.database(db)
+  const store = createSessionStore(bounded, now)
+  // Replies and endings decide which line survives. The fold needs no turn or message bodies.
+  const events = bounded.prepare(
+    `SELECT ordinal, created_at,
+            CASE WHEN type = 'work_given' AND json_valid(payload)
+              THEN json_remove(payload, '$.brief', '$.definitionOfDone') ELSE payload END AS payload
+       FROM events INDEXED BY events_kind_owner_idx
+      WHERE session_id = ?
+        AND generation = coalesce((SELECT active FROM derived_generation WHERE session_id = ?), 0)
+        AND type IN ('work_given', 'work_status_set', 'work_replied', 'work_closed',
+                     'work_taken_back', 'message_unqueued')
+        AND CASE WHEN type = 'message_unqueued' AND json_valid(payload)
+          THEN json_extract(payload, '$.reason') = 'cancelled' ELSE 1 END
+      ORDER BY ordinal`,
+  )
+  return (id: string): StatusLine | null => {
+    if (budget.overflowed) return null
+    measure.resetLedger()
+    try {
+      const root = store.rootOf(id)
+      const lines = root === null ? null : store.turnBlockRootLines(root.piece)
+      if (root !== null && lines === null) return null
+      let unread = false
+      const rows = events.iterate(id, id) as Iterable<EventRow>
+      const pieces = derivePieces(
+        id,
+        persistedEventsFrom(rows, () => {
+          unread = true
+        }),
+      )
+      measure.assert()
+      return unread ? null : latestRecordedStatus(pieces, lines?.statusLine ?? null)
+    } catch (error) {
+      if (error instanceof LimitsReadUnavailable) return null
+      throw error
+    }
+  }
 }
 
 export class WorkSearchEngine {
@@ -267,6 +320,8 @@ export class WorkSearchEngine {
     let titleThrough = cursor?.titleAfter
     let titleDetails = cursor?.titleDetails
     const detailsPage = titleDetails !== undefined
+    const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
+    const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
     let detailsRead = 0
     let within = cursor?.within
     const unread = rowsUnreadOnce()
@@ -344,6 +399,7 @@ export class WorkSearchEngine {
     let titleCandidates = 0
     if (titleFirst && (detailsPage || titleThrough !== null)) {
       const store = createSessionStore(this.db, this.now)
+      const readStatus = detailsPage ? null : titleStatusReader(this.db, this.now, pageBudget)
       const range = titleDetails
       const titleStart = detailsPage ? range?.after : titleThrough
       const remaining = titles.filter(
@@ -355,7 +411,7 @@ export class WorkSearchEngine {
       let lastTitle: Point | undefined
       for (const title of remaining) {
         if (hits.length >= query.limit) break
-        const hit = this.titleHit(title, store, this.db)
+        const hit = this.titleHit(title, store, this.db, readStatus?.(title.id) ?? null)
         if (JSON.stringify([...hits, hit]).length > WORK_SEARCH_BOUNDS.responseUnits - 2200) break
         toEnrich.push({
           candidate: {
@@ -374,7 +430,13 @@ export class WorkSearchEngine {
       if (!detailsPage) {
         const more = toEnrich.length < titleCandidates
         titleThrough = more ? (lastTitle ?? titleThrough) : null
-        if (lastTitle !== undefined && (hits.length === query.limit || more)) {
+        if (
+          lastTitle !== undefined &&
+          (hits.length === query.limit ||
+            more ||
+            pageBudget.overflowed ||
+            pageBudget.returnedRows >= WORK_SEARCH_BOUNDS.pageRows)
+        ) {
           titleDetails = { after: titleStart ?? null, through: lastTitle }
           return result(false)
         }
@@ -410,9 +472,7 @@ export class WorkSearchEngine {
               afterId: through?.id ?? null,
               cap: WORK_SEARCH_BOUNDS.candidates + 1,
             }) as Candidate[])
-    const workerScanMs = WORK_SEARCH_BOUNDS.workerMs - WORK_SEARCH_BOUNDS.pageMs
     const scanMs = groups === null ? WORK_SEARCH_BOUNDS.pageMs : workerScanMs
-    const pageBudget = new WorkSearchPageBudget(() => this.now() - started >= workerScanMs)
     const groupedMeasure = groups === null ? null : workSearchMaterialization(pageBudget)
     let groupedRead: { db: Database.Database; store: SessionStore } | undefined
     const scans: { candidate: Candidate; titleIndex?: number }[] = [
@@ -534,7 +594,12 @@ export class WorkSearchEngine {
     return result(!moreTitles && searched === candidates.length)
   }
 
-  private titleHit(candidate: WorkSearchTitleMatch, store: SessionStore, db: Database.Database) {
+  private titleHit(
+    candidate: WorkSearchTitleMatch,
+    store: SessionStore,
+    db: Database.Database,
+    status: StatusLine | null,
+  ) {
     const { id, profile, at, tasks, provider, archivedAt } = candidate
     const savedTitle = provider === null ? undefined : store.conversationTitle(id)
     const { address, title, line } = describeConversationForRead(
@@ -577,7 +642,7 @@ export class WorkSearchEngine {
       line,
       profile,
       last_active_at: at,
-      status: null,
+      status: clippedWorkText(status?.text ?? null, WORK_SEARCH_BOUNDS.statusUnits).text,
       matched_tasks,
       tasks_omitted: tasks.length - matched_tasks.length,
       ...(provider === null
@@ -651,10 +716,7 @@ export class WorkSearchEngine {
         piece: null,
       })
     }
-    let latest: StatusLine | null = null
-    for (const task of tasks)
-      if (task.status !== null && (latest === null || task.status.at > latest.at))
-        latest = task.status
+    const latest = latestRecordedStatus(pieces, rootLines?.statusLine ?? null)
 
     const identityOf = db.prepare(
       'SELECT agent_identity_id AS id FROM provider_session WHERE id = ?',
