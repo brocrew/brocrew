@@ -42,7 +42,7 @@ import type { RuntimeStatesMessage } from '../src/shared/runtime-ipc'
  * outlive a stop, including a question waiting on an answer.
  * Display marks preserve an eligible session's countdown. Expiry rechecks live facts and closes
  * eligible sessions through their normal close path. A message wakes them.
- * The default delay is one minute and does not keep the process alive.
+ * The default delay is five minutes and does not keep the process alive.
  * Call-through timer spies retain the real callbacks and cancellation handles, then
  * invoke the callbacks directly rather than waiting for minutes. Each negative ends
  * with the same conversation eligible and stopped, proving that the timer can fire.
@@ -53,8 +53,8 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** A delay no other timer in the host uses, and no test waits out. */
 const IDLE = 7_654_321
-/** The host's own default: one minute. */
-const ONE_MINUTE = 60_000
+/** The host's own default: five minutes. */
+const FIVE_MINUTES = 300_000
 
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
@@ -204,7 +204,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     for (const built of hosts) await built.closeAll()
     // The hosts' own countdowns are unref'd and a week and more away; drop them anyway.
     for (const { timer } of armedAt(IDLE)) clearTimeout(timer)
-    for (const { timer } of armedAt(ONE_MINUTE)) clearTimeout(timer)
+    for (const { timer } of armedAt(FIVE_MINUTES)) clearTimeout(timer)
     vi.restoreAllMocks()
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
@@ -456,19 +456,19 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     await waitFor(() => stopped(0), 'A to be stopped at its original deadline')
   })
 
-  it('one minute is the quiet it waits, and its timer never keeps the process alive', async () => {
+  it('five minutes is the quiet it waits, and its timer never keeps the process alive', async () => {
     const x = await opens('agent-x')
     await settle()
     const forX = theOneLive()
-    // The dep set the delay, so a countdown of one minute is the host's own default and not this
+    // The dep set the delay, so a countdown of five minutes is the host's own default and not this
     // harness's: nothing has armed one yet.
-    expect(liveAt(ONE_MINUTE)).toEqual([])
+    expect(liveAt(FIVE_MINUTES)).toEqual([])
 
     const second = buildHost()
     const y = await opens('agent-y', second)
     await settle()
 
-    const byDefault = liveAt(ONE_MINUTE)
+    const byDefault = liveAt(FIVE_MINUTES)
     expect(byDefault).toHaveLength(1)
     const [forY] = byDefault
     if (forY === undefined) throw new Error('unreachable')
@@ -477,34 +477,34 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
     expect(live().map(({ timer }) => timer)).toEqual([forX.timer])
     expect((forX.timer as unknown as { hasRef: () => boolean }).hasRef()).toBe(false)
 
-    // The one-minute countdown is Y's: running it out stops Y, and only Y.
+    // The five-minute countdown is Y's: running it out stops Y, and only Y.
     await fire(forY)
     await waitFor(() => handleOf(1).status() === 'ended', 'Y to be stopped')
     expect(handleOf(0).status()).toBe('idle')
-    expect(stopLines().some((line) => line.includes(`${y} was idle for ${ONE_MINUTE}ms`))).toBe(
+    expect(stopLines().some((line) => line.includes(`${y} was idle for ${FIVE_MINUTES}ms`))).toBe(
       true,
     )
     expect(stopLines().some((line) => line.includes(x))).toBe(false)
   })
 
-  it('at the one-minute default, background work still keeps a conversation uncounted', async () => {
+  it('at the five-minute default, background work still keeps a conversation uncounted', async () => {
     const byDefault = buildHost()
     const b = await opens('agent-b', byDefault)
     await settle()
-    expect(liveAt(ONE_MINUTE)).toHaveLength(1)
+    expect(liveAt(FIVE_MINUTES)).toHaveLength(1)
 
     handleOf(0).simulateBackgroundWork()
     await waitFor(() => lastSaid(b)?.is === 'in-the-background', 'the level to be pushed')
     await settle()
     expect(handleOf(0).status()).toBe('idle')
-    expect(liveAt(ONE_MINUTE)).toEqual([])
+    expect(liveAt(FIVE_MINUTES)).toEqual([])
 
-    // One fact over, the same conversation is counted on the one-minute clock and stopped.
+    // One fact over, the same conversation is counted on the five-minute clock and stopped.
     handleOf(0).simulateBackgroundWork({ running: [] })
     await waitFor(() => lastSaid(b)?.is === 'idle', 'the emptied level to be pushed')
     await settle()
-    const [countdown] = liveAt(ONE_MINUTE)
-    if (countdown === undefined) throw new Error('the emptied level armed no one-minute countdown')
+    const [countdown] = liveAt(FIVE_MINUTES)
+    if (countdown === undefined) throw new Error('the emptied level armed no five-minute countdown')
     await fire(countdown)
     await waitFor(() => stopped(0), 'B to be stopped without its background work')
   })
