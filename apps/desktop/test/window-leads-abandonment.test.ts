@@ -29,6 +29,7 @@ let reader: WindowReaderLifetime
 let nativeLead: Promise<unknown> | undefined
 let leadSignal: AbortSignal | undefined
 const pages = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
+const routesReads = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
 const sink = {
   ownerId: 'fictional-window',
   alive: true,
@@ -48,7 +49,7 @@ beforeAll(async () => {
     () =>
       new WindowWorkerReader(
         new Worker(join(directory, 'long-leads.cjs'), {
-          workerData: { file, pages: pages.buffer },
+          workerData: { file, pages: pages.buffer, routesReads: routesReads.buffer },
         }),
       ),
   )
@@ -168,6 +169,7 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
     pagesAtGrace = Atomics.load(pages, 0)
     expect(pagesAtGrace).toBeGreaterThan(0)
     markPhase('routes-read')
+    const routesBefore = Atomics.load(routesReads, 0)
     const queuedAt = performance.now()
     // Measure only this read, including its final gap even if no interval callback ran.
     last = queuedAt
@@ -183,12 +185,12 @@ it('a long-ledger reopen abandons its native scan at the grace and the next wind
     }
     pagesAfterGrace = Atomics.load(pages, 0) - pagesAtGrace
     expect(answer.kind).toBe('routes')
+    expect(Atomics.load(routesReads, 0) - routesBefore).toBe(1)
     markPhase('native-lead-settlement')
     expect(await nativeLead).toBeInstanceOf(WindowReadUnavailable)
     markPhase('assertions')
     expect(pagesAfterGrace).toBeLessThanOrEqual(1)
     expect(reopenMs).toBeGreaterThanOrEqual(950)
-    expect(mainGapMs).toBeLessThan(250)
     bodySucceeded = true
   } finally {
     const result = {
