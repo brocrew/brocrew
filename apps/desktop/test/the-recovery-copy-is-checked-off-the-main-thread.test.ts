@@ -113,7 +113,14 @@ describe('the recovery copy is checked off the main thread', () => {
     rmSync(folder, { recursive: true, force: true })
   })
 
+  /**
+   * ⚠️ **Judged by its own hold, not a flat clock** (197). A flat 100 ms tripped at 102 on a loaded
+   * hosted Windows runner while the main thread beat through the hold. The same check on this
+   * thread stops the heartbeat for the whole hold, as the control shows, so a gap under half the
+   * hold means the main thread beat through it. Load can only lengthen an on-thread gap.
+   */
   it('a long check in the worker leaves the main thread beating; the same check here does not', async () => {
+    const hold = 400
     const copy = aCopy()
     let inWorker: Promise<number> | undefined
     let checked!: () => void
@@ -142,17 +149,17 @@ describe('the recovery copy is checked off the main thread', () => {
       })
       worker.once('exit', checked)
       return worker
-    }, 400)
+    }, hold)
     try {
       const answer = await verifier.verify(copy)
       expect(answer).toEqual({ kind: 'ok' })
       expect(inWorker).toBeDefined()
-      expect(await inWorker).toBeLessThan(100)
+      expect(await inWorker).toBeLessThan(hold / 2)
       // The control: run on this thread, the same hold stops the heartbeat for all of it.
       const here = await longestGapDuring(async () => {
-        checkTheCopy(copy, 400)
+        checkTheCopy(copy, hold)
       })
-      expect(here).toBeGreaterThanOrEqual(350)
+      expect(here).toBeGreaterThanOrEqual(hold)
     } finally {
       await verifier.stop()
     }
