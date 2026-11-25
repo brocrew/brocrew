@@ -1,15 +1,8 @@
 import type { AppNotice } from '../../shared/app-notice'
-import { createLedgerHistoryRead } from '../database/sqlite/ledger/history'
 import { readInstructionAskers } from './instruction-askers-read'
 import { piecesAtTheCutAndNow } from './piece-fold-cut'
 import { retryBusyWrite } from './retry-busy-write'
-import {
-  createSessionCatalogueRead,
-  derivedStateOf,
-  resolveEndReason,
-  parseChildDescent,
-  type RecordedSession,
-} from './session-catalogue-read'
+import { derivedStateOf, parseChildDescent } from './session-catalogue-read'
 export type { ResumableSession, LiveSessionRow, RecordedSession } from './session-catalogue-read'
 import type { EventRow, PersistedEvent } from './ledger-row-types'
 export type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
@@ -32,7 +25,6 @@ export type { WorkRow } from './work-ledger-read'
 import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import type {
   LedgerWalk,
-  LedgerWalkKind,
   QuestionAskedEvent,
   RaisedQuestion,
   RoutedRequest,
@@ -73,7 +65,6 @@ import {
   type ConversationTitleHistoryCursor,
   type ConversationTitledEvent,
 } from '../../shared/conversation-title'
-import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
 import { createOwnNotesStore } from './own-notes'
 import { createMemoryRecoveryStore } from './memory-recovery'
@@ -81,7 +72,7 @@ export { createMemoryAmendmentObserver } from './memory-recovery'
 import { createAgentKnowledgeHistory } from './agent-knowledge-history'
 import { createMethodChangeStore } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
-import { committedChangesOf, committedRowOf } from './committed-changes'
+import { committedChangesOf } from './committed-changes'
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import {
@@ -96,11 +87,8 @@ import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../shared/move-requ
 import {
   capabilitiesFor,
   isAvailable,
-  NOT_STARTED_BECAUSE,
-  SUPPORTED_PROVIDERS,
   serializeSessionRef,
-  storedQuestionsParsed,
-  type NotStartedBecause,
+  SUPPORTED_PROVIDERS,
 } from '@brobot2/runtime'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import { AN_ANSWER_HELD_THEN_LOST, theAnswerItCarries } from '../../shared/tasks'
@@ -111,7 +99,6 @@ import {
   type ExternalMcpServerRow,
 } from '../../shared/external-mcp'
 import { workEdge } from '../../shared/who-called-whom'
-import type { ForestParent } from '../../shared/the-whole-forest'
 import { createProviderLimitReader, type SessionReadPhases } from './provider-limit-reader'
 export type { SessionReadPhases } from './provider-limit-reader'
 import { NONE_STARTED } from '../../shared/agent-roster'
@@ -140,54 +127,53 @@ import {
   whatTiesTheTreeOutside,
 } from './conversation-tree'
 import { forestListing } from './forest-listing'
-import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
+import { FOLD_TERM } from './fold-index'
 import { ensureQuestionCopies, fillQuestionCopies, questionCopiesReady } from './question-copies'
 import { withWindowWriteFence } from './window-write-fence'
 import { ledgerWritesFor } from './ledger-write-stamp'
-import { createLedgerFoldState, type SnapshotFoldAnswers } from './ledger-fold-state'
+import { type SnapshotFoldAnswers } from './ledger-fold-state'
 import { createDigestWindowRead } from './digest-window-read'
 import { createWorkerRecordsRead } from './worker-records-read'
 import { A_RESTART_LEFT_THE_MESSAGE_WAITING, createTurnEvidenceRead } from './turn-evidence-read'
 
 import {
-  WORK_COLUMNS,
-  RESOURCE_COLUMNS,
-  KEPT_FILE_COLUMNS,
-  HELD_UNDER,
-  KEPT_BEFORE,
-  inLabelOrder,
-  MAX_SCHEDULE_EVIDENCE_ROWS,
-  MAX_SCHEDULE_HISTORY_WALKED,
+  type AdoptedSessionRecord,
+  type AskRow,
+  type BindingRow,
   CLOSED_TURNS_FOR_PROVIDER_FAILURE,
-  PERSON_LAST_WROTE_WITHIN_TURNS,
-  type ResourceRow,
+  type ClosedTurnRow,
+  type ExchangeRow,
+  type ForestSessionRow,
+  type GenerationRow,
+  type GivenPiece,
+  type GivenWorkRow,
+  HELD_UNDER,
+  inLabelOrder,
+  KEPT_BEFORE,
+  KEPT_FILE_COLUMNS,
+  type KeptFileDbRow,
   type KeptFileRow,
   type KeptFilesAsked,
-  type GivenPiece,
+  MAX_SCHEDULE_EVIDENCE_ROWS,
+  MAX_SCHEDULE_HISTORY_WALKED,
   type NewSessionRecord,
-  type AdoptedSessionRecord,
-  type SessionSnapshot,
-  type RaisedQuestionRow,
-  type PieceForAName,
-  type WindowOpenWork,
-  type GivenWorkRow,
-  type BindingRow,
-  type SpawnedSessionRow,
-  type ForestSessionRow,
-  type WorkDbRow,
-  type ResourceDbRow,
-  type KeptFileDbRow,
-  type GenerationRow,
-  type ScheduleEvidenceRow,
-  type QueuedPromptProgress,
-  type ProviderFailureNoticeProgress,
   type OpenTurnRow,
-  type ExchangeRow,
+  PERSON_LAST_WROTE_WITHIN_TURNS,
+  type PieceForAName,
   type ProviderFailureEpisode,
   type ProviderFailureEvidence,
-  type ClosedTurnRow,
-  type AskRow,
-  type TurnEndReason,
+  type ProviderFailureNoticeProgress,
+  type QueuedPromptProgress,
+  type RaisedQuestionRow,
+  RESOURCE_COLUMNS,
+  type ResourceDbRow,
+  type ResourceRow,
+  type ScheduleEvidenceRow,
+  type SessionSnapshot,
+  type SpawnedSessionRow,
+  type WindowOpenWork,
+  WORK_COLUMNS,
+  type WorkDbRow,
 } from './session-store-parts/session-store-rows'
 import type { SessionStore } from './session-store-parts/session-store-contract'
 export {
@@ -212,23 +198,6 @@ export type {
 export type { SessionStore } from './session-store-parts/session-store-contract'
 export { NULL_SESSION_STORE } from './session-store-parts/null-session-store'
 
-export const ROUTED_REQUEST_EVENT_TYPES = [
-  'request_routed',
-  'user_decision',
-  'request_resolved',
-  'request_stranded',
-  'request_interrupted',
-  'work_taken_back',
-  'work_closed',
-  'work_replied',
-  'request_escalated',
-  'question_withdrawn',
-  'question_ended_with_its_piece',
-  'question_recipient_ended',
-  'question_asked',
-  'launched',
-  'status',
-] as const
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import type { AppDatabase, AppStatement } from './connection'
 import {
@@ -238,7 +207,7 @@ import {
   identityCreatorColumn,
   readIdentityCreator,
 } from './identity'
-import { newEventId, newResourceId, newTurnId, newWorkId } from './ids'
+import { newEventId, newResourceId, newWorkId } from './ids'
 import {
   aStallItsGiverCanBeToldOf,
   composeWhatEachPieceIsWaitingOn,
@@ -252,15 +221,11 @@ import {
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
 import type { PieceFold } from '../../shared/piece-fold'
 import {
-  REQUEST_IS_OPEN,
   aPersonOwesAnAnswerIn,
-  deriveRoutedRequests,
+  aPersonsSince,
   openQuestionsByWork,
   permissionShaped,
-  anActionAsked,
-  questionFilesOf,
-  aPersonsSince,
-  aWaitIsReadFrom,
+  REQUEST_IS_OPEN,
 } from '../../shared/questions'
 import {
   howWorkStopped,
@@ -300,129 +265,31 @@ export type { ForestedConversation, ForestedNode } from './forest-store'
 import type { ForestedNode } from './forest-store'
 
 export type { OpenTurn, LeftRunning, TurnAsItEnded } from './turn-evidence-read'
-
-function noSuchConversation<Row>(): LedgerWalk<Row> {
-  return { rows: [], walk: 'no-such-conversation', ledgers: 0, rowsUnread: 0 }
-}
-
-export function underWhat(parent: string | null, drawn: ReadonlySet<string>): ForestParent {
-  if (parent === null) return { is: 'the-person' }
-  return drawn.has(parent)
-    ? { is: 'a-conversation', conversation: parent }
-    : { is: 'a-conversation-this-reading-did-not-draw', conversation: parent }
-}
-
-export function skipTheLedger(
-  sessionId: string,
-  error: unknown,
-  noteSkip: SkipNote | undefined,
-): void {
-  console.warn(
-    `session ledger: ${sessionId} could not be read and was skipped ` +
-      `(${error instanceof Error ? error.message : String(error)})`,
-  )
-  noteSkip?.(THE_WHOLE_LEDGER, error instanceof Error ? error.message : String(error))
-}
-
-export function readOrSkip<T>(
-  sessionId: string,
-  noteSkip: SkipNote | undefined,
-  nothing: T,
-  fold: () => T,
-): T {
-  if (noteSkip === undefined) return fold()
-  try {
-    return fold()
-  } catch (error) {
-    skipTheLedger(sessionId, error, noteSkip)
-    return nothing
-  }
-}
-
-export function eachOrSkipped<K extends string, Row extends Readonly<Record<K, string>>, Built>(
-  rows: readonly Row[],
-  key: K,
-  unread: RowsUnread,
-  build: (row: Row) => Built,
-): Built[] {
-  return rows.flatMap((row) => readOrSkip(row[key], unread.in(row[key]), [], () => [build(row)]))
-}
-
-export function ledgersSkippedOf(count: number | undefined): { readonly ledgersSkipped?: number } {
-  return count !== undefined && count > 0 ? { ledgersSkipped: count } : {}
-}
-
-function walkLedgers<Row, Candidate extends { id: string }>(
-  walk: LedgerWalkKind,
-  candidates: readonly Candidate[],
-  foldOne: (sessionId: string, noteSkip: SkipNote, candidate: Candidate) => readonly Row[],
-  unread: RowsUnread = rowsUnreadOnce(),
-): LedgerWalk<Row> {
-  const rows = candidates.flatMap((candidate) => {
-    const noteSkip = unread.in(candidate.id)
-    return [
-      ...readOrSkip(candidate.id, noteSkip, [], () => foldOne(candidate.id, noteSkip, candidate)),
-    ]
-  })
-  return {
-    rows,
-    walk,
-    ledgers: candidates.length,
-    rowsUnread: unread.count,
-    ...ledgersSkippedOf(unread.ledgersSkipped),
-  }
-}
-
-function stalledInOrder(found: LedgerWalk<PieceRow>): LedgerWalk<PieceRow> {
-  const when = (piece: PieceRow): number => piece.stalledAt ?? Number.MAX_SAFE_INTEGER
-  return {
-    walk: found.walk,
-    ledgers: found.ledgers,
-    rowsUnread: found.rowsUnread,
-    ...ledgersSkippedOf(found.ledgersSkipped),
-    rows: [...found.rows].sort(
-      (left, right) => when(left) - when(right) || (left.piece < right.piece ? -1 : 1),
-    ),
-  }
-}
-
-function parseStrings(stored: string | null): readonly string[] {
-  if (stored === null) return []
-  try {
-    const raw: unknown = JSON.parse(stored)
-    return Array.isArray(raw)
-      ? raw.filter((one): one is string => typeof one === 'string' && one.trim() !== '')
-      : []
-  } catch {
-    return []
-  }
-}
-
-function theFoldIndexHolds(statement: { readonly source: string }): void {
-  const sql = statement.source
-  const lists = [...sql.matchAll(/(?<![.\w])type\s+in\s*\(([^)]*)\)/gi)].map((one) => one[1] ?? '')
-  const named = [
-    ...lists.flatMap((list) => [...list.matchAll(/'([^']*)'/g)].map((one) => one[1] ?? '')),
-    ...[...sql.matchAll(/(?<![.\w])type\s*=\s*'([^']*)'/gi)].map((one) => one[1] ?? ''),
-  ]
-  const unreadable =
-    /(?<![.\w])type\s+(?:not\s+in|like|glob)\b|(?<![.\w])type\s*(?:<>|!=|=\s*[?@:$])/i.test(sql) ||
-    lists.some((list) => /[?@:$]/.test(list))
-  const missing = named.filter((type) => !FOLD_EVENT_TYPES.includes(type))
-  if (unreadable || missing.length > 0) {
-    throw new Error(
-      unreadable
-        ? 'a read through events_fold_idx compares the event type in a way that cannot be checked ' +
-            'against the types the index holds: name its types as literals'
-        : `a read through events_fold_idx names ${missing.join(', ')}, which the index does not hold: ` +
-            'add it to FOLD_EVENT_TYPES in db/fold-index.ts and generate the migration that ' +
-            'recreates the index',
-    )
-  }
-}
-
-// The ordinal evidence follows the folded array when a worker keeps it across snapshots.
-const pieceStallOrdinals = new WeakMap<readonly PieceRow[], ReadonlyMap<string, number>>()
+import { createTurnReadsPart } from './session-store-parts/turn-reads'
+import {
+  ledgersSkippedOf,
+  mergeDescent,
+  noSuchConversation,
+  parseStrings,
+  pieceStallOrdinals,
+  readOrSkip,
+  scheduleLevelFromRow,
+  skipTheLedger,
+  stalledInOrder,
+  theFoldIndexHolds,
+  underWhat,
+  walkLedgers,
+} from './session-store-parts/store-helpers'
+export {
+  aRowADeliveryCanStart,
+  eachOrSkipped,
+  ledgersSkippedOf,
+  mergeDescent,
+  readOrSkip,
+  ROUTED_REQUEST_EVENT_TYPES,
+  skipTheLedger,
+  underWhat,
+} from './session-store-parts/store-helpers'
 
 export function createSessionStore(
   db: AppDatabase,
@@ -444,6 +311,57 @@ export function createSessionStore(
   let reconciliationNames: AppStatement | undefined
   const ledgerWrites = ledgerWritesFor(connection)
   db = withOptionalIndexes(db)
+  const turnReads = createTurnReadsPart({
+    db,
+    oneSnapshot,
+    checkFoldState,
+    snapshotAnswers,
+    committed,
+    connection,
+    ledgerWrites,
+  })
+  const {
+    activeGeneration,
+    ancestryContext,
+    appendTx,
+    closeTurn,
+    currentStatus,
+    eventsFrom,
+    foldQuestionsRaisedInSession,
+    foldRoutedRequestsOfSession,
+    forgetTheKeptFoldsOf,
+    insertEvent,
+    keptUntilItsLedgerGrows,
+    namedByAPiece,
+    newestOfType,
+    pieceFoldFloors,
+    questionsRaisedInSession,
+    reconciliationCut,
+    recordedTurnOpeningOf,
+    routedRequestsOfSession,
+    selectAnyEvent,
+    selectAProviderTurnsOpening,
+    selectGeneration,
+    selectLastTurn,
+    selectMaxOrdinal,
+    selectOne,
+    selectOpenTurn,
+    selectOpenTurnId,
+    selectQuestionsRaised,
+    selectQuestionsRaisedMoved,
+    selectRoutedRequestEvents,
+    selectRoutedRequestEventsAfter,
+    selectStatus,
+    selectTheTurnsOpening,
+    sessionCatalogueRead,
+    settleTx,
+    theFoldsMayBeKept,
+    theKeptOnly,
+    threadLeadRows,
+    turnWindow,
+    updateStatus,
+    wordsIn,
+  } = turnReads
 
   const insertSession = db.prepare(
     `INSERT INTO provider_session (id, provider, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, connection_id, created_at, updated_at)
@@ -839,23 +757,6 @@ export function createSessionStore(
           WHERE id = ? AND external_ref IS NULL AND launched_as = ?`,
       ),
     })
-  const insertEvent = db.prepare(
-    `INSERT INTO events (id, session_id, ordinal, type, payload, created_at, turn_id, generation)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-  const insertTurn = db.prepare(
-    `INSERT INTO turn (id, session_id, ordinal, prompt, opened_at, generation)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-  /** The open turn, if any. At most one: a second `user_turn` cannot arrive while one is open. */
-  const selectOpenTurn = db.prepare(
-    `SELECT id, blocked_at FROM turn WHERE session_id = ? AND generation = ? AND closed_at IS NULL
-      ORDER BY ordinal DESC LIMIT 1`,
-  )
-  /** The most recent turn whatever its state — what a late content event is attributed to. */
-  const selectLastTurn = db.prepare(
-    `SELECT id FROM turn WHERE session_id = ? AND generation = ? ORDER BY ordinal DESC LIMIT 1`,
-  )
   const { firstPersonOpening, latestHumanAnswers, humanFinalsInWindow } = createHumanAnswerReader(
     db,
     selectLastTurn,
@@ -872,94 +773,11 @@ export function createSessionStore(
        WHERE session_id = ? AND generation = ? AND closed_at IS NOT NULL
        ORDER BY ordinal DESC LIMIT ?`,
   )
-  const selectStatus = db.prepare(`SELECT status FROM provider_session WHERE id = ?`)
   const selectProviderOf = db.prepare(`SELECT provider FROM provider_session WHERE id = ?`)
-  const selectTurnCount = db.prepare(
-    `SELECT COUNT(*) AS n FROM turn WHERE session_id = ? AND generation = ?`,
-  )
-  const closeTurn = db.prepare(
-    `UPDATE turn SET closed_at = ?, end_reason = ?, blocked_at = NULL
-      WHERE id = ? AND closed_at IS NULL`,
-  )
-  const setTurnBlocked = db.prepare(`UPDATE turn SET blocked_at = ? WHERE id = ?`)
-  const selectTurns = db.prepare(
-    `SELECT id, ordinal, prompt, opened_at, closed_at, end_reason, blocked_at
-       FROM turn WHERE session_id = ? AND generation = ? ORDER BY ordinal`,
-  )
-  const selectOpenTurnId = db.prepare(
-    `SELECT id FROM turn WHERE session_id = ? AND generation = ? AND closed_at IS NULL
-      ORDER BY ordinal DESC LIMIT 1`,
-  )
-  const updateRef = db.prepare(
-    `UPDATE provider_session SET external_ref = ?, updated_at = ? WHERE id = ?`,
-  )
-  const updateStatus = db.prepare(
-    `UPDATE provider_session SET status = ?, updated_at = ? WHERE id = ?`,
-  )
-  const stampClosedByTheQuit = db.prepare(
-    `UPDATE provider_session SET closed_by_the_quit_at = ? WHERE id = ?`,
-  )
-  const clearClosedByTheQuit = db.prepare(
-    `UPDATE provider_session SET closed_by_the_quit_at = NULL
-      WHERE id = ? AND closed_by_the_quit_at IS NOT NULL`,
-  )
-  const selectClosedByTheNewestQuit = db.prepare(
-    `SELECT id, closed_by_the_quit_at AS at FROM provider_session
-      WHERE closed_by_the_quit_at = (SELECT max(closed_by_the_quit_at) FROM provider_session)
-      ORDER BY id`,
-  )
-  function newestQuitClosed(notBefore: number): readonly string[] {
-    return (selectClosedByTheNewestQuit.all() as { id: string; at: number }[])
-      .filter((row) => row.at >= notBefore)
-      .map((row) => row.id)
-  }
-  const selectBackgroundNewestFirst = db.prepare(
-    `SELECT type, payload FROM events INDEXED BY events_fold_idx
-      WHERE ${FOLD_TERM} AND session_id = ? AND type IN ('background_work', 'launched')
-      ORDER BY generation DESC, ordinal DESC LIMIT 200`,
-  )
-  const selectLastMomentBefore = db.prepare(
-    `SELECT max(created_at) AS at FROM events WHERE session_id = ? AND created_at < ?`,
-  )
-  const selectClosedByTheQuit = db.prepare(
-    `SELECT id FROM provider_session WHERE closed_by_the_quit_at IS NOT NULL
-      ORDER BY closed_by_the_quit_at, id`,
-  )
-  const closedByTheQuitTx = db.transaction((sessionIds: readonly string[], at: number): void => {
-    for (const id of sessionIds) stampClosedByTheQuit.run(at, id)
-  })
-  const SESSION_COLUMNS = `provider_session.id AS id, provider, external_ref, cwd, status, approval_mode, profile_id, reasoning_effort, model, plan_mode, plan_ended_at, model_or_effort_set_by_a_person_at, reported_model, reported_effort, adopted_at, restored_at, child_descent, provider_session.created_at AS created_at, provider_session.updated_at AS updated_at`
-  const HAS_EVENTS_COLUMN = `EXISTS (SELECT 1 FROM events
-                                       WHERE events.session_id = provider_session.id
-                                         AND events.generation = coalesce(g.active, 0)
-                                         AND events.type <> 'service_registered') AS has_events`
-  const GENERATION_COLUMNS = `${HAS_EVENTS_COLUMN},
-            g.normalizer_version AS normalizer_version,
-            g.building AS building,
-            g.failure AS failure`
-  const GENERATION_JOIN = `LEFT JOIN derived_generation g ON g.session_id = provider_session.id`
-  const LAST_ENDING_COLUMN = `(SELECT t.end_reason FROM turn t
-                                WHERE t.session_id = provider_session.id
-                                  AND t.generation = coalesce(g.active, 0)
-                                  AND t.closed_at IS NOT NULL
-                                ORDER BY t.ordinal DESC LIMIT 1) AS last_end_reason`
   const serviceBirth = (owner: string, readPayload = false): string =>
     `SELECT ${readPayload ? "CASE WHEN length(payload) <= 2048 THEN payload ELSE '{}' END" : '1'}
        FROM events INDEXED BY events_kind_owner_idx
        WHERE type = 'service_registered' AND session_id = ${owner} AND generation = 0 AND ordinal = 0`
-  const selectAll = db.prepare(
-    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
-       FROM provider_session ${GENERATION_JOIN}
-      ORDER BY provider_session.updated_at DESC`,
-  )
-  // Keep replacement insertion order across generations and require an existing target.
-  const selectReplacements = db.prepare(
-    `SELECT session_id, payload FROM events INDEXED BY events_kind_owner_idx
-      WHERE ${FOLD_TERM} AND type = 'replaced_by' AND json_valid(payload)
-        AND EXISTS (SELECT 1 FROM provider_session
-                     WHERE provider_session.id = json_extract(events.payload, '$.sessionId'))
-      ORDER BY events.rowid`,
-  )
   const scheduleLevelsSql = (owners: string) =>
     `WITH levels AS MATERIALIZED (
        SELECT session_id, created_at, generation, ordinal, payload
@@ -1042,19 +860,6 @@ export function createSessionStore(
      SELECT NULL, NULL, NULL, NULL, NULL, count(*) FROM walk
      ORDER BY created_at, ordinal, generation DESC`,
   )
-  const selectOne = db.prepare(
-    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
-       FROM provider_session ${GENERATION_JOIN} WHERE provider_session.id = ?`,
-  )
-  const selectCataloguePage = db.prepare(
-    `SELECT ${SESSION_COLUMNS}, ${GENERATION_COLUMNS}, ${LAST_ENDING_COLUMN}
-       FROM provider_session ${GENERATION_JOIN}
-      WHERE (@identity IS NULL OR agent_identity_id = @identity)
-        AND provider_session.updated_at BETWEEN @from AND @to
-        AND (@afterId IS NULL OR (provider_session.updated_at, provider_session.id) < (@afterAt, @afterId))
-      ORDER BY provider_session.updated_at DESC, provider_session.id DESC LIMIT @limit`,
-  )
-  const sessionCatalogueRead = createSessionCatalogueRead(selectAll, selectOne, selectCataloguePage)
   const selectEvents = db.prepare(
     `SELECT ordinal, payload, created_at FROM events
       WHERE session_id = ? AND generation = ? ORDER BY ordinal`,
@@ -1337,49 +1142,6 @@ export function createSessionStore(
                                 THEN json_extract(payload, '$.requestId') END = @request)
       ORDER BY ordinal DESC LIMIT 1`,
   )
-  const A_STATUS_THE_FOLD_ACTS_ON = `CASE WHEN type = 'status' THEN
-          CASE WHEN json_valid(payload) AND json_type(payload) = 'object'
-               THEN json_extract(payload, '$.state') IN ('ended', 'errored')
-               ELSE 1 END
-          ELSE 1 END`
-  const selectRoutedRequestEvents = db.prepare(
-    `SELECT ordinal,
-            CASE WHEN json_valid(payload) THEN json_remove(payload, '$.sent', '$.given')
-                 ELSE payload END AS payload,
-            created_at FROM events
-        INDEXED BY events_kind_owner_idx
-      WHERE ${FOLD_TERM} AND session_id = @session AND generation = @generation
-        AND type IN (${ROUTED_REQUEST_EVENT_TYPES.map((type) => `'${type}'`).join(', ')})
-        AND ${A_STATUS_THE_FOLD_ACTS_ON}
-        AND (ordinal >= (SELECT min(ordinal) FROM events
-                            INDEXED BY events_kind_owner_idx
-                          WHERE ${FOLD_TERM} AND session_id = @session
-                            AND generation = @generation
-                            AND type IN ('request_routed', 'question_asked'))
-             OR ordinal = (SELECT max(ordinal) FROM events
-                              INDEXED BY events_kind_owner_idx
-                            WHERE ${FOLD_TERM} AND session_id = @session
-                              AND generation = @generation
-                              AND type = 'launched'
-                              AND ordinal < (SELECT min(ordinal) FROM events
-                                                INDEXED BY events_kind_owner_idx
-                                              WHERE ${FOLD_TERM} AND session_id = @session
-                                                AND generation = @generation
-                                                AND type IN ('request_routed', 'question_asked'))))
-      ORDER BY ordinal`,
-  )
-  // The rows of those types written after a kept fold of them, to carry it forward.
-  const selectRoutedRequestEventsAfter = db.prepare(
-    `SELECT ordinal, type, json_valid(payload) AS readable,
-            CASE WHEN json_valid(payload) THEN json_remove(payload, '$.sent', '$.given')
-                 ELSE payload END AS payload,
-            created_at FROM events
-        INDEXED BY events_kind_owner_idx
-      WHERE ${FOLD_TERM} AND session_id = @session AND generation = @generation
-        AND type IN (${ROUTED_REQUEST_EVENT_TYPES.map((type) => `'${type}'`).join(', ')})
-        AND ordinal > @after
-      ORDER BY ordinal`,
-  )
   const selectSessionsThatRouted = db.prepare(
     `SELECT DISTINCT session_id AS id FROM events WHERE type = 'request_routed'`,
   )
@@ -1414,48 +1176,6 @@ export function createSessionStore(
     readPhases,
     noteUnreadRow,
     theFoldIndexHolds,
-  )
-  const selectQuestionsRaised = db.prepare(
-    `SELECT COALESCE(json_extract(payload, '$.id'), json_extract(payload, '$.requestId')) AS id,
-            -- The kind of the field the id above was read from.
-            CASE WHEN json_extract(payload, '$.id') IS NOT NULL THEN json_type(payload, '$.id')
-                 ELSE json_type(payload, '$.requestId') END AS idIs,
-            json_type(payload, '$.prompt') AS promptIs,
-            json_type(payload, '$.questions') AS questionsIs,
-            json_type(payload, '$.piece') AS pieceIs,
-            json_type(payload, '$.passedUpFrom') AS passedUpFromIs,
-            json_type(payload, '$.context') AS contextIs,
-            type AS type,
-            json_extract(payload, '$.prompt') AS prompt,
-            json_extract(payload, '$.questions') AS questions,
-            json_extract(payload, '$.piece') AS piece,
-            -- 611 · the two fields a PASSED-UP question carries (HO-088 3.2). SQL NULL for every
-            -- row that is not one, which is every row written before 611 and every question an
-            -- agent raised itself -- the same absence piece already answers with.
-            -- (No backticks in this template literal: it is one, and a backtick ends it.)
-            json_extract(payload, '$.passedUpFrom') AS passedUpFrom,
-            json_extract(payload, '$.context') AS context,
-            json_extract(payload, '$.move') AS move,
-            json_extract(payload, '$.action') AS action,
-            json_extract(payload, '$.files') AS files,
-            -- 671 · R18: which rows were torn, and where, so the reader COUNTS them.
-            ordinal AS ordinal,
-            readable AS readable
-       FROM (SELECT ordinal, type, json_valid(payload) AS readable,
-                    CASE WHEN json_valid(payload) THEN payload ELSE '{}' END AS payload
-               FROM events
-        INDEXED BY events_kind_owner_idx
-      WHERE ${FOLD_TERM} AND session_id = ? AND generation = ?
-        AND type IN ('user_input_request', 'question_asked')
-        AND ordinal > ?)
-      ORDER BY ordinal`,
-  )
-  // Whether a question row was written after a kept fold of the questions.
-  const selectQuestionsRaisedMoved = db.prepare(
-    `SELECT 1 FROM events INDEXED BY events_kind_owner_idx
-      WHERE ${FOLD_TERM} AND session_id = @session AND generation = @generation
-        AND ordinal > @after AND type IN ('user_input_request', 'question_asked')
-      LIMIT 1`,
   )
   for (const read of [
     selectPieceEvents,
@@ -1536,14 +1256,6 @@ export function createSessionStore(
          THEN json_extract(payload, '$.to') = 'a-person' ELSE 1 END)) LIMIT 1`,
   )
   const selectClosedTurnReason = db.prepare('SELECT end_reason FROM turn WHERE id = ?')
-  const selectAProviderTurnsOpening = db.prepare(
-    `SELECT 1 AS began FROM events WHERE turn_id = ? AND type = 'provider_turn' LIMIT 1`,
-  )
-  const selectTheTurnsOpening = db.prepare(
-    `SELECT type, CASE WHEN json_valid(payload) THEN payload END AS payload, ordinal FROM events
-      WHERE turn_id = ? AND session_id = ? AND generation = ? AND type = 'user_turn'
-      ORDER BY ordinal LIMIT 1`,
-  )
   const selectNewestReceived = db.prepare(
     `SELECT type, CASE WHEN json_valid(payload) THEN payload END AS payload, ordinal FROM events
       WHERE session_id = ? AND generation = ? AND type = 'user_turn'
@@ -1870,20 +1582,6 @@ export function createSessionStore(
     }
     return undefined
   }
-  const {
-    newestOfType,
-    eventsFrom,
-    ancestryContext,
-    turnWindow,
-    threadLeadRows,
-    selectAnyEvent,
-    selectMaxOrdinal,
-  } = createLedgerHistoryRead(db, activeGeneration)
-
-  const selectGeneration = db.prepare(
-    `SELECT active, normalizer_version, derived_through, building, highest, failure
-       FROM derived_generation WHERE session_id = ?`,
-  )
   const startBuilding = db.prepare(
     `INSERT INTO derived_generation
        (session_id, active, normalizer_version, derived_through, building, highest, failure, updated_at)
@@ -1922,21 +1620,6 @@ export function createSessionStore(
       }
       return cleared
     },
-  )
-  const deleteEventGeneration = db.prepare(
-    `DELETE FROM events WHERE rowid IN
-       (SELECT rowid FROM events WHERE session_id = ? AND generation = ?
-         AND type <> 'service_registered' LIMIT ?)`,
-  )
-  const generationHoldsRowsReadInEvery = db.prepare(
-    `SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?
-                       AND type IN ('instruction_proposed', 'instruction_settled'))
-         OR EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?
-                       AND type IN ('mcp_server_requested', 'mcp_server_request_settled')) AS holds`,
-  )
-  const deleteTurnGeneration = db.prepare(
-    `DELETE FROM turn WHERE rowid IN
-       (SELECT rowid FROM turn WHERE session_id = ? AND generation = ? LIMIT ?)`,
   )
   const writeGeneration = db.prepare(
     `INSERT INTO derived_generation
@@ -2040,75 +1723,6 @@ export function createSessionStore(
     })
   }
 
-  const appendTx = db.transaction(
-    (
-      sessionId: string,
-      ordinal: number,
-      incoming: TranscriptEvent,
-      at: number,
-      generation: number,
-      reconcileStatus: boolean,
-    ) => {
-      const event = boundStoredEvent(incoming)
-      invalidateForAppend(sessionId, ordinal, event)
-      if (event.type === 'reopened') {
-        const left = selectOpenTurn.get(sessionId, generation) as OpenTurnRow | undefined
-        if (left) closeTurn.run(at, 'unknown', left.id)
-      }
-      const already = (
-        event.type === 'user_turn' || event.type === 'provider_turn'
-          ? selectOpenTurn.get(sessionId, generation)
-          : undefined
-      ) as OpenTurnRow | undefined
-      const joinsTheProvidersTurn =
-        event.type === 'user_turn' &&
-        already !== undefined &&
-        selectAProviderTurnsOpening.get(already.id) !== undefined &&
-        selectTheTurnsOpening.get(already.id, sessionId, generation) === undefined
-      if (
-        (event.type === 'user_turn' || event.type === 'provider_turn') &&
-        !joinsTheProvidersTurn
-      ) {
-        if (already) closeTurn.run(at, 'unknown', already.id)
-        const nth = (selectTurnCount.get(sessionId, generation) as { n: number }).n
-        const prompt = event.type === 'user_turn' ? event.text : ''
-        insertTurn.run(newTurnId(), sessionId, nth, prompt, at, generation)
-      }
-
-      const open = selectOpenTurn.get(sessionId, generation) as OpenTurnRow | undefined
-      markOwnAppend(sessionId, generation, ordinal, event)
-      insertEvent.run(
-        newEventId(),
-        sessionId,
-        ordinal,
-        event.type,
-        JSON.stringify(event),
-        at,
-        turnFor(sessionId, event, open, generation),
-        generation,
-      )
-      // A rolled-back write still invalidates a live allocator; it never publishes a floor.
-      ledgerWrites.set(sessionId, { ordinal, generation })
-      committed.appended(committedRowOf(sessionId, generation, ordinal, event))
-
-      if (event.type === 'session' || event.type === 'conversation_reset') {
-        updateRef.run(serializeSessionRef(event.ref), at, sessionId)
-      }
-
-      if (event.type === 'turn' && open) closeTurn.run(at, event.state, open.id)
-      if (event.type === 'status' && (event.state === 'ended' || event.state === 'errored')) {
-        if (open) closeTurn.run(at, 'ended', open.id)
-      }
-      if (event.type === 'status' && open) {
-        if (event.state === 'waiting_permission') setTurnBlocked.run(at, open.id)
-        if (event.state === 'working') setTurnBlocked.run(null, open.id)
-      }
-
-      if (reconcileStatus)
-        updateStatus.run(currentStatus(sessionId, event, generation), at, sessionId)
-    },
-  )
-
   const appendManyTx = db.transaction(
     (
       sessionId: string,
@@ -2120,68 +1734,6 @@ export function createSessionStore(
         appendTx(sessionId, entry.ordinal, entry.event, entry.at, generation, reconcileStatus)
       }
     },
-  )
-
-  const CONTENT_EVENTS = new Set([
-    'assistant_message',
-    'assistant_delta',
-    'tool_call',
-    'tool_result',
-    'thinking',
-    'sub_agent',
-    'plan_update',
-    'image',
-    'file_change',
-    'memory_note',
-  ])
-
-  function turnFor(
-    sessionId: string,
-    event: TranscriptEvent,
-    open: OpenTurnRow | undefined,
-    generation: number,
-  ): string | null {
-    if (open) return open.id
-    if (!CONTENT_EVENTS.has(event.type)) return null
-    const last = selectLastTurn.get(sessionId, generation) as { id: string } | undefined
-    return last?.id ?? null
-  }
-
-  function readGeneration(sessionId: string): number {
-    return (selectGeneration.get(sessionId) as GenerationRow | undefined)?.active ?? 0
-  }
-
-  function activeGeneration(sessionId: string): number {
-    return oneSnapshot ? snapshotGeneration(sessionId) : readGeneration(sessionId)
-  }
-
-  /** The requests one ledger routed, with what carries its fold forward. */
-  interface RoutedRequestsKept {
-    readonly answer: readonly RoutedRequest[]
-    /** The first routing or question this app asked: the fold reads the ledger from there on. */
-    readonly floor: number | null
-    readonly entries: readonly PersistedEvent[] | null
-  }
-  // How many rows a routed fold keeps to be carried forward; a ledger with more is folded whole.
-  const ROUTED_ENTRIES_KEPT_AT_MOST = 1024
-
-  const {
-    generationOf: snapshotGeneration,
-    invalidateForAppend,
-    markOwnAppend,
-    forgetTheKeptFoldsOf,
-    theFoldsMayBeKept,
-    keptUntilItsLedgerGrows,
-    theKeptOnly,
-  } = createLedgerFoldState(
-    db,
-    connection,
-    readGeneration,
-    oneSnapshot,
-    theFoldIndexHolds,
-    invalidateWorkReads,
-    invalidateAllWorkReads,
-    snapshotAnswers,
   )
 
   const selectLegacyStallCut = db.prepare(
@@ -2201,19 +1753,6 @@ export function createSessionStore(
     (session, generation, after, held) =>
       selectStallsToldMoved.get({ session, generation, after }) === undefined ? held : null,
     'stalls',
-  )
-  const routedRequestsKept = keptUntilItsLedgerGrows(
-    foldRoutedRequestsOfSession,
-    carryTheRoutedRequestsForward,
-    'routes',
-  )
-  const routedRequestsOfSession = (sessionId: string, noteSkip?: SkipNote) =>
-    routedRequestsKept(sessionId, noteSkip).answer
-  const questionsRaisedInSession = keptUntilItsLedgerGrows(
-    foldQuestionsRaisedInSession,
-    (session, generation, after, held) =>
-      selectQuestionsRaisedMoved.get({ session, generation, after }) === undefined ? held : null,
-    'questions',
   )
   const piecesKeptOnly = theKeptOnly(foldPiecesKept)
   const piecesAtHand = (owner: string) => piecesKeptOnly(owner)?.answer ?? null
@@ -2341,20 +1880,6 @@ export function createSessionStore(
     carryTheReconciliationForward,
     'reconciliation',
   )
-
-  function recordedTurnOpeningOf(sessionId: string, turnId: string): UserTurnEvent | null {
-    const generation = activeGeneration(sessionId)
-    const owned = (selectTurnOwned ??= db.prepare(
-      'SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?',
-    )).get(turnId, sessionId, generation)
-    if (owned === undefined) return null
-    const row = selectTheTurnsOpening.get(turnId, sessionId, generation) as ExchangeRow | undefined
-    if (row === undefined || row.payload === null) return null
-    const event = aStoredObject(row.payload)
-    if (event?.type !== 'user_turn' || typeof event.text !== 'string')
-      throw new Error('unread turn opening')
-    return event as unknown as UserTurnEvent
-  }
 
   function foldMessagesWaitingIn(
     sessionId: string,
@@ -2562,28 +2087,7 @@ export function createSessionStore(
     })
   }
 
-  const pieceFoldFloors = new Map<string, { readonly generation: number; readonly floor: number }>()
-
-  // Prepared on first use, once per store: a window read asks for every conversation's cut.
-  let selectTurnEnding: AppStatement | undefined
-  let selectTurnOwned: AppStatement | undefined
   let selectNewestRecovery: AppStatement | undefined
-
-  /** `null` is a foreign/old turn; `undefined` is a current turn with no terminal yet. */
-  function reconciliationCut(owner: string, turn: string): number | null | undefined {
-    const current = activeGeneration(owner)
-    const ending = (selectTurnEnding ??= db.prepare(
-      `SELECT e.ordinal FROM events e JOIN turn t ON t.id = e.turn_id
-        WHERE t.session_id = ? AND t.id = ? AND t.generation = ?
-          AND (e.type = 'turn' OR (e.type = 'status' AND json_valid(e.payload)
-            AND json_extract(e.payload, '$.state') IN ('idle', 'ended', 'errored')))
-        ORDER BY e.ordinal LIMIT 1`,
-    )).get(owner, turn, current) as { ordinal: number } | undefined
-    const known = (selectTurnOwned ??= db.prepare(
-      'SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?',
-    )).get(turn, owner, current)
-    return known === undefined ? null : ending?.ordinal
-  }
 
   function piecesThatDrove(
     owner: string,
@@ -2598,26 +2102,6 @@ export function createSessionStore(
         : theMessagesOf(opening).flatMap((one) => (one.drives === undefined ? [] : [one.drives]))
     if (root !== undefined && (named.length === 0 || named.includes(root.id))) pieces.push(root.id)
     return pieces
-  }
-
-  const namedByAPiece = new Map<
-    string,
-    {
-      readonly generation: number
-      readonly through: number | null
-      readonly pieces: readonly PieceForAName[]
-      readonly waiting: PieceRow | null
-    }
-  >()
-
-  function invalidateWorkReads(session: string): void {
-    namedByAPiece.delete(session)
-    pieceFoldFloors.delete(session)
-  }
-
-  function invalidateAllWorkReads(): void {
-    namedByAPiece.clear()
-    pieceFoldFloors.clear()
   }
 
   function piecesForAName(
@@ -2815,101 +2299,6 @@ export function createSessionStore(
     return told
   }
 
-  function foldRoutedRequestsOfSession(sessionId: string, noteSkip?: SkipNote): RoutedRequestsKept {
-    const generation = activeGeneration(sessionId)
-    return readOrSkip(sessionId, noteSkip, { answer: [], floor: null, entries: [] }, () => {
-      let floor: number | null = null
-      // A read-only snapshot keeps the answer, not provider/question bodies for append replay.
-      let actedOn: PersistedEvent[] | null = oneSnapshot ? null : []
-      function* entries() {
-        const rows = selectRoutedRequestEvents.iterate({
-          session: sessionId,
-          generation,
-        }) as Iterable<EventRow>
-        for (const entry of persistedEventsFrom(rows, noteSkip)) {
-          if (entry.event.type === 'request_routed' || entry.event.type === 'question_asked')
-            floor = floor === null ? entry.ordinal : Math.min(floor, entry.ordinal)
-          if (actedOn !== null && aWaitIsReadFrom(entry.event)) {
-            actedOn.push(entry)
-            if (actedOn.length > ROUTED_ENTRIES_KEPT_AT_MOST) actedOn = null
-          }
-          yield entry
-        }
-      }
-      const answer = deriveRoutedRequests(
-        sessionId,
-        entries(),
-        (ordinal) => noteUnreadRow(sessionId, ordinal, noteSkip, 'is not a well-formed routing'),
-        checkFoldState === undefined
-          ? undefined
-          : (state, complete) => checkFoldState([...state, actedOn], complete),
-      )
-      return {
-        answer,
-        floor,
-        entries: actedOn,
-      }
-    })
-  }
-
-  function carryTheRoutedRequestsForward(
-    sessionId: string,
-    generation: number,
-    after: number,
-    held: RoutedRequestsKept,
-  ): RoutedRequestsKept | null {
-    const rows = selectRoutedRequestEventsAfter.iterate({
-      session: sessionId,
-      generation,
-      after,
-    }) as Iterable<EventRow & { readonly type: string; readonly readable: number }>
-    // A row the whole fold would count as unread, or a first routing, is the whole fold's to read.
-    let skipped = false
-    const added: PersistedEvent[] = []
-    for (const row of rows) {
-      if (row.readable !== 1) return null
-      if (held.floor === null) {
-        if (row.type === 'request_routed' || row.type === 'question_asked') return null
-        continue
-      }
-      for (const entry of toPersistedEvents([row], () => {
-        skipped = true
-      })) {
-        if (!aWaitIsReadFrom(entry.event)) continue
-        if (held.entries === null) return null
-        added.push(entry)
-        if (held.entries.length + added.length > ROUTED_ENTRIES_KEPT_AT_MOST) return null
-      }
-      if (skipped) return null
-    }
-    if (added.length === 0) return held
-    if (held.entries === null) return null
-    const entries = [...held.entries, ...added]
-    let wellFormed = true
-    try {
-      const answer = deriveRoutedRequests(sessionId, entries, () => {
-        wellFormed = false
-      })
-      return wellFormed ? { answer, floor: held.floor, entries } : null
-    } catch {
-      return null
-    }
-  }
-
-  function foldQuestionsRaisedInSession(
-    sessionId: string,
-    noteSkip?: SkipNote,
-  ): ReadonlyMap<string, RaisedQuestion> {
-    const rows = selectQuestionsRaised.all(
-      sessionId,
-      activeGeneration(sessionId),
-      Number.NEGATIVE_INFINITY,
-    ) as RaisedQuestionRow[]
-    return readOrSkip(sessionId, noteSkip, new Map<string, RaisedQuestion>(), () =>
-      wordsIn(sessionId, rows, noteSkip, (question) => question),
-    )
-  }
-
   function readRaisedQuestions<T>(
     sessionId: string,
     noteSkip: SkipNote | undefined,
@@ -2927,59 +2316,6 @@ export function createSessionStore(
         project,
       ),
     )
-  }
-
-  function aQuestionRaisedIn(row: RaisedQuestionRow): RaisedQuestion | null {
-    const aTextOrAbsent = (is: string | null): boolean =>
-      is === null || is === 'null' || is === 'text'
-    if (row.id === null || row.prompt === null || row.questions === null) return null
-    if (row.idIs !== 'text' || row.promptIs !== 'text' || row.questionsIs !== 'array') return null
-    if (![row.pieceIs, row.passedUpFromIs, row.contextIs].every(aTextOrAbsent)) return null
-    try {
-      const questions = storedQuestionsParsed(JSON.parse(row.questions))
-      const fromThisApp = row.type === 'question_asked'
-      const move = fromThisApp && row.move !== null ? moveOfferOf(JSON.parse(row.move)) : undefined
-      if (fromThisApp && row.move !== null && move === undefined) return null
-      const action: unknown = fromThisApp && row.action !== null ? JSON.parse(row.action) : null
-      if (fromThisApp && row.action !== null && !anActionAsked(action)) return null
-      const files =
-        fromThisApp && row.files !== null ? questionFilesOf(JSON.parse(row.files)) : undefined
-      return {
-        ...(files === undefined ? {} : { files }),
-        prompt: row.prompt,
-        questions,
-        piece: row.piece,
-        passedUpFrom: row.passedUpFrom,
-        context: row.context,
-        raisedBy: row.type === 'question_asked' ? 'this-app' : 'the-provider',
-        ...(move === undefined ? {} : { move }),
-        ...(anActionAsked(action) ? { action: { files: action.files } } : {}),
-      }
-    } catch {
-      return null
-    }
-  }
-
-  function wordsIn<T>(
-    sessionId: string,
-    rows: Iterable<RaisedQuestionRow>,
-    noteSkip: SkipNote | undefined,
-    project: (question: RaisedQuestion) => T,
-  ): ReadonlyMap<string, T> {
-    const words = new Map<string, T>()
-    for (const row of rows) {
-      if (row.readable === 0) {
-        noteUnreadRow(sessionId, row.ordinal, noteSkip)
-        continue
-      }
-      const question = aQuestionRaisedIn(row)
-      if (question === null || row.id === null) {
-        noteUnreadRow(sessionId, row.ordinal, noteSkip, 'is not a well-formed question')
-        continue
-      }
-      words.set(row.id, project(question))
-    }
-    return words
   }
 
   function piecesGivenBySession(giver: string, unread?: RowsUnread): readonly PieceRow[] {
@@ -3360,47 +2696,6 @@ export function createSessionStore(
             : 'a-turn-that-ended-earlier'
     return { ...asked, at: row.created_at, turn }
   }
-
-  function currentStatus(
-    sessionId: string,
-    event: TranscriptEvent | null,
-    generation: number,
-  ): SessionStatus {
-    if (event?.type === 'status' && (event.state === 'ended' || event.state === 'errored')) {
-      return event.state
-    }
-    const row = selectStatus.get(sessionId) as { status: SessionStatus } | undefined
-    if (row?.status === 'ended' || row?.status === 'errored') return row.status
-    const open = selectOpenTurn.get(sessionId, generation) as OpenTurnRow | undefined
-    if (!open) return 'idle'
-    return open.blocked_at === null ? 'working' : 'waiting_permission'
-  }
-
-  const settleTx = db.transaction(
-    (
-      sessionId: string,
-      reason: TurnEndReason,
-      at: number,
-      terminal: 'ended' | 'errored' | null,
-    ): boolean => {
-      const open = selectOpenTurnId.get(sessionId, activeGeneration(sessionId)) as
-        { id: string } | undefined
-      if (open) closeTurn.run(at, reason, open.id)
-      const row = selectStatus.get(sessionId) as { status: SessionStatus } | undefined
-      if (row && row.status !== 'ended' && row.status !== 'errored') {
-        updateStatus.run(terminal ?? 'idle', at, sessionId)
-      }
-      return open !== undefined
-    },
-  )
-
-  const reopenTx = db.transaction((sessionId: string, at: number): boolean => {
-    clearClosedByTheQuit.run(sessionId)
-    const row = selectStatus.get(sessionId) as { status: SessionStatus } | undefined
-    if (row?.status !== 'ended' && row?.status !== 'errored') return false
-    updateStatus.run('idle', at, sessionId)
-    return true
-  })
 
   const selectRunningSessions = db.prepare(
     `SELECT id FROM provider_session WHERE status IN ('working', 'waiting_permission')`,
@@ -4615,6 +3910,7 @@ export function createSessionStore(
 
   return {
     ...ownNotesStore,
+    ...turnReads.methods,
     canReadFreshSnapshot() {
       return (
         selectPieceEvents.busy === false &&
@@ -6419,177 +5715,6 @@ export function createSessionStore(
       return piecesGivenBySession(sessionId, unread)
     },
 
-    discardGeneration(sessionId, generation, limit) {
-      return db.transaction(() =>
-        committed.asStaged(() => {
-          committed.staged(sessionId)
-          // A batch that may take out such a row moves their readers; any other stays quiet.
-          const seen = generationHoldsRowsReadInEvery.get(
-            sessionId,
-            generation,
-            sessionId,
-            generation,
-          ) as { holds: number }
-          const events = deleteEventGeneration.run(sessionId, generation, limit)
-          if (seen.holds === 1 && events.changes > 0) committed.stagedRemovedSeen(sessionId)
-          if (events.changes > 0) return events.changes
-          return deleteTurnGeneration.run(sessionId, generation, limit).changes
-        }),
-      )()
-    },
-
-    deadGenerations(sessionId) {
-      const row = selectGeneration.get(sessionId) as GenerationRow | undefined
-      if (row === undefined) return []
-      const dead: number[] = []
-      for (let generation = 0; generation <= row.highest; generation++) {
-        if (generation !== row.active) dead.push(generation)
-      }
-      return dead
-    },
-
-    turns(sessionId) {
-      return (
-        selectTurns.all(sessionId, activeGeneration(sessionId)) as {
-          id: string
-          ordinal: number
-          prompt: string
-          opened_at: number
-          closed_at: number | null
-          end_reason: string | null
-          blocked_at: number | null
-        }[]
-      ).map((row) => ({
-        id: row.id,
-        ordinal: row.ordinal,
-        prompt: row.prompt,
-        openedAt: row.opened_at,
-        closedAt: row.closed_at,
-        endReason: resolveEndReason(row.end_reason),
-        blockedAt: row.blocked_at,
-      }))
-    },
-
-    closeOpenTurn(sessionId, reason, at) {
-      return settleTx(sessionId, reason, at, null)
-    },
-
-    reopened(sessionId, at) {
-      return reopenTx(sessionId, at)
-    },
-
-    closedByTheQuit(sessionIds, at) {
-      closedByTheQuitTx(sessionIds, at)
-    },
-
-    whatTheQuitClosed() {
-      return (selectClosedByTheQuit.all() as { id: string }[]).map((row) => row.id)
-    },
-
-    restartedWorkLate(conversation, pieces, at) {
-      if (pieces.length === 0) return
-      const generation = activeGeneration(conversation)
-      const max = selectMaxOrdinal.get(conversation, generation) as
-        { max_ordinal: number | null } | undefined
-      appendTx(
-        conversation,
-        (max?.max_ordinal ?? -1) + 1,
-        { type: 'work_restarted', pieces: [...pieces] },
-        at,
-        generation,
-        false,
-      )
-    },
-
-    whatTheNewestQuitClosed: newestQuitClosed,
-
-    backgroundTheRestartStopped(alsoTheseDied, before, notBefore, owners, quitClosed) {
-      const quit = quitClosed ?? newestQuitClosed(notBefore)
-      const found: { conversation: string; stopped: readonly string[]; endedAt: number }[] = []
-      for (const conversation of new Set([...quit, ...alsoTheseDied])) {
-        if (owners !== undefined && !owners.has(conversation)) continue
-        try {
-          const ended = new Set<string>()
-          let running: readonly string[] = []
-          for (const row of selectBackgroundNewestFirst.all(conversation) as {
-            type: string
-            payload: string
-          }[]) {
-            if (row.type === 'launched') break
-            const event = JSON.parse(row.payload) as {
-              running?: { id: string; description?: string; kind?: string }[]
-              ended?: { id: string }
-            }
-            if (event.running !== undefined) {
-              running = event.running
-                .filter((one) => !ended.has(one.id))
-                .map((one) => one.description ?? one.kind ?? one.id)
-              break
-            }
-            if (event.ended !== undefined) ended.add(event.ended.id)
-          }
-          if (running.length === 0) continue
-          const last = (
-            selectLastMomentBefore.get(conversation, before) as { at: number | null } | undefined
-          )?.at
-          found.push({ conversation, stopped: running, endedAt: last ?? before })
-        } catch (error) {
-          console.warn(
-            `session store could not read what ${conversation} was running in the background: ${error instanceof Error ? error.message : String(error)}`,
-          )
-        }
-      }
-      return found
-    },
-
-    terminate(sessionId, status, reason, at) {
-      return settleTx(sessionId, reason, at, status)
-    },
-
-    lastOrdinalWrite(sessionId) {
-      return db.inTransaction ? undefined : ledgerWrites.get(sessionId)
-    },
-
-    nextOrdinal(sessionId) {
-      const row = selectMaxOrdinal.get(sessionId, activeGeneration(sessionId)) as
-        { max_ordinal: number | null } | undefined
-      return (row?.max_ordinal ?? -1) + 1
-    },
-
-    resumable() {
-      return sessionCatalogueRead.resumable()
-    },
-
-    unresumable() {
-      return sessionCatalogueRead.unresumable()
-    },
-
-    recorded() {
-      return sessionCatalogueRead.recorded()
-    },
-
-    recordedPage(input) {
-      return sessionCatalogueRead.recordedPage(input)
-    },
-
-    replacements() {
-      return (selectReplacements.all() as { session_id: string; payload: string }[]).flatMap(
-        (row) => {
-          try {
-            const event = JSON.parse(row.payload) as { sessionId?: unknown }
-            return typeof event.sessionId === 'string'
-              ? [{ replaced: row.session_id, by: event.sessionId }]
-              : []
-          } catch (error) {
-            console.warn(
-              `session store skipped an unreadable replacement row in ${row.session_id}: ${error instanceof Error ? error.message : String(error)}`,
-            )
-            return []
-          }
-        },
-      )
-    },
-
     newestScheduleLevels(owners) {
       const selected = owners === undefined ? null : JSON.stringify([...owners])
       const rows = selectNewestScheduleLevels.all(selected, selected) as {
@@ -6658,89 +5783,4 @@ export function createSessionStore(
       return sessionCatalogueRead.recordedOne(sessionId)
     },
   }
-}
-
-export function mergeDescent(
-  stored: ChildDescent | null,
-  live: ChildDescent | undefined,
-): ChildDescent | null {
-  if (!live) return stored
-  const answered = Object.fromEntries(
-    Object.entries(live).filter(([, value]) => value !== undefined),
-  ) as ChildDescent
-  return stored === null ? answered : { ...stored, ...answered }
-}
-
-function scheduleLevelFromRow(row: {
-  session_id: string
-  payload: string
-  first_listed: string | null
-  compacted_at: number | null
-}): ReturnType<SessionStore['newestScheduleLevels']>[number] | null {
-  try {
-    const said = notStartedSaidIn(row.payload)
-    return {
-      conversation: row.session_id,
-      level: scheduleLevelOf(row.payload, row.first_listed),
-      compactedAt: row.compacted_at,
-      ...(Object.keys(said).length === 0 ? {} : { notStartedSaid: said }),
-    }
-  } catch (error) {
-    console.warn(
-      `session store skipped an unreadable schedule in ${row.session_id}: ${error instanceof Error ? error.message : String(error)}`,
-    )
-    return null
-  }
-}
-
-/** What a stored level says this app does not start its conversation for, by job; a word it does not know is passed over. */
-function notStartedSaidIn(payload: string): Record<string, NotStartedBecause> {
-  const level = JSON.parse(payload) as { jobs?: unknown }
-  const said: Record<string, NotStartedBecause> = {}
-  if (!Array.isArray(level.jobs)) return said
-  for (const job of level.jobs as unknown[]) {
-    if (typeof job !== 'object' || job === null) continue
-    const { id, notStarted } = job as { id?: unknown; notStarted?: unknown }
-    const known = NOT_STARTED_BECAUSE.find((word) => word === notStarted)
-    if (typeof id === 'string' && known !== undefined) said[id] = known
-  }
-  return said
-}
-
-function scheduleLevelOf(payload: string, firstListed: string | null): ScheduleLevel {
-  const level = JSON.parse(payload) as { jobs?: unknown; dropped?: unknown }
-  const listed = (firstListed === null ? {} : JSON.parse(firstListed)) as Record<string, unknown>
-  if (!Array.isArray(level.jobs)) throw new Error('its level lists no jobs')
-  const jobs: ScheduledRow[] = []
-  let unread = 0
-  for (const job of level.jobs as unknown[]) {
-    const row = job as { id?: unknown; schedule?: unknown; recurring?: unknown; prompt?: unknown }
-    if (
-      typeof job !== 'object' ||
-      job === null ||
-      typeof row.id !== 'string' ||
-      (row.schedule !== undefined && typeof row.schedule !== 'string') ||
-      (row.recurring !== undefined && typeof row.recurring !== 'boolean') ||
-      (row.prompt !== undefined && typeof row.prompt !== 'string')
-    ) {
-      unread += 1
-      continue
-    }
-    const since = listed[row.id]
-    jobs.push({
-      id: row.id,
-      ...(row.schedule === undefined ? {} : { schedule: row.schedule }),
-      ...(row.recurring === undefined ? {} : { recurring: row.recurring }),
-      ...(row.prompt === undefined ? {} : { prompt: row.prompt }),
-      ...(typeof since === 'number' ? { listedSince: since } : {}),
-    })
-  }
-  const dropped = typeof level.dropped === 'number' ? level.dropped : 0
-  return { jobs, dropped: dropped + unread }
-}
-
-export function aRowADeliveryCanStart(row: RecordedSession): boolean {
-  return (
-    !row.foundInUserHome && !row.restoredFromBundle && row.child === null && row.adoptedAt === null
-  )
 }

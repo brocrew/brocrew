@@ -881,7 +881,14 @@ const differences = (one: readonly string[], other: readonly string[]): string[]
 ]
 
 describe('D-019 · the three lists of row types a wait read selects say the same words', () => {
-  const storeText = readFileSync(join(SRC, 'main/db/session-store.ts'), 'utf8')
+  const storeText = [
+    'session-store.ts',
+    ...readdirSync(join(SRC, 'main/db/session-store-parts')).map(
+      (file) => `session-store-parts/${file}`,
+    ),
+  ]
+    .map((file) => readFileSync(join(SRC, 'main/db', file), 'utf8'))
+    .join('\n')
   const questionsText = readFileSync(join(SRC, 'shared/questions.ts'), 'utf8')
 
   it('the three lists of row types a wait read selects say the same words', () => {

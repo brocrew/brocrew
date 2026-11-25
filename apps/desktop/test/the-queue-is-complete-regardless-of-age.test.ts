@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -162,7 +162,13 @@ describe('§2 · the read shape, pinned — a window added later is a red line',
    * `session-store.ts` discusses `created_at` in the prose around these statements —
    * `a-source-census-must-strip-prose-before-it-asserts`.
    */
-  const source = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
+  const store = join(here, '../src/main/db')
+  const source = [
+    'session-store.ts',
+    ...readdirSync(join(store, 'session-store-parts')).map((file) => `session-store-parts/${file}`),
+  ]
+    .map((file) => readFileSync(join(store, file), 'utf8'))
+    .join('\n')
 
   function statement(name: string, text = source): string {
     const at = text.indexOf(`const ${name} = db.prepare(`)
