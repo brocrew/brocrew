@@ -123,7 +123,7 @@ function fixture() {
     },
   }
   // The look's entry, its round of reads, and the one-at-a-time read every ask goes through.
-  const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)'
+  const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce, { spaced: true })'
   expect(screen).toContain(coalesced)
   const look = runInNewContext(
     `${functionSource('refreshLimitsDisplay').replace(': Promise<void>', '')}; ${body.replace(': Promise<void>', '')}; ${functionSource('lookAtTheQueueOnce').replace(': Promise<void>', '')}; ${coalesced}; lookForWhatIsYours`,

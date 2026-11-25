@@ -2358,7 +2358,7 @@ function lookAfterAQueueNotice(): void {
  */
 async function lookForWhatIsYours(scheduled = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
-  await lookAtTheQueue()
+  await lookAtTheQueue(scheduled)
 }
 
 /**
@@ -2418,8 +2418,13 @@ async function lookAtTheQueueOnce(): Promise<void> {
 /**
  * At most one round in flight and one owed, so the round that reads after the last ask always
  * runs; rounds never overlap, so an older round's answer can't land over a newer one.
+ *
+ * ⚑ **Spaced** (card 353): a round owed only to notices and the tick starts one round's own
+ * duration after the last one ended, so a stream of notices cannot keep the one read worker busy
+ * back to back. The last ask is still read, at most one round's duration later. ⚑ A look a person's
+ * own action asks for (`scheduled` false) never waits.
  */
-const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)
+const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce, { spaced: true })
 
 async function refreshLimitsDisplay(scheduled = false): Promise<void> {
   await lookAtLimits(() => limitsLane.refresh(() => store.readLimitsDisplay()), scheduled)
