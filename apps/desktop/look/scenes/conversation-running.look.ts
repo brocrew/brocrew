@@ -3,6 +3,7 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 
 import { META, paneProps, record } from '../../test/dom/harness'
 import { scene } from '../capture'
+import { OPENING } from '../fixtures/conversation'
 
 /**
  * 🎨 **The conversation view while the agent runs a tool, with the right panel open** — a yolo
@@ -10,16 +11,7 @@ import { scene } from '../capture'
  * over it at 760.
  */
 const EVENTS: TranscriptEvent[] = [
-  { type: 'status', state: 'idle' } as never,
-  {
-    type: 'user_turn',
-    text: 'Can you tidy the landing page header and make the logo larger?',
-  } as never,
-  { type: 'status', state: 'working' } as never,
-  {
-    type: 'assistant_message',
-    text: 'Sure. I will look at the header first, then adjust the logo size and the spacing around it.',
-  } as never,
+  ...OPENING,
   {
     type: 'tool_call',
     id: 'c1',
