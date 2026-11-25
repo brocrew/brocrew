@@ -73,6 +73,3 @@ export const transcripts: TranscriptPolicy = {
     note: 'Claude looks for a session in this folder first, then by its id — a home with this file in it can resume the conversation, from the same working directory.',
   }),
 }
-
-/** The provider of the scheduling receipt format read by this build. */
-export const recordedScheduleReceiptProvider = 'claude'

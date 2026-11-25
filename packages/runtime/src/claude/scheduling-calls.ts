@@ -1,14 +1,10 @@
 import type { ScheduleReceipt, ScheduledWorkEvent } from '../events'
-import {
-  MAX_SCHEDULED_JOBS,
-  MAX_SCHEDULE_TEXT,
-  SCHEDULING_TOOLS,
-  type SchedulingTool,
-} from '../scheduled-work'
+import { MAX_SCHEDULED_JOBS, MAX_SCHEDULE_TEXT } from '../scheduled-work'
 
 /**
  * The provider's scheduling calls, read at its `PreToolUse` and `PostToolUse` hooks and published as
- * receipts on `scheduled_work` rows that state no level.
+ * receipts on `scheduled_work` rows that state no level. Each receipt names what the call did
+ * ({@link ACTION_OF_A_TOOL}), never which of the provider's tools it was.
  *
  * Both hooks fire for `CronCreate`, `CronDelete`, `CronList` and `ScheduleWakeup`
  * (`smoke/claude-scheduling-receipts-probe.smoke.ts`), and `tool_response` has the shape the SDK
@@ -24,6 +20,18 @@ import {
  * happened, and what it did is not known. It is total and non-throwing, since a throwing hook would
  * fail inside the provider's tool call.
  */
+
+/** The provider's scheduling tools, and what each call does in the app's terms. */
+const ACTION_OF_A_TOOL = {
+  CronCreate: 'create',
+  CronDelete: 'cancel',
+  CronList: 'list',
+  ScheduleWakeup: 'wakeup',
+} as const satisfies Record<string, ScheduleReceipt['action']>
+type SchedulingTool = keyof typeof ACTION_OF_A_TOOL
+
+/** The tools whose calls are kept as receipts, for the hooks' matcher. */
+export const SCHEDULING_TOOLS = Object.keys(ACTION_OF_A_TOOL) as readonly SchedulingTool[]
 
 /** The most calls waiting for their result at once; past it, the oldest loses its bracket. */
 const MAX_OPEN_CALLS = 64
@@ -66,7 +74,7 @@ function present<T extends Fields>(fields: T): Partial<T> {
 }
 
 function isSchedulingTool(name: unknown): name is SchedulingTool {
-  return typeof name === 'string' && (SCHEDULING_TOOLS as readonly string[]).includes(name)
+  return typeof name === 'string' && Object.hasOwn(ACTION_OF_A_TOOL, name)
 }
 
 /** One of the provider's own tools: a server's tool of the same name is not one. */
@@ -77,7 +85,7 @@ function itsOwnSchedulingCall(input: Fields): input is Fields & { tool_name: Sch
 function cronCreateOf(
   input: unknown,
   response: unknown,
-): Pick<Extract<ScheduleReceipt, { tool: 'CronCreate' }>, 'input' | 'result'> {
+): Pick<Extract<ScheduleReceipt, { action: 'create' }>, 'input' | 'result'> {
   const cron = isFields(input) ? text(input['cron']) : undefined
   const id = isFields(response) ? text(response['id']) : undefined
   const recurring = isFields(response) ? flag(response['recurring']) : undefined
@@ -99,7 +107,7 @@ function cronCreateOf(
 function cronDeleteOf(
   input: unknown,
   response: unknown,
-): Pick<Extract<ScheduleReceipt, { tool: 'CronDelete' }>, 'input' | 'result'> {
+): Pick<Extract<ScheduleReceipt, { action: 'cancel' }>, 'input' | 'result'> {
   const asked = isFields(input) ? text(input['id']) : undefined
   const answered = isFields(response) ? text(response['id']) : undefined
   return {
@@ -110,11 +118,11 @@ function cronDeleteOf(
 
 function cronListOf(
   response: unknown,
-): Pick<Extract<ScheduleReceipt, { tool: 'CronList' }>, 'result'> {
+): Pick<Extract<ScheduleReceipt, { action: 'list' }>, 'result'> {
   if (!isFields(response) || !Array.isArray(response['jobs'])) return {}
   const rows: unknown[] = response['jobs']
   const jobs: NonNullable<
-    Extract<ScheduleReceipt, { tool: 'CronList' }>['result']
+    Extract<ScheduleReceipt, { action: 'list' }>['result']
   >['jobs'][number][] = []
   let dropped = 0
   // An indexed loop, so a hole in a sparse array is counted rather than skipped.
@@ -140,7 +148,7 @@ function cronListOf(
 function scheduleWakeupOf(
   input: unknown,
   response: unknown,
-): Pick<Extract<ScheduleReceipt, { tool: 'ScheduleWakeup' }>, 'input' | 'result'> {
+): Pick<Extract<ScheduleReceipt, { action: 'wakeup' }>, 'input' | 'result'> {
   const delay = isFields(input) ? input['delaySeconds'] : undefined
   const asked = isFields(input)
     ? present({
@@ -205,14 +213,15 @@ export class SchedulingCalls {
     }
     const asked = input['tool_input']
     const response = input['tool_response']
+    const action = ACTION_OF_A_TOOL[input.tool_name]
     const receipt: ScheduleReceipt =
-      input.tool_name === 'CronCreate'
-        ? { ...base, tool: 'CronCreate', ...cronCreateOf(asked, response) }
-        : input.tool_name === 'CronDelete'
-          ? { ...base, tool: 'CronDelete', ...cronDeleteOf(asked, response) }
-          : input.tool_name === 'CronList'
-            ? { ...base, tool: 'CronList', ...cronListOf(response) }
-            : { ...base, tool: 'ScheduleWakeup', ...scheduleWakeupOf(asked, response) }
+      action === 'create'
+        ? { ...base, action, ...cronCreateOf(asked, response) }
+        : action === 'cancel'
+          ? { ...base, action, ...cronDeleteOf(asked, response) }
+          : action === 'list'
+            ? { ...base, action, ...cronListOf(response) }
+            : { ...base, action, ...scheduleWakeupOf(asked, response) }
     return { type: 'scheduled_work', receipt, source: SOURCE }
   }
 }

@@ -62,6 +62,12 @@ for (const [name, importer, target, rule] of [
     null,
   ],
   [
+    'worker-safe values',
+    'apps/desktop/src/main/providers/worker-safe.ts',
+    'apps/desktop/src/main/providers/claude/recorded-schedule-receipts.ts',
+    null,
+  ],
+  [
     'own adapter',
     'apps/desktop/src/main/providers/codex/native.ts',
     'packages/runtime/src/codex.ts',

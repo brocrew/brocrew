@@ -52,7 +52,7 @@ export type ScheduleObservation = ObservationBase &
     | {
         kind: 'call'
         toolUseId: string
-        toolName: string
+        action: string
         boundary: 'pre' | 'stream'
         delivery: 'live' | 'buffered'
         calendar: CalendarStamp
@@ -61,7 +61,7 @@ export type ScheduleObservation = ObservationBase &
     | {
         kind: 'result'
         toolUseId: string
-        toolName: string
+        action: string
         boundary: 'post' | 'stream'
         delivery: 'live' | 'buffered'
         calendar: CalendarStamp
@@ -240,7 +240,7 @@ export function validateScheduleObservation(
     if (value.kind === 'call' || value.kind === 'result') {
       valid =
         text(value.toolUseId) &&
-        text(value.toolName) &&
+        text(value.action) &&
         stamp(value.calendar) &&
         ['live', 'buffered'].includes(String(value.delivery))
       if (value.kind === 'call')
@@ -262,7 +262,7 @@ export function validateScheduleObservation(
         const requested = cancellationTargets(value.executedInput as SchedulingInput | undefined)
         valid =
           valid &&
-          value.toolName === 'CronDelete' &&
+          value.action === 'cancel' &&
           value.outcome === 'success' &&
           targets(value.confirmedTargets, true) &&
           Array.isArray(value.confirmedTargets) &&
@@ -329,10 +329,10 @@ export function validateScheduleObservation(
       adapterVersion: value.adapterVersion,
     }
     const byKind: Record<string, string[]> = {
-      call: ['toolUseId', 'toolName', 'boundary', 'delivery', 'calendar', 'input'],
+      call: ['toolUseId', 'action', 'boundary', 'delivery', 'calendar', 'input'],
       result: [
         'toolUseId',
-        'toolName',
+        'action',
         'boundary',
         'delivery',
         'calendar',
@@ -551,7 +551,7 @@ function cancellationOperations(
 ) {
   const grouped = new Map<string, { calls: Call[]; results: Result[] }>()
   for (const row of rows) {
-    if ((row.kind !== 'call' && row.kind !== 'result') || row.toolName !== 'CronDelete') continue
+    if ((row.kind !== 'call' && row.kind !== 'result') || row.action !== 'cancel') continue
     const key = stable([scopeKey(row.scope), row.toolUseId])
     const group: { calls: Call[]; results: Result[] } = grouped.get(key) ?? {
       calls: [],
@@ -615,7 +615,7 @@ export function receiptGenerations(
     if (
       row.kind !== 'result' ||
       row.outcome !== 'success' ||
-      row.toolName !== 'CronCreate' ||
+      row.action !== 'create' ||
       row.executedInput?.kind !== 'cron' ||
       row.executedInput.schedule === undefined ||
       row.executedInput.recurring === undefined ||
@@ -627,7 +627,7 @@ export function receiptGenerations(
         c.kind === 'call' &&
         scopeKey(c.scope) === scopeKey(row.scope) &&
         c.toolUseId === row.toolUseId &&
-        c.toolName === row.toolName,
+        c.action === row.action,
     )
     if (calls.length !== 1) continue
     const call = calls[0]!
@@ -638,7 +638,7 @@ export function receiptGenerations(
         r.kind === 'result' &&
         scopeKey(r.scope) === scopeKey(row.scope) &&
         r.toolUseId === row.toolUseId &&
-        r.toolName === row.toolName,
+        r.action === row.action,
     )
     const material = (r: Result) =>
       stable([
@@ -1047,7 +1047,7 @@ export function planReceiptSchedule(
   const unresolved = rows.filter(
     (r): r is Result =>
       r.kind === 'result' &&
-      r.toolName === 'CronCreate' &&
+      r.action === 'create' &&
       r.outcome === 'success' &&
       !generations.some(
         (g) =>
@@ -1414,7 +1414,7 @@ export function dynamicScheduleReceipts(
         r.kind === 'result' &&
         lineageKey(r.scope) === lineageKey(scope) &&
         r.outcome === 'success' &&
-        r.toolName === 'ScheduleWakeup' &&
+        r.action === 'wakeup' &&
         r.executedInput?.kind === 'dynamic',
     )
     .sort((a, b) => a.order - b.order)
@@ -1426,14 +1426,14 @@ export function dynamicScheduleReceipts(
         c.kind === 'call' &&
         scopeKey(c.scope) === scopeKey(result.scope) &&
         c.toolUseId === result.toolUseId &&
-        c.toolName === result.toolName,
+        c.action === result.action,
     )
     const related = ledger.observations.filter(
       (r): r is Result =>
         r.kind === 'result' &&
         scopeKey(r.scope) === scopeKey(result.scope) &&
         r.toolUseId === result.toolUseId &&
-        r.toolName === result.toolName,
+        r.action === result.action,
     )
     const conflict = (r: ScheduleObservation) =>
       ledger.conflicts.includes(stable([scopeKey(r.scope), r.eventId]))

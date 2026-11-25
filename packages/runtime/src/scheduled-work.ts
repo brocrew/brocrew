@@ -1,7 +1,7 @@
 /**
  * **Work the session has promised to do LATER** (253) — the provider-neutral vocabulary for it.
  *
- * Keep scheduled jobs as state after the creating tool call scrolls away. A `CronCreate` result can leave work waiting to fire for the rest of the session.
+ * Keep scheduled jobs as state after the creating tool call scrolls away. A job-making call's result can leave work waiting to fire for the rest of the session.
  *
  * ⚑ **`250` §1 measured where the fact actually lives, five live runs with a positive control, and
  * built nothing — as its dispatch instructed.** Its table is the whole basis for this file:
@@ -50,7 +50,7 @@
  * ## 🔴 Two things the live capture falsified, both of which the first draft got wrong
  *
  * 253 opened by copying `247`: empty the level at `system/init`, because a cron is *"session-only
- * (not written to disk, dies when Claude exits)"* in `CronCreate`'s own receipt. The probe
+ * (not written to disk, dies when Claude exits)"* in the job-making tool's own receipt. The probe
  * (`smoke/scheduled-work-probe.smoke.ts`) refuted it twice, and each failure ERASES a job that is
  * still scheduled rather than merely adding a redundant event:
  *
@@ -81,7 +81,7 @@
  * The dispatch said *"correlate it or do not"*. Not, and each of these alone would be enough:
  *
  *  1. **The only typed label is unset for us.** `UserPromptSubmitHookInput.source` has a
- *     `'schedule_wakeup'` member documented as *"scheduled-task fire (CronCreate/routine)"* — and the
+ *     `'schedule_wakeup'` member documented as a scheduled-task fire — and the
  *     same doc says *"currently only set for Anthropic-internal sessions while the field is trialed;
  *     external payloads omit it"*. `250` measured `source=null` on the real fire.
  *  2. 🔴 **The prompt cannot be an identity key, because the provider's copy of it is LOSSY.**
@@ -99,8 +99,8 @@
  * distinguish is *fired* from *cancelled* — both are "no longer scheduled", and this event says only
  * that, because that is all the provider said.
  *
- * ⚑ **What the app adds, and on what ground: the scheduling calls themselves.** Each `CronCreate`,
- * `CronDelete` and `CronList` the provider runs is read at its tool hooks as it happens
+ * ⚑ **What the app adds, and on what ground: the scheduling calls themselves.** Each call the
+ * provider runs that makes, cancels or lists a job is read at its tool hooks as it happens
  * (`claude/scheduling-calls.ts`), and the app's host states a level of its own from those receipts
  * and the provider's levels (its `source` names the app): a job is listed when it is made, and
  * leaves when its cancellation is confirmed, in the turn that did it. ⛔ The adapter still publishes
@@ -113,12 +113,12 @@
  * else. ⛔ **Checked rather than assumed**: `Query` has 30 control methods at 0.3.281 (27 at 0.3.218) and not one
  * touches a scheduled task, and the word `cron` appears in the whole of `sdk.d.ts` only in
  * `SessionCronSummary`, the two hook inputs that carry it, `UserPromptSubmitHookInput.source`, a
- * rate-limit bucket key, and one interrupt-receipt caveat. Cancelling is `CronDelete`, a tool in the
+ * rate-limit bucket key, and one interrupt-receipt caveat. Cancelling is a tool in the
  * MODEL's vocabulary rather than a host control, so the only cancel a person can reach today is
  * asking the agent to run it.
  *
  * ⚠️ **And closing the conversation is NOT a cancel**, which is worth saying because the provider's
- * own receipt reads as though it were. `CronCreate` says *"dies when Claude exits"*; the capture
+ * own receipt reads as though it were. The job-making tool says *"dies when Claude exits"*; the capture
  * shows a resumed session reporting the same job back. Ending a session stops it FIRING, and picking
  * the conversation up again brings it back.
  *
@@ -212,13 +212,6 @@ export const MAX_SCHEDULE_TEXT = 200
  * worst case the SDK documents, and {@link clipScheduleText} guarantees the rest.
  */
 export const MAX_SCHEDULE_PROMPT = 1024
-
-/**
- * The provider's own scheduling tools, whose calls and results are kept as receipts: what was
- * created, cancelled or listed, and when, as the call happened rather than at the turn's end.
- */
-export const SCHEDULING_TOOLS = ['CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup'] as const
-export type SchedulingTool = (typeof SCHEDULING_TOOLS)[number]
 
 /**
  * Bound a provider string so the schema can never reject what the producer emits.

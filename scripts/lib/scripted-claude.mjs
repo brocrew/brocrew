@@ -105,9 +105,18 @@ export function jobNoticesIn(events, sessionId) {
   }
 }
 
+/** What each Claude scheduling tool's call does, for receipts stored before they named it. */
+const ACTION_OF_A_TOOL = {
+  CronCreate: 'create',
+  CronDelete: 'cancel',
+  CronList: 'list',
+  ScheduleWakeup: 'wakeup',
+}
+
 /**
- * The receipts of scheduling calls a conversation's ledger holds: which tool call, which tool,
- * the id of the job its result names, the id it was asked about, where it was asked one, and
+ * The receipts of scheduling calls a conversation's ledger holds: which tool call, what it did
+ * (as the app reads it: a receipt that has an action field is read by it alone, whatever tool it
+ * also names; an older one by the tool it stored), the id of the job its result names, the id it was asked about, where it was asked one, and
  * whether the app stamped it with the calendar it was read under (builds with the scheduling
  * switch do; earlier ones don't, and then a job's time can't be known from its receipt).
  */
@@ -125,7 +134,11 @@ export function receiptsIn(events, sessionId) {
       return [
         {
           toolUseId: receipt.toolUseId ?? null,
-          tool: receipt.tool ?? null,
+          action: Object.hasOwn(receipt, 'action')
+            ? (receipt.action ?? null)
+            : typeof receipt.tool === 'string' && Object.hasOwn(ACTION_OF_A_TOOL, receipt.tool)
+              ? ACTION_OF_A_TOOL[receipt.tool]
+              : null,
           job: receipt.result?.id ?? null,
           asked: receipt.input?.id ?? null,
           stamped: receipt.stamp !== undefined && receipt.stamp !== null,
@@ -139,7 +152,7 @@ export function receiptsIn(events, sessionId) {
  * `unstamped` when none is, `mixed` otherwise, and `none` with no job made to tell by.
  */
 export function stampingOf(receipts) {
-  const made = (receipts ?? []).filter((one) => one?.tool === 'CronCreate')
+  const made = (receipts ?? []).filter((one) => one?.action === 'create')
   if (made.length === 0) return 'none'
   const stamped = made.filter((one) => one.stamped === true).length
   if (stamped === made.length) return 'stamped'

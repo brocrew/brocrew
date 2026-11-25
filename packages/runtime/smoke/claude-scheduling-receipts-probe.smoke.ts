@@ -369,14 +369,14 @@ for (const label of ['tools', 'subagent'] as const) {
           event.type === 'scheduled_work' && event.receipt !== undefined ? [event.receipt] : [],
         )
         if (label === 'tools') {
-          expect(receipts.map((one) => one.tool)).toEqual([
-            'CronCreate',
-            'CronCreate',
-            'CronList',
-            'CronDelete',
-            'ScheduleWakeup',
-            'ScheduleWakeup',
-            'CronList',
+          expect(receipts.map((one) => one.action)).toEqual([
+            'create',
+            'create',
+            'list',
+            'cancel',
+            'wakeup',
+            'wakeup',
+            'list',
           ])
           for (const receipt of receipts) {
             expect(receipt, receipt.toolUseId).toHaveProperty('calledAt')

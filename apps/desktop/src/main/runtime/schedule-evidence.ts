@@ -1,4 +1,4 @@
-import { recordedScheduleReceiptProvider } from '../providers/index'
+import { recordedScheduleReceipt, recordedScheduleReceiptProvider } from '../providers/worker-safe'
 import { createHash } from 'node:crypto'
 import type { ScheduleReceipt } from '@brobot2/runtime'
 import type { ScheduleEvidenceRow } from '../db/session-store'
@@ -179,8 +179,8 @@ export function aConversationsScope(conversation: string): ScheduleScope {
  * read of the ledger.
  *
  * ⚑ A row that is not one of the shapes below is passed over: the planner is never handed
- * something it would refuse. ⚑ `ScheduleWakeup` and `CronList` receipts are passed over too: no
- * start is planned from the one, and the planner reads nothing from the other. ⚠️ A job is placed
+ * something it would refuse. ⚑ A wake-up's and a listing's receipts are passed over too: no start
+ * is planned from the one, and the planner reads nothing from the other. ⚠️ A job is placed
  * only on the calendar it was created under: one created before the zone moved has no placed
  * time, and its plan asks for one start to find out.
  *
@@ -407,7 +407,7 @@ export class ScheduleEvidence {
       const lineage = receipt.childId ?? ''
       const generations = histories.get(lineage) ?? receiptGenerations(ledger, scope)
       histories.set(lineage, generations)
-      const jobId = receipt.tool === 'CronDelete' ? receipt.input?.id : undefined
+      const jobId = receipt.action === 'cancel' ? receipt.input?.id : undefined
       const ofIt = generations.filter((one) => one.jobId === jobId)
       const named =
         ofIt
@@ -477,9 +477,9 @@ export class ScheduleEvidence {
     }
     const receipt = payload['receipt']
     if (isFields(receipt)) {
-      if (receipt['tool'] === 'ScheduleWakeup' || receipt['tool'] === 'CronList') return
-      const read = receipt as unknown as ScheduleReceipt
-      if (read.tool === 'CronDelete') {
+      const read = recordedScheduleReceipt(receipt)
+      if (read === undefined || read.action === 'wakeup' || read.action === 'list') return
+      if (read.action === 'cancel') {
         // ⚑ Its call and result keep their places, and are taken once the job it names is read.
         this.waiting.push({
           receipt: read,
@@ -589,7 +589,7 @@ function observationsOfAReceipt(
   const answered = receipt.result !== undefined
   const shared = {
     toolUseId: receipt.toolUseId,
-    toolName: receipt.tool,
+    action: receipt.action,
     delivery: 'live',
     calendar,
     scope,
@@ -612,12 +612,12 @@ function observationsOfAReceipt(
       observedAt: receipt.answeredAt,
       outcome: answered ? 'success' : 'unknown',
       ...(executed === undefined ? {} : { executedInput: executed }),
-      ...(receipt.tool === 'CronCreate' && receipt.result !== undefined
+      ...(receipt.action === 'create' && receipt.result !== undefined
         ? { jobId: receipt.result.id }
         : {}),
       // ⚑ A cancellation is confirmed only when its result names the job it asked for: said
       // outright, so an answer that names another confirms none.
-      ...(receipt.tool === 'CronDelete' &&
+      ...(receipt.action === 'cancel' &&
       receipt.result !== undefined &&
       executed?.kind === 'cancel' &&
       'target' in executed
@@ -637,18 +637,18 @@ function executedInputOf(
   receipt: ScheduleReceipt,
   conversation: string,
 ): SchedulingInput | undefined {
-  switch (receipt.tool) {
-    case 'CronCreate': {
+  switch (receipt.action) {
+    case 'create': {
       const schedule = receipt.input?.cron
       const recurring = receipt.result?.recurring ?? receipt.input?.recurring
       if (schedule === undefined) return undefined
       return { kind: 'cron', schedule, ...(recurring === undefined ? {} : { recurring }) }
     }
-    case 'CronDelete':
+    case 'cancel':
       return undefined
-    case 'CronList':
+    case 'list':
       return { kind: 'listing', metadataRef: `${conversation}:${receipt.toolUseId}` }
-    case 'ScheduleWakeup': {
+    case 'wakeup': {
       const input = receipt.input
       if (input === undefined) return undefined
       return {

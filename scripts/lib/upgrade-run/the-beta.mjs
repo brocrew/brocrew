@@ -452,7 +452,7 @@ export async function theBeta() {
     const receipts = receiptsIn(before.tables.events, claudeConversation)
     for (const [role, job] of Object.entries(CLAUDE_JOBS)) {
       claudeJobIds[role] =
-        receipts.find((one) => one.toolUseId === job.call && one.tool === 'CronCreate')?.job ?? null
+        receipts.find((one) => one.toolUseId === job.call && one.action === 'create')?.job ?? null
     }
     summary.claude.betaReceipts = receipts
     summary.claude.jobIds = claudeJobIds
@@ -476,7 +476,7 @@ export async function theBeta() {
       receipts.some(
         (one) =>
           one.toolUseId === CLAUDE_CANCEL_ID &&
-          one.tool === 'CronDelete' &&
+          one.action === 'cancel' &&
           one.asked === claudeJobIds.cancelled &&
           one.job === claudeJobIds.cancelled,
       ),

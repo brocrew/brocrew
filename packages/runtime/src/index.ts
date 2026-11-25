@@ -112,8 +112,8 @@ export {
 export type { ToolAnswer, ToolAnswerPart } from './tool-answer'
 export { isMessageAct } from './message-act'
 
-export type { NotStartedBecause, ScheduledJob, SchedulingTool } from './scheduled-work'
-export { NOT_STARTED_BECAUSE, SCHEDULING_TOOLS } from './scheduled-work'
+export type { NotStartedBecause, ScheduledJob } from './scheduled-work'
+export { NOT_STARTED_BECAUSE } from './scheduled-work'
 
 export type {
   ProviderCommand,

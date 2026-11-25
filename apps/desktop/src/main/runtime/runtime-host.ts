@@ -35313,8 +35313,8 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     if (
       event.type === 'scheduled_work' &&
       (event.jobs !== undefined ||
-        event.receipt?.tool === 'CronCreate' ||
-        event.receipt?.tool === 'CronDelete')
+        event.receipt?.action === 'create' ||
+        event.receipt?.action === 'cancel')
     ) {
       session.providerSpokeOfItsJobs = true
     }

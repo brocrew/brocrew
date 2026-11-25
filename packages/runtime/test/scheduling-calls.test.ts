@@ -80,7 +80,7 @@ describe('a scheduling call is kept as it ran', () => {
     expect(event).toEqual({
       type: 'scheduled_work',
       receipt: {
-        tool: 'CronCreate',
+        action: 'create',
         toolUseId: 'toolu_1',
         calledAt: start,
         answeredAt: start + 6,
@@ -111,7 +111,7 @@ describe('a scheduling call is kept as it ran', () => {
     })
     expect(
       oneCall(calls, clock, 'CronDelete', { id: 'a1b2c3d4' }, { id: 'a1b2c3d4' }),
-    ).toMatchObject({ tool: 'CronDelete', input: { id: 'a1b2c3d4' }, result: { id: 'a1b2c3d4' } })
+    ).toMatchObject({ action: 'cancel', input: { id: 'a1b2c3d4' }, result: { id: 'a1b2c3d4' } })
     // A one-shot in a listing carries no `recurring`: absent stays absent, never `true`.
     expect(
       oneCall(
@@ -153,7 +153,7 @@ describe('a scheduling call is kept as it ran', () => {
         { scheduledFor: 1_800_000_120_000, clampedDelaySeconds: 120, wasClamped: false },
       ),
     ).toEqual({
-      tool: 'ScheduleWakeup',
+      action: 'wakeup',
       toolUseId: 'toolu_1',
       calledAt: expect.any(Number),
       answeredAt: expect.any(Number),
@@ -184,15 +184,15 @@ describe('a scheduling call is kept as it ran', () => {
   it('⛔ an answer not in the published shape keeps the call and claims no result', () => {
     const clock = aClock()
     const calls = new SchedulingCalls(clock.at)
-    for (const [tool, response] of [
-      ['CronCreate', { id: 'a1b2c3d4' }],
-      ['CronCreate', 'Error: Invalid cron expression'],
-      ['CronDelete', { id: '' }],
-      ['CronList', { jobs: 'none' }],
-      ['ScheduleWakeup', { scheduledFor: -1 }],
+    for (const [tool, action, response] of [
+      ['CronCreate', 'create', { id: 'a1b2c3d4' }],
+      ['CronCreate', 'create', 'Error: Invalid cron expression'],
+      ['CronDelete', 'cancel', { id: '' }],
+      ['CronList', 'list', { jobs: 'none' }],
+      ['ScheduleWakeup', 'wakeup', { scheduledFor: -1 }],
     ] as const) {
       const receipt = oneCall(calls, clock, tool, {}, response)
-      expect(receipt, `${tool} ${JSON.stringify(response)}`).toMatchObject({ tool })
+      expect(receipt, `${tool} ${JSON.stringify(response)}`).toMatchObject({ action })
       expect(receipt).not.toHaveProperty('result')
     }
   })
@@ -271,7 +271,7 @@ describe('a scheduling call is kept as it ran', () => {
     }))
     const result = oneCall(calls, clock, 'CronList', {}, { jobs: [...jobs, { cron: 'no id' }] })
     expect(result).toMatchObject({ result: { dropped: 4 } })
-    expect(result?.tool === 'CronList' ? result.result?.jobs : []).toHaveLength(MAX_SCHEDULED_JOBS)
+    expect(result?.action === 'list' ? result.result?.jobs : []).toHaveLength(MAX_SCHEDULED_JOBS)
   })
 
   it('⛔ calls never answered stay bounded: the oldest loses its bracket, the rest keep theirs', () => {
@@ -419,7 +419,7 @@ describe('the adapter installs the hooks, and a receipt reaches the stream as th
     expect(receipts[0]).toMatchObject({
       source: 'hook/PostToolUse',
       receipt: {
-        tool: 'CronCreate',
+        action: 'create',
         toolUseId: 'toolu_1',
         calledAt: expect.any(Number),
         result: { id: 'a1b2c3d4', recurring: true },

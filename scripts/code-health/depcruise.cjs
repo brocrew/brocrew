@@ -15,7 +15,7 @@ module.exports = {
       from: {
         path: '^(apps/desktop/src/|packages/shared/src/)',
         pathNot:
-          '^apps/desktop/src/main/providers/(index\\.ts$|workspace-layout\\.mjs$|claude/|codex/)',
+          '^apps/desktop/src/main/providers/(index\\.ts$|worker-safe\\.ts$|workspace-layout\\.mjs$|claude/|codex/)',
       },
       to: {
         path: '^(apps/desktop/src/main/providers/(claude|codex)/|packages/runtime/src/(claude|codex)(/|\\.ts$))',

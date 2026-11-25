@@ -194,10 +194,10 @@ const receiptBase = {
  * is not known. ⚑ A call that failed runs no such hook, so it has no receipt. ⚑ No prompt is copied:
  * the tool call's own row holds it.
  */
-const scheduleReceiptSchema = z.discriminatedUnion('tool', [
+const scheduleReceiptSchema = z.discriminatedUnion('action', [
   z.object({
     ...receiptBase,
-    tool: z.literal('CronCreate'),
+    action: z.literal('create'),
     input: z
       .object({
         cron: scheduleText,
@@ -211,13 +211,13 @@ const scheduleReceiptSchema = z.discriminatedUnion('tool', [
   }),
   z.object({
     ...receiptBase,
-    tool: z.literal('CronDelete'),
+    action: z.literal('cancel'),
     input: z.object({ id: scheduleText }).optional(),
     result: z.object({ id: scheduleText }).optional(),
   }),
   z.object({
     ...receiptBase,
-    tool: z.literal('CronList'),
+    action: z.literal('list'),
     result: z
       .object({
         jobs: z
@@ -237,7 +237,7 @@ const scheduleReceiptSchema = z.discriminatedUnion('tool', [
   }),
   z.object({
     ...receiptBase,
-    tool: z.literal('ScheduleWakeup'),
+    action: z.literal('wakeup'),
     input: z
       .object({ delaySeconds: z.number().nonnegative().optional(), stop: z.boolean().optional() })
       .optional(),

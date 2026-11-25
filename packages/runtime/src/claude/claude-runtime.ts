@@ -52,7 +52,7 @@ import { buildChildEnv } from '../internal/child-env'
 import { assertNotCancelled, cancelWith, withDeadline } from '../internal/bounded'
 import type { SessionConfinement } from '../internal/confinement'
 import { keptRulesForALaunch } from './persisted-rules'
-import { SCHEDULING_TOOLS } from '../scheduled-work'
+import { SCHEDULING_TOOLS } from './scheduling-calls'
 import { CLAUDE_DEFAULT_BY_NAME } from './default-by-name'
 import {
   ClaudeSessionHandle,

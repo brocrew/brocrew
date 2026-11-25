@@ -22,6 +22,7 @@ import { agentIdentityRowId } from '../identity'
 import { newResourceId } from '../ids'
 import { ledgerWritesFor } from '../ledger-write-stamp'
 import { rowsUnreadOnce } from '../rows-unread'
+import { storedToolsThatMakeOrCancel } from '../../providers/worker-safe'
 import type { SessionStore } from './session-store-contract'
 import {
   type BindingRow,
@@ -206,7 +207,11 @@ export function createWorkGivenPart(deps: WorkGivenPartDeps) {
                            WHEN type = 'status'
                              THEN CASE WHEN json_extract(payload, '$.state') IN ('ended', 'errored')
                                        THEN 'life' END
-                           WHEN json_extract(payload, '$.receipt.tool') IN ('CronCreate', 'CronDelete')
+                           WHEN json_extract(payload, '$.receipt.action') IN ('create', 'cancel')
+                             THEN 'receipt'
+                           WHEN json_type(payload, '$.receipt.action') IS NULL
+                                AND json_extract(payload, '$.receipt.tool')
+                                    IN (SELECT value FROM json_each(?))
                              THEN 'receipt'
                            WHEN json_type(payload, '$.receipt') IS NOT NULL THEN NULL
                            WHEN json_extract(payload, '$.source') LIKE 'app/%'
@@ -742,6 +747,7 @@ export function createWorkGivenPart(deps: WorkGivenPartDeps) {
       const answered = selectScheduleEvidenceRows.all(
         sessionId,
         MAX_SCHEDULE_HISTORY_WALKED + 1,
+        storedToolsThatMakeOrCancel,
         MAX_SCHEDULE_EVIDENCE_ROWS,
       ) as {
         ordinal: number

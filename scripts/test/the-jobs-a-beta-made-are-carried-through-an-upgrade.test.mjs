@@ -192,16 +192,48 @@ describe('the jobs a conversation made, as the beta recorded their scheduling ca
       ),
     ]
     expect(receiptsIn(events, 'sess_c')).toEqual([
-      { toolUseId: 'toolu_a', tool: 'CronCreate', job: '3c5840ec', asked: null, stamped: false },
+      { toolUseId: 'toolu_a', action: 'create', job: '3c5840ec', asked: null, stamped: false },
       {
         toolUseId: 'toolu_b',
-        tool: 'CronDelete',
+        action: 'cancel',
         job: '3c5840ec',
         asked: '3c5840ec',
         stamped: false,
       },
-      { toolUseId: 'toolu_c', tool: 'CronDelete', job: null, asked: 'feedf00d', stamped: false },
+      { toolUseId: 'toolu_c', action: 'cancel', job: null, asked: 'feedf00d', stamped: false },
     ])
+  })
+
+  it('reads a beta that names what each call did the same as one that stored the tool', () => {
+    const events = [
+      receipt(1, { toolUseId: 'toolu_a', action: 'create', result: { id: '3c5840ec' } }),
+      receipt(2, { toolUseId: 'toolu_b', action: 'cancel', input: { id: '3c5840ec' } }),
+      receipt(3, { toolUseId: 'toolu_c', action: 'list', result: { jobs: [] } }),
+    ]
+    expect(receiptsIn(events, 'sess_c').map((one) => [one.toolUseId, one.action])).toEqual([
+      ['toolu_a', 'create'],
+      ['toolu_b', 'cancel'],
+      ['toolu_c', 'list'],
+    ])
+  })
+
+  it('reads a receipt that has an action field by it alone, as the app does', () => {
+    const events = [
+      receipt(1, { toolUseId: 'toolu_a', action: 'list', tool: 'CronCreate' }),
+      receipt(2, { toolUseId: 'toolu_b', action: null, tool: 'CronCreate', result: { id: 'j' } }),
+      receipt(3, { toolUseId: 'toolu_c', tool: 'constructor' }),
+      receipt(4, { toolUseId: 'toolu_d', tool: ['CronCreate'], result: { id: 'k' } }),
+      receipt(5, { toolUseId: 'toolu_e', tool: { toString: null } }),
+    ]
+    const read = receiptsIn(events, 'sess_c')
+    expect(read.map((one) => [one.toolUseId, one.action])).toEqual([
+      ['toolu_a', 'list'],
+      ['toolu_b', null],
+      ['toolu_c', null],
+      ['toolu_d', null],
+      ['toolu_e', null],
+    ])
+    expect(stampingOf(read)).toBe('none')
   })
 
   it('finds the id a call answered in its result, however the request carries it', () => {
@@ -255,11 +287,11 @@ describe('a beta that stamps the receipts of the jobs it makes, and one that doe
   })
 
   it('tells the two kinds of beta apart by the jobs they made, and says when it cannot', () => {
-    const one = (tool, stamped) => ({ toolUseId: 't', tool, job: 'j', asked: null, stamped })
-    expect(stampingOf([one('CronCreate', true), one('CronCreate', true)])).toBe('stamped')
-    expect(stampingOf([one('CronCreate', false), one('CronDelete', false)])).toBe('unstamped')
-    expect(stampingOf([one('CronCreate', true), one('CronDelete', false)])).toBe('stamped')
-    expect(stampingOf([one('CronCreate', true), one('CronCreate', false)])).toBe('mixed')
+    const one = (action, stamped) => ({ toolUseId: 't', action, job: 'j', asked: null, stamped })
+    expect(stampingOf([one('create', true), one('create', true)])).toBe('stamped')
+    expect(stampingOf([one('create', false), one('cancel', false)])).toBe('unstamped')
+    expect(stampingOf([one('create', true), one('cancel', false)])).toBe('stamped')
+    expect(stampingOf([one('create', true), one('create', false)])).toBe('mixed')
     expect(stampingOf([])).toBe('none')
   })
 
