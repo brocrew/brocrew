@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick, reactive } from 'vue'
-import AppNoticeEntry from '../../src/renderer/src/components/AppNoticeEntry.vue'
+import AppMessageEntry from '../../src/renderer/src/components/AppMessageEntry.vue'
 import { APP_NOTICES } from '../../src/shared/app-notice'
 import { mount, unmountAll } from './harness'
 
@@ -19,7 +19,7 @@ describe('App notices keep their words without the explanatory caption', () => {
   it.each([...APP_NOTICES, 'unknown-historical-notice'])(
     '%s: no caption, full header and message retained',
     (notice) => {
-      const m = mount(AppNoticeEntry, { item: item(notice) })
+      const m = mount(AppMessageEntry, { item: item(notice) })
       expect(m.all('app-notice-why')).toHaveLength(0)
       expect(m.host.textContent).not.toContain('This app put these words')
       expect(m.q('app-notice-message').textContent?.trim()).toBe(text)
@@ -34,7 +34,7 @@ describe('App notices keep their words without the explanatory caption', () => {
 
   it('does not restore a caption when the notice kind changes on the same entry', async () => {
     const one = reactive(item('an-answer-to-a-question'))
-    const m = mount(AppNoticeEntry, { item: one })
+    const m = mount(AppMessageEntry, { item: one })
     one.notice = 'a-piece-taken-back'
     await nextTick()
     expect(m.all('app-notice-why')).toHaveLength(0)

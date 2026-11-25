@@ -4,8 +4,7 @@ import { page, userEvent } from 'vitest/browser'
 import SheetShell from '../../src/renderer/src/components/SheetShell.vue'
 import AllFilesDialog from '../../src/renderer/src/components/AllFilesDialog.vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
-import AppNoticeEntry from '../../src/renderer/src/components/AppNoticeEntry.vue'
-import ContinuationEntry from '../../src/renderer/src/components/ContinuationEntry.vue'
+import AppMessageEntry from '../../src/renderer/src/components/AppMessageEntry.vue'
 import { mount, unmountAll } from './harness'
 
 const original = { width: innerWidth, height: innerHeight }
@@ -165,13 +164,13 @@ describe('Shared dialog and system-entry frames', () => {
   )
 
   it.each([
-    ['notice', AppNoticeEntry, 'app-notice', 'reporting what happened', false],
-    ['continuation', ContinuationEntry, 'continuation', 'sent for you', true],
+    ['notice', 'app-notice', 'reporting what happened', false],
+    ['continuation', 'continuation', 'sent for you', true],
   ] as const)(
     '%s keeps frame styling and its own attribution outside the words',
-    async (_name, component, cy, mark, hasWhy) => {
+    async (_name, cy, mark, hasWhy) => {
       const text = 'Fictional message.\nA second line.'
-      const m = mount(component, {
+      const m = mount(AppMessageEntry, {
         item: {
           id: 'fictional',
           kind: cy === 'continuation' ? 'continuation' : 'appNotice',

@@ -25,8 +25,7 @@ import { rowKey, transcriptRows, type TranscriptRow } from '../lib/tool-runs'
 import { everyResourceAReportNames } from '../lib/the-document-a-report-names'
 import AssistantMessage from './AssistantMessage.vue'
 import CompactionEntry from './CompactionEntry.vue'
-import ContinuationEntry from './ContinuationEntry.vue'
-import AppNoticeEntry from './AppNoticeEntry.vue'
+import AppMessageEntry from './AppMessageEntry.vue'
 import AnsweredQuestionEntry from './AnsweredQuestionEntry.vue'
 import { answerIn, questionItemIn } from '../lib/answered-question'
 import RelayedEntry from './RelayedEntry.vue'
@@ -802,16 +801,6 @@ defineExpose({ focusItem })
           :paths="props.paths"
           @open-conversation="(id) => $emit('openConversation', id)"
         />
-        <!-- 🔴 Sent, but not by the person (278 §1). Its own component for the same reason the one
-           below is: a message BroBot wrote and a message somebody typed must not be told apart by a
-           footnote. It sits in the conversation because it really went to the provider and really
-           started the turn under it — 276 measured the mode switch alone doing 0/2 of that. -->
-        <ContinuationEntry v-else-if="row.item.kind === 'continuation'" :item="row.item" />
-        <!-- 🔴 The app's OWN report of something it observed (624, `HO-095` §6.1). Its own
-           component rather than the one above for the reason that one is its own: the AUTHORSHIP
-           is the same and the SUBJECT is not, and "sent for you" is false of a row nobody pressed
-           anything for. ⛔ Until this dispatch a decision and a person's answer reached the entry
-           above and inherited a caption about a plan button. -->
         <AnsweredQuestionEntry
           v-else-if="
             (row.item.kind === 'appNotice' ||
@@ -840,7 +829,10 @@ defineExpose({ focusItem })
           @open-document="(id) => $emit('openDocument', id)"
           @open-conversation="(id) => $emit('openConversation', id)"
         />
-        <AppNoticeEntry v-else-if="row.item.kind === 'appNotice'" :item="row.item" />
+        <AppMessageEntry
+          v-else-if="row.item.kind === 'appNotice' || row.item.kind === 'continuation'"
+          :item="row.item"
+        />
         <!-- 🔴 Also BroBot's words, and about something else entirely (406). Work this conversation
            gave out came back — a reply, or the notice that nothing is driving it — and until this
            entry both were drawn as the person's own bubble. Its own component rather than the one

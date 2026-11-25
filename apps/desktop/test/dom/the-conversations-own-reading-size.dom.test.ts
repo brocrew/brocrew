@@ -3,8 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import AssistantMessage from '../../src/renderer/src/components/AssistantMessage.vue'
 import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
-import AppNoticeEntry from '../../src/renderer/src/components/AppNoticeEntry.vue'
-import ContinuationEntry from '../../src/renderer/src/components/ContinuationEntry.vue'
+import AppMessageEntry from '../../src/renderer/src/components/AppMessageEntry.vue'
 import RelayedEntry from '../../src/renderer/src/components/RelayedEntry.vue'
 import { mount, unmountAll } from './harness'
 
@@ -67,9 +66,9 @@ describe("the conversation's own reading size (2760914e)", () => {
     expect(style.lineHeight).toBe('24px')
   })
 
-  it("AppNoticeEntry's notice text reads at 15px with a 24px line height", () => {
+  it('App notice text reads at 15px with a 24px line height', () => {
     const m = mount(
-      AppNoticeEntry,
+      AppMessageEntry,
       {
         item: {
           kind: 'appNotice',
@@ -86,9 +85,9 @@ describe("the conversation's own reading size (2760914e)", () => {
     expect(style.lineHeight).toBe('24px')
   })
 
-  it("ContinuationEntry's sent-for-you text reads at 15px with a 24px line height", () => {
+  it('Plan go-ahead text reads at 15px with a 24px line height', () => {
     const m = mount(
-      ContinuationEntry,
+      AppMessageEntry,
       { item: { kind: 'continuation', id: 'c1', text: 'carry on', at: AT } },
       { width: 900 },
     )

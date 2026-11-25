@@ -10,7 +10,7 @@ import { relayedSender } from '../lib/relayed-turn'
 import { messageLimitDisplay } from '../lib/provider-limit-status'
 import { BODY_WAS_CUT } from '../lib/outgoing-card'
 import OutsideCard from './OutsideCard.vue'
-import AppNoticeEntry from './AppNoticeEntry.vue'
+import AppMessageEntry from './AppMessageEntry.vue'
 import RelayedEntry from './RelayedEntry.vue'
 import QueuedMessage from './QueuedMessage.vue'
 
@@ -86,7 +86,7 @@ const holdState = computed(() =>
     <p v-if="answer.clipped && providerHold" class="bb-caption" data-cy="answer-body-cut">
       {{ BODY_WAS_CUT }}
     </p>
-    <AppNoticeEntry v-if="item.kind === 'appNotice'" :item="item" />
+    <AppMessageEntry v-if="item.kind === 'appNotice'" :item="item" />
     <RelayedEntry
       v-else-if="item.kind === 'relayed'"
       :item="item"
