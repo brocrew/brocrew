@@ -1,11 +1,11 @@
 /**
  * How long a running conversation stays idle before this app stops its provider process. A running
- * process holds about 300 MB, so one minute frees it soon after an exchange ends; the next message to
+ * process holds about 300 MB, and is left running for five idle minutes; the next message to
  * a stopped conversation then waits a few seconds more while its history resumes. What counts as
  * idle is {@link RuntimeHost.idleEnoughToStop}'s rule, not this clock. A stop changes nothing about a
  * piece of work.
  */
-const DEFAULT_IDLE_STOP_AFTER_MS = 60_000
+const DEFAULT_IDLE_STOP_AFTER_MS = 5 * 60_000
 
 interface ConversationIdleOperations {
   closed(): boolean
