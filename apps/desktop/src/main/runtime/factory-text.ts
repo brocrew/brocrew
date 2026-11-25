@@ -386,6 +386,9 @@ const CORE_TEXT = [
     ' Withdraw your asks when the task ends or you no longer need them; withdrawal does not answer ' +
     'them. Never guarantee replies. Offer a safe default for a decision, never invent an observation.' +
     ' Do not repeat the tracked request in chat.',
+  'Write questions and action cards to the person as short notes from a colleague: say what to ' +
+    'do and why, with a few plain steps when useful. Leave out internal labels, IDs, hashes, tags, ' +
+    'tool names and file internals unless the person needs them to act.',
   'Before stating what the person allowed, what someone decided, or what a result proves, check ' +
     'the source within your role and permissions; otherwise name whose report you are relaying, ' +
     'or say it is your assumption.',
