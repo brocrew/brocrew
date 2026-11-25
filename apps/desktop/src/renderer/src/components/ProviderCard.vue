@@ -136,6 +136,9 @@ const programMissing = computed(() => props.version?.program?.standing === 'miss
 const nativeSignIn = computed(
   () => nativeSetup.state.value?.available === true && nativeSetup.state.value.supported.signIn,
 )
+const canSignInAgain = computed(
+  () => nativeSignIn.value || props.capabilities?.[props.provider]?.signIn.whileSignedIn === true,
+)
 
 const name = computed(() => props.displayName ?? descriptor.value?.displayName ?? 'Provider')
 
@@ -240,7 +243,7 @@ async function signInHere(): Promise<boolean> {
     noticeSays('Finish signing in in your browser, then come back.', false)
     try {
       const result = await client.signInProvider(asked())
-      auth.value = result.state
+      if (result.success || auth.value?.state !== 'usable') auth.value = result.state
       connected = result.success && auth.value?.state === 'usable'
       noticeSays(
         result.success
@@ -1061,7 +1064,7 @@ defineExpose({ beginSetup })
               {{ authBusy === 'checking' ? 'Checking…' : 'Check again' }}
             </button>
             <button
-              v-if="nativeSignIn && auth.login !== 'api-key'"
+              v-if="canSignInAgain && auth.login !== 'api-key'"
               type="button"
               data-cy="native-sign-in-again"
               :disabled="setupBusy || keyStatus?.set !== false"
@@ -1078,8 +1081,9 @@ defineExpose({ beginSetup })
               Sign out
             </button>
             <button
-              v-if="nativeSignIn && nativeSetup.busy.value"
+              v-if="authBusy === 'signing-in' || (nativeSignIn && nativeSetup.busy.value)"
               type="button"
+              data-cy="provider-cancel-sign-in"
               @click="cancelSignIn"
             >
               Cancel sign-in

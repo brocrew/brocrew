@@ -37,9 +37,13 @@ export function aCodexWorkspace(
  * Codex's own sign-in, stood in for: it writes `written` in the home it runs in, or nothing when
  * `written` is null, and reports success only when it wrote. Answers where it ran.
  */
-export function aFakeNativeSignIn(written: string | null): { ranIn(): string | null } {
+export function aFakeNativeSignIn(
+  written: string | null,
+  options: { finish?: Promise<void>; success?: boolean } = {},
+) {
   let ranIn: string | null = null
-  const success = written !== null
+  const success = options.success ?? written !== null
+  const requests: string[] = []
   const originalStart = codex.startCodexLogin
   vi.spyOn(codex, 'startCodexLogin').mockImplementation(async (_factory, target, cwd, signal) => {
     ranIn = target
@@ -49,6 +53,7 @@ export function aFakeNativeSignIn(written: string | null): { ranIn(): string | n
     })
     const transport: codex.CodexTransport = {
       async request(method) {
+        requests.push(method)
         if (method === 'account/login/start') {
           if (written !== null) writeFileSync(join(target, 'auth.json'), written)
           arrived()
@@ -74,10 +79,11 @@ export function aFakeNativeSignIn(written: string | null): { ranIn(): string | n
       close() {},
       async *incoming() {
         await completion
+        await options.finish
         yield { kind: 'notification', method: 'account/login/completed', params: { success } }
       },
     }
     return originalStart(() => transport, target, cwd, signal)
   })
-  return { ranIn: () => ranIn }
+  return { ranIn: () => ranIn, requests }
 }

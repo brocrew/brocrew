@@ -6,7 +6,7 @@ import { instructions } from './instructions'
 import { memory } from './memory'
 import { transcripts } from './transcripts'
 import { discovery } from './discovery'
-import { readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AuthUnavailableError, provisionProviderHome, type AgentRuntime } from '@brobot2/runtime'
 import {
@@ -154,10 +154,15 @@ async function retireCodexKeyStamp(home: string): Promise<void> {
 }
 
 /** Put a home on its account's one sign-in; see {@link shareCodexSignIn}. */
-function share(paths: ProviderHomePaths, home: string): ReturnType<typeof shareCodexSignIn> {
+function share(
+  paths: ProviderHomePaths,
+  home: string,
+  completedSignInHome?: string,
+): ReturnType<typeof shareCodexSignIn> {
   return shareCodexSignIn(home, {
     managedRoot: paths.managedRoot,
     ownHome: paths.homeOf(paths.defaultProfile),
+    completedSignInHome,
   })
 }
 
@@ -255,37 +260,40 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     },
     async signIn(profileId, signal) {
       refuseWhileAKeyIsSaved()
-      // From any agent, the sign-in is the workspace's one, in BroBot's own home. It writes a file
-      // there, which then becomes the workspace's; one that writes nothing leaves it as it was.
       const providerHome = await theSettingsHome(profileId)
-      const putBack = await makeRoomForACodexSignIn(providerHome)
-      const shared = (): Promise<unknown> =>
-        putBack()
-          .then(() => share(paths, providerHome))
-          .catch((error: unknown) => {
-            console.warn(
-              `could not make a Codex sign-in the workspace's: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            )
-          })
+      // Codex writes the new sign-in here while agents keep using the workspace's current one.
+      const loginHome = await mkdtemp(join(providerHome, '.login-'))
+      const clean = () =>
+        rm(loginHome, { recursive: true, force: true }).catch((error: unknown) => {
+          console.warn('could not remove the temporary Codex login home:', error)
+        })
       let started: Awaited<ReturnType<typeof startCodexLogin>>
       try {
-        started = await startCodexLogin(transports(), providerHome, providerHome, signal)
+        await writeFile(join(loginHome, 'config.toml'), 'cli_auth_credentials_store = "file"\n')
+        started = await startCodexLogin(transports(), loginHome, providerHome, signal)
       } catch (error) {
-        await shared()
+        await clean()
         throw error
       }
       const { login, start } = started
+      const completed = login.completed().then(async (outcome) => {
+        try {
+          if (outcome.success) {
+            await share(paths, providerHome, loginHome)
+            await retireCodexKeyStamp(providerHome)
+          }
+          return outcome
+        } finally {
+          await login.cancel().finally(clean)
+        }
+      })
       return {
         authUrl: start.authUrl,
-        completed: login.completed().then(async (outcome) => {
-          // A sign-in that worked ends any key login this home had, and with it the key's stamp.
-          if (outcome.success) await retireCodexKeyStamp(providerHome)
-          await shared()
-          return outcome
-        }),
-        cancel: () => login.cancel(),
+        completed,
+        async cancel() {
+          await login.cancel()
+          await completed.catch(() => undefined)
+        },
       }
     },
     // One sign-in per workspace is shared, never copied: a refused one is signed in again.
