@@ -390,6 +390,8 @@ async function startWith(
   </SheetShell>
 </template>
 
+<style scoped src="./sheet-field-presentation.css"></style>
+
 <style scoped>
 /* ⚠️ **A consequence, so the amber register** (171 §3) — the launcher's own tone for the same
    sentence, declared here rather than borrowed as a class name: `scoped` styles are per-component,
@@ -401,23 +403,6 @@ async function startWith(
 .icon {
   width: 14px;
   height: 14px;
-}
-
-.field {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.lbl {
-  display: flex;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .folder-acts {
@@ -441,15 +426,6 @@ async function startWith(
    there. */
 .note.refused {
   color: var(--danger-text);
-}
-
-.note {
-  display: flex;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  line-height: 1.5;
 }
 
 .note.mono {
