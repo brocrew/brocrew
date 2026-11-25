@@ -122,7 +122,7 @@ describe('the history window', () => {
     const { view } = await open(script)
     const banner = view.q('recovery-banner')
     expect(banner.textContent).toContain(`Read-only history from the copy of ${copyDate(COPY_AT)}`)
-    expect(banner.textContent).toContain('Agents are stopped')
+    expect(banner.textContent).toContain('agents are stopped')
     expect(banner.textContent).toContain(
       'return to the newer data, then open it with the newer version of BroCrew',
     )
@@ -195,7 +195,7 @@ describe('the history window', () => {
     await settle()
     expect(bridge.calls).toContainEqual({ call: 'returnToNewer' })
     expect(view.q('recovery-heading').textContent).toContain(
-      "This version of BroCrew can't open this workspace",
+      'This workspace needs a newer BroCrew.',
     )
   })
 })
@@ -227,7 +227,7 @@ describe('history reads and a changing verdict', () => {
     expect(bridge.calls.filter((c) => c.call === 'transcript')).toEqual([])
     held.release()
     await settle()
-    expect(view.q('recovery-heading').textContent).toContain("This version of BroCrew can't open")
+    expect(view.q('recovery-heading').textContent).toContain('This workspace needs a newer BroCrew')
   })
 
   it('a transcript that answers after the verdict changed is dropped', async () => {
@@ -399,7 +399,7 @@ describe('the failure screen', () => {
     view.q('recovery-retry').click()
     await settle()
     expect(bridge.calls).toContainEqual({ call: 'retry' })
-    expect(view.q('recovery-heading').textContent).toContain("This version of BroCrew can't open")
+    expect(view.q('recovery-heading').textContent).toContain('This workspace needs a newer BroCrew')
   })
 
   it('a start that failed after the data opened says so, quotes the error, and offers Try again', async () => {
@@ -413,7 +413,8 @@ describe('the failure screen', () => {
     })
     expect(view.q('recovery-heading').textContent).toContain("BroCrew couldn't finish starting")
     const body = view.all('recovery-body').map((el) => el.textContent?.trim())
-    expect(body.join(' ')).toContain("opened this workspace's data, then something else")
+    expect(body.join(' ')).toContain('Its data opened; something else failed.')
+    expect(body.join(' ')).not.toContain("couldn't read")
     expect(body.at(-1)).toBe('Try again.')
     expect(view.q('recovery-detail').textContent).toBe(
       'listen EADDRINUSE: address already in use 127.0.0.1:9555',
@@ -491,7 +492,7 @@ describe('who else is using the workspace', () => {
         ownership: 'unknown',
       },
     })
-    expect(words(view)).toContain('couldn’t confirm it alone can use this workspace')
+    expect(words(view)).toContain('Another BroCrew may be using this workspace')
     expect(words(view)).not.toMatch(/Another copy of BroCrew (is using|has)/)
     expect(words(view)).toContain('If another copy of BroCrew is open on this workspace')
     expect(labels(view)).toEqual(['Try again', 'Close'])
@@ -555,7 +556,7 @@ describe('Close, and the edges', () => {
   it('opened outside BroBot, it says so instead of breaking', async () => {
     const view = mount(RecoveryApp, { bridge: null }, { width: 800, height: 600 })
     await settle()
-    expect(view.q('recovery-no-bridge').textContent).toContain('only works inside BroCrew')
+    expect(view.q('recovery-no-bridge').textContent).toContain('Open recovery in BroCrew')
     expect(view.host.querySelectorAll('button')).toHaveLength(0)
   })
 })

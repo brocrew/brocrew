@@ -287,9 +287,9 @@ describe('whose agent this conversation is (167 §4)', () => {
     await nextTick()
     const said = view.host.textContent?.replace(/\s+/g, ' ') ?? ''
 
-    expect(said).toContain('the conversations it runs there')
-    expect(said).toContain('its own instruction file')
-    expect(said).toMatch(/remembers/)
+    expect(said).toContain('its own conversations')
+    expect(said).toContain('instructions')
+    expect(said).toMatch(/memory/)
     // ⚠️ **`166`'s flip, in this sentence too.** The memory follows the profile into every folder it
     // works in; a line still implying it is scoped to this conversation's folder would be describing
     // the app as it was before `166`. (D-016 took projects out of the sentence, not the fact.)

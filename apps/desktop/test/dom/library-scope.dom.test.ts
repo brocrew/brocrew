@@ -136,9 +136,9 @@ describe('329 §4.3 · the page says when it reads the machine', () => {
     const text = said.textContent ?? ''
     // ⚑ The two programs, named by the shared phrase and never typed here — 039/169 §2.
     expect(text).toContain(ALL_PROVIDER_FOLDERS)
-    expect(text, 'the read is not waiting on a press').toMatch(/every time this list loads/i)
+    expect(text, 'the read is not waiting on a press').toMatch(/Includes conversations from/i)
     // ⛔ And the promise the read actually keeps: it changes nothing in them.
-    expect(text).toMatch(/nothing in them is changed/i)
+    expect(text).toMatch(/read-only/i)
   })
 
   it('⛔ …and says the visible button is a DIFFERENT act, in the button’s own words', async () => {
@@ -148,10 +148,10 @@ describe('329 §4.3 · the page says when it reads the machine', () => {
     // renamed button cannot leave a sentence behind pointing at something that is not there.
     expect(label.length, 'the button is on this page').toBeGreaterThan(0)
     expect(m.q('library-reads').textContent).toContain(label)
-    expect(m.q('library-reads').textContent).toMatch(/different act/i)
+    expect(m.q('library-reads').textContent).toMatch(/separately/i)
     // ⛔ **The correction to the brief.** `adoptSessions` reads only the folders this app
     // provisioned, so the page must NOT tell a reader that pressing it is how the machine is read.
-    expect(m.q('library-reads').textContent).toMatch(/own profile folders/i)
+    expect(m.q('library-reads').textContent).toMatch(/agent folders/i)
   })
 
   it('⚠️ the head sentence is there on a library with rows — where the first-run copy can never be', async () => {

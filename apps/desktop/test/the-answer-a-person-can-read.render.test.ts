@@ -95,10 +95,10 @@ describe('§1 · the four silences are four different facts (074)', () => {
    */
   it('🔴 a conversation that is not running says SO — the hole this surface sits inside', () => {
     const said = answerAbsence(ANSWER, false)
-    expect(said).toContain('no longer held')
+    expect(said).toContain('Answer no longer kept')
     // ⚑ **It says what is kept**, because *"nothing here"* is a state a person would read as a bug
     // in the panel rather than as a property of the app.
-    expect(said).toContain('only its row is kept')
+    expect(said).toContain('its row is')
     // ⛔ …and no process fact: whether anything runs is not the panel's to say.
     expect(said).not.toMatch(/running|reopen/)
     // ⛔ The control: the SAME answer, with the conversation live, is not a silence at all.
@@ -109,7 +109,7 @@ describe('§1 · the four silences are four different facts (074)', () => {
     // true sentence in the wrong voice for a person who has reopened a conversation on purpose.
     // ⚠️ Found by this dispatch's own mutation run: the order of these two arms survived, because
     // every case the suite drove had an answer in it.
-    expect(answerAbsence(null, false)).toContain('no longer held')
+    expect(answerAbsence(null, false)).toContain('no longer kept')
     expect(answerAbsence(null, false)).not.toContain('not holding')
   })
 

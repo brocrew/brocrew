@@ -35,8 +35,7 @@ const NOT_A_SAFETY_GATE =
 /** The words a fixed conversation's controls say instead of offering a change. */
 export const FIXED_SAYS =
   'This conversation’s settings can’t be changed from this window, so they are shown as they are.'
-const RECORDED_PLAN_SAYS =
-  'Its next start leaves planning, so plan first can’t be turned on from here.'
+const RECORDED_PLAN_SAYS = "Plan first isn't available here."
 
 interface PlanControl {
   /** What the chip shows: whether the conversation plans now, never what was asked for. */

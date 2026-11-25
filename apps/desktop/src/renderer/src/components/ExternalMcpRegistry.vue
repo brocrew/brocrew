@@ -143,10 +143,7 @@ function onKey(event: KeyboardEvent): void {
   >
     <template #header>
       <strong data-cy="external-mcp-title">External tools</strong>
-      <small
-        >MCP servers running on this machine. Registered once for the whole app, and every agent can
-        use one unless you restrict it.</small
-      >
+      <small>Local tools shared across agents</small>
     </template>
 
     <template #body>
@@ -239,7 +236,7 @@ function onKey(event: KeyboardEvent): void {
           <!-- ⚑ The RULE, not a refusal: a person is told the alphabet before they meet it. The
                reserved name and the `__` rule are the door's sentences and are not restated here. -->
           <p class="note" data-cy="external-mcp-name-note">
-            This is the namespace the agent sees its tools under — {{ EXTERNAL_MCP_NAME_RULE }}.
+            Tool namespace: {{ EXTERNAL_MCP_NAME_RULE }}.
           </p>
         </div>
 
@@ -257,10 +254,7 @@ function onKey(event: KeyboardEvent): void {
           <!-- ⛔ **What this build does NOT do, said out loud** (criterion 7's other half). There is
                no credential of any kind anywhere in it, so a server that needs one cannot be
                registered rather than being registered and silently failing to connect. -->
-          <p class="note" data-cy="external-mcp-url-note">
-            A server running on this machine, with no sign-in. BroCrew stores no password or token
-            for an external server yet, so only an unauthenticated local address can be registered.
-          </p>
+          <p class="note" data-cy="external-mcp-url-note">Local address, no sign-in.</p>
         </div>
 
         <!-- 🔴 **524 · the one question `HO-048` §1 moved onto the server** — asked once here

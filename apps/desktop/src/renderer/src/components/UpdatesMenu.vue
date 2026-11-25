@@ -80,17 +80,15 @@ function stopsSays(one: WhatARestartWouldStopIn): string {
 }
 
 function otherBrobotsSay(count: number | null): string | null {
-  if (count === null)
-    return 'Whether another copy of BroCrew is open is checked once nothing here is running.'
+  if (count === null) return 'Waits until nothing is running.'
   if (count === 0) return null
   return count === 1
-    ? 'Another copy of BroCrew is open on this computer: quit it to let this one restart.'
-    : `${count} other copies of BroCrew are open on this computer: quit them to let this one restart.`
+    ? 'Another BroCrew is open. Quit it to restart.'
+    : `${count} other BroCrews are open. Quit them to restart.`
 }
 
 const NOT_HERE: Readonly<Record<'a-development-build' | 'no-release-feed', string>> = {
-  'a-development-build':
-    'This is a development build. Updates come with the downloadable version of BroCrew.',
+  'a-development-build': 'Updates aren’t available in this build.',
   'no-release-feed':
     'This version of BroCrew was built without a place to check for updates. Updates come with the downloadable version of BroCrew.',
 }
@@ -213,8 +211,8 @@ onMounted(async () => {
           <p class="aside">
             {{
               snapshot?.updateNow
-                ? 'Saves drafts, stops agents, and restarts all open workspaces.'
-                : 'It restarts once nothing is running.'
+                ? 'Saves drafts, stops agents, restarts workspaces.'
+                : 'Waits until agents stop.'
             }}
           </p>
         </template>
@@ -290,10 +288,7 @@ onMounted(async () => {
               {{ workspace.name }}
             </li>
           </ul>
-          <p>
-            Running turns stop. Interrupted agents continue in their saved sessions where possible;
-            unfinished commands may need attention.
-          </p>
+          <p>Turns stop. Sessions may resume; commands may need attention.</p>
           <p class="aside">If drafts cannot be saved, the update stays on hold.</p>
         </template>
         <template #actions>

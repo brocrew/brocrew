@@ -368,17 +368,13 @@ function pressForest(row: ForestRow): void {
             v-if="view.homeFoldersWithoutIdentity.length > 0"
             class="team-count-note"
             data-cy="team-count-note"
-            >— and
-            {{ view.homeFoldersWithoutIdentity.length }}
-            {{ view.homeFoldersWithoutIdentity.length === 1 ? 'folder' : 'folders' }} on disk with
-            no identity row, listed below</span
+            >+ {{ view.homeFoldersWithoutIdentity.length }}
+            {{ view.homeFoldersWithoutIdentity.length === 1 ? 'folder' : 'folders' }} without an
+            agent</span
           >
         </div>
 
-        <p v-if="view.total === 0" data-cy="team-none">
-          No agent identities yet. Create one above, or one appears once a conversation has run as
-          it.
-        </p>
+        <p v-if="view.total === 0" data-cy="team-none">No agents yet. Create one with New agent.</p>
         <p v-else-if="view.members.length === 0" data-cy="team-no-match">
           No identity here matches that.
         </p>
@@ -665,10 +661,7 @@ function pressForest(row: ForestRow): void {
         </section>
         <p class="team-removal-means" data-cy="team-removal-means">{{ AGENT_REMOVAL_MEANS }}</p>
 
-        <p v-if="view.asOf" class="team-asof" data-cy="team-asof">
-          What each agent is doing was read {{ view.asOf }}, and again every half minute while this
-          page is open and BroCrew is in front.
-        </p>
+        <p v-if="view.asOf" class="team-asof" data-cy="team-asof">Updated {{ view.asOf }}</p>
 
         <section
           v-if="view.homeFoldersWithoutIdentity.length"
@@ -685,10 +678,9 @@ function pressForest(row: ForestRow): void {
           <p data-cy="team-other-home-folders-says">
             {{
               view.homeFoldersWithoutIdentity.length === 1
-                ? 'This folder exists on disk without an identity row.'
-                : 'These folders exist on disk without an identity row.'
+                ? 'Folder without an agent. Create an agent with this name.'
+                : 'Folders without an agent. Create agents with these names.'
             }}
-            Create one with the same name to give it its row.
           </p>
           <ul>
             <li v-for="folder in view.homeFoldersWithoutIdentity" :key="folder">{{ folder }}</li>

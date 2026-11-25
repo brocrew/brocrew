@@ -129,9 +129,9 @@ async function dockLabelKey(event: KeyboardEvent, colour: DockLabelColour): Prom
   await dockLabel.choose(next)
 }
 const attentionHelp = /win/i.test(platformHere())
-  ? 'When BroCrew is in the background, flash the taskbar button and show the count.'
+  ? 'Flash the taskbar button and show the count.'
   : /mac/i.test(platformHere())
-    ? 'When BroCrew is in the background, bounce the Dock icon once and show the count.'
+    ? 'Bounce the Dock icon once and show the count.'
     : 'When BroCrew is in the background, show the count on its icon where your desktop supports it.'
 
 async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void> {
@@ -296,9 +296,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
           ></span>
           <div class="setting-copy">
             <h2 id="settings-dock-label-label">Dock label</h2>
-            <p id="settings-dock-label-help">
-              A short name and colour on the Dock icon, to tell workspaces apart.
-            </p>
+            <p id="settings-dock-label-help">Workspace Dock label and colour</p>
           </div>
           <input
             :checked="dockLabel.label.value?.on ?? true"
@@ -359,10 +357,7 @@ async function tabKey(event: KeyboardEvent, current: SettingsTab): Promise<void>
         </span>
         <div class="setting-copy">
           <h2 id="settings-debug-label">Debug mode</h2>
-          <p id="settings-debug-help">
-            Write more detail about what the app is doing to its log file. Errors are always logged,
-            with this on or off.
-          </p>
+          <p id="settings-debug-help">Detailed logging. Errors are always logged.</p>
           <template v-if="logging.state.value">
             <p class="log-path" data-cy="log-path">Log file: {{ logging.state.value.path }}</p>
             <p v-if="logging.state.value.servicePath" class="log-path" data-cy="log-service-path">

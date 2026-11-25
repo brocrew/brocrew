@@ -214,11 +214,7 @@ onScopeDispose(() => controller?.setActive(false))
       Reading saved history. The displayed reading stays in place until every page is ready.
     </p>
     <p v-if="controller?.error.value" role="alert">
-      This reading could not finish: {{ controller.error.value.cause }} ({{
-        controller.error.value.phase
-      }}, {{ controller.error.value.visited }} rows visited; remaining
-      {{ controller.error.value.remaining }}).<span v-if="reading">
-        The earlier reading is still shown.</span
+      Couldn't load the graph.<span v-if="reading"> The earlier reading is still shown.</span
       ><span v-if="controller.retryAt.value"> Refresh is available after the cooldown.</span>
     </p>
     <p v-if="!controller">Profile readings are unavailable in this window.</p>
@@ -293,16 +289,8 @@ onScopeDispose(() => controller?.setActive(false))
       <button type="button" @click="drawing.zoom(1 / 1.2)">Zoom out</button>
       <button type="button" @click="drawing.fit">Fit</button>
     </div>
-    <p class="graph-caveat">
-      Counts describe retained saved history. Recorded working is a saved conversation status.
-      Questions count routes to a named agent, not questions to a person or a parent. Sizes and
-      descendant counts keep their full-reading totals when filters change.
-    </p>
-    <p>
-      Message proximity includes message connections that have no visible line for the selected
-      criterion. Zero-message selected connections keep a weak spring. Positions express competing
-      forces, not exact ranks or distances.
-    </p>
+    <p class="graph-caveat">Saved history only. Counts keep their totals when filtered.</p>
+    <p>Positions are approximate, not exact rankings or distances.</p>
     <div v-if="reading" class="graph-content">
       <div class="agents-list">
         <label
@@ -346,22 +334,18 @@ onScopeDispose(() => controller?.setActive(false))
       </div>
       <div class="graph-stage">
         <p v-if="view?.tooLarge" role="status">
-          Too many connections for the graph. The graph allows 1,000 agents and 5,000 connection
-          pairs. Narrow the activity filter or hide BroBot. All agents, counts and cards remain in
-          the list.
+          Too many connections to draw. Narrow the filter; use the list.
         </p>
         <p v-else-if="drawing.forcedColors.value" role="status">
           Use the Agents list in forced colors mode.
         </p>
-        <p v-else-if="drawing.failed.value" role="alert">
-          Graph layout unavailable. The Agents list and cards are available.
-        </p>
+        <p v-else-if="drawing.failed.value" role="alert">Graph unavailable. Use the Agents list.</p>
         <canvas
           ref="canvas"
           v-show="!view?.tooLarge && !drawing.forcedColors.value && !drawing.failed.value"
           tabindex="0"
           role="img"
-          aria-label="Agent connections. Use the Agents list to select every agent. Drag a node to move it, drag the background to pan; plus and minus zoom, F fits, Escape closes the card."
+          aria-label="Agent connections graph"
           @pointerdown="drawing.down"
           @pointermove="drawing.move"
           @pointerleave="drawing.leave"
@@ -386,12 +370,10 @@ onScopeDispose(() => controller?.setActive(false))
           </p>
         </div>
         <p v-if="drawing.hiddenLabels.value">
-          {{ drawing.hiddenLabels.value }} names or badges are hidden to keep the drawing readable.
-          The Agents list contains every count.
+          {{ drawing.hiddenLabels.value }} labels hidden; all counts remain in the list.
         </p>
         <p>
-          Normal: circle · Service: diamond · Unknown: hollow · BroBot: ring. Drag background to
-          pan. + / − to zoom, F to fit, Escape to close the card.
+          Circle: agent · Diamond: service · Hollow: unknown · Ring: BroBot.
           {{ drawing.paused.value ? 'Layout paused.' : 'Layout running.' }}
         </p>
       </div>
@@ -433,10 +415,7 @@ onScopeDispose(() => controller?.setActive(false))
             <dt>Reading age</dt>
             <dd>{{ age }} minutes<span v-if="controller?.stale.value"> · Stale</span></dd>
           </dl>
-          <p>
-            Saved conversations may include earlier incarnations of this profile. Kind and settings
-            are conservative; unknown values stay unknown.
-          </p>
+          <p>Saved history may include earlier versions of this agent.</p>
           <button type="button" @click="emit('open', selected.profile)">Open profile</button>
           <h4>Top partners · selected lines</h4>
           <ul>
@@ -451,16 +430,10 @@ onScopeDispose(() => controller?.setActive(false))
           </ul>
           <p v-if="partners.length === 0">No visible partners for these lines.</p>
         </template>
-        <p v-else>
-          Select an agent in the graph or the Agents list to see its saved counts and settings.
-        </p>
+        <p v-else>Select an agent to see details.</p>
         <details>
           <summary>Reading coverage and limits</summary>
-          <p>
-            Self interactions count toward saved totals but do not draw loops. Unresolved recipients
-            and omitted creator links are disclosed below. Agent creation can contain cycles. Counts
-            cover retained records, with active conversation generations for events and turns.
-          </p>
+          <p>Totals include self-interactions; graph omits loops.</p>
           <dl>
             <template v-for="[key, count] in coverage" :key="key"
               ><dt>{{ coverageWords(key) }}</dt>

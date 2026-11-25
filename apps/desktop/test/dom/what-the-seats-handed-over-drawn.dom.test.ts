@@ -321,9 +321,7 @@ describe('§3 · 712 draw 3 (`697` H-a) — an absence says it is true of the ro
     // ⛔ The count qualifies an ABSENCE only: *gone* names a file the read DID find.
     const gone = await overlay(output({ ok: false, reason: 'gone', rowsUnread: 3 }), 1100)
     const said = gone.q('workflow-output-refusal').innerText.trim()
-    expect(said).toBe(
-      'The output file is no longer on disk. Workflow outputs are written to a temporary directory, which the system clears.',
-    )
+    expect(said).toBe('Output file is gone.')
     expect(said).not.toContain('could not be read')
   })
 
@@ -334,11 +332,12 @@ describe('§3 · 712 draw 3 (`697` H-a) — an absence says it is true of the ro
       expect(visible(refusal)).toBe(true)
       // ⚑ Pinned by name, once.
       expect(refusal.innerText.trim()).toBe(
-        'This conversation has no record of that agent in the rows this app could read; 1 row of this app’s record could not be read. There is nothing to open. The transcript is found from the run this app recorded — not by searching the disk.',
+        'This conversation has no record of that agent in the rows this app could read; 1 row of this app’s record could not be read. There is nothing to open.',
       )
       expect(refusal.innerText).toContain(`of that agent ${absenceUnreadSays(1) ?? ''}. There is`)
-      // ⚑ Longer than the panel is wide at either width, so it WRAPS rather than running off it.
-      expect(lineCount(refusal)).toBeGreaterThanOrEqual(2)
+      // ⚑ Card 481 shortened it: it still wraps where the panel is narrow; where it is wide it may fit
+      // one line. Either way it is drawn whole inside the panel (below).
+      expect(lineCount(refusal)).toBeGreaterThanOrEqual(width <= 760 ? 2 : 1)
       drawnInsideThePanel(refusal, m.q('child-work-viewer'), 'the unknown-agent refusal')
     })
   }
@@ -351,8 +350,7 @@ describe('§3 · 712 draw 3 (`697` H-a) — an absence says it is true of the ro
   })
 
   it('⚑ THE CONTROL — ChildWorkViewer: 0 unread, and no count at all, keep the old sentence; *gone* with a count is unchanged', async () => {
-    const OLD =
-      'This conversation has no record of that agent, so there is nothing to open. The transcript is found from the run this app recorded — not by searching the disk.'
+    const OLD = 'This conversation has no record of that agent, so there is nothing to open.'
     const zero = await overlay(child({ ok: false, reason: 'unknown-agent', rowsUnread: 0 }), 1100)
     expect(zero.q('child-work-refusal').innerText.trim()).toBe(OLD)
     zero.unmount()
@@ -361,9 +359,7 @@ describe('§3 · 712 draw 3 (`697` H-a) — an absence says it is true of the ro
     absent.unmount()
     const gone = await overlay(child({ ok: false, reason: 'gone', rowsUnread: 2 }), 1100)
     const said = gone.q('child-work-refusal').innerText.trim()
-    expect(said).toBe(
-      "There is no file for that yet. A child writes its record as it works, in the provider's home beside its parent's — so this is either an agent that has not started, or a home that has since been cleaned.",
-    )
+    expect(said).toBe('Child record unavailable.')
     expect(said).not.toContain('could not be read')
   })
 })

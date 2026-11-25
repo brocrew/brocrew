@@ -323,7 +323,7 @@ describe('D-032 · the echoed id is checked — an answer for another file is no
     expect(read(wrong.m.q('canonical-document-name'))).toBe('chart.png')
     expect(wrong.m.all('kept-file-drawing')).toHaveLength(0)
     expect(read(wrong.m.q('canonical-document-not-drawn'))).toBe(
-      'This file is an image. It is kept; no image preview was supplied to this window.',
+      'No preview for this image; file is saved.',
     )
     expect(urls.made()).toEqual([])
     unmountAll()
@@ -429,8 +429,8 @@ describe('D-032 · an SVG is a data: picture, never a blob and never a frame', (
 })
 
 describe('D-032 · a picture that cannot be drawn is said, never a dead blob', () => {
-  const BROKEN_WITH_FINDER = `This image couldn't be drawn. Show it in ${FILE_MANAGER} to open it.`
-  const BROKEN = "This image couldn't be drawn."
+  const BROKEN_WITH_FINDER = `Couldn't show this image. Show it in ${FILE_MANAGER}.`
+  const BROKEN = "Couldn't show this image."
 
   it('⛔ a URL that could not be made is said — no <img>, no frame, no blob: — ⚑ with Finder named only where it is offered', async () => {
     for (const [one, as] of [
@@ -550,18 +550,15 @@ describe('D-032 · why a file is not drawn, in plain words, with Show in Finder 
       reason: 'changed',
       result: IMAGE,
       drawing: { ok: false, reason: 'changed' },
-      withFinder: `The file is not the bytes that were kept. This app re-checks the hash on every read, and it did not match. Show it in ${FILE_MANAGER} to see what is there now.`,
-      without:
-        'The file is not the bytes that were kept. This app re-checks the hash on every read, and it did not match.',
+      withFinder: `This file has changed since it was kept. Show it in ${FILE_MANAGER} to see what is there now.`,
+      without: 'This file has changed since it was kept.',
     },
     {
       reason: 'unreadable',
       result: IMAGE,
       drawing: { ok: false, reason: 'unreadable' },
-      withFinder:
-        'This app keeps a file by that id and could not read it — it may have been moved, or replaced by something that is not a file.',
-      without:
-        'This app keeps a file by that id and could not read it — it may have been moved, or replaced by something that is not a file.',
+      withFinder: "Couldn't read this file.",
+      without: "Couldn't read this file.",
     },
   ]
 
@@ -620,7 +617,7 @@ describe('D-032 · what Show in Finder says', () => {
     })
     const broken = drawing({ drawing: DRAWS.res_png!, finder: true })
     expect(read(broken.q('kept-file-broken'))).toBe(
-      "This image couldn't be drawn. Show it in Explorer to open it.",
+      "Couldn't show this image. Show it in Explorer.",
     )
   })
 

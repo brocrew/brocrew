@@ -248,7 +248,7 @@ it('says the Windows taskbar action on Windows, without changing the switch', as
   computer.platform = 'Win32'
   const { m } = await settings('general')
   expect(m.q('attention-signals').textContent).toContain(
-    'When BroCrew is in the background, flash the taskbar button and show the count.',
+    'Flash the taskbar button and show the count.',
   )
   expect((m.q('attention-signals-switch') as HTMLInputElement).checked).toBe(true)
 })

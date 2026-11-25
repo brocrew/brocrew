@@ -76,8 +76,7 @@ const problems: Record<MethodProblem, string> = {
 const refusals: Record<string, string> = {
   'changed-or-unreadable':
     "The files changed or couldn't be read. Cancel this preview and read them again.",
-  'not-latest-change':
-    'A newer change prevents this Undo. Cancel this preview and read the history again.',
+  'not-latest-change': 'Changed since this preview. Reload the history.',
   'nothing-to-restore': "This change can't be undone against the current files.",
   'unfinished-change': 'An interrupted change needs to be checked first.',
   'history-unreadable':
@@ -394,16 +393,14 @@ function historyPage(next: number): void {
         The saved methods folder hasn't been created yet.
       </p>
       <p v-else-if="library.state === 'unavailable'" role="alert" data-cy="methods-unavailable">
-        Saved methods couldn't be read. {{ library.problem ? problems[library.problem] : '' }}
+        Couldn't load saved methods.
       </p>
       <template v-else>
         <p v-if="library.indexState === 'absent'" class="note" data-cy="methods-index-absent">
           There is no index file.
         </p>
         <p v-if="library.indexState === 'problem'" role="alert" data-cy="methods-index-problem">
-          The index couldn't be read.
-          {{ library.indexProblem ? problems[library.indexProblem] : '' }} You can't delete anything
-          until it can.
+          Couldn't read the index. Deleting is unavailable.
         </p>
         <p v-if="library.truncated" role="alert" data-cy="methods-truncated">
           This list is incomplete, so you can't delete from it.
@@ -514,14 +511,13 @@ function historyPage(next: number): void {
           aria-label="Text selected for deletion"
           >{{ preview.text }}</pre>
         <p v-if="preview.itemKind === 'index'" data-cy="method-index-warning">
-          This deletes the index, so new conversations aren't told about any saved method. The
-          method files stay.
+          Deletes the index; new conversations won't be told of methods. Method files stay.
         </p>
         <p v-else-if="preview.itemKind === 'missing-reference'">
           This removes the index references to this missing file.
         </p>
-        <p v-else>This deletes this method file and removes its index references.</p>
-        <p class="note">You can undo this as long as the files haven't changed since.</p>
+        <p v-else>Deletes this method and its index entries.</p>
+        <p class="note">Undo is available until the files change.</p>
       </template>
       <template v-else-if="preview.kind === 'undo'">
         <h4>Undo the change to {{ preview.change.target }}?</h4>
@@ -529,15 +525,13 @@ function historyPage(next: number): void {
           {{ fullTime(preview.change.createdAt) }} ·
           {{ preview.change.operation === 'delete' ? 'Delete' : 'Undo' }} · by a person
         </p>
-        <p>BroCrew puts the files back as they were, if they haven't changed since.</p>
+        <p>Restores earlier files if they haven't changed.</p>
       </template>
       <template v-else>
         <h4>Check the interrupted change?</h4>
-        <p>This records what's in the files now. It doesn't restore anything.</p>
+        <p>Records current files; doesn't restore them.</p>
       </template>
-      <p v-if="previewRefused" class="note">
-        Something changed since this preview. Cancel it, read again, then try again.
-      </p>
+      <p v-if="previewRefused" class="note">Preview out of date. Reload before retrying.</p>
       <div class="controls">
         <button
           type="button"

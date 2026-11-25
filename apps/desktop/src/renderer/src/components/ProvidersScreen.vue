@@ -412,14 +412,11 @@ const runningOf = (provider: Provider) => {
           ><svg class="icon"><use href="#i-sliders" /></svg
         ></span>
         <h1 v-if="!embedded">Providers</h1>
-        <p>
-          Connect an AI service to start a conversation. Check your account and connection below.
-        </p>
+        <p>Connect an AI service to start.</p>
         <!-- ⚑ A3 · a fact of every workspace (A2): saved API keys live in its own database. Sign-ins
              are expected to be per workspace too, but not yet confirmed, so not said. -->
         <p class="per-workspace" data-cy="providers-per-workspace">
-          API keys you save here are kept in this workspace only: another workspace asks for its
-          own.
+          Keys are saved for this workspace only.
         </p>
       </header>
 
@@ -431,7 +428,7 @@ const runningOf = (provider: Provider) => {
         {{
           catalogueState.state === 'loading'
             ? 'Reading provider information…'
-            : `Could not read provider information. ${catalogueState.why}`
+            : "Couldn't load providers."
         }}
         <button v-if="catalogueState.state === 'unread'" type="button" @click="catalogue.read()">
           Try again

@@ -354,8 +354,7 @@ const signInHere = createSignInGesture({
   fact: (pair) => signInFact(pair, signInClient),
   words: {
     signedIn: (pair) => `Signed in to ${providerName(pair.provider) ?? 'this provider'}.`,
-    unchanged:
-      'Your machine sign-in is identical to the one already here, so nothing changed — it is expired on both.',
+    unchanged: 'Both sign-ins expired. Sign in again.',
   },
   stillAsking,
   checkWhileBusy: 'drop',

@@ -648,12 +648,12 @@ describe('a row with nothing wrong says nothing about completeness (065, 104 §2
     )
     expect(m.q('library-rebuild-home::stale').textContent!.trim()).toBe('Rebuild')
 
-    expect(m.q('library-behind-home::failed').textContent).toContain('did not finish')
+    expect(m.q('library-behind-home::failed').textContent).toContain('Rebuild failed')
     expect(m.q('library-rebuild-home::failed').textContent!.trim()).toBe('Try again')
 
     // A rebuild in flight is the answer already happening: a line, a spinner, and no second press.
     const flight = m.q('library-behind-home::rebuilding')
-    expect(flight.textContent).toContain('Rebuilding its transcript')
+    expect(flight.textContent).toContain('Rebuilding; showing the previous transcript')
     expect(flight.querySelectorAll('.spin')).toHaveLength(1)
     expect(m.all('library-rebuild-home::rebuilding')).toEqual([])
   })
@@ -776,9 +776,9 @@ describe('every state the design draws renders, at three widths (104 §3)', () =
       {},
     )
     expect(fresh.q('library-first-run').textContent).toContain('Nothing swept yet')
-    // 169 §2 · what it says it is waiting for, in words that name the two programs. Composed from
-    // `PROVIDER_NAME`, so this is also the assertion that the phrase reaches the template at all.
-    expect(fresh.q('library-first-run').parentElement?.textContent).toContain(ALL_PROVIDER_FOLDERS)
+    // Card 481 (L7): the first run says it is empty and names the existing New conversation route.
+    expect(fresh.q('library-first-run').parentElement?.textContent).toContain('No conversations')
+    expect(fresh.q('library-first-run').parentElement?.textContent).toContain('New conversation')
     expect(fresh.q('session-library').textContent).not.toContain('provider home')
     expect(fresh.all('library-no-match')).toEqual([])
     fresh.unmount()
@@ -814,7 +814,7 @@ describe('every state the design draws renders, at three widths (104 §3)', () =
     await search(m, 'Q302_NO_MATCH_9f73e6a1')
     expect(m.q('library-no-match').textContent).toContain('Q302_NO_MATCH_9f73e6a1')
     const scope = m.q('library-reopen-scope').textContent ?? ''
-    expect(scope).toContain('Not narrowed by the search or filters above')
+    expect(scope).toContain('Not filtered by your search or filters')
     // It is INSIDE the band it is about — a sentence beside the miss would be describing a
     // different part of the page from the one a reader is looking at when they see the rows.
     expect(m.q('library-reopen').contains(m.q('library-reopen-scope'))).toBe(true)

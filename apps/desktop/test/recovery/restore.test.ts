@@ -697,7 +697,7 @@ describe('restore', () => {
         'a copy past this build’s migrations',
         () => undefined,
         () => ({ canOpen: () => false }),
-        /needs a newer version of BroCrew/,
+        /needs a newer BroCrew/,
       ],
       [
         'a copy that is not there',
@@ -740,7 +740,7 @@ describe('restore', () => {
           writeFileSync(join(userData, JOURNAL), 'whatever it holds')
         },
         () => ({}),
-        /still unfinished/,
+        /restore is unfinished/,
       ],
     ]
 
@@ -1830,7 +1830,7 @@ describe('returnToNewer', () => {
     const before = filesIn(userData)
     const stopped = await stoppedBy(returnToNewer({ userData }))
     expect(stopped).toMatchObject({ journalLeft: false, canRetry: false })
-    expect(stopped.message).toContain('newer version of BroCrew')
+    expect(stopped.message).toContain('Use the newer BroCrew to return to newer data.')
     expect(filesIn(userData)).toEqual(before)
   })
 
@@ -1860,7 +1860,7 @@ describe('returnToNewer', () => {
     const before = filesIn(userData)
     const stopped = await stoppedBy(returnToNewer({ userData }))
     expect(stopped).toMatchObject({ journalLeft: false, canRetry: false })
-    expect(stopped.message).toContain('newer version of BroCrew')
+    expect(stopped.message).toMatch(/newer BroCrew/)
     expect(filesIn(userData)).toEqual(before)
   })
 

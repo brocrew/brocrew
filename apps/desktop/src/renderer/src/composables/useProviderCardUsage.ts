@@ -67,7 +67,9 @@ export function useProviderCardUsage(props: Readonly<UsageProps>, name: Readonly
         tone: 'warn',
       }
     }
-    if (props.limitsRead === null) return { text: 'Not read yet.', title: null, tone: 'note' }
+    if (props.limitsRead === null) {
+      return { text: 'Usage not available yet.', title: null, tone: 'note' }
+    }
     if (props.limitsRead === false) {
       return {
         text: 'BroCrew couldn’t read usage warnings just now. It tries again when something changes.',

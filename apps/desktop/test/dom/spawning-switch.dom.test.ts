@@ -76,7 +76,7 @@ describe('Team directory', () => {
     // ⚠️ **570 · and the page says what to DO about it**, which the rail's version also did —
     // `EXT-008` §2 listed that sentence as prose in navigation and §3 said where it belongs.
     expect(m.q('team-other-home-folders-says').textContent?.replace(/\s+/g, ' ')).toContain(
-      'Create one with the same name to give it its row',
+      'Create an agent with this name',
     )
   })
 
@@ -103,6 +103,6 @@ describe('Team directory', () => {
     })
     expect(empty.all('team-loading')).toHaveLength(0)
     expect(empty.q('team-count').textContent).toBe('0')
-    expect(empty.q('team-none').textContent).toContain('No agent identities yet')
+    expect(empty.q('team-none').textContent).toContain('No agents yet')
   })
 })

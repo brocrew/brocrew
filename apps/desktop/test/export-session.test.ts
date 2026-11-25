@@ -465,10 +465,10 @@ describe('exporting a session', () => {
     it('🔴 a provider file and a bundle are refused as what they are — never *"no recorded session"*', async () => {
       const { host, sessionId } = await aConversationNeverNamed()
       await expect(host.exportSession({ sessionId, exportKind: 'native' })).rejects.toThrow(
-        'this conversation has no provider id BroCrew can read, so it cannot be written out as a provider file',
+        "This conversation can't be exported.",
       )
       await expect(host.exportSession({ sessionId, exportKind: 'bundle' })).rejects.toThrow(
-        'this conversation has no provider id BroCrew can read, so it cannot be written out as a bundle',
+        "This conversation can't be exported.",
       )
     })
 
@@ -621,7 +621,7 @@ describe('exporting a session', () => {
       })
       // ⚑ The claim the app makes on the export screen, asserted rather than assumed: this file is
       // the thing the return path is given.
-      expect(exported.note).toContain('self-contained copy')
+      expect(exported.note).toContain('Export includes provider records and BroCrew history')
 
       const away = otherMachine('round-trip.sqlite')
       const result = away.host.importBundleFile(exported.path)

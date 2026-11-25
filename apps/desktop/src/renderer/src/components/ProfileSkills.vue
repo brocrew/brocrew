@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
     <p class="muted">The skills this agent receives.</p>
     <p v-if="loading" role="status">Reading…</p>
     <p v-if="error" class="error" role="alert" data-cy="agent-skills-error">
-      This app could not read the skills: {{ error }}
+      Couldn't load skills.
     </p>
     <p v-if="loaded && !loading && !error && items.length === 0" data-cy="agent-skills-empty">
       No skills found.

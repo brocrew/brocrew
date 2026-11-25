@@ -80,7 +80,7 @@ describe('ImageEntry — the picture in the conversation (067 acceptance 2)', ()
     const item: ImageItem = { kind: 'image', id: 'i', imageId: 'e', prompt: PROMPT }
     const html = await render(ImageEntry, { item })
     expect(html).toContain('data-cy="image-missing"')
-    expect(html).toContain('no longer where it was saved')
+    expect(html).toContain('Image file is missing.')
     expect(html).not.toContain('<img')
     // Not a button either: there is nothing to open, and a control that does nothing when pressed
     // is the thing this codebase keeps deleting.

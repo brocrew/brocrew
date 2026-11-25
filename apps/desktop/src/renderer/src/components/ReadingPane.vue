@@ -260,8 +260,7 @@ const loadOlder = computed(() => (props.history.hasOlder ? props.onLoadOlder : u
  * 154 §2b · one noun. *"the session that asked"* was this repo's word for the thing the rest of
  * this pane calls a conversation, in the one sentence a reader meets on a card they cannot answer.
  */
-const READ_ONLY_NOTE =
-  'This is a recording — the conversation that asked is gone, so nothing can answer.'
+const READ_ONLY_NOTE = "Recording only. This question can't be answered here."
 
 const title = computed(() => props.entry.title || basenameOf(props.entry.cwd) || props.entry.cwd)
 
@@ -305,7 +304,7 @@ const when = computed(() => fullTime(props.entry.updatedAt))
     <p class="read-only-banner" data-cy="read-only-banner">
       <strong>Read-only.</strong>
       <span v-if="why"> {{ why }}</span>
-      <span v-else> This is a recording of a conversation, not the conversation itself.</span>
+      <span v-else> Recorded conversation</span>
     </p>
 
     <!-- ⚠️ **Read-only is not the same claim as complete** (065, 061 finding 6). The banner above

@@ -346,8 +346,8 @@ describe('433 §A · the provider a person can change', () => {
         const said = providerTakesEffectNextTime(provider)
         expect(said).toContain(providerName(provider))
         expect(said, 'the wire id reached a sentence a person reads').not.toContain(provider)
-        expect(said).toContain('starts nothing and moves nothing')
-        expect(said).toContain('keeps the provider it began on')
+        expect(said).toContain('Changing it starts nothing; existing work stays put')
+        expect(said).toContain('Default for new work')
       }
       expect(providerTakesEffectNextTime('claude')).not.toBe(providerTakesEffectNextTime('codex'))
     })

@@ -223,7 +223,7 @@ describe('355 · the capabilities sheet', () => {
       )
       const said = m.q('capabilities-provider-note').textContent ?? ''
       expect(said).toContain('Codex')
-      expect(said).toContain('starts nothing and moves nothing')
+      expect(said).toContain('Changing it starts nothing; existing work stays put')
 
       const { m: other } = await openSheet({ runsOn: 'claude' })
       await vi.waitFor(() =>

@@ -79,9 +79,7 @@ describe('the shared agent book', () => {
     const editor = view.q('own-instructions')
     const rules = editor.closest<HTMLElement>('[role="tabpanel"]')!
     const pointer = Array.from(rules.querySelectorAll('p')).find(
-      (paragraph) =>
-        paragraph.textContent?.trim() ===
-        'Read the rules for a conversation inside that conversation.',
+      (paragraph) => paragraph.textContent?.trim() === 'Open a conversation to see its rules.',
     )
     expect(pointer, 'the profile book lost its conversation-rules pointer').toBeDefined()
     if (pointer === undefined) return

@@ -223,7 +223,7 @@ async function copyMachineSignIn(): Promise<void> {
       noticeSays(
         outcome === 'replaced'
           ? 'Copied your machine sign-in into this profile.'
-          : 'Your machine sign-in is identical to the one already here, so nothing changed — it is expired on both.',
+          : 'Both sign-ins expired. Sign in again.',
         outcome !== 'replaced',
       )
     } catch (error) {
@@ -728,7 +728,7 @@ async function checkSetup(): Promise<void> {
       setupCheckFailure.value =
         auth.value?.state === 'usable'
           ? 'The provider program is not ready. Check its version below.'
-          : 'Not connected yet. Sign in or check your API key, then try again.'
+          : 'Not connected. Sign in or check your API key.'
   } finally {
     setupChecking.value = false
   }
@@ -1245,8 +1245,7 @@ defineExpose({ beginSetup })
         </template>
         <template v-else>
           <p v-if="!keyEditing" class="line quiet" data-cy="provider-key-none">
-            No API key saved. You can sign in instead. If you save a key, new conversations will use
-            it instead of your signed-in account.
+            No API key saved. A saved key overrides sign-in.
           </p>
           <form class="key-form" @submit.prevent="saveKey">
             <input
@@ -1653,7 +1652,7 @@ defineExpose({ beginSetup })
       catalogueState.state === 'loading'
         ? 'Reading provider information…'
         : catalogueState.state === 'unread'
-          ? `Could not read provider information. ${catalogueState.why}`
+          ? "Couldn't load providers."
           : 'This provider is not available.'
     }}
     <button v-if="catalogueState.state === 'unread'" type="button" @click="catalogue.read()">

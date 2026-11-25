@@ -308,7 +308,7 @@ describe('§8 · the Providers card’s Set up opens it', () => {
     m.q('setup-check').click()
     await settled()
     expect(m.all('setup-done')).toHaveLength(0)
-    expect(m.q('provider-inline-setup').textContent).toContain('Not connected yet')
+    expect(m.q('provider-inline-setup').textContent).toContain('Not connected.')
   })
   it('does not check or claim Done after an API-key save is refused', async () => {
     const { m, runtime } = theCard(SIGNED_OUT)

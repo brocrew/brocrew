@@ -21,9 +21,9 @@ export function describeDerived(state: DerivedState | null): string | null {
     case 'stale':
       return 'Read by an older version of BroCrew. Rebuild to read it again.'
     case 'rebuilding':
-      return 'Rebuilding its transcript — what is shown is the previous one, whole, until it lands.'
+      return 'Rebuilding; showing the previous transcript.'
     case 'failed':
-      return 'The last rebuild did not finish. What is shown is the previous transcript, whole.'
+      return 'Rebuild failed; showing the previous transcript.'
     default:
       return null
   }

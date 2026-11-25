@@ -251,11 +251,7 @@ function toggle(conversation: string): void {
       {{ props.error }} <button type="button" @click="emit('retry')">Try again</button>
     </p>
     <p v-else-if="props.view === null" class="quiet" data-cy="forest-not-read">
-      {{
-        props.pending
-          ? 'Reading conversations…'
-          : 'Nothing has been read about these conversations yet.'
-      }}
+      {{ props.pending ? 'Reading conversations…' : 'Conversation details unavailable.' }}
     </p>
     <template v-else>
       <!-- 🔴 **The forest, on Vue Flow** (2026-09-30) — pan, zoom and fit inside this box, never the
@@ -337,15 +333,11 @@ function toggle(conversation: string): void {
 
       <!-- ⚑ **A read that ANSWERED and found nothing** — and it is not the same as not having read. -->
       <p v-else class="quiet" data-cy="forest-empty">
-        {{
-          props.current
-            ? 'This conversation is not in the current graph reading.'
-            : 'No conversations in this time window.'
-        }}
+        {{ props.current ? 'Not in this view.' : 'No conversations in this period.' }}
       </p>
 
       <p v-if="!props.view.coverage.walked" class="quiet" data-cy="forest-not-walked">
-        {{ props.view.coverage.covers ?? 'This reading could not look at the conversations.' }}
+        {{ props.view.coverage.covers ?? "Couldn't load conversation details." }}
       </p>
       <p v-if="props.view.coverage.short" class="quiet" data-cy="forest-rows-unread">
         {{ ROWS_UNREAD_LEAD }} {{ props.view.coverage.short }}

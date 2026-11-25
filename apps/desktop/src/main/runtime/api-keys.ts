@@ -16,7 +16,7 @@ export const API_KEY_MAX_LENGTH = 512
 export function whyNotAKey(key: string): string | null {
   if (key.trim() === '') return 'Enter the key, or remove the one that is saved.'
   if (/\s/.test(key.trim())) {
-    return 'An API key has no spaces or line breaks. Paste it exactly as your provider shows it.'
+    return 'Paste the key without spaces or line breaks.'
   }
 
   if (key.trim().length > API_KEY_MAX_LENGTH || !/^[\x21-\x7e]+$/.test(key.trim())) {
@@ -139,7 +139,7 @@ export class ApiKeys {
         return true
       })
     } catch {
-      return 'BroCrew couldn’t write the key to its data folder, so it was not saved. Try again.'
+      return "Couldn't save the key. Try again."
     }
     this.sealed.forgetSealedApiKey(provider)
     this.legacy.delete(provider)

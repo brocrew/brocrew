@@ -291,9 +291,8 @@ describe('every identity a person reads is named, never by slug', () => {
       const said = await (
         await storeOver({ roster: ROSTER, rereadFails: true })
       ).remove('archivist')
-      expect(said).toBe(
-        `Iris was removed, but this window could not re-read the list: ${couldNotReread}`,
-      )
+      expect(said).toBe('Iris removed. Reopen Team to refresh.')
+      expect(said).not.toContain(couldNotReread)
       expect(
         await (await storeOver({ roster: ROSTER, rereadFails: false })).remove('archivist'),
       ).toBeNull()
@@ -358,9 +357,8 @@ describe('every identity a person reads is named, never by slug', () => {
       const row = host.agentIdentities().identities.find((one) => one.slug === 'scribe')
       expect(row?.displayName).toBeTruthy()
       expect(row?.displayName).not.toBe('scribe')
-      expect(said).toBe(
-        `${row?.displayName ?? '?'} was created, but this window could not re-read the list: ${rereadFailedSays}`,
-      )
+      expect(said).toBe(`${row?.displayName ?? '?'} created. Reopen Team to refresh.`)
+      expect(said).not.toContain(rereadFailedSays)
     })
 
     it('a name typed in the box is the name main kept, and the sentence says it', async () => {
@@ -370,9 +368,8 @@ describe('every identity a person reads is named, never by slug', () => {
       expect(
         host.agentIdentities().identities.find((one) => one.slug === 'scribe')?.displayName,
       ).toBe('Quill')
-      expect(said).toBe(
-        `Quill was created, but this window could not re-read the list: ${rereadFailedSays}`,
-      )
+      expect(said).toBe('Quill created. Reopen Team to refresh.')
+      expect(said).not.toContain(rereadFailedSays)
     })
   })
 })

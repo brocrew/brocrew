@@ -176,8 +176,8 @@ describe('the prose is moved rather than deleted (356 §1)', () => {
     // a correction rather than a deletion. (That the two surfaces really match is asserted where the
     // sources can be read — `the-layer-a-file-belongs-to.test.ts`.)
     const note = host.querySelector('[data-cy="info-note-home"]')?.textContent?.replace(/\s+/g, ' ')
-    expect(note).toContain('the conversations it runs there')
-    expect(note).toContain('its own instruction file')
+    expect(note).toContain('its own conversations')
+    expect(note).toContain('instructions')
     expect(note).toContain('every folder it works in')
     // The DATA on the row survives: whose home it is, and which variable pins it.
     expect(host.querySelector('[data-cy="session-profile"]')?.textContent).toContain('CODEX_HOME')

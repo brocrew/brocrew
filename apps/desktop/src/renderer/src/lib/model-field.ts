@@ -145,10 +145,7 @@ export interface ModelFieldWorld {
  * control offers instead is that control's own sentence — see {@link ModelField.message}.
  */
 function comingWithTheProfile(): string {
-  return (
-    'The model list arrives once this profile exists — it is created when the conversation ' +
-    'starts, not now.'
-  )
+  return 'Models appear after this agent first starts.'
 }
 
 /**

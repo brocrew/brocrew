@@ -186,7 +186,7 @@ it('stages task picker choices and depth, supports empty roots and cancels witho
   await nextTick()
   m.q('files-task-use').click()
   await vi.waitFor(() => expect(m.all('files-empty')).toHaveLength(1))
-  expect(text(m.q('files-empty'))).toContain('No files kept on this work yet.')
+  expect(text(m.q('files-empty'))).toContain('No files yet.')
   expect(s.library.state.scope).toMatchObject({ type: 'task', id: 't21', includeSubtasks: false })
 })
 
@@ -196,7 +196,7 @@ it('filters with complete facets/counts and resets query/kind/role/sort/view/dep
   search.value = 'no such alias'
   search.dispatchEvent(new Event('input', { bubbles: true }))
   await vi.waitFor(() => expect(m.all('files-clear')).toHaveLength(1))
-  expect(text(m.q('files-empty'))).toContain('No files match these filters.')
+  expect(text(m.q('files-empty'))).toContain('No files match.')
   m.q('files-clear').click()
   await vi.waitFor(() => expect(text(m.q('files-count'))).toBe('16 files · 22 keeps'))
   const role = m.q('files-role') as HTMLSelectElement
@@ -603,7 +603,7 @@ it('shows approved lower bounds, scrolls a continuation, and replaces them with 
     return answer.type === 'files' ? { ...answer, complete: true } : answer
   })
   expect(text(m.q('files-count'))).toBe('60+ files · 60+ keeps')
-  expect(text(m.q('files-reading-more'))).toBe('Reading more files… Counts will update.')
+  expect(text(m.q('files-reading-more'))).toBe('File list incomplete.')
   expect(m.q('files-kind').textContent).toContain('All kinds (60+)')
   const results = m.q('files-results')
   results.scrollTop = results.scrollHeight
@@ -613,5 +613,5 @@ it('shows approved lower bounds, scrolls a continuation, and replaces them with 
   expect(m.all('files-reading-more')).toHaveLength(0)
   s.library.state.query = 'no fictional file matches this phrase'
   await vi.waitFor(() => expect(m.all('files-empty')).toHaveLength(1))
-  expect(text(m.q('files-empty'))).toContain('No files match these filters.')
+  expect(text(m.q('files-empty'))).toContain('No files match.')
 })

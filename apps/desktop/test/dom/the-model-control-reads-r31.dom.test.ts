@@ -462,7 +462,7 @@ describe('696 §4 · the provider press says what the same act cleared', () => {
     })
     const m = await theSheet()
     expect(words(m.q('capabilities-provider-note'))).toMatch(
-      /^The default for a new conversation you start as this identity is Claude, unless you choose another provider where you start it\. /,
+      /^Default for new work without a chosen provider or model: Claude, unless you choose another where you start it\. /,
     )
     // The new-conversation picker also offers a provider when starting as this identity.
     expect(words(m.q('capabilities-provider-note'))).toContain('unless you choose')
@@ -477,7 +477,7 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     reset({ slug: 'brobot', itsProvider: 'codex' })
     const m = await theSheet()
     expect(words(m.q('capabilities-provider-note'))).toMatch(
-      /^The default for a new conversation you start as this identity is Codex, unless you choose another provider where you start it\. /,
+      /^Default for new work without a chosen provider or model: Codex, unless you choose another where you start it\. /,
     )
   })
 
@@ -487,13 +487,13 @@ describe('696 §4b · BroBot’s own sheet names the front door’s provider men
     const note = words(m.q('capabilities-provider-note'))
     expect(note).not.toContain('a new conversation you start as this identity')
     expect(note).not.toContain('unless you choose another provider where you start it')
-    expect(note).toContain('A service keeps one conversation for new gives.')
-    expect(note).toContain('It starts when the first give is accepted.')
-    expect(note).toContain('Changing its default does not switch that conversation’s provider.')
+    expect(note).toContain('one service conversation')
+    expect(note).toContain('started by the first accepted give')
+    expect(note).toContain('Changing the default keeps its provider')
     expect(note).not.toContain(
       'new gives without a provider or model use that provider’s conversation',
     )
-    expect(note).toContain('Existing pieces and follow-ups stay with their holders.')
+    expect(note).toContain('existing work stays put')
   })
 })
 

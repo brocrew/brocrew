@@ -444,9 +444,9 @@ const bin = binWord(platformHere())
           <strong>Delete {{ deleting.row.name }}?</strong>
         </p>
         <p class="said" data-cy="workspace-delete-what">
-          Its folder {{ deleting.verdict.path }} ({{ sizeWords(deleting.verdict.bytes) }},
-          {{ deleting.verdict.files }} {{ deleting.verdict.files === 1 ? 'file' : 'files' }}) goes
-          to the {{ bin }}. You can put it back from there.
+          Moves {{ deleting.row.name }} ({{ sizeWords(deleting.verdict.bytes) }},
+          {{ deleting.verdict.files }} {{ deleting.verdict.files === 1 ? 'file' : 'files' }}) to the
+          {{ bin }}. You can restore it.
         </p>
         <p v-if="goesWith(deleting.verdict)" class="said" data-cy="workspace-delete-with">
           {{ goesWith(deleting.verdict) }}

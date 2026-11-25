@@ -89,7 +89,7 @@ function move(event: KeyboardEvent) {
           :bridge="props.bridge"
           heading="Standing rules"
         />
-        <p>Read the rules for a conversation inside that conversation.</p>
+        <p>Open a conversation to see its rules.</p>
       </section>
       <section
         v-show="selected === 'methods'"

@@ -53,8 +53,7 @@
  * what all three items name, so the thing is what this says.**
  */
 export const PROFILE_OWNS =
-  'A profile is an agent’s own home: the conversations it runs there, its own instruction file, ' +
-  'and what it remembers — in every folder it works in.'
+  'An agent keeps its own conversations, instructions and memory in every folder it works in.'
 
 /*
  * ⛔ **`PROFILE_NEW_NOTE` went with `+ New profile…`** (417, HO-022 §2). It said what choosing to

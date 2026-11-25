@@ -180,7 +180,7 @@ describe('296 · a follow that has stopped moving says so', () => {
     // has stopped changing — which is the thing a reader would otherwise read as a finished child.
     expect(html).toContain('data-cy="child-work-truncated"')
     expect(html).toContain('data-cy="child-work-outgrown"')
-    expect(html).toContain('stopped changing')
+    expect(html).toContain('Live updates stopped')
   })
 
   it('⚠️ a viewer that does not FOLLOW says only the size — the first part of a file is honest', async () => {

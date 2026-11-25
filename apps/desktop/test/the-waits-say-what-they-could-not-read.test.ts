@@ -21,7 +21,7 @@ import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 const NOW = 1_800_000_000_000
 /** ⚑ The waits count's sentence — what a torn row there can do: a plate reads *idle* while it waits. */
 const SAYS = (n: number): string =>
-  `${String(n)} ${n === 1 ? 'row' : 'rows'} of this app’s record could not be read, so a conversation shown here may be waiting without saying so.`
+  `${n === 1 ? '1 entry' : `${String(n)} entries`} unread; waiting status may be missing.`
 /** The forest walk's own sentence (`678`) — work may be missing, or its state wrong. */
 const WORK_SAYS = (n: number): string =>
   `${String(n)} ${n === 1 ? 'row' : 'rows'} of this app’s record could not be read, so a piece of work may be missing here, or its state may be wrong.`
@@ -47,9 +47,11 @@ describe('685 §2.3 · `whatTheWaitsCouldNotRead`', () => {
     // ⛔ …and NOT the work sentence: no row the rail or the forest draws comes from this reading, so
     // *a piece of work may be missing here* would be false of it (`685`'s review).
     expect(whatTheWaitsCouldNotRead(reading(2), ['sess_a'])).toContain(
-      'may be waiting without saying so',
+      'waiting status may be missing',
     )
-    expect(whatTheWaitsCouldNotRead(reading(2), ['sess_a'])).not.toContain('may be missing')
+    expect(whatTheWaitsCouldNotRead(reading(2), ['sess_a'])).not.toContain(
+      'a piece of work may be missing',
+    )
   })
 
   it('⛔ the controls — each moves ONE fact, and each says nothing', () => {

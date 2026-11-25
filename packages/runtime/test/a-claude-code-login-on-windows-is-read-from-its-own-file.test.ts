@@ -241,9 +241,9 @@ describe('⛔ Claude Code’s settings file is never read', () => {
   it('no login file beside a settings file: the plain “not signed in” words, with `claude` once or a key', () => {
     write(join(home, '.claude.json'), JSON.stringify({ anything: true }))
     const words = whyNoClaudeLogin({ platform: 'win32', env: env(), home, now: NOW })
-    expect(words).toContain('Claude Code is not signed in on this computer')
+    expect(words).toContain("Claude isn't signed in.")
     expect(words).toContain('run `claude` and log in')
-    expect(words).toContain('“API key” on the Claude card in Providers')
+    expect(words).toContain('Open Providers')
     expect(
       claudeLoginState(
         claudeCredentialsFileReader(env(), home),
@@ -261,28 +261,28 @@ describe('what a person reads when there is nothing to run on', () => {
   const said = (over: { now?: number; env?: NodeJS.ProcessEnv } = {}) =>
     whyNoClaudeLogin({ platform: 'win32', env: over.env ?? env(), home, now: over.now ?? NOW })
 
-  it('🔴 an expired login on Windows: a start renews it, or claude once in PowerShell', () => {
+  it('🔴 an expired login on Windows: claude once in PowerShell, or Providers', () => {
     write(theFile(), login({ expiresAt: NOW - 1 }))
     const words = said()
-    expect(words).toContain('Your Claude Code login has expired.')
-    expect(words).toContain('Starting a Claude conversation renews it by running Claude Code')
-    expect(words).toContain('open PowerShell and run `claude` once, log in if it asks')
-    expect(words).toContain('BroCrew picks the renewed login up by itself')
+    expect(words).toContain('Claude sign-in expired.')
+    expect(words).toContain('or open Providers.')
+    expect(words).toContain('PowerShell and run `claude` once, log in if it asks')
+    expect(words).not.toContain("isn't signed in")
     expect(words).not.toContain('fake-')
   })
 
   it('never signed in on Windows: sign in once, or a key', () => {
     const words = said()
-    expect(words).toContain('Claude Code is not signed in on this computer')
+    expect(words).toContain("Claude isn't signed in.")
     expect(words).toContain('run `claude` and log in')
-    expect(words).toContain('“API key” on the Claude card in Providers')
+    expect(words).toContain('Open Providers')
   })
 
   it('a login file that is there but could not be read: not “never signed in”, try again', () => {
     write(theFile(), '{ "claudeAiOauth": { "accessTo')
     const words = said()
-    expect(words).toContain('could not read Claude Code’s login file on this computer just now')
-    expect(words).not.toContain('not signed in')
+    expect(words).toContain("Couldn't read Claude sign-in. Try again")
+    expect(words).not.toContain("isn't signed in")
     write(theFile(), ' '.repeat(1024 * 1024) + login())
     expect(said()).toBe(words)
   })
@@ -304,10 +304,10 @@ describe('what a person reads when there is nothing to run on', () => {
     expect(check()).toEqual({ state: 'absent', why: 'unreadable', reason: said() })
   })
 
-  it('a Mac’s words read nothing, and say an expired login is renewed at the next start', () => {
+  it('a Mac’s words read nothing, and send the person to Providers or a terminal', () => {
     const words = whyNoClaudeLogin({ platform: 'darwin', env: env(), home, now: NOW })
-    expect(words).toContain('this Mac’s Claude login is missing or its token has expired')
-    expect(words).toContain('An expired one is renewed when a Claude conversation starts')
+    expect(words).toContain('Claude sign-in needs attention.')
+    expect(words).toContain('Open Providers')
     expect(words).toContain('run `claude` in a terminal and log in')
   })
 })

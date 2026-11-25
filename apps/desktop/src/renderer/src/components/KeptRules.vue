@@ -90,11 +90,7 @@ watch(failures, () => (open.value = true))
       </button>
     </h2>
     <div v-show="open" :id="bodyId" class="kept-body">
-      <p class="about">
-        Actions you chose “Always allow” for. They apply to every conversation that uses this
-        provider, not to other providers. If you remove one, agents will ask again the next time a
-        conversation starts.
-      </p>
+      <p class="about">Always allowed for this provider. Removal applies next start.</p>
       <p v-if="unread !== null" class="note" data-cy="kept-rules-unread">
         They could not be read just now: {{ unread }}
       </p>

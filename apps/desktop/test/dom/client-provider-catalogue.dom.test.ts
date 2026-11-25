@@ -133,7 +133,9 @@ it('shows unread state and retries the same supplied read without native rows', 
   const m = screen({ ...client(), providerCatalogue: read })
   await settle()
   expect(m.all('provider-row')).toHaveLength(0)
-  expect(m.q('provider-catalogue-status').textContent).toContain('fictional catalogue offline')
+  // Card 481 (P23): the failed read is said in one line, without the raw reason.
+  expect(m.q('provider-catalogue-status').textContent).toContain("Couldn't load providers.")
+  expect(m.q('provider-catalogue-status').textContent).not.toContain('fictional catalogue offline')
   m.q('provider-catalogue-status').querySelector('button')!.click()
   await settle()
   expect(read).toHaveBeenCalledTimes(2)
@@ -212,7 +214,8 @@ it('fulfills the current setup request after an unread catalogue is retried', as
   const props = reactive<ScreenProps>({ setupProvider: 'codex' })
   const m = screen({ ...client(), providerCatalogue: read }, props)
   await settle()
-  expect(m.q('provider-catalogue-status').textContent).toContain('fictional first read failed')
+  expect(m.q('provider-catalogue-status').textContent).toContain("Couldn't load providers.")
+  expect(m.q('provider-catalogue-status').textContent).not.toContain('fictional first read failed')
   props.setupProvider = 'claude'
   await settle()
   m.q('provider-catalogue-status').querySelector('button')!.click()

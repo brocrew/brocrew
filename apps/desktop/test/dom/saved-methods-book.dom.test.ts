@@ -179,7 +179,7 @@ describe('saved methods in the book', () => {
     await previewDelete(view)
     expect(bridge.removeAgentMethod).not.toHaveBeenCalled()
     expect(view.q('method-confirmation').textContent).toContain('# Review\nRead the diff.')
-    expect(view.q('method-confirmation').textContent).toContain('removes its index references')
+    expect(view.q('method-confirmation').textContent).toContain('and its index entries')
     await drawnReady()
     await page.screenshot({
       element: view.q('saved-methods'),
@@ -241,7 +241,7 @@ describe('saved methods in the book', () => {
     const { view, bridge } = await open(parts)
     await previewDelete(view)
     expect(view.q('method-index-warning').textContent).toContain(
-      "new conversations aren't told about any saved method. The method files stay.",
+      "new conversations won't be told of methods. Method files stay.",
     )
     expect(bridge.removeAgentMethod).not.toHaveBeenCalled()
   })
@@ -371,7 +371,7 @@ describe('saved methods in the book', () => {
     expect(rows[3]!.textContent).toContain('Not known who checked this.')
     view.q('methods-check').click()
     await nextTick()
-    expect(view.q('method-confirmation').textContent).toContain("It doesn't restore anything.")
+    expect(view.q('method-confirmation').textContent).toContain("doesn't restore them.")
     expect(bridge.checkInterruptedAgentMethods).not.toHaveBeenCalled()
     view.q('method-confirm').click()
     await vi.waitFor(() =>
@@ -432,10 +432,10 @@ describe('saved methods in the book', () => {
       )
       await vi.waitFor(() => expect(view.all('methods-message')).toHaveLength(1))
       expect(view.q('method-confirmation').textContent).toContain(
-        'Something changed since this preview.',
+        'Preview out of date. Reload before retrying.',
       )
       expect(view.q('methods-message').textContent).toContain(
-        kind === 'undo' ? 'newer change prevents this Undo' : "couldn't confirm the result",
+        kind === 'undo' ? 'Changed since this preview' : "couldn't confirm the result",
       )
       if (kind === 'check')
         expect(view.q('methods-message').textContent).toContain(

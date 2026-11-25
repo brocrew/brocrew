@@ -286,10 +286,7 @@ function recordedView(
 
     <p v-if="loadError" class="err" data-cy="resumable-error">{{ loadError }}</p>
     <p v-else-if="loading" class="muted">looking…</p>
-    <p v-else-if="isEmpty" class="muted" data-cy="resumable-empty">
-      Nothing recorded yet. A conversation is listed here once its provider has given it an id — on
-      Claude that is after its first message.
-    </p>
+    <p v-else-if="isEmpty" class="muted" data-cy="resumable-empty">Nothing recorded yet.</p>
 
     <ul v-else>
       <li
@@ -378,7 +375,7 @@ function recordedView(
             class="link"
             :disabled="importing[session.sessionId]"
             :data-cy="`import-messages-${session.sessionId}`"
-            title="Copy this conversation's messages out of the provider file we adopted it from"
+            title="Copy its messages into BroCrew"
             @click="importMessages(session)"
           >
             {{ importing[session.sessionId] ? 'importing…' : 'import messages' }}

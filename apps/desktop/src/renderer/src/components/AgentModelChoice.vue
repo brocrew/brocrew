@@ -269,9 +269,7 @@ async function clear(): Promise<void> {
         role="alert"
       >
         <svg class="icon"><use href="#i-alert" /></svg>
-        <span
-          >This app could not read the model chosen for this agent. Close and open this again.</span
-        >
+        <span>Couldn't load the model. Close and reopen this sheet.</span>
       </p>
 
       <p v-if="refusal" class="agent-model-state err" data-cy="agent-model-refusal" role="alert">

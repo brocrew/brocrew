@@ -241,7 +241,7 @@ describe('§3 · what may be a workspace', () => {
     const documents = join(root, 'documents')
     mkdirSync(documents)
     writeFileSync(join(documents, 'letter.txt'), 'x')
-    expect(checkWorkspaceFolder(documents, as(false)).refusal).toMatch(/has files in it/)
+    expect(checkWorkspaceFolder(documents, as(false)).refusal).toMatch(/Choose an empty folder/)
     expect(checkWorkspaceFolder(join(documents, 'letter.txt'), as(false)).refusal).toMatch(
       /a file, not a folder/,
     )
@@ -325,7 +325,7 @@ describe('§3 · what may be a workspace', () => {
     ]) {
       const verdict = checkWorkspaceFolder(synced, as(true))
       expect(verdict.ok, synced).toBe(true)
-      expect(verdict.warning, synced).toMatch(/cloud service syncs/)
+      expect(verdict.warning, synced).toMatch(/Cloud-synced folder/)
     }
   })
 

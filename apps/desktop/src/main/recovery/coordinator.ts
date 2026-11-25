@@ -305,7 +305,7 @@ export function whyItDidNotStart(verdict: StartupVerdict): string {
 
 const FAILURES: Readonly<Record<StartFailure, string>> = {
   'not-the-only-app-on-this-folder':
-    'BroCrew could not be sure that no other copy of BroCrew has this workspace open, so it changed nothing.',
+    'Another BroCrew may be using this workspace. Close it, then retry.',
   'database-unreadable': "BroCrew could not read this workspace's data safely.",
   'checkpoint-failed':
     "BroCrew could not make the copy of this workspace's data it needs before going on, so it changed nothing.",

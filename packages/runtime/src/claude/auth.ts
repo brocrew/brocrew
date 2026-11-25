@@ -408,10 +408,6 @@ export async function claudeAuthHealthAsync(
       }
 }
 
-/** Where a person gives Claude a key: the “API key” section of its card on the Providers screen. */
-const ENTER_A_KEY =
-  'enter an API key under “API key” on the Claude card in Providers (in the left rail)'
-
 /**
  * What a person reads when a Claude agent has nothing to run on: no API key is set and the person's
  * own Claude Code login is not usable, worded for the platform and read when it is said:
@@ -490,15 +486,9 @@ export function claudeLoginNotRenewed(
     platform === 'win32'
       ? `open PowerShell and run \`${command}\``
       : `run \`${command}\` in a terminal`
-  const what =
-    why === 'not-installed'
-      ? 'BroCrew did not find Claude Code on this computer to renew it (it looks on the PATH and in ' +
-        'Claude Code’s own install folder). To renew it, install Claude Code if it is not there, '
-      : 'BroCrew could not renew it by running Claude Code. To renew it, '
-  return (
-    `Your Claude Code login has expired, and ${what}${run}, log in again if it asks, then try ` +
-    `again. Or ${ENTER_A_KEY}.`
-  )
+  return why === 'not-installed'
+    ? `Couldn't renew Claude sign-in: Claude Code wasn't found. Install it, then ${run}, log in again if it asks, or open Providers.`
+    : `Couldn't renew Claude sign-in. To renew it, ${run}, log in again if it asks, or open Providers.`
 }
 
 function parsesAsJson(text: string): boolean {
@@ -513,33 +503,18 @@ function parsesAsJson(text: string): boolean {
 /** The sentence for an absence. A Mac has one, which covers both a missing and an expired login. */
 function claudeAbsenceSaid(why: LoginAbsence, platform: NodeJS.Platform, command: string): string {
   const run = `\`${command}\``
+  // ⚑ Card 481: the command stays named on purpose (a new PowerShell may not find `claude`); the
+  // rest of each line is as short as brocrew-ui-text allows. The API-key route is Providers.
   if (platform !== 'win32') {
-    return (
-      'No Anthropic API key is set, and this Mac’s Claude login is missing or its token has expired. ' +
-      'An expired one is renewed when a Claude conversation starts, by running Claude Code. ' +
-      'Otherwise enter an API key under “API key” on the Claude card in Providers (in the left rail), ' +
-      `or run ${run} in a terminal and log in, then try again.`
-    )
+    return `Claude sign-in needs attention. Open Providers, or run ${run} in a terminal and log in.`
   }
   switch (why) {
     case 'unreadable':
-      return (
-        'No Anthropic API key is set, and BroCrew could not read Claude Code’s login file on this ' +
-        'computer just now. Try again in a moment. If it keeps happening, open PowerShell, run ' +
-        `${run} and log in if it asks, then try again. Or ${ENTER_A_KEY}.`
-      )
+      return `Couldn't read Claude sign-in. Try again, or open PowerShell, run ${run} and log in.`
     case 'expired':
-      return (
-        'Your Claude Code login has expired. Starting a Claude conversation renews it by running ' +
-        `Claude Code, when it is installed here. Or open PowerShell and run ${run} once, log in if ` +
-        `it asks, then try again: BroCrew picks the renewed login up by itself. Or ${ENTER_A_KEY}.`
-      )
+      return `Claude sign-in expired. Open PowerShell and run ${run} once, log in if it asks, or open Providers.`
     case 'no-login':
-      return (
-        'No Anthropic API key is set, and Claude Code is not signed in on this computer. To sign in ' +
-        `once, open PowerShell, run ${run} and log in (install Claude Code first if it is not there), ` +
-        `then try again. Or ${ENTER_A_KEY}.`
-      )
+      return `Claude isn't signed in. Open Providers, or open PowerShell, run ${run} and log in.`
   }
 }
 

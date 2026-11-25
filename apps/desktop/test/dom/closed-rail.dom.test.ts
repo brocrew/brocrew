@@ -853,7 +853,7 @@ describe('a conversation from the user’s own folder is not on the rail (154 §
 
     const said = m.q('resumable-empty').textContent ?? ''
     // ⚑ **D-017b** — *"becomes resumable"* went with the reopen: the page lists what is recorded.
-    expect(said).toContain('A conversation is listed here')
+    expect(said).toContain('Nothing recorded yet.')
     expect(said).not.toContain('A session')
   })
 })

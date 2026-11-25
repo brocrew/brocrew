@@ -638,9 +638,7 @@ describe('685 §5 · an agent that has never run, and no list', () => {
     await press(m, 'model-picker-face')
     expect(m.all('model-picker-said')).toHaveLength(1)
     // ⚑ W4.78 · the words too: *nothing was asked* is not *it listed none* (685 M7).
-    expect(words(m.q('model-picker-said'))).toBe(
-      'The model list arrives once this profile exists — it is created when the conversation starts, not now.',
-    )
+    expect(words(m.q('model-picker-said'))).toBe('Models appear after this agent first starts.')
     expect(rows(m)).toEqual([])
     expect(takeIsDead(m)).toBe(true)
     await press(m, 'model-picker-cancel')
@@ -724,7 +722,7 @@ describe('685 §6 · re-read when the roster is — `runtime:changed agents` rea
     world.readFails = true
     const { m } = await control()
     expect(words(m.q('agent-model-unreadable'))).toBe(
-      'This app could not read the model chosen for this agent. Close and open this again.',
+      "Couldn't load the model. Close and reopen this sheet.",
     )
     // ⛔ …and the row claims nothing it never learned (`685`'s review): no *Nobody has chosen*, and
     // no picker over a choice this window could not read.

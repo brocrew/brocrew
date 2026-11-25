@@ -836,7 +836,7 @@ describe('a start the one-app check could not decide', () => {
     )
     const first = await service.inspect()
     expect(first).toEqual(notTheOnlyApp('unknown'))
-    expect(whyItDidNotStart(first)).toMatch(/could not be sure/)
+    expect(whyItDidNotStart(first)).toMatch(/may be using this workspace/)
     expect(await service.retry()).toEqual({ kind: 'open', checkpoint: 'made' })
   })
 

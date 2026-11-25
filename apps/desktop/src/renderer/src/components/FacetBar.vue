@@ -209,10 +209,6 @@ onUnmounted(() => document.removeEventListener('pointerdown', pressedOutside))
           <span class="l">{{ item.label }}</span>
           <span class="why">{{ item.why }}</span>
         </label>
-        <p class="p-note">
-          Readable, on-disk and complete are three separate facts about a conversation. They stay
-          three filters.
-        </p>
       </div>
     </details>
 

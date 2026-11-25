@@ -75,7 +75,7 @@ describe('kept rules on the Providers page', () => {
     const { m } = aPage([KEPT], { removed: true })
     await settle()
     expect(m.host.querySelector('.about')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Actions you chose “Always allow” for. They apply to every conversation that uses this provider, not to other providers. If you remove one, agents will ask again the next time a conversation starts.',
+      'Always allowed for this provider. Removal applies next start.',
     )
     expect(m.all('kept-rules-file').map((one) => one.textContent?.trim())).toEqual([PROJECT, RULES])
     expect(

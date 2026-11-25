@@ -117,9 +117,7 @@ describe('B2 · the menu, state by state', () => {
 
   it('🔴 not-here · a development build says so in one quiet line, with no buttons and no switches', async () => {
     const { m } = await menuIn({ kind: 'not-here', why: 'a-development-build' })
-    expect(text(m.q('updates-not-here'))).toBe(
-      'This is a development build. Updates come with the downloadable version of BroCrew.',
-    )
+    expect(text(m.q('updates-not-here'))).toBe('Updates aren’t available in this build.')
     expect(m.host.querySelectorAll('button, input')).toHaveLength(0)
   })
 
@@ -238,9 +236,7 @@ describe('B2 · the menu, state by state', () => {
       'Ada: a turn is running, 2 held messages, 1 running in the background',
       'Ali: waiting on a person',
     ])
-    expect(text(m.q('updates-others'))).toContain(
-      'Another copy of BroCrew is open on this computer',
-    )
+    expect(text(m.q('updates-others'))).toContain('Another BroCrew is open')
     ;(m.q('updates-cancel') as HTMLButtonElement).click()
     await settle()
     expect(fake.cancelRestart).toHaveBeenCalledTimes(1)
@@ -252,7 +248,7 @@ describe('B2 · the menu, state by state', () => {
       version: '0.2.0',
       stops: { conversations: [], otherWorkspaces: null },
     })
-    expect(text(m.q('updates-others'))).toContain('checked once nothing here is running')
+    expect(text(m.q('updates-others'))).toContain('Waits until nothing is running')
   })
 
   it('🔴 error · its message, plainly, and Check again', async () => {

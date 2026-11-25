@@ -49,10 +49,10 @@ describe('`rows-unread.ts` composes the rows-unread and skipped-ledger sentences
     expect(waitsNotReadSays(0, 0)).toBeNull()
 
     expect(waitsNotReadSays(0, 1)).toBe(
-      '1 conversation’s record could not be read, so a conversation shown here may be waiting without saying so.',
+      '1 conversation’s record unread; waiting status may be missing.',
     )
     expect(waitsNotReadSays(0, 2)).toBe(
-      '2 conversations’ records could not be read, so a conversation shown here may be waiting without saying so.',
+      '2 conversations’ records unread; waiting status may be missing.',
     )
 
     expect(waitsNotReadSays(1, 1)).toBe(`${waitsUnreadSays(1)} ${waitsNotReadSays(0, 1)}`)
@@ -64,7 +64,7 @@ describe('`rows-unread.ts` composes the rows-unread and skipped-ledger sentences
       waitsNotReadSays(1, 1),
     ]) {
       expect(said).not.toBeNull()
-      expect(said).not.toContain('may be missing')
+      expect(said).not.toContain('a piece of work may be missing')
     }
   })
 })

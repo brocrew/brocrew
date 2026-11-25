@@ -365,14 +365,16 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     )
     // The sheet names a default, not a guarantee about a conversation with an explicit choice.
     expect(providerTakesEffectNextTime(runsOn)).not.toContain('use this default’s conversation')
-    expect(providerTakesEffectNextTime(runsOn)).toContain('Once you choose a default here')
+    expect(providerTakesEffectNextTime(runsOn)).toContain(
+      'Changing it starts nothing; existing work stays put.',
+    )
     expect(providerTakesEffectNextTime(runsOn)).toMatch(
-      /^The default for a new conversation you start as this identity is Codex\. /,
+      /^Default for new work without a chosen provider or model: Codex\. /,
     )
     // A door can also say where the person chooses another provider without changing the default.
     expect(providerTakesEffectNextTime(runsOn)).not.toContain('unless you choose')
     expect(providerTakesEffectNextTime(runsOn, true)).toContain(
-      'is Codex, unless you choose another provider where you start it.',
+      'Codex, unless you choose another where you start it.',
     )
 
     // ⚑ THE CONTROL, where the readings diverge — the same held choice beside a provider of its own

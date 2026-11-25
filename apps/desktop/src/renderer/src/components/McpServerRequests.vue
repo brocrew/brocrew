@@ -122,8 +122,7 @@ watch(
           they next start or reopen.</span
         >
         <span v-else
-          >Approving asks this address what tools it offers and registers it if none clash with
-          BroCrew's own. The agents it names get it when their conversations next start or
+          >Registers its tools if no name clashes; agents get them on their next start or
           reopen.</span
         >
       </p>

@@ -261,9 +261,7 @@ describe('library imports and rebuilds through the host', () => {
     view.q('library-rebuild-fictional-thread').click()
     await expect
       .poll(() => view.q('library-outcome-fictional-thread').textContent)
-      .toContain(
-        'Its file is still being written. Nothing was replaced; try again when it has finished.',
-      )
+      .toContain('Still being written. Try again later.')
     expect(view.q('library-outcome-fictional-thread').getAttribute('data-outcome')).toBe(
       'still-writing',
     )

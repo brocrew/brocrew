@@ -92,9 +92,7 @@ describe("a conversation's Graph shows only its whole top-level tree", () => {
   it('does not fall back to other trees when the conversation is absent', async () => {
     const m = await graph('sess_missing')
     expect(ids(m)).toEqual([])
-    expect(m.q('forest-empty').textContent).toContain(
-      'This conversation is not in the current graph reading.',
-    )
+    expect(m.q('forest-empty').textContent).toContain('Not in this view.')
   })
 
   it('keeps the unread state until the forest arrives', async () => {

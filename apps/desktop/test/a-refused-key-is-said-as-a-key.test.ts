@@ -208,8 +208,8 @@ describe('§4 · the Claude card’s facts are true with a key saved and without
     const claude = allProviderCapabilities().claude
     const reasonOf = (status: { readonly state: string } & Record<string, unknown>): string =>
       String(status['reason'] ?? '')
-    expect(reasonOf(claude.signIn)).toContain('the API key saved under “API key”')
-    expect(reasonOf(claude.signIn)).toContain('with none saved, on your machine login')
+    expect(reasonOf(claude.signIn)).toContain('Uses your saved key')
+    expect(reasonOf(claude.signIn)).toContain("otherwise this computer's Claude login")
     expect(reasonOf(claude.reprovisionAuth)).toContain('with no API key saved')
     expect(reasonOf(claude.homeCredential)).toContain(
       'the saved API key, or with none your machine login',

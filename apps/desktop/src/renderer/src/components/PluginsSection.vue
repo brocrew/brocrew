@@ -390,9 +390,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
       const listed = await request({ kind: 'list' })
       if (!current(turn)) return
       if (listed.ok && listed.cards) cards.value = listed.cards
-      else
-        error.value +=
-          ' The plugin list could not be refreshed. Open Plugins again to check its current status.'
+      else error.value += " Couldn't refresh plugins. Reopen Plugins."
     }
   }
 }
@@ -401,8 +399,7 @@ onMounted(async () => {
     client?.onReviewInvalidated?.(() => {
       if (!alive) return
       if (preparation.value || reviews.value.size > 0)
-        error.value =
-          'This plugin review is no longer current. Review it again before installing or updating.'
+        error.value = 'Review is out of date. Review again.'
       retirePreparation(true)
       reviews.value.clear()
     }) ?? (() => {})
@@ -455,9 +452,7 @@ onUnmounted(() => {
     :aria-busy="listState === null"
     data-cy="plugins-section"
   >
-    <p v-if="!selected" class="plugin-trust">
-      Plugins run with your computer user’s rights; they are not sandboxed.
-    </p>
+    <p v-if="!selected" class="plugin-trust">Plugins have the same computer access as you.</p>
     <p v-if="!selected" class="plugin-trust">This change applies to all workspaces.</p>
     <label v-if="!selected" class="plugin-search"
       ><span>Search plugins</span
@@ -485,7 +480,7 @@ onUnmounted(() => {
       class="plugin-trust"
       data-cy="plugins-refresh-notice"
     >
-      Couldn't check for plugin updates. Check your connection and try again.
+      Couldn't check updates. Check your connection and retry.
     </p>
     <p v-if="errorNotice" role="status" class="plugin-error" data-cy="plugins-error">
       {{ errorNotice }}

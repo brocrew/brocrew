@@ -398,7 +398,7 @@ async function reviewChanges(): Promise<void> {
       role="alert"
     >
       <svg class="icon"><use href="#i-alert" /></svg>
-      <span>This app could not read what this agent has been told. Close and open this again.</span>
+      <span>Couldn't load instructions. Close and reopen this sheet.</span>
     </p>
 
     <template v-else>
@@ -498,9 +498,7 @@ async function reviewChanges(): Promise<void> {
       </p>
 
       <section v-if="olderDraft" class="change-preview" data-cy="own-instructions-newer-rules">
-        <p class="identity-note">
-          The saved rules changed while you were editing. Your draft is still here.
-        </p>
+        <p class="identity-note">Rules changed elsewhere. Your draft is kept.</p>
         <strong>Latest saved rules · version {{ inForce?.version ?? 0 }}</strong>
         <pre class="version-text">{{ inForce?.text || 'No rules' }}</pre>
         <button
@@ -555,9 +553,7 @@ async function reviewChanges(): Promise<void> {
       <section v-if="clearing" class="change-preview" data-cy="own-instructions-clear-preview">
         <h4>Remove these rules?</h4>
         <pre class="version-text">{{ clearing.currentText }}</pre>
-        <p class="identity-note">
-          This saves an empty version. You can restore any earlier version from the history.
-        </p>
+        <p class="identity-note">Saves empty rules. Earlier versions stay in History.</p>
         <button
           type="button"
           :disabled="busy"

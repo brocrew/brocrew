@@ -225,16 +225,13 @@ function outcome(one: MemoryAmendment) {
         Read again
       </button>
     </div>
-    <p class="note">
-      These are this agent’s saved entries now. A running conversation keeps the memory it last
-      loaded.
-    </p>
+    <p class="note">Saved memory now; running conversations keep their loaded copy.</p>
     <p v-if="loading" role="status">Reading memory…</p>
     <p v-if="error" role="alert" data-cy="memory-error">{{ error }}</p>
     <template v-if="reading">
       <p v-if="reading.changing" role="status">A change to this memory is still running.</p>
       <div v-if="reading.needsChecking" class="notice" data-cy="memory-needs-checking">
-        <p>A change to this memory did not finish and needs checking.</p>
+        <p>Memory change unfinished. Check it before continuing.</p>
         <button
           type="button"
           :disabled="busy || loading || reading.changing"
@@ -356,23 +353,17 @@ function outcome(one: MemoryAmendment) {
           ></textarea>
           <p class="note">{{ replacementBytes }} of 65536 bytes</p></template
         >
-        <p>
-          The saved text stays in the history so the change can be undone while the entry still
-          matches.
-        </p>
+        <p>Undo is available while this entry stays unchanged.</p>
       </template>
       <template v-else-if="preview.kind === 'undo'"
         ><h4>Undo this change?</h4>
         <p class="path">{{ preview.source.entry }}</p>
         <strong>Restore this saved text</strong>
         <pre>{{ preview.source.textBefore ?? 'No entry' }}</pre>
-        <p v-if="preview.source.textBefore !== null && preview.source.textAfter === null">
-          Only your user account on this computer can read a file brought back from the history.
-        </p></template
-      >
+      </template>
       <template v-else
         ><h4>Check interrupted change?</h4>
-        <p>This records what's there now. It doesn't restore or remove anything.</p></template
+        <p>Records current memory; doesn't restore or delete it.</p></template
       >
       <div class="actions">
         <button

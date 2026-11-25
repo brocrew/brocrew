@@ -259,7 +259,9 @@ describe('566 §1 · every server this app registered, and what each one is', ()
     await nextTick()
     await drawnReady()
     expect(m.q('tools-load-error').textContent).toContain('The roster reread failed')
-    expect(m.q('tools-remove-refusal').textContent).toContain('The server was removed, but')
+    expect(m.q('tools-remove-refusal').textContent).toContain(
+      'Tools removed. Reopen the list to refresh.',
+    )
   })
 
   it('disables every removal press while one removal is still in progress', async () => {

@@ -92,9 +92,7 @@ describe('profile sign-in through the supplied provider client', () => {
     expect(transport.checkProviderAuth).toHaveBeenCalledTimes(2)
     transport.reprovisionProviderAuth.mockResolvedValueOnce('unchanged')
     await one.copyMachineSignIn()
-    expect(one.notice).toBe(
-      'Your machine sign-in is the same as this profile’s, so nothing changed.',
-    )
+    expect(one.notice).toBe('Already up to date. Nothing changed.')
     await vi.waitFor(() => expect(one.busy).toBe('idle'))
     transport.reprovisionProviderAuth.mockRejectedValueOnce(new Error('Fictional copy failed.'))
     await one.copyMachineSignIn()

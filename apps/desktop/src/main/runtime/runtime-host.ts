@@ -26395,7 +26395,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       console.warn(
         `runtime host could not bring ${provider}'s homes in line with its API key: ${errorMessage(error)}`,
       )
-      return 'BroCrew could not tell the provider about the key yet; it will at its next launch.'
+      return 'Key saved. The provider picks it up at its next start.'
     }
   }
 
@@ -31452,10 +31452,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // provider never named the conversation, or its id no longer parses — never *"not recorded"*.
     const row = this.deps.store.find(sessionId)
     if (!row) {
-      throw new Error(
-        'this conversation has no provider id BroCrew can read, so it cannot be written out as a ' +
-          (kind === 'native' ? 'provider file' : 'bundle'),
-      )
+      throw new Error("This conversation can't be exported.")
     }
 
     // ⚑ The provider's own file, wherever this row's home is — the person's own for a conversation
@@ -31497,7 +31494,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         frames: written.frames,
         ledgerEntries: written.ledgerEntries,
         resumable: false,
-        note: 'A self-contained copy — the provider frames and our ledger, with no home or database behind it.',
+        note: 'Export includes provider records and BroCrew history.',
       }
     }
 

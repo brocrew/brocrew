@@ -201,7 +201,7 @@ describe('§1 · pressing it raises the screen’s gesture and nothing else', ()
     // lines above it made false.
     const m = await teamPage(roster([], ['default']))
     expect(m.q('team-other-home-folders-says').textContent?.replace(/\s+/g, ' ')).toMatch(
-      /create one with the same name/i,
+      /create an agent with this name/i,
     )
   })
 
@@ -353,10 +353,10 @@ describe('§3 · the fold, the alphabet, and the two names that mean something e
     await useAgentStore().load()
     const sheet = await openSheet()
     await type(sheet.m, 'new-agent-slug', 'half-typed')
-    expect(sheet.m.q('new-agent-slug-adopts').textContent).toMatch(/already a folder/i)
+    expect(sheet.m.q('new-agent-slug-adopts').textContent).toMatch(/existing folder found/i)
     // 🔴 The one a single-sided comparison cannot see: typed folded, stored capitalised.
     await type(sheet.m, 'new-agent-slug', 'developer')
-    expect(sheet.m.q('new-agent-slug-adopts').textContent).toMatch(/already a folder/i)
+    expect(sheet.m.q('new-agent-slug-adopts').textContent).toMatch(/existing folder found/i)
     // ⛔ **A note and not a refusal** — `createAgentIdentityTx` asks the identity table and nothing
     // else, so an orphan folder does not make a name taken.
     expect((sheet.m.q('new-agent-create') as HTMLButtonElement).disabled).toBe(false)
@@ -377,18 +377,16 @@ describe('§3 · the fold, the alphabet, and the two names that mean something e
     expect(said).toContain(DEFAULT_PROFILE_LABEL)
     // 🔴 **The fact the press decides, by name**: the provider every new conversation on the app
     // starts on. ⛔ **D-014 · and no role** — a name brings none, so the note may not promise one.
-    expect(said).toMatch(/provider chosen here/i)
+    expect(said).toMatch(/pick its provider/i)
     expect(said).not.toMatch(/\brole\b/i)
     // ⚑ …and the provider note is the one about a LAUNCH, not the one about a spawn.
     expect(sheet.m.q('new-agent-provider-note').textContent).toMatch(
-      /new conversations on this app/i,
+      /provider for new conversations/i,
     )
     // ⚑ The control: it is about THIS name, not about every name.
     await type(sheet.m, 'new-agent-slug', 'defaults')
     expect(sheet.m.all('new-agent-slug-is-brobot')).toHaveLength(0)
-    expect(sheet.m.q('new-agent-provider-note').textContent).toMatch(
-      /no agent that gives it work can change it/i,
-    )
+    expect(sheet.m.q('new-agent-provider-note').textContent).toMatch(/others can't change it/i)
   })
 
   it('⛔ …and on an app where BroBot already exists, the promise is not made at all', async () => {

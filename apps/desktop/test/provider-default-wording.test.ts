@@ -17,11 +17,12 @@ it.each(['claude', 'codex'] as const)(
   'explains new gives and existing work after a %s default change',
   (provider) => {
     const said = providerTakesEffectNextTime(provider)
-    expect(said).toContain('Changing this starts nothing and moves nothing')
+    // No launch on change; the default applies only where no provider was chosen; holders keep work.
+    expect(said).toContain('Changing it starts nothing')
     expect(said).toContain(
-      'Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed',
+      `without a chosen provider or model: ${provider === 'claude' ? 'Claude' : 'Codex'}`,
     )
-    expect(said).toContain('Existing pieces and follow-ups stay with their holders')
+    expect(said).toContain('existing work stays put.')
   },
 )
 
@@ -66,9 +67,11 @@ it('uses supplied counted names and keeps no-provider and service branches intac
     'Not saved: its conversations ran on Fern',
   )
   expect(providerTakesEffectNextTime('claude', true, false, names)).toContain(
-    'is Fern, unless you choose another provider',
+    'Fern, unless you choose another where you start it',
   )
-  expect(providerTakesEffectNextTime('claude', true, false, {})).toContain('is the provider')
+  expect(providerTakesEffectNextTime('claude', true, false, {})).toContain(
+    'Default for new work without a chosen provider or model: the provider',
+  )
   expect(providerTakesEffectNextTime('claude', true, true, names)).toBe(
     providerTakesEffectNextTime('claude', true, true),
   )

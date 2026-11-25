@@ -401,7 +401,7 @@ export function useFilesLibrary(): FilesLibraryController | null {
 export function libraryFailureSays(failure: LibraryUnavailable): string {
   switch (failure.cause) {
     case 'missing-task':
-      return 'This task is no longer available. Choose another task or reset the view.'
+      return 'Work unavailable. Choose another or reset the view.'
     case 'missing-conversation':
       return 'The pinned conversation is unavailable. Use selected or reset the view.'
     case 'cursor-expired':
@@ -409,7 +409,7 @@ export function libraryFailureSays(failure: LibraryUnavailable): string {
     case 'invalid-cursor':
       return 'This page no longer belongs to the current reading. Refresh the files.'
     case 'busy':
-      return 'The file reader needs a short pause. Try Retry when it is available.'
+      return 'Busy. Press Retry in a moment.'
     case 'cancelled':
       return 'This reading was interrupted. Retry to finish it.'
     case 'changed':

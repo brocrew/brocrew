@@ -57,8 +57,10 @@ describe('whyNotAKey', () => {
     expect(whyNotAKey(`  ${KEY}\n`)).toBeNull()
     expect(whyNotAKey('')).toContain('Enter the key')
     expect(whyNotAKey('   ')).toContain('Enter the key')
-    expect(whyNotAKey('sk-ant fake not a key')).toContain('no spaces or line breaks')
-    expect(whyNotAKey('sk-ant\nfake')).toContain('no spaces or line breaks')
+    expect(whyNotAKey('sk-ant fake not a key')).toContain(
+      'Paste the key without spaces or line breaks.',
+    )
+    expect(whyNotAKey('sk-ant\nfake')).toContain('without spaces or line breaks')
     expect(whyNotAKey('sk-ünïcode')).toContain('does not look like an API key')
     expect(whyNotAKey('a'.repeat(API_KEY_MAX_LENGTH + 1))).toContain('does not look like')
     expect(whyNotAKey('a'.repeat(API_KEY_MAX_LENGTH))).toBeNull()
@@ -124,7 +126,9 @@ describe('ApiKeys', () => {
 
   it('a key that is refused is not kept', async () => {
     const keys = await ApiKeys.open(userData)
-    expect(await keys.set('claude', 'has space')).toContain('no spaces')
+    expect(await keys.set('claude', 'has space')).toContain(
+      'Paste the key without spaces or line breaks.',
+    )
     expect(existsSync(fileOf())).toBe(false)
   })
 
@@ -172,7 +176,7 @@ it.skipIf(process.platform === 'win32')(
     writeFileSync(fileOf(), '{ not json', { mode: 0o600 })
     const keys = await ApiKeys.open(userData, () => 77)
     chmodSync(userData, 0o500)
-    expect(await keys.set('codex', 'sk-codex-fern')).toContain('couldn’t write the key')
+    expect(await keys.set('codex', 'sk-codex-fern')).toContain("Couldn't save the key. Try again.")
     chmodSync(userData, 0o700)
     expect(readFileSync(fileOf(), 'utf8')).toBe('{ not json')
     for (const provider of ['claude', 'codex'] as const)

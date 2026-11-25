@@ -519,21 +519,21 @@ function rebuildNote(result: RebuiltLedger): string {
     case 'nothing-readable':
       return 'Its file holds no readable conversation, so nothing was replaced.'
     case 'still-writing':
-      return 'Its file is still being written. Nothing was replaced; try again when it has finished.'
+      return 'Still being written. Try again later.'
     case 'gone':
       return goneNote('The provider')
     case 'stopped':
       return 'Stopped part-way. The previous transcript is untouched; try again.'
     case 'in-use':
-      return 'It is open right now, so its transcript is being recorded rather than rebuilt.'
+      return 'Open now; rebuild after closing.'
     case 'recorded':
-      return 'Its transcript is the recording made while it ran, which holds more than its file does.'
+      return 'Keeping the fuller recorded transcript.'
     case 'refused':
       return 'BroCrew is shutting down, so nothing was started.'
     case 'unknown-session':
       return 'There is no record of that conversation here any more.'
     case 'superseded':
-      return 'Something else rebuilt it at the same moment. What you are reading is that pass’s work, not this one’s.'
+      return 'Rebuilt elsewhere just now.'
     case 'failed':
       return `It could not be rebuilt: ${result.status?.failure ?? 'unknown'}. The previous transcript is untouched.`
   }
@@ -813,7 +813,7 @@ const restoreNote = computed<string | null>(() => {
     )
   }
   return result.already
-    ? 'You already have this conversation — nothing was written, and your copy is not behind this file.'
+    ? 'You already have this conversation.'
     : `Restored ${result.events} entries from ${result.provider}. It ran in ${result.cwd}, so it is here to read rather than to carry on — there is no Resume for it.`
 })
 
@@ -985,7 +985,7 @@ function ago(at: number, now: number = Date.now()): string {
               <p>
                 Nothing
                 <template v-if="counts">across your {{ counts.total }} conversations </template>
-                matches all of these at once. Each one is below — drop the one you do not need.
+                matches all these filters. Remove one.
               </p>
 
               <p v-if="scopeNote" class="scope" data-cy="library-filtered-scope">{{ scopeNote }}</p>
@@ -1039,23 +1039,12 @@ function ago(at: number, now: number = Date.now()): string {
             <template v-else-if="firstRun">
               <div class="mk" aria-hidden="true">◇</div>
               <h2 data-cy="library-first-run">Nothing swept yet</h2>
-              <p>
-                This is where every conversation on this machine will live — the ones this app ran,
-                and the ones it finds in {{ ALL_PROVIDER_FOLDERS }}.
-              </p>
-
-              <p>
-                Start a conversation. {{ ALL_PROVIDER_FOLDERS }} are read again every time this list
-                loads, so anything that turns up in them will be listed here.
-              </p>
+              <p>No conversations yet. Start one with New conversation.</p>
             </template>
 
             <template v-else>
               <h2>No conversations to show</h2>
-              <p>
-                Nothing came back for this read — neither ours nor anything in
-                {{ A_PROVIDER_FOLDER }}.
-              </p>
+              <p>None here or in {{ A_PROVIDER_FOLDER }}.</p>
             </template>
           </div>
 
@@ -1102,8 +1091,7 @@ function ago(at: number, now: number = Date.now()): string {
             <h2>Recorded conversations</h2>
 
             <p v-if="searching || filtered" class="reopen-scope" data-cy="library-reopen-scope">
-              Not narrowed by the search or filters above. This band answers a different question —
-              what this app recorded — and lists all of it, whatever is in the box.
+              Not filtered by your search or filters.
             </p>
             <ResumableSessions
               ref="reopenList"
@@ -1159,9 +1147,8 @@ function ago(at: number, now: number = Date.now()): string {
 
         <section class="source-guide bb-card">
           <p class="reads" data-cy="library-reads">
-            Read from {{ ALL_PROVIDER_FOLDERS }} as well as from here, every time this list loads —
-            and nothing in them is changed. {{ CHECK_HOMES }} is a different act: it looks through
-            this app’s own profile folders for conversations it has not recorded.
+            Includes conversations from {{ ALL_PROVIDER_FOLDERS }}, read-only. {{ CHECK_HOMES }}
+            searches agent folders separately.
           </p>
 
           <p v-if="scanNote && lastChecked" class="freshness" data-cy="library-scan-note">

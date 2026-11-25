@@ -230,7 +230,7 @@ describe('bringing a bundle back, from the Sessions page', () => {
 
     const said = m.q('library-bundle-result').textContent ?? ''
     expect(said).toContain('already have this conversation')
-    expect(said).toContain('nothing was written')
+    expect(said).toContain('You already have this conversation.')
     expect(said).not.toContain('Restored 9 entries')
   })
 

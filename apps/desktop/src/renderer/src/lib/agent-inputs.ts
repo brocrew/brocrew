@@ -49,10 +49,12 @@ export function recordLeavesOutWords(
   leavesOut: readonly ('the-system-prompt' | 'after-its-first-answer')[],
 ): string | null {
   const parts = [
-    ...(leavesOut.includes('the-system-prompt') ? ['no system prompt'] : []),
-    ...(leavesOut.includes('after-its-first-answer') ? ['first answer only'] : []),
+    ...(leavesOut.includes('the-system-prompt') ? ['System prompt'] : []),
+    ...(leavesOut.includes('after-its-first-answer')
+      ? [leavesOut.includes('the-system-prompt') ? 'later answers' : 'Later answers']
+      : []),
   ]
-  return parts.length === 0 ? null : `${name}’s record: ${parts.join(', ')}.`
+  return parts.length === 0 ? null : `${parts.join(' and ')} not recorded by ${name}.`
 }
 
 /** ⚑ Which launch the answer describes, in one sentence — and whether it was composed now. */
@@ -61,11 +63,11 @@ export function launchWords(launch: GivenLaunch, when: (at: number) => string): 
     return `What its last launch gave it, ${when(launch.at)}${launch.thisBuild ? '' : ', by an older build of BroCrew'}.`
   switch (launch.why) {
     case 'before-this-build':
-      return 'Its last launch wasn’t one this app recorded, so this is composed now: what its next start would get.'
+      return 'Not recorded; shows what the next start gets.'
     case 'not-kept':
-      return 'Its last launch couldn’t keep a record, so this is composed now: what its next start would get.'
+      return 'Launch record unavailable. Showing a preview of next start.'
     case 'never-launched':
-      return 'It hasn’t been launched yet: this is what its first start would get.'
+      return "First-start preview; agent hasn't launched."
   }
 }
 
@@ -114,10 +116,10 @@ export const MODEL_GOT_WHERE_WORDS: Readonly<Record<ModelGotWhere, string>> = {
 }
 
 /** ⚑ Why a message has no whole text kept: it is from before BroBot kept it. */
-export const SENT_NOT_KEPT_YET = 'This message is from before BroCrew kept the whole text it sent.'
+export const SENT_NOT_KEPT_YET = "Full sent text wasn't recorded."
 /** ⚑ …or BroBot never sent it: a person's turn read back from the provider's own transcript. */
 const SENT_BY_THE_PROVIDERS_TRANSCRIPT =
-  'This message was read from the provider’s own transcript: BroCrew didn’t send it, so it has no text of its own for it.'
+  "From the provider's transcript; original sent text unavailable."
 
 /** ⚑ Why an item has no `sent`, where the reason is not "from before it was kept". */
 export function noSentBecause(item: { attribution?: string }): string | undefined {

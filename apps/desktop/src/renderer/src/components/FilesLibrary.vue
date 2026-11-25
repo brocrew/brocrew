@@ -242,7 +242,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           v-if="!library.page.value && !library.busy.value && !library.error.value"
           data-cy="files-unread"
         >
-          Files have not been read yet.
+          Files unavailable.
         </p>
         <p v-if="library.busy.value" data-cy="files-loading">Reading files…</p>
         <p
@@ -251,7 +251,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           "
           data-cy="files-reading-more"
         >
-          Reading more files… Counts will update.
+          File list incomplete.
         </p>
         <p v-if="library.error.value" data-cy="files-error">
           {{ libraryFailureSays(library.error.value) }}
@@ -265,7 +265,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           </button>
         </p>
         <p v-if="library.page.value?.stale" data-cy="files-stale">
-          Earlier reading · {{ fullTime(library.page.value.readAt) }}
+          Out of date · {{ fullTime(library.page.value.readAt) }}
           <button
             type="button"
             :disabled="library.busy.value || !library.canRetry.value"
@@ -296,11 +296,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         >
           <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>
           <p>
-            {{
-              library.page.value.scopeKeeps === 0
-                ? 'No files kept on this work yet.'
-                : 'No files match these filters.'
-            }}
+            {{ library.page.value.scopeKeeps === 0 ? 'No files yet.' : 'No files match.' }}
           </p>
           <button
             v-if="library.page.value.scopeKeeps > 0"

@@ -94,8 +94,7 @@ function refreshLibrary(): void {
           </p>
           <template v-if="props.library.provenance.value">
             <p v-if="props.library.provenance.value.stale">
-              These locations belong to an earlier reading. Close and refresh the library for a new
-              reading.
+              Locations are out of date. Refresh the library.
               <button
                 type="button"
                 :disabled="!props.library.canRetry.value"

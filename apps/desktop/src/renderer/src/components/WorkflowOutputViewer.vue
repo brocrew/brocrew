@@ -44,7 +44,7 @@ const NO_OUTPUT = 'This run did not report an output file'
 
 const REFUSAL: Record<string, string> = {
   'no-output': `${NO_OUTPUT}.`,
-  gone: 'The output file is no longer on disk. Workflow outputs are written to a temporary directory, which the system clears.',
+  gone: 'Output file is gone.',
   // ⚑ 731 · the only file refused as such now is one this viewer cannot draw as text (a binary,
   // UTF-16, a folder, a fifo, a socket). Until `731` a short list of extensions was the rule, and
   // this read as a policy: *"That path is not something this app will open."*
