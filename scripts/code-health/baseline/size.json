@@ -71,7 +71,7 @@
   "apps/desktop/test/a-reply-keeps-the-files-it-was-handed-exactly-as-they-were.test.ts": 1640,
   "apps/desktop/test/a-request-the-person-makes-is-a-piece-that-waits-on-them.test.ts": 1219,
   "apps/desktop/test/a-restart-keeps-what-was-open.test.ts": 1769,
-  "apps/desktop/test/a-service-is-reached-through-its-piece.test.ts": 2683,
+  "apps/desktop/test/a-service-is-reached-through-its-piece.test.ts": 740,
   "apps/desktop/test/a-service-queues-its-work.test.ts": 1235,
   "apps/desktop/test/a-service-takes-one-piece-at-a-time.test.ts": 1114,
   "apps/desktop/test/a-stop-cuts-the-drive-and-a-stalled-piece-stays-stalled.test.ts": 1155,
