@@ -6,7 +6,7 @@ import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.v
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import OverlayHost, { provideOverlayLayer } from '../../src/renderer/src/components/OverlayHost.vue'
-import type { Provider } from '../../src/shared/runtime-ipc'
+import type { Provider, ProviderSignInResult } from '../../src/shared/runtime-ipc'
 import { providersBridge } from '../../look/fixtures/providers'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -304,6 +304,44 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     await settle()
     expect(dialog.querySelector('[data-cy="provider-inline-setup"]')).not.toBeNull()
     expect(m.q('provider-inline-setup').contains(document.activeElement)).toBe(true)
+  })
+  it('starts and cancels the workspace sign-in from the existing Login section button', async () => {
+    let finish!: (result: ProviderSignInResult) => void
+    const pending = new Promise<ProviderSignInResult>((resolve) => {
+      finish = resolve
+    })
+    const signIn = vi.spyOn(window.api.runtime, 'signInProvider').mockReturnValue(pending)
+    const cancel = vi
+      .spyOn(window.api.runtime, 'cancelProviderSignIn')
+      .mockImplementation(async () => {
+        finish({
+          success: false,
+          detail: 'canceled',
+          state: { state: 'unknown', reason: 'canceled' },
+        })
+      })
+    const capabilities = Object.fromEntries(
+      PROVIDER_DESCRIPTORS.map(({ id, capabilities }) => [id, capabilities]),
+    )
+    const m = screen({ capabilities })
+    await settle()
+    row(m, 'codex').click()
+    await settle()
+    const login = m.q('provider-status')
+    const heading = login.querySelector<HTMLButtonElement>('.fold')!
+    if (heading.getAttribute('aria-expanded') === 'false') heading.click()
+    await settle()
+    const item = m.q('native-sign-in-again') as HTMLButtonElement
+    expect(item.textContent?.trim()).toBe('Sign in again')
+    expect(item.offsetWidth).toBeGreaterThan(0)
+    expect(item.disabled).toBe(false)
+    item.click()
+    await settle()
+    expect(signIn).toHaveBeenCalledExactlyOnceWith({ provider: 'codex', profileId: 'brobot' })
+    m.q('provider-cancel-sign-in').click()
+    await settle()
+    expect(cancel).toHaveBeenCalledExactlyOnceWith({ provider: 'codex', profileId: 'brobot' })
+    expect(row(m, 'codex').textContent).toContain('Ready')
   })
   it('a login notice updates the row without restarting setup inside an open drawer', async () => {
     let changed: Parameters<typeof window.api.runtime.onProvidersChanged>[0] = () => {}

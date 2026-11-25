@@ -1,4 +1,5 @@
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -8,8 +9,9 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as codex from '@brobot2/runtime/codex'
 import { stopKeepingCodexSignInsInStep } from '../../../packages/runtime/src/codex/shared-sign-in'
 import { aCodexWorkspace, aFakeNativeSignIn } from './lib/codex-workspace-fixture'
 
@@ -111,7 +113,7 @@ describe('every Codex agent in a workspace uses the sign-in Settings shows', () 
     )
     const started = await module.auth.signIn('ui-designer')
     expect((await started.completed).success).toBe(true)
-    expect(native.ranIn()).toBe(homeOf('brobot'))
+    expect(dirname(native.ranIn()!)).toBe(homeOf('brobot'))
     // Every agent now reads the fresh sign-in, BroBot's own included.
     for (const profile of ['brobot', 'ui-designer']) expect(keyIn(profile)).toBe('key-a-fresh')
     expect(module.auth.credentialHome('ui-designer')).toBe(homeOf('brobot'))
@@ -124,5 +126,57 @@ describe('every Codex agent in a workspace uses the sign-in Settings shows', () 
     writeFileSync(join(homeOf('fern'), 'auth.json'), held)
     await expect(aWorkspace().home.prepare('fern')).rejects.toThrow(/no Codex sign-in/)
     expect(readFileSync(join(homeOf('fern'), 'auth.json'), 'utf8')).toBe(held)
+  })
+
+  describe.each(['links', 'copies'] as const)('when the workspace uses %s', (storage) => {
+    it.each(['success', 'failure', 'cancel'] as const)(
+      'signs in again without logout or revoke and publishes only on success (%s)',
+      async (outcome) => {
+        if (storage === 'copies') {
+          const ownSignIn = join(homeOf('brobot'), 'auth.json')
+          const old = readFileSync(ownSignIn)
+          rmSync(ownSignIn)
+          writeFileSync(ownSignIn, old)
+          const share = codex.shareCodexSignIn
+          vi.spyOn(codex, 'shareCodexSignIn').mockImplementation((home, options) =>
+            share(home, {
+              ...options,
+              platform: 'win32',
+              link() {
+                throw Object.assign(new Error('Fictional Windows link refusal'), { code: 'EPERM' })
+              },
+            }),
+          )
+        }
+        const module = aWorkspace()
+        const profiles = ['brobot', 'fern', 'ui-designer']
+        for (const profile of profiles) await module.home.prepare(profile)
+        let finish!: () => void
+        const browser = new Promise<void>((resolve) => {
+          finish = resolve
+        })
+        const native = aFakeNativeSignIn(
+          signIn('acct-fictional-a', 'key-a-fresh', '2026-11-24T18:10:00Z'),
+          { finish: browser, success: outcome !== 'failure' },
+        )
+        const attempt = await module.auth.signIn('brobot')
+        const pending = profiles.map(keyIn)
+        if (outcome === 'cancel') await attempt.cancel()
+        finish()
+        const completed = await attempt.completed
+        expect(pending).toEqual(profiles.map(() => 'key-a'))
+        expect(completed.success).toBe(outcome === 'success')
+        for (const profile of profiles)
+          expect(keyIn(profile)).toBe(outcome === 'success' ? 'key-a-fresh' : 'key-a')
+        for (const profile of profiles)
+          expect(lstatSync(join(homeOf(profile), 'auth.json')).isSymbolicLink()).toBe(
+            storage === 'links',
+          )
+        expect(native.requests).toContain('account/login/start')
+        expect(native.requests.filter((method) => /logout|revoke/.test(method))).toEqual([])
+        expect(module.auth.credentialHome('fern')).toBe(homeOf('brobot'))
+        expect(existsSync(native.ranIn()!)).toBe(false)
+      },
+    )
   })
 })

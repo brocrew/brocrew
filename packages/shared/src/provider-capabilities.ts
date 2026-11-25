@@ -104,7 +104,7 @@ export interface ProviderCapabilities {
    * every launch, so it has nothing to sign in to. Ask this per provider rather than assuming a
    * sign-in button works for every adapter.
    */
-  readonly signIn: CapabilityStatus
+  readonly signIn: CapabilityStatus & { readonly whileSignedIn?: boolean }
   /** An expired login is renewed by one short message when a conversation starts. */
   readonly loginRenewalMessage: CapabilityStatus
   /**

@@ -91,6 +91,8 @@ type LinkMaker = (target: string, path: string) => void
 interface ShareOptions {
   readonly managedRoot: string
   readonly ownHome: string
+  /** The temporary home where the workspace's browser sign-in succeeded. */
+  readonly completedSignInHome?: string
   readonly link?: LinkMaker
   readonly platform?: NodeJS.Platform
 }
@@ -136,11 +138,12 @@ export async function shareCodexSignIn(
     await withProviderHomeLock(own, () => takeTheSettingsSignIn(own, opts.managedRoot, link))
   }
   return await withProviderHomeLock(providerHome, () => {
+    if (isOwn && takeTheSettingsSignIn(own, opts.managedRoot, link, opts.completedSignInHome))
+      return 'joined'
     const dest = join(providerHome, AUTH_FILE)
     const was = lstatOrNull(dest)
     const bytes = was?.isFile() === true && was.size <= AUTH_FILE_MAX ? readOrNull(dest) : null
     if (codexAccountOf(bytes?.toString('utf8') ?? '') === 'api-key') return 'unchanged'
-    if (isOwn && takeTheSettingsSignIn(own, opts.managedRoot, link)) return 'joined'
     // A link that leads nowhere is no sign-in.
     if (lstatOrNull(dest)?.isSymbolicLink() === true && statOrNull(dest) === null) unlinkSync(dest)
     const held = lstatOrNull(dest)
@@ -177,10 +180,15 @@ function takeTheSettingsSignIn(
   own: string,
   managedRoot: string,
   link: (target: string, path: string) => boolean,
+  completedSignInHome?: string,
 ): boolean {
   const dest = join(own, AUTH_FILE)
   const place = theWorkspaceSignIn(managedRoot)
-  const held = lstatOrNull(dest)
+  const source = completedSignInHome === undefined ? dest : join(completedSignInHome, AUTH_FILE)
+  const held = lstatOrNull(source)
+  const regular = held?.isFile() === true && held.size <= AUTH_FILE_MAX
+  if (completedSignInHome !== undefined && !regular)
+    throw new Error('Codex did not save the sign-in.')
   if (held === null) return false
   if (held.isSymbolicLink()) {
     if (statOrNull(dest) === null) {
@@ -204,26 +212,31 @@ function takeTheSettingsSignIn(
     }
     return false
   }
-  if (!held.isFile() || held.size > AUTH_FILE_MAX) return false
-  const bytes = readOrNull(dest)
+  if (!regular) return false
+  const bytes = readOrNull(source)
   const text = bytes?.toString('utf8') ?? ''
-  if (
-    bytes === null ||
-    accountOfASignIn(text) === null ||
-    !itBeatsTheWorkspace(text, managedRoot)
-  ) {
+  if (bytes === null || accountOfASignIn(text) === null) {
+    if (completedSignInHome !== undefined) throw new Error('Codex did not save the sign-in.')
     return false
   }
+  if (completedSignInHome === undefined && !itBeatsTheWorkspace(text, managedRoot)) return false
   mkdirSync(dirname(place), { recursive: true, mode: 0o700 })
   const into = theWorkspaceFile(managedRoot) ?? place
-  const staged = stagedLink(dest)
-  if (link(relative(dirname(dest), place), staged)) {
-    renameSync(dest, into)
-    renameSync(staged, dest)
+  const target = relative(dirname(dest), place)
+  if (readlinkOrNull(dest) === target) {
+    renameSync(source, into)
   } else {
-    writeAtomicallySync(into, bytes, { mode: 0o600 })
-    keepInStep(own, managedRoot, true)
+    const staged = stagedLink(dest)
+    if (link(target, staged)) {
+      renameSync(source, into)
+      renameSync(staged, dest)
+    } else {
+      writeAtomicallySync(into, bytes, { mode: 0o600 })
+      if (completedSignInHome !== undefined) writeAtomicallySync(dest, bytes, { mode: 0o600 })
+      keepInStep(own, managedRoot, true)
+    }
   }
+  if (completedSignInHome !== undefined) passOnTheWorkspaceSignIn(own, managedRoot, bytes)
   return true
 }
 
@@ -384,20 +397,29 @@ function passOnARenewal(home: string): void {
       return
     }
     writeAtomicallySync(workspace, bytes, { mode: 0o600 })
-    for (const [other, { managedRoot }] of keptInStep) {
-      if (other === home || managedRoot !== entry.managedRoot) continue
+  } catch (error) {
+    console.warn(
+      `could not save a Codex renewal: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return
+  }
+  passOnTheWorkspaceSignIn(home, entry.managedRoot, bytes)
+}
+
+function passOnTheWorkspaceSignIn(source: string, workspace: string, bytes: Buffer): void {
+  for (const [other, { managedRoot }] of keptInStep) {
+    if (other === source || managedRoot !== workspace) continue
+    try {
       const theirs = join(other, AUTH_FILE)
       if (lstatOrNull(theirs)?.isFile() !== true) continue
       const held = readOrNull(theirs)
       if (held === null || codexAccountOf(held.toString('utf8')) === 'api-key') continue
       if (!held.equals(bytes)) writeAtomicallySync(theirs, bytes, { mode: 0o600 })
+    } catch (error) {
+      console.warn(
+        `could not update a Codex home's sign-in: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
-  } catch (error) {
-    console.warn(
-      `could not pass a Codex renewal to the workspace's other agents: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    )
   }
 }
 

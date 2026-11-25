@@ -61,6 +61,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
    */
   signIn: {
     state: 'available',
+    whileSignedIn: true,
     note: 'Signs in every Codex agent in this workspace.',
   },
   /**
