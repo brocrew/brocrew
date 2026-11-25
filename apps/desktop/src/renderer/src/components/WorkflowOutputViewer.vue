@@ -4,6 +4,7 @@ import type { WorkflowOutputResult } from '../../../shared/runtime-ipc'
 import { textViewFor } from '../../../shared/documents'
 import { absenceUnreadSays } from '../lib/rows-unread'
 import DocumentBody from './DocumentBody.vue'
+import DocumentViewerFrame from './DocumentViewerFrame.vue'
 
 /**
  * What a dynamic workflow wrote, read in full (108, ruled in 107 §4).
@@ -13,9 +14,6 @@ import DocumentBody from './DocumentBody.vue'
  * whole — Markdown to read, Raw to check what was actually written. This is the distinction 092
  * drew for the diff, which borrows the paper and gets Unified/Split instead because file content is
  * not a document.
- *
- * The chrome — Esc, backdrop, focus trap, focus returned — belongs to `OverlayHost`, which wraps
- * this. Nothing here re-implements any of it, exactly as `ImageViewer` does not.
  */
 const props = defineProps<{ result: WorkflowOutputResult; workflow: string }>()
 
@@ -62,32 +60,37 @@ const refusal = computed(() => {
   if (props.result.ok) return null
   const unread =
     props.result.reason === 'no-output' ? absenceUnreadSays(props.result.rowsUnread) : null
-  if (unread !== null) return `${NO_OUTPUT} ${unread}.`
-  return REFUSAL[props.result.reason] ?? 'The output file could not be opened.'
+  const text =
+    unread !== null
+      ? `${NO_OUTPUT} ${unread}.`
+      : (REFUSAL[props.result.reason] ?? 'The output file could not be opened.')
+  return { text, cy: 'workflow-output-refusal' }
 })
+
+/** A document cut at the ceiling says so, or it would read as a run that produced less. */
+const notes = computed(() =>
+  props.result.ok && props.result.truncated
+    ? [
+        {
+          text: `Showing the first part of a ${Math.round(props.result.bytes / 1024)} KB file.`,
+          cy: 'workflow-output-truncated',
+        },
+      ]
+    : [],
+)
 </script>
 
 <template>
-  <div class="wf-output" data-cy="workflow-output-viewer">
-    <header class="viewer-head">
+  <DocumentViewerFrame
+    data-cy="workflow-output-viewer"
+    :notes="notes"
+    :refusal="refusal"
+    @close="emit('close')"
+  >
+    <template #head>
       <strong class="name">{{ workflow }}</strong>
       <span v-if="result.ok" class="file" data-cy="workflow-output-name">{{ result.name }}</span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
-
-    <!-- ⚠️ Stated, never silent (092's rule). A document cut at the ceiling that did not say so
-         would read as a run that produced less than it did. -->
-    <p v-if="result.ok && result.truncated" class="cut" data-cy="workflow-output-truncated">
-      Showing the first part of a {{ Math.round(result.bytes / 1024) }} KB file.
-    </p>
+    </template>
 
     <div v-if="result.ok" class="stage">
       <DocumentBody
@@ -97,66 +100,5 @@ const refusal = computed(() => {
         :source-only="view.sourceOnly"
       />
     </div>
-    <p v-else class="refusal" data-cy="workflow-output-refusal">
-      {{ refusal }}
-    </p>
-  </div>
+  </DocumentViewerFrame>
 </template>
-
-<style scoped>
-/* The same undeclared token, and the same fix — see `ChildWorkViewer.vue` for the whole reasoning
-   (125). Two overlays, one defect: `--surface-1` was used twice and declared nowhere, so both
-   document panels painted `transparent` over the conversation. */
-.wf-output {
-  display: flex;
-  max-width: min(900px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--drawer-solid);
-}
-
-.viewer-head {
-  display: flex;
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
-.name {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-}
-
-.file {
-  color: var(--faint);
-  font: var(--type-caption) / 1.4 var(--font-mono);
-}
-
-.icon-button {
-  margin-left: auto;
-}
-
-.cut {
-  margin: 0;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.stage {
-  min-height: 0;
-  padding: var(--space-5);
-  overflow: auto;
-}
-
-.refusal {
-  margin: 0;
-  padding: var(--space-6) var(--space-5);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-</style>

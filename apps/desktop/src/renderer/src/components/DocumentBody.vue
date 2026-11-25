@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { renderMarkdown } from '../lib/markdown'
+import PaperSheet from './PaperSheet.vue'
+import SegmentedControl from './SegmentedControl.vue'
 
 /**
  * A document, on paper.
@@ -40,54 +42,29 @@ const props = withDefaults(
 )
 
 const view = ref<'markdown' | 'raw'>(props.raw || props.sourceOnly ? 'raw' : 'markdown')
+const views = computed(() => [
+  ...(props.sourceOnly
+    ? []
+    : [{ value: 'markdown', label: 'Markdown', cy: 'doc-view-markdown' } as const]),
+  { value: 'raw', label: 'Raw', cy: 'doc-view-raw' } as const,
+])
 const rendered = computed(() => renderMarkdown(props.source))
 </script>
 
 <template>
-  <!-- ⛔ **`data-on-white`, and it is 126's mechanism on the last paper that did not have it**
-       (tokens.css §14). This paper is `--paper-*` in BOTH themes by design — but it was not an
-       ISLAND, so in the default dark theme it kept the app's ambient chrome tokens on top of the
-       paper palette. Measured in Chromium, on every surface it drew at the time: `color-scheme: dark` on a
-       white page, `--focus-ring-color` at **1.64:1** where WCAG's minimum for a focus indicator is
-       3:1, and — in a drawer — a `rgba(255,255,255,.12)` scrollbar thumb inherited onto white.
-       The same gesture read 6.07:1 in light and 5.54:1 one `v-else-if` away, inside the paper that
-       DID get 126's scope: a 3.4× difference decided only by which `part` the caller asked for.
-
-       Use `data-on-white` as in `ChildWorkViewer` to identify a paper surface independently of the ambient theme. Avoid adding a second `data-chat-theme` carrier.
-
-       **The surfaces this component draws** — a kept resource, the plan document in the
-       transcript, a workflow run's output, a child's journal or script, and a conversation's rules
-       in its drawer. Every one takes the paper whole, so every one takes the island. -->
-  <div
+  <!-- The paper is an island whatever the theme, for every surface this draws: a kept resource,
+       the plan in the transcript, a workflow run's output, a child's journal or script, and a
+       conversation's rules in its drawer. -->
+  <PaperSheet
+    flush
     class="doc-paper"
     :class="{ compact }"
-    data-on-white
     data-cy="document-body"
     :data-view="view"
   >
     <div class="doc-toolbar">
       <span class="lbl">{{ filename }}</span>
-      <span class="seg-group">
-        <button
-          v-if="!sourceOnly"
-          class="seg"
-          :class="{ on: view === 'markdown' }"
-          type="button"
-          data-cy="doc-view-markdown"
-          @click="view = 'markdown'"
-        >
-          Markdown
-        </button>
-        <button
-          class="seg"
-          :class="{ on: view === 'raw' }"
-          type="button"
-          data-cy="doc-view-raw"
-          @click="view = 'raw'"
-        >
-          Raw
-        </button>
-      </span>
+      <SegmentedControl v-model="view" class="views" tone="paper" :options="views" />
     </div>
     <div class="doc-content">
       <!-- eslint-disable-next-line vue/no-v-html -- markdown-it runs with `html: false`, so this
@@ -95,38 +72,10 @@ const rendered = computed(() => renderMarkdown(props.source))
       <div v-if="view === 'markdown'" class="md-doc" data-cy="doc-rendered" v-html="rendered"></div>
       <pre v-else class="view-raw" data-cy="doc-raw">{{ source }}</pre>
     </div>
-  </div>
+  </PaperSheet>
 </template>
 
 <style scoped>
-.doc-paper {
-  position: relative;
-  overflow: hidden;
-  border: var(--border-width) solid var(--paper-line);
-  border-radius: var(--radius-paper);
-  background: var(--paper-bg);
-  box-shadow: var(--paper-shadow);
-  color: var(--paper-ink);
-  /* ⚠️ **Declared here even though the island already sets `color-scheme: light`, and a drawer is
-     why.** `scrollbar-color` INHERITS as an already-substituted value: the conversation drawer's
-     `.drawer-body` writes `var(--scrollbar-thumb)` on the ancestor, the var resolves THERE, and the
-     paper inherits `rgba(255, 255, 255, 0.12)` — a white thumb on a white code block — whatever
-     scope it is in.
-     A colour scheme cannot override an explicit colour. Re-declaring it inside the island is what
-     makes the var resolve on paper, and the same inheritance then carries it down to the two
-     elements that actually scroll: `.doc-content` when compact, and a wide `pre`. Measured when this
-     was written: every surface outside a drawer read `auto` and is fixed by the scheme alone; a
-     drawer is what needed this line.
-
-     ⛔ **No `scrollbar-width` beside it, and that is the difference between the two properties
-     rather than an omission.** Every other site in this app pairs them — but every other site is a
-     scroll CONTAINER, and this element is `overflow: hidden` and never scrolls. `scrollbar-width`
-     does not inherit (`scrollbar-color` does), so a `thin` here would reach neither scroller and
-     would be a dead declaration that read like a fix. The paper's scrollbars keep the platform
-     width they already had; only their colour was wrong. */
-  scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-
 .doc-toolbar {
   display: flex;
   align-items: center;
@@ -145,35 +94,8 @@ const rendered = computed(() => renderMarkdown(props.source))
   white-space: nowrap;
 }
 
-.seg-group {
-  display: inline-flex;
+.views {
   margin-left: auto;
-  padding: var(--space-1);
-  border: var(--border-width) solid var(--paper-line);
-  border-radius: var(--radius-seg-group);
-  background: var(--paper-seg-bg);
-}
-
-.seg {
-  display: inline-flex;
-  height: 22px;
-  align-items: center;
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-seg);
-  background: transparent;
-  color: var(--paper-muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-}
-
-.seg:hover {
-  color: var(--paper-ink);
-}
-
-.seg.on {
-  background: var(--accent-solid-bg);
-  color: var(--accent-ink);
 }
 
 .doc-content {
@@ -247,12 +169,5 @@ const rendered = computed(() => renderMarkdown(props.source))
 
 .md-doc :deep(a) {
   color: var(--paper-link);
-}
-
-.view-raw {
-  margin: 0;
-  color: var(--paper-ink2);
-  font: var(--type-small) / 1.65 var(--font-mono);
-  white-space: pre-wrap;
 }
 </style>

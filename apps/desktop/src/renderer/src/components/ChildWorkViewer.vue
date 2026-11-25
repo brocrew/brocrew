@@ -12,7 +12,10 @@ import type {
 import { appClosing } from '../lib/app-closing'
 import { readOnlyTranscript } from '../lib/read-only-transcript'
 import DocumentBody from './DocumentBody.vue'
+import DocumentViewerFrame from './DocumentViewerFrame.vue'
 import MarkdownWords from './MarkdownWords.vue'
+import PaperSheet from './PaperSheet.vue'
+import SegmentedControl from './SegmentedControl.vue'
 import TranscriptView from './TranscriptView.vue'
 
 /**
@@ -388,9 +391,43 @@ const refusal = computed(() => {
   if (props.result.ok) return null
   const unread =
     props.result.reason === 'unknown-agent' ? absenceUnreadSays(props.result.rowsUnread) : null
-  if (unread !== null) return `${NO_RECORD} ${unread}. There is nothing to open.`
-  return REFUSAL[props.result.reason] ?? 'That could not be opened.'
+  const text =
+    unread !== null
+      ? `${NO_RECORD} ${unread}. There is nothing to open.`
+      : (REFUSAL[props.result.reason] ?? 'That could not be opened.')
+  return { text, cy: 'child-work-refusal' }
 })
+
+/**
+ * What the reader would otherwise get wrong, stated under the head: a cut file, lines that could not
+ * be read, and a follow that hit its ceiling, so a screen that stopped changing is not taken for a
+ * child that stopped working.
+ */
+const notes = computed(() => {
+  const result = props.result
+  const said: { text: string; cy: string }[] = []
+  if (result.ok && result.truncated)
+    said.push({
+      text: `Showing the first part of a ${Math.round(result.bytes / 1024)} KB file.`,
+      cy: 'child-work-truncated',
+    })
+  if (result.ok && result.unreadable)
+    said.push({
+      text: `${result.unreadable} ${result.unreadable === 1 ? 'line' : 'lines'} unreadable.`,
+      cy: 'child-work-unreadable',
+    })
+  if (outgrown.value)
+    said.push({
+      text: 'Record too long to follow. Live updates stopped.',
+      cy: 'child-work-outgrown',
+    })
+  return said
+})
+
+const TRANSCRIPT_VIEWS = [
+  { value: 'transcript', label: 'Transcript', cy: 'child-view-transcript' },
+  { value: 'raw', label: 'Raw', cy: 'child-view-raw' },
+] as const
 
 const PART_WORD: Record<string, string> = {
   transcript: 'transcript',
@@ -400,8 +437,13 @@ const PART_WORD: Record<string, string> = {
 </script>
 
 <template>
-  <div class="child-work" data-cy="child-work-viewer">
-    <header class="viewer-head">
+  <DocumentViewerFrame
+    data-cy="child-work-viewer"
+    :notes="notes"
+    :refusal="refusal"
+    @close="emit('close')"
+  >
+    <template #head>
       <!-- ⚠️ **Hooked since 115**: this is who the reader thinks they opened, and it was the one
            thing on this header no test in the repo could even select. The label travels with the
            request from the card that raised it, and an empty one is a heading that says nothing. -->
@@ -428,64 +470,16 @@ const PART_WORD: Record<string, string> = {
       <span v-if="result.ok && result.parentToolCallId" class="file" data-cy="child-work-parent">
         from {{ result.parentToolCallId }}
       </span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
-
-    <!-- Stated, never silent (092's rule). -->
-    <p v-if="result.ok && result.truncated" class="cut" data-cy="child-work-truncated">
-      Showing the first part of a {{ Math.round(result.bytes / 1024) }} KB file.
-    </p>
-    <p v-if="result.ok && result.unreadable" class="cut" data-cy="child-work-unreadable">
-      {{ result.unreadable }}
-      {{ result.unreadable === 1 ? 'line' : 'lines' }} unreadable.
-    </p>
-
-    <!-- ⛔ **The follow has hit the ceiling** (296). Louder than the `truncated` line above and
-         beside it rather than instead of it: that one says how big the file is, this one says the
-         thing a reader would otherwise get wrong — that a screen which has stopped changing is not
-         a child that has stopped working. -->
-    <p v-if="outgrown" class="cut" data-cy="child-work-outgrown">
-      Record too long to follow. Live updates stopped.
-    </p>
+    </template>
 
     <!-- A CHILD'S TRANSCRIPT: the conversation, with the bytes behind it. -->
     <RunInput :text="run?.input" :progress="run?.progress" :result="run?.result" />
     <template v-if="result.ok && result.part === 'transcript'">
       <div class="seg-bar">
-        <span class="seg-group">
-          <button
-            class="seg"
-            :class="{ on: view === 'transcript' }"
-            type="button"
-            data-cy="child-view-transcript"
-            @click="view = 'transcript'"
-          >
-            Transcript
-          </button>
-          <button
-            class="seg"
-            :class="{ on: view === 'raw' }"
-            type="button"
-            data-cy="child-view-raw"
-            @click="view = 'raw'"
-          >
-            Raw
-          </button>
-        </span>
+        <SegmentedControl v-model="view" :options="TRANSCRIPT_VIEWS" />
       </div>
       <div class="stage" :data-view="view">
-        <!-- Use `data-on-white` for the paper transcript so text uses readable ink even under a dark ambient theme. `--paper-bg` stays white; the ambient dark conversation ramp is too light for it.
-
-             Use `data-on-white` instead of claiming a light chat theme. This white surface is independent of the reader's chat setting and must not add a second `data-chat-theme` carrier. -->
-        <div class="paper" data-on-white data-cy="child-work-paper">
+        <PaperSheet data-cy="child-work-paper">
           <p v-if="thinkingBlocks" class="note" data-cy="child-work-thinking-note">
             {{ thinkingBlocks }} thinking {{ thinkingBlocks === 1 ? 'block' : 'blocks' }}, reasoning
             not recorded.
@@ -501,7 +495,7 @@ const PART_WORD: Record<string, string> = {
             who="sub-agent"
           />
           <pre v-else class="view-raw" data-cy="child-work-raw">{{ result.text }}</pre>
-        </div>
+        </PaperSheet>
       </div>
 
       <!-- ⛔ **The composer** (296), and it is drawn from what the provider said about THIS child —
@@ -548,54 +542,10 @@ const PART_WORD: Record<string, string> = {
     <div v-else-if="result.ok" class="stage">
       <DocumentBody :source="result.text" :filename="result.name" :raw="true" />
     </div>
-
-    <p v-else class="refusal" data-cy="child-work-refusal">
-      {{ refusal }}
-    </p>
-  </div>
+  </DocumentViewerFrame>
 </template>
 
 <style scoped>
-/*
- * Use a declared opaque surface token for the panel. An undefined `--surface-1` made the background declaration invalid, leaving the panel transparent over the overlay backdrop.
-
-   `--drawer-solid`, because it already means exactly this and already has both values: *"the
-   drawer's opaque fill when it floats over the transcript"*. This panel floats over the transcript
-   too, and it is inside the conversation's `data-chat-theme` scope — so the token follows the
-   theme, near-black on dark chrome and white on paper, which is what every other token in this
-   block already does. ⚠️ **`--panel` (the house modal fill) had no light value when this was
-   written and would have painted #0d1118 on a light page; 344 gave it one, so the argument against
-   it is now the weaker "it means a different thing" rather than "it is a dark island".**
-   `--paper-bg` still has no dark value and would put this header's near-white `--text-soft` on
-   white — the trap 091 caught with `--panel-3`, in the other direction. */
-.child-work {
-  display: flex;
-  max-width: min(900px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--drawer-solid);
-}
-
-.viewer-head {
-  display: flex;
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
-.name {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-}
-
-.file {
-  color: var(--faint);
-  font: var(--type-caption) / 1.4 var(--font-mono);
-}
-
 .part {
   color: var(--accent-2-text);
   font-size: var(--type-caption);
@@ -611,16 +561,12 @@ const PART_WORD: Record<string, string> = {
   white-space: nowrap;
 }
 
-.icon-button {
-  margin-left: auto;
-}
-
-.cut,
+/* Notes about the record, on its paper. */
 .note {
   margin: 0;
   padding: var(--space-3) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  color: var(--muted);
+  border-bottom: var(--border-width) solid var(--paper-line);
+  color: var(--paper-muted);
   font-size: var(--type-caption);
 }
 
@@ -631,76 +577,8 @@ const PART_WORD: Record<string, string> = {
   border-bottom: var(--border-width) solid var(--line);
 }
 
-.seg-group {
-  display: inline-flex;
-  padding: var(--space-1);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-seg-group);
-  background: var(--wash-2);
-}
-
-.seg {
-  display: inline-flex;
-  height: 22px;
-  align-items: center;
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-seg);
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-}
-
-/* ⛔ **This said `var(--badge-ink)` — `#ffffff` in both themes — on `--accent`, which in dark is
-   the pale `#7dbbff`: white on pale blue, 2.01:1** (126). `--accent-ink` is the token that MEANS
-   "ink on a solid accent fill", and it is the one `DocumentBody`'s identical segmented control has
-   used all along: near-black on dark's pale accent (9.43:1), white on light's `#2563eb` (5.17:1).
-   Same control, same two shipped values, one token apart. `--badge-ink` is the plate's own white
-   disc and belongs to `AgentState`. */
-.seg.on {
-  background: var(--accent-solid-bg);
-  color: var(--accent-ink);
-}
-
-.stage {
-  min-height: 0;
-  padding: var(--space-5);
-  overflow: auto;
-}
-
-/* The paper, which is the standing rule for anything read as a document (092/107). The child's own
-   conversation sits on it for the same reason the run's output does: it is a thing to be read. */
-.paper {
-  padding: var(--space-6);
-  border: var(--border-width) solid var(--paper-line);
-  border-radius: var(--radius-paper);
-  background: var(--paper-bg);
-  box-shadow: var(--paper-shadow);
-  color: var(--paper-ink);
-}
-
-.paper .note {
-  border-bottom: var(--border-width) solid var(--paper-line);
-  color: var(--paper-muted);
-}
-
-.view-raw {
-  margin: 0;
-  color: var(--paper-ink2);
-  font: var(--type-small) / 1.65 var(--font-mono);
-  white-space: pre-wrap;
-}
-
-.refusal {
-  margin: 0;
-  padding: var(--space-6) var(--space-5);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
 /* The composer (296). ⚠️ **Outside `.paper`, deliberately.** The paper is the child's own record —
-   a white island whatever the theme, for the reason 126 gives above — and this is not part of that
+   a white island whatever the theme — and this is not part of that
    record: it is this window speaking. Putting it on the paper would draw a message that has not been
    sent as though it were already in the transcript. So it sits on the panel's own chrome, in the
    ambient theme, exactly where a composer sits everywhere else in this app. */
@@ -747,8 +625,7 @@ const PART_WORD: Record<string, string> = {
   font-weight: var(--fw-semibold);
 }
 
-/* ⛔ `--accent-ink` on `--accent` above, and NOT `--badge-ink`: the identical trap the segmented
-   control's own comment records, one control over and in the same file. */
+/* ⛔ `--accent-ink` on `--accent` above, and NOT `--badge-ink`: the trap `SegmentedControl` records. */
 .talk-send:disabled {
   background: var(--wash-2);
   color: var(--faint);
