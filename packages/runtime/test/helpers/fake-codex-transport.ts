@@ -17,9 +17,10 @@ import { threadStartResponse, turnStartResponse } from '../fixtures/codex-protoc
 const EVERY_THREAD_OVERLAY = { ...CODEX_PLAN_TOOL_CONFIG, ...CODEX_QUESTION_TOOL_CONFIG }
 
 /**
- * ⚠️ **736 · every launch in this file now reads the kept rules of `/tmp/x/home`** — Claude's
- * `settings.json`, Codex's `brobot-kept-tool-approvals.json`. On a machine where that path held one,
- * dozens of launch assertions would change underneath; this says so loudly instead of flaking.
+ * ⚠️ **736 · every launch in a file that imports this helper reads the kept rules of
+ * `/tmp/x/home`** — Claude's `settings.json`, Codex's `brobot-kept-tool-approvals.json`. On a machine
+ * where that path held one, dozens of launch assertions would change underneath; this says so loudly
+ * instead of flaking.
  */
 beforeAll(() => {
   for (const kept of ['settings.json', 'brobot-kept-tool-approvals.json']) {

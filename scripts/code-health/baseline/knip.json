@@ -220,8 +220,6 @@
   "exports|packages/runtime/smoke/codex-work-folders-evidence.ts|messageText",
   "exports|packages/runtime/smoke/reopen-grant-evidence.ts|cardsIn",
   "exports|packages/runtime/src/claude/login-renewal.ts|CLAUDE_RENEWAL_TIME_LIMIT_MS",
-  "exports|packages/runtime/src/codex/codex-runtime.ts|CODEX_TOOLS_LEFT_ON",
-  "exports|packages/runtime/src/codex/codex-runtime.ts|CODEX_TOOLS_TURNED_OFF",
   "exports|packages/runtime/src/codex/home-boot.ts|BOOT_WAIT_MS",
   "exports|packages/runtime/src/codex/memory-store.ts|CODEX_AD_HOC_NOTES",
   "exports|packages/runtime/src/codex/memory-store.ts|CODEX_MEMORY_INDEX",

@@ -357,15 +357,24 @@ import {
   capabilitiesFor,
   childInputRefusal,
   type ChildThreadState,
+  // ⚑ **516 · the one place this app speaks MCP as a client, and the shape a launch is handed.**
   discoverExternalMcpTools,
   resolveReasoningEffort,
   SUPPORTED_PROVIDERS,
+  // ⚑ **657 · the one half of a refused turn that clears on its own** — `queueMessage` holds it.
   TurnInProgress,
+  // ⚑ **708 · each provider's command prefix, known before any list is** (`R42`).
   PROVIDER_COMMAND_PREFIX,
+  // ⚑ **710 · R52 — a machine that ran short**, by the errno's code, at a person's own launch.
   transientSetupFailureOf,
+  // A wait that ran out, told apart from work that failed.
   didNotAnswerInTime,
+  // ⚑ **716 · R66 — a folder a person must fix**, by the errno's code, at the same two doors.
   folderAPersonMustFixOf,
+  // ⚑ **724 · `717` F-2 — the spawn's own code**, read by R51's reader and never off the text.
   spawnNoWaitClearsOf,
+  // ⚑ **D-039 · R2 — a provider that refused the start, or whose start failed otherwise**, by type,
+  // at a person's two doors.
   startRefusalOf,
   startFailureOf,
   withDeadline,
