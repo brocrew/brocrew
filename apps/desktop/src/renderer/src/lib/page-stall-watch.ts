@@ -10,7 +10,6 @@ import {
   type PagePerformanceReport,
   type PageReportAnswer,
   type PageSample,
-  type PageSurface,
 } from '../../../shared/page-performance'
 
 const HEALTH_MS = 30_000
@@ -59,8 +58,7 @@ export function startPageStallWatch(
   let frameAt: number | null = null
   let remainingFrames = 0
   let activeUntil = 0
-  let surface: PageSurface = 'bootstrap'
-  let contexts: { at: number; until: number; surface: PageSurface; input: PageInput }[] = []
+  let contexts: { at: number; until: number; input: PageInput }[] = []
   let samples: PageSample[] = []
   let entries = 0
   let probes = 0
@@ -71,7 +69,6 @@ export function startPageStallWatch(
     start: number
     ms: number
     count: number
-    surface: PageSurface
     input: PageInput
     reported: boolean
   }[] = []
@@ -93,11 +90,11 @@ export function startPageStallWatch(
     const now = env.now()
     const previous = contexts.at(-1)
     const until = input === 'none' ? Infinity : now + ACTIVE_MS
-    if (previous?.surface === surface && previous.input === input && now <= previous.until) {
+    if (previous?.input === input && now <= previous.until) {
       previous.until = until
       return
     }
-    contexts.push({ at: now, until, surface, input })
+    contexts.push({ at: now, until, input })
     if (contexts.length > CONTEXT_LIMIT) contexts.shift()
   }
 
@@ -113,13 +110,12 @@ export function startPageStallWatch(
     startMs: number,
     durationMs: number,
     n = 1,
-    at: { surface: PageSurface; input: PageInput } | undefined = contextAt(startMs),
+    at: { input: PageInput } | undefined = contextAt(startMs),
   ): Omit<PageSample, 'kind'> {
     return {
       startMs: Math.min(MAX_PAGE_CLOCK_MS, startMs),
       durationMs: Math.min(MAX_SAMPLE_MS, durationMs),
       count: count(n),
-      surface: at?.surface ?? 'other',
       component: null,
       attribution: 'unknown',
       input: at?.input ?? 'unknown',
@@ -135,7 +131,7 @@ export function startPageStallWatch(
     startMs: number,
     durationMs: number,
     n = 1,
-    at: { surface: PageSurface; input: PageInput } | undefined = contextAt(startMs),
+    at: { input: PageInput } | undefined = contextAt(startMs),
   ): void {
     keep({ kind, ...measurements(startMs, durationMs, n, at) })
   }
@@ -168,15 +164,14 @@ export function startPageStallWatch(
       }
       if (duration >= TASK_MS) sample('long-task', startTime, duration)
       else {
-        const at = contextAt(startTime)
-        const from = { surface: at?.surface ?? 'other', input: at?.input ?? 'unknown' } as const
-        let burst = bursts.find((one) => one.surface === from.surface && one.input === from.input)
+        const input = contextAt(startTime)?.input ?? 'unknown'
+        let burst = bursts.find((one) => one.input === input)
         if (!burst) {
           if (bursts.length === MAX_PAGE_SAMPLES) {
             dropped = count(dropped + 1)
             continue
           }
-          burst = { start: startTime, ms: 0, count: 0, reported: false, ...from }
+          burst = { start: startTime, ms: 0, count: 0, reported: false, input }
           bursts.push(burst)
         }
         if (burst.reported) {
@@ -319,7 +314,7 @@ export function startPageStallWatch(
         const timerLateMs = Math.min(MAX_SAMPLE_MS, gap.timerLateMs)
         keep({
           kind: 'starved',
-          ...measurements(gap.startMs, timerLateMs, 1, { surface: 'away', input: 'none' }),
+          ...measurements(gap.startMs, timerLateMs, 1, { input: 'none' }),
           timerLateMs,
           frameLateMs: Math.min(MAX_SAMPLE_MS, gap.frameLateMs),
         })
@@ -375,7 +370,7 @@ export function startPageStallWatch(
     }
     visible = true
     since = first ? 0 : env.now()
-    contexts = [{ at: since, until: Infinity, surface, input: 'none' }]
+    contexts = [{ at: since, until: Infinity, input: 'none' }]
     try {
       const armedGeneration = generation
       disconnect = env.observe((incoming) => {
@@ -425,7 +420,6 @@ export function startPageStallWatch(
   visibility()
   return {
     mounted() {
-      surface = 'other'
       active('none')
     },
     stop,

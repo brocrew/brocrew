@@ -30,21 +30,6 @@ export const PAGE_STARVATION_FLOOR_MS = 1_000
 /** What a sample measured: tasks, frames, or callbacks held back while hidden. */
 export const PAGE_SAMPLE_KINDS = ['long-task', 'frame-gap', 'task-burst', 'starved'] as const
 
-/** The page's surface when it froze. */
-export const PAGE_SURFACES = [
-  'bootstrap',
-  'waiting',
-  'away',
-  'sessions',
-  'reading',
-  'tools',
-  'team',
-  'providers',
-  'conversation',
-  'launcher',
-  'other',
-] as const
-
 /** The part of the page known to have run, or that was on screen. */
 export const PAGE_COMPONENTS = [
   'TranscriptView',
@@ -63,7 +48,6 @@ export const PAGE_ATTRIBUTIONS = ['explicit-span', 'active-view', 'unknown'] as 
 export const PAGE_INPUTS = ['scroll', 'pointer', 'key', 'resize', 'none', 'unknown'] as const
 
 export type PageSampleKind = (typeof PAGE_SAMPLE_KINDS)[number]
-export type PageSurface = (typeof PAGE_SURFACES)[number]
 export type PageComponent = (typeof PAGE_COMPONENTS)[number]
 export type PageAttribution = (typeof PAGE_ATTRIBUTIONS)[number]
 export type PageInput = (typeof PAGE_INPUTS)[number]
@@ -74,7 +58,6 @@ interface PageSampleMeasurements {
   readonly durationMs: number
   /** How many tasks it folds: 1 for one long task. */
   readonly count: number
-  readonly surface: PageSurface
   readonly component: PageComponent | null
   readonly attribution: PageAttribution
   readonly input: PageInput

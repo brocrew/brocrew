@@ -155,7 +155,6 @@ describe('the page watches its own tasks and frames', () => {
         startMs: 100,
         durationMs: 720,
         count: 1,
-        surface: 'bootstrap',
         component: null,
         attribution: 'unknown',
         input: 'none',
@@ -187,7 +186,7 @@ describe('the page watches its own tasks and frames', () => {
     expect(f.lines).toEqual([])
   })
 
-  it('aggregates smaller tasks per interval and context, and keeps delayed bootstrap attribution', async () => {
+  it('aggregates smaller tasks per interval and input, and keeps a task from before the mount', async () => {
     const f = fixture()
     await settled()
     f.tasks([
@@ -205,10 +204,10 @@ describe('the page watches its own tasks and frames', () => {
     f.advance()
     await settled()
     expect(f.reports[1]!.samples).toContainEqual(
-      expect.objectContaining({ kind: 'long-task', surface: 'bootstrap', durationMs: 700 }),
+      expect.objectContaining({ kind: 'long-task', durationMs: 700 }),
     )
     expect(f.reports[1]!.samples).toContainEqual(
-      expect.objectContaining({ kind: 'task-burst', surface: 'other', durationMs: 510, count: 3 }),
+      expect.objectContaining({ kind: 'task-burst', durationMs: 510, count: 3 }),
     )
   })
 
@@ -517,12 +516,11 @@ describe('the page watches its own tasks and frames', () => {
         durationMs: 90_000,
         timerLateMs: 90_000,
         frameLateMs: 120_016,
-        surface: 'away',
         input: 'none',
       }),
     ])
     expect(f.lines).toEqual([
-      'page renderer 77 window 1 starved while hidden; timer late 90000 ms; frame late 120016 ms; surface away; input none; page clock 1000',
+      'page renderer 77 window 1 starved while hidden; timer late 90000 ms; frame late 120016 ms; input none; page clock 1000',
     ])
     f.frame(121_032)
     f.advance()

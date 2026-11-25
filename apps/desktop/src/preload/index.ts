@@ -845,7 +845,6 @@ const api = Object.freeze({
         startMs: one.startMs,
         durationMs: one.durationMs,
         count: one.count,
-        surface: one.surface,
         component: one.component,
         attribution: one.attribution,
         input: one.input,

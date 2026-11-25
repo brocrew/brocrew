@@ -11,7 +11,6 @@ import {
   PAGE_REPORT_SPACING_MS,
   PAGE_SAMPLE_KINDS,
   PAGE_STARVATION_FLOOR_MS,
-  PAGE_SURFACES,
   type PageHealth,
   type PagePerformanceReport,
   type PageReportAnswer,
@@ -30,7 +29,6 @@ const measurements = {
   startMs: z.number().min(0).max(MAX_PAGE_CLOCK_MS),
   durationMs: z.number().min(0).max(MAX_SAMPLE_MS),
   count: z.number().int().min(1).max(MAX_PAGE_COUNT),
-  surface: z.enum(PAGE_SURFACES),
   component: z.enum(PAGE_COMPONENTS).nullable(),
   attribution: z.enum(PAGE_ATTRIBUTIONS),
   input: z.enum(PAGE_INPUTS),
@@ -160,7 +158,7 @@ export function aPageSampleSays(sample: PageSample): string {
       : sample.kind === 'task-burst'
         ? `${String(sample.count)} tasks taking ${String(Math.round(sample.durationMs))} ms in all`
         : `${sample.kind} ${String(Math.round(sample.durationMs))} ms`
-  const parts = [what, `surface ${sample.surface}`]
+  const parts = [what]
   if (sample.component !== null) parts.push(`component ${sample.component} (${sample.attribution})`)
   if (sample.conversation !== null) parts.push(`conversation ${String(sample.conversation)}`)
   if (sample.loadedItems !== null) parts.push(`loaded items ${String(sample.loadedItems)}`)

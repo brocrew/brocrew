@@ -33,7 +33,6 @@ const A_SAMPLE: PageSample = {
   startMs: 12_500,
   durationMs: 720,
   count: 1,
-  surface: 'conversation',
   component: 'TranscriptView',
   attribution: 'active-view',
   input: 'scroll',
@@ -128,7 +127,7 @@ describe('§1 · a report is written to the stall log, and the host is never ask
     const door = theDoor()
     expect(door.send(THE_PAGE(), A_REPORT)).toEqual({ recorded: true })
     expect(door.lines).toEqual([
-      'page renderer 4242 window 3 long-task 720 ms; surface conversation; component TranscriptView (active-view); conversation 7; loaded items 840; files 180; context used 310000; input scroll; page clock 12500',
+      'page renderer 4242 window 3 long-task 720 ms; component TranscriptView (active-view); conversation 7; loaded items 840; files 180; context used 310000; input scroll; page clock 12500',
     ])
     expect(door.touched).toEqual([])
     expect(door.visibility).toEqual([true])
@@ -202,7 +201,7 @@ describe('§3 · numbers and the fixed words, nothing else', () => {
   })
 
   it('⛔ a word off the lists is refused, so no text and no newline can reach the log', () => {
-    refused({ ...A_REPORT, samples: [{ ...A_SAMPLE, surface: 'conversation\nforged line' }] })
+    refused({ ...A_REPORT, samples: [{ ...A_SAMPLE, input: 'scroll\nforged line' }] })
     refused({ ...A_REPORT, samples: [{ ...A_SAMPLE, component: 'Secret client name' }] })
   })
 
@@ -219,7 +218,6 @@ describe('§3 · numbers and the fixed words, nothing else', () => {
             durationMs: 90_000,
             timerLateMs: 90_000,
             frameLateMs: 120_016,
-            surface: 'away',
             input: 'none',
             component: null,
             conversation: null,
@@ -231,7 +229,7 @@ describe('§3 · numbers and the fixed words, nothing else', () => {
       }),
     ).toEqual({ recorded: true })
     expect(door.lines).toEqual([
-      'page renderer 77 window 1 starved while hidden; timer late 90000 ms; frame late 120016 ms; surface away; input none; page clock 1000',
+      'page renderer 77 window 1 starved while hidden; timer late 90000 ms; frame late 120016 ms; input none; page clock 1000',
     ])
   })
 
@@ -306,10 +304,9 @@ describe('§5 · the words of a sample', () => {
         loadedItems: null,
         fileCount: null,
         contextUsed: null,
-        surface: 'waiting',
         input: 'none',
       }),
-    ).toBe('14 tasks taking 640 ms in all; surface waiting; input none; page clock 12500')
+    ).toBe('14 tasks taking 640 ms in all; input none; page clock 12500')
   })
 })
 
