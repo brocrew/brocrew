@@ -183,7 +183,7 @@ describe('Team workspace fold and door', () => {
       { width: 1100, height: 900 },
     )
     expect(empty.q('team-count').textContent).toBe('0')
-    expect(empty.q('team-none').textContent).toContain('No agent identities yet')
+    expect(empty.q('team-none').textContent).toContain('No agents yet. Create one with New agent.')
   })
 
   /**

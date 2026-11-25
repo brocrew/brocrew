@@ -528,7 +528,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
         // such agent. ⚑ Every sibling that re-reads composes this sentence; this is the same one.
         await load()
         if (loadError.value !== null) {
-          return `${called} was removed, but this window could not re-read the list: ${loadError.value}`
+          return `${called} removed. Reopen Team to refresh.`
         }
         return null
       } catch (error) {
@@ -568,7 +568,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
           // ⚑ **712 · R41 — the new agent NAMED, off the row main wrote**: a blank name box is not
           // a nameless agent — main gives it a name from the pool (`nameForANewIdentity`) — so the
           // name is the answer's, never the box's, and the slug only where main stored none.
-          return `${agentName(created.slug, [created])} was created, but this window could not re-read the list: ${loadError.value}`
+          return `${agentName(created.slug, [created])} created. Reopen Team to refresh.`
         }
         return null
       } catch (error) {
@@ -594,7 +594,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
         // nothing said.
         await load()
         if (loadError.value !== null) {
-          return `${said.name} was registered, but this window could not re-read the list: ${loadError.value}`
+          return `${said.name} registered. Reopen the list to refresh.`
         }
         return null
       } catch (error) {
@@ -610,7 +610,7 @@ export function createAgentStore(bridge: ClientAgentApi): AgentStore {
         // holds, and the re-read below is what makes the list say so.
         await load()
         if (loadError.value !== null) {
-          return `The server was removed, but this window could not re-read the list: ${loadError.value}`
+          return 'Tools removed. Reopen the list to refresh.'
         }
         return null
       } catch (error) {

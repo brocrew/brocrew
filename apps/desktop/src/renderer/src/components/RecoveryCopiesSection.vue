@@ -65,7 +65,7 @@ async function deleteNow(): Promise<void> {
       class="recovery-confirmation"
       data-cy="recovery-delete-confirmation"
     >
-      <p>Delete this recovery copy? You won’t be able to restore this copy afterwards.</p>
+      <p>Delete this copy? This can't be undone.</p>
       <button
         class="bb-button"
         type="button"

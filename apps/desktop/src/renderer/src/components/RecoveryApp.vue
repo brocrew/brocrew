@@ -295,7 +295,7 @@ const messagePaths = useMessagePaths(
               </div>
             </div>
             <p v-if="trouble" class="trouble" data-cy="recovery-trouble">
-              That didn't finish. Close BroCrew and open it again.
+              Couldn't finish. Restart BroCrew.
               <span class="detail">{{ trouble }}</span>
             </p>
           </div>
@@ -304,7 +304,7 @@ const messagePaths = useMessagePaths(
         <div class="history-body">
           <nav class="list" aria-label="Conversations in the copy" data-cy="recovery-conversations">
             <p v-if="listTrouble" class="quiet" data-cy="recovery-list-trouble">
-              BroCrew couldn't read the conversations in this copy.
+              Couldn't read conversations in this copy.
               <span class="detail">{{ listTrouble }}</span>
             </p>
             <p v-else-if="conversations === null" class="quiet">Reading the copy…</p>
@@ -339,7 +339,7 @@ const messagePaths = useMessagePaths(
                 <span class="row-meta">{{ who }}</span>
               </header>
               <p v-if="chosen.trouble" class="quiet" data-cy="recovery-reader-trouble">
-                BroCrew couldn't read this conversation from the copy.
+                Couldn't read this saved conversation.
                 <span class="detail">{{ chosen.trouble }}</span>
               </p>
               <p v-else-if="chosen.transcript === null" class="quiet">Reading…</p>
@@ -451,7 +451,7 @@ const messagePaths = useMessagePaths(
               </div>
             </div>
             <p v-if="trouble" class="trouble" data-cy="recovery-trouble">
-              That didn't finish. Close BroCrew and open it again.
+              Couldn't finish. Restart BroCrew.
               <span class="detail">{{ trouble }}</span>
             </p>
           </div>

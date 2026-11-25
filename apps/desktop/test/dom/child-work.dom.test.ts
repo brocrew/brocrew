@@ -144,8 +144,8 @@ describe("a child's transcript on paper (112)", () => {
     // items: the importer drops an empty thinking block, so a viewer counting `items` would report
     // zero for a file with ten of them — which reads as a child that did not think.
     const view = inColumn(ok({ thinkingBlocks: 3 }))
-    expect(view.q('child-work-thinking-note').textContent).toContain('3 thinking blocks were')
-    expect(view.q('child-work-thinking-note').textContent).toContain('not the reasoning')
+    expect(view.q('child-work-thinking-note').textContent).toContain('3 thinking blocks')
+    expect(view.q('child-work-thinking-note').textContent).toContain('reasoning not')
     view.unmount()
     // …and the paired negative: a child that recorded none says nothing, rather than "0 thinking".
     const none = inColumn(ok())
@@ -193,7 +193,7 @@ describe('a journal, a script, and every refusal (112)', () => {
     // The two doors say different true things: one is about a run's answer, the other about a
     // child's record. Pinned so a future edit cannot collapse them into one word.
     const view = inColumn({ ok: false, reason: 'gone' } as ChildWorkResult)
-    expect(view.q('child-work-refusal').textContent).toContain("provider's home")
+    expect(view.q('child-work-refusal').textContent).toContain('Child record unavailable.')
   })
 
   it('a child that belongs to no run says nothing about a run, rather than inventing one', () => {
@@ -439,7 +439,7 @@ describe('the sub-agent card finally opens something (115)', () => {
     await nextTick()
     expect(asked).toHaveLength(1)
     await nextTick()
-    expect(view.q('child-work-refusal').textContent).toContain("provider's home")
+    expect(view.q('child-work-refusal').textContent).toContain('Child record unavailable.')
     expect(view.all('child-work-name')).toHaveLength(0)
   })
 })

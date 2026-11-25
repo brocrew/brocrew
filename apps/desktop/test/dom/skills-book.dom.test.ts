@@ -166,9 +166,8 @@ describe('the read-only Skills page in the agent book', () => {
     await vi.waitFor(() =>
       expect(view.host.querySelector('[data-cy="agent-skills-error"]')).not.toBeNull(),
     )
-    expect(view.q('agent-skills-error').textContent).toContain(
-      `This app could not read the skills: ENOENT: missing '/fictional/skills/recipe-check/SKILL.md'`,
-    )
+    expect(view.q('agent-skills-error').textContent).toContain("Couldn't load skills.")
+    expect(view.q('agent-skills-error').textContent).not.toContain('ENOENT')
     expect(view.host.querySelector('[data-cy="agent-skills-empty"]')).toBeNull()
     expect(view.all('agent-skill')).toHaveLength(0)
   })

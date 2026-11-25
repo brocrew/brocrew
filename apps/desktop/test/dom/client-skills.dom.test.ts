@@ -280,8 +280,14 @@ it.each(
   const error = surface === 'profile' ? 'agent-skills-error' : 'skills-status'
   await vi.waitFor(() =>
     expect(view.q(error).textContent).toContain(
-      kind.startsWith('missing') ? 'Skills could not be read.' : failure.message,
+      surface === 'profile'
+        ? "Couldn't load skills."
+        : kind.startsWith('missing')
+          ? 'Skills could not be read.'
+          : failure.message,
     ),
   )
+  // Card 481 (T62): the agent book's line keeps the raw error off the screen.
+  if (surface === 'profile') expect(view.q(error).textContent).not.toContain(failure.message)
   expect(view.all(surface === 'profile' ? 'agent-skills-empty' : 'skills-empty')).toHaveLength(0)
 })

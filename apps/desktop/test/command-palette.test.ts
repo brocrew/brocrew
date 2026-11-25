@@ -356,7 +356,7 @@ describe('249 §2 · the palette says what it searched', () => {
     // `looked` is set only on success, so without this state a rail whose two IPC reads threw said
     // "has not answered yet" for ever (found in `249`'s own review).
     const failed = searchedNote({ conversations: 1, looked: false, failed: 'EACCES' })
-    expect(failed).toContain('could not be read')
+    expect(failed).toContain('Search incomplete')
     expect(failed).not.toContain('has not answered yet')
     // …and it does not put the host's errno in this sentence: the rail already draws the reason.
     expect(failed).not.toContain('EACCES')
@@ -373,7 +373,7 @@ describe('249 §2 · the palette says what it searched', () => {
     // sentence exists to prevent, inverted.
     const stale = searchedNote({ conversations: 2, looked: true, failed: 'boom' })
     expect(stale).toContain('2 conversations')
-    expect(stale).not.toContain('could not be read')
+    expect(stale).not.toContain('Search incomplete')
   })
 
   it('⛔ the miss quotes the query back, trimmed, and names the page that holds the rest', () => {
@@ -382,7 +382,9 @@ describe('249 §2 · the palette says what it searched', () => {
     // ⛔ It names the destinations too — they are always searched and are the only rows a fresh
     // install has, so leaving them out described a palette that had searched nothing (found in this
     // dispatch's own review), two lines above a foot sentence saying it had searched them.
-    expect(NO_MATCH_BODY).toContain('where you can go')
+    expect(NO_MATCH_BODY).toContain(
+      'Searches this list. Use All conversations for a broader search.',
+    )
     // ⚠️ **It must NOT promise to carry the query.** `@go` takes a place and nothing else, so a
     // sentence offering to search the library FOR this text would land a person on an empty box.
     expect(NO_MATCH_BODY).not.toMatch(/search(ing)? (all|every).*for/i)

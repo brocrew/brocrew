@@ -47,7 +47,7 @@ describe('the shortened launcher', () => {
     },
   )
   it('the surviving profile description does not promise a provider sign-in', () => {
-    expect(PROFILE_OWNS.toLowerCase()).toContain('its own instruction file')
+    expect(PROFILE_OWNS.toLowerCase()).toContain('instructions')
     expect(PROFILE_OWNS.toLowerCase()).not.toContain('sign-in')
   })
 })

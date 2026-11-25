@@ -276,10 +276,7 @@ export async function probeClaudeCodeLogin(seams: ClaudeRenewalSeams): Promise<A
       },
     )
     if (seams.signal?.aborted) return unknown('The Claude sign-in check was cancelled.')
-    if (ended.timedOut)
-      return unknown(
-        'Claude Code did not answer the sign-in check in time. Check again or sign in again.',
-      )
+    if (ended.timedOut) return unknown('Sign-in check timed out. Check again.')
     return ended.code === 0
       ? { state: 'usable', login: 'account', expiresAt: null }
       : unknown('Claude Code could not complete the sign-in check. Check again or sign in again.')

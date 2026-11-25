@@ -200,9 +200,7 @@ describe('§2 · wherever a session in that mode appears — the mark NAMES it a
     const m = header(SESSION({ approvalMode: 'ask', approvalNote: 'approvals: ask' }))
     await nextTick()
     expect(m.q('session-approval-indicator').textContent?.trim()).toBe('Ask')
-    expect(m.q('session-approval-indicator').title).toContain(
-      'Asks when an action needs permission.',
-    )
+    expect(m.q('session-approval-indicator').title).toContain("Uses the provider's approval rules.")
     expect(m.q('session-approval-indicator').title).not.toContain('without asking')
     expect(m.all('conversation-title'), 'the header itself rendered').toHaveLength(1)
     // ⚑ **563 · and the header is READ, not counted.** ⛔ `toHaveLength(1)` says an element is in

@@ -94,8 +94,8 @@ describe('SignInPanel — the two ways out, and the difference between them (098
   it('⚠️ says out loud that copying does not end the sharing — the sentence 098 exists for', async () => {
     const html = await render({ ...base, state: STALE })
     expect(html).toContain('data-cy="sign-in-caveat"')
-    expect(html).toMatch(/Sign in here to keep this agent.*login separate/)
-    expect(html).toMatch(/either login may stop working when the other refreshes/)
+    expect(html).toMatch(/Sign in to keep this login separate/)
+    expect(html).toMatch(/A copy may stop working when either one refreshes/)
   })
 
   it('asks the capability rather than the provider — Codex offers it, Claude explains why not', async () => {

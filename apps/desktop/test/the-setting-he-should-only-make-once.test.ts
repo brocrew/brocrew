@@ -434,7 +434,9 @@ describe('500 · the setting he should only ever make once', () => {
     it('🔴 the sentence on the button names the act, and the yolo direction names the consequence', () => {
       expect(launchApprovalView('ask').press).toContain('stop being asked')
       expect(launchApprovalView('ask').press).toContain('unattended')
-      expect(launchApprovalView('auto').press).toContain('asked again')
+      expect(launchApprovalView('auto').press).toContain(
+        "Use the provider's default approval rules",
+      )
       // The copy states the selected mode without second-guessing the person’s deliberate
       // choice.
       for (const mode of ['ask', 'auto'] as const) {
@@ -451,9 +453,11 @@ describe('500 · the setting he should only ever make once', () => {
      * conversation's own mode changes instead.
      */
     it('⛔ the bound says it is every conversation, and points at the per-conversation door', () => {
-      expect(LAUNCH_APPROVAL_BOUND).toContain('every conversation you start')
-      expect(LAUNCH_APPROVAL_BOUND).toContain('until you change it back')
-      expect(LAUNCH_APPROVAL_BOUND).toContain('keeps the mode it began in')
+      expect(LAUNCH_APPROVAL_BOUND).toContain(
+        'Default for new conversations; open ones keep their mode.',
+      )
+      expect(LAUNCH_APPROVAL_BOUND).toContain('Default for new conversations')
+      expect(LAUNCH_APPROVAL_BOUND).toContain('open ones keep their mode')
       // ⚑ **The tab's own label, read off `DRAWER_TABS` and never typed** — `CHANGEABLE_LIVE_IN`'s
       // rule, which is what makes renaming the tab rename this sentence.
       expect(LAUNCH_APPROVAL_BOUND).toContain(CHANGEABLE_LIVE_IN)

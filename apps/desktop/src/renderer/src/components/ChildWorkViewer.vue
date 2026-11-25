@@ -177,10 +177,8 @@ const readOnlyNote = computed(() =>
  * than vagueness: what a person needs is what they can do next.
  */
 const TALK_REFUSAL: Record<ChildTalkRefusal, string> = {
-  'unknown-agent':
-    'This conversation has no record of that agent, so there is nothing to speak to. The child is found from the run this app recorded — not by searching the disk.',
-  unsupported:
-    'This agent cannot be spoken to. Its provider writes down what a sub-agent did and offers no way back into one, so this record is the whole of what there is.',
+  'unknown-agent': 'No record of this agent.',
+  unsupported: 'This agent can’t take messages.',
   'not-live': 'Send this conversation a message first — a sub-agent is spoken to through it.',
   // ⛔ **This said "Nothing was sent" and that was a promise this path cannot keep** (adversarial
   // pass). One word serves both verbs, and on the SEND side the request may already be on the wire:
@@ -188,19 +186,15 @@ const TALK_REFUSAL: Record<ChildTalkRefusal, string> = {
   // cancel the work. `session-store.ts` documents the same uncertainty for a failed bridge — *"may
   // or may not have reached the app-server, and this app has no way to tell which"* — so the
   // sentence at the surface was contradicting the comment two layers under it.
-  unreachable:
-    'The agent was asked and did not answer inside the time BroCrew waits. This says nothing about what the child is doing, and if a message was being sent, BroCrew cannot tell whether it arrived.',
+  unreachable: 'No reply. Message delivery unconfirmed.',
   // ⛔ **This ended "It will send once the child is idle" and NOTHING queues it** (adversarial pass).
   // `send()` keeps the draft and stops; there is no retry, no queue, and `session-store.ts` says so
   // by name. A person who read that sentence and walked away had a message that was never going to
   // be delivered — which is the same class of false statement the ruling itself is about, made by
   // the sentence that explains the ruling.
-  working:
-    'The child is still working, so BroCrew will not send this now. A message that arrives mid-turn does not start a new one — it joins the turn already running and ends it early, while the command that turn started keeps going. Your message is still in the box; send it again once the child is idle.',
-  'not-accepting':
-    'The child is idle and its provider still will not take direct input for it. That is the provider’s answer about this thread, not a rule of this app.',
-  unloaded:
-    'The provider is not holding this child open, so there is nothing listening. Its record is still here to read.',
+  working: 'Still working. Draft kept; send when idle.',
+  'not-accepting': 'This agent can’t take messages now.',
+  unloaded: 'No longer running. Record only.',
   error: 'The provider reports this child in an error state, so nothing will reach it.',
 }
 
@@ -359,19 +353,15 @@ const items = computed(() => {
 const thinkingBlocks = computed(() => (props.result.ok ? (props.result.thinkingBlocks ?? 0) : 0))
 
 const NO_RECORD = 'This conversation has no record of that agent'
-const FOUND_FROM_THE_RUN =
-  'The transcript is found from the run this app recorded — not by searching the disk.'
-
 const REFUSAL: Record<string, string> = {
-  'unknown-agent': `${NO_RECORD}, so there is nothing to open. ${FOUND_FROM_THE_RUN}`,
+  'unknown-agent': `${NO_RECORD}, so there is nothing to open.`,
   // ⚑ 115: a Codex child now opens its own rollout. What is left here is the artefact that does not
   // exist rather than the one we cannot read — a thread belongs to no run, so it has no journal and
   // no script to open.
-  unsupported:
-    'This child is a thread of its own rather than part of a workflow run, so there is no journal and no script to open.',
+  unsupported: 'No workflow journal or script to open.',
   // ⚠️ Two causes, one sentence, and it names both — review found the first version asserting the
   // second about an agent that had simply not written anything yet.
-  gone: "There is no file for that yet. A child writes its record as it works, in the provider's home beside its parent's — so this is either an agent that has not started, or a home that has since been cleaned.",
+  gone: 'Child record unavailable.',
   // ⚑ 731 · refused only when this viewer cannot draw it as text (a binary, UTF-16, a folder, a
   // fifo, a socket) — no longer for its name: until `731` a Codex child's rollout had to end
   // `.jsonl`, and this read *"That path is not something this app will open."*
@@ -394,8 +384,7 @@ const refusal = computed(() => {
   if (props.result.ok) return null
   const unread =
     props.result.reason === 'unknown-agent' ? absenceUnreadSays(props.result.rowsUnread) : null
-  if (unread !== null)
-    return `${NO_RECORD} ${unread}. There is nothing to open. ${FOUND_FROM_THE_RUN}`
+  if (unread !== null) return `${NO_RECORD} ${unread}. There is nothing to open.`
   return REFUSAL[props.result.reason] ?? 'That could not be opened.'
 })
 
@@ -449,7 +438,7 @@ const PART_WORD: Record<string, string> = {
     </p>
     <p v-if="result.ok && result.unreadable" class="cut" data-cy="child-work-unreadable">
       {{ result.unreadable }}
-      {{ result.unreadable === 1 ? 'line' : 'lines' }} in this file could not be parsed.
+      {{ result.unreadable === 1 ? 'line' : 'lines' }} unreadable.
     </p>
 
     <!-- ⛔ **The follow has hit the ceiling** (296). Louder than the `truncated` line above and
@@ -457,8 +446,7 @@ const PART_WORD: Record<string, string> = {
          thing a reader would otherwise get wrong — that a screen which has stopped changing is not
          a child that has stopped working. -->
     <p v-if="outgrown" class="cut" data-cy="child-work-outgrown">
-      This child has written more than BroCrew follows, so what is on screen has stopped changing
-      whether or not the child has.
+      Record too long to follow. Live updates stopped.
     </p>
 
     <!-- A CHILD'S TRANSCRIPT: the conversation, with the bytes behind it. -->
@@ -491,9 +479,8 @@ const PART_WORD: Record<string, string> = {
              Use `data-on-white` instead of claiming a light chat theme. This white surface is independent of the reader's chat setting and must not add a second `data-chat-theme` carrier. -->
         <div class="paper" data-on-white data-cy="child-work-paper">
           <p v-if="thinkingBlocks" class="note" data-cy="child-work-thinking-note">
-            {{ thinkingBlocks }} thinking
-            {{ thinkingBlocks === 1 ? 'block was' : 'blocks were' }} recorded with no body — the
-            provider keeps a signature, not the reasoning.
+            {{ thinkingBlocks }} thinking {{ thinkingBlocks === 1 ? 'block' : 'blocks' }}, reasoning
+            not recorded.
           </p>
           <p v-if="items.length === 0" class="note" data-cy="child-work-empty">
             This file holds no conversation this app could read.
@@ -539,7 +526,7 @@ const PART_WORD: Record<string, string> = {
             {{ sending ? 'Sending…' : 'Send' }}
           </button>
           <span v-if="sent && sent.ok" class="talk-said" data-cy="child-talk-sent">
-            Sent. The child's own record will show it on the next refresh.
+            Sent. Refresh to see it in the record.
           </span>
           <span v-else-if="sent" class="talk-said" data-cy="child-talk-refused">
             {{ TALK_REFUSAL[sent.reason] }}

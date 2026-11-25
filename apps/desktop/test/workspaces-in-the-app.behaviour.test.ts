@@ -475,8 +475,7 @@ it.each(['open', 'closed'] as const)(
       hidden: false,
       pickFolder: async () => null,
     })
-    const plainly =
-      'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
+    const plainly = 'This workspace opens only in a development build.'
     expect(await ask(WORKSPACES_CHANNELS.open, main)).toEqual({ opened: false, refusal: plainly })
     expect(await ask(WORKSPACES_CHANNELS.checkFolder, main, false)).toMatchObject({
       ok: false,

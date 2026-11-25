@@ -426,7 +426,7 @@ describe('710 · R52 — a person whose machine ran short', () => {
       theRealHome = true
       theKeychainAnswers(aKeychainWithNoLogin)
       const said = await aPersonStarts('claude')
-      expect(said).toContain('Claude login is missing or its token has expired')
+      expect(said).toContain('Claude sign-in needs attention')
       expect(armed.keychainAsked).toBeGreaterThan(0)
     })
 

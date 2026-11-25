@@ -599,7 +599,7 @@ it('keeps Running and Configure beside a quiet failed-refresh notice', async () 
   await vi.waitFor(() => expect(m.all('plugin-card')).toHaveLength(2))
   expect(m.q('plugin-state').textContent).toBe('Running')
   expect(m.q('plugins-refresh-notice').textContent?.trim()).toBe(
-    "Couldn't check for plugin updates. Check your connection and try again.",
+    "Couldn't check updates. Check your connection and retry.",
   )
   expect(m.all('plugins-list-status')).toHaveLength(0)
   expect(m.all('plugins-error')).toHaveLength(0)

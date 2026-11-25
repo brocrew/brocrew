@@ -376,8 +376,7 @@ export function buildCommands(input: PaletteInput): PaletteCommand[] {
     // ⚑ **The sentence the rail row deliberately does not carry** (`EXT-008` §5), on the row that
     // is a search result and therefore has to say what it opens. ⚠️ **It names the BOUND**, which
     // is the one fact that distinguishes this destination from the one below it (`HO-025` §2).
-    detail:
-      'Everything still open, however old — permissions, questions and rules waiting for your approval',
+    detail: 'Everything still waiting for you',
     group: 'go',
     keywords: ['waiting', 'needs', 'attention', 'queue', 'permission', 'question', 'settle', 'owe'],
     action: { kind: 'go', place: 'waiting' },
@@ -637,7 +636,7 @@ export function searchedNote(counts: {
   const searched = `${counts.conversations} ${counts.conversations === 1 ? 'conversation' : 'conversations'}`
   const where = "this window's destinations — titles, folders, ids and provider names"
   if (counts.failed && !counts.looked) {
-    return `Searched ${searched} and ${where}. The list of conversations could not be read, so only the ones on screen here were searched.`
+    return `Searched ${searched} and ${where}. Search incomplete; only visible conversations searched.`
   }
   if (!counts.looked) {
     return `Searched ${searched} and ${where}. The list of conversations has not answered yet.`
@@ -722,8 +721,7 @@ export function noMatchHeading(query: string): string {
  * and nothing else. A sentence reading *"search all conversations for X"* would land a person on an
  * empty box and be `104`'s control that describes a state it is not in.
  */
-export const NO_MATCH_BODY =
-  'This palette searches where you can go and the conversations in the list. Every conversation on this machine is on All conversations, which has its own search.'
+export const NO_MATCH_BODY = 'Searches this list. Use All conversations for a broader search.'
 
 /** The row that gets a person out of a miss — always offered, and it is a real destination. */
 export const NO_MATCH_ESCAPE: PaletteNavigation = { kind: 'go', place: 'sessions' }
@@ -753,5 +751,4 @@ export const NO_MATCH_ESCAPE: PaletteNavigation = { kind: 'go', place: 'sessions
  * ⚑ **So the palette says it, and names the one key that fixes it.** `239`'s rule: the way out is
  * stated in the refusal.
  */
-export const SEND_CHORD_REFUSED =
-  'Send shortcuts belong to the conversation, not to this palette — press Esc to close it, then send.'
+export const SEND_CHORD_REFUSED = 'Press Esc, then send.'

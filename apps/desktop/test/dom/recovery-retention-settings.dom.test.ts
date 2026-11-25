@@ -49,7 +49,7 @@ it('shows copy size; Delete now waits, reports failures, and refreshes on succes
   await nextTick()
   expect(deletes).toEqual([])
   expect(m.q('recovery-delete-confirmation').textContent).toContain(
-    'Delete this recovery copy? You won’t be able to restore this copy afterwards.',
+    "Delete this copy? This can't be undone.",
   )
   m.q('recovery-delete-cancel').click()
   await nextTick()

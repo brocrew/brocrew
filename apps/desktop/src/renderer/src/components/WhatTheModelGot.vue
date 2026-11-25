@@ -88,20 +88,21 @@ onMounted(async () => {
         class="not-yet"
         data-cy="what-the-model-got-unrecorded"
       >
-        Its launch kept no record, so the parts before this message are composed now.
+        Launch not recorded; earlier sections are rebuilt.
       </p>
 
       <p class="part-head">The provider’s own record of the turn</p>
       <template v-if="got.providersRecord.found">
         <p class="standing" data-cy="what-the-model-got-record">
-          As kept in its own file
-          {{ got.providersRecord.version ? `by version ${got.providersRecord.version}` : '' }}.
+          Provider's record{{
+            got.providersRecord.version ? ` (version ${got.providersRecord.version})` : ''
+          }}:
           {{
             got.providerKeptTheSameText === true
-              ? 'It kept the same text BroCrew handed over.'
+              ? 'matches sent text.'
               : got.providerKeptTheSameText === false
-                ? 'Its text differs from what BroCrew handed over.'
-                : ''
+                ? 'differs from sent text.'
+                : 'comparison unavailable.'
           }}
         </p>
         <div
@@ -139,9 +140,7 @@ onMounted(async () => {
             )
           }}
         </p>
-        <p v-if="!got.providersRecord.whole" class="not-yet">
-          The provider’s record of this turn is not whole: some of it could not be read.
-        </p>
+        <p v-if="!got.providersRecord.whole" class="not-yet">Provider record incomplete.</p>
       </template>
       <p v-else class="not-yet" data-cy="what-the-model-got-record-why">
         {{ got.providersRecord.why }}
@@ -154,7 +153,7 @@ onMounted(async () => {
       <template v-if="props.sent !== undefined">
         <p class="part-head">The whole text it was handed</p>
         <p v-if="props.together" class="standing" data-cy="what-the-model-got-together">
-          Handed over in one text with the other messages of its turn.
+          Sent with this turn's other messages.
         </p>
         <p
           v-else-if="props.goAhead && props.sent !== props.words"
@@ -186,9 +185,7 @@ onMounted(async () => {
     </template>
 
     <p class="part-head">Always with it</p>
-    <p class="standing">
-      Its instructions, memory and tools: “What this agent receives” shows them.
-    </p>
+    <p class="standing">See “What this agent receives”.</p>
   </div>
 </template>
 

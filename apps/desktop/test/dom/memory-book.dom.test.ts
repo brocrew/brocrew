@@ -316,7 +316,7 @@ describe('memory in the agent book', () => {
     expect(view.host.querySelector('[data-cy="memory-undo"]')).toBeNull()
     view.q('memory-check').click()
     await vi.waitFor(() =>
-      expect(view.q('memory-confirmation').textContent).toContain("It doesn't restore or remove"),
+      expect(view.q('memory-confirmation').textContent).toContain("doesn't restore or delete"),
     )
     expect(checks).toEqual([])
     view.q('memory-confirm').click()

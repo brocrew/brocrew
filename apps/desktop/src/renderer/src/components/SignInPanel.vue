@@ -183,8 +183,7 @@ const idle = computed(() => props.busy === 'idle')
          beside the button rather than after pressing it, because it should change which button they
          press. -->
     <p v-if="explainsTheChoice" class="sign-in-caveat" data-cy="sign-in-caveat">
-      Sign in here to keep this agent's login separate. Copying your computer's existing login is
-      quicker, but either login may stop working when the other refreshes.
+      Sign in to keep this login separate. A copy may stop working when either one refreshes.
     </p>
     <!-- ⚠️ When a remedy is NOT on offer, the provider's own reason takes its place. The renderer
          owns no copy of its own for this, so a reason that goes stale is fixed in one place — and

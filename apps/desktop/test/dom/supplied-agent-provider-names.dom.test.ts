@@ -216,7 +216,9 @@ it('names the held/default choice and the before/after clear without changing th
     expect(view.q('capabilities-provider-will-clear').textContent).toContain('other than Fern'),
   )
   expect(view.q('capabilities-provider-select').textContent).toContain('Birch')
-  expect(view.q('capabilities-provider-note').textContent).toContain('is Fern')
+  expect(view.q('capabilities-provider-note').textContent).toContain(
+    'without a chosen provider or model: Fern',
+  )
   expect(view.q('agent-model-reaches').textContent).toContain('on Fern')
   await change(view.q('capabilities-provider-select'), 'codex')
   await vi.waitFor(() =>

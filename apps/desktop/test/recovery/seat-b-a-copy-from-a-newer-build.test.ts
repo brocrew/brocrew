@@ -235,9 +235,7 @@ describe('a copy a newer BroBot made before it migrated', () => {
     const before = filesIn(userData)
     const refused = await service.restore(checkpointOf(left.fixture, 2).id, quiet)
     expect(refused).toMatchObject({ kind: 'failed', reason: 'restore-failed', canRetry: false })
-    expect(refused.kind === 'failed' ? refused.detail : '').toMatch(
-      /needs a newer version of BroCrew/,
-    )
+    expect(refused.kind === 'failed' ? refused.detail : '').toMatch(/needs a newer BroCrew/)
     expect(filesIn(userData)).toEqual(before)
   })
 })

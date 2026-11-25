@@ -24,7 +24,7 @@ import { mount, unmountAll, type Mounted } from './harness'
 const NOW = 1_700_000_000_000
 /** ⚑ The waits count's line — a plate may read *idle* while it waits. */
 const LINE = (n: number): string =>
-  `This may not be accurate ${String(n)} ${n === 1 ? 'row' : 'rows'} of this app’s record could not be read, so a conversation shown here may be waiting without saying so.`
+  `This may not be accurate ${n === 1 ? '1 entry' : `${String(n)} entries`} unread; waiting status may be missing.`
 /** The forest walk's own line (`678`). */
 const WORK_LINE = (n: number): string =>
   `This may not be accurate ${String(n)} ${n === 1 ? 'row' : 'rows'} of this app’s record could not be read, so a piece of work may be missing here, or its state may be wrong.`

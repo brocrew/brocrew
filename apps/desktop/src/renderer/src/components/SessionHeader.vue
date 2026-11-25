@@ -358,8 +358,7 @@ const providerDetail = computed(() => {
  */
 const yoloTitle = computed(() => {
   const session = props.session
-  if (session?.approvalMode === 'ask')
-    return 'Asks when an action needs permission. Change it in the drawer’s Agent tab.'
+  if (session?.approvalMode === 'ask') return "Uses the provider's approval rules."
   const status = session ? props.capabilities?.[session.provider]?.approvals : undefined
   const declared = status?.state === 'available' ? status.note : undefined
   return `Auto. This session runs commands and edits files without asking, except what the provider’s own plan mode asks while it plans, and nothing this app configures confines them. ${declared ?? ''} Change it in the drawer’s Agent tab.`.replace(

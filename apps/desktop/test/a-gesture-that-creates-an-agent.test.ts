@@ -167,8 +167,9 @@ describe('§0 · AgentStore.create — the caller 419 left for this dispatch', (
     await store.load()
     fake.readFailsWith = new Error('BroBot2 is shutting down, so agentIdentities was not asked')
     const said = await store.create({ slug: 'archivist', displayName: null, provider: null })
-    expect(said).toContain('archivist was created')
-    expect(said).toContain('BroBot2 is shutting down')
+    expect(said).toContain('archivist created')
+    // Card 481 (T51): the creation is still said, but the raw re-read error is not shown.
+    expect(said).not.toContain('BroBot2 is shutting down')
     // ⚑ The pairing: the same call with a re-read that works answers null.
     fake.readFailsWith = null
     expect(await store.create({ slug: 'archivist', displayName: null, provider: null })).toBeNull()

@@ -146,7 +146,7 @@ describe('635 · a page is shown, never run', () => {
     expect(m.all('document-body')).toHaveLength(0)
     const said = m.q('canonical-document-not-drawn').textContent ?? ''
     // ⚑ D-016 · a reply's file is a RESOURCE, kept byte for byte — no registry any more.
-    expect(said).toContain('It is kept')
+    expect(said).toContain('file is saved')
     // ⛔ **It blames the VIEWER and not the file** — `452` §5.1's rule with the noun changed.
     expect(said).not.toContain('could not be opened')
   })
@@ -164,7 +164,7 @@ describe('635 · a page is shown, never run', () => {
         { width: 900, height: 700 },
       )
       const said = m.q('canonical-document-not-drawn').textContent ?? ''
-      expect(said, form).toContain('It is kept')
+      expect(said, form).toContain('file is saved')
       expect(said, form).not.toMatch(/project folder/i)
       m.unmount()
     }

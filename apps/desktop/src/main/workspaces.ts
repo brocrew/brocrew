@@ -282,9 +282,7 @@ export function checkWorkspaceFolder(
   const isBroBots = isDirectory && isBroBotsFolder(path)
   const real = onTheDisk(path)
   const warnings = [
-    CLOUD_SYNCED.test(real)
-      ? 'A cloud service syncs this folder: BroCrew’s database may be copied while it is being written.'
-      : null,
+    CLOUD_SYNCED.test(real) ? 'Cloud-synced folder. Choose another folder.' : null,
   ].filter((one): one is string => one !== null)
   const verdict = (refusal: string | null): WorkspaceFolderVerdict => ({
     path,
@@ -316,9 +314,7 @@ export function checkWorkspaceFolder(
       return verdict(`BroCrew cannot read this folder: ${(error as Error).message}`)
     }
     if (entries.some((entry) => !isNothingOfAnyones(entry))) {
-      return verdict(
-        'This folder has files in it. A workspace is a folder of its own: choose an empty one, or a BroCrew workspace.',
-      )
+      return verdict('Choose an empty folder or an existing BroCrew workspace.')
     }
   }
   return verdict(null)

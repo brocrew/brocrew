@@ -456,7 +456,7 @@ describe('F092 · delete a closed workspace', () => {
     await settle()
     expect(fake.checkDelete).toHaveBeenCalledWith(RESEARCH.path)
     expect(text(m.q('workspace-delete-what'))).toBe(
-      `Its folder ${RESEARCH.path} (3.0 MB, 120 files) goes to the ${BIN}. You can put it back from there.`,
+      `Moves Research (3.0 MB, 120 files) to the ${BIN}. You can restore it.`,
     )
     expect(text(m.q('workspace-delete-with'))).toBe(
       'It takes 4 files its conversations made and 2 exported conversations with it.',
@@ -472,7 +472,7 @@ describe('F092 · delete a closed workspace', () => {
     del(m).click()
     await settle()
     expect(text(m.q('workspace-delete-what'))).toBe(
-      `Its folder ${RESEARCH.path} (3.0 MB, 120 files) goes to the Recycle Bin. You can put it back from there.`,
+      'Moves Research (3.0 MB, 120 files) to the Recycle Bin. You can restore it.',
     )
     expect(text(m.q('workspace-delete-yes'))).toBe('Move to Recycle Bin')
     ;(m.q('workspace-delete-yes') as HTMLButtonElement).click()

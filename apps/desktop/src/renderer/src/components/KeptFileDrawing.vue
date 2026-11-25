@@ -70,7 +70,7 @@ const fileManager = fileManagerHere()
       data-cy="kept-file-pdf"
     />
     <p v-else-if="broken" class="broken" data-cy="kept-file-broken">
-      This image couldn't be drawn.{{ finder ? ` Show it in ${fileManager} to open it.` : '' }}
+      Couldn't show this image.{{ finder ? ` Show it in ${fileManager}.` : '' }}
     </p>
     <img
       v-else-if="shown"

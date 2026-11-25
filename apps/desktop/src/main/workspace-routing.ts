@@ -20,8 +20,7 @@ export const PACKAGED_WORKSPACE_LIST = 'packaged-workspaces.json'
 export const OTHER_BUILD_REFUSAL = 'This workspace opens in the BroCrew app in Applications.'
 export const PACKAGED_WORKSPACE_REFUSAL = "This workspace can't be opened in this app."
 /** A folder the policy keeps for a development build of BroCrew, as the packaged app is told. */
-export const DEVELOPMENT_BUILD_REFUSAL =
-  'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
+export const DEVELOPMENT_BUILD_REFUSAL = 'This workspace opens only in a development build.'
 export function workspaceLaunchMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

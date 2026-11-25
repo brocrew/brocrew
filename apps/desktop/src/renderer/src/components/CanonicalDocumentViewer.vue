@@ -100,19 +100,17 @@ const fileManager = fileManagerHere()
 
 const REFUSAL: Record<string, string> = {
   'no-such-resource': 'This app is not keeping a file with that id.',
-  'no-store': 'This app is not keeping a resources folder, so there is nothing to open.',
-  unreadable:
-    'This app keeps a file by that id and could not read it — it may have been moved, or replaced by something that is not a file.',
-  changed:
-    'The file is not the bytes that were kept. This app re-checks the hash on every read, and it did not match.',
+  'no-store': 'No saved-file store available.',
+  unreadable: "Couldn't read this file.",
+  changed: 'This file has changed since it was kept.',
 }
 
 /** Truthful fallback when this window received no supported preview. */
 const NOT_DRAWN: Readonly<Record<DocumentForm, string>> = {
   markdown: 'This file is Markdown and is shown above.',
   page: 'This file is a page and its source is shown above.',
-  image: 'This file is an image. It is kept; no image preview was supplied to this window.',
-  pdf: 'This file is a PDF. It is kept; no PDF preview was supplied to this window.',
+  image: 'No preview for this image; file is saved.',
+  pdf: 'PDF preview unavailable; file is saved.',
   file: 'This file is kept. This window has no preview for its format.',
 }
 

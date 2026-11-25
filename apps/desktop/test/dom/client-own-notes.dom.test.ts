@@ -212,9 +212,7 @@ describe('OwnNotes selected client', () => {
     await edit(view.q('own-notes-why'), 'Still editing.')
     view.q('own-notes-save').click()
     await vi.waitFor(() =>
-      expect(view.q('own-notes').textContent).toContain(
-        'This app could not save these notes. Your draft is still here.',
-      ),
+      expect(view.q('own-notes').textContent).toContain("Couldn't save. Draft kept"),
     )
     expect((view.q('own-notes-text') as HTMLTextAreaElement).value).toBe(
       'Keep my unfinished draft.',
@@ -284,7 +282,7 @@ describe('OwnNotes selected client', () => {
     view.q('own-notes-undo').click()
     await vi.waitFor(() =>
       expect(view.q('own-notes').textContent).toContain(
-        'This app could not undo this change. Read the latest version, then try again.',
+        "Couldn't undo. Read the latest notes and retry.",
       ),
     )
     expect(f.transport.agentOwnNotes).toHaveBeenCalledTimes(2)
@@ -298,7 +296,7 @@ describe('OwnNotes selected client', () => {
     )
     await vi.waitFor(() =>
       expect(view.q('own-notes-unreadable').textContent).toContain(
-        'This app could not read these notes. Close and open this again.',
+        "Couldn't load notes. Close and reopen this sheet.",
       ),
     )
     expect(view.host.querySelector('[data-cy="own-notes-empty"]')).toBeNull()

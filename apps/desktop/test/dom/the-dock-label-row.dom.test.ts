@@ -51,9 +51,7 @@ it('shows the row with its approved words, the workspace’s name and its colour
   const { m } = await general()
   const row = m.q('dock-label')
   expect(row.textContent).toContain('Dock label')
-  expect(row.textContent).toContain(
-    'A short name and colour on the Dock icon, to tell workspaces apart.',
-  )
+  expect(row.textContent).toContain('Workspace Dock label and colour')
   expect((m.q('dock-label-name') as HTMLInputElement).value).toBe('ATLAS')
   expect((m.q('dock-label-switch') as HTMLInputElement).checked).toBe(true)
   const swatches = [...m.q('dock-label-colours').querySelectorAll('[role="radio"]')]

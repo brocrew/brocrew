@@ -383,7 +383,7 @@ describe('a read of the list that fails after one that succeeded', () => {
 describe('the palette the rail hosts', () => {
   it('the palette in the rail is told whether the list has answered and what its failure said', async () => {
     const notAnswered = 'has not answered yet'
-    const couldNotRead = 'could not be read'
+    const couldNotRead = 'Search incomplete'
 
     // (a) a read that never settles.
     stubbed().api = {

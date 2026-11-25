@@ -268,7 +268,7 @@ const externalMcpAnswersForTheFallback = computed<string | null>(() =>
 const externalMcpHeldBackBecause = computed<string | null>(() => {
   const held = externalMcpStatus.value
   if (held === null) {
-    return 'BroCrew has not read what this provider supports yet, so this grant is held back rather than offered as one that might do nothing.'
+    return 'Provider support unknown.'
   }
   return held.state === 'available' ? null : held.reason
 })
@@ -572,9 +572,7 @@ function onKey(event: KeyboardEvent): void {
              has no box and is used all the same. ⚑ Standing rule 19's corollary — a repair that
              changes behaviour a sentence describes corrects the sentence in the same commit. -->
         <p class="identity-note" data-cy="external-mcp-direction">
-          A server registered as everyone’s is used by {{ called }} with nothing to tick. Tick a
-          restricted one to give {{ called }} that one; it writes {{ called }}’s row and changes
-          nothing about any other identity.
+          Everyone's tools are included. Select extra tools for {{ called }}.
         </p>
 
         <!-- 🔴 **The refusal, drawn with the PROVIDER's own reason** (brief §2).
@@ -666,8 +664,7 @@ function onKey(event: KeyboardEvent): void {
              *a disabled control must say what would let it* (`106`). -->
         <!-- The empty-state pointer names the Settings row and its Tools tab. -->
         <p v-if="registry.length === 0" class="note" data-cy="external-mcp-empty">
-          No external MCP servers are registered yet. Add one from Settings → Tools — a local
-          address, registered once for the whole app.
+          No external tools registered. Add one in Settings → Tools.
         </p>
 
         <p class="identity-note" data-cy="external-mcp-when">{{ EXTERNAL_MCP_TAKES_EFFECT }}</p>

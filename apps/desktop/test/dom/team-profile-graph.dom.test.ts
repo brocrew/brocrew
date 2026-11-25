@@ -187,7 +187,7 @@ it('keeps refresh focus during staging and shows the earlier reading after an un
     remaining: 'unknown',
   }))
   refresh.click()
-  await vi.waitFor(() => expect(s.mounted.host.textContent).toContain('could not finish'))
+  await vi.waitFor(() => expect(s.mounted.host.textContent).toContain("Couldn't load the graph"))
   expect(document.activeElement).toBe(refresh)
   expect(s.mounted.host.textContent).toContain('earlier reading is still shown')
   expect(s.mounted.host.querySelectorAll('[data-graph-agent]')).toHaveLength(50)
@@ -223,7 +223,7 @@ it.each(['null', 'discriminator', 'array', 'nan', 'length'] as const)(
     }
     vi.stubGlobal('Worker', ControlledWorker)
     const s = setup(100)
-    await vi.waitFor(() => expect(s.mounted.host.textContent).toContain('Graph layout unavailable'))
+    await vi.waitFor(() => expect(s.mounted.host.textContent).toContain('Graph unavailable'))
     expect(terminated).toBe(1)
     expect(s.mounted.host.querySelectorAll('[data-graph-agent]')).toHaveLength(50)
     s.mounted.host.querySelector<HTMLButtonElement>('[data-graph-agent]')!.click()
@@ -259,7 +259,7 @@ it('ignores a well-formed stale frame and announces nonzero count changes polite
   const s = setup(100)
   await vi.waitFor(() => expect(s.controller.reading.value?.nodes).toHaveLength(100))
   expect(terminated).toBe(0)
-  expect(s.mounted.host.textContent).not.toContain('Graph layout unavailable')
+  expect(s.mounted.host.textContent).not.toContain('Graph unavailable')
   const count = s.mounted.host.querySelector<HTMLElement>('h4[aria-live="polite"]')!
   expect(count.getAttribute('aria-atomic')).toBe('true')
   const search = s.mounted.host.querySelector<HTMLInputElement>('input[type="search"]')!

@@ -98,8 +98,7 @@ onBeforeUnmount(() => {
         </li>
       </ol>
       <p v-if="page?.rowsUnread">
-        {{ page.rowsUnread }} saved {{ page.rowsUnread === 1 ? 'title' : 'titles' }} could not be
-        read.
+        {{ page.rowsUnread }} {{ page.rowsUnread === 1 ? 'title' : 'titles' }} couldn’t be read.
       </p>
       <p v-else-if="page && !page.titles.length && !page.next">No saved titles.</p>
       <p v-if="pending" role="status">Reading titles…</p>

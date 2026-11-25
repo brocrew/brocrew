@@ -26,8 +26,7 @@ export interface FilesRead {
  * ⚑ **The newest read did not answer** — said once under a list kept from the last read that did
  * (`FilesRead.answered`), the band's rule (`THE_READ_DID_NOT_ANSWER`) in a Files box's words.
  */
-export const FILES_DID_NOT_ANSWER =
-  'This did not answer just now, so these are the last files this window had.'
+export const FILES_DID_NOT_ANSWER = "Couldn't refresh. Showing last known files."
 
 /** ⚑ What a file is to its piece, in the words each row says it with. */
 export const ROLE_WORD: Readonly<Record<ResourceRole, string>> = {

@@ -164,7 +164,7 @@ async function failCheck(out: ReturnType<typeof card>, failed: AuthState = ABSEN
   out.m.q('setup-check').click()
   await settled()
   expect(out.m.all('setup-done')).toHaveLength(0)
-  expect(words(out.m.q('provider-inline-setup'))).toContain('Not connected yet')
+  expect(words(out.m.q('provider-inline-setup'))).toContain('Not connected.')
 }
 
 function cancel(m: Mounted) {
@@ -226,7 +226,7 @@ describe('setup feedback follows the latest facts', () => {
       await settled()
       expect(out.m.all('provider-inline-setup')).toHaveLength(0)
       expect(words(out.m.q('provider-standing'))).toBe('Ready')
-      expect(words(out.m.q('provider-status'))).not.toContain('Not connected yet')
+      expect(words(out.m.q('provider-status'))).not.toContain('Not connected.')
     },
   )
 
@@ -242,7 +242,7 @@ describe('setup feedback follows the latest facts', () => {
       else out.props.loginMoved++
       await settled()
       expect(words(out.m.q('provider-standing'))).toBe('Ready')
-      expect(words(out.m.q('provider-status'))).not.toContain('Not connected yet')
+      expect(words(out.m.q('provider-status'))).not.toContain('Not connected.')
     },
   )
 
@@ -270,7 +270,7 @@ describe('setup feedback follows the latest facts', () => {
     out.auth.value = USABLE
     out.props.loginMoved++
     await settled()
-    expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected yet')
+    expect(words(out.m.q('provider-inline-setup'))).not.toContain('Not connected.')
     expect(out.m.all('setup-done')).toHaveLength(0)
     out.m.q('setup-check').click()
     await settled()

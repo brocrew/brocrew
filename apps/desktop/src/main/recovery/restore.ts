@@ -408,11 +408,9 @@ const UNREADABLE_COPY =
   "BroCrew could not read this recovery copy's record, so it restored nothing."
 const ANOTHER_WORKSPACE =
   'This recovery copy was made for another workspace, so BroCrew restored nothing.'
-const NEEDS_A_NEWER_BUILD =
-  'This recovery copy needs a newer version of BroCrew to open it, so this one restored nothing.'
+const NEEDS_A_NEWER_BUILD = 'This copy needs a newer BroCrew. Open it there.'
 const FAILED_CHECK = 'This recovery copy did not pass its check, so BroCrew restored nothing.'
-const UNFINISHED =
-  'A restore or return is still unfinished on this data, so BroCrew started no other.'
+const UNFINISHED = 'A restore is unfinished. Restart BroCrew.'
 const ALREADY_RESTORED =
   'This data is already a restored copy, so BroCrew restored nothing over it.'
 const NOTHING_TO_SET_ASIDE =
@@ -427,8 +425,7 @@ const SET_ASIDE_CHANGED =
   'The newer data the restore set aside was changed outside BroCrew since, so BroCrew changed nothing.'
 const RESTORED_FOLDER_TAKEN =
   'The folder for setting the restored copy aside already holds files, so BroCrew changed nothing.'
-const MOVED_MORE =
-  'This copy was restored by a newer version of BroCrew, which moved files this one does not, so this one changed nothing. Return to the newer data with that version of BroCrew.'
+const MOVED_MORE = 'Use the newer BroCrew to return to newer data.'
 
 /** A restore or return this build will not make, with the sentence that says why. */
 class Refusal extends Error {}

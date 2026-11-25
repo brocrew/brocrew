@@ -274,7 +274,7 @@ describe('516 §2 · a provider that cannot carry it says so, and moves nothing'
     )
     await nextTick()
     expect(boxIn(m, 'external-mcp-grant-jira').disabled).toBe(true)
-    expect(m.q('external-mcp-held-back').textContent).toContain('has not read what this provider')
+    expect(m.q('external-mcp-held-back').textContent).toContain('Provider support unknown.')
   })
 })
 

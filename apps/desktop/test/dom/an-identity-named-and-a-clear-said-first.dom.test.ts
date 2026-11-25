@@ -692,11 +692,10 @@ describe('712 §2c · R41 — the ask on an identity’s own rules names the age
  * ⚑ **Standing rule 5 — the sheet's sentences, pinned BY NAME for Ada** beside the builders the
  * controls below use; a builder that drifted from the component fails here first.
  */
-const SERVERS_ADA =
-  'A server registered as everyone’s is used by Ada with nothing to tick. Tick a restricted one to give Ada that one; it writes Ada’s row and changes nothing about any other identity.'
+const SERVERS_ADA = "Everyone's tools are included. Select extra tools for Ada."
 
 const serversSay = (name: string): string =>
-  `A server registered as everyone’s is used by ${name} with nothing to tick. Tick a restricted one to give ${name} that one; it writes ${name}’s row and changes nothing about any other identity.`
+  `Everyone's tools are included. Select extra tools for ${name}.`
 
 /** Every sentence §2d reads that names the identity, off one mount. */
 function namedSentences(m: Mounted): Record<string, string> {

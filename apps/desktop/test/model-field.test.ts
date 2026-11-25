@@ -64,8 +64,8 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
     const field = modelField(world({ catalogue: null, profileExists: false }))
     expect(field.state).toBe('no-profile')
     expect(field.choices).toBeNull()
-    expect(field.message).toContain('arrives once this profile exists')
-    expect(field.message).toContain('when the conversation starts')
+    expect(field.message).toContain('Models appear after this agent first starts')
+    expect(field.message).toContain('after this agent first starts')
     // ⛔ **It must not read as an error**, which is the half that decides whether a person reports
     // a healthy provider as broken.
     expect(field.tone, 'this is the normal path, not a fault').toBe('note')
@@ -84,7 +84,7 @@ describe('310 §2 · the model field says WHICH silence it is in', () => {
     expect(fromHost.state).toBe('no-profile')
     expect(fromHost.message).toBe(fromLauncher.message)
     expect(fromHost.message, 'and it is a real sentence, not two empty strings').toContain(
-      'arrives once this profile exists',
+      'Models appear after this agent first starts',
     )
   })
 

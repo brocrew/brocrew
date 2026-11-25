@@ -85,7 +85,7 @@ export function useProfileSignIn(
     keepsFailedChecks: true,
     words: {
       signedIn: () => 'Signed in. This profile has its own sign-in again.',
-      unchanged: 'Your machine sign-in is the same as this profile’s, so nothing changed.',
+      unchanged: 'Already up to date. Nothing changed.',
     },
     checkWhileBusy: 'after',
     // Whatever a sign-in or a copy did, the profile is asked again.

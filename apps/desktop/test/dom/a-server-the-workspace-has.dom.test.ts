@@ -283,7 +283,7 @@ describe('524 §2 · the identity sheet stops under-reporting', () => {
     // have claimed *nothing is registered* whenever no server happened to be restricted — which is
     // now the normal state — so the pairing is both directions in one file.
     const empty = await openSheet()
-    expect(empty.q('external-mcp-empty').textContent).toContain('No external MCP servers')
+    expect(empty.q('external-mcp-empty').textContent).toContain('No external tools registered')
     empty.unmount()
 
     answers.list = { ...answers.list, externalMcpServers: [server('kibana', 'everyone')] }

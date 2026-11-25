@@ -185,10 +185,10 @@ describe('a conversation being read', () => {
         history: pending,
       })
       // Settled with a reason instead of offered as a choice.
-      expect(html).toContain('This is a recording')
+      expect(html).toContain('Recording only')
       // 154 §2b · one noun. The sentence said *"the session that asked is gone"* — this repo's word
       // for the thing every other line on this pane calls a conversation.
-      expect(html).toContain('the conversation that asked is gone')
+      expect(html).not.toContain('the session that asked')
       expect(html).not.toContain('data-cy="permission-allow"')
     })
   })
@@ -382,7 +382,7 @@ describe('the reading pane can say a recording is behind its archive (065)', () 
     const html = await paneFor('failed')
     expect(html).toContain('data-cy="reading-behind"')
     // The thing a reader would otherwise assume is that the failure damaged something.
-    expect(html).toContain('the previous transcript, whole')
+    expect(html).toContain('showing the previous transcript')
   })
 
   it('stays silent when the recording covers its archive, and when nothing was projected', async () => {

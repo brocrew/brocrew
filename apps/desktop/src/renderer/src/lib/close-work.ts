@@ -5,8 +5,7 @@ const REASONS: Record<PersonCloseRail, string> = {
     'That piece is no longer stopped. Open the conversation to see where it stands.',
   'that-conversation-has-not-started': 'The conversation is still starting. Try again in a moment.',
   'that-work-is-being-sent': 'The brief is still on its way. Try again in a moment.',
-  'a-conversation-with-its-questions-is-starting':
-    'A conversation with a question about it is still starting. Try again in a moment.',
+  'a-conversation-with-its-questions-is-starting': 'Still starting. Try again in a moment.',
   'its-questions-could-not-all-be-read': 'Its questions could not all be read. Try again.',
 }
 

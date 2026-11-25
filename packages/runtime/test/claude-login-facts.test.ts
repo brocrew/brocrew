@@ -154,7 +154,9 @@ describe('claudeLoginState', () => {
       reason: NO_LOGIN,
       why: 'no-login',
     })
-    expect(NO_LOGIN.indexOf('API key')).toBeLessThan(NO_LOGIN.indexOf('login'))
+    // Card 481: the key lives behind Providers, which the sentence names before the terminal step.
+    expect(NO_LOGIN.indexOf('Providers')).toBeGreaterThan(-1)
+    expect(NO_LOGIN.indexOf('Providers')).toBeLessThan(NO_LOGIN.indexOf('terminal'))
     expect(
       claudeLoginState(
         () => blob({ expiresAt: NOW - 1 }),

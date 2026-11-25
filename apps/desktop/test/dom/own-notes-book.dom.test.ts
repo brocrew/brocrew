@@ -120,9 +120,7 @@ describe('Own notes in the agent book', () => {
       expect(f.markOwnNotesSeen).toHaveBeenCalledWith({ profileId: 'quill', throughVersion: 2 }),
     )
     expect((view.q('own-notes-text') as HTMLTextAreaElement).value).toBe('Keep the agreed scope.')
-    expect(view.q('own-notes').textContent).toContain(
-      'Notes this agent keeps for itself. It reads them at every start, after its standing rules.',
-    )
+    expect(view.q('own-notes').textContent).toContain('read at each start after its rules')
     expect(view.q('own-notes').textContent).toContain('Quill')
     expect(view.q('own-notes').textContent).toContain(
       'The person asked me to retain this convention.',
@@ -286,7 +284,7 @@ describe('Own notes in the agent book', () => {
       expect(view.host.querySelector('[data-cy="own-notes-unreadable"]')).not.toBeNull(),
     )
     expect(view.q('own-notes-unreadable').textContent).toContain(
-      'This app could not read these notes. Close and open this again.',
+      "Couldn't load notes. Close and reopen this sheet.",
     )
     expect(view.host.querySelector('[data-cy="own-notes-empty"]')).toBeNull()
     expect(f.markOwnNotesSeen).not.toHaveBeenCalled()

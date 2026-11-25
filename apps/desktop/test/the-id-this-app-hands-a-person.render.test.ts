@@ -240,7 +240,7 @@ describe('510 · the row opens the document it names', () => {
     // two, deliberately — both end with a person going to look — so the word must keep covering a
     // file that is sitting there and too large.
     expect(said.get('unreadable')).not.toContain('is gone')
-    expect(said.get('unreadable')).toContain('could not read')
+    expect(said.get('unreadable')).toContain('read this file')
   })
 
   it('⚠️ a reason this panel has never heard of still reads as something true', async () => {

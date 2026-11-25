@@ -38,7 +38,7 @@ import type { ToolAnswer, ToolAnswerPart } from '../../../shared/runtime-ipc'
  */
 export function answerAbsence(answer: ToolAnswer | null, canAsk: boolean): string | null {
   if (!canAsk) {
-    return 'What this tool said is no longer held — only its row is kept.'
+    return 'Answer no longer kept; its row is.'
   }
   if (answer === null) return 'This app is not holding the answer to this one.'
   // ⚠️ **NOT the same sentence as the line above, and `074` is why.** A receipt that arrived

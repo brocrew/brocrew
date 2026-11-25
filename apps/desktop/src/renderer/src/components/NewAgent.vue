@@ -206,9 +206,7 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
   >
     <template #header>
       <strong data-cy="new-agent-title">New agent</strong>
-      <small
-        >An identity work can run as. Its name is its identity and cannot be changed later.</small
-      >
+      <small>Agent name can't be changed later.</small>
     </template>
 
     <template #body>
@@ -240,18 +238,12 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
           <span>{{ slugRefusal }}</span>
         </p>
         <p v-else-if="namingBroBot" class="note" data-cy="new-agent-slug-is-brobot">
-          {{ profileLabel(folded) }} is the identity every new conversation on this app runs as, and
-          it does not exist here yet. A provider chosen here is the one those conversations start
-          on, and you can change it later on this agent's own sheet.
+          {{ profileLabel(folded) }} isn’t set up yet. Pick its provider.
         </p>
         <p v-else-if="adopts" class="note" data-cy="new-agent-slug-adopts">
-          There is already a folder with this name and no identity for it. Creating this agent gives
-          that folder its row; nothing in it is read or moved.
+          Existing folder found. Creating the agent leaves its files unchanged.
         </p>
-        <p v-else class="note" data-cy="new-agent-slug-note">
-          This becomes the agent's identity in the database and the name of its folder on disk, so
-          it cannot be changed afterwards. Names are compared without case.
-        </p>
+        <p v-else class="note" data-cy="new-agent-slug-note">Can’t be changed later.</p>
       </div>
 
       <label class="field">
@@ -279,12 +271,10 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
              sentence names a constant instead, because a launch has no parent — see
              `RuntimeScreen`'s `DEFAULT_PROVIDER`. -->
         <p v-if="namingBroBot" class="note" data-cy="new-agent-provider-note">
-          New conversations on this app run on this. Not chosen means they run on the app's own
-          default instead, which the new-conversation screen names.
+          Provider for new conversations; blank uses the app default.
         </p>
         <p v-else class="note" data-cy="new-agent-provider-note">
-          Its conversations run on this, and no agent that gives it work can change it. Not chosen
-          means its first conversation decides, and it keeps that provider.
+          Provider for this agent; others can't change it. Blank uses its first start.
         </p>
       </label>
 
@@ -304,10 +294,7 @@ const providers = computed<Provider[]>(() => Object.keys(PROVIDER_NAME) as Provi
 
       <!-- ⛔ **What this does NOT create, said out loud** (criterion 7's other half: nothing may
            imply work it did not do). -->
-      <p class="note" data-cy="new-agent-scope">
-        This creates the identity and nothing else. No conversation is started, and its folder is
-        laid down the first time one runs as it.
-      </p>
+      <p class="note" data-cy="new-agent-scope">Creates the agent. No conversation starts.</p>
 
       <p v-if="createRefusal" class="note err block" data-cy="new-agent-refusal" role="alert">
         <svg class="icon"><use href="#i-alert" /></svg>

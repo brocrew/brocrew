@@ -225,9 +225,7 @@ onMounted(() => void read())
       </template>
 
       <template v-else-if="listed !== null">
-        <p class="quiet">
-          Tick what to delete. Only the ticked parts go, and a delete can’t be undone.
-        </p>
+        <p class="quiet">Tick what to delete. Can't be undone.</p>
         <ul class="parts" data-cy="delete-parts">
           <li
             v-for="part in listed.parts"

@@ -87,11 +87,7 @@ export const CHANGEABLE_LIVE_IN = SETTINGS_TAB ? `the ${SETTINGS_TAB.label} tab`
  * see {@link FOLDED_ON_THE_FRONT_DOOR} for which prose folded and which had to stay.
  */
 export function providerIsFixed(provider: Provider, names?: ProviderNames): string {
-  return (
-    `This conversation will run on ${nameOf(provider, names)}. Its model and approvals you can ` +
-    `change later, in ${CHANGEABLE_LIVE_IN} — the provider you cannot: it is fixed when the ` +
-    `conversation starts.`
-  )
+  return `${nameOf(provider, names)} stays fixed. Change model and approvals in ${CHANGEABLE_LIVE_IN}.`
 }
 
 /**
@@ -135,18 +131,12 @@ export function providerTakesEffectNextTime(
   names?: ProviderNames,
 ): string {
   if (isService) {
-    return (
-      `A service keeps one conversation for new gives. It starts when the first give is accepted. ` +
-      `Changing its default does not switch that conversation’s provider. ` +
-      `Existing pieces and follow-ups stay with their holders.`
-    )
+    return 'New work goes to one service conversation, started by the first accepted give. Changing the default keeps its provider; existing work stays put.'
   }
   return (
-    `The default for a new conversation you start as this identity is ${nameOf(provider, names)}` +
-    (aDoorAsks ? ', unless you choose another provider where you start it. ' : '. ') +
-    `Changing this starts nothing and moves nothing: a conversation keeps the provider it began ` +
-    `on. Once you choose a default here, new gives without a provider or model use that provider’s conversation, starting one if needed. ` +
-    `Existing pieces and follow-ups stay with their holders.`
+    `Default for new work without a chosen provider or model: ${nameOf(provider, names)}` +
+    (aDoorAsks ? ', unless you choose another where you start it. ' : '. ') +
+    'Changing it starts nothing; existing work stays put.'
   )
 }
 
@@ -253,7 +243,7 @@ const SAYS: Readonly<Record<LaunchApproval, string>> = {
 const PRESSING_IT: Readonly<Record<LaunchApproval, string>> = {
   // ⚑ 736 · R96 — the provider's own default, not *"anything consequential"* (a Codex edit in the
   // folder is not asked about on its default preset, measured).
-  ask: 'Press to be asked again, as the provider’s own CLI asks by default.',
+  ask: "Use the provider's default approval rules",
   auto: 'Press to stop being asked — new conversations will run commands and edit files unattended, except what a provider’s own plan mode asks while it plans.',
 }
 
@@ -266,10 +256,7 @@ const PRESSING_IT: Readonly<Record<LaunchApproval, string>> = {
  * ⚠️ **It names where a conversation's OWN mode changes**, because the two are different acts and a
  * person who wants to change only this one should not have to press this.
  */
-export const LAUNCH_APPROVAL_BOUND =
-  `This is a setting, not a choice about one conversation: it applies to every conversation you ` +
-  `start, until you change it back. A conversation already open keeps the mode it began in — that ` +
-  `one changes in ${CHANGEABLE_LIVE_IN}.`
+export const LAUNCH_APPROVAL_BOUND = `Default for new conversations; open ones keep their mode. Change one in ${CHANGEABLE_LIVE_IN}.`
 
 /** ⚠️ **What the control says while the app has not read the row yet** — `086`'s third state. */
 export const LAUNCH_APPROVAL_UNREAD =

@@ -450,16 +450,16 @@ describe('one renewal at a time', () => {
 describe('what a start says when it could not renew', () => {
   it('Windows names PowerShell, a Mac a terminal; both say to log in again if asked', () => {
     expect(claudeLoginNotRenewed('not-renewed', 'win32')).toContain(
-      'could not renew it by running Claude Code. To renew it, open PowerShell and run `claude`, log in again',
+      "Couldn't renew Claude sign-in. To renew it, open PowerShell and run `claude`, log in again",
     )
     expect(claudeLoginNotRenewed('not-renewed', 'darwin')).toContain(
       'run `claude` in a terminal, log in again',
     )
   })
 
-  it('no Claude Code found: it says where it looked, and to install it', () => {
+  it('no Claude Code found: it says so, and to install it', () => {
     const words = claudeLoginNotRenewed('not-installed', 'win32')
-    expect(words).toContain('did not find Claude Code on this computer')
-    expect(words).toContain('install Claude Code if it is not there')
+    expect(words).toContain("Claude Code wasn't found")
+    expect(words).toContain('Install it, then open PowerShell and run `claude`')
   })
 })

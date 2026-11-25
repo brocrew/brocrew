@@ -59,7 +59,7 @@ export function newerWords(
   now?: number,
 ): RecoveryWords {
   const openWith = theNewerBroBot(verdict.newer.madeBy)
-  const heading = "This version of BroCrew can't open this workspace"
+  const heading = 'This workspace needs a newer BroCrew.'
   if (verdict.offers === null) {
     return {
       heading,
@@ -97,7 +97,7 @@ function historyOnlyWords(
   return {
     heading: `Read-only history from the copy of ${date}`,
     body: [
-      'Agents are stopped and nothing here can change.',
+      'Read-only history; agents are stopped.',
       'To keep working, return to the newer data, then open it with the newer version of BroCrew.',
     ],
     actions: [{ kind: 'return', label: 'Return to the newer data' }, CLOSE],
@@ -112,7 +112,7 @@ function tryAgainOr(canRetry: boolean, otherwise: string): string {
 /** Where to turn when nothing in the window can help, pointing at the detail when there is one. */
 function askForHelp(detail: string | undefined): string {
   return detail
-    ? "Leave the workspace's data folder as it is, and quote the line below to whoever helps you."
+    ? 'Leave data unchanged. Ask for help with these details.'
     : "Leave the workspace's data folder as it is, and ask whoever helps you with BroCrew."
 }
 
@@ -135,8 +135,8 @@ function failureFacts(
         }
       }
       return {
-        heading: 'BroCrew couldn’t confirm it alone can use this workspace',
-        facts: ['So it didn’t open the workspace’s data.'],
+        heading: 'Another BroCrew may be using this workspace.',
+        facts: [],
         next: canRetry
           ? 'If another copy of BroCrew is open on this workspace, close it, then try again.'
           : 'If another copy of BroCrew is open on this workspace, close it, then open BroCrew again.',
@@ -144,33 +144,25 @@ function failureFacts(
     case 'database-unreadable':
       return {
         heading: "BroCrew couldn't read this workspace's data",
-        facts: [
-          "BroCrew couldn't read this workspace's data safely, so it didn't open it. Nothing was changed.",
-        ],
+        facts: ["Couldn't read workspace data. Nothing changed."],
         next: askForHelp(detail),
       }
     case 'recovery-unreadable':
       return {
         heading: "BroCrew couldn't read its record of a restore",
-        facts: [
-          "BroCrew couldn't read the record it keeps while restoring a copy of this workspace, so it didn't open it. Nothing was changed.",
-        ],
+        facts: ["Couldn't read the restore record. Nothing changed."],
         next: `If a newer version of BroCrew has used this workspace, open it with that one. If not, ${lowerFirst(askForHelp(detail))}`,
       }
     case 'checkpoint-failed':
       return {
         heading: "BroCrew couldn't make a checked copy",
-        facts: [
-          "BroCrew couldn't make a checked copy of this workspace's data before updating it, so it stopped before changing anything.",
-        ],
+        facts: ["Couldn't back up. Nothing changed."],
         next: tryAgainOr(canRetry, askForHelp(detail)),
       }
     case 'migration-failed':
       return {
         heading: "BroCrew couldn't update this workspace's data",
-        facts: [
-          "BroCrew couldn't update this workspace's data, so it stopped before changing anything else.",
-        ],
+        facts: ["Couldn't update this workspace."],
         next: tryAgainOr(canRetry, askForHelp(detail)),
       }
     case 'restore-failed': {
@@ -210,9 +202,7 @@ function failureFacts(
     case 'start-failed':
       return {
         heading: "BroCrew couldn't finish starting",
-        facts: [
-          "BroCrew opened this workspace's data, then something else it needs to start failed, so it stopped what it had started.",
-        ],
+        facts: ['Its data opened; something else failed.'],
         next: tryAgainOr(canRetry, askForHelp(detail)),
       }
   }
@@ -257,10 +247,7 @@ const WORKING_HEADING = {
 export function workingWords(verdict: Extract<StartupVerdict, { kind: 'working' }>): RecoveryWords {
   return {
     heading: WORKING_HEADING[verdict.what],
-    body:
-      verdict.what === 'compact'
-        ? []
-        : ['This can take a minute for a large workspace. Keep BroCrew open until it finishes.'],
+    body: verdict.what === 'compact' ? [] : ['Keep BroCrew open until this finishes.'],
     actions: [],
   }
 }
@@ -294,5 +281,4 @@ export const START_FAILURES: readonly StartFailure[] = [
 ]
 
 /** What the window says when it is opened anywhere but inside BroBot. */
-export const NO_BRIDGE_WORDS =
-  "This is BroCrew's recovery window. It only works inside BroCrew, so there is nothing to show here."
+export const NO_BRIDGE_WORDS = 'Open recovery in BroCrew.'

@@ -298,7 +298,7 @@ it('reads saved titles only on demand, follows the cursor and restarts after a r
   expect(
     m.all('conversation-saved-title').map((title) => title.querySelector('strong')?.textContent),
   ).toEqual(['Current saved title', 'Earlier saved title'])
-  expect(history.textContent).toContain('1 saved title could not be read.')
+  expect(history.textContent).toContain('1 title couldn’t be read.')
 
   m.q('conversation-title-history-more').click()
   await expect.poll(() => history.textContent).toContain('Title carried across rebuild')

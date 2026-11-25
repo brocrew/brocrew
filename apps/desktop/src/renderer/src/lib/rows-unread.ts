@@ -70,7 +70,7 @@ export function unreadSays(rows: number, ledgersSkipped: number | undefined): st
  */
 export function waitsUnreadSays(count: number): string | null {
   return count > 0
-    ? `${rowsOfTheRecord(count)} could not be read, so a conversation shown here may be waiting without saying so.`
+    ? `${count === 1 ? '1 entry' : `${String(count)} entries`} unread; waiting status may be missing.`
     : null
 }
 
@@ -79,7 +79,7 @@ export function waitsNotReadSays(rows: number, ledgersSkipped: number | undefine
   const said = [
     waitsUnreadSays(rows),
     ledgersSkipped !== undefined && ledgersSkipped > 0
-      ? `${recordsOf(ledgersSkipped)} could not be read, so a conversation shown here may be waiting without saying so.`
+      ? `${recordsOf(ledgersSkipped)} unread; waiting status may be missing.`
       : null,
   ].filter((one) => one !== null)
   return said.length === 0 ? null : said.join(' ')

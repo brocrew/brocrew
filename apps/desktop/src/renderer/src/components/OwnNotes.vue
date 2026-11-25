@@ -168,8 +168,7 @@ async function save() {
     await acknowledge(current.value?.version ?? 0, generation)
   } catch {
     if (generation === epoch) {
-      error.value =
-        'This app could not save these notes. Your draft is still here. Read the latest version, then try again.'
+      error.value = "Couldn't save. Draft kept; reload before retrying."
       await read(true)
     }
   } finally {
@@ -199,7 +198,7 @@ async function undo() {
     await acknowledge(current.value?.version ?? 0, generation)
   } catch {
     if (generation === epoch) {
-      error.value = 'This app could not undo this change. Read the latest version, then try again.'
+      error.value = "Couldn't undo. Read the latest notes and retry."
       await read(true)
     }
   } finally {
@@ -269,16 +268,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="own-notes" data-cy="own-notes">
     <h3>Own notes</h3>
-    <p class="muted">
-      Notes this agent keeps for itself. It reads them at every start, after its standing rules.
-    </p>
+    <p class="muted">The agent’s own notes, read at each start after its rules.</p>
     <p v-if="loading" role="status">Reading…</p>
     <p v-if="unreadable" class="error" role="alert" data-cy="own-notes-unreadable">
-      This app could not read these notes. Close and open this again.
+      Couldn't load notes. Close and reopen this sheet.
     </p>
     <template v-if="reading !== null">
       <div v-if="changedElsewhere" class="notice">
-        <p>The saved notes changed while you were editing. Your draft is still here.</p>
+        <p>Notes changed elsewhere. Your draft is kept.</p>
         <button type="button" :disabled="busy" @click="read(true, true)">
           Read latest version
         </button>

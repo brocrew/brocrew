@@ -152,7 +152,7 @@ const settings = computed(() =>
 const SHAPE_WORDS: Readonly<Record<ProviderSnapshot['shape'], string>> = {
   messages: 'Sent as messages, with the tools beside them.',
   functions: 'Its tools go as functions, and its prompt as the request’s instructions.',
-  exec: 'Every tool is declared as code inside one exec tool, and its prompt goes as a developer message.',
+  exec: 'Tools sent as code.',
 }
 
 const versionLine = computed(() => {
@@ -172,9 +172,6 @@ const versionLine = computed(() => {
           <span data-cy="input-popup-who">{{ props.who }}</span>
           <span v-if="props.profile" class="bb-chip bb-chip--accent">{{ props.profile }}</span>
           <span class="popup-version" data-cy="input-popup-version">{{ versionLine }}</span>
-        </p>
-        <p class="popup-intro">
-          Read left to right through the tabs, then top to bottom. Each part stays where it is sent.
         </p>
       </div>
       <div class="popup-acts">
@@ -231,9 +228,6 @@ const versionLine = computed(() => {
         <div class="intro">
           <div>
             <h3 class="bb-heading">The context behind a reply</h3>
-            <p class="bb-muted">
-              Sizes stay grouped by author here. Open a numbered tab to read the text in place.
-            </p>
           </div>
         </div>
         <div class="totals" data-cy="input-totals">
@@ -303,11 +297,8 @@ const versionLine = computed(() => {
             ></span>
           </div>
           <p class="bb-caption bb-muted">
-            {{ sizeWords(given.size.total) }}. Tokens are an estimate: characters ÷ 4. How the
-            provider hands BroCrew’s tools over: {{ given.tools.deferral.says }}
-            {{
-              given.size.provider === null ? 'The provider’s own parts are not counted yet.' : ''
-            }}
+            {{ sizeWords(given.size.total) }}; tokens estimated.
+            {{ given.size.provider === null ? 'Provider’s own parts not counted yet.' : '' }}
           </p>
         </div>
         <details class="bb-disclosure nested" open data-cy="input-settings">
@@ -321,14 +312,13 @@ const versionLine = computed(() => {
                 {{ given.ownInstructions.used.whoWroteItMeans }},
                 {{ when(given.ownInstructions.used.writtenAt) }}.
                 <template v-if="given.ownInstructions.changedSinceLaunch">
-                  Changed since: version {{ given.ownInstructions.newest?.version }} was saved after
-                  this launch. The next start uses it.</template
+                  Newer version saved; used next start.</template
                 >
               </span>
               <span v-else>{{
                 given.launch.recorded
-                  ? 'This launch used no own instructions.'
-                  : 'Its next start would use no own instructions: none are saved.'
+                  ? 'No own instructions at launch.'
+                  : 'No saved instructions for next start.'
               }}</span>
             </div>
             <div
@@ -389,15 +379,10 @@ const versionLine = computed(() => {
               {{ note }}
             </p>
             <p class="bb-caption bb-muted" data-cy="input-provider-shape">
-              {{ SHAPE_WORDS[snapshot.shape] }} Together, before the agent asks for anything:
-              {{ groupTokens(snapshot.chars) }} characters · {{ groupTokens(snapshot.words) }} words
-              · ≈{{ groupTokens(snapshot.approxTokens) }}
-              tokens.
+              {{ SHAPE_WORDS[snapshot.shape] }} ≈{{ groupTokens(snapshot.approxTokens) }} tokens
+              total.
             </p>
-            <p class="bb-caption bb-muted">
-              ⟨Like this⟩ marks what changes from one conversation to the next, and where BroCrew’s
-              own parts sat.
-            </p>
+            <p class="bb-caption bb-muted">⟨ ⟩ marks what changes</p>
           </div>
         </details>
       </template>
@@ -409,7 +394,7 @@ const versionLine = computed(() => {
             <h3 class="bb-heading" data-cy="input-tab-heading">
               {{ shown.number }} · {{ shown.label }}
             </h3>
-            <p class="bb-muted">{{ shown.intro }}</p>
+            <p v-if="shown.intro" class="bb-muted">{{ shown.intro }}</p>
           </div>
           <button
             v-if="rowsShown.length > 0"
@@ -534,8 +519,7 @@ const versionLine = computed(() => {
                       class="bb-notice"
                       data-cy="input-tools-changed"
                     >
-                      These tools have changed since its launch: this is the list as this build has
-                      it.
+                      Tools changed since launch. Showing the current list.
                     </p>
                     <details
                       v-for="one in given.tools.list"
@@ -647,7 +631,7 @@ const versionLine = computed(() => {
     </div>
 
     <footer class="popup-foot bb-caption bb-muted">
-      <span>Author labels and section titles are for you. They are not sent.</span>
+      <span>Labels aren't part of the sent text.</span>
       <span>Esc to close</span>
     </footer>
   </section>

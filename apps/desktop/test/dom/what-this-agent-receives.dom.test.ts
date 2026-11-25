@@ -98,7 +98,7 @@ describe('the overview', () => {
       givenAnswer({ launch: { recorded: false, why: 'before-this-build', running: false } }),
     )
     await settle()
-    expect(m.q('input-launch').textContent).toContain('composed now')
+    expect(m.q('input-launch').textContent).toContain('shows what the next start gets')
   })
 
   it('says why, where the window size is not known', async () => {
@@ -517,7 +517,7 @@ describe('a whole turn as the model got it', () => {
     expect(read).toHaveBeenCalledWith(42)
     expect(m.all('what-the-model-got-part')).toHaveLength(3)
     expect(m.all('what-the-model-got-part')[1]!.textContent).toContain('kept no copy of this file')
-    expect(m.q('what-the-model-got-record').textContent).toContain('same text BroCrew handed over')
+    expect(m.q('what-the-model-got-record').textContent).toContain('matches sent text')
     expect(m.all('what-the-model-got-record-part')[0]!.textContent).toContain(
       'Added by the provider',
     )
@@ -528,7 +528,7 @@ describe('a whole turn as the model got it', () => {
     const m = switchWith(async () => answer)
     await press(m, 'model-got-switch')
     expect(m.q('what-the-model-got-record-leaves-out').textContent?.trim()).toBe(
-      'Claude’s record: no system prompt, first answer only.',
+      'System prompt and later answers not recorded by Claude.',
     )
     unmountAll()
     const found = answer.providersRecord as Extract<typeof answer.providersRecord, { found: true }>
@@ -539,7 +539,7 @@ describe('a whole turn as the model got it', () => {
     )
     await press(codex, 'model-got-switch')
     expect(codex.q('what-the-model-got-record-leaves-out').textContent?.trim()).toBe(
-      'Codex’s record: first answer only.',
+      'Later answers not recorded by Codex.',
     )
   })
 

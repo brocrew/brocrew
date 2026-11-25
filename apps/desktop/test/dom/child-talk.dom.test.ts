@@ -125,7 +125,7 @@ describe('296 · the button is dark for exactly the states that refuse', () => {
     await settle()
     expect(talk.sent, 'a click on a disabled Send reached the child').toEqual([])
     // …and the person is told WHICH fact refused them, not merely shown a dark box.
-    expect(note(talk.view)).toContain('still working')
+    expect(note(talk.view)).toContain('Still working. Draft kept; send when idle.')
   })
 
   it('⚑ an IDLE child: the button presses and the message goes — the paired positive', async () => {
@@ -166,7 +166,7 @@ describe('296 · the button is dark for exactly the states that refuse', () => {
     expect(talk.sent).toEqual(['still there?'])
     expect(box(talk.view).value, 'a refused message was thrown away').toBe('still there?')
     expect(talk.view.host.querySelector('[data-cy=child-talk-refused]')?.textContent).toContain(
-      'still working',
+      'Still working. Draft kept; send when idle.',
     )
     expect(talk.view.host.querySelector('[data-cy=child-talk-sent]')).toBeNull()
   })
@@ -209,7 +209,7 @@ describe('296 · the follow', () => {
     const counts = talk.counts()
     expect(counts.reads, 'the unanswerable question was asked more than once').toBe(1)
     expect(counts.refreshes, 'the follow stopped along with the asking').toBeGreaterThan(1)
-    expect(note(talk.view)).toContain('cannot be spoken to')
+    expect(note(talk.view)).toContain('This agent can’t take messages.')
   })
 
   it('an UNREACHABLE provider is asked again — it is the one refusal that can change', async () => {
@@ -221,7 +221,7 @@ describe('296 · the follow', () => {
       },
     })
     await settle(50)
-    expect(note(talk.view)).toContain('did not answer')
+    expect(note(talk.view)).toContain('No reply. Message delivery unconfirmed.')
     await settle(6_500)
     // It recovered on its own, which is the whole reason this one is not latched.
     expect(note(talk.view)).toContain('idle')

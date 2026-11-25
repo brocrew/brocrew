@@ -99,9 +99,7 @@ it('explains the provider connection and the empty API key in plain words', asyn
   )
   await settle()
   assertDrawn(m.q('providers-screen'), 'Providers page', m.host)
-  expect(m.host.textContent).toContain(
-    'Connect an AI service to start a conversation. Check your account and connection below.',
-  )
+  expect(m.host.textContent).toContain('Connect an AI service to start.')
   // Each provider's existing explanation is now read inside its selected drawer.
   for (const provider of ['claude', 'codex']) {
     const row = m.host.querySelector<HTMLButtonElement>(
@@ -118,7 +116,7 @@ it('explains the provider connection and the empty API key in plain words', asyn
     expect(empty).toHaveLength(1)
     assertDrawn(empty[0]!, `${provider} empty API key explanation`, m.host)
     expect(empty[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'No API key saved. You can sign in instead. If you save a key, new conversations will use it instead of your signed-in account.',
+      'No API key saved. A saved key overrides sign-in.',
     )
     m.q('provider-drawer').querySelector<HTMLButtonElement>('.drawer-close')!.click()
     await settle()
@@ -150,7 +148,7 @@ it.each(['claude', 'codex'] as const)('names %s in each sign-in state', async (p
     expect(m.q('sign-in-heading').textContent).toBe(words)
     expect(m.q('sign-in-start').textContent?.trim()).toBe('Sign in for all agents')
     expect(m.q('sign-in-caveat').textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      "Sign in here to keep this agent's login separate. Copying your computer's existing login is quicker, but either login may stop working when the other refreshes.",
+      'Sign in to keep this login separate. A copy may stop working when either one refreshes.',
     )
     unmountAll()
   }

@@ -217,7 +217,7 @@ it('retires pending progress on invalidation and unmount, including already queu
   expect(m.all('plugin-review-progress')).toHaveLength(0)
   expect(m.all('plugin-review-details')).toHaveLength(0)
   expect(f.listeners.size).toBe(0)
-  expect(m.q('plugins-error').textContent).toContain('This plugin review is no longer current.')
+  expect(m.q('plugins-error').textContent).toContain('Review is out of date. Review again.')
   m.q('plugin-review-install').click()
   await vi.waitFor(() => expect(f.pending).toHaveLength(2))
   m.unmount()

@@ -317,9 +317,9 @@ describe('the surface that describes a profile says one thing (167 §4, 356, nar
    * a thing this file can still check.
    */
   const THREE_THINGS = [
-    'the conversations it runs there',
-    'its own instruction file',
-    'and what it remembers',
+    'its own conversations',
+    'instructions',
+    'and memory',
     'every folder it works in',
   ]
 

@@ -324,8 +324,8 @@ it('reports an externally invalidated review without restoring late consent or f
   finish({ ok: true, review: f.review })
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   expect(m.all('plugin-review-details')).toHaveLength(0)
-  expect(m.q('plugins-error').textContent).toContain('review is no longer current')
-  expect(m.q('plugins-error').textContent).toContain('Review it again')
+  expect(m.q('plugins-error').textContent).toContain('Review is out of date. Review again.')
+  expect(m.q('plugins-error').textContent).toContain('Review again')
   expect(m.q('plugin-review-update').hasAttribute('disabled')).toBe(false)
   m.q('plugin-review-update').click()
   await nextTick()
@@ -405,7 +405,7 @@ it('keeps the mutation cause visible when its follow-up catalogue refresh also f
     expect(m.q('plugins-error').textContent).toContain('The fictional owner refused this action.'),
   )
   await vi.waitFor(() =>
-    expect(m.q('plugins-error').textContent).toContain('plugin list could not be refreshed'),
+    expect(m.q('plugins-error').textContent).toContain("Couldn't refresh plugins"),
   )
   expect(m.all('plugin-review-details')).toHaveLength(0)
   expect(f.calls.filter((c) => c.kind === 'update')).toHaveLength(1)

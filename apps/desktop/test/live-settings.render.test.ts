@@ -275,7 +275,7 @@ describe('the live settings, on the agent card (076)', () => {
     const html = await render({ session: meta(), recorded: true })
     const chip = tag(html, 'card-run-plan')
     expect(chip).toMatch(/^<span/)
-    expect(chip).toContain('leaves planning')
+    expect(chip).toContain('available here')
     expect(text(element(html, 'card-run-plan'))).toBe('Plan off')
   })
 })

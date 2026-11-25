@@ -63,7 +63,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   signIn: {
     state: 'absent',
     reason:
-      'Claude sessions run on the API key saved under “API key” on the Claude card in Providers, or, with none saved, on your machine login directly — there is no separate sign-in here to renew. Without a saved key, switching profiles on your machine is picked up the next time you start a conversation.',
+      "Uses your saved key, otherwise this computer's Claude login; a login switch applies next start.",
     checkedAgainst:
       'Claude Agent SDK 0.3.322: `sdk.d.ts` declares `Query.accountInfo()` for account inspection and no SDK sign-in method. ' +
       '`forceLoginMethod` and `forceLoginOrgUUID` are CLI settings. ' +

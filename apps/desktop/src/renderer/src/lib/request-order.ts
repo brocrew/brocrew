@@ -138,10 +138,8 @@ const SELF_WORDS = {
   messageHandedTo: (name: string): string => `The message this app handed to ${name}`,
   systemPromptIntro: (name: string): string =>
     `${name}’s text comes first. BroCrew’s preamble, file headings, files and conversation details follow in the same reader.`,
-  paragraphIsUnderFirstMessage:
-    'BroCrew’s paragraph about its tools is under First message → Context after the message.',
-  toolsInsideExec:
-    'The stored request starts with tool declarations. BroCrew’s tools sit inside the provider’s exec tool.',
+  paragraphIsUnderFirstMessage: 'See First message → Context.',
+  toolsInsideExec: 'Starts with tool declarations.',
 } as const
 
 const JOIN_MARK = '⟨BroBot’s text joins the system prompt here⟩'
@@ -162,8 +160,7 @@ function matchingMark(text: string, legacy: string): string {
 /** Above the files a stored copy's AGENTS wrapper did not hold. */
 export const NOT_IN_THIS_COPY = 'Not in this copy’s instructions:'
 /** The Files tab's intro, for a copy whose wrapper held the profile's file alone. */
-export const FILES_INTRO_PROFILE_ONLY =
-  'One user message wraps the instruction files this copy holds, followed by the environment.'
+export const FILES_INTRO_PROFILE_ONLY = 'Instruction files, then environment.'
 
 /** The parts of a request, numbered within their tab in the order they are added. */
 class Stream {
@@ -290,7 +287,7 @@ function fileRow(
     pieces.push({
       kind: 'notice',
       cy: 'input-file-cut',
-      text: 'This file was cut where the reader stops: the rest was not sent.',
+      text: "Cut at the size limit; remainder wasn't sent",
     })
   const trust = file.refused ? TRUST.notSent : TRUST_OF_TEXT[file.textIs]
   pieces.push(...headed(line, file.headingIs, { author: FILE_AUTHOR[file.origin], trust }))
@@ -621,8 +618,7 @@ function firstTurnOf(messages: readonly InputMessage[]): InputMessage[] {
 /** Where the first message would sit, when this window has not loaded the conversation's start. */
 const FIRST_MESSAGE_NOT_LOADED = 'First message not loaded.'
 
-const MESSAGES_INTRO =
-  'Every sent message belongs here in delivery order, including app notices, reports and answers. Open a row to read the whole received text.'
+const MESSAGES_INTRO = 'Messages in order. Open one to read it.'
 
 function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): ReaderTab[] {
   const name = PROVIDER_NAME[ctx.given.provider]
@@ -721,8 +717,7 @@ function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): Read
       key: 'tools',
       number: 2,
       label: 'Tools',
-      intro:
-        'Only definitions sent at this position belong here. Deferred names appear with the first message’s context.',
+      intro: '',
       copyNotice: true,
       items: tools.items,
       foot: context.length > 0 ? [SELF_WORDS.paragraphIsUnderFirstMessage] : [],
@@ -731,10 +726,7 @@ function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): Read
       key: 'first-message',
       number: 3,
       label: 'First message',
-      intro:
-        context.length > 0
-          ? 'First the memory and attribution reminders, then the framed message. In this capture, the provider’s context comes after it.'
-          : 'First the memory and attribution reminders, then the framed message.',
+      intro: '',
       copyNotice: true,
       items: first.items,
       foot: [],
@@ -830,11 +822,6 @@ function leadRow(stream: Stream, ctx: Context): void {
       author: AUTHOR.brobot,
       trust: leadTrust,
       pieces: [
-        {
-          kind: 'notice',
-          cy: 'input-lead-note',
-          text: 'Rides before the first worded message of a launch. After compaction or a failed turn, the whole lead can be owed again. A reopened thread may receive only changed sections.',
-        },
         // Three texts from up to three sources: each says where it came from.
         ...(line === null
           ? []
@@ -994,8 +981,7 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
       key: 'provider-instructions',
       number: 2,
       label: 'Provider instructions',
-      intro:
-        'Developer messages, in the stored order. The memory summary stays inside the provider’s memory instructions.',
+      intro: 'Developer messages, in order.',
       copyNotice: true,
       items: instructions.items,
       foot: [],
