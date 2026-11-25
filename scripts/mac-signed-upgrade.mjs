@@ -286,12 +286,13 @@ async function checkRetention(
     retention: true,
   })
   const resumed = currentWorkspace.result.interruptedSession
-  if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
   const comparison = dataPreserved(before, after, {
     allowAppended: Boolean(resumed),
     candidateLineage,
     retentionVersion: VERSION_B,
+    providerSessionEvidence: join(evidence, `${active.stage}-provider-sessions.json`),
   })
+  if (resumed) continuedEventsOnly(before, after, resumed.sessionId)
   legacyCredentialsPreserved(before.provider_api_key, after.provider_api_key)
   credentialPreserved(
     credential,
@@ -857,6 +858,7 @@ try {
       allowAppended: true,
       candidateLineage,
       retentionVersion: VERSION_B,
+      providerSessionEvidence: join(evidence, 'b-final-provider-sessions.json'),
     })
     legacyCredentialsPreserved(baseline.before.provider_api_key, after.provider_api_key)
     workspace.result.finalCredential = credentialPreserved(

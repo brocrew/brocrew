@@ -6,6 +6,7 @@ import { runTrimUpgradeSafety } from './lib/upgrade-trim-safety.mjs'
 import { aCrashAfterTheSavedKey, until } from './lib/update-rehearsal-app.mjs'
 import { keyEntryPreserved } from './lib/recovery-key-contract.mjs'
 import { proofManifests } from './lib/recovery-measurement.mjs'
+import { liveProviderSessions } from './lib/upgrade-session-preservation.mjs'
 import {
   describeDatabase,
   readDatabase,
@@ -469,6 +470,12 @@ async function runUpgradePath() {
     },
   )
   const afterFirst = readDatabase(data)
+  const sessionComparison = (stage, after) => {
+    const comparison = liveProviderSessions(before, after, candidateLineage, CONNECTION_UPGRADE_DEFAULTS)
+    keep(`${stage}-provider-sessions.json`, comparison.receipt)
+    return comparison
+  }
+  const firstSessions = sessionComparison('candidate-first', afterFirst)
   if (claudeConversation !== null) {
     const notices = jobNoticesIn(afterFirst.tables.events, claudeConversation)
     summary.claude.afterFirst = notices
@@ -542,7 +549,7 @@ async function runUpgradePath() {
     undefined,
     before.keys,
     candidateSkills,
-    CONNECTION_UPGRADE_DEFAULTS,
+    firstSessions.additions,
   )
   const afterFirstSkills = skillsKept(before.tables, afterFirst.tables, candidateSkills)
   check(
@@ -568,10 +575,7 @@ async function runUpgradePath() {
     ),
   )
   check(
-    afterFirst.lineage.length === candidateLineage.length &&
-      lineageFits(afterFirst.lineage, candidateLineage) &&
-      JSON.stringify(afterFirst.lineage.slice(0, before.lineage.length)) ===
-        JSON.stringify(before.lineage),
+    firstSessions.receipt.matchesLineage,
     `the schema moved from ${String(before.lineage.length)} to the candidate's ${String(candidateLineage.length)}, and the beta's own migration records are as it left them`,
     {
       before: before.lineage.length,
@@ -732,6 +736,8 @@ async function runUpgradePath() {
   } else check(false, 'second start: its log was kept')
 
   const afterSecond = readDatabase(data)
+  const secondSessions = sessionComparison('candidate-second', afterSecond)
+  check(secondSessions.receipt.matchesLineage, 'Second start preserves the candidate migration lineage')
   if (secondCompaction)
     check(
       afterSecond.storage.autoVacuum === 2,
@@ -789,7 +795,7 @@ async function runUpgradePath() {
     undefined,
     before.keys,
     candidateSkills,
-    CONNECTION_UPGRADE_DEFAULTS,
+    secondSessions.additions,
   )
   const afterSecondSkills = skillsKept(before.tables, afterSecond.tables, candidateSkills)
   check(
