@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createDraftWriter, savedDraftsBook } from '../src/main/drafts-file'
+import { createDraftWriter } from '../src/main/drafts-file'
+import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
 import { restoreSavedDrafts } from '../src/main/saved-drafts'
 import { createDraftBook, NEW_CONVERSATION, sweepDrafts } from '../src/renderer/src/lib/drafts'
 import { draftsToSave, restoreDrafts } from '../src/renderer/src/lib/kept-drafts'
@@ -28,7 +29,7 @@ describe('agent drafts before a conversation exists', () => {
     rmSync(userData, { recursive: true, force: true })
   })
   const readBack = (deps: { exists: (id: string) => boolean }): Promise<SavedDrafts> =>
-    restoreSavedDrafts(savedDraftsBook(db), deps)
+    restoreSavedDrafts(createSqliteDraftStorage(db).read(), deps)
 
   it('keeps distinct new-agent drafts through a quit before any conversation exists', async () => {
     const first = newAgentDraftSlot('fictional-alpha')
@@ -42,7 +43,7 @@ describe('agent drafts before a conversation exists', () => {
         { slot: second, text: '', attached: [FILE(present)] },
       ],
     }
-    const writer = createDraftWriter(db)
+    const writer = createDraftWriter(createSqliteDraftStorage(db))
     writer.expectQuitSaves(['main'])
     await writer.write({ ...saved, last: true }, 'main')
     expect(await writer.quitSaves()).toBe('saved')
@@ -66,7 +67,7 @@ describe('agent drafts before a conversation exists', () => {
   it('clearing one agent draft leaves the other agent and launcher slots intact', async () => {
     const first = newAgentDraftSlot('fictional-alpha')
     const second = newAgentDraftSlot('fictional-beta')
-    const writer = createDraftWriter(db)
+    const writer = createDraftWriter(createSqliteDraftStorage(db))
     await writer.write({
       drafts: [
         { slot: NEW_CONVERSATION, text: 'BroBot draft', attached: [] },

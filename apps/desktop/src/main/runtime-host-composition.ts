@@ -88,6 +88,7 @@ import { ThemeStore } from './themes/store'
 import { RuntimeHost, type RuntimeHostDeps } from './runtime/runtime-host'
 import { resolveSessionCwd } from './runtime/scratch-cwd'
 import { pastedImagesRoot, sweepPastedImages } from './runtime/pasted-image'
+import type { DraftStorage } from './database/drafts'
 import { keepDraftedPastes } from './drafts-file'
 import { resourcesRoot } from './resources/resources'
 import { readSessionInstructions } from './runtime/instructions'
@@ -101,6 +102,7 @@ import type { LaunchPresentation } from './launch-presentation'
 
 /** What composeRuntimeHost reads from index.ts; getters for the bindings index.ts reassigns. */
 export interface RuntimeHostWiring {
+  drafts: Pick<DraftStorage, 'read'>
   firstWindowLoad: Promise<void>
   mainThreadWork: MainThreadWork
   pluginController: ReturnType<typeof productionPluginController>
@@ -125,6 +127,7 @@ export async function composeRuntimeHost(
   wiring: RuntimeHostWiring,
 ): Promise<RuntimeHost> {
   const {
+    drafts,
     firstWindowLoad,
     mainThreadWork,
     pluginController,
@@ -156,7 +159,7 @@ export async function composeRuntimeHost(
       `the BroCrew workspace could not be prepared: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  keepDraftedPastes(database, userData, Date.now())
+  keepDraftedPastes(drafts, userData, Date.now())
   void sweepPastedImages(pastedImagesRoot(userData), Date.now()).catch(() => 0)
 
   const originalStore = createSessionStore(database, Date.now, mainThreadWork)

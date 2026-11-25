@@ -5,7 +5,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createDraftWriter, importDraftsFile, savedDraftsBook } from '../src/main/drafts-file'
+import { createDraftWriter } from '../src/main/drafts-file'
+import {
+  createSqliteDraftStorage,
+  importDraftsFile,
+} from '../src/main/database/sqlite/workspace/drafts'
 import { restoreSavedDrafts } from '../src/main/saved-drafts'
 import { createDraftBook, draftKey } from '../src/renderer/src/lib/drafts'
 import {
@@ -39,7 +43,7 @@ function dbAt(path: string): AppDatabase {
   }
   return database
 }
-const bookAt = (path: string): unknown => savedDraftsBook(dbAt(path))
+const bookAt = (path: string): unknown => createSqliteDraftStorage(dbAt(path)).read()
 const read = (path: string): SavedDrafts => bookAt(path) as SavedDrafts
 /** Every write to the drafts fails, as a full disk would make it, until `false`. */
 function savesFail(path: string, failing: boolean): void {
@@ -60,7 +64,7 @@ afterEach(() => {
 
 it('an incomplete last book preserves the other saved slots through a fresh writer and restore', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   await writer.write(packet(brook, 'b'.repeat(66)))
   writer.expectQuitSaves(['main'])
@@ -75,13 +79,13 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   restoreDrafts(book, saved)
   expect(book.read(fern).length).toBe(8000)
   expect(book.read(brook).length).toBe(67)
-  await createDraftWriter(dbAt(path)).write(packet(brook, 'b'.repeat(68)))
+  await createDraftWriter(createSqliteDraftStorage(dbAt(path))).write(packet(brook, 'b'.repeat(68)))
   expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(8000)
 })
 
 it('a late last handover is still saved, and still cannot clear', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   writer.expectQuitSaves(['main'])
   const done = vi.fn()
@@ -97,19 +101,19 @@ it('a late last handover is still saved, and still cannot clear', async () => {
 
 it('an explicit normal clear removes only that slot, so a sent draft stays cleared on restart', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write({
     drafts: [...packet(fern, 'fern words').drafts, ...packet(brook, 'brook words').drafts],
   })
   await writer.write({ drafts: [], cleared: [fern] })
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([brook])
-  await createDraftWriter(dbAt(path)).write({ drafts: [] })
+  await createDraftWriter(createSqliteDraftStorage(dbAt(path))).write({ drafts: [] })
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([brook])
 })
 
 it('an empty quit snapshot cannot clear a saved slot even if it contains a removal', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'fern words'))
   writer.expectQuitSaves(['main'])
   const waiting = writer.quitSaves()
@@ -120,7 +124,7 @@ it('an empty quit snapshot cannot clear a saved slot even if it contains a remov
 
 it('a malformed handover cannot erase the saved book', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'fern words'))
   await writer.write(null)
   expect(read(path).drafts.map((draft) => draft.slot)).toEqual([fern])
@@ -128,7 +132,7 @@ it('a malformed handover cannot erase the saved book', async () => {
 
 it('the renderer names a real removal explicitly and long typing reaches the file before a failed quit', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   const book = createDraftBook()
   const saves: Promise<void>[] = []
   const keeper = keepDraftsOnDisk(
@@ -164,15 +168,11 @@ it('the renderer names a real removal explicitly and long typing reaches the fil
   expect(draftsToSave(back).drafts[0]?.text.length).toBe(9000)
 })
 
-it('a slow launch read starts saving after its late answer without overwriting typing', async () => {
-  let answer!: (saved: SavedDrafts) => void
-  const pending = new Promise<SavedDrafts>((resolve) => {
-    answer = resolve
-  })
-  const handoff = handOver(await savedDraftsBeforeDrawing(() => pending, 1), pending)
-  const path = folder()
-  const writer = createDraftWriter(dbAt(path))
-  const book = createDraftBook()
+function keepDuringLaunch(
+  book: ReturnType<typeof createDraftBook>,
+  handoff: ReturnType<typeof handOver>,
+  writer: ReturnType<typeof createDraftWriter>,
+) {
   const saves: Promise<void>[] = []
   const keeper = keepTheDraftBook({
     book,
@@ -187,6 +187,19 @@ it('a slow launch read starts saving after its late answer without overwriting t
     },
     closing: () => false,
   })
+  return { keeper, saves }
+}
+
+it('a slow launch read starts saving after its late answer without overwriting typing', async () => {
+  let answer!: (saved: SavedDrafts) => void
+  const pending = new Promise<SavedDrafts>((resolve) => {
+    answer = resolve
+  })
+  const handoff = handOver(await savedDraftsBeforeDrawing(() => pending, 1), pending)
+  const path = folder()
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
+  const book = createDraftBook()
+  const { keeper, saves } = keepDuringLaunch(book, handoff, writer)
   book.write(fern, 'f'.repeat(9000))
   await nextTick()
   answer({ drafts: [...packet(fern, 'old').drafts, ...packet(brook, 'brook saved').drafts] })
@@ -202,7 +215,7 @@ it('a slow launch read starts saving after its late answer without overwriting t
 
 it('a failed final disk write leaves the previous saved draft available to a new process', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'f'.repeat(8000)))
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   savesFail(path, true)
@@ -223,25 +236,12 @@ it('sending a locally typed draft before the initial read answers does not resur
     answer = resolve
   })
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   const old = packet(fern, 'older draft')
   await writer.write(old)
   const handoff = handOver(await savedDraftsBeforeDrawing(() => pending, 1), pending)
   const book = createDraftBook()
-  const saves: Promise<void>[] = []
-  const keeper = keepTheDraftBook({
-    book,
-    sweep: { holdRestored: () => undefined },
-    handoff,
-    bridge: {
-      saveDrafts: (saved) => {
-        const run = writer.write(saved)
-        saves.push(run)
-        return run
-      },
-    },
-    closing: () => false,
-  })
+  const { keeper, saves } = keepDuringLaunch(book, handoff, writer)
   book.write(fern, 'a new local message')
   book.write(fern, '')
   answer(old)
@@ -256,7 +256,7 @@ it('sending a locally typed draft before the initial read answers does not resur
 
 it('the quit receipt contains save counts, time and per-slot sizes without any draft text', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   const text = 'a fictional unsent message that must not appear in a log'
   await writer.write(packet(fern, text))
   await writer.write(packet(brook, 'brook words'))
@@ -286,11 +286,11 @@ it.each(['rejected', 'held'])(
   'a %s initial renderer read still saves new typing and answers the final handover',
   async (kind) => {
     const path = folder()
-    const seeded = createDraftWriter(dbAt(path))
+    const seeded = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
     await seeded.write({
       drafts: [...packet(fern, 'old fern').drafts, ...packet(brook, 'old brook').drafts],
     })
-    const writer = createDraftWriter(dbAt(path))
+    const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
     const ready: Promise<SavedDrafts | null> =
       kind === 'held'
         ? new Promise(() => undefined)
@@ -331,7 +331,7 @@ it.each(['rejected', 'held'])(
 
 it('a failed explicit removal is retained when a later successful save changes another slot', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'sent words'))
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   savesFail(path, true)
@@ -351,7 +351,7 @@ it('a failed explicit removal is retained when a later successful save changes a
 
 it('a newer edit after a failed removal wins when the next save retries both', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'sent words'))
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   savesFail(path, true)
@@ -379,7 +379,7 @@ it.each([{ version: 2 }, {}])(
       exists: () => true,
     })
     expect(saved.drafts.map((draft) => draft.text)).toEqual(['kept by another build'])
-    const writer = createDraftWriter(dbAt(path))
+    const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
     await writer.write(packet(fern, 'new local words'))
     expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
       [brook, 'kept by another build'],
@@ -405,7 +405,7 @@ it('what another build wrote and this one does not read survives this build savi
     }),
   )
   importDraftsFile(dbAt(path), path)
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'fern words, edited here'))
   expect(read(path).drafts).toEqual([
     { slot: fern, text: 'fern words, edited here', attached: [], pinned: true },
@@ -418,7 +418,7 @@ it('what another build wrote and this one does not read survives this build savi
 
 it('a slot sent and a keeper stopped in the same tick still persists its explicit removal', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   const book = createDraftBook()
   book.write(fern, 'sent words')
   await writer.write(draftsToSave(book))
@@ -444,7 +444,7 @@ it('a slot sent and a keeper stopped in the same tick still persists its explici
 
 it('a late-restored draft sent before the debounce is absent after restart', async () => {
   const path = folder()
-  const writer = createDraftWriter(dbAt(path))
+  const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   const saved = packet(brook, 'a fictional restored message')
   await writer.write(saved)
   let answer!: (saved: SavedDrafts) => void
@@ -499,7 +499,7 @@ it.each([false, true])(
   'a local send before the first read answers stays cleared through quit (same tick: %s)',
   async (sameTick) => {
     const path = folder()
-    const writer = createDraftWriter(dbAt(path))
+    const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
     await writer.write(packet(fern, 'an older fictional draft'))
     const ready = new Promise<SavedDrafts>(() => undefined)
     const handoff = handOver(await savedDraftsBeforeDrawing(() => ready, 1), ready)

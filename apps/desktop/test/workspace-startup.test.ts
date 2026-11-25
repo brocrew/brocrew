@@ -13,6 +13,7 @@ import { ExistingWorkspace, WorkspaceUnavailable } from '../src/main/workspace-s
 import { createRecoveryService, inspect } from '../src/main/recovery/coordinator'
 import { nodeFs as recoveryFiles } from '../src/main/recovery/files'
 import { openDatabase } from '../src/main/db/connection'
+import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
 import { themeRoots } from '../src/main/themes/state'
 import { ThemeStore } from '../src/main/themes/store'
 import {
@@ -110,7 +111,8 @@ async function startup(
   const begin = index.indexOf(
     "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery', 'startup')",
   )
-  const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
+  const endLine =
+    '      host = await createRuntimeHost(database, drafts)\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
   const context = {
@@ -194,6 +196,7 @@ async function startup(
       databaseStarts++
       return {}
     },
+    createSqliteDraftStorage,
     createRuntimeHost: () => ({}),
   }
   const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app')

@@ -149,7 +149,7 @@ describe('the source census — a new durable write under userData must not slip
     expect(code('apps/desktop/src/main/resources/resources.ts')).toContain(
       "export const RESOURCES_DIRNAME = 'resources'",
     )
-    expect(code('apps/desktop/src/main/drafts-file.ts')).toContain(
+    expect(code('apps/desktop/src/main/database/sqlite/workspace/drafts.ts')).toContain(
       "export const SAVED_DRAFTS_FILE = 'drafts.json'",
     )
     expect(code('apps/desktop/src/main/archived-file.ts')).toContain(

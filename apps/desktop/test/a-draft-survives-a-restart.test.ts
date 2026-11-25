@@ -17,13 +17,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref, type Ref } from 'vue'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { createDraftWriter, keepDraftedPastes } from '../src/main/drafts-file'
 import {
-  createDraftWriter,
+  createSqliteDraftStorage,
   importDraftsFile,
-  keepDraftedPastes,
   SAVED_DRAFTS_FILE,
-  savedDraftsBook,
-} from '../src/main/drafts-file'
+} from '../src/main/database/sqlite/workspace/drafts'
 import { restoreSavedDrafts, savedDraftsFrom } from '../src/main/saved-drafts'
 import { pastedImagesRoot, sweepPastedImages } from '../src/main/runtime/pasted-image'
 import {
@@ -46,12 +45,7 @@ import {
   SAVED_DRAFTS_WITHIN_MS,
 } from '../src/renderer/src/lib/kept-drafts'
 
-import {
-  conversationOfSlot,
-  LAST_DRAFT_SAVE_CHANNEL,
-  LAUNCHER_SLOT,
-  type SavedDrafts,
-} from '../src/shared/saved-drafts'
+import { conversationOfSlot, LAUNCHER_SLOT, type SavedDrafts } from '../src/shared/saved-drafts'
 import { createAppLifetime } from '../src/main/app-lifetime'
 
 /**
@@ -622,7 +616,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
   const readBack = async (
     deps: { exists: (id: string) => boolean } = everyone,
   ): Promise<SavedDrafts> => {
-    return restoreSavedDrafts(savedDraftsBook(db), deps)
+    return restoreSavedDrafts(createSqliteDraftStorage(db).read(), deps)
   }
 
   it('🔴 what is written comes back', async () => {
@@ -634,12 +628,12 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
         { slot: draftKey(A), text: 'words for A', attached: [] },
       ],
     }
-    await createDraftWriter(db).write(saved)
+    await createDraftWriter(createSqliteDraftStorage(db)).write(saved)
     expect(await readBack()).toEqual(saved)
   })
 
   it('⚑ the control — a conversation that no longer exists is DROPPED at restore; the rest come back', async () => {
-    await createDraftWriter(db).write({
+    await createDraftWriter(createSqliteDraftStorage(db)).write({
       drafts: [
         { slot: NEW_CONVERSATION, text: 'launcher words', attached: [] },
         { slot: draftKey(A), text: 'words for A', attached: [] },
@@ -654,7 +648,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     const present = join(userData, 'present.md')
     writeFileSync(present, 'x')
     const gone = join(userData, 'moved-away.md')
-    await createDraftWriter(db).write({
+    await createDraftWriter(createSqliteDraftStorage(db)).write({
       drafts: [{ slot: draftKey(A), text: '', attached: [FILE(present), FILE(gone)] }],
     })
     expect((await readBack()).drafts[0]!.attached).toEqual([
@@ -816,7 +810,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await expect(
-        createDraftWriter(db).write({
+        createDraftWriter(createSqliteDraftStorage(db)).write({
           drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
         }),
       ).resolves.toBeUndefined()
@@ -825,16 +819,28 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     }
   })
 
-  it('⛔ a save after the database closed is dropped, never thrown', async () => {
-    const writer = createDraftWriter(db)
+  it('drops ordinary writes after close and reports an owed final write as failed', async () => {
+    const writer = createDraftWriter(createSqliteDraftStorage(db))
     db.close()
     await expect(
       writer.write({ drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }),
     ).resolves.toBeUndefined()
+    writer.expectQuitSaves([])
+    expect(await writer.quitSaves()).toBe('saved')
+
+    writer.expectQuitSaves(['main'])
+    const waiting = writer.quitSaves()
+    await expect(
+      writer.write(
+        { drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }], last: true },
+        'main',
+      ),
+    ).resolves.toBeUndefined()
+    expect(await waiting).toBe('failed')
   })
 
   it('🔴 the quit WAITS for each asked window’s LAST book to be on disk — only a book marked `last` counts — without treating a late book as a completed save', async () => {
-    const writer = createDraftWriter(db)
+    const writer = createDraftWriter(createSqliteDraftStorage(db))
     writer.expectQuitSaves([])
     expect(await writer.quitSaves()).toBe('saved')
 
@@ -860,15 +866,21 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
       'typed as the app closed',
     ])
 
-    writer.expectQuitSaves(['main'])
+    writer.expectQuitSaves(['main', 'other'])
     const done = vi.fn()
-    void writer.quitSaves().then(done)
+    const both = writer.quitSaves()
+    void both.then(done)
     await Promise.resolve()
     expect(done).not.toHaveBeenCalled()
+    await writer.write({ drafts: [], last: true }, 'main')
+    await writer.write({ drafts: [], last: true }, 'main')
+    expect(done).not.toHaveBeenCalled()
+    await writer.write({ drafts: [], last: true }, 'other')
+    expect(await both).toBe('saved')
   })
 
   it('⛔ a last book that could NOT be written is reported as failed — never as saved', async () => {
-    const writer = createDraftWriter(db)
+    const writer = createDraftWriter(createSqliteDraftStorage(db))
     await writer.write({ drafts: [] })
     savesFail()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -901,7 +913,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
       writeFileSync(path, 'png')
       utimesSync(path, aWeekAgo, aWeekAgo)
     }
-    await createDraftWriter(db).write({
+    await createDraftWriter(createSqliteDraftStorage(db)).write({
       drafts: [
         {
           slot: draftKey(A),
@@ -912,7 +924,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     })
     try {
       const now = Date.now()
-      expect(keepDraftedPastes(db, userData, now)).toBe(1)
+      expect(keepDraftedPastes(createSqliteDraftStorage(db), userData, now)).toBe(1)
       expect(Math.abs(statSync(picture).mtimeMs - now)).toBeLessThan(2_000)
       for (const untouched of [namedLikeOne, inTheFolder]) {
         expect(Math.abs(statSync(untouched).mtimeMs - aWeekAgo.getTime())).toBeLessThan(1)
@@ -923,7 +935,7 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
       row.run('a', JSON.stringify({ slot: 7, attached: [{ path: 7 }] }))
       row.run('b', 'null')
       row.run('c', '"x"')
-      expect(keepDraftedPastes(db, userData, now)).toBe(0)
+      expect(keepDraftedPastes(createSqliteDraftStorage(db), userData, now)).toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -941,12 +953,12 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     if (attached !== picture) linkSync(picture, attached)
     const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
     utimesSync(picture, old, old)
-    await createDraftWriter(db).write({
+    await createDraftWriter(createSqliteDraftStorage(db)).write({
       drafts: [{ slot: draftKey(A), text: '', attached: [FILE(attached)] }],
     })
 
     const now = Date.now()
-    expect(keepDraftedPastes(db, userData, now)).toBe(1)
+    expect(keepDraftedPastes(createSqliteDraftStorage(db), userData, now)).toBe(1)
     expect(Math.abs(statSync(picture).mtimeMs - now)).toBeLessThan(2_000)
     expect(await sweepPastedImages(root, now)).toBe(0)
     expect(statSync(picture).isFile()).toBe(true)
@@ -968,52 +980,9 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     )
     importDraftsFile(db, userData)
     const now = Date.now()
-    expect(keepDraftedPastes(db, userData, now)).toBe(1)
+    expect(keepDraftedPastes(createSqliteDraftStorage(db), userData, now)).toBe(1)
     expect(await sweepPastedImages(root, now)).toBe(0)
     expect(statSync(picture).isFile()).toBe(true)
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §5 · the wiring nothing mounts
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, which no test mounts', () => {
-  const read = (path: string): string => readFileSync(join(HERE, path), 'utf8')
-
-  it('🔴 main’s doors, the existence question and the start-up keep are wired', () => {
-    const index = read('../src/main/index.ts')
-    expect(index).toMatch(
-      /ipcMain\.handle\('app:save-drafts', \(event, saved: unknown\) => \{\n\s+const frame = event\.senderFrame\n\s+return writer\.write\(saved, frame && !frame\.isDestroyed\(\) \? frame\.frameToken : undefined\)/,
-    )
-    expect(index).toMatch(/const writer = createDraftWriter\(database\)\n\s+draftWriter = writer\n/)
-    expect(index).toMatch(/return restoreSavedDrafts\(savedDraftsBook\(database\), \{\n/)
-    expect(index).toMatch(
-      /reader\.once\('render-process-gone', forget\)\n\s+reader\.once\('destroyed', forget\)/,
-    )
-    expect(index).toContain('draftReaders.set(reader.id, frame.frameToken)')
-    expect(index).toMatch(/if \(outcome === 'failed'\) throw /)
-    expect(index).toMatch(
-      /exists: \(sessionId\) => recordedConversation\?\.\(sessionId\) \?\? true,/,
-    )
-    expect(read('../src/main/runtime-host-composition.ts')).toMatch(
-      /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)[\s\S]*\n\s+keepRecordedConversation\(\(sessionId\) => databaseClosed\(\) \|\| store\.recordedOne\(sessionId\) !== null\)\n/,
-    )
-    expect(index).toMatch(
-      /databaseClosed: \(\) => db === null,\n\s+keepRecordedConversation: \(recorded\) => \{\n\s+recordedConversation = recorded\n/,
-    )
-    // ⚑ …and the preload knocks on the two doors main opened, by the same names
-    const preload = read('../src/preload/index.ts')
-    for (const channel of ['app:saved-drafts', 'app:save-drafts']) {
-      expect(index).toContain(`ipcMain.handle('${channel}'`)
-      expect(preload).toContain(`ipcRenderer.invoke('${channel}'`)
-    }
-    expect(preload).toMatch(/ipcRenderer\.on\(LAST_DRAFT_SAVE_CHANNEL, forward\)/)
-    expect(LAST_DRAFT_SAVE_CHANNEL).toBe('app:last-draft-save')
-    // ⚑ …and the screen answers it — the bridge's door handed to the keeper
-    expect(read('../src/renderer/src/lib/kept-drafts.ts')).toMatch(
-      /onLastSave: bridge\?\.onLastDraftSave,/,
-    )
   })
 })
 

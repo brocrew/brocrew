@@ -75,7 +75,7 @@ export const MANIFEST = Object.freeze([
     name: 'drafts.json',
     expect: 'file',
     why: DRAFTS,
-    source: 'main/drafts-file.ts (importDraftsFile)',
+    source: 'main/database/sqlite/workspace/drafts.ts (importDraftsFile)',
   },
   // The conversations a person archived, named by their rows in the ledger it goes with.
   { name: 'archived.json', expect: 'file', why: LEDGER, source: 'main/archived-file.ts' },

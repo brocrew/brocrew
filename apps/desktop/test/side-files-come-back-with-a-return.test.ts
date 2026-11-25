@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { importDraftsFile, SAVED_DRAFTS_FILE, savedDraftsBook } from '../src/main/drafts-file'
+import {
+  createSqliteDraftStorage,
+  importDraftsFile,
+  SAVED_DRAFTS_FILE,
+} from '../src/main/database/sqlite/workspace/drafts'
 import {
   importProfileExecutionFile,
   NO_PROFILE_EXECUTION,
@@ -137,7 +141,7 @@ const CASES: readonly Case[] = [
     file: SAVED_DRAFTS_FILE,
     said: { version: 1, drafts: [{ slot: 'new', text: 'unsent', attached: [], pinned: true }] },
     importFile: importDraftsFile,
-    rows: (database) => savedDraftsBook(database),
+    rows: (database) => createSqliteDraftStorage(database).read(),
     change: (database) => database.exec('DELETE FROM draft'),
   },
   {

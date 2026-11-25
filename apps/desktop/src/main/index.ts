@@ -169,13 +169,9 @@ import { installCspHeaders, rendererCsp } from '../shared/content-security-polic
 import { RuntimeHost } from './runtime/runtime-host'
 import { appMenuTemplate } from './app-menu'
 import { nativeTitleBarOptions, updateNativeTitleBar } from './native-title-bar'
-import {
-  createDraftWriter,
-  importDraftsFile,
-  requestLastDraftSaves,
-  savedDraftsBook,
-  type DraftWriter,
-} from './drafts-file'
+import type { DraftStorage } from './database/drafts'
+import { createSqliteDraftStorage, importDraftsFile } from './database/sqlite/workspace/drafts'
+import { createDraftWriter, requestLastDraftSaves, type DraftWriter } from './drafts-file'
 import { restoreSavedDrafts } from './saved-drafts'
 import { LAST_DRAFT_SAVE_CHANNEL } from '../shared/saved-drafts'
 import { keepTheSystemZone, readTheSystemZoneNow } from './system-zone'
@@ -495,8 +491,9 @@ function readAppInfo(): AppInfo {
 
 const pluginController = productionPluginController()
 
-function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
+function createRuntimeHost(database: AppDatabase, drafts: DraftStorage): Promise<RuntimeHost> {
   return composeRuntimeHost(database, {
+    drafts,
     firstWindowLoad,
     mainThreadWork,
     pluginController,
@@ -562,7 +559,11 @@ async function pick(
   return owner ? dialog.showOpenDialog(owner, options) : dialog.showOpenDialog(options)
 }
 
-function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {
+function registerIpc(
+  runtimeHost: RuntimeHost,
+  localZone: () => LocalZone | null,
+  drafts: DraftStorage,
+): void {
   stopProviderSetup = registerProviderSetup(
     ipcMain,
     providerSetupServices({
@@ -698,9 +699,8 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   )
   ipcMain.handle('app:info', () => readAppInfo())
   registerAttentionSignalsIpc()
-  const database = db
-  if (database === null) throw new Error('Database not initialised')
-  const writer = createDraftWriter(database)
+  if (db === null) throw new Error('Database not initialised')
+  const writer = createDraftWriter(drafts)
   draftWriter = writer
   ipcMain.handle('app:saved-drafts', (event) => {
     const reader = event.sender
@@ -719,7 +719,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       }
       draftReaders.set(reader.id, frame.frameToken)
     }
-    return restoreSavedDrafts(savedDraftsBook(database), {
+    return restoreSavedDrafts(drafts.read(), {
       exists: (sessionId) => recordedConversation?.(sessionId) ?? true,
     })
   })
@@ -1476,9 +1476,11 @@ function start(ownership: HostGateVerdict): void {
           }
         }
       })
-      host = await createRuntimeHost(initDatabase())
+      const database = initDatabase()
+      const drafts = createSqliteDraftStorage(database)
+      host = await createRuntimeHost(database, drafts)
       finishStartupPhase()
-      registerIpc(host, localZone)
+      registerIpc(host, localZone, drafts)
       startTheDockLabel()
       updates = startUpdates({
         app,

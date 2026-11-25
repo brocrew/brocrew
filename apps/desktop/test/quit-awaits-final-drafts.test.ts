@@ -5,8 +5,10 @@ import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { createDraftWriter, requestLastDraftSaves, savedDraftsBook } from '../src/main/drafts-file'
+import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
+import { createDraftWriter, requestLastDraftSaves } from '../src/main/drafts-file'
 import { LAUNCHER_SLOT } from '../src/shared/saved-drafts'
+import { deferred } from './helpers/quit-open-list-cases'
 
 let folder: string
 let database: AppDatabase
@@ -33,7 +35,8 @@ function fixture(readers = [reader('main')]) {
   const file = join(folder, 'drafts.sqlite')
   database = openDatabase(file)
   database.exec('CREATE TABLE draft (slot TEXT PRIMARY KEY, entry TEXT NOT NULL)')
-  const writer = createDraftWriter(database)
+  const storage = createSqliteDraftStorage(database)
+  const writer = createDraftWriter(storage)
   const quit = vi.fn()
   const lifetime = createAppLifetime({
     announceClosing: () => {},
@@ -51,7 +54,7 @@ function fixture(readers = [reader('main')]) {
     now: () => Date.now(),
     log: vi.fn(),
   })
-  return { file, writer, quit, lifetime }
+  return { file, storage, writer, quit, lifetime }
 }
 
 const lastBook = {
@@ -72,7 +75,7 @@ it('keeps the database and window open past the old deadline, then saves before 
   await lifetime.shuttingDown
   expect(quit).toHaveBeenCalledOnce()
   database = openDatabase(file)
-  expect(savedDraftsBook(database)).toEqual({ version: 1, drafts: lastBook.drafts })
+  expect(createSqliteDraftStorage(database).read()).toEqual({ version: 1, drafts: lastBook.drafts })
 })
 
 it('holds a failed save and allows quit to retry after the write failure is fixed', async () => {
@@ -125,7 +128,7 @@ it('retires only the vanished frame and still waits for the other window', async
   vi.useFakeTimers()
   const gone = reader('gone')
   const live = reader('main')
-  const { file, writer, quit, lifetime } = fixture([gone, live])
+  const { file, storage, writer, quit, lifetime } = fixture([gone, live])
   lifetime.beforeQuit(event)
   await vi.advanceTimersByTimeAsync(0)
   expect(gone.frame.send).toHaveBeenCalledOnce()
@@ -136,13 +139,31 @@ it('retires only the vanished frame and still waits for the other window', async
   await vi.advanceTimersByTimeAsync(1500)
   expect(quit).not.toHaveBeenCalled()
   expect(database.open).toBe(true)
-  await writer.write(lastBook, 'main')
+  const commit = deferred()
+  const persist = storage.persist
+  const held = vi.spyOn(storage, 'persist').mockImplementation(async (packet) => {
+    await commit.promise
+    return persist(packet)
+  })
+  const saving = writer.write(lastBook, 'main')
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    expect(held).toHaveBeenCalledOnce()
+    expect(storage.read()).toEqual({ version: 1, drafts: [] })
+    live.contents.emit('did-navigate')
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(database.open).toBe(true)
+    expect(quit).not.toHaveBeenCalled()
+  } finally {
+    commit.resolve()
+    await saving
+  }
   await vi.runAllTimersAsync()
   await lifetime.shuttingDown
   expect(quit).toHaveBeenCalledOnce()
   expect(live.contents.listenerCount('render-process-gone')).toBe(0)
   database = openDatabase(file)
-  expect(savedDraftsBook(database)).toEqual({ version: 1, drafts: lastBook.drafts })
+  expect(createSqliteDraftStorage(database).read()).toEqual({ version: 1, drafts: lastBook.drafts })
 })
 
 it('retires the old document only when its replacement commits', async () => {
@@ -194,7 +215,7 @@ it('keeps a failed book when another requested renderer disappears', async () =>
   await lifetime.shuttingDown
   expect(quit).toHaveBeenCalledOnce()
   database = openDatabase(file)
-  expect(savedDraftsBook(database)).toEqual({ version: 1, drafts: lastBook.drafts })
+  expect(createSqliteDraftStorage(database).read()).toEqual({ version: 1, drafts: lastBook.drafts })
 })
 
 it('wires the last-draft request into the shutdown sequence', () => {
