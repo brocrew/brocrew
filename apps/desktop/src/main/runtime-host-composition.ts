@@ -299,7 +299,7 @@ export async function composeRuntimeHost(
     readCurrentAgentRules: (profile) => store.readCurrentAgentRules(profile),
     writeDirectAgentRules: (...args) => store.writeDirectAgentRules(...args),
     afterFirstWindowLoad: firstWindowLoad,
-    deferStartupUntilListPaint: true,
+    deferStartupUntilFirstList: true,
     workSearchReader: startWorkSearch(database.name),
     pastWorkSearchReader: startPastWorkSearch(),
     windowReader: startWindowReader(database.name),

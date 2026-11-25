@@ -130,7 +130,7 @@ describe(prefix, () => {
       expect(observed(fixture, recipient).waiting).toEqual(expect.arrayContaining(held))
       expect(calls(fixture)).toHaveLength(0)
       await host.closeAll()
-      const reopened = fixture.aHost({ deferStartupUntilListPaint: true })
+      const reopened = fixture.aHost({ deferStartupUntilFirstList: true })
       return { fixture, reopened, asker, recipient, requestId: id, origin, held }
     } finally {
       release()

@@ -101,7 +101,6 @@ export type ClientSessionApi = Pick<
       | 'revealMessagePath'
       | 'openMessagePath'
       | 'resolveLink'
-      | 'firstListPainted'
       | 'listRecentConversations'
       | 'whatThisAgentWasGiven'
       | 'whatTheModelGot'

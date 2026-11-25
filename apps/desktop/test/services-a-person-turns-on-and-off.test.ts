@@ -662,8 +662,8 @@ describe('Service lifecycle', () => {
         expect(stateOf(service, one.piece)).toBe('stalled')
       })
       await host.closeAll()
-      const after = world.aHost({ retiredServicesOff: true, deferStartupUntilListPaint: deferred })
-      if (deferred) after.firstListPainted()
+      const after = world.aHost({ retiredServicesOff: true, deferStartupUntilFirstList: deferred })
+      if (deferred) await after.listConversations()
       await after.resumeSession(caller, world.window)
       return { after, caller, service, one, two }
     }

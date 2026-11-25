@@ -160,7 +160,7 @@ export interface AServiceWorld {
   aHost(opts?: {
     owned?: boolean
     retiredServicesOff?: true
-    deferStartupUntilListPaint?: boolean
+    deferStartupUntilFirstList?: boolean
     store?: SessionStore
     archived?: ConstructorParameters<typeof RuntimeHost>[0]['archived']
     interruptWaitMs?: number
@@ -371,7 +371,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       const Host = fixture.holderReminders === 'declined' ? GiverNoticeHost : RuntimeHost
       const host = new Host({
         store: opts.store ?? world.store,
-        deferStartupUntilListPaint: opts.deferStartupUntilListPaint ?? false,
+        deferStartupUntilFirstList: opts.deferStartupUntilFirstList ?? false,
         ...neutralHostDeps(() => folder),
         ...(opts.archived === undefined ? {} : { archived: opts.archived }),
         resourcesRoot: () => resourcesRoot(folder),

@@ -1512,7 +1512,7 @@ export class RuntimeHost implements LiveHost {
   private startupAdvance: Promise<void> | undefined
   private finishStartup: (() => void) | undefined
   private repairingStartup = false
-  private startupHasPainted = false
+  private startupBegun = false
 
   /**
    * ⚑ **D-017 · R1 — the one start {@link ensureRunning} is making for each conversation**, and the
@@ -2531,7 +2531,7 @@ export class RuntimeHost implements LiveHost {
     const continuing = new Set<string>()
     const runningNow = (): Set<string> => new Set([...elsewhere, ...workRunningElsewhere(this)])
     const openNow = (): Set<string> => new Set([...stillOpen, ...runningNow()])
-    const repairTime = (): number => (deps.deferStartupUntilListPaint ? launchedAt : this.now())
+    const repairTime = (): number => (deps.deferStartupUntilFirstList ? launchedAt : this.now())
     const woken = new Set<string>()
     const readSchedulesAndCuts = (): void => {
       const scheduled = listening ? this.theScheduleLevelsAtTheLaunch() : null
@@ -2605,7 +2605,7 @@ export class RuntimeHost implements LiveHost {
         `pieces: ${undriven} conversation(s) held work a previous run did not finish`,
       )
     }
-    if (deps.deferStartupUntilListPaint) {
+    if (deps.deferStartupUntilFirstList) {
       const owners = new Set([
         ...this.deps.store.startupRepairOwners(),
         ...Object.keys(this.cutsKept.cuts),
@@ -2712,7 +2712,7 @@ export class RuntimeHost implements LiveHost {
         this.armTheWakeUpsTheLedgerHolds(running, levels)
         this.wakeWhatTheRestartStopped(stoppedBackground, foreign)
         this.continueTheCutTurns(
-          deps.deferStartupUntilListPaint
+          deps.deferStartupUntilFirstList
             ? new Set([...continuing].filter((one) => this.aCutToContinue(one)))
             : continuing,
           foreign,
@@ -2771,7 +2771,7 @@ export class RuntimeHost implements LiveHost {
           })
       })
     }
-    if (deps.deferStartupUntilListPaint) {
+    if (deps.deferStartupUntilFirstList) {
       this.finishStartup = () => {
         sayRepairs()
         activateAfterRepairs()
@@ -2784,14 +2784,18 @@ export class RuntimeHost implements LiveHost {
     this.stopHearingCommits = this.deps.store.onCommitted((change) => this.heardACommit(change))
   }
 
-  /** The renderer has committed the list and passed a paint opportunity. */
-  firstListPainted(): void {
-    if (this.startupHasPainted || this.launches.closed) return
-    this.startupHasPainted = true
-    void this.finishStartupAfterPaint()
+  /**
+   * The first full list has been served, so the deferred startup can begin. It waits for the
+   * answer, not for a paint: a hidden page never paints, and the work below must not wait for
+   * someone to look at the window.
+   */
+  private beginTheDeferredStartup(): void {
+    if (this.startupBegun || this.launches.closed) return
+    this.startupBegun = true
+    void this.finishTheDeferredStartup()
   }
 
-  private async finishStartupAfterPaint(): Promise<void> {
+  private async finishTheDeferredStartup(): Promise<void> {
     try {
       while (this.startupSteps !== undefined && !this.launches.closed) {
         await this.advanceStartup()
@@ -13829,7 +13833,7 @@ export class RuntimeHost implements LiveHost {
   /** All queue facts share one worker snapshot, then compose with live state at one publication. */
   async personsQueue(): Promise<PersonsQueueAnswer> {
     try {
-      // Observe an already-resolved activation; never wait for first paint or provider starts.
+      // Observe an already-resolved activation; never wait for the first list or provider starts.
       await Promise.resolve()
       const initial = this.initialReconciliation
       if (this.deps.windowReader !== undefined && initial !== undefined) {
@@ -13892,8 +13896,9 @@ export class RuntimeHost implements LiveHost {
    * is complete only if every row was read.
    */
   async listConversations(): Promise<ListingAnswer> {
+    let answer: PublishedListing
     try {
-      return await this.readForWindow((floor): PublishedListing => {
+      answer = await this.readForWindow((floor): PublishedListing => {
         const { resumable, unresumable, complete } = this.theListing()
         // A successful listing resumes pending state delivery, including when the listing was cached.
         if ([...resumable, ...unresumable].some((row) => this.statesToAsk.has(row.sessionId)))
@@ -13919,6 +13924,8 @@ export class RuntimeHost implements LiveHost {
     } catch (error) {
       return this.listingRefused(errorMessage(error))
     }
+    this.beginTheDeferredStartup()
+    return answer
   }
 
   /** The listing refused as a whole, at the stamp current now. Reads nothing. */
