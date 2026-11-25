@@ -9,21 +9,13 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  agentIdentityRowId,
-  identityCreatorColumn,
-  readIdentityCreator,
-} from '../src/main/db/identity'
+import { agentIdentityRowId, identityCreatorColumn, readIdentityCreator } from '../src/main/db/identity'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  IDENTITY_ORIGINS,
-  type IdentityCreator,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, IDENTITY_ORIGINS, type IdentityCreator, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const srcRoot = join(here, '../src')
@@ -156,16 +148,6 @@ describe('598 · the grant covers what it created', () => {
     const one = handed.at(-1)
     if (one === undefined) throw new Error('no launch was handed a toolset')
     return one
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /**

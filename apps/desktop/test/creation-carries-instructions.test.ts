@@ -1,9 +1,4 @@
-import {
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-  RecordingSink,
-} from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -20,14 +15,10 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, type InstructionContext } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import {
-  WHO_WROTE_IT,
-  WROTE_IT_MEANS,
-  configuredLayerOf,
-  whatIsInForce,
-} from '../src/shared/own-instructions'
+import { WHO_WROTE_IT, WROTE_IT_MEANS, configuredLayerOf, whatIsInForce } from '../src/shared/own-instructions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { closeAndRemove } from './helpers/scratch-host'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -127,16 +118,6 @@ describe('618 · creation carries instructions', () => {
     const one = handed.at(-1)
     if (one === undefined) throw new Error('no launch was handed a toolset')
     return one
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const brobot = async (): Promise<{ me: string; tools: AgentToolset }> => {

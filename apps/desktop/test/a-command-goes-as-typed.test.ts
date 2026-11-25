@@ -17,24 +17,14 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
-import {
-  A_PERSON_SENT_IT,
-  messageNamingItsSender,
-  THE_PERSON_AT_A_WINDOW,
-  type TurnOrigin,
-} from '../src/main/runtime/turn-origin'
-import {
-  aCommandTakesNoAttachments,
-  aPersonsCommand,
-  LOOKS_LIKE_A_COMMAND,
-  mightBeAPersonsCommand,
-  theCommandItNames,
-} from '../src/main/runtime/a-command-goes-as-typed'
+import { A_PERSON_SENT_IT, messageNamingItsSender, THE_PERSON_AT_A_WINDOW, type TurnOrigin } from '../src/main/runtime/turn-origin'
+import { aCommandTakesNoAttachments, aPersonsCommand, LOOKS_LIKE_A_COMMAND, mightBeAPersonsCommand, theCommandItNames } from '../src/main/runtime/a-command-goes-as-typed'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.**
@@ -201,16 +191,6 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     throw new Error(`timed out waiting for ${what}`)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /**

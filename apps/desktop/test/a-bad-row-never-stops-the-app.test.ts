@@ -10,25 +10,14 @@ import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import {
-  createSessionStore,
-  eachOrSkipped,
-  ledgersSkippedOf,
-  readOrSkip,
-  skipTheLedger,
-  type SessionStore,
-} from '../src/main/db/session-store'
+import { createSessionStore, eachOrSkipped, ledgersSkippedOf, readOrSkip, skipTheLedger, type SessionStore } from '../src/main/db/session-store'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * 🔴 **D-017 · R8 — one bad row never stops the app**, pinned against `session-store.ts`'s
@@ -542,16 +531,6 @@ describe('D-017 · a healthy record never claims it could not be read', () => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')
     return last
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const listAgentsText = async (toolset: AgentToolset): Promise<string> => {

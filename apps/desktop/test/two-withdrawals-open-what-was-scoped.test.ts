@@ -1,9 +1,4 @@
-import {
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-  fixtureProviderConfig,
-} from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { textOfTheKeptFile } from './lib/kept-file-named'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,6 +17,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -91,16 +87,6 @@ describe('two withdrawals — open what was scoped', () => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')
     return last
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const aPieceGiven = async (

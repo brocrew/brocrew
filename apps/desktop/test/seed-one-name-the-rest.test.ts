@@ -13,16 +13,10 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { thisAppWouldMintIt } from '../src/shared/agent-roster'
-import {
-  AGENT_DISPLAY_NAME_CHARS,
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  foldProfileName,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { AGENT_DISPLAY_NAME_CHARS, DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, foldProfileName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * # 🔴 584 · seed one identity, and generate the names
@@ -138,16 +132,6 @@ describe('584 · seed one identity, and generate the names', () => {
       window,
     )
     return sessionId
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const toolsOfLastLaunch = (): AgentToolset => {

@@ -7,13 +7,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AuthUnavailableError,
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { AuthUnavailableError, FakeProviderSessions, FakeRuntime, type AgentToolset, type StartOptions } from '@brobot2/runtime'
 import { provisionCodexAuth, codexAuthStateFrom } from '@brobot2/runtime/codex'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -23,6 +17,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 /**
  * An agent keeps its default: a give can select another conversation's provider. One
@@ -153,16 +148,6 @@ describe('through the host: a give never changes an agent’s provider', () => {
     const tools = handed.at(-1)
     if (tools === undefined) throw new Error('no launch was handed a toolset')
     return tools
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const give = (

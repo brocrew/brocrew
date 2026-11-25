@@ -17,6 +17,7 @@ import { HUMAN_NAMES } from '../src/shared/human-names'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
+import { callOn } from './helpers/call-tool'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -148,16 +149,6 @@ describe('419 · creating an agent, and the provider it runs on', () => {
     const one = handed.at(-1)
     if (one === undefined) throw new Error('no launch was handed a toolset')
     return one
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   const anAgentThatMayCreate = async (): Promise<AgentToolset> => {

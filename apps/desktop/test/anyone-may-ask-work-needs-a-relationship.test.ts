@@ -14,12 +14,8 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import {
-  fixtureProviderConfig,
-  RecordingSink,
-  syntheticProviderHome,
-  neutralHostDeps,
-} from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -136,16 +132,6 @@ describe('553 · anyone may ask; work needs a relationship', () => {
     const last = handed.at(-1)
     if (last === undefined) throw new Error('no toolset was handed to that launch')
     return last
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: string,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
   }
 
   /**
