@@ -10,7 +10,6 @@ import {
   thisConversationSpans,
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
-import { RULE_WRITING_POLICY } from '../src/shared/capabilities'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 
@@ -19,6 +18,9 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
  * memory and saved methods: one with a profile may, and one this app cannot place under a profile,
  * which runs in another profile's home, may not.
  */
+
+const EXPECTED_RULE_POLICY =
+  'Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.'
 
 const folders: string[] = []
 afterEach(() => {
@@ -69,19 +71,22 @@ function handed(provider: Provider, launch: InstructionContext): string {
 describe('"What you may do" says whether this conversation may save memory', () => {
   it('with a profile: it may, as the line after the rule-writing policy', () => {
     const said = whatYouMayDo(withAProfile)
-    expect(said).toContain(`- ${RULE_WRITING_POLICY}\n- ${MAY_SAVE_MEMORY}`)
+    expect(said).toContain(`- ${EXPECTED_RULE_POLICY}\n- ${MAY_SAVE_MEMORY}`)
     expect(said).not.toContain(MAY_NOT_SAVE_MEMORY)
   })
 
   it('without one: it may not, as the line after the rule-writing policy', () => {
     const said = whatYouMayDo(withNone)
-    expect(said).toContain(`- ${RULE_WRITING_POLICY}\n- ${MAY_NOT_SAVE_MEMORY}`)
+    expect(said).toContain(`- ${EXPECTED_RULE_POLICY}\n- ${MAY_NOT_SAVE_MEMORY}`)
     expect(said).not.toContain(MAY_SAVE_MEMORY)
   })
 
   for (const provider of providerSchema.options) {
     it(`${provider}: each line reaches the model where this conversation's text goes`, () => {
-      expect(handed(provider, withAProfile)).toContain(MAY_SAVE_MEMORY)
+      const launch = handed(provider, withAProfile)
+      expect(launch).toContain(EXPECTED_RULE_POLICY)
+      expect(launch).toContain('You may save memory and methods for this profile.')
+      expect(launch).not.toContain('Ask when something is destructive or ambiguous.')
       expect(handed(provider, withNone)).toContain(MAY_NOT_SAVE_MEMORY)
       expect(handed(provider, withNone)).not.toContain(MAY_SAVE_MEMORY)
     })
