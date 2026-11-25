@@ -1,3 +1,4 @@
+import { callOn, textOf } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { neutralHostDeps, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
@@ -12,7 +13,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 
 type AgentToolset = ReturnType<typeof agentToolsFor>
 
@@ -68,26 +69,6 @@ describe('675 M20 · abandoned prints why it cannot come back', () => {
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
     const id = await personOpens(profileId)
     await host.close(id, window)
-  }
-
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const textOf = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown> = {},
-  ): Promise<string> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).text
   }
 
   const ledger = (sessionId: string) => store.events(sessionId).map((entry) => entry.event)

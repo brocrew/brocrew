@@ -1,5 +1,6 @@
+import { callOn } from './helpers/call-tool'
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
-import { givePagesToNewWorker } from './lib/give-fixture'
+import { aGiverWaitingOnItsHelper, givePagesToNewWorker } from './lib/give-fixture'
 import { expectNoQuestionWake } from './lib/question-wake'
 import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -17,7 +18,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -158,16 +159,6 @@ describe('the host says who a conversation owes an answer to, and moves the word
     return sessionId
   }
 
-  const callOn = async (
-    toolset: AgentToolset,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> => {
-    const tool = toolset.tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
   const turnsIn = (sessionId: string): number =>
@@ -224,30 +215,17 @@ describe('the host says who a conversation owes an answer to, and moves the word
   }
 
   /** BroBot gives W1.1 to Ada and has been pushed as waiting on her. */
-  const aGiverWaitingOnAHelper = async (): Promise<{
+  const aGiverWaitingOnAHelper = (): Promise<{
     brobot: string
     brobotTools: AgentToolset
     ada: string
     adaTools: AgentToolset
-  }> => {
-    const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    await settle()
-    const brobotTools = agentToolsFor(host, brobot)
-    const given = await givePagesToNewWorker(brobotTools)
-    const ada = given.agent as string
-    await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')
-    await waitFor(
-      () => lastSaid(brobot)?.is === 'waiting-on-a-worker',
-      'the giver to be pushed as waiting on its helper',
+  }> =>
+    aGiverWaitingOnItsHelper(
+      { host, personOpens, settle, turnsIn, lastSaid },
+      givePagesToNewWorker,
+      ADA,
     )
-    await settle()
-    expect(lastSaid(brobot)).toEqual({
-      is: 'waiting-on-a-worker',
-      on: [ADA],
-      since: expect.any(Number),
-    })
-    return { brobot, brobotTools, ada, adaTools: agentToolsFor(host, ada) }
-  }
 
   /** Ada asks her parent, about the piece she holds; the id of the question. */
   const adaAsksHerParent = async (adaTools: AgentToolset, question = 'which schema?') => {

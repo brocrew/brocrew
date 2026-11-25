@@ -2,7 +2,6 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writeProfileExecution } from '../src/main/profile-execution-file'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
   THE_APP_ITSELF,
@@ -17,6 +16,7 @@ import {
   acceptedGive as accepted,
   aServiceAndCaller,
   aServiceWithHeldFirstBrief,
+  callAs as call,
   type AServiceWorld,
 } from './helpers/a-service-world'
 
@@ -39,17 +39,6 @@ describe('a service takes one piece at a time', () => {
     await vi.waitFor(() => {
       expect(stateOf(service, piece)).not.toBe('waiting')
     })
-  }
-  const call = async (
-    host: RuntimeHost,
-    conversation: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-    const tool = agentToolsFor(host, conversation).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    const result = await tool.call(args)
-    return { structured: result.structured as Record<string, unknown>, text: result.text }
   }
   /** The pieces whose briefs went to `service`, in the order they went. */
   const handedOverIn = (service: string): readonly string[] => {

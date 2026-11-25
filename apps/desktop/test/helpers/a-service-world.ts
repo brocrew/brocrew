@@ -26,7 +26,7 @@ import {
   type KeptProfileExecution,
   type ProfileExecution,
 } from '../../src/main/profile-execution-file'
-import { agentCallerId } from '../../src/main/runtime/agent-tools'
+import { agentCallerId, agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools'
 import {
   RuntimeHost,
   type GiveOutcome,
@@ -583,6 +583,19 @@ export async function openServiceAndTwoCallers(
 export function acceptedGive(outcome: GiveOutcome): Extract<GiveOutcome, { ok: true }> {
   if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
   return outcome
+}
+
+/** One tool call as a conversation of `host` makes it: what it structured, and its sentence. */
+export async function callAs(
+  host: RuntimeHost,
+  conversation: string,
+  name: ToolName,
+  args: Record<string, unknown>,
+): Promise<{ structured: Record<string, unknown>; text: string }> {
+  const tool = agentToolsFor(host, conversation).tools.find((one) => one.name === name)
+  if (tool === undefined) throw new Error(`no such tool: ${name}`)
+  const result = await tool.call(args)
+  return { structured: result.structured as Record<string, unknown>, text: result.text }
 }
 
 export async function aServiceAndCaller(world: AServiceWorld, opts: { auto?: boolean } = {}) {

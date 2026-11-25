@@ -1,9 +1,10 @@
 import { format } from 'node:util'
+import { closeHostFixture } from './lib/host-fixture'
 import { expectRecordedGiveKept, recordedSendNotices } from './lib/recorded-send'
 import { newConversationGive, spawnFailureFixture } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -132,9 +133,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
   afterEach(async () => {
     armed.next = null
     vi.restoreAllMocks()
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await closeHostFixture(host, db, userData, root)
   })
 
   const events = (sessionId: string): TranscriptEvent[] =>

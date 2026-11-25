@@ -21,6 +21,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
+  closeHostFixture,
   fixtureProviderConfig,
   RecordingSink,
   syntheticProviderHome,
@@ -112,9 +113,7 @@ describe('D-047 · the giver keeps the whole brief it gave, in its own ledger', 
 
   afterEach(async () => {
     vi.restoreAllMocks()
-    await host.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+    await closeHostFixture(host, db, userData, root)
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

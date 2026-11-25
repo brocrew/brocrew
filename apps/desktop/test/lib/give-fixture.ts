@@ -403,6 +403,39 @@ export async function givePagesToNewWorker(
   return given
 }
 
+/** BroBot gives `W1.1` to a helper and has been pushed as waiting on it; the stall notice's turn is over. */
+export async function aGiverWaitingOnItsHelper(
+  rig: {
+    host: RuntimeHost
+    personOpens: (profileId: string) => Promise<string>
+    settle: () => Promise<unknown>
+    turnsIn: (conversation: string) => number
+    lastSaid: (conversation: string) => unknown
+  },
+  give: (tools: AgentToolset) => Promise<Record<string, unknown>>,
+  helperNamed: string,
+) {
+  const { host, personOpens, settle, turnsIn, lastSaid } = rig
+  const brobot = await personOpens(DEFAULT_PROFILE_ID)
+  await settle()
+  const brobotTools = agentToolsFor(host, brobot)
+  const given = await give(brobotTools)
+  expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
+  const ada = given.agent as string
+  await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')
+  await waitFor(
+    () => (lastSaid(brobot) as { is?: string } | undefined)?.is === 'waiting-on-a-worker',
+    'the giver to be pushed as waiting on its helper',
+  )
+  await settle()
+  expect(lastSaid(brobot)).toEqual({
+    is: 'waiting-on-a-worker',
+    on: [helperNamed],
+    since: expect.any(Number),
+  })
+  return { brobot, brobotTools, ada, adaTools: agentToolsFor(host, ada) }
+}
+
 export async function givePagesAndWaitForStall(
   { host, root, window }: { host: RuntimeHost; root: string; window: RuntimeEventSink },
   settle: () => Promise<unknown>,

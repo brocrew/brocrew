@@ -12,6 +12,15 @@ export async function answerOn(
   return tool.call(args)
 }
 
+/** Calls one tool and returns the sentence it answered in. */
+export async function textOf(
+  toolset: AgentToolset,
+  name: ToolName,
+  args: Record<string, unknown> = {},
+): Promise<string> {
+  return (await answerOn(toolset, name, args)).text
+}
+
 /** Calls one tool from a toolset the host handed out and returns its structured answer. */
 export async function callOn(
   toolset: AgentToolset,

@@ -3,9 +3,9 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { theMessagesOf } from '../../src/shared/runtime-ipc'
 import type { PieceRow } from '../../src/shared/task-contracts'
 import { afterEach, beforeEach, expect, vi } from 'vitest'
-import { agentCallerId, agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools'
+import { agentCallerId } from '../../src/main/runtime/agent-tools'
 import { type GiveOutcome, type RuntimeHost } from '../../src/main/runtime/runtime-host'
-import { aServiceWorld, type AServiceWorld } from './a-service-world'
+import { aServiceWorld, acceptedGive, callAs, type AServiceWorld } from './a-service-world'
 
 type Given = Extract<GiveOutcome, { ok: true }>
 
@@ -25,21 +25,8 @@ function aServicePieceSuite() {
     await world.cleanUp()
   })
 
-  const accepted = (outcome: GiveOutcome): Given => {
-    if (!outcome.ok) throw new Error(`refused (${outcome.refusal.rail}): ${outcome.refusal.reason}`)
-    return outcome
-  }
-  const call = async (
-    host: RuntimeHost,
-    conversation: string,
-    name: ToolName,
-    args: Record<string, unknown>,
-  ): Promise<{ structured: Record<string, unknown>; text: string }> => {
-    const tool = agentToolsFor(host, conversation).tools.find((one) => one.name === name)
-    if (tool === undefined) throw new Error(`no such tool: ${name}`)
-    const result = await tool.call(args)
-    return { structured: result.structured as Record<string, unknown>, text: result.text }
-  }
+  const accepted = acceptedGive
+  const call = callAs
   const giveRoomsTask = async (host: RuntimeHost, service: string) => {
     const given = await call(
       host,

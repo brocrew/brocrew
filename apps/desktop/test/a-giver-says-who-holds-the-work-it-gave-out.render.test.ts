@@ -1,4 +1,9 @@
-import { addressedGive, givePagesToNewWorker, newConversationGive } from './lib/give-fixture'
+import {
+  aGiverWaitingOnItsHelper,
+  addressedGive,
+  givePagesToNewWorker,
+  newConversationGive,
+} from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -920,32 +925,12 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
   })
 
   /** BroBot gives `W1.1` to Ada; the stall notice is handed back and BroBot's word has settled. */
-  const aGiverWaitingOnAHelper = async (): Promise<{
+  const aGiverWaitingOnAHelper = (): Promise<{
     brobot: string
     brobotTools: AgentToolset
     ada: string
     adaTools: AgentToolset
-  }> => {
-    const brobot = await personOpens(DEFAULT_PROFILE_ID)
-    await settle()
-    const brobotTools = agentToolsFor(host, brobot)
-    const given = await givenW11(brobotTools)
-    expect(given, JSON.stringify(given)).toMatchObject({ outcome: 'ok', label: 'W1.1' })
-    const ada = given.agent as string
-    // Ada's turn ends with her piece open, which hands BroBot a stall notice: one turn of its own.
-    await waitFor(() => turnsIn(ada) >= 1 && turnsIn(brobot) >= 1, 'the stall notice’s turn')
-    await waitFor(
-      () => lastSaid(brobot)?.is === 'waiting-on-a-worker',
-      'the giver to be pushed as waiting on its helper',
-    )
-    await settle()
-    expect(lastSaid(brobot)).toEqual({
-      is: 'waiting-on-a-worker',
-      on: [ADA],
-      since: expect.any(Number),
-    })
-    return { brobot, brobotTools, ada, adaTools: agentToolsFor(host, ada) }
-  }
+  }> => aGiverWaitingOnItsHelper({ host, personOpens, settle, turnsIn, lastSaid }, givenW11, ADA)
 
   it('🔴 §10 · a give moves the giver’s pushed word to waiting on its helper, and the helper’s reply moves it back', async () => {
     const brobot = await personOpens(DEFAULT_PROFILE_ID)
