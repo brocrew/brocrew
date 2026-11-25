@@ -28614,14 +28614,17 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * be over first. Nothing here weakens {@link reserve}, which stays synchronous and is still the
    * only gate — this just stops asking it a question whose answer was about to change.
    *
-   * **Bounded**, for {@link awaitArrival}'s reason and with {@link tearDown}'s own stated worst
-   * case: a wedged provider must not turn a refused reopen into a hung one. Past the bound the slot
-   * is still there and `reserve` refuses — now saying *"still closing"*, which is true.
+   * **A person's reopen (`untilGone`) waits for the teardown however long it takes** (card 197;
+   * the same rule as {@link settleTheLastLaunch}'s exit receipt, b017c21e). The teardown always
+   * ends: its stop and its drain are each bounded, and its finalize waits on the provider's own
+   * exits, which a slow PC can take longer than any fixed bound to report. **Every other caller
+   * stays bounded**, for {@link awaitArrival}'s reason and with {@link tearDown}'s own stated worst
+   * case: past the bound the slot is still there and `reserve` refuses — saying *"still closing"*.
    *
    * A slot with nothing being torn down is left completely alone, so an ordinary reopen pays one
    * map lookup and two null checks.
    */
-  private async settleTeardown(sessionId: string): Promise<void> {
+  private async settleTeardown(sessionId: string, untilGone = false): Promise<void> {
     const slot = this.slots.get(sessionId)
     if (slot === undefined) return
     // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
@@ -28643,6 +28646,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // `slots.delete`. Both null means nothing is being torn down and there is nothing to wait for.
     const teardown = slot.session.closing ?? slot.session.finalizing
     if (teardown === null) return
+    if (untilGone) {
+      await teardown.then(
+        () => undefined,
+        () => undefined,
+      )
+      return
+    }
     if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) return
     console.warn(
       `runtime session ${sessionId}: still closing after ${this.closeDrainTimeoutMs * 2}ms — ` +
@@ -34031,8 +34041,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId)
     try {
       if (this.startupRepairs.has(sessionId)) await this.settleBeforeUse(sessionId)
-      await this.settleTeardown(sessionId)
-      await this.settleTheLastLaunch(sessionId, !this.startingForADelivery.has(sessionId))
+      const aPersonsReopen = !this.startingForADelivery.has(sessionId)
+      await this.settleTeardown(sessionId, aPersonsReopen)
+      await this.settleTheLastLaunch(sessionId, aPersonsReopen)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a
