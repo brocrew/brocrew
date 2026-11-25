@@ -216,7 +216,7 @@ export function createGiveWorkTool(
           .string()
           .optional()
           .describe(
-            "A folder for this task: any that exists; a relative path is read from your own working directory. A new conversation works in the task's folder, or else your working directory. An existing conversation keeps its own working folder and may also use the task's folder while the task is open.",
+            "A folder for this task: any that exists; a relative path is read from your own working directory. A new conversation works in the task's folder, or else in its profile's own home. An existing conversation keeps its own working folder and may also use the task's folder while the task is open.",
           ),
         to: z
           .string()

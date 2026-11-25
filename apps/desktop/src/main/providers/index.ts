@@ -257,7 +257,7 @@ export { legacySharedSkillProvider } from './codex/skills'
 export { recordedNativeRead as historicalInstructionReads } from './codex/given'
 export { recordedProfileMemory as historicalProfileMemory } from './claude/given'
 export { recordedScheduleReceiptProvider } from './claude/transcripts'
-export { workspaceInstructionNames } from './workspace-layout.mjs'
+export { isAProfilesWork, workspaceInstructionNames } from './workspace-layout.mjs'
 
 export async function startSettingsLocator() {
   const { default: start } = await import('./claude/local-settings-locator.worker?nodeWorker')

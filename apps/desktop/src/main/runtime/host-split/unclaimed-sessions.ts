@@ -119,8 +119,8 @@ const NO_SURFACE: RuntimeEventSink = {
 }
 
 /**
- * The session id {@link RuntimeHost.checkCwd} passes, because `resolveCwd` takes one and there is no
- * session (203). It is never used: the only branch that reads the id is the blank-path one, which
+ * The profile id {@link RuntimeHost.checkCwd} passes, because `resolveCwd` takes one and there is no
+ * profile (203). It is never used: the only branch that reads it is the blank-path one, which
  * `checkCwd` short-circuits before it gets here. Named rather than `''` so a stub that echoes its
  * arguments produces something a reader can place.
  */

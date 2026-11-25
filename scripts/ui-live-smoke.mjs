@@ -68,7 +68,7 @@ import {
   whatThePlacedDoorCannotCarry,
 } from './lib/front-door.mjs'
 import {
-  brobotWorkspace,
+  profileHome,
   constantFrom,
   nativeDelegationTools,
   placedDoorSends,
@@ -2936,14 +2936,14 @@ async function main() {
     )
   }
   /**
-   * Where a front-door conversation runs. `<userData>/brobot-workspace` is where a conversation runs
-   * when nobody named a folder: the host resolves `input.cwd`, else the workspace
-   * (`scratch-cwd.ts`), and the front door sends no folder. There is no other fallback.
+   * Where a front-door conversation runs: BroBot's own home, where a conversation runs when nobody
+   * named a folder. The host resolves `input.cwd`, else the profile's home (`scratch-cwd.ts`), and
+   * the front door sends no folder. There is no other fallback.
    *
    * `null` under `BROBOT_CDP_PORT`: an attached app's userData is not ours to name, and a step that
    * needs this says so rather than guessing.
    */
-  const WORKSPACE = launched ? brobotWorkspace(launched.userDataDir) : null
+  const WORKSPACE = launched ? profileHome(launched.userDataDir, BROBOT_PROFILE_ID) : null
   // Prove the listener belongs to THIS repo BEFORE connecting: a foreign target is refused with
   // no attach, no reload, no side effects at all.
   const owner = assertPortOwnedByTree({ port: PORT, repoRoot: REPO_ROOT })
@@ -3225,12 +3225,7 @@ async function main() {
    * Every conversation this helper opens is
    * `{ provider: <BroBot's row, else the app frame's 'codex'>, profileId: DEFAULT_PROFILE_ID, approvalMode: 'ask' }`.
    * BroBot's row is seeded `claude`, so on this smoke that is Claude. It runs where the host
-   * resolves a launch that names no folder: BroBot's own workspace (see {@link WORKSPACE}).
-   *
-   * That workspace is not empty: `ensureWorkspace` writes `CLAUDE.md` and `AGENTS.md` into it at
-   * launch (`main/index.ts`), and Codex reads `AGENTS.md` out of its cwd (step `69` proves this). So
-   * every front-door conversation runs with BroBot's own instructions loaded, including "ask when
-   * something is destructive or ambiguous rather than guessing".
+   * resolves a launch that names no folder: BroBot's own home (see {@link WORKSPACE}).
    *
    * Front-door conversations share the directory. Step `16` leaves a `plan.txt` in it, so nothing
    * may assume an empty folder. A step that needs its own folder must be placed (step `51` is one).
@@ -7609,12 +7604,12 @@ async function main() {
           `the rail disagrees about the provider: "${railSays.rail}" vs chip "${placed.chip}"`,
         )
       }
-      // BroBot's session always runs in BroBot's workspace: the front door names no folder, and a
-      // launch that names none runs in the workspace (see {@link WORKSPACE}). Asserted rather than
+      // BroBot's session always runs in BroBot's home: the front door names no folder, and a launch
+      // that names none runs in its profile's home (see {@link WORKSPACE}). Asserted rather than
       // assumed.
       if (WORKSPACE !== null && placed.cwd !== WORKSPACE) {
         throw new Error(
-          `a front-door conversation ran in ${placed.cwd}, not the workspace ${WORKSPACE} — ` +
+          `a front-door conversation ran in ${placed.cwd}, not BroBot's home ${WORKSPACE} — ` +
             `HO-023 §3 has moved`,
         )
       }
@@ -7646,7 +7641,7 @@ async function main() {
           `3 · what it started is what the launch order names — ${expectedFrom}: chip ` +
             `"${placed.chip}", rail ` +
             `"${railSays.rail}", which is 211 §3's agreement — running in ` +
-            `${WORKSPACE === null ? 'an attached app’s own folder (not ours to name)' : 'the BroCrew workspace'} ` +
+            `${WORKSPACE === null ? 'an attached app’s own folder (not ours to name)' : 'BroBot’s own home'} ` +
             `— 420 §3's trap, on this run, in agreement with HO-023 §3`,
         ),
         asserted(

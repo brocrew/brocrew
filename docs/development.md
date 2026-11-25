@@ -63,7 +63,7 @@ BroBot behaves like the CLIs it runs: it adds no file- or folder-access restrict
 
 **"Never merge" and "never mutate PROD" are not rules of this product.** They describe how one person runs one body of work, and BroBot is generic: it can run a coding workflow, and it can plan a vacation. A person who holds such a rule tells their agents, and the rule lives with that person's own instructions, on their work and nowhere else.
 
-**Where an agent can be pointed stays written down, because it is a real fact.** `checkSessionCwd` admits any existing searchable directory, and a spawned session takes its parent's folder unless it names one — so a conversation can be pointed at a real repository today. Agents run as the OS user, with nobody necessarily watching and credentials at reachable paths. That is as true of a vacation-planning agent with a browser as of a coding one.
+**Where an agent can be pointed stays written down, because it is a real fact.** `checkSessionCwd` admits any existing searchable directory, and a conversation starts in its profile's own home unless a person or the give names a folder — so a conversation can be pointed at a real repository today. Agents run as the OS user, with nobody necessarily watching and credentials at reachable paths. That is as true of a vacation-planning agent with a browser as of a coding one.
 
 **Approval modes on new conversations.** A conversation started by a give inherits the giver's approval mode. Each provider applies its own approval and sandbox behavior for that mode. A give to an existing conversation uses the mode it already runs in.
 

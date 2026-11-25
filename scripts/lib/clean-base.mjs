@@ -80,7 +80,7 @@ export const MANIFEST = Object.freeze([
   // The conversations a person archived, named by their rows in the ledger it goes with.
   { name: 'archived.json', expect: 'file', why: LEDGER, source: 'main/archived-file.ts' },
   { name: 'exports', expect: 'dir', why: EXPORTS, source: 'main/index.ts:415' },
-  { name: 'worker-output', expect: 'dir', why: WORKSPACE, source: 'main/worker-piece-folder.ts' },
+  { name: 'worker-output', expect: 'dir', why: WORKSPACE, source: 'main/storage/engine.ts' },
   {
     name: 'provider-homes',
     expect: 'dir',

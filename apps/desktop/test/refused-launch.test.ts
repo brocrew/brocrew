@@ -15,7 +15,6 @@ import {
   prepareProviderHome,
 } from '../src/main/connections/homes'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { brobotWorkspace } from '../src/main/runtime/workspace'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID, type CwdVerdict } from '../src/shared/runtime-ipc'
 
@@ -207,13 +206,13 @@ describe('203 · a refused launch provisions nothing (195 H4)', () => {
     })
 
     it('⚠️ a blank folder is ok and provisions nothing — a keystroke must not make a directory', async () => {
-      // `resolveCwd`'s blank branch calls `ensureWorkspace`, which CREATES it. `checkCwd`
-      // short-circuits above that for exactly this reason: the box is blank for most of its life,
-      // and every check of it would otherwise be a write.
+      // `resolveCwd`'s blank branch CREATES the profile's home. `checkCwd` short-circuits above
+      // that for exactly this reason: the box is blank for most of its life, and every check of it
+      // would otherwise be a write.
       const host = buildHost()
       const verdict = await check(host, '   ')
       expect(verdict).toEqual({ ok: true, path: '' })
-      expect(existsSync(brobotWorkspace(userData))).toBe(false)
+      expect(existsSync(join(userData, 'provider-homes'))).toBe(false)
     })
   })
 })

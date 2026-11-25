@@ -14,7 +14,6 @@ import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mj
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import {
   brobotWorkspace,
-  ensureWorkspace,
   WORKSPACE_CANARY,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'
@@ -26,7 +25,7 @@ import {
  * > ONCE, whatever engine it runs on."*
  *
  * ⛔ **BroBot publishes ONE body under TWO names** — `legacyWorkspaceFiles()` renders
- * `WORKSPACE_INSTRUCTIONS` as both `CLAUDE.md` and `AGENTS.md`, and `ensureWorkspace` writes both at
+ * `WORKSPACE_INSTRUCTIONS` as both `CLAUDE.md` and `AGENTS.md`, and older versions wrote both at
  * every launch, because two engines look for different ones. ⚠️ **That publication is correct and
  * `581` is why**: Codex reads `AGENTS.md` natively and is injected nothing, so removing either file
  * would strip the workspace text from every default-cwd Codex conversation.
@@ -85,7 +84,8 @@ const install = (run: (userData: string, workspace: string) => void): void => {
   const root = mkdtempSync(join(tmpdir(), 'brobot-594-'))
   try {
     const userData = join(root, 'userData')
-    const workspace = ensureWorkspace(userData)
+    const workspace = brobotWorkspace(userData)
+    mkdirSync(workspace, { recursive: true })
     for (const file of legacyWorkspaceFiles())
       writeFileSync(join(workspace, file.name), file.content)
     run(userData, workspace)
@@ -162,8 +162,8 @@ describe('594 §2 · identity is by BYTES, never by NAME', () => {
   it('🔴 an agent that writes its OWN text into both names gets neither dropped nor relabelled', () => {
     install((userData, workspace) => {
       // ⛔ **This is the whole dispatch** (relay 1 §1.1). A first draft decided *"is this ours?"* by
-      // comparing paths — and that directory is the AGENT'S OWN cwd. ⚠️ `ensureWorkspace`
-      // republishes at startup and on the blank-cwd resolve, **not** on a resume and not on an
+      // comparing paths — and that directory is the AGENT'S OWN cwd. ⚠️ Older versions
+      // republished at startup and on the blank-cwd resolve, **not** on a resume and not on an
       // explicitly named cwd, so a file the agent wrote at a name we own survives to be read.
       //
       // 🔴 **Under a name-only rule the agent's words would have reached the model as *"generated
@@ -508,9 +508,8 @@ describe('594 §7 · the walk reaches its own files through an ALIAS, and the wi
 
   it('the current app claims no generated workspace instructions', () => {
     install((userData) => {
-      ensureWorkspace(userData)
+      // Files an older version left in its workspace stay where they are, and none is the app's own.
       expect(workspaceOwnFilesIn(userData)).toEqual([])
-      expect(kinds(claude(userData, { ours: [] }))).toEqual([])
     })
   })
 })

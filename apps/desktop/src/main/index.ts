@@ -36,7 +36,7 @@ import {
   deleteRetainedCopy,
 } from './recovery/checkpoint'
 import { installAppNavigation } from './app-navigation'
-import { WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
+import { WORKER_OUTPUT_DIRNAME } from './storage/engine'
 import { stopOrphanedCommands } from './command-cleanup'
 import {
   appLogFile,

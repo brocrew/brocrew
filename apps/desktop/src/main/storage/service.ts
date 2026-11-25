@@ -21,7 +21,7 @@ export class StorageService {
   private readonly active = new Set<() => void>()
   private closed = false
   constructor(
-    readonly roots: StorageRoots,
+    private readonly roots: StorageRoots,
     private readonly start: StorageWorkerFactory,
     private readonly stall = STORAGE_STALL_TIMEOUT,
   ) {}

@@ -19,15 +19,15 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { WORKSPACE_DIRNAME } from '../src/main/runtime/workspace'
+import { profileHome } from '../src/main/connections/homes'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /** A name somebody creates: a fresh install ships `brobot` and no other identity. */
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 /**
- * Where a conversation runs when it is opened: a launch that names no folder runs in the
- * workspace, BroBot's or not; a folder a person typed wins; a case variant of BroBot's name is
+ * Where a conversation runs when it is opened: a launch that names no folder runs in its
+ * profile's own home, BroBot's or not; a folder a person typed wins; a case variant of BroBot's name is
  * refused before it reaches anything; and a child of BroBot may start in a folder outside BroBot's
  * own. Real host, real SQLite ledger, real migrations, real IPC boundary; the only double is the
  * provider.
@@ -86,7 +86,7 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
   const ask = (command: Parameters<typeof executeRuntimeCommand>[2]): Promise<unknown> =>
     executeRuntimeCommand(host, window, command)
 
-  const workspace = (): string => join(userData, WORKSPACE_DIRNAME)
+  const home = (profileId: string): string => profileHome(userData, profileId)
 
   /**
    * **A person opens a conversation**, with no `cwd`, because the folder field is the thing this
@@ -131,15 +131,15 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · with no folder named, every launch runs in the workspace
+  // §1 · with no folder named, every launch runs in its profile’s home
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · with no folder named', () => {
-    it('⚑ both identities run in the workspace', async () => {
+    it('⚑ each identity runs in its own home', async () => {
       // ⚑ **D-016** — the premise read that the pinned project had no folder, and the control that
       // cleared one, went with project folders: a launch that names no folder has none to inherit.
-      expect((await personOpens(DEFAULT_PROFILE_ID)).cwd).toBe(workspace())
-      expect((await personOpens('worker')).cwd).toBe(workspace())
+      expect((await personOpens(DEFAULT_PROFILE_ID)).cwd).toBe(home(DEFAULT_PROFILE_ID))
+      expect((await personOpens('worker')).cwd).toBe(home('worker'))
     })
   })
 
@@ -162,7 +162,7 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
       )
       // ⚑ **The pair: the same launch in the spelling that exists is admitted**, and lands where
       // BroBot lands. A blanket refusal of every capitalised name would satisfy the negative alone.
-      expect((await personOpens(DEFAULT_PROFILE_ID)).cwd).toBe(workspace())
+      expect((await personOpens(DEFAULT_PROFILE_ID)).cwd).toBe(home(DEFAULT_PROFILE_ID))
     })
 
     // ⚑ **D-016** — *every other identity inherits the folder of the project it is PLACED in* went
@@ -202,8 +202,8 @@ describe('424 §A · where BroBot’s own conversation runs', () => {
       // 32's carrier. ⚠️ Nothing in this file's subject is about either grant; without the line the
       // spawns below are refused `not-in-can-spawn` and every arm would agree on a rail none is about.
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
-      // ⚑ **The premise, asserted**: BroBot's own folder is the workspace, not `planted`.
-      expect(brobot.cwd).toBe(workspace())
+      // ⚑ **The premise, asserted**: BroBot's own folder is its home, not `planted`.
+      expect(brobot.cwd).toBe(home(DEFAULT_PROFILE_ID))
       // ⚑ **The CONTROL: a folder that does not exist is still refused**, by `folder-unusable`, in
       // `checkSessionCwd`'s own words — the rule that is not about WHERE. Refused first, so the
       // identity is not live when the real spawn below asks for it.

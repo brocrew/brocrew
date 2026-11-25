@@ -1,10 +1,6 @@
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import {
-  FINISHED_WORK_NAME,
   STORAGE_CHANNELS,
-  isStorageLimit,
   isStorageLocation,
   type CacheClearReply,
   type CacheClearState,
@@ -12,7 +8,6 @@ import {
   type StorageDirectory,
   type StorageLocation,
   type StorageOverview,
-  type StorageRemoval,
 } from '../../shared/storage'
 import { failedOverview, storageReason, type StorageRequest } from './engine'
 import type { StorageService } from './service'
@@ -117,10 +112,10 @@ export function registerStorageIpc(
   })
   ipc.handle(
     STORAGE_CHANNELS.children,
-    async (event, location: unknown, limit?: unknown): Promise<StorageDirectory> => {
-      const safe = isStorageLocation(location) && (limit === undefined || isStorageLimit(limit))
+    async (event, location: unknown): Promise<StorageDirectory> => {
+      const safe = isStorageLocation(location)
       const fallback: StorageDirectory = {
-        location: isStorageLocation(location) ? location : { part: 'workspace', segments: [] },
+        location: safe ? location : { part: 'workspace', segments: [] },
         entries: [],
         smallerCount: 0,
         smallerBytes: 0,
@@ -129,11 +124,7 @@ export function registerStorageIpc(
         error: 'invalid-location',
       }
       if (!safe) return fallback
-      const result = await read(event, {
-        kind: 'children',
-        location,
-        ...(limit === undefined ? {} : { limit: limit as number }),
-      })
+      const result = await read(event, { kind: 'children', location })
       return result.ok ? (result.value as StorageDirectory) : { ...fallback, error: result.error }
     },
   )
@@ -204,35 +195,6 @@ export function registerStorageIpc(
       clearing = false
     }
   })
-  ipc.handle(
-    STORAGE_CHANNELS.removeFinished,
-    async (event, names: unknown): Promise<StorageRemoval> => {
-      if (closed || !actions.isAppWindow(event)) return { ok: false, error: 'unavailable' }
-      if (
-        !Array.isArray(names) ||
-        !names.every((name) => typeof name === 'string' && FINISHED_WORK_NAME.test(name))
-      )
-        return { ok: false, error: 'invalid-location' }
-      if (clearing) return { ok: false, error: 'busy' }
-      clearing = true
-      try {
-        // The list may have stood open while a conversation reopened in one of its folders, and a
-        // removal cannot be undone: only the ticked folders that are still finished are removed.
-        const checked = await service.run({ kind: 'finished', names: names as string[] })
-        if (!checked.ok) return checked
-        const still = new Set((checked.value as { finished: readonly string[] }).finished)
-        // Removed, not moved to the Trash: the space is what the person asked for. A link is
-        // removed itself, never what it points at.
-        for (const name of still)
-          await rm(join(service.roots.output, name), { recursive: true, force: true })
-        return { ok: true, kept: (names as string[]).filter((name) => !still.has(name)) }
-      } catch (error) {
-        return { ok: false, error: storageReason(error) }
-      } finally {
-        clearing = false
-      }
-    },
-  )
   return () => {
     closed = true
     for (const observer of cacheObservers.values()) observer.release()

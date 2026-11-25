@@ -143,7 +143,7 @@ const LAUNCHER_FACETS = sessionFacets({
  *    than deleted**, because what it cost for two dispatches is the argument for what it costs to
  *    take a choice away.
  * 4. ⚑ **GONE with projects at D-016.** *"Choose the project"* has no subject any more.
- * 5. **Choose the folder.** A front-door conversation runs in the app's own workspace
+ * 5. **Choose the folder.** A front-door conversation runs in its profile's own home
  *    (`resolveSessionCwd`'s blank branch); ⚑ since D-016 the agent's *New conversation…* sheet is
  *    where a person chooses a folder.
  *
@@ -653,8 +653,7 @@ onMounted(() => {
  * whole stack reads as *"leave the default alone"*, and a value sent from a control nobody was
  * shown is the defect that rule exists for.
  *
- * - **`cwd` is omitted**, so the host resolves it — `brobot-workspace` (`scratch-cwd.ts`). ⚑ HO-022:
- *   *"BroBot has his workspace."*
+ * - **`cwd` is omitted**, so the host resolves it — the profile's own home (`scratch-cwd.ts`).
  * - 🔴 **`approvalMode` is sent, explicitly, and it is the mode the PERSON set** (500,
  *   HO-036 §3.1). The host would resolve an absent field to `'ask'`, and saying it is still worth
  *   more than omitting it — a test can hold what this surface SENT without having to know a host

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { brobotWorkspace } from '../src/main/runtime/workspace'
+import { profileHome } from '../src/main/connections/homes'
 import { checkSessionCwd, resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 describe('resolveSessionCwd', () => {
@@ -16,18 +16,16 @@ describe('resolveSessionCwd', () => {
     rmSync(userData, { recursive: true, force: true })
   })
 
-  it('defaults to the DURABLE workspace, shared by every conversation (006)', () => {
-    // Changed deliberately in 006: this used to be a fresh `<scratch>/<sessionId>` per session,
-    // which threw the work away the moment a conversation ended. Continuity comes from
-    // conversations sharing one directory.
-    const cwd = resolveSessionCwd(userData, 'sess_1')
+  it("defaults to the profile's own home, shared by that profile's conversations", () => {
+    const cwd = resolveSessionCwd(userData, 'reviewer')
 
-    expect(cwd).toBe(brobotWorkspace(userData))
+    expect(cwd).toBe(profileHome(userData, 'reviewer'))
     expect(statSync(cwd).isDirectory()).toBe(true)
     // Windows uses access lists; chmod does not supply POSIX permission bits.
     if (process.platform !== 'win32') expect(statSync(cwd).mode & 0o777).toBe(0o700)
-    // Same directory for the next conversation — that is the point.
-    expect(resolveSessionCwd(userData, 'sess_2')).toBe(cwd)
+    // Same directory for the profile's next conversation, another for another profile.
+    expect(resolveSessionCwd(userData, 'reviewer')).toBe(cwd)
+    expect(resolveSessionCwd(userData, 'writer')).toBe(profileHome(userData, 'writer'))
   })
 
   it('accepts an existing directory', () => {
@@ -66,10 +64,10 @@ describe('resolveSessionCwd', () => {
       expect(() => resolveSessionCwd(userData, 'sess_7', file)).toThrow(/cwd is not a directory/)
     })
 
-    it('permits the workspace and anything under it, by name as well as by default', () => {
-      const workspace = resolveSessionCwd(userData, 'sess_8')
-      expect(workspace).toBe(brobotWorkspace(userData))
-      // Asked for BY NAME, not just as the default: a user who types the workspace path gets the
+    it("permits the profile's home and anything under it, by name as well as by default", () => {
+      const workspace = resolveSessionCwd(userData, 'reviewer')
+      expect(workspace).toBe(profileHome(userData, 'reviewer'))
+      // Asked for BY NAME, not just as the default: a user who types the home's path gets the
       // same answer as one who types nothing.
       expect(resolveSessionCwd(userData, 'sess_9', workspace)).toBe(workspace)
       const nested = join(workspace, 'a-project')
@@ -130,23 +128,23 @@ describe('the verdict the folder picker shows (076 §3)', () => {
     if (!verdict.ok) throw new Error('unreachable')
     expect(verdict.path).toBe(resolveSessionCwd(userData, 'sess_1', root))
 
-    // The workspace is the default folder, and the picker has to agree — refusing it there would
-    // make the default folder unpickable.
-    const workspace = brobotWorkspace(userData)
-    mkdirSync(workspace, { recursive: true })
-    expect(checkSessionCwd(workspace).ok).toBe(true)
+    // The profile's home is the default folder, and the picker has to agree — refusing it there
+    // would make the default folder unpickable.
+    const home = profileHome(userData, 'brobot')
+    mkdirSync(home, { recursive: true })
+    expect(checkSessionCwd(home).ok).toBe(true)
   })
 
-  it('treats a blank path as "choose something", not as the workspace default', async () => {
-    // `resolveSessionCwd` reads blank as "use the workspace", which is right for a LAUNCH — the
-    // field is optional. It is not right for a picker verdict: nothing was chosen, so there is
-    // nothing to approve, and returning the workspace would tell the user they had picked it.
+  it('treats a blank path as "choose something", not as the default', async () => {
+    // `resolveSessionCwd` reads blank as "use the profile's home", which is right for a LAUNCH —
+    // the field is optional. It is not right for a picker verdict: nothing was chosen, so there is
+    // nothing to approve, and returning the home would tell the user they had picked it.
     const userData = mkdtempSync(join(tmpdir(), 'brobot-cwd-blank-'))
     const verdict = checkSessionCwd('   ')
     expect(verdict.ok).toBe(false)
     if (verdict.ok) throw new Error('unreachable')
     expect(verdict.reason).toContain('choose a folder')
     // …while the launch still defaults, unchanged.
-    expect(resolveSessionCwd(userData, 'sess_1', '   ')).toBe(brobotWorkspace(userData))
+    expect(resolveSessionCwd(userData, 'brobot', '   ')).toBe(profileHome(userData, 'brobot'))
   })
 })

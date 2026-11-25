@@ -1,7 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
-  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -21,13 +20,12 @@ import { removeKeptRule } from '../src/main/kept-rules'
 import { keepResource } from '../src/main/resources/resources'
 import { amendAgentMemory } from '../src/main/runtime/agent-memory'
 import { publishOwnFile } from '../src/main/runtime/workspace'
-import { makeWorkerPieceFolder, WORKER_OUTPUT_FAILURE } from '../src/main/worker-piece-folder'
 
 /**
- * What this app stages and renames into place, and the markers it makes, are made new at names of
- * their own, never where a link left there points. Windows has no `O_NOFOLLOW`, and there an
- * exclusive create follows such a link and makes the file wherever it points. Off Windows, this
- * file's `node:fs` behaves so; on Windows the system does. Scratch folders only.
+ * What this app stages and renames into place is made new at a name of its own, never where a link
+ * left there points. Windows has no `O_NOFOLLOW`, and there an exclusive create follows such a link
+ * and makes the file wherever it points. Off Windows, this file's `node:fs` behaves so; on Windows
+ * the system does. Scratch folders only.
  */
 
 const creates = vi.hoisted((): WindowsCreates => ({ windows: true, swap: null, swapped: false }))
@@ -216,50 +214,5 @@ describe('a kept resource', () => {
       ok: true,
     })
     expect(readFileSync(join(kept, SHA256, 'report.md'))).toEqual(BYTES)
-  })
-})
-
-describe('a worker’s output folder, and the markers that say it is the app’s', () => {
-  const piece = `work_${randomUUID()}`
-
-  it.each([
-    ['the folder’s own marker', '.brocrew-piece'],
-    ['the root’s marker', '.brocrew-worker-output'],
-  ])('🔴 a link put at %s as it is made sends nothing outside', (_, marker) => {
-    const target = join(outside, 'marker')
-    aLinkAsItIsMade((path) => basename(path) === marker, target)
-
-    expect(() => makeWorkerPieceFolder(root, piece)).toThrow(WORKER_OUTPUT_FAILURE)
-
-    expect(creates.swapped).toBe(true)
-    expect(bytesAt(target)).toBe(0)
-  })
-
-  it.each([
-    ['the folder’s own marker', '.brocrew-piece'],
-    ['the root’s marker', '.brocrew-worker-output'],
-  ])(
-    '🔴 a link put at %s as it is made, then traded for a second name of the file it made, sends nothing outside',
-    (_, marker) => {
-      const target = join(outside, 'marker')
-      aLinkAsItIsMade((path) => basename(path) === marker, target)
-      creates.afterCreate = {
-        when: (path) => basename(path) === marker,
-        run: (path) => {
-          rmSync(path)
-          linkSync(target, path)
-        },
-      }
-
-      expect(() => makeWorkerPieceFolder(root, piece)).toThrow(WORKER_OUTPUT_FAILURE)
-
-      expect(creates.afterCreate).toBeNull()
-      expect(bytesAt(target)).toBe(0)
-    },
-  )
-
-  it('made with nothing in the way', () => {
-    const output = makeWorkerPieceFolder(root, piece)
-    expect(readFileSync(join(output, '.brocrew-piece'), 'utf8')).toBe(`${piece}\n`)
   })
 })

@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { isInside } from '@brobot2/shared/paths'
 import { PS_ARGS, PS_MAX_BUFFER_BYTES, parseProcessTable } from './process-tree'
-import { WORKER_OUTPUT_DIRNAME } from './worker-piece-folder'
+import { WORKER_OUTPUT_DIRNAME } from './storage/engine'
 
 /** A worker end owns its one output directory, never the shared workspace or its peers. */
 export function workerCommandFolder(userData: string, cwd: string): string | null {

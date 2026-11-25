@@ -49,7 +49,7 @@ export interface CreatedSession {
   /** Host-owned id. Not the provider ref: Claude's ref is null until its first turn's init. */
   sessionId: string
   provider: Provider
-  /** The working directory the session actually runs in (the BroBot workspace by default). */
+  /** The working directory the session actually runs in (its profile's own home by default). */
   cwd: string
   /** The app-owned per-profile provider home this session was launched in. */
   providerHome: string

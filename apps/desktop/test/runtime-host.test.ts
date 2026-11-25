@@ -49,7 +49,7 @@ describe('RuntimeHost', () => {
       // provisions nothing, so counting it as a prepared home would make "how many homes were
       // prepared" a number that includes reads (112).
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
+      resolveCwd: (profileId, requested) => requested ?? join(userData, 'scratch', profileId),
       newSessionId: () => `sess_${++counter}`,
       readProviderConfig: (provider, home) => ({
         home,
@@ -80,7 +80,7 @@ describe('RuntimeHost', () => {
     expect(created.sessionId).toBe('sess_1')
     expect(created.provider).toBe('claude')
     expect(created.providerHome).toBe(join(userData, 'provider-homes', 'claude'))
-    expect(created.cwd).toBe(join(userData, 'scratch', 'sess_1'))
+    expect(created.cwd).toBe(join(userData, 'scratch', 'brobot'))
     // The Fake confirms at construction, so its ref exists the instant start resolves.
     expect(created.ref?.sessionId).toBe('fake_claude_1')
 

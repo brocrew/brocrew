@@ -1,21 +1,15 @@
-import { accessSync, constants, realpathSync, statSync } from 'node:fs'
+import { accessSync, constants, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { CwdVerdict } from '../../shared/runtime-ipc'
-import { ensureWorkspace } from './workspace'
+import { profileHome } from '../connections/homes'
 
 /**
  * Where a session runs. A session cwd is chosen at creation and never re-derived later: the chosen
  * path is recorded on the session row, so a resume reopens the SAME directory.
  *
- * 🔴 **This module's fallback is the durable BroBot workspace (006)** — and since D-016 there is no
- * other: a conversation a person starts without naming a folder runs there, and a spawned one
- * starts in its parent's folder unless it names one. ⛔ **The line that stood here until 371 —
- * *"never a real work repository"* — stays withdrawn**: `364` measured that the launcher's own
- * folder field could be pointed at one, and a spawn may name any folder that exists.
- *
- * ⚑ **`362` §3's rule, with its bound**: the app may write provider-home leaves and the one reserved
- * workspace it derives from `userData`, and it writes nothing INSIDE a user's cwd.
+ * A conversation starts in its profile's own home unless the person or the give chose a folder.
+ * The app makes no work folders of its own, and it writes nothing INSIDE a user's cwd.
  */
 
 /**
@@ -34,20 +28,14 @@ export function expandHome(path: string): string {
 /**
  * Resolve the working directory for a session. An explicit path must already
  * exist and be a directory — the app never creates a directory the user only
- * mistyped. An omitted (or blank) path yields the durable BroBot workspace.
- *
- * ⚠️ The last sentence said *"a fresh `<userData>/scratch/<sessionId>`"* until 339. 006 replaced
- * that with the shared workspace and the body says so at length; only the summary was left behind.
+ * mistyped. An omitted (or blank) path yields the profile's own home, which is
+ * made if it is not there yet.
  */
-export function resolveSessionCwd(userData: string, sessionId: string, requested?: string): string {
+export function resolveSessionCwd(userData: string, profileId: string, requested?: string): string {
   if (requested === undefined || requested.trim() === '') {
-    // The durable BroBot workspace, not a per-session scratch dir (006). Continuity comes from
-    // conversations SHARING a directory: work left behind is still there next time. A per-session
-    // scratch dir threw that away the moment the conversation ended.
-    //
-    // `sessionId` is still taken because an explicit request may yet want a per-session path.
-    void sessionId
-    return ensureWorkspace(userData)
+    const home = profileHome(userData, profileId)
+    mkdirSync(home, { recursive: true, mode: 0o700 })
+    return home
   }
   const verdict = checkSessionCwd(requested)
   if (!verdict.ok) throw new Error(verdict.reason)
@@ -79,10 +67,9 @@ export function resolveSessionCwd(userData: string, sessionId: string, requested
  *
  * Do not refuse a cwd merely because it is inside app data. The former credential scan is absent, and folder eligibility no longer depends on that location.
  *
- * ⚑ **What differs is the CALLER's fallback, not the predicate.** A session with no requested path
- * gets the durable workspace ({@link resolveSessionCwd}); a spawn that names none starts in its
- * parent's folder. That is a decision about an absent value and belongs where the absence is
- * interpreted, not inside a function that is only ever handed a path.
+ * ⚑ **The fallback is not the predicate's.** A session with no requested path gets its profile's
+ * own home ({@link resolveSessionCwd}). That is a decision about an absent value and belongs where
+ * the absence is interpreted, not inside a function that is only ever handed a path.
  *
  * ⚠️ **The spelling this returns is the one that gets STORED** — {@link cwdSpelling}, the user's own
  * path made absolute, never its `realpath`. The session row records exactly this, for

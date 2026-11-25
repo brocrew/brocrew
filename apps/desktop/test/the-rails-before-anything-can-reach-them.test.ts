@@ -12,6 +12,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { profileHome } from '../src/main/connections/homes'
 import {
   SPAWN_RAILS,
   admitGive,
@@ -305,7 +306,8 @@ describe('341 · the rails, before anything can reach them', () => {
           // ⚑ What the give itself named — nothing, so the answer claims neither half.
           named: { model: false, effort: false },
         },
-        startedIn: work,
+        // A give that names no folder starts the conversation in its profile's own home.
+        startedIn: profileHome(userData, 'worker'),
         startedOnDefault: true,
         // ⚑ W4.189 · a give that names no folder records none.
         givenFolder: null,
@@ -680,17 +682,16 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(store.find(allowed.owner)?.cwd).toBe(missing)
     })
 
-    it('⚑ an absent folder means the GIVER’s, and it is verified too rather than trusted', async () => {
+    it('⚑ an absent folder means the profile’s own home, never the giver’s', async () => {
       const parent = await ready()
       const allowed = admitted(await give(aPiece('worker'), as(parent)))
-      expect(store.find(allowed.owner)?.cwd).toBe(work)
-      // ⛔ **Verified, not inherited on trust** (170 §3: a cwd that resolved is not a cwd that
-      // stays). The giver keeps running in a folder that no longer exists, and the next give that
-      // would start a conversation from it is refused for the folder rather than launched into
-      // nothing.
+      expect(store.find(allowed.owner)?.cwd).toBe(profileHome(userData, 'worker'))
+      // The giver's own folder plays no part: with it gone, a give that names no folder still
+      // starts its conversation in that profile's home.
       await bringIdentityIntoBeing('second')
       rmSync(work, { recursive: true, force: true })
-      expect(await refusalOf(await give(aPiece('second'), as(parent)))).toBe('folder-unusable')
+      const second = admitted(await give(aPiece('second'), as(parent)))
+      expect(store.find(second.owner)?.cwd).toBe(profileHome(userData, 'second'))
     })
 
     it('🔴 THE APP ITSELF gives nothing — it holds no piece, and nothing is created', async () => {

@@ -597,7 +597,8 @@ export interface AdmittedSpawn {
   readonly parentSessionId: string | null
   readonly profileId: string
   readonly provider: Provider
-  readonly cwd: string
+  /** The folder the give named, or `null`: then the new conversation starts in its profile's home. */
+  readonly cwd: string | null
   readonly approvalMode: 'ask' | 'auto'
   /**
    * Who may drive the new conversation. `340`'s `commandedBy`: the giver, as an identity — the app
@@ -1063,14 +1064,16 @@ export function admitGive(
 
   // the folder, last, because it is the only clause that asks the disk anything.
   //
-  // 🔴 **A give that names no folder starts its conversation in the giver's** (HO-010 ruling 4, as
-  // a DEFAULT, and `726` · R92: never a bound). ⛔ **A BLANK folder is an absent one.** A RELATIVE
-  // one is read from the giver's own folder (`726`'s review): `checkSessionCwd` resolves against
-  // THIS process's directory, which is `/` for the packaged app. `~` is left to `checkSessionCwd`.
-  const requested =
-    asked.folder !== undefined && asked.folder.trim() !== '' ? asked.folder : giving.cwd
-  const folder = facts.checkFolder(placedFrom(requested, giving.cwd))
-  if (!folder.ok) return no('folder-unusable', { folderReason: folder.reason })
+  // A give that names no folder starts its conversation in that profile's own home. ⛔ **A BLANK
+  // folder is an absent one.** A RELATIVE one is read from the giver's own folder (`726`'s review):
+  // `checkSessionCwd` resolves against THIS process's directory, which is `/` for the packaged app.
+  // `~` is left to `checkSessionCwd`.
+  let cwd: string | null = null
+  if (asked.folder !== undefined && asked.folder.trim() !== '') {
+    const folder = facts.checkFolder(placedFrom(asked.folder, giving.cwd))
+    if (!folder.ok) return no('folder-unusable', { folderReason: folder.reason })
+    cwd = folder.path
+  }
 
   const start: AdmittedSpawn = {
     giverSessionId: giving.sessionId,
@@ -1081,7 +1084,7 @@ export function admitGive(
     // keeps (187).
     profileId: asked.profile,
     provider,
-    cwd: folder.path,
+    cwd,
     approvalMode,
     // ⛔ **The giver commands what it starts** (340): an identity a slot holds for as long as it runs.
     commandedBy: by,

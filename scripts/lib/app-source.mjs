@@ -170,19 +170,24 @@ export function nativeDelegationTools() {
 }
 
 /**
- * BroBot's own workspace, where a front-door conversation runs: a launch that names no folder runs
- * here, whoever it runs as.
+ * A profile's own home, where its conversations run when a launch names no folder.
  *
  * @param {string} userDataDir the `--user-data-dir` the app under test was launched with.
+ * @param {string} profileId the profile whose home it is.
  */
-export function brobotWorkspace(userDataDir) {
+export function profileHome(userDataDir, profileId) {
   if (typeof userDataDir !== 'string' || userDataDir === '') {
     throw new Error(
-      'brobotWorkspace: the workspace is under a specific userData directory — an instrument ' +
+      'profileHome: the home is under a specific userData directory — an instrument ' +
         'that does not know which app it launched cannot name it',
     )
   }
-  return join(userDataDir, constantFrom('WORKSPACE_DIRNAME'))
+  return join(
+    userDataDir,
+    constantFrom('PROVIDER_HOMES_DIRNAME'),
+    constantFrom('HOME_FOLDER'),
+    profileId,
+  )
 }
 
 /**

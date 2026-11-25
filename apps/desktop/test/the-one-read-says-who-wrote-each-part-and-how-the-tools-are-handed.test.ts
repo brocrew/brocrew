@@ -78,6 +78,8 @@ describe('the one read: origins, deferrals, and its door', () => {
     const codexHome = world.homeOf('codex', 'lead')
     const profilePath = join(codexHome, 'AGENTS.override.md')
     const repository = join(world.project, 'AGENTS.md')
+    // The workspace folder an earlier version made; the app makes none now.
+    mkdirSync(brobotWorkspace(world.userData), { recursive: true })
     const workspace = join(brobotWorkspace(world.userData), CODEX_INSTRUCTIONS_FILE)
     writeFileSync(repository, 'Repository rule: tabs.\n')
     writeFileSync(workspace, '# Workspace notes\nWritten here.\n')

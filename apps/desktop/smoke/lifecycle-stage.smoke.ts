@@ -984,8 +984,8 @@ it('🔴 402 · the agent lifecycle, performed', { timeout: 3_600_000 }, async (
         // ⚑ 669 · R17: and BroBot now CREATES the project manager it gives the ticket to — row 2,
         // by that give itself since D-016. NOT RUN.
         profileId: DEFAULT_PROFILE_ID,
-        // ⚑ Every agent BroBot starts runs in its parent's folder unless it names one (D-016), so
-        // the whole tree works in `work`.
+        // ⚑ BroBot itself works in `work`; an agent it starts runs in its own profile's home unless
+        // the give names a folder.
         cwd: work,
         model: MODEL,
         // 🔴 **`ask`, the mode this app ships as its default, and said out loud — it is the whole

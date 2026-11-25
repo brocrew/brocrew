@@ -496,6 +496,23 @@ describe('§2 · a delete: the Trash, and the row off the list', () => {
     expect(verdict).toMatchObject({ ok: true, workingFiles: 2, exports: 1 })
   })
 
+  it('⚑ on a data root with no old workspace, it counts what conversations made in profile homes', async () => {
+    const root = aRoot()
+    const used = aWorkspace(root, 'used')
+    rmSync(join(used, 'brobot-workspace'), { recursive: true, force: true })
+    const brobot = join(used, 'provider-homes', 'default', 'brobot')
+    writeFileSync(join(brobot, 'plan.txt'), 'plan')
+    mkdirSync(join(brobot, 'projects', 'site'), { recursive: true })
+    writeFileSync(join(brobot, 'projects', 'site', 'index.html'), '<p>')
+    // Its provider home's history and state are not work a conversation made.
+    mkdirSync(join(brobot, 'codex', 'sessions'), { recursive: true })
+    writeFileSync(join(brobot, 'codex', 'sessions', 'one.jsonl'), '{}')
+    // …nor is a stray file where a profile folder would be.
+    writeFileSync(join(used, 'provider-homes', 'default', '.DS_Store'), 'x')
+    const verdict = await deleteVerdict(used, aContext(root, [used]))
+    expect(verdict).toMatchObject({ ok: true, workingFiles: 2, exports: 0 })
+  })
+
   it('⚑ a pasted pictures’ folder holding something else stays, and says so', async () => {
     const root = aRoot()
     const doomed = aWorkspace(root, 'Try')

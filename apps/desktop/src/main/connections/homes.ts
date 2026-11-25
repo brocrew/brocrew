@@ -75,10 +75,18 @@ function assertPathSegment(label: string, value: string): void {
   }
 }
 
+/**
+ * A profile's own home: the folder that holds its provider homes and saved methods, and where its
+ * conversations start when nothing chose another place. Pure — provisions nothing.
+ */
+export function profileHome(userData: string, profileId: string): string {
+  assertPathSegment('profileId', profileId)
+  return join(providerHomesRoot(userData), HOME_FOLDER, profileId)
+}
+
 /** The per-profile home path for one provider. Pure — provisions nothing. */
 export function deriveProviderHome(userData: string, identity: ProviderHomeIdentity): string {
-  assertPathSegment('profileId', identity.profileId)
-  return join(providerHomesRoot(userData), HOME_FOLDER, identity.profileId, identity.provider)
+  return join(profileHome(userData, identity.profileId), identity.provider)
 }
 
 /** The folder of a profile's saved methods, beside its provider homes. */
@@ -86,8 +94,7 @@ const SAVED_METHODS_FOLDER = 'runbooks'
 
 /** Where a profile keeps its saved methods, shared by its Claude and Codex homes. Pure. */
 export function savedMethodsFolder(userData: string, profileId: string): string {
-  assertPathSegment('profileId', profileId)
-  return join(providerHomesRoot(userData), HOME_FOLDER, profileId, SAVED_METHODS_FOLDER)
+  return join(profileHome(userData, profileId), SAVED_METHODS_FOLDER)
 }
 
 /** A home that exists on disk, and the identity the path itself says it belongs to. */

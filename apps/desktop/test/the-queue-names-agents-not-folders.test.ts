@@ -30,7 +30,7 @@ import {
  *  - **§1 · `732` F-1, under R41** — *"every identity a person reads is NAMED (`agentName`), never by
  *    slug, and never by a folder."* ⛔ On `main` a person's questions, decisions, proposals and the
  *    digest named a conversation by the basename of its working folder (`nameForAPerson`, `398`),
- *    and in the default folder that is `brobot-workspace` for every agent a person has. ⚑ Control:
+ *    which is now each profile's own home, named by its slug. ⚑ Control:
  *    a conversation with NO identity still reads its folder. ⚑ And where two conversations of ONE
  *    identity must be told apart, what tells them apart rides beside the name (`732` F-6).
  *  - **§2 · `732` F-5** — `stop_unanswered` carries the asking agent's identity (its folded slug), from
@@ -335,11 +335,12 @@ describe('734 · the queue names agents, not folders', () => {
   describe('§1 · `732` F-1 — a person’s queue names the agent, never its folder', () => {
     it('🔴 §1.1 a question Ada passed up to you — Ada waiting on you — in the default folder', async () => {
       const { pm, worker, passed } = await aForwardedQuestionInTheDefaultFolder()
-      // ⛔ **The premise**: one default folder for both, so a folder cannot tell them apart.
-      expect(theFolderOf(worker)).toBe('brobot-workspace')
-      expect(theFolderOf(pm)).toBe('brobot-workspace')
+      // ⛔ **The premise**: each runs in its own profile's home, named by its slug, which is not the
+      // name a person reads.
+      expect(theFolderOf(worker)).toBe('worker-g')
+      expect(theFolderOf(pm)).toBe('pm-g')
       const row = questionRow(pm, passed)
-      // 🔴 **RED on `main`**: *"brobot-workspace waiting on you"*.
+      // 🔴 **RED on `main`**: the folder's name *"waiting on you"*.
       expect(row?.sentence).toBe('Ada waiting on you')
       expect(row?.reading.hops).toEqual([{ waiting: 'Ada', on: null }])
       // ⚑ …and the conversation stays on the row, beside the name (`732` F-6).
@@ -372,11 +373,11 @@ describe('734 · the queue names agents, not folders', () => {
       // ⚠️ Green on `main` too (its namer read no roster): a pin for `734 M12`, and not part of this
       // test's RED.
       expect(reads).toBe(1)
-      // 🔴 **RED on `main`**: *"…to brobot-workspace"* and *"brobot-workspace reported…"*.
+      // 🔴 **RED on `main`**: the folder's name, *"…to <folder>"* and *"<folder> reported…"*.
       // ⚑ D-016 · a piece reads by its label and title, where it was *Task #N*.
       expect(said.join('\n')).toContain(`${label} · count the moons, to Bob`)
       expect(said).toContain(`Bob reported ${label} · count the moons done — four of them`)
-      expect(said.join('\n')).not.toContain('brobot-workspace')
+      expect(said.join('\n')).not.toContain('worker-g')
     })
 
     it('⚑ §1.5 control · a conversation with NO identity still reads its folder, as it did', async () => {

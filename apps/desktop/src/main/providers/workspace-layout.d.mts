@@ -1,2 +1,5 @@
 export const workspaceInstructionNames: string[]
-export const providerConversationDirectories: ReadonlyMap<string, readonly string[]>
+export function mayHoldProviderHistory(parts: readonly string[]): boolean
+export function isProviderHistory(parts: readonly string[]): boolean
+export function mayHoldAProfilesWork(parts: readonly string[]): boolean
+export function isAProfilesWork(parts: readonly string[]): boolean

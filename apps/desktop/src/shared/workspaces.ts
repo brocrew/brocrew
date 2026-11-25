@@ -76,7 +76,7 @@ export type WorkspaceDeleteVerdict =
       /** What it holds, in bytes, and how many files — its pasted pictures' included. */
       readonly bytes: number
       readonly files: number
-      /** Of those, the files in its working folder that its conversations made (`brobot-workspace/`). */
+      /** Of those, the files its conversations made: in the old `brobot-workspace/`, and in each profile's home outside its provider homes. */
       readonly workingFiles: number
       /** …and its exported conversations (`exports/`), which a reset keeps and this does not. */
       readonly exports: number

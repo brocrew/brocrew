@@ -555,8 +555,8 @@ const startedThroughTheFrontDoor = []
  * Codex before BroBot's identity exists (step `3`), its seeded Claude after, unless a step picks a
  * Codex model first, as step `5` does through the model picker. So steps `3` and `5` also prove the
  * packaged app's one way in works. With no folder requested, `resolveSessionCwd`'s blank branch
- * answers `ensureWorkspace(<userData>)`, and this run has its own `--user-data-dir`, so every
- * conversation starts in a directory this run owns.
+ * answers the profile's own home under `<userData>`, and this run has its own `--user-data-dir`, so
+ * every conversation starts in a directory this run owns.
  */
 async function startSession(cdp, { prompt, ...asked }) {
   refuseWhatTheFrontDoorCannotAsk(asked)
@@ -957,9 +957,9 @@ async function main() {
       // (neither hook exists any more, and neither carried anything: `codex` is
       // `RuntimeScreen.DEFAULT_PROVIDER`, which the front door sends regardless, and nothing read the
       // folder). The step keeps its subject and also proves the packaged app's only way in works.
-      // With no folder requested, `resolveSessionCwd`'s blank branch answers `ensureWorkspace(<userData>)`
-      // and this app runs on this run's own `--user-data-dir`, so the conversation starts in a directory
-      // this run owns; see the door's docblock.
+      // With no folder requested, `resolveSessionCwd`'s blank branch answers the profile's own home
+      // under `<userData>`, and this app runs on this run's own `--user-data-dir`, so the conversation
+      // starts in a directory this run owns; see the door's docblock.
       await startSession(cdp, {
         prompt: 'Reply with exactly the single word: PACKAGED. Do not use any tools.',
       })

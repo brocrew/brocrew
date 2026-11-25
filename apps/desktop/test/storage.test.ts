@@ -11,7 +11,7 @@ import {
 } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Worker } from 'node:worker_threads'
 import type { IpcMain, IpcMainInvokeEvent, IpcRenderer, WebContents } from 'electron'
@@ -32,8 +32,6 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 
 let folder: string
 let roots: StorageRoots
-/** Every measured entry says when anything inside it last changed. */
-const written = { lastWrittenAt: expect.any(Number) }
 beforeEach(async () => {
   folder = await mkdtemp(join(tmpdir(), 'brocrew-fictional-storage-'))
   const data = join(folder, 'data')
@@ -70,8 +68,8 @@ it('accounts for shared plugin data as a separate trusted plugin root and keeps 
   expect(
     (await new StorageEngine(roots).children({ part: 'plugins', segments: [] })).entries,
   ).toEqual([
-    { name: 'machine-shared', bytes: 23, isDirectory: true, ...written },
-    { name: 'plugins', bytes: 11, isDirectory: true, ...written },
+    { name: 'machine-shared', bytes: 23, isDirectory: true },
+    { name: 'plugins', bytes: 11, isDirectory: true },
   ])
   expect(
     (
@@ -164,7 +162,8 @@ it(`keeps native ${process.platform} task-output union and a read-only manifest`
     expect(reading.parts.reduce((sum, part) => sum + (part.bytes ?? 0), 0)).toBe(65)
     expect(reading.parts.find((part) => part.id === 'workspace')?.bytes).toBe(nested ? 36 : 13)
     expect(reading.parts.find((part) => part.id === 'agent-output')?.bytes).toBe(nested ? 0 : 23)
-    const listing = await new StorageEngine(mapped).children({ part: 'workspace', segments: [] })
+    const at = { part: 'workspace' as const, segments: [basename(mapped.workspace)] }
+    const listing = await new StorageEngine(mapped).children(at)
     expect(listing).toMatchObject({ totalBytes: nested ? 36 : 13, partial: false })
     expect(await manifest(roots.data)).toEqual(before)
   }
@@ -173,16 +172,17 @@ it(`keeps native ${process.platform} task-output union and a read-only manifest`
 it('returns the ten largest children and exact remainder, using recursive directory sizes', async () => {
   for (let n = 1; n <= 12; n++) await file(join(roots.workspace, `file-${n}`), n)
   await file(join(roots.workspace, 'nested', 'file'), 50)
-  const reading = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const at = { part: 'workspace' as const, segments: ['brobot-workspace'] }
+  const reading = await new StorageEngine(roots).children(at)
   expect(reading.entries).toHaveLength(10)
-  expect(reading.entries[0]).toEqual({ name: 'nested', bytes: 50, isDirectory: true, ...written })
+  expect(reading.entries[0]).toEqual({ name: 'nested', bytes: 50, isDirectory: true })
   expect(reading.entries.map((entry) => entry.bytes)).toEqual([50, 12, 11, 10, 9, 8, 7, 6, 5, 4])
   expect(reading.smallerCount).toBe(3)
   expect(reading.smallerBytes).toBe(6)
   expect(reading.totalBytes).toBe(128)
   expect(reading.partial).toBe(false)
   expect(
-    (await new StorageEngine(roots).children({ part: 'workspace', segments: ['nested'] }))
+    (await new StorageEngine(roots).children({ ...at, segments: [...at.segments, 'nested'] }))
       .totalBytes,
   ).toBe(50)
 })
@@ -271,6 +271,10 @@ it('rejects traversal, absolute paths, Windows spellings and malformed locations
 })
 
 it('never follows directory or file links, including a linked root and an ancestor of a drill target', async () => {
+  const ws = (...rest: string[]) => ({
+    part: 'workspace' as const,
+    segments: [basename(roots.workspace), ...rest],
+  })
   await file(join(folder, 'outside', 'large'), 999)
   await file(join(roots.workspace, 'safe'), 7)
   await symlink(
@@ -278,18 +282,16 @@ it('never follows directory or file links, including a linked root and an ancest
     join(roots.workspace, 'escape'),
     process.platform === 'win32' ? 'junction' : 'dir',
   )
-  const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const listing = await new StorageEngine(roots).children(ws())
   expect(listing.entries).toEqual([
-    { name: 'safe', bytes: 7, isDirectory: false, ...written },
+    { name: 'safe', bytes: 7, isDirectory: false },
     { name: 'escape', bytes: null, isDirectory: false, isLink: true },
   ])
   expect(listing.error).toBe('linked-path')
-  expect(
-    (await new StorageEngine(roots).children({ part: 'workspace', segments: ['escape'] })).error,
-  ).toBe('linked-path')
-  await expect(
-    new StorageEngine(roots).reveal({ part: 'workspace', segments: ['escape', 'large'] }),
-  ).rejects.toMatchObject({ reason: 'linked-path' })
+  expect((await new StorageEngine(roots).children(ws('escape'))).error).toBe('linked-path')
+  await expect(new StorageEngine(roots).reveal(ws('escape', 'large'))).rejects.toMatchObject({
+    reason: 'linked-path',
+  })
   const linked = join(roots.data, 'linked-root')
   await symlink(roots.workspace, linked, process.platform === 'win32' ? 'junction' : 'dir')
   expect(
@@ -299,13 +301,13 @@ it('never follows directory or file links, including a linked root and an ancest
   ).toBe('linked-path')
   if (process.platform !== 'win32') {
     await symlink(join(folder, 'outside', 'large'), join(roots.workspace, 'file-link'))
-    expect(
-      (await new StorageEngine(roots).children({ part: 'workspace', segments: [] })).entries,
-    ).toContainEqual({ name: 'file-link', bytes: null, isDirectory: false, isLink: true })
-    expect(
-      (await new StorageEngine(roots).children({ part: 'workspace', segments: ['file-link'] }))
-        .error,
-    ).toBe('linked-path')
+    expect((await new StorageEngine(roots).children(ws())).entries).toContainEqual({
+      name: 'file-link',
+      bytes: null,
+      isDirectory: false,
+      isLink: true,
+    })
+    expect((await new StorageEngine(roots).children(ws('file-link'))).error).toBe('linked-path')
   }
 })
 
@@ -324,7 +326,7 @@ it('includes the resolved external plugin root but never discovers or admits sib
   expect(reading.partial).toBe(false)
   expect(
     (await new StorageEngine(mapped).children({ part: 'plugins', segments: [] })).entries,
-  ).toEqual([{ name: 'installed', bytes: 17, isDirectory: true, ...written }])
+  ).toEqual([{ name: 'installed', bytes: 17, isDirectory: true }])
   await expect(
     new StorageEngine(mapped).reveal({ part: 'plugins', segments: ['installed'] }),
   ).resolves.toEqual({ path: await realpath(join(plugins, 'installed')) })
@@ -384,7 +386,7 @@ it('shows links under an external root without following them, including links b
   const mapped = { ...roots, plugins }
   const listing = await new StorageEngine(mapped).children({ part: 'plugins', segments: [] })
   expect(listing.entries).toEqual([
-    { name: 'safe', bytes: 5, isDirectory: false, ...written },
+    { name: 'safe', bytes: 5, isDirectory: false },
     { name: 'linked-workspace', bytes: null, isDirectory: false, isLink: true },
   ])
   expect(listing.totalBytes).toBe(5)
@@ -421,18 +423,18 @@ it('includes recovery under Backups only when that resolved folder has content',
   await mkdir(roots.recovery!)
   expect(
     (await new StorageEngine(roots).children({ part: 'backups', segments: [] })).entries,
-  ).toEqual([{ name: 'backups', bytes: 0, isDirectory: true, ...written }])
+  ).toEqual([{ name: 'backups', bytes: 0, isDirectory: true }])
   const zeroByteChild = join(roots.recovery!, 'zero-byte-child')
   await file(zeroByteChild, 0)
   expect(
     (await new StorageEngine(roots).children({ part: 'backups', segments: [] })).entries,
-  ).toContainEqual({ name: 'recovery', bytes: 0, isDirectory: true, ...written })
+  ).toContainEqual({ name: 'recovery', bytes: 0, isDirectory: true })
   await rm(zeroByteChild)
   await file(join(roots.recovery!, 'preserved', 'copy'), 9)
   const listing = await new StorageEngine(roots).children({ part: 'backups', segments: [] })
   expect(listing.entries).toEqual([
-    { name: 'recovery', bytes: 9, isDirectory: true, ...written },
-    { name: 'backups', bytes: 0, isDirectory: true, ...written },
+    { name: 'recovery', bytes: 9, isDirectory: true },
+    { name: 'backups', bytes: 0, isDirectory: true },
   ])
   expect(listing.totalBytes).toBe(9)
   await rm(roots.backups[0]!, { recursive: true })
@@ -449,11 +451,9 @@ it('lists grouped database and backup roots without exposing the rest of the dat
   await file(roots.database[0]!, 20)
   await file(join(roots.backups[0]!, 'copy'), 30)
   const listing = await new StorageEngine(roots).children({ part: 'database', segments: [] })
-  expect(listing.entries).toEqual([
-    { name: 'brobot2.sqlite', bytes: 20, isDirectory: false, ...written },
-  ])
+  expect(listing.entries).toEqual([{ name: 'brobot2.sqlite', bytes: 20, isDirectory: false }])
   const backups = await new StorageEngine(roots).children({ part: 'backups', segments: [] })
-  expect(backups.entries[0]).toEqual({ name: 'backups', bytes: 30, isDirectory: true, ...written })
+  expect(backups.entries[0]).toEqual({ name: 'backups', bytes: 30, isDirectory: true })
   expect(
     (await new StorageEngine(roots).children({ part: 'database', segments: ['resources'] })).error,
   ).toBe('invalid-location')
@@ -724,7 +724,7 @@ it('derives cache from actual session storage and supports contained browse and 
   expect((await engine.measure()).parts.find((part) => part.id === 'cache')?.bytes).toBe(24)
   expect(
     (await new StorageEngine(mapped).children({ part: 'cache', segments: [] })).entries,
-  ).toEqual([{ name: 'Cache_Data', bytes: 24, isDirectory: true, ...written }])
+  ).toEqual([{ name: 'Cache_Data', bytes: 24, isDirectory: true }])
   await expect(new StorageEngine(mapped).reveal({ part: 'cache', segments: [] })).resolves.toEqual({
     path: await realpath(cache),
   })

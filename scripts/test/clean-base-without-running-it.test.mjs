@@ -158,7 +158,7 @@ describe('the source census — a new durable write under userData must not slip
     expect(code('apps/desktop/src/main/themes/state.ts')).toContain(
       "export const THEME_LIBRARY_FOLDER = 'themes'",
     )
-    expect(code('apps/desktop/src/main/worker-piece-folder.ts')).toContain(
+    expect(code('apps/desktop/src/main/storage/engine.ts')).toContain(
       "export const WORKER_OUTPUT_DIRNAME = 'worker-output'",
     )
     const layout = code('apps/desktop/src/main/recovery/layout.ts')

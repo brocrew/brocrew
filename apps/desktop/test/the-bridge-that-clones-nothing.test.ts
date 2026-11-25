@@ -712,7 +712,6 @@ function preloadSurface(): Map<string, string> {
     'freeSpace',
     'measure',
     'pruneBackups',
-    'removeFinished',
     'reveal',
     'watchCacheClear',
   ])
@@ -749,7 +748,7 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
   const invokes = (body: string): boolean =>
     body.includes('ipcRenderer.invoke') || /(?:^|[^\w.])command\(/.test(body)
 
-  it('Storage has seven payload invokes and one local listener facade with internal ID invokes', () => {
+  it('Storage has six payload invokes and one local listener facade with internal ID invokes', () => {
     expect(surface.has('storage')).toBe(false)
     const storage = [...surface].filter(([name]) => name.startsWith('storage.'))
     expect(storage.map(([name]) => name).sort()).toEqual([
@@ -758,12 +757,11 @@ describe('§3 · what is exempt is derived from the preload, not written down (3
       'storage.freeSpace',
       'storage.measure',
       'storage.pruneBackups',
-      'storage.removeFinished',
       'storage.reveal',
       'storage.watchCacheClear',
     ])
     const actions = storage.filter(([name]) => name !== 'storage.watchCacheClear')
-    expect(actions).toHaveLength(7)
+    expect(actions).toHaveLength(6)
     for (const [name, body] of actions) {
       expect(invokes(body), name).toBe(true)
       expect(NOT_THE_WIRE.has(name), name).toBe(false)

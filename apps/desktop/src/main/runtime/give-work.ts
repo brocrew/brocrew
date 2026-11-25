@@ -324,9 +324,10 @@ export class GiveWork {
       ? 'named'
       : (resolved?.from ?? 'the-providers-default')
     let sessionId: string
+    let startedIn: string | null = null
     let cannotRun: Extract<SendRecipientState, { kind: 'cannot-run' }> | undefined
     try {
-      ;({ sessionId } = await h.startFromAGive(start, startsOn, giving))
+      ;({ sessionId, cwd: startedIn } = await h.startFromAGive(start, startsOn, giving))
     } catch (error) {
       const recorded = store.workById(giving.piece)
       if (recorded === null) return gaveNothing(error)
@@ -353,7 +354,7 @@ export class GiveWork {
         from,
         named,
       ),
-      startedIn: cannotRun === undefined ? start.cwd : null,
+      startedIn,
       ...(startedOnDefault && cannotRun === undefined ? { startedOnDefault: true as const } : {}),
       givenFolder: giving.givenFolder,
       folderNotGranted: null,
@@ -540,7 +541,9 @@ export class GiveWork {
         ? goes.grant === null
           ? null
           : { folder: goes.grant, use: 'grant' as const }
-        : { folder: goes.start.cwd, use: 'working-folder' as const }
+        : goes.start.cwd === null
+          ? null
+          : { folder: goes.start.cwd, use: 'working-folder' as const }
     if (given === null) return null
     const notice = this.host.aProtectedPlaceFor(given.folder)
     return notice === null ? given : { ...given, notice }

@@ -16,17 +16,11 @@ import { openResolvedAsset } from '../src/main/asset-protocol'
 import { resourceBytes } from '../src/main/resources/resources'
 import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 import { readTextPack, TEXT_PACK_VARIABLE } from '../src/main/skills/text-pack'
-import {
-  makeWorkerPieceFolder,
-  WORKER_OUTPUT_DIRNAME,
-  WORKER_OUTPUT_FAILURE,
-} from '../src/main/worker-piece-folder'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 
 /**
- * A file this app reads where a link must not lead it — a picture it draws, a worker folder's
- * marker, a kept resource, a text pack's file — is never read through a link left at its name.
- * Windows has no `O_NOFOLLOW`, and there an open follows such a link. Off Windows, this file's
+ * A file this app reads where a link must not lead it — a picture it draws, a kept resource, a
+ * text pack's file — is never read through a link left at its name. Windows has no `O_NOFOLLOW`, and there an open follows such a link. Off Windows, this file's
  * `node:fs` behaves so; on Windows the system does. Scratch folders only.
  */
 
@@ -68,26 +62,6 @@ describe('a picture the window draws', () => {
     const fd = openResolvedAsset(picture)
     expect(fd).not.toBeNull()
     if (fd !== null) closeSync(fd)
-  })
-})
-
-describe('the marker that says a worker output folder is the app’s', () => {
-  const MARKER_TEXT = 'BroCrew parallel piece output folders\n'
-
-  it('🔴 a link to a file that holds the marker’s exact text is not taken for the marker', () => {
-    makeWorkerPieceFolder(root, `work_${randomUUID()}`)
-    const marker = join(root, WORKER_OUTPUT_DIRNAME, '.brocrew-worker-output')
-    rmSync(marker)
-    const pretend = join(outside, 'pretend-marker')
-    writeFileSync(pretend, MARKER_TEXT)
-    symlinkSync(pretend, marker)
-
-    expect(() => makeWorkerPieceFolder(root, `work_${randomUUID()}`)).toThrow(WORKER_OUTPUT_FAILURE)
-  })
-
-  it('the marker itself is taken, and a second folder made', () => {
-    makeWorkerPieceFolder(root, `work_${randomUUID()}`)
-    expect(() => makeWorkerPieceFolder(root, `work_${randomUUID()}`)).not.toThrow()
   })
 })
 

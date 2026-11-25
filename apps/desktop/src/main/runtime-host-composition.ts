@@ -95,7 +95,7 @@ import { readSessionInstructions } from './runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from './runtime/factory-text'
 import { toolsToldInTextFor } from './runtime/agent-tools'
 import { publishProfileBundle } from './runtime/profile-bundle'
-import { brobotWorkspace, ensureWorkspace, workspaceOwnFilesIn } from './runtime/workspace'
+import { brobotWorkspace, workspaceOwnFilesIn } from './runtime/workspace'
 import { signInChangesIn } from './sign-in-changes'
 import { archivedConversationsIn } from './archived-file'
 import type { LaunchPresentation } from './launch-presentation'
@@ -152,13 +152,6 @@ export async function composeRuntimeHost(
   const sharedSkills = new SharedSkillLibrary(userData)
   const skillsReady = firstWindowLoad.then(() => convertSharedSkills(userData, database))
   void skillsReady.catch(() => console.warn('Skills could not be read.'))
-  try {
-    ensureWorkspace(userData)
-  } catch (error) {
-    console.warn(
-      `the BroCrew workspace could not be prepared: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
   keepDraftedPastes(drafts, userData, Date.now())
   void sweepPastedImages(pastedImagesRoot(userData), Date.now()).catch(() => 0)
 
@@ -427,7 +420,7 @@ export async function composeRuntimeHost(
     stopWorkerCommands: (cwd, occupied) => stopWorkerCommands(userData, cwd, occupied),
     whichBuild: () => ({ ...buildIdentity(), schema: migrationsAppliedOrNull() }),
     providerSnapshot: (provider, model) => snapshotFor(provider, model),
-    resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
+    resolveCwd: (profileId, requested) => resolveSessionCwd(userData, profileId, requested),
     savedMethodsFolderFor: (profile) => savedMethodsFolder(userData, profile),
     readSavedMethodsFor: (profile, at) =>
       readSavedMethods(savedMethodsFolder(userData, profile), at),

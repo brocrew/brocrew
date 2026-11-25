@@ -47,11 +47,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { readSavedMethods } from '../src/main/saved-methods'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
-import {
-  brobotWorkspace,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
@@ -304,7 +300,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     const root = mkdtempSync(join(tmpdir(), 'brobot2-w4205-lead-root-'))
     const db: AppDatabase = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    ensureWorkspace(userData)
     const store = createSessionStore(db)
     let counter = 0
     const theProductsReader: Reader = (provider, cwd, providerHome, context) => {

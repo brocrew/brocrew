@@ -481,9 +481,13 @@ describe('635 · the store widens, and viewing never executes', () => {
       // ⚑ **And the detail names the number this file was measured against.**
       expect(refused.refusal.detail).toMatchObject({ limit: MOST_BYTES_OF_FORM.markdown })
 
-      // The detail names the file as the agent spelled it, so among several it can tell which.
-      wrote('notes/too-big.md', 'x'.repeat(big.length))
-      const named = await offer(await aPiece(), [wrote('fits.md', 'fits'), 'notes/too-big.md'])
+      // The detail names the file as the agent spelled it, so among several it can tell which. A
+      // relative path is read from the replying conversation's own folder.
+      const replying = await aPiece()
+      const itsFolder = store.recordedOne(replying.owner)?.cwd ?? ''
+      mkdirSync(join(itsFolder, 'notes'), { recursive: true })
+      writeFileSync(join(itsFolder, 'notes/too-big.md'), 'x'.repeat(big.length))
+      const named = await offer(replying, [wrote('fits.md', 'fits'), 'notes/too-big.md'])
       expect(named.ok).toBe(false)
       if (named.ok) return
       expect(named.refusal.rail).toBe('resource-too-large')

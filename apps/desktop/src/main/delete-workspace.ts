@@ -1,7 +1,7 @@
 import { readlinkSync, realpathSync } from 'node:fs'
 import { lstat, readdir, realpath, stat } from 'node:fs/promises'
 import { hostname } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import type { WorkspaceDeleted, WorkspaceDeleteVerdict } from '../shared/workspaces'
 import {
   DRAFTS_PART,
@@ -14,7 +14,8 @@ import { isAncestor, trustedAnchor, whereItStands } from '../../../../scripts/li
 import { isPastedImageName } from '../shared/runtime-ipc'
 import { PASTED_PART, pastedImagesRoot } from './runtime/pasted-image'
 import { WORKSPACE_DIRNAME } from './runtime/workspace'
-import { providerDefinitions, workspaceInstructionNames } from './providers/index'
+import { isAProfilesWork, providerDefinitions, workspaceInstructionNames } from './providers/index'
+import { PROVIDER_HOMES_DIRNAME } from './connections/homes'
 import { insideBySpelling, sameFolder, samePath } from './same-folder'
 import { asStartedOn, BROBOT_FOLDER_SIGNS, forgetWorkspace, isBroBotsFolder } from './workspaces'
 
@@ -367,6 +368,7 @@ async function whatItHolds(
   let workingFiles = 0
   let exports = 0
   const working = join(root, WORKSPACE_DIRNAME)
+  const homes = join(root, PROVIDER_HOMES_DIRNAME)
   const exported = join(root, EXPORTS_DIRNAME)
   const folders = [root]
   for (let folder = folders.pop(); folder !== undefined; folder = folders.pop()) {
@@ -397,9 +399,12 @@ async function whatItHolds(
       } else {
         files += 1
         bytes += Number(seen.size)
-        // ⚑ What the person's conversations made, beside the instructions BroBot writes there.
+        // ⚑ What the person's conversations made: in the old shared workspace, beside the
+        // instructions older versions wrote there, and in each profile's home outside its provider
+        // homes.
         const its = folder === working && INSTRUCTIONS.has(name)
-        if (isAncestor(working, path) && !its) workingFiles += 1
+        const inAHome = isAncestor(homes, path) && isAProfilesWork(relative(homes, path).split(sep))
+        if ((isAncestor(working, path) && !its) || inAHome) workingFiles += 1
         if (isAncestor(exported, path)) exports += 1
       }
     }

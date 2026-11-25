@@ -224,8 +224,8 @@ describe('§1 · announcements per act, through the real host', () => {
       const child = given.agent as string
       children.push(child)
       pieces.set(child, given.label as string)
-      // ⚑ a give starts its conversation in the giver's own folder, so the toolset is the one the
-      // start handed over — the newest since this give began
+      // ⚑ a give starts its conversation, so the toolset is the one the start handed over — the
+      // newest since this give began
       const mine = handed.slice(before).at(-1)
       if (mine === undefined) throw new Error('no child toolset')
       childTools.set(child, mine.tools)

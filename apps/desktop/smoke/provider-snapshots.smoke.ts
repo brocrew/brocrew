@@ -41,11 +41,7 @@ import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/f
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  brobotWorkspace,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   claudeContextSections,
@@ -364,7 +360,6 @@ it(
         })
         const userData = join(scratch, 'userData')
         mkdirSync(userData, { recursive: true })
-        ensureWorkspace(userData)
         const managedRoot = join(rig.root, 'provider-homes')
         const { host, closeDatabase } = hostFor({ userData, managedRoot, runtime: rig.runtime })
         closing.push(closeDatabase, () => host.closeAll())
@@ -629,7 +624,6 @@ it(
         }
         const userData = join(scratch, 'userData')
         mkdirSync(userData, { recursive: true })
-        ensureWorkspace(userData)
         const managedRoot = join(scratch, 'provider-homes')
         mkdirSync(managedRoot, { recursive: true })
         let modelNow = ''

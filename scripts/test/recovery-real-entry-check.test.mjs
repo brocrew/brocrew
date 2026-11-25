@@ -287,17 +287,10 @@ describe('the scenarios', () => {
   })
 
   it('look for the folders main makes only once it opened its data, by their names in main', () => {
-    expect(read('src/main/runtime/workspace.ts')).toContain(
-      `WORKSPACE_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[0]}'`,
-    )
+    expect(MADE_ONLY_BY_AN_OPEN_START).toEqual(['provider-homes'])
     expect(read('src/main/connections/homes.ts')).toContain(
-      `PROVIDER_HOMES_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[1]}'`,
+      `PROVIDER_HOMES_DIRNAME = '${MADE_ONLY_BY_AN_OPEN_START[0]}'`,
     )
-    // The workspace is the first thing main makes when it creates its runtime host.
-    const index = read('src/main/runtime-host-composition.ts')
-    const host = index.slice(index.indexOf('function composeRuntimeHost('))
-    expect(host.indexOf('ensureWorkspace(userData)')).toBeGreaterThan(0)
-    expect(host.indexOf('ensureWorkspace(userData)')).toBeLessThan(host.indexOf('\n}\n'))
   })
 
   it('name each gap with an owner', () => {

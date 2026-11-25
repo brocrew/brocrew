@@ -11,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { brobotWorkspace } from '../src/main/runtime/workspace'
+import { profileHome } from '../src/main/connections/homes'
 import {
   SPAWN_RAILS,
   describeRail,
@@ -291,7 +291,7 @@ describe('371 · a narrowing that means something', () => {
       expect(cwdOf(relative.agent as string)).toBe(join(root, 'pkg', 'sub'))
     })
 
-    it('⚑ a spawn that names NO folder inherits its parent`s, which is the ordinary case', async () => {
+    it('⚑ a spawn that names NO folder starts in its own profile’s home, which is the ordinary case', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const allowed = await toolsOf(mid).call('give_work', {
         to: 'new',
@@ -302,10 +302,10 @@ describe('371 · a narrowing that means something', () => {
         brief: 'stay where you are',
       })
       expect(allowed.outcome).toBe('ok')
-      expect(cwdOf(allowed.agent as string)).toBe(join(root, 'pkg'))
+      expect(cwdOf(allowed.agent as string)).toBe(profileHome(userData, 'deep'))
     })
 
-    it('🔴 a BLANK folder is an absent one — before this it silently became the BroCrew workspace', async () => {
+    it('🔴 a BLANK folder is an absent one', async () => {
       const { mid } = await aChildDeepInTheSubtree()
       const allowed = await toolsOf(mid).call('give_work', {
         to: 'new',
@@ -317,9 +317,8 @@ describe('371 · a narrowing that means something', () => {
         folder: '',
       })
       expect(allowed.outcome).toBe('ok')
-      // ⛔ The parent's folder, and specifically NOT the workspace `checkCwd('')` used to send it to.
-      expect(cwdOf(allowed.agent as string)).toBe(join(root, 'pkg'))
-      expect(cwdOf(allowed.agent as string)).not.toBe(brobotWorkspace(userData))
+      // ⛔ The profile's own home, as for a give that names no folder.
+      expect(cwdOf(allowed.agent as string)).toBe(profileHome(userData, 'deep'))
     })
   })
 
@@ -478,14 +477,12 @@ describe('371 · a narrowing that means something', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · what a launch that names no folder gets', () => {
-    it('⚑ a launch that names no folder starts in the durable BroBot workspace', async () => {
-      // ⚑ **D-016** — this read *"…and with no project folder"*: a project's folder was the default
-      // before the workspace, and it went with projects. The workspace is the one default left.
+    it('⚑ a launch that names no folder starts in its profile’s own home', async () => {
       const id = await personOpens('pm')
-      expect(cwdOf(id)).toBe(brobotWorkspace(userData))
+      expect(cwdOf(id)).toBe(profileHome(userData, 'pm'))
     })
 
-    it('a person-selected folder is untouched, while an omitted folder creates the durable workspace', async () => {
+    it('a person-selected folder is untouched, while an omitted folder starts in the profile’s home', async () => {
       // ⚑ **D-016 · re-aimed at the folder that is left.** This set a PROJECT's folder and launched
       // with none; that folder went with projects, and the external folder a launch can carry now is
       // the one a person names.
@@ -493,12 +490,11 @@ describe('371 · a narrowing that means something', () => {
       expect(cwdOf(withFolder)).toBe(root)
       expect(() => statSync(join(root, 'CLAUDE.md'))).toThrow()
       expect(() => statSync(join(root, 'AGENTS.md'))).toThrow()
-      expect(() => statSync(brobotWorkspace(userData))).toThrow()
       const withNone = await personOpens('pm')
-      expect(cwdOf(withNone)).toBe(brobotWorkspace(userData))
-      expect(lstatSync(brobotWorkspace(userData)).isDirectory()).toBe(true)
-      expect(() => statSync(join(brobotWorkspace(userData), 'CLAUDE.md'))).toThrow()
-      expect(() => statSync(join(brobotWorkspace(userData), 'AGENTS.md'))).toThrow()
+      expect(cwdOf(withNone)).toBe(profileHome(userData, 'pm'))
+      expect(lstatSync(profileHome(userData, 'pm')).isDirectory()).toBe(true)
+      expect(() => statSync(join(profileHome(userData, 'pm'), 'CLAUDE.md'))).toThrow()
+      expect(() => statSync(join(profileHome(userData, 'pm'), 'AGENTS.md'))).toThrow()
     })
   })
 

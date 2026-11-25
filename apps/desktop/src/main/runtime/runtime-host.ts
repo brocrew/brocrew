@@ -2238,7 +2238,7 @@ export class RuntimeHost implements LiveHost {
         const starting = this.createSession(
           {
             provider: start.provider,
-            cwd: start.cwd,
+            ...(start.cwd === null ? {} : { cwd: start.cwd }),
             approvalMode: start.approvalMode,
             profileId: start.profileId,
             ...(startsOn === null ? {} : { model: startsOn.model }),
@@ -5343,7 +5343,7 @@ export class RuntimeHost implements LiveHost {
     const itsName = foldProfileName(profile)
     // Read before the reservation, so nothing between it and the row can leave it standing.
     const pair = asked ?? this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
-    const cwd = this.deps.resolveCwd(id, undefined)
+    const cwd = this.deps.resolveCwd(itsName, undefined)
     const title = withStandingRoot
       ? `${agentName(itsName, this.deps.store.agentIdentities())} (standing)`
       : undefined
@@ -7243,7 +7243,7 @@ export class RuntimeHost implements LiveHost {
     const id = this.deps.newSessionId()
     const recordingGive = firstGive !== undefined && spawn !== null
     if (recordingGive) {
-      const cwd = this.deps.resolveCwd(id, input.cwd)
+      const cwd = this.deps.resolveCwd(spawn.profileId, input.cwd)
       const conversation: NewSessionRecord = {
         id,
         provider: input.provider,
@@ -16105,17 +16105,17 @@ export class RuntimeHost implements LiveHost {
     const id = slot.id
     const parent = recorded ? slot.spawnedBy : (spawn?.parentSessionId ?? null)
     const instructionConversation = recorded ? id : null
-    // ⛔ **The cwd BEFORE the home** (203, from 195 H4). Both of these can refuse a launch and only
-    // one of them writes to disk, so the refusal that costs nothing goes first — the same rule the
-    // uniqueness check above already follows, and `profile-uniqueness.test.ts` already pins for the
-    // NAME (*"the refused launch created NOTHING"*). The folder is that defect one field over.
+    // ⛔ **The cwd BEFORE the home** (203, from 195 H4). Both of these can refuse a launch, and a
+    // named folder is refused before anything is written, so the refusal that costs nothing goes
+    // first — the same rule the uniqueness check above already follows, and
+    // `profile-uniqueness.test.ts` already pins for the NAME (*"the refused launch created
+    // NOTHING"*). The folder is that defect one field over.
     //
     // ⚠️ **What the swap costs, said out loud:** when the folder is wrong AND the Claude login is
     // unhealthy, the person is now told about the folder. That is the better of the two answers —
     // it is the one they just typed — and neither ordering can report both.
-    // ⚑ **A folder a person or the spawn rails named, else the durable workspace** — `resolveCwd`'s
-    // blank branch, which is where every conversation that asked for none runs.
-    const cwd = this.deps.resolveCwd(id, input.cwd)
+    // A folder a person or the give named, else the profile's own home.
+    const cwd = this.deps.resolveCwd(profileId, input.cwd)
     const connection = connectionForLaunch(this.deps, input.provider, recorded ? id : undefined)
     const {
       home: providerHome,
@@ -29164,11 +29164,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * the cheapest way to keep that promise for the typed half is not to share a function but to make
    * the same call and report what it says.
    *
-   * ⚠️ **A blank path is `ok` and provisions nothing.** Blank means "the workspace default", which
-   * is what the field's placeholder says — and it is short-circuited HERE rather than left to
-   * `resolveCwd`, whose blank branch calls `ensureWorkspace` and would make a keystroke create a
-   * directory. `path` is deliberately absent from that answer: there is no resolved path to show
-   * for a folder the user has not named.
+   * ⚠️ **A blank path is `ok` and provisions nothing.** Blank means "the profile's own home" — and
+   * it is short-circuited HERE rather than left to `resolveCwd`, whose blank branch makes that home
+   * and would make a keystroke create a directory. `path` is deliberately absent from that answer:
+   * there is no resolved path to show for a folder the user has not named.
    *
    * ⚠️ **Advisory.** A folder can vanish between this answer and the press, so this is what stops
    * the app offering a gesture it already knows cannot work — 106/118's rule — and not what makes

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { WORKER_OUTPUT_DIRNAME } from '../src/main/worker-piece-folder'
+import { WORKER_OUTPUT_DIRNAME } from '../src/main/storage/engine'
 
 describe('folders passed with work', () => {
   let world: AServiceWorld

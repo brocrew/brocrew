@@ -125,7 +125,7 @@ describe('the folder a person chose is the one the placed conversation is launch
     ])
   })
 
-  it('⚑ a cancelled picker changes nothing, and "Use the workspace" takes the folder back', async () => {
+  it('⚑ a cancelled picker changes nothing, and "Use its home" takes the folder back', async () => {
     const f = placed()
     await settled()
     await choose(f.m, { path: '/work/repo' })
@@ -133,10 +133,10 @@ describe('the folder a person chose is the one the placed conversation is launch
     await choose(f.m, null)
     expect(f.m.q('start-as-agent-folder').textContent).toBe('/work/repo')
     // And the way back to the workspace is one press, after which the launch carries no `cwd`.
-    f.m.q('start-as-agent-use-workspace').click()
+    f.m.q('start-as-agent-use-home').click()
     await settled()
     expect(f.m.all('start-as-agent-folder')).toHaveLength(0)
-    expect(f.m.q('start-as-agent-no-folder').textContent).toMatch(/workspace/i)
+    expect(f.m.q('start-as-agent-no-folder').textContent).toMatch(/home/i)
     await send(f.m, 'go')
     expect(f.started).toEqual([
       [{ provider: 'claude', profileId: 'archivist', approvalMode: 'ask' }, 'go'],

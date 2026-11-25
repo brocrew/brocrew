@@ -84,7 +84,6 @@ async function settings(
         }
       },
       pruneBackups: async () => ({ ok: true }),
-      removeFinished: async () => ({ ok: true, kept: [] }),
     } satisfies StorageBridge,
     logging: logging ?? {
       getLogging: async () => ({

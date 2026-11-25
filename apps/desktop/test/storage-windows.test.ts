@@ -156,7 +156,10 @@ it('includes task output after fifty thousand workspace files while the walk kee
   expect(reading.totalBytes).toBe(1_098_605)
   expect(reading.partial).toBe(false)
   expect(progressed).toHaveBeenCalled()
-  const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const listing = await new StorageEngine(roots).children({
+    part: 'workspace',
+    segments: ['brobot-workspace'],
+  })
   expect(listing).toMatchObject({ totalBytes: 1_098_576, partial: false })
 })
 
@@ -248,7 +251,10 @@ it('retains immediate children when enumeration fails after yielding their names
   })
   disk.entries.set(win32.join(roots.workspace, 'first').toLowerCase(), { bytes: 7 })
   disk.entries.set(win32.join(roots.workspace, 'second').toLowerCase(), { bytes: 11 })
-  const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const listing = await new StorageEngine(roots).children({
+    part: 'workspace',
+    segments: ['brobot-workspace'],
+  })
   expect(listing).toMatchObject({ totalBytes: 18, partial: true, error: 'unavailable' })
   expect(listing.entries.map((entry) => entry.bytes)).toEqual([11, 7])
 })
@@ -275,7 +281,12 @@ it.each([false, true])(
     expect(reading.parts.find((part) => part.id === 'workspace')?.bytes).toBe(nested ? 36 : 13)
     expect(reading.parts.find((part) => part.id === 'agent-output')?.bytes).toBe(nested ? 0 : 23)
     expect(
-      (await new StorageEngine(roots).children({ part: 'workspace', segments: [] })).totalBytes,
+      (
+        await new StorageEngine(roots).children({
+          part: 'workspace',
+          segments: ['brobot-workspace'],
+        })
+      ).totalBytes,
     ).toBe(nested ? 36 : 13)
     expect(disk.entries).toEqual(manifest)
   },
@@ -396,11 +407,12 @@ it('retains sized children that disappear before a late iterator error', async (
     vanishAfterYield: true,
   })
   disk.entries.set(win32.join(roots.workspace, 'first').toLowerCase(), { bytes: 7 })
-  const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const listing = await new StorageEngine(roots).children({
+    part: 'workspace',
+    segments: ['brobot-workspace'],
+  })
   expect(listing).toMatchObject({ totalBytes: 7, partial: true, error: 'unavailable' })
-  expect(listing.entries).toEqual([
-    { name: 'first', bytes: 7, isDirectory: false, lastWrittenAt: expect.any(Number) },
-  ])
+  expect(listing.entries).toEqual([{ name: 'first', bytes: 7, isDirectory: false }])
 })
 
 it('preserves tied top-ten order and eviction totals regardless of directory order', async () => {
@@ -410,7 +422,10 @@ it('preserves tied top-ten order and eviction totals regardless of directory ord
   disk.entries.set(roots.workspace.toLowerCase(), { children: [...names].reverse() })
   for (const name of names)
     disk.entries.set(win32.join(roots.workspace, name).toLowerCase(), { bytes: 7 })
-  const listing = await new StorageEngine(roots).children({ part: 'workspace', segments: [] })
+  const listing = await new StorageEngine(roots).children({
+    part: 'workspace',
+    segments: ['brobot-workspace'],
+  })
   expect(listing).toMatchObject({
     totalBytes: 119,
     smallerBytes: 49,
@@ -435,7 +450,7 @@ it('stops on cancellation after an earlier child read error', async () => {
     checksAfterFailure++
     return true
   })
-  const listing = await engine.children({ part: 'workspace', segments: [] })
+  const listing = await engine.children({ part: 'workspace', segments: ['brobot-workspace'] })
   expect(listing.error).toBe('cancelled')
   expect(checksAfterFailure).toBe(1)
 })

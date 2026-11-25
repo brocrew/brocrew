@@ -15,6 +15,7 @@ import {
   type CallerIdentity,
 } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { profileHome } from '../src/main/connections/homes'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
@@ -153,16 +154,12 @@ describe('590 · a folder approved that no agent can work in', () => {
   const cwdOf = (sessionId: string): string | undefined => store.find(sessionId)?.cwd
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · the default — a spawn that names no folder stands where its parent stands
+  // §1 · the default — a spawn that names no folder starts in its own profile's home
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('⚑ §1 · a spawn that names no folder starts in its parent’s', () => {
-    /**
-     * 🔴 **The DEFAULT, as it is after D-016.** ⛔ This was the planted control beside a spawn into a
-     * project, which started in that project's folder; the crossing went with projects, and what the
-     * control protected is the whole rule now — the parent's folder is every such spawn's default.
-     */
-    it('⛔ the child of a parent that names no folder lands in the parent’s OWN folder', async () => {
+  describe('⚑ §1 · a spawn that names no folder starts in its own profile’s home', () => {
+    /** The DEFAULT: a give that names no folder starts its conversation in that profile's home. */
+    it('⛔ the child of a give that names no folder lands in its own profile’s home', async () => {
       const brobot = await aBroBotThatCanStaff()
       // ⚑ **D-016** — a child is started by a give that finds no conversation with that agent.
       const staffed = await host.giveWork(
@@ -180,8 +177,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       // ⚑ **D-042 moved where a start is said** — `started` (null for a conversation that existed)
       // became `runsOn.how`.
       expect(staffed.runsOn.how).toBe('started')
-      expect(cwdOf(staffed.owner)).toBe(workspace)
-      expect(cwdOf(staffed.owner)).not.toBe(repo)
+      expect(cwdOf(staffed.owner)).toBe(profileHome(userData, 'pm'))
+      expect(cwdOf(staffed.owner)).not.toBe(workspace)
     })
   })
 
@@ -242,18 +239,15 @@ describe('590 · a folder approved that no agent can work in', () => {
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · one level down — the default is where the child stands
+  // §3 · one level down — the default is still the profile's home
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('⚑ §3 · one level down, the default is where the child stands', () => {
+  describe('⚑ §3 · one level down, the default is still the profile’s home', () => {
     /**
-     * 🔴 **Re-aimed at the DEFAULT** (standing rule 26), and again at D-016. ⛔ Until `726` the
-     * child's own children were refused `cwd-outside-parent` when they asked for a folder above
-     * their parent; R92 removed the refusal. ⚑ What did not move is that the default is the DIRECT
-     * parent's folder: a grandchild that names no folder starts where the CHILD stands, not where
-     * the child's parent does and not at the root of the repository the child was sent into.
+     * A grandchild that names no folder starts in its own profile's home: not where the child
+     * stands, not where the child's parent does, and not in the repository the child was sent into.
      */
-    it('🔴 the child’s own children start where the child stands — not where its parent does', async () => {
+    it('🔴 the child’s own children start in their profile’s home — not where the child stands', async () => {
       const brobot = await aBroBotThatCanStaff()
       const inside = join(repo, 'docs')
       mkdirSync(inside)
@@ -272,9 +266,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       if (!child.ok) throw new Error(`the give was refused: ${child.refusal.rail}`)
       expect(cwdOf(child.owner)).toBe(inside)
 
-      // ⛔ **No folder named** — so the default, and the default is the child's. ⚑ D-016: the child
-      // gives from the one piece it holds, and has no conversation with `pm` of its own, so it starts
-      // one.
+      // ⛔ **No folder named** — so the default, the profile's home. ⚑ D-016: the child gives from
+      // the one piece it holds, and has no conversation with `pm` of its own, so it starts one.
       const grandchild = await host.giveWork(
         {
           to: 'new',
@@ -289,9 +282,8 @@ describe('590 · a folder approved that no agent can work in', () => {
       if (!grandchild.ok) throw new Error(`the give was refused: ${grandchild.refusal.rail}`)
       // ⚑ **D-042** — `started` became `runsOn.how` (see §1).
       expect(grandchild.runsOn.how).toBe('started')
-      expect(cwdOf(grandchild.owner)).toBe(inside)
-      expect(cwdOf(grandchild.owner)).not.toBe(repo)
-      expect(cwdOf(grandchild.owner)).not.toBe(workspace)
+      expect(cwdOf(grandchild.owner)).toBe(profileHome(userData, 'pm'))
+      expect(cwdOf(grandchild.owner)).not.toBe(inside)
     })
   })
 })

@@ -1,7 +1,12 @@
 import { isInside as insideData } from '@brobot2/shared/paths'
 import { lstat, opendir, realpath, statfs } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
-import { providerConversationDirectories } from '../providers/workspace-layout.mjs'
+import {
+  isAProfilesWork,
+  isProviderHistory,
+  mayHoldAProfilesWork,
+  mayHoldProviderHistory,
+} from '../providers/workspace-layout.mjs'
 import {
   STORAGE_PART_IDS,
   isStorageLocation,
@@ -13,6 +18,9 @@ import {
   type StoragePart,
   type StoragePartId,
 } from '../../shared/storage'
+
+/** The data folder's folder of per-piece output folders, made by earlier versions of the app. */
+export const WORKER_OUTPUT_DIRNAME = 'worker-output'
 
 export interface StorageRoots {
   readonly data: string
@@ -29,15 +37,10 @@ export interface StorageRoots {
 }
 export type StorageRequest =
   | { readonly kind: 'measure' }
-  | { readonly kind: 'children'; readonly location: StorageLocation; readonly limit?: number }
+  | { readonly kind: 'children'; readonly location: StorageLocation }
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
-  | { readonly kind: 'finished'; readonly names: readonly string[] }
-export type StorageReply =
-  | StorageOverview
-  | StorageDirectory
-  | { readonly path: string }
-  | { readonly finished: readonly string[] }
-type StorageRoot = { path: string; part: StoragePartId }
+export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
+type StorageRoot = { path: string; part: StoragePartId; segments: readonly string[] }
 const STORAGE_BOUNDS = { entries: Infinity, depth: 64 } as const
 /** A worker that reports no progress for this long is judged stalled; a slow walk that keeps reporting is not. */
 export const STORAGE_STALL_TIMEOUT = 15_000
@@ -50,8 +53,6 @@ export class StorageFailure extends Error {
 export const storageReason = (error: unknown): StorageError =>
   error instanceof StorageFailure ? error.reason : 'unavailable'
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === 'ENOENT'
-/** What a walk found besides bytes: why it is partial, and the newest change it saw. */
-type WalkState = { error?: StorageError; newest?: number }
 
 export async function storageFreeBytes(path: string): Promise<number | null> {
   try {
@@ -120,8 +121,9 @@ export class StorageEngine {
 
   private paths(part: StoragePartId): readonly string[] {
     switch (part) {
+      // The old shared workspace where it still exists, and each profile's own home.
       case 'workspace':
-        return [this.roots.workspace]
+        return [this.roots.workspace, this.roots.providers]
       case 'provider-conversations':
         return [this.roots.providers]
       case 'agent-output':
@@ -141,19 +143,28 @@ export class StorageEngine {
     }
   }
 
-  private allowed(part: StoragePartId, segments: readonly string[]): boolean {
+  /** Whether a folder is walked into, or a file counted (`asAFile`), for a part. */
+  private allowed(part: StoragePartId, segments: readonly string[], asAFile = false): boolean {
+    if (part === 'workspace') {
+      // Below the provider homes, only a profile's own work: its provider homes are counted elsewhere.
+      const homes = this.groupedPaths('workspace')[1]!.name
+      if (segments[0] !== homes) return true
+      return (asAFile ? isAProfilesWork : mayHoldAProfilesWork)(segments.slice(1))
+    }
     if (part !== 'provider-conversations') return true
-    if (segments.length >= 1 && segments[0] !== 'default') return false
-    if (segments.length < 3) return true
-    const directories = providerConversationDirectories.get(segments[2]!)
-    return directories !== undefined && (segments.length < 4 || directories.includes(segments[3]!))
+    return (asAFile ? isProviderHistory : mayHoldProviderHistory)(segments)
+  }
+
+  /** A part of several roots names each by its group, which is not a level of the folders walked. */
+  private depthOf(part: StoragePartId, segments: readonly string[]): number {
+    return this.virtual(part) ? Math.max(0, segments.length - 1) : segments.length
   }
 
   private countedByEarlierRoot(path: string, roots: readonly StorageRoot[]): boolean {
     return roots.some((root) => {
       if (!insideData(root.path, path)) return false
       const rel = relative(root.path, path)
-      return this.allowed(root.part, rel ? rel.split(sep) : [])
+      return this.allowed(root.part, [...root.segments, ...(rel ? rel.split(sep) : [])], true)
     })
   }
 
@@ -161,14 +172,14 @@ export class StorageEngine {
     path: string,
     part: StoragePartId,
     segments: readonly string[],
-    state: WalkState,
+    state: { error?: StorageError },
     checkedParent = false,
     earlierRoots: readonly StorageRoot[] = [],
     rootState?: { started: boolean },
   ): Promise<number> {
     let bytes = 0
     let enumerating = false
-    if (segments.length > this.bounds.depth) {
+    if (this.depthOf(part, segments) > this.bounds.depth) {
       state.error = 'limit'
       return 0
     }
@@ -179,9 +190,9 @@ export class StorageEngine {
       if (stat.isSymbolicLink()) throw new StorageFailure('linked-path')
       const actual = await realpath(safe)
       if (!insideData(safe, actual)) throw new StorageFailure('outside-data')
-      state.newest = Math.max(state.newest ?? 0, stat.mtimeMs)
       if (stat.isFile()) {
         if (rootState) rootState.started = true
+        if (!this.allowed(part, segments, true)) return 0
         return this.countedByEarlierRoot(actual, earlierRoots) ? 0 : stat.size
       }
       if (!stat.isDirectory()) {
@@ -213,6 +224,7 @@ export class StorageEngine {
 
   private virtual(part: StoragePartId): boolean {
     return (
+      part === 'workspace' ||
       part === 'database' ||
       part === 'backups' ||
       (part === 'plugins' && !!this.roots.sharedPlugins)
@@ -270,12 +282,16 @@ export class StorageEngine {
         let bytes = 0
         const state: { error?: StorageError } = {}
         try {
-          for (const path of this.paths(id)) {
+          // A part of several roots names each by its group, as its disclosure does.
+          const roots = this.virtual(id)
+            ? this.groupedPaths(id).map(({ name, path }) => ({ path, segments: [name] }))
+            : this.paths(id).map((path) => ({ path, segments: [] }))
+          for (const { path, segments } of roots) {
             try {
               const safe = await this.checked(path, id)
               const rootState = { started: false }
-              bytes += await this.size(safe, id, [], state, true, earlierRoots, rootState)
-              if (rootState.started) earlierRoots.push({ path: safe, part: id })
+              bytes += await this.size(safe, id, segments, state, true, earlierRoots, rootState)
+              if (rootState.started) earlierRoots.push({ path: safe, part: id, segments })
             } catch (error) {
               if (missing(error)) continue
               if (storageReason(error) === 'cancelled') throw error
@@ -286,7 +302,7 @@ export class StorageEngine {
             id,
             bytes: state.error && bytes === 0 ? null : bytes,
             partial: state.error !== undefined,
-            ...(state.error === undefined ? {} : { error: state.error }),
+            ...state,
           })
         } catch (error) {
           parts.push({ id, bytes: bytes || null, partial: true, error: storageReason(error) })
@@ -304,7 +320,7 @@ export class StorageEngine {
     }
   }
 
-  async children(location: StorageLocation, limit = 10): Promise<StorageDirectory> {
+  async children(location: StorageLocation): Promise<StorageDirectory> {
     const empty = {
       location,
       entries: [],
@@ -323,7 +339,7 @@ export class StorageEngine {
       const keep = (entry: StorageEntry): void => {
         entries.push(entry)
         entries.sort((a, b) => (b.bytes ?? -1) - (a.bytes ?? -1) || a.name.localeCompare(b.name))
-        if (entries.length > limit) {
+        if (entries.length > 10) {
           const smaller = entries.pop()!
           smallerCount++
           smallerBytes += smaller.bytes ?? 0
@@ -341,6 +357,7 @@ export class StorageEngine {
             state.error ??= 'unavailable'
             return true
           }
+          if (stat.isFile() && !this.allowed(location.part, entry.segments, true)) return true
           if (
             location.part === 'backups' &&
             location.segments.length === 0 &&
@@ -348,15 +365,8 @@ export class StorageEngine {
             (await this.emptyRecovery(entry.path, safe))
           )
             return true
-          const walked: WalkState = {}
-          const bytes = await this.size(entry.path, location.part, entry.segments, walked)
-          if (walked.error) state.error ??= walked.error
-          keep({
-            name: entry.name,
-            bytes,
-            isDirectory: stat.isDirectory(),
-            ...(walked.newest === undefined ? {} : { lastWrittenAt: walked.newest }),
-          })
+          const bytes = await this.size(entry.path, location.part, entry.segments, state)
+          keep({ name: entry.name, bytes, isDirectory: stat.isDirectory() })
         } catch (error) {
           const reason = storageReason(error)
           if (reason === 'cancelled') throw error
@@ -370,7 +380,7 @@ export class StorageEngine {
       }
       if (this.virtual(location.part) && location.segments.length === 0) {
         for (const entry of this.groupedPaths(location.part))
-          if (!(await include({ ...entry, segments: [] }))) break
+          if (!(await include({ ...entry, segments: [entry.name] }))) break
       } else {
         const path = this.locationPath(location)
         const safe = await this.checked(path, location.part)

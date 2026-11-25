@@ -23,11 +23,7 @@ import {
   thisConversationSpans,
 } from '../src/main/runtime/factory-text'
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
-import {
-  brobotWorkspace,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
@@ -142,7 +138,6 @@ it.each(['claude', 'codex'] as const)(
     const db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, join(__dirname, '../src/main/db/migrations'))
     const store = createSessionStore(db)
-    ensureWorkspace(userData)
     let counter = 0
 
     // ⚑ **The composition root's own wiring, copied because it IS the thing under test.** The order
@@ -367,7 +362,6 @@ it(
     const db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, join(__dirname, '../src/main/db/migrations'))
     const store = createSessionStore(db)
-    ensureWorkspace(userData)
     let counter = 0
     const hosts: RuntimeHost[] = []
 

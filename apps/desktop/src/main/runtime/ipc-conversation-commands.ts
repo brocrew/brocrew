@@ -42,7 +42,7 @@ export const conversationCommands = [
   z.object({
     kind: z.literal('createSession'),
     provider: providerSchema,
-    /** Absent/blank means the durable BroBot workspace. */
+    /** Absent/blank means the profile's own home. */
     cwd: z.string().optional(),
     /**
      * Approval mode (078). Validated as an exact enum: anything else fails the wire schema rather

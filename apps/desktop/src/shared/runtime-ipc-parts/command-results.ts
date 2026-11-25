@@ -416,8 +416,8 @@ export interface RuntimeCommandResults {
   /**
    * Whether a launch would accept this folder (203, from 195 H4).
    *
-   * ⚠️ **`ok: true` with an empty `path` is the BLANK answer** — the workspace default, which is
-   * what the field's placeholder promises — and it is a different fact from a resolved directory.
+   * ⚠️ **`ok: true` with an empty `path` is the BLANK answer** — the profile's own home — and it is
+   * a different fact from a resolved directory.
    */
   checkCwd: CwdVerdict
   /**

@@ -677,7 +677,7 @@ describe('§6 · a conversation started as an identity a person created', () => 
     await settled()
     // ⚑ No folder is a legal answer, said rather than refused. ⚠️ D-016 · it is the app's own
     // workspace now, not a project's missing folder.
-    expect(f.m.q('start-as-agent-no-folder').textContent).toMatch(/workspace/i)
+    expect(f.m.q('start-as-agent-no-folder').textContent).toMatch(/home/i)
     expect(f.m.all('start-as-agent-folder')).toHaveLength(0)
   })
 

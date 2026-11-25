@@ -464,9 +464,10 @@ describe('732 · a retry that works, and names, not folders', () => {
           )
         }
         await graceStopsBobWhileAdaIsClosed(rig)
-        // ⛔ **The premise**: one default folder for both, so a folder cannot tell them apart.
-        expect(theFolderOf(rig.worker)).toBe('brobot-workspace')
-        expect(theFolderOf(rig.pm)).toBe('brobot-workspace')
+        // ⛔ **The premise**: each runs in its own profile's home, named by its slug, which is not
+        // the name a person reads.
+        expect(theFolderOf(rig.worker)).toBe('worker-g')
+        expect(theFolderOf(rig.pm)).toBe('pm-g')
         if (because === 'turn_ended') {
           await waitFor(
             () => host.workIncidentsForAPerson().rows.some((one) => one.piece === rig.piece),
@@ -490,7 +491,8 @@ describe('732 · a retry that works, and names, not folders', () => {
           const lead = incidentSays(incident, tick())
           expect(lead).toContain('Bob')
           expect(lead).toContain('Ada')
-          expect(lead).not.toContain('brobot-workspace')
+          expect(lead).not.toContain('worker-g')
+          expect(lead).not.toContain('pm-g')
           expect(
             store.piecesOwnedBy(rig.worker).find((one) => one.piece === rig.piece)?.stalledBy,
           ).toMatchObject({ by: 'an-agent', asker: rig.boss })
@@ -505,7 +507,7 @@ describe('732 · a retry that works, and names, not folders', () => {
         }
         const row = host.stalledWorkForAPerson().rows.find((one) => one.piece === rig.piece)
         expect(row).toMatchObject({ owner: rig.worker, giver: rig.pm, because })
-        // 🔴 **RED on `main`**: `brobot-workspace`, twice.
+        // 🔴 **RED on `main`**: the folders' names.
         expect({ holder: row?.ownerName, giver: row?.giverName }).toEqual({
           holder: 'Bob',
           giver: 'Ada',
@@ -525,7 +527,8 @@ describe('732 · a retry that works, and names, not folders', () => {
         const lead = row === undefined ? '' : stalledWorkLead(row)
         expect(lead).toContain('with Bob is not being worked on')
         expect(lead).toContain('and Ada — which gave it out —')
-        expect(lead).not.toContain('brobot-workspace')
+        expect(lead).not.toContain('worker-g')
+        expect(lead).not.toContain('pm-g')
       })
     }
 

@@ -27,7 +27,7 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { constantFrom } from './lib/app-source.mjs'
+import { constantFrom, profileHome } from './lib/app-source.mjs'
 import { whatTheFrontDoorCannotCarry } from './lib/front-door.mjs'
 import { assertPortNotShared, assertPortOwnedByTree } from './lib/smoke-target.mjs'
 import { witnessGate } from './lib/host-gate-witness.mjs'
@@ -40,7 +40,6 @@ import {
   summarize,
   unasserted,
 } from './lib/smoke-verdicts.mjs'
-import { brobotWorkspace } from './lib/app-source.mjs'
 import { WIDE_READ_MARK, assertTabFlow } from './lib/tab-flow.mjs'
 import { chromeInkVerdict, inkFields, paperFields, paperVerdict } from './lib/paper-ground.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
@@ -109,9 +108,9 @@ const {
 })
 /** Shared across BOTH app instances — this is what makes the second one a relaunch. */
 const USER_DATA = smokeUserDataDir(EVIDENCE, 'user-data')
-// The app creates this durable directory, and a launch without a folder runs here.
-// Read its name from the app so the harness follows the same path.
-const WORKSPACE = brobotWorkspace(USER_DATA)
+// BroBot's own home: a launch without a folder runs here. Read its path from the app so the
+// harness follows the same path.
+const WORKSPACE = profileHome(USER_DATA, constantFrom('DEFAULT_PROFILE_ID'))
 
 /**
  * How many `turn` events the LEDGER holds for one conversation: the count the replay of a stopped

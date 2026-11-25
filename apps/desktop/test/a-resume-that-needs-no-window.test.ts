@@ -17,6 +17,7 @@ import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { profileHome } from '../src/main/connections/homes'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import {
   fixtureFolder,
@@ -479,7 +480,8 @@ describe('652 · a resume that needs no window', () => {
       await host.resumeSession(worker, null)
 
       expect(reads.length).toBe(readsBefore + 1)
-      expect(reads.at(-1)).toEqual({ provider: 'claude', cwd: root })
+      // The worker was given no folder, so it was recorded in its own profile's home.
+      expect(reads.at(-1)).toEqual({ provider: 'claude', cwd: profileHome(userData, 'worker') })
       expect(handed.resumes.at(-1)?.systemHint).toBe(originalHint)
     })
 

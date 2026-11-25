@@ -90,9 +90,9 @@ export const KEEP_WINDOW_LINE = `BroCrew keeps its recovery window on a hidden l
 
 /**
  * What a start that opened its data makes in the data folder, and a recovery start must not:
- * `brobot-workspace/`, made first thing when main creates its runtime host, and the provider homes.
+ * the provider homes.
  */
-export const MADE_ONLY_BY_AN_OPEN_START = ['brobot-workspace', 'provider-homes']
+export const MADE_ONLY_BY_AN_OPEN_START = ['provider-homes']
 
 /** The start lines main prints, pinned here rather than read from the build under test. */
 export const START_LINES = {
@@ -1073,7 +1073,7 @@ async function steps(
         )
         const made = MADE_ONLY_BY_AN_OPEN_START.filter((name) => existsSync(join(dataDir, name)))
         check(
-          'no runtime host or provider homes: the data folder holds no brobot-workspace or provider-homes',
+          'no runtime host or provider homes: the data folder holds no provider-homes',
           made.length === 0,
           `made: ${made.join(', ')}`,
         )

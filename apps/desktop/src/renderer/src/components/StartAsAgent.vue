@@ -41,7 +41,7 @@ import { useProviderNames } from '../composables/useProviderNames'
  * ## ⛔ What it is NOT
  *
  * ⛔ **Not a required folder.** ⚑ **D-016 · no folder chosen is a legal answer, not an error to
- * prevent** — the conversation then runs in the app's own workspace, exactly as the front door's
+ * prevent** — the conversation then runs in its profile's own home, exactly as the front door's
  * does, and the row below says so rather than refusing the press. A folder a person chooses is
  * checked by the host's own rule (`checkSessionCwd`) at the picker, and again at launch.
  *
@@ -174,9 +174,9 @@ const who = computed(() =>
 )
 
 /**
- * ⚑ **D-016 · where it runs — a folder a person chose, or `null` for the app's own workspace**,
- * which is where the front door's conversations run and so where this one runs when nothing is
- * chosen: this sheet's silence means what the other door's does.
+ * ⚑ **D-016 · where it runs — a folder a person chose, or `null` for the profile's own home**,
+ * which is where a conversation runs when nothing is chosen: this sheet's silence means what the
+ * other door's does.
  */
 const folder = ref<string | null>(null)
 const picked = ref<PickedModel | null>(null)
@@ -321,12 +321,12 @@ async function startWith(
       </div>
       <div class="field">
         <span class="lbl">Folder</span>
-        <!-- ⚑ **D-016 · the app's own workspace unless a person chooses a folder** — the front
-             door's default, said rather than left blank. ⚑ The picker asks the host's own rule, so
+        <!-- ⚑ **D-016 · the profile's own home unless a person chooses a folder** — the default,
+             said rather than left blank. ⚑ The picker asks the host's own rule, so
              a folder that cannot be used is refused where it was chosen, with the host's sentence. -->
         <p v-if="folder" class="note mono" data-cy="start-as-agent-folder">{{ folder }}</p>
         <p v-else class="note" data-cy="start-as-agent-no-folder">
-          The app's own workspace, unless you choose a folder.
+          Its own home, unless you choose a folder.
         </p>
         <p v-if="folderRefusal" class="note refused" data-cy="start-as-agent-folder-refused">
           {{ folderRefusal }}
@@ -338,10 +338,10 @@ async function startWith(
           <button
             v-if="folder"
             type="button"
-            data-cy="start-as-agent-use-workspace"
+            data-cy="start-as-agent-use-home"
             @click="folder = null"
           >
-            Use the workspace
+            Use its home
           </button>
         </div>
       </div>

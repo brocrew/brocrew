@@ -320,8 +320,8 @@ export interface RuntimeHostDeps {
    * throws costs the line, never the launch.
    */
   whichBuild?(): TheBuildRunning
-  /** The directory the session runs in; the BroBot workspace when the caller asked for none. */
-  resolveCwd(sessionId: string, requested: string | undefined): string
+  /** The directory the session runs in; its profile's own home when the caller asked for none. */
+  resolveCwd(profileId: string, requested: string | undefined): string
   /**
    * Where exported files are written (089). App-owned, like every other path here: a renderer
    * cannot be trusted with a destination, and a file dialog is a UI slice of its own.

@@ -15,11 +15,7 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
-import {
-  brobotWorkspace,
-  ensureWorkspace,
-  workspaceOwnFilesIn,
-} from '../src/main/runtime/workspace'
+import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import {
@@ -170,7 +166,6 @@ describe('F093 · R3 · the popup’s provider slot', () => {
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
     store = createSessionStore(db)
-    ensureWorkspace(userData)
     hosts = []
     counter = 0
     asked = []
