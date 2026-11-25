@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
+import MarkdownWords from './MarkdownWords.vue'
 import type { MemoryRecallItem, TranscriptItem } from '../lib/transcript'
 
 /**
@@ -116,7 +117,12 @@ const earlier = computed(
       <!-- ⚑ **The note is the part that makes the row worth drawing** (319 §1.1): a row saying only
            *"the agent used memory"* throws away the reason a person cares. It is the model's own
            words, quoted rather than paraphrased. -->
-      <p v-if="entry.note" class="mr-note" data-cy="memory-recall-note">“{{ entry.note }}”</p>
+      <MarkdownWords
+        v-if="entry.note"
+        class="mr-note"
+        data-cy="memory-recall-note"
+        :text="'“' + entry.note + '”'"
+      />
     </div>
 
     <!-- A cap that can never be silent (092 §4), the same wording its neighbour uses. -->

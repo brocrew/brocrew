@@ -1,5 +1,5 @@
 import { combinedPersonsQueue } from '../helpers/combined-persons-queue'
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
 import { readingOf } from './forest-fixture'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -24,7 +24,17 @@ import type {
   RefusedLaunch,
 } from '../../src/shared/runtime-ipc'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
-import { META, unmountAll } from './harness'
+import { META, unmountAll, type mount } from './harness'
+
+export function transcriptLinks(screen: ReturnType<typeof mount>) {
+  return screen.all('message-link').filter((element) => element.closest('[data-cy="transcript"]'))
+}
+
+export function transcriptLink(screen: ReturnType<typeof mount>) {
+  const links = transcriptLinks(screen)
+  expect(links).toHaveLength(1)
+  return links[0]!
+}
 
 // Provider setup has its own tests; this screen fixture never enters sign-in.
 vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({

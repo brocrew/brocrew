@@ -8,9 +8,8 @@ import { renderChatMarkdown, renderMarkdown } from '../src/renderer/src/lib/mark
 /**
  * Assistant replies render as Markdown (Slice 2 · 017) — through the SAME `lib/markdown.ts` the
  * document viewer uses, so there is exactly one markdown stack and one sanitization story. The
- * contract under test: a settled reply is rendered (fences become code blocks, lists become
- * lists), a STREAMING reply stays plain text (deltas end mid-syntax, and plain text never lies
- * about unfinished markdown), and nothing in a reply can smuggle markup past `html:false`.
+ * Growing and settled replies use the same renderer: fences become code blocks and lists become
+ * lists. Author HTML remains disabled in both states.
  */
 
 const render = (item: Record<string, unknown>, who = 'Codex'): Promise<string> =>
@@ -150,7 +149,7 @@ describe('the user’s own message is never rendered (017 keeps it plain)', () =
   })
 })
 
-describe('a streaming reply stays plain until it settles', () => {
+describe('a streaming reply uses the shared formatter while it grows', () => {
   const streaming = {
     kind: 'assistant',
     id: 'assistant_1',
@@ -158,10 +157,10 @@ describe('a streaming reply stays plain until it settles', () => {
     streaming: true,
   }
 
-  it('a half-open fence is shown verbatim — no block-level re-rendering mid-stream', async () => {
+  it('a half-open fence uses the same code block rendering as a settled reply', async () => {
     const html = await render(streaming)
-    expect(html).not.toContain('<pre>')
-    expect(html).toContain('```ts')
+    expect(html).toContain(renderChatMarkdown(streaming.text).trimEnd())
+    expect(html).toContain('<pre><code class="language-ts">const half = </code></pre>')
   })
 
   it('the live tag and the caret still mark the block as growing (005)', async () => {

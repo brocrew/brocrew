@@ -3,7 +3,7 @@ import { computed, ref, useId } from 'vue'
 import ListDialogShell from './ListDialogShell.vue'
 import PanelRunRow from './PanelRunRow.vue'
 import type { PanelRun, RunGroup } from '../lib/panel-runs'
-const props = defineProps<{ runs: PanelRun[] }>()
+const props = defineProps<{ runs: PanelRun[]; conversation?: string }>()
 const emit = defineEmits<{ close: []; open: [run: PanelRun] }>()
 const titleId = useId()
 const query = ref('')
@@ -57,7 +57,13 @@ const shown = computed(() =>
     </template>
     <template #results>
       <div v-if="shown.length" data-cy="past-runs-rows">
-        <PanelRunRow v-for="run in shown" :key="run.key" :run="run" @open="emit('open', run)" />
+        <PanelRunRow
+          v-for="run in shown"
+          :key="run.key"
+          :run="run"
+          :conversation="conversation"
+          @open="emit('open', run)"
+        />
       </div>
       <p v-else class="list-empty">No past runs match this view.</p>
     </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import DocumentBody from './DocumentBody.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import type { PlanItem } from '../lib/transcript'
 
 /**
@@ -56,13 +57,13 @@ const heading = computed(() => {
         :data-status="step.status"
       >
         <span class="mark" aria-hidden="true">{{ step.status === 'done' ? '✓' : '' }}</span>
-        <span class="text">{{ step.text }}</span>
+        <MarkdownWords class="text" :text="step.text" />
       </li>
     </ol>
 
     <!-- Codex's `explanation`: a sentence ABOUT the plan, which is why it sits under the list
          rather than inside it. Null while the plan is being worked, set when it completes. -->
-    <p v-if="item.note" class="note" data-cy="plan-note">{{ item.note }}</p>
+    <MarkdownWords v-if="item.note" class="note" data-cy="plan-note" :text="item.note" />
 
     <!-- The plan itself (030). A DOCUMENT, so it goes through the one document viewer — white
          paper, Markdown/Raw — rather than being re-rendered as chat prose here. That is the

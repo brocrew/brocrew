@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vButtonKeys } from '../lib/button-keys'
 import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import type { HumanTurnAnswer } from '../../../shared/human-answer-contracts'
 
@@ -28,6 +29,7 @@ import { panelWords } from '../lib/latest-words'
 import { briefsOf } from '../lib/piece-briefs'
 
 import HumanAnswerDialog from './HumanAnswerDialog.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import type { CastTask } from '../lib/working-together'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import type { AgentPanelActs } from '../composables/useAgentPanel'
@@ -435,21 +437,26 @@ const fileManager = fileManagerHere()
       </p>
       <!-- ⚑ **Its latest words, in a bubble beside the plate** — a way IN like every row here: a
            press shows the message in the conversation, where it is on screen. -->
-      <component
-        :is="humanAnswer || canReach(latest.itemId) ? 'button' : 'p'"
+      <div
         v-if="latest"
         class="said"
         :class="{ pressable: humanAnswer || canReach(latest.itemId) }"
-        v-bind="humanAnswer || canReach(latest.itemId) ? { type: 'button' } : {}"
+        v-bind="humanAnswer || canReach(latest.itemId) ? { role: 'button', tabindex: 0 } : {}"
         data-cy="card-latest"
         :data-item="latest.itemId"
         :title="latest.text"
         @click="showLatest"
+        v-button-keys
       >
         <svg class="icon said-icon" aria-hidden="true"><use href="#i-chat" /></svg>
-        <span class="said-text" data-cy="card-latest-words">{{ latest.text }}</span>
+        <MarkdownWords
+          class="said-text"
+          data-cy="card-latest-words"
+          :text="latest.text"
+          :session-id="props.conversation"
+        />
         <span v-if="latestAgo" class="said-ago" data-cy="card-latest-ago">{{ latestAgo }}</span>
-      </component>
+      </div>
       <HumanAnswerDialog v-if="answerPopup" :answer="answerPopup" @close="answerPopup = null" />
     </SessionBot>
 
@@ -674,6 +681,7 @@ const fileManager = fileManagerHere()
             data-cy="card-task-empty"
           />
           <TaskList
+            :conversation="props.conversation"
             v-if="hasTasks"
             data-cy="cast-taken"
             :tasks="tasks!"
@@ -773,14 +781,16 @@ const fileManager = fileManagerHere()
             >{{ props.panel.todo.done }} of {{ props.panel.todo.steps.length }}</span
           >
         </div>
-        <button
+        <div
           class="row"
-          type="button"
+          role="button"
+          :tabindex="canReach(props.panel.todo.itemId) ? 0 : -1"
           data-cy="panel-row"
           :data-item="props.panel.todo.itemId"
-          :disabled="!canReach(props.panel.todo.itemId)"
+          :aria-disabled="!canReach(props.panel.todo.itemId)"
           title="Show the checklist in the conversation"
-          @click="emit('navigate', props.panel.todo.itemId)"
+          @click="canReach(props.panel.todo.itemId) && emit('navigate', props.panel.todo.itemId)"
+          v-button-keys
         >
           <ol class="steps">
             <li
@@ -791,11 +801,16 @@ const fileManager = fileManagerHere()
               :data-status="step.status"
             >
               <span class="mark" aria-hidden="true">{{ step.status === 'done' ? '✓' : '' }}</span>
-              <span class="step-text">{{ step.text }}</span>
+              <MarkdownWords class="step-text" :text="step.text" :session-id="props.conversation" />
             </li>
           </ol>
-          <span v-if="props.panel.todo.note" class="row-detail">{{ props.panel.todo.note }}</span>
-        </button>
+          <MarkdownWords
+            v-if="props.panel.todo.note"
+            class="row-detail"
+            :text="props.panel.todo.note"
+            :session-id="props.conversation"
+          />
+        </div>
       </section>
 
       <!-- 🔴 **UI-002 · what this agent made, and the inputs it handed over** — `07-where-resources-show`
@@ -1575,14 +1590,15 @@ button.run-effort[aria-expanded='true'] {
   min-width: 0;
 }
 
-.row:hover:not(:disabled) {
+.row:hover:not(:disabled):not([aria-disabled='true']) {
   border-left-color: var(--accent);
   background: var(--wash-5);
 }
 
 /* A row with nowhere to jump to still SAYS the thing is open — that is the panel's job — it just
    stops pretending to be a control. */
-.row:disabled {
+.row:disabled,
+.row[aria-disabled='true'] {
   border-left-color: transparent;
   cursor: default;
   opacity: 0.55;

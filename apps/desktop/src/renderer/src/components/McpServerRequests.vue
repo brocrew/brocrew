@@ -4,6 +4,7 @@ import { EXTERNAL_MCP_EVERYONE_MEANS } from '../../../shared/external-mcp'
 import { usePersonsQueue } from '../lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../lib/taking-over'
 import { drawnFrom } from '../lib/waiting-order'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * The agents' requests to register an MCP server, each with what approving it would do, drawn in
@@ -111,8 +112,12 @@ watch(
       <p class="request-line">
         Address: <code class="request-url">{{ one.url }}</code> (on this computer)
       </p>
-      <!-- The agent's own words, labelled as its claim, and drawn as plain text. -->
-      <p class="request-line">It says this server can: “{{ one.reaches }}”</p>
+      <!-- The agent's own words, labelled as its claim. -->
+      <MarkdownWords
+        class="request-line"
+        lead="It says this server can:"
+        :text="'“' + one.reaches + '”'"
+      />
       <p v-if="one.only === null" class="request-line">Who gets it: every agent.</p>
       <p v-else class="request-line">Who gets it: only {{ one.only.join(', ') }}.</p>
       <p

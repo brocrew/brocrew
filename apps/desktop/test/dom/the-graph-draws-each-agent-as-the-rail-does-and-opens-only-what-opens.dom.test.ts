@@ -486,7 +486,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     // it is a click on HER card, which selects her. ⛔ It used to do nothing at all.
     const line = card(m, 'sess_ana').querySelector<HTMLElement>('[data-cy="forest-task"]')!
     expect(words(line)).toContain('Inspect the window states')
-    expect(line.tagName).toBe('SPAN')
+    expect(line.matches('button, [role="button"]')).toBe(false)
     expect(line.closest('button')).toBeNull()
     expect(opened).toEqual([])
     line.click()

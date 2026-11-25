@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
+import { useClientMessagePaths } from '../composables/useMessagePaths'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type {
   CacheClearState,
@@ -15,6 +17,8 @@ import { platformHere } from '../lib/this-computer'
 import { readableError } from '../lib/session-record'
 import { useClientApi } from '../client-provider/injection'
 const storage = useClientApi().storage
+// Finished-folder records carry the piece title but no conversation or working folder.
+const finishedPaths = useClientMessagePaths(() => null)
 const overview = ref<StorageOverview | null>(null)
 const earlyFreeBytes = ref<number | null>()
 const directory = ref<StorageDirectory | null>(null)
@@ -441,7 +445,9 @@ onMounted(() => {
             <div v-for="entry in workspaceFolders.entries" :key="entry.name" class="folder-row">
               <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg
               ><span>{{ entry.name }}</span
-              ><span>{{ entry.isLink ? 'Link' : storageSize(entry.bytes) }}</span
+              ><span class="folder-size">{{
+                entry.isLink ? 'Link' : storageSize(entry.bytes)
+              }}</span
               ><a
                 href="#"
                 v-if="!entry.isLink"
@@ -479,8 +485,11 @@ onMounted(() => {
                 :checked="!kept.has(entry.name)"
                 :disabled="acting"
                 @change="keepOrRemove(entry.name)"
-              /><span>{{ entry.finished.label }} · {{ entry.finished.title }}</span
-              ><span>{{ storageSize(entry.bytes) }}</span
+              /><MarkdownWords
+                :text="entry.finished.title"
+                :lead="`${entry.finished.label} ·`"
+                :paths="finishedPaths"
+              /><span class="folder-size">{{ storageSize(entry.bytes) }}</span
               ><span v-if="entry.lastWrittenAt !== undefined">{{
                 agoWords(entry.lastWrittenAt)
               }}</span>
@@ -489,8 +498,11 @@ onMounted(() => {
               <p class="smaller-items">Kept, in use again:</p>
               <div v-for="entry in inUseAgain" :key="entry.name" class="folder-row">
                 <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg
-                ><span>{{ entry.finished.label }} · {{ entry.finished.title }}</span
-                ><span>{{ storageSize(entry.bytes) }}</span>
+                ><MarkdownWords
+                  :text="entry.finished.title"
+                  :lead="`${entry.finished.label} ·`"
+                  :paths="finishedPaths"
+                /><span class="folder-size">{{ storageSize(entry.bytes) }}</span>
               </div>
             </template>
             <p v-if="finishedWork.length === 0" class="smaller-items">
@@ -715,7 +727,7 @@ onMounted(() => {
   height: 14px;
   flex: none;
 }
-.folder-row span:nth-of-type(2) {
+.folder-row .folder-size {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }

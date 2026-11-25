@@ -1,4 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
+import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
 import CardSection from '../../src/renderer/src/components/CardSection.vue'
@@ -46,8 +47,16 @@ it('frames the running sub-agent with the same padding as a task card and preser
     'borderRadius',
   ] as const)
     expect(actual[property]).toBe(expected[property])
-  const row = agents.querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!
-  expect(row.disabled).toBe(false)
+  const row = agents.querySelector<HTMLElement>('[data-cy="panel-row"]')!
+  expect(row.getAttribute('aria-disabled')).not.toBe('true')
+  expect(row.getAttribute('role')).toBe('button')
+  expect(row.tabIndex).toBe(0)
   row.click()
   expect(navigated).toEqual([row.dataset.item])
+  row.focus()
+  expect(document.activeElement).toBe(row)
+  await userEvent.keyboard('{Enter}')
+  expect(navigated).toEqual([row.dataset.item, row.dataset.item])
+  await userEvent.keyboard(' ')
+  expect(navigated).toEqual([row.dataset.item, row.dataset.item, row.dataset.item])
 })

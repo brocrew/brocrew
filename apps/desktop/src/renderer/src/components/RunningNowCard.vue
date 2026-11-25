@@ -76,6 +76,7 @@ async function open(run: PanelRun): Promise<void> {
         v-for="run in runs.active"
         :key="run.key"
         :run="run"
+        :conversation="conversation"
         :disabled="!onOpenRun && !!run.itemId && canNavigate?.(run.itemId) === false"
         :title="
           onOpenRun
@@ -98,7 +99,7 @@ async function open(run: PanelRun): Promise<void> {
     </template>
     <template v-if="recent">
       <p class="subheading">Recently ended</p>
-      <PanelRunRow :run="recent" @open="void open(recent)" />
+      <PanelRunRow :conversation="conversation" :run="recent" @open="void open(recent)" />
     </template>
     <div class="footer">
       <button class="history" type="button" data-cy="past-runs-open" @click="historyOpen = true">
@@ -107,7 +108,11 @@ async function open(run: PanelRun): Promise<void> {
     </div>
   </CardSection>
   <OverlayHost v-if="historyOpen" label="Past runs" @close="historyOpen = false"
-    ><PastRunsDialog :runs="runs.past" @close="historyOpen = false" @open="void open($event)"
+    ><PastRunsDialog
+      :conversation="conversation"
+      :runs="runs.past"
+      @close="historyOpen = false"
+      @open="void open($event)"
   /></OverlayHost>
   <OverlayHost v-if="unavailable" label="Run output" @close="unavailable = false"
     ><section class="missing">

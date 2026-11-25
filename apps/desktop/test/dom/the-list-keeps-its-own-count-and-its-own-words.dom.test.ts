@@ -152,7 +152,7 @@ describe('a piece line’s own text — the marks it drops and the marks it keep
     const said = lines.map((one) => one.querySelector('[data-cy="cast-work-said"]'))
     for (const [index, el] of said.entries())
       expect(el, `piece ${index + 1} drew no line`).not.toBeNull()
-    expect(said.map((el) => el!.textContent)).toEqual([
+    expect(said.map((el) => el!.textContent?.trim())).toEqual([
       'Fix the crash',
       'escalate this',
       'ship it today',

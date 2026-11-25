@@ -201,7 +201,7 @@ describe('the rail draws a running conversation as a conversation, never as ende
     const live = rowOf(m, UNWATCHED.sessionId)
 
     // ⛔ **A real control, not a `div`** — `118`'s rule is that a row which can act is a button.
-    expect(live.tagName).toBe('BUTTON')
+    expect(live.getAttribute('role')).toBe('button')
     // ⛔ **No gesture of its own** — *Take it over and open it* went with the fork.
     expect(live.dataset.gesture).toBeUndefined()
     expect(live.getAttribute('aria-label')).not.toBe('Take it over and open it')

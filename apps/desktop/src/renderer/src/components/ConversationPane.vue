@@ -1255,14 +1255,15 @@ const {
   outputFor,
   readingChild,
   childFor,
-  readingAnswer,
+  closeToolAnswer,
   answerFor,
   openWorkflowOutput,
   openChildWork,
   openPanelRun,
   openToolAnswer,
+  canReadToolAnswer,
   openImage,
-} = useConversationOverlays(props, transcript)
+} = useConversationOverlays(props, transcript, () => canReadToolAnswers.value)
 
 /**
  * 🔴 **F093 (C9 d) · what the model got with one message**, for the switch under each message here
@@ -1482,6 +1483,7 @@ onUnmounted(() => {
           :can-stop-commands="canStopBackgroundWork"
           :stopping-call="stoppingCall"
           :can-read-tool-answers="canReadToolAnswers"
+          :can-read-tool-answer="canReadToolAnswer"
           :can-take-a-message="canTakeAMessage"
           :recorded="props.record.phase === 'recorded'"
           :taken-without-this-window="takenWithoutThisWindow"
@@ -1814,14 +1816,15 @@ onUnmounted(() => {
     </OverlayHost>
 
     <!-- What one tool answered (462), on the same paper and through the same host as the two above. -->
-    <OverlayHost v-if="answerFor" label="Tool answer" @close="readingAnswer = null">
+    <OverlayHost v-if="answerFor" label="Tool answer" @close="closeToolAnswer">
       <ToolAnswerViewer
         :name="answerFor.name"
         :answer="answerFor.answer"
-        :can-ask="canReadToolAnswers"
+        :can-ask="canReadToolAnswers || answerFor.answer !== null"
+        :paths="messagePaths"
         :short-form="answerFor.shortForm"
         :call="answerFor.call"
-        @close="readingAnswer = null"
+        @close="closeToolAnswer"
       />
     </OverlayHost>
 

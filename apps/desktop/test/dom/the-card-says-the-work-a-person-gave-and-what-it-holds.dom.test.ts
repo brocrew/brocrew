@@ -1,6 +1,7 @@
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
+import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
@@ -241,7 +242,7 @@ describe('the agent card says the work a person gave it', () => {
     expect(row.dataset.open).toBe('true')
     expect(row.dataset.pressable).toBe('false')
     // ⛔ Never a control, though a screen above the drawer could open a conversation.
-    expect(row.tagName).toBe('SPAN')
+    expect(row.matches('button, [role="button"]')).toBe(false)
     row.click()
     expect(opened, 'a person’s work was pressed and opened a conversation').toEqual([])
 
@@ -310,12 +311,30 @@ describe('the agent card says the work a person gave it', () => {
     expect(open.closest('li')!.querySelector('.ticon')).not.toBeNull()
 
     // ⚑ The press: the piece a parent gave opens that parent; the root opens nothing.
-    expect(open.tagName).toBe('BUTTON')
+    expect(open.getAttribute('role')).toBe('button')
     expect(open.dataset.pressable).toBe('true')
     open.click()
     expect(opened).toEqual(['sess_parent'])
-    root.click()
-    expect(opened, 'the root was pressed and opened a conversation').toEqual(['sess_parent'])
+    // Opening a conversation closes this popup; each keyboard gesture needs its fresh row.
+    for (const [index, key] of ['{Enter}', ' '].entries()) {
+      await nextTick()
+      const reopened = await allTasks(card)
+      await drawnReady()
+      const choice = pieceRows(reopened)[0]!
+      expect(choice.tabIndex).toBe(0)
+      choice.focus()
+      expect(document.activeElement).toBe(choice)
+      await userEvent.keyboard(key)
+      expect(opened).toEqual(Array.from({ length: index + 2 }, () => 'sess_parent'))
+    }
+    await nextTick()
+    const reopened = await allTasks(card)
+    rootRow(reopened)!.click()
+    expect(opened, 'the root was pressed and opened a conversation').toEqual([
+      'sess_parent',
+      'sess_parent',
+      'sess_parent',
+    ])
     unmountAll()
 
     // ⛔ The control: the same piece, answered. Nothing else is open now, so the ROOT is the current
@@ -373,7 +392,7 @@ describe('the agent card says the work a person gave it', () => {
     ).toHaveLength(0)
     expect(m.all('cast-taken-work')).toHaveLength(1)
     const only = m.q('cast-taken-work')
-    expect(only.tagName).toBe('BUTTON')
+    expect(only.getAttribute('role')).toBe('button')
     expect(said(only)).toContain('W1.2')
     expect(said(only)).not.toContain('for you')
     only.click()
@@ -393,7 +412,7 @@ describe('the agent card says the work a person gave it', () => {
     expect(said(person.querySelector('[data-cy="cast-work-to"]')!)).toBe('for you')
     const beside = pieceRows(root)
     expect(beside).toHaveLength(1)
-    expect(beside[0]!.tagName).toBe('BUTTON')
+    expect(beside[0]!.getAttribute('role')).toBe('button')
     expect(labelOf(beside[0]!)).toBe('W1.2')
   })
 

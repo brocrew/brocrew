@@ -681,7 +681,8 @@
 .rail-copy {
   min-width: 0;
 }
-.rail-copy strong {
+.rail-copy > strong,
+.rail-copy > .row-title-line > strong {
   display: block;
   overflow: hidden;
   color: inherit;
@@ -691,7 +692,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-copy small {
+.rail-copy :is(small, .row-status) {
   display: block;
   overflow: hidden;
   margin-top: var(--space-1);

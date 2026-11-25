@@ -1,3 +1,4 @@
+import { userEvent } from 'vitest/browser'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -237,7 +238,7 @@ const paintedBy = (el: Element): string => getComputedStyle(el).backgroundColor
 /* ------------------------------------------------------------------ the bubble */
 
 describe('the bubble beside the plate says what the agent last said, and no more', () => {
-  it('⛔ a message that is not on screen draws a plain bubble with no press — the same message on screen is a button that shows it', () => {
+  it('⛔ a message that is not on screen draws a plain bubble with no press — the same message on screen is a button that shows it', async () => {
     const state = stateOf([said('Checking the window states now.')], Date.now())
 
     // ⚑ Off screen: the conversation shows an empty fold, so there is nowhere to scroll to.
@@ -249,7 +250,10 @@ describe('the bubble beside the plate says what the agent last said, and no more
     const plain = off.q('card-latest')
     expect(visible(plain)).toBe(true)
     expect(read(off.q('card-latest-words'))).toBe('Checking the window states now.')
-    expect(plain.tagName).toBe('P')
+    expect(plain.getAttribute('role')).toBeNull()
+    expect(plain.getAttribute('tabindex')).toBeNull()
+    expect(plain.tabIndex).toBe(-1)
+    expect(plain.matches('button, a[href], input, select, textarea, summary')).toBe(false)
     expect(plain.classList.contains('pressable')).toBe(false)
     plain.click()
     expect(away, 'a bubble with nowhere to go still navigated').toEqual([])
@@ -260,10 +264,17 @@ describe('the bubble beside the plate says what the agent last said, and no more
     const on = panel(state, { shown: state, onNavigate: (itemId: string) => here.push(itemId) })
     const button = on.q('card-latest')
     expect(read(on.q('card-latest-words'))).toBe('Checking the window states now.')
-    expect(button.tagName).toBe('BUTTON')
+    expect(button.getAttribute('role')).toBe('button')
+    expect(button.tabIndex).toBe(0)
     expect(button.classList.contains('pressable')).toBe(true)
     button.click()
     expect(here).toEqual([button.dataset.item])
+    button.focus()
+    expect(document.activeElement).toBe(button)
+    await userEvent.keyboard('{Enter}')
+    expect(here).toEqual([button.dataset.item, button.dataset.item])
+    await userEvent.keyboard(' ')
+    expect(here).toEqual([button.dataset.item, button.dataset.item, button.dataset.item])
     expect(state.items.find((item) => item.id === here[0])?.kind).toBe('assistant')
   })
 
@@ -294,10 +305,16 @@ describe('the bubble beside the plate says what the agent last said, and no more
     const words = m.q('card-latest-words')
     expect(visible(words)).toBe(true)
     // ⚑ The lines the fence held are kept; the fence's own lines are not.
-    expect(words.textContent).toBe('Run this: const x = 1 Then tell me.')
+    expect(words.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Run this: const x = 1 Then tell me.',
+    )
+    expect([...words.querySelectorAll('p')].map((one) => one.textContent)).toEqual([
+      'Run this:',
+      'Then tell me.',
+    ])
+    expect(words.querySelector('pre code')?.textContent).toBe('const x = 1\n')
     expect(words.textContent).not.toContain('```')
-    // ⚑ The title is the same paragraph — what the code sets it to.
-    expect(m.q('card-latest').title).toBe('Run this: const x = 1 Then tell me.')
+    expect(m.q('card-latest').title).toBe('Run this:\n```ts\nconst x = 1\n```\nThen tell me.')
   })
 
   it('🔴 a long message is cut at three lines, and the whole of it is on the bubble’s title', async () => {

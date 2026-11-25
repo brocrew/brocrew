@@ -270,7 +270,7 @@ describe('a row that cannot take input does not offer a button that would (118)'
     await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
     const row = rail.q('open-session-sess_child')
-    expect(row.tagName, 'a row that can be opened is a control').toBe('BUTTON')
+    expect(row.getAttribute('role'), 'a row that can be opened is a control').toBe('button')
     row.click()
     await nextTick()
     expect(forwarded).toEqual(['sess_child'])

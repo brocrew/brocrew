@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue'
+import { computed, ref, shallowReactive, watch, type ComputedRef } from 'vue'
 import type { RunTarget } from '../lib/panel-runs'
 import type {
   ChildWorkInput,
@@ -25,6 +25,7 @@ export interface OverlayProps {
 export function useConversationOverlays(
   props: OverlayProps,
   transcript: ComputedRef<SessionRecord['transcript']>,
+  canAsk: () => boolean,
 ) {
   /**
    * The image being looked at, or null (067).
@@ -151,9 +152,21 @@ export function useConversationOverlays(
     /** The call itself, drawn by its own card in the panel; `null` when it has no tool row. */
     call: (ToolItem & Pick<TranscriptItem, 'at'>) | null
   } | null>(null)
+  // Keep only answers the person opened, so closing the viewer does not discard their content.
+  const heldAnswers = shallowReactive(new Map<string, ToolAnswer>())
+  const answerKey = (sessionId: string, callId: string): string => `${sessionId}\n${callId}`
+  const canReadToolAnswer = (callId: string): boolean =>
+    canAsk() || heldAnswers.has(answerKey(props.record.sessionId, callId))
+
   const answerFor = computed(() =>
     readingAnswer.value?.sessionId === props.record.sessionId ? readingAnswer.value : null,
   )
+
+  let answerRequest = 0
+  function closeToolAnswer(): void {
+    answerRequest++
+    readingAnswer.value = null
+  }
 
   watch(
     () => props.record.sessionId,
@@ -161,7 +174,7 @@ export function useConversationOverlays(
       viewing.value = null
       readingOutput.value = null
       readingChild.value = null
-      readingAnswer.value = null
+      closeToolAnswer()
     },
   )
 
@@ -218,8 +231,11 @@ export function useConversationOverlays(
    */
   async function openToolAnswer(toolCallId: string, name: string): Promise<void> {
     const read = props.onReadToolAnswer
-    if (!read) return
     const sessionId = props.record.sessionId
+    const request = ++answerRequest
+    const key = answerKey(sessionId, toolCallId)
+    const held = heldAnswers.get(key)
+    if (!read && held === undefined) return
     // ⚑ **685 · the short form the row kept, taken BEFORE the await** with the session id, for its
     // reason — a top-level row's or a sub-agent card's (`receiptOf` walks both).
     const shortForm = receiptOf(transcript.value, toolCallId)
@@ -228,7 +244,11 @@ export function useConversationOverlays(
         (item): item is ToolItem & TranscriptItem =>
           item.kind === 'tool' && item.callId === toolCallId && !drawsAsACard(item),
       ) ?? null
-    readingAnswer.value = { sessionId, name, answer: await read(toolCallId), shortForm, call }
+    const answer = held ?? (await read?.(toolCallId)) ?? null
+    if (answer !== null) heldAnswers.set(key, answer)
+    if (request === answerRequest && props.record.sessionId === sessionId) {
+      readingAnswer.value = { sessionId, name, answer, shortForm, call }
+    }
   }
 
   function openImage(item: { path?: string; prompt?: string }): void {
@@ -255,12 +275,13 @@ export function useConversationOverlays(
     outputFor,
     readingChild,
     childFor,
-    readingAnswer,
+    closeToolAnswer,
     answerFor,
     openWorkflowOutput,
     openChildWork,
     openPanelRun,
     openToolAnswer,
+    canReadToolAnswer,
     openImage,
   }
 }

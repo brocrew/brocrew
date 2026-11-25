@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -194,10 +194,17 @@ describe('§3 · F6 · the conversation the notice is about is there to open', (
     expect(rail.all('rail-closed-conversations')).toHaveLength(0)
     // ⚑ …and in it, the row is the press that opens the conversation
     const row = rail.q('open-session-sess_stale')
-    expect(row.tagName).toBe('BUTTON')
+    expect(row.getAttribute('role')).toBe('button')
+    expect(row.tabIndex).toBe(0)
     expect(visible(row)).toBe(true)
     row.click()
     await nextTick()
     expect(pressed).toEqual(['sess_stale'])
+    row.focus()
+    expect(document.activeElement).toBe(row)
+    await userEvent.keyboard('{Enter}')
+    expect(pressed).toEqual(['sess_stale', 'sess_stale'])
+    await userEvent.keyboard(' ')
+    expect(pressed).toEqual(['sess_stale', 'sess_stale', 'sess_stale'])
   })
 })

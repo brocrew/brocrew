@@ -10,6 +10,7 @@ import type {
 import { appClosing } from '../lib/app-closing'
 import { readOnlyTranscript } from '../lib/read-only-transcript'
 import DocumentBody from './DocumentBody.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import TranscriptView from './TranscriptView.vue'
 
 /**
@@ -415,9 +416,12 @@ const PART_WORD: Record<string, string> = {
            description, and the tool-use that made it. Only a plain `Task` child's `.meta.json`
            carries either — a workflow agent's says only that it is a workflow agent — so both are
            conditional, and their absence is silence rather than a blank. -->
-      <span v-if="result.ok && result.title" class="asked" data-cy="child-work-title">
-        {{ result.title }}
-      </span>
+      <MarkdownWords
+        v-if="result.ok && result.title"
+        class="asked"
+        data-cy="child-work-title"
+        :text="result.title"
+      />
       <span v-if="result.ok && result.parentToolCallId" class="file" data-cy="child-work-parent">
         from {{ result.parentToolCallId }}
       </span>

@@ -6,6 +6,8 @@ import { useClientMessagePaths, usePathsIn, type PathsHere } from '../composable
 
 const props = defineProps<{
   text: string
+  compact?: boolean
+  streaming?: boolean
   lead?: string
   paths?: PathsHere | null
   sessionId?: string
@@ -14,16 +16,21 @@ const props = defineProps<{
 const emit = defineEmits<{ openDocument: [resourceId: string] }>()
 const here = useClientMessagePaths(
   () => props.sessionId ?? null,
-  () => !props.paths && !!props.sessionId,
+  () => !props.streaming && !props.paths && !!props.sessionId,
 )
-const html = computed(() => renderChatMarkdown(props.text, props.lead).trimEnd())
+const html = computed(() => renderChatMarkdown(props.text, props.lead, props.streaming).trimEnd())
 const paths = usePathsIn(
-  () => props.paths ?? here.value,
+  () => (props.streaming ? null : (props.paths ?? here.value)),
   () => [html.value],
 )
-const rendered = computed(() => paths.mark(documentsNamedIn(html.value, props.documents ?? [])))
+const rendered = computed(() =>
+  props.streaming ? html.value : paths.mark(documentsNamedIn(html.value, props.documents ?? [])),
+)
 
 function clicked(event: MouseEvent): void {
+  // Links keep their own action when these words are inside a navigable preview.
+  if (event.target instanceof Element && event.target.closest('.md-chat a, .md-chat button'))
+    event.stopPropagation()
   const resource = documentClicked(event.target)
   if (resource === null) return paths.clicked(event)
   event.preventDefault()
@@ -32,7 +39,7 @@ function clicked(event: MouseEvent): void {
 </script>
 
 <template>
-  <div class="markdown-words" @click="clicked">
+  <div class="markdown-words" :class="{ compact }" @click="clicked">
     <!-- eslint-disable-next-line vue/no-v-html -- the shared chat renderer disables author HTML. -->
     <div class="md-chat" v-html="rendered"></div>
     <p
@@ -56,5 +63,22 @@ function clicked(event: MouseEvent): void {
 
 .md-chat {
   white-space: normal;
+}
+
+.compact .md-chat,
+.compact :deep(.md-chat :is(p, pre, ul, ol, li, blockquote, hr)),
+.compact :deep(.md-chat :is(h1, h2, h3, h4, h5, h6)),
+.compact :deep(.md-chat :is(table, thead, tbody, tr, th, td)) {
+  display: inline;
+}
+
+.markdown-words.compact,
+.compact .md-chat,
+.compact :deep(.md-chat *) {
+  white-space: nowrap;
+}
+
+.compact :deep(br) {
+  display: none;
 }
 </style>

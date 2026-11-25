@@ -10,6 +10,8 @@ export interface PanelRun {
   key: string
   label: string
   detail: string
+  labelIsProse?: boolean
+  detailIsProse?: boolean
   group: RunGroup
   status: string
   active: boolean
@@ -45,6 +47,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
       key,
       label: card.title || card.kind || 'Sub-agent',
       detail: card.lastTool ?? '',
+      labelIsProse: !!card.title,
       group: 'Agents',
       status: active
         ? 'Running'
@@ -78,6 +81,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         key: `workflow:${run.taskId}`,
         label: run.name || 'Workflow',
         detail: run.description ?? '',
+        detailIsProse: true,
         group: 'Workflows',
         status: active
           ? 'Running'
@@ -110,6 +114,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
         key: `background:${item.callId}`,
         label: item.summary || item.name,
         detail: work.summary ?? '',
+        detailIsProse: true,
         group: item.name === 'Bash' ? 'Commands' : 'Background',
         status: BACKGROUND_WORD[backgroundState(work)],
         active: false,
@@ -136,6 +141,7 @@ export function panelRuns(state: TranscriptState): PanelRuns {
     rows.push({
       key: `background:${work.id}`,
       label: work.command?.text || work.description || work.id,
+      labelIsProse: !work.command?.text && !!work.description,
       detail: work.command?.name || '',
       group,
       status: 'Running',
