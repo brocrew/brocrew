@@ -248,7 +248,16 @@ function promptGuardHooks(
   }
 }
 
-const MODEL_PROBE_TIMEOUT_MS = 15_000
+/**
+ * How long listing the models may take in total, from starting the probe CLI to its answer.
+ *
+ * A total limit with a reason: the probe starts a throwaway CLI for a settings screen nobody is
+ * watching, and a quiet pipe cannot tell a slow start (antivirus scan, cold disk)
+ * from a hung child. The limit stops the child and lets the screen say it could not ask. It is far
+ * above a slow PC's start, so a probe that is only slow still lists; a probe whose CLI exits is
+ * rejected by the SDK at once.
+ */
+const MODEL_PROBE_TIMEOUT_MS = 60_000
 export type QueryFactory = (params: {
   prompt: AsyncIterable<SDKUserMessage>
   options: Options

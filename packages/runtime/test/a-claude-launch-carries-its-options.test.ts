@@ -568,7 +568,7 @@ describe('the model list, asked of the provider rather than written down (058)',
     try {
       const probing = runtime.listModels({ providerHome: '/tmp/x/home' })
       const settled = expect(probing).rejects.toThrow(/did not answer/)
-      await vi.advanceTimersByTimeAsync(20_000)
+      await vi.advanceTimersByTimeAsync(61_000)
       await settled
     } finally {
       vi.useRealTimers()

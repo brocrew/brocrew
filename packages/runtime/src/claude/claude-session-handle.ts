@@ -233,11 +233,7 @@ export function permissionModeFor(planMode: boolean): PermissionMode {
 
 const CLOSE_INTERRUPT_TIMEOUT_MS = 2000
 
-const COMMAND_READ_TIMEOUT_MS = 15_000
-
 const INTERRUPT_ACK_TIMEOUT_MS = 2000
-
-const SETTINGS_ACK_TIMEOUT_MS = 10_000
 
 export const CLOSE_EXIT_RECEIPT_TIMEOUT_MS = 5_000
 
@@ -801,11 +797,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     let said: SessionAccount | null = null
     try {
-      const info = await withDeadline(
-        query.accountInfo(),
-        COMMAND_READ_TIMEOUT_MS,
-        'claude account',
-      )
+      const info = await query.accountInfo()
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
     } catch {
       // Do not expose an account-read failure that might identify the account.
@@ -820,11 +812,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   private async publishCommands(query: ClaudeQuery): Promise<void> {
     if (!query.initializationResult) return
     try {
-      const result = await withDeadline(
-        query.initializationResult(),
-        COMMAND_READ_TIMEOUT_MS,
-        'claude command list',
-      )
+      const result = await query.initializationResult()
       const { commands, dropped } = boundCommands(result.commands.map(readCommand))
       this.emit({
         type: 'provider_commands',
@@ -843,11 +831,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (query?.supportedCommands === undefined) {
       throw new Error('this Claude query cannot say which commands it answers to')
     }
-    const rows = await withDeadline(
-      query.supportedCommands(),
-      COMMAND_READ_TIMEOUT_MS,
-      'claude command list',
-    )
+    const rows = await query.supportedCommands()
     const { commands, dropped } = boundCommands(rows.map(readCommand))
     this.emit({
       type: 'provider_commands',
@@ -1330,40 +1314,34 @@ export class ClaudeSessionHandle implements SessionHandle {
     onInputAccepted?.()
   }
 
-  private async settled(call: Promise<void> | undefined, what: string): Promise<void> {
-    if (call === undefined) return
-    await withDeadline(call, SETTINGS_ACK_TIMEOUT_MS, `claude ${what}`)
-  }
-
+  /**
+   * Apply the queued settings. Each acknowledgement is awaited with no clock: its answer or the CLI's
+   * exit ends the wait (card 197). A slow PC makes the CLI slow to answer, and failing the turn then
+   * loses the person's model or effort change for nothing. The SDK rejects every pending control
+   * request when the CLI exits (measured against a CLI that exits mid-request), so a dead CLI ends the
+   * wait too. A CLI that is alive and silent shows as a stalled turn (`StallWatchdog` reports it), and
+   * closing the session ends it (a Stop that goes unanswered closes it after its own short wait).
+   */
   private async applyPendingSettings(): Promise<void> {
     const turnId = this.machine.activeTurnId
-    let reloadTimedOut = false
     try {
       if (this.sharedSkillsRoot) {
         if (!this.query?.reloadPlugins) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        const reload = this.query.reloadPlugins()
-        try {
-          await withDeadline(reload, 60_000, 'reloadPlugins')
-        } catch (error) {
-          reloadTimedOut = didNotAnswerInTime(error)
-          throw error
-        }
+        // No clock (card 197): a slow reload is waited for, and the SDK rejects it if the CLI exits.
+        await this.query.reloadPlugins()
       }
 
       if (this.models.pending) {
-        await this.settled(this.query?.setModel?.(this.models.requested), 'setModel')
+        await this.query?.setModel?.(this.models.requested)
         this.models.adopt()
       }
       if (this.efforts.pending) {
         const wanted = this.efforts.requested
 
-        await this.settled(
-          this.query?.applyFlagSettings?.({
-            effortLevel: wanted === undefined ? null : claudeEffort(wanted),
-            ...(this.ultracodeAsked ? { ultracode: true } : {}),
-          }),
-          'applyFlagSettings',
-        )
+        await this.query?.applyFlagSettings?.({
+          effortLevel: wanted === undefined ? null : claudeEffort(wanted),
+          ...(this.ultracodeAsked ? { ultracode: true } : {}),
+        })
         this.efforts.adopt()
       }
       if (this.folders.pending) {
@@ -1376,20 +1354,14 @@ export class ClaudeSessionHandle implements SessionHandle {
             )
           }
 
-          await this.settled(
-            this.query.applyFlagSettings({
-              permissions: flagPermissionsOf(this.keptRules, this.withSharedSkills(next)),
-            }),
-            'applyFlagSettings',
-          )
+          await this.query.applyFlagSettings({
+            permissions: flagPermissionsOf(this.keptRules, this.withSharedSkills(next)),
+          })
         }
         this.folders.adopt()
       }
       if (this.plan.pending) {
-        await this.settled(
-          this.query?.setPermissionMode?.(permissionModeFor(this.plan.requested)),
-          'setPermissionMode',
-        )
+        await this.query?.setPermissionMode?.(permissionModeFor(this.plan.requested))
         this.plan.adopt()
       }
     } catch (error) {
@@ -1397,9 +1369,6 @@ export class ClaudeSessionHandle implements SessionHandle {
         this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {
           neverSent: true,
         })
-      if (reloadTimedOut) {
-        void this.close().catch(() => {})
-      }
       throw error
     }
   }

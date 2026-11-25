@@ -75,8 +75,8 @@ const DEFAULT_DELIVERY_WAIT_MS = 15_000
  * list — a child that has not finished starting, or one whose own list read failed — and `279`
  * measured the handshake's list at **1 918 ms**, and `supportedCommands()` at **0 ms** once it has
  * answered.
- * ⚠️ **A person is waiting on this, pressing Send**, so it is shorter than the adapter's own 15 s
- * bound (`COMMAND_READ_TIMEOUT_MS`, sized for the handshake's read, which nothing waits on): five
+ * ⚠️ **A person is waiting on this, pressing Send**, so it is bounded here although the adapter's own
+ * read of the handshake list waits for its answer or the CLI's exit (nothing waits on that one): five
  * seconds is ~2.6× the measured handshake. ⛔ **On expiry the message decides without a list**, which `R42` rules: a message
  * shaped like a command goes out as typed.
  */
