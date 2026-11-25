@@ -46,6 +46,7 @@ function wire(context: Record<string, unknown>) {
     'openTheRecoveryWindow',
     'withRecoveryWork',
     'stopRecoveryWork',
+    'stopWindowServices',
   ])
   const functions = parsed.statements.filter(
     (node) => ts.isFunctionDeclaration(node) && wanted.has(node.name?.text ?? ''),
