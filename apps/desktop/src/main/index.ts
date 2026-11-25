@@ -1086,6 +1086,17 @@ async function whatAFailedStartEndsOn(
   }
 }
 
+/** The window-facing services both teardowns stop, in the order both have always used. */
+function stopWindowServices(): void {
+  stopThemeIpc?.()
+  stopThemeIpc = undefined
+  stopStorageIpc?.()
+  stopStorageIpc = undefined
+  stopVoiceIpc?.()
+  stopVoiceIpc = undefined
+  void dockLabel?.then((label) => label.stop())
+}
+
 function stopWhatTheStartStarted(): Promise<void> {
   stoppingTheStart ??= memoryJournal.stop(async () => {
     try {
@@ -1093,13 +1104,7 @@ function stopWhatTheStartStarted(): Promise<void> {
     } catch (error) {
       sayAtOnce(`BroCrew failed to stop provider setup after its failed start: ${inspect(error)}`)
     }
-    stopThemeIpc?.()
-    stopThemeIpc = undefined
-    stopStorageIpc?.()
-    stopStorageIpc = undefined
-    stopVoiceIpc?.()
-    stopVoiceIpc = undefined
-    void dockLabel?.then((label) => label.stop())
+    stopWindowServices()
     await themes?.close().catch(() => undefined)
     const started = host
     if (started === null) {
@@ -1722,13 +1727,7 @@ const lifetime = createAppLifetime({
     if (stoppingTheStart === null) void stopProviderSetup?.()
     updates?.stop()
     host?.stopSweeping()
-    stopThemeIpc?.()
-    stopThemeIpc = undefined
-    stopStorageIpc?.()
-    stopStorageIpc = undefined
-    stopVoiceIpc?.()
-    stopVoiceIpc = undefined
-    void dockLabel?.then((label) => label.stop())
+    stopWindowServices()
     void themes?.close().catch(() => undefined)
   },
   drainArchiveWork: async () => {
@@ -1765,15 +1764,7 @@ const lifetime = createAppLifetime({
       withinMs,
     ),
   log: (message, error) => {
-    const line = error === undefined ? message : `${message} ${inspect(error)}`
-    try {
-      const bytes = Buffer.from(`${line}\n`, 'utf8')
-      for (let written = 0; written < bytes.length;) {
-        written += writeSync(STDERR_FD, bytes, written, bytes.length - written)
-      }
-    } catch {
-      console.error(line)
-    }
+    sayAtOnce(error === undefined ? message : `${message} ${inspect(error)}`)
   },
   now: () => Date.now(),
 })

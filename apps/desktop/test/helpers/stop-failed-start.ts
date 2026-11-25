@@ -19,6 +19,7 @@ function rootFunction(file: string, name: string): string {
 
 export function stopFailedStart(host: RuntimeHost, failure: Error) {
   const code = [
+    rootFunction('index.ts', 'stopWindowServices'),
     rootFunction('index.ts', 'stopWhatTheStartStarted'),
     'stopWhatTheStartStarted()',
   ].join('\n')

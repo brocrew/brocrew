@@ -19,6 +19,9 @@ const parsed = ts.createSourceFile('index.ts', index, ts.ScriptTarget.Latest, tr
 const cleanup = parsed.statements.find(
   (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'stopWhatTheStartStarted',
 )!
+const windowServices = parsed.statements.find(
+  (node) => ts.isFunctionDeclaration(node) && node.name?.text === 'stopWindowServices',
+)!
 const lifetime = parsed.statements.find(
   (node) =>
     ts.isVariableStatement(node) &&
@@ -26,6 +29,7 @@ const lifetime = parsed.statements.find(
 )!
 const source = ts.transpileModule(
   [
+    windowServices.getText(parsed),
     cleanup.getText(parsed),
     lifetime.getText(parsed),
     'globalThis.startCleanup = stopWhatTheStartStarted; globalThis.appLifetime = lifetime',
