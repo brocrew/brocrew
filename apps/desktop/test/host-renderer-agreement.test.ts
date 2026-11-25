@@ -600,7 +600,11 @@ describe('the host and the renderer cannot disagree about what is running (100)'
           text: '',
           attachments,
           humanInitiated: true,
-          promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
+          promptUpdates: {
+            'memory:claude:': 'seen',
+            'memory:codex:': 'seen',
+            'memory-nudge': 'checked',
+          },
         },
       ])
       expect(typed[0]?.sent).toContain('Attached by the user')

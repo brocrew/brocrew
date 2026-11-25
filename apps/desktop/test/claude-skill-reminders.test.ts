@@ -10,7 +10,6 @@ const MEMORY_LINE = 'Memory changed (observed at '
 const MEMORY_NUDGE = 'Fix or remove outdated memory in '
 const QUIET_AFTER_COMPACTION = [
   MEMORY_LINE,
-  MEMORY_NUDGE,
   'Your own notes (',
   'Shared skill (',
   'Plugin information (',
@@ -162,6 +161,8 @@ it.each(memoryFixtures)(
   '$provider sends memory changes by path once and restores the start baseline after compaction',
   async (fixture) => {
     const world = new F093World()
+    const idleDelay = 86_400_000
+    const countdowns = vi.spyOn(globalThis, 'setTimeout')
     try {
       const profile = 'fictional-memory-reader'
       const claudeFolder = claudeAutoMemoryDir(world.homeOf('claude', profile))
@@ -172,6 +173,7 @@ it.each(memoryFixtures)(
       mkdirSync(directory, { recursive: true })
       writeFileSync(fixture.indexPath(home), 'An existing index.')
       const host = world.buildHost(true, {
+        idleStopAfterMs: idleDelay,
         readPromptSkills: () => ({
           root: join(world.userData, 'skills'),
           entries: [{ id: 'shared:steady', name: 'Fictional steady skill', revision: 'steady' }],
@@ -183,8 +185,9 @@ it.each(memoryFixtures)(
       const turn = async (text: string) => {
         const endpoint = world.end.newest()
         await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+        const endings = world.countOf(id, 'turn')
         await host.send(id, text, world.window)
-        await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+        await vi.waitFor(() => expect(world.countOf(id, 'turn')).toBe(endings + 1))
         const sent = endpoint.sends.at(-1) ?? ''
         return sent.slice(sent.indexOf('This app adds what follows'))
       }
@@ -193,14 +196,33 @@ it.each(memoryFixtures)(
         world.end.newest().handle.simulateCompaction()
         await vi.waitFor(() => expect(world.countOf(id, 'compaction')).toBe(before + 1))
       }
+      const fail = async (text: string) => {
+        const endpoint = world.end.newest()
+        const endings = world.countOf(id, 'turn')
+        endpoint.handle.holdNextTurn()
+        await host.send(id, text, world.window)
+        await vi.waitFor(() => expect(endpoint.handle.status()).toBe('working'))
+        endpoint.handle.simulateError('The fictional provider exited.', true)
+        await vi.waitFor(() => {
+          const settled = world.ledger(id).filter((event) => event.type === 'turn')[endings]
+          expect(settled).toMatchObject({ state: 'failed', wordOf: 'this-app' })
+        })
+        await host.close(id, world.window)
+        await host.resumeSession(id, world.window)
+        return endpoint.sends.at(-1)
+      }
+      expect(await fail('Fail before the first nudge could be kept.')).toContain(MEMORY_NUDGE)
       const first = await turn('Establish the baseline.')
       expect(first.split('\n').find((line) => line.startsWith(MEMORY_NUDGE))).toBe(
         `${MEMORY_NUDGE}\`${directory}\`.`,
       )
       expect(first).not.toContain(MEMORY_LINE)
+      expect(await fail('Fail after the nudge was kept.')).not.toContain(MEMORY_NUDGE)
+      expect(await turn('Resume the same context again.')).not.toContain(MEMORY_NUDGE)
       await compact()
       const quiet = await turn('After an unchanged compaction.')
       expect(quiet).not.toContain('Your own instructions (')
+      expect(quiet).toContain(MEMORY_NUDGE)
       for (const title of QUIET_AFTER_COMPACTION) expect(quiet).not.toContain(title)
 
       const ownPath = join(directory, fixture.note)
@@ -208,7 +230,10 @@ it.each(memoryFixtures)(
       const added = await turn('Read the changed memory path.')
       expect(memoryLine(added)?.split('): ')[1]).toBe(`\`${ownPath}\`.`)
       expect(added).not.toContain('Body stays out')
-      expect(await turn('The note is unchanged.')).not.toContain(MEMORY_LINE)
+      expect(added).toContain(MEMORY_NUDGE)
+      const unchanged = await turn('The note is unchanged.')
+      expect(unchanged).not.toContain(MEMORY_LINE)
+      expect(unchanged).not.toContain(MEMORY_NUDGE)
 
       const other = memoryFixtures.find(({ provider }) => provider !== fixture.provider)!
       const otherHome = world.homeOf(other.provider, profile)
@@ -251,15 +276,33 @@ it.each(memoryFixtures)(
       await compact()
       const after = await turn('After a compaction with one standing change.')
       expect(after).toContain(rule)
+      expect(after).toContain(MEMORY_NUDGE)
       for (const title of QUIET_AFTER_COMPACTION) expect(after).not.toContain(title)
-      expect(await turn('After the change was re-sent.')).not.toContain(rule)
+      const afterResend = await turn('After the change was re-sent.')
+      expect(afterResend).not.toContain(rule)
+      expect(afterResend).not.toContain(MEMORY_NUDGE)
 
-      await host.close(id, world.window)
-      await host.resumeSession(id, world.window)
-      const reopened = await turn('First ordinary footer after reopen.')
-      expect(reopened.split('\n').find((line) => line.startsWith(MEMORY_NUDGE))).toBe(nudge)
+      const previous = world.end.newest().handle
+      const countdown = countdowns.mock.calls.map(([, delay]) => delay).lastIndexOf(idleDelay)
+      expect(countdown).toBeGreaterThanOrEqual(0)
+      clearTimeout(countdowns.mock.results[countdown]?.value)
+      countdowns.mock.calls[countdown]?.[0]()
+      await vi.waitFor(() => expect(previous.status()).toBe('ended'))
+      const wake = await host.startAndSend(
+        id,
+        'First ordinary footer after idle stop.',
+        world.window,
+      )
+      expect('notSent' in wake).toBe(false)
+      const resumed = world.end.newest()
+      expect(resumed.handle).not.toBe(previous)
+      expect(resumed.handle.ref.sessionId).toBe(previous.ref.sessionId)
+      const reopened = resumed.sends.at(-1)
+      expect(reopened).toContain('First ordinary footer after idle stop.')
+      expect(reopened).not.toContain(MEMORY_NUDGE)
       expect(reopened).not.toContain(MEMORY_LINE)
     } finally {
+      countdowns.mockRestore()
       await world.dispose()
     }
   },

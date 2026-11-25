@@ -243,7 +243,11 @@ describe('the go-ahead reaches the provider and is signed by BroBot (278 §1)', 
         type: 'user_turn',
         text: 'do the thing',
         humanInitiated: true,
-        promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen' },
+        promptUpdates: {
+          'memory:claude:': 'seen',
+          'memory:codex:': 'seen',
+          'memory-nudge': 'checked',
+        },
       },
     ])
     expect(turns[0]?.sent).toContain('do the thing')

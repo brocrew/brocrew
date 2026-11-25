@@ -30,7 +30,12 @@ function typedTurn(text: string, baseline?: PromptUpdateBaseline) {
     type: 'user_turn',
     text,
     humanInitiated: true,
-    promptUpdates: { 'memory:claude:': 'seen', 'memory:codex:': 'seen', ...baseline },
+    promptUpdates: {
+      'memory:claude:': 'seen',
+      'memory:codex:': 'seen',
+      'memory-nudge': 'checked',
+      ...baseline,
+    },
   }
 }
 
@@ -41,10 +46,7 @@ class RecordingSink implements RuntimeEventSink {
   readonly messages: RuntimeEventMessage[] = []
   readonly alive = true
   constructor(
-    // ⛔ **A WINDOW's owner id, since 413.** `413` made a turn the person's only when a WINDOW
-    // sent it — a positive test on the id `sinkOwnerId` mints — so a double standing in for a
-    // window has to look like one. ⚠️ Three assertions in this file read the exact `user_turn`
-    // payload of a turn a person sent, and they are what caught it.
+    // The host uses the owner ID to recognise a window and attribute its turns to the person.
     readonly ownerId = sinkOwnerId({ id: 1 }),
     private readonly log: string[] = [],
   ) {}

@@ -28,6 +28,7 @@ export type PromptUpdateBaseline = Readonly<
       | 'starter'
       | 'peers'
       | 'methods-availability'
+      | 'memory-nudge'
       | `method:${string}`
       | `skill:${string}`
       | `memory:${string}`,
