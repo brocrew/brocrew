@@ -207,7 +207,7 @@ describe('582 · the layer a person writes', () => {
       db.prepare('UPDATE agent_identity SET can_write_rules = ? WHERE slug = ?').run(held, 'worker')
       const opened = await personOpens('worker')
       expect(reads.at(-1)?.instructions.composed).toContain(
-        '- Only the person and the profile that created an agent can change its standing rules; any conversation of that profile counts, and when no creating profile is recorded, only the person can. Being the same profile as the agent gives no right to change its rules: an agent never writes its own, and keeps its own notes instead. Anyone else, the agent included, can propose a change, and the person decides a proposal. Each version keeps its author and reason, and can be undone.',
+        '- Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.',
       )
       expect(reads.at(-1)?.instructions.composed).not.toContain(
         "save a person's rule for another agent",

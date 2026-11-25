@@ -3,7 +3,6 @@ import {
   PLUGINS_HEADING,
   type PluginInstructionEntry,
 } from '../plugins/instructions'
-import { RULE_WRITING_POLICY } from '../../shared/capabilities'
 import { providerDescriptor, DEFAULT_IDENTITY_PROVIDER } from '@brobot2/shared'
 // ⚑ **583 · the axis the instructions sheet is grouped on** — see {@link profileBundleSpans}.
 import type { InstructionSpan, WhoseText } from '../../shared/whose-text'
@@ -443,7 +442,10 @@ const COORDINATOR_TEXT = [
 ] as const
 
 // Every profile's memory and saved methods are its own to write.
-export const MAY_SAVE_MEMORY = "You may save lessons to your profile's memory and saved methods."
+export const MAY_SAVE_MEMORY = 'You may save memory and methods for this profile.'
+
+const LAUNCH_RULE_WRITING_POLICY =
+  'Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.'
 
 // A conversation with no profile runs in another profile's home, so it saves nothing there.
 export const MAY_NOT_SAVE_MEMORY =
@@ -544,7 +546,6 @@ function dynamicLayer(context: InstructionContext): string[] {
   const lines: string[] = [
     `- Your working directory is \`${context.cwd}\`.`,
     '- This folder persists: files you leave here are still here in later conversations.',
-    '- Ask when something is destructive or ambiguous.',
   ]
   if (context.startedBy !== null) {
     lines.push(`- This conversation was started by ${context.startedBy}.`)
@@ -734,7 +735,7 @@ function thisConversationSections(
     heading: '## This conversation',
     blocks: [dynamicLayer(context).join('\n')],
   })
-  const lines = [`- ${RULE_WRITING_POLICY}`]
+  const lines = [`- ${LAUNCH_RULE_WRITING_POLICY}`]
   lines.push(`- ${context.profileSlug == null ? MAY_NOT_SAVE_MEMORY : MAY_SAVE_MEMORY}`)
   sections.push({ whose: 'dynamic', heading: '## What you may do', blocks: [lines.join('\n')] })
   if (context.plugins != null) {

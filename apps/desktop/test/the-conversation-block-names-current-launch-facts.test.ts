@@ -18,8 +18,9 @@ describe('the conversation block at this launch', () => {
       build: { id: 'fictional-build', commit: 'a'.repeat(40), dirty: false, schema: 7 },
     })
     expect(text).toContain(
-      '- Your working directory is `/tmp/fictional-work`.\n- This folder persists: files you leave here are still here in later conversations.\n- Ask when something is destructive or ambiguous.',
+      '- Your working directory is `/tmp/fictional-work`.\n- This folder persists: files you leave here are still here in later conversations.',
     )
+    expect(text).not.toContain('Ask when something is destructive or ambiguous.')
     expect(text).toContain('This conversation was started by Ada.')
     expect(text).not.toContain('fictional-build')
     expect(text).not.toContain('a'.repeat(40))
