@@ -13,3 +13,15 @@ export const OPENING: TranscriptEvent[] = [
     text: 'Sure. I will look at the header first, then adjust the logo size and the spacing around it.',
   } as never,
 ]
+
+/** The same conversation through its first tool call: reading the header file. */
+export const READING_THE_HEADER: TranscriptEvent[] = [
+  ...OPENING,
+  {
+    type: 'tool_call',
+    id: 'c1',
+    name: 'Read',
+    summary: JSON.stringify({ file_path: 'src/components/SiteHeader.vue' }),
+  } as never,
+  { type: 'tool_result', id: 'c1', summary: '64 lines', ok: true } as never,
+]
