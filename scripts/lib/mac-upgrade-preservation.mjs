@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { readCompressedCheckpoint, readDatabase } from './upgrade-database.mjs'
 import { DatabaseSync } from 'node:sqlite'
 import { isDeepStrictEqual } from 'node:util'
-import { requireEvidence, lineageFits } from './upgrade-path.mjs'
+import { recordedLineage, requireEvidence } from './upgrade-path.mjs'
+import { liveProviderSessions } from './upgrade-session-preservation.mjs'
 import { retainedFixtureTables } from './upgrade-retention.mjs'
 
 export const USAGE_TABLES = [
@@ -28,8 +29,38 @@ function rowsKept(before, after, table, ignored = []) {
 export function dataPreserved(
   before,
   after,
-  { allowAppended = false, usage = false, candidateLineage, retentionVersion = '' } = {},
+  {
+    allowAppended = false,
+    usage = false,
+    candidateLineage,
+    retentionVersion = '',
+    providerSessionEvidence,
+  } = {},
 ) {
+  const live =
+    candidateLineage &&
+    liveProviderSessions(
+      { tables: before, lineage: recordedLineage(before.migrations) },
+      { tables: after, lineage: recordedLineage(after.migrations) },
+      candidateLineage,
+    )
+  const rawPrefixMatches = isDeepStrictEqual(
+    before.migrations.map((row) => ({ ...row })),
+    (live ? after.migrations.slice(0, before.migrations.length) : after.migrations).map((row) => ({
+      ...row,
+    })),
+  )
+  const rawTimestampsMatch = candidateLineage?.every(
+    (entry, index) => after.migrations[index]?.created_at === entry.createdAt,
+  )
+  if (live && providerSessionEvidence !== undefined) {
+    const receipt = { ...live.receipt, rawPrefixMatches, rawTimestampsMatch }
+    writeFileSync(providerSessionEvidence, JSON.stringify(receipt, null, 2))
+  }
+  requireEvidence(
+    rawPrefixMatches && (!live || (rawTimestampsMatch && live.receipt.matchesLineage)),
+    'Migration records differ from the expected lineage.',
+  )
   for (const table of ['provider_session', 'events']) {
     requireEvidence(
       Array.isArray(before[table]) && Array.isArray(after[table]) && before[table].length > 0,
@@ -44,7 +75,12 @@ export function dataPreserved(
     before.provider_session.length === after.provider_session.length,
     'Conversation count changed.',
   )
-  rowsKept(before.provider_session, after.provider_session, 'provider_session', [
+  const defaults = live?.additions.provider_session
+  const expected =
+    defaults === undefined
+      ? before.provider_session
+      : before.provider_session.map((row) => ({ ...defaults, ...row }))
+  rowsKept(expected, after.provider_session, 'provider_session', [
     'status',
     'updated_at',
     'closed_by_the_quit_at',
@@ -57,23 +93,6 @@ export function dataPreserved(
       'Unexpected new events rows before any resume.',
     )
   }
-  requireEvidence(
-    candidateLineage
-      ? isDeepStrictEqual(
-          before.migrations.map((row) => ({ ...row })),
-          after.migrations.slice(0, before.migrations.length).map((row) => ({ ...row })),
-        ) &&
-          after.migrations.length === candidateLineage.length &&
-          lineageFits(
-            after.migrations.map((m) => ({ createdAt: m.created_at, hash: m.hash })),
-            candidateLineage,
-          )
-      : isDeepStrictEqual(
-          before.migrations.map((row) => ({ ...row })),
-          after.migrations.map((row) => ({ ...row })),
-        ),
-    'Migration records differ from the expected lineage.',
-  )
   if (usage)
     for (const table of USAGE_TABLES)
       requireEvidence(

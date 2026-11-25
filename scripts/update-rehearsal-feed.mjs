@@ -63,6 +63,7 @@ export const SANDBOX_FILES = [
   'scripts/lib/upgrade-database.mjs',
   'scripts/lib/upgrade-path.mjs',
   'scripts/lib/upgrade-retention.mjs',
+  'scripts/lib/upgrade-session-preservation.mjs',
   'scripts/lib/windows-update-test.mjs',
   'scripts/mac-signed-upgrade-contract.mjs',
   'scripts/mac-update-test.mjs',
