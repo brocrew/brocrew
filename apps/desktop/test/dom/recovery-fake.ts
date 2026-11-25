@@ -1,3 +1,4 @@
+import { READING_THE_HEADER } from '../../look/fixtures/conversation'
 import { recordedWorkAncestry } from '../../src/main/runtime/work-ancestry'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { MessagePath, MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime-ipc'
@@ -229,23 +230,7 @@ export const CONVERSATIONS: readonly HistoryConversation[] = [
 
 /** A short exchange that ends with a request left unanswered, the card a copy must not offer. */
 export const HEADER_EVENTS: readonly HistoryEvent[] = timed([
-  { type: 'status', state: 'idle' } as never,
-  {
-    type: 'user_turn',
-    text: 'Can you tidy the landing page header and make the logo larger?',
-  } as never,
-  { type: 'status', state: 'working' } as never,
-  {
-    type: 'assistant_message',
-    text: 'Sure. I will look at the header first, then adjust the logo size and the spacing around it.',
-  } as never,
-  {
-    type: 'tool_call',
-    id: 'c1',
-    name: 'Read',
-    summary: JSON.stringify({ file_path: 'src/components/SiteHeader.vue' }),
-  } as never,
-  { type: 'tool_result', id: 'c1', summary: '64 lines', ok: true } as never,
+  ...READING_THE_HEADER,
   {
     type: 'assistant_message',
     text: 'The logo is now 40 px tall and the nav items are spaced evenly. I would like to run the tests next.',
