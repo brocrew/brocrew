@@ -10,6 +10,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { stillWaiting } from './helpers/provider-close-waits'
 
 /**
  * **Reopening a conversation the app has just called closed** (075, from 072 §5.3).
@@ -414,15 +415,16 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     expect(host.sessionIds).toEqual([sessionId])
   })
 
-  it('says "still closing" rather than "already open" when the teardown outlives the wait', async () => {
-    // The refusal has to survive, because going around a live teardown is what puts two providers
-    // on one transcript. What changes is the sentence: it now names the state the app is in.
+  it('a person’s Reopen of a start closed before it arrived waits for that start, and is neither "already open" nor refused (card 197)', async () => {
+    // Going around a live start is what puts two providers on one transcript, so the Reopen does
+    // not go around it. Card 197: a person's Reopen waits for the start to end instead of being
+    // refused once a fixed bound passes. Every other caller keeps `awaitArrival`'s bound and its
+    // "still putting away" sentence (what-a-person-can-do-instead-of-try-again.test.ts).
     //
     // ⚠️ **Reached the way a person reaches it**, not by writing the state in: Close pressed while
     // the provider was still starting, against a handshake that never answers. The slot stays
-    // `closing` with no session — `whyNotOurs` is what keeps it that way, deliberately — so the
-    // bounded wait expires with the reservation still held. This also covers `settleTeardown`'s
-    // other branch, the one that routes to `awaitArrival`.
+    // `closing` with no session — `whyNotOurs` is what keeps it that way, deliberately. This covers
+    // `settleTeardown`'s other branch, the one that waits on the start's arrival.
     let asked = false
     const never = new Promise<never>(() => {})
     const stuck = new RuntimeHost({
@@ -460,21 +462,10 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     const reserved = 'sess_stuck'
     await stuck.close(reserved, sink)
 
-    // 🔴 **716 · `710` F-5 — and a REOPEN is told it waited, and how to wait longer** (rule 8.4):
-    // the sentence said *"Try again in a moment"* until `716`.
-    // ⚑ **D-017b · in the words of the one gesture that carries a conversation on** — a message
-    // sent from its view — and with no process fact (`05` rule 5): *"still closing … its agent to
-    // stop"* became what BroBot has not finished putting away.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.toThrow(
-      "BroCrew was still putting away this conversation's last session and waited as long as it will, so your message did not go in. To wait longer, send it your message again.",
-    )
-    // …and NOT the sentence it used to give, which sent the reader looking for a session to close.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.not.toThrow(
-      'already open',
-    )
-    // …nor the id, which is 100's half of this: the diagnostic keeps it, the sentence does not.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.not.toThrow(
-      reserved,
-    )
+    // Far past the old bound (twenty times the drain), the Reopen is still waiting: not answered
+    // "already open", and not refused.
+    const reopening = stuck.resumeSession(reserved, new RecordingSink('owner:2'))
+    void reopening.catch(() => undefined)
+    expect(await stillWaiting(reopening, 400), 'still waiting, not refused').toBe(true)
   })
 })

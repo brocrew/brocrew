@@ -28614,7 +28614,8 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * be over first. Nothing here weakens {@link reserve}, which stays synchronous and is still the
    * only gate — this just stops asking it a question whose answer was about to change.
    *
-   * **A person's reopen (`untilGone`) waits for the teardown however long it takes** (card 197;
+   * **A person's reopen (`untilGone`) waits for the teardown, or for a start closed before it
+   * arrived, however long it takes** (card 197;
    * the same rule as {@link settleTheLastLaunch}'s exit receipt, b017c21e). The teardown always
    * ends: its stop and its drain are each bounded, and its finalize waits on the provider's own
    * exits, which a slow PC can take longer than any fixed bound to report. **Every other caller
@@ -28627,11 +28628,14 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   private async settleTeardown(sessionId: string, untilGone = false): Promise<void> {
     const slot = this.slots.get(sessionId)
     if (slot === undefined) return
-    // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
-    // already bounds and reports exactly that case. `phase` is the only thing that can say so —
-    // there is no session yet to hold a promise.
+    // Closed before its provider ever arrived: the teardown is the arrival. A person's reopen waits
+    // for that start to end, however slow (card 197); every other caller keeps `awaitArrival`'s
+    // bound, which reports the case. `phase` is the only thing that can say so — there is no session
+    // yet to hold a promise.
     if (slot.session === null) {
-      if (onItsWayOut(slot)) await this.awaitArrival(slot)
+      if (!onItsWayOut(slot)) return
+      if (untilGone) await slot.arrived
+      else await this.awaitArrival(slot)
       return
     }
     // ⚠️ **The question is "is a teardown running", NOT "is the phase closing"** — they are not the
