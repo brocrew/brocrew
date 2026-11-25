@@ -204,9 +204,9 @@ describe('each launch reads the build, and a build it cannot read costs only the
     expect(told).toContain('## This conversation')
     expect(told).toContain(
       `- Your working directory is \`${lastContext().cwd}\`.\n` +
-        '- This folder persists: files you leave here are still here in later conversations.\n' +
-        '- Ask when something is destructive or ambiguous.',
+        '- This folder persists: files you leave here are still here in later conversations.',
     )
+    expect(told).not.toContain('Ask when something is destructive or ambiguous.')
     expect(told).not.toMatch(ANY_BUILD_LINE)
     // Not into the profile's file, which every conversation of the profile shares.
     const file = profileBundleSpans(lastContext()).text

@@ -63,7 +63,7 @@ const SPAWNING_OFF =
   '- This app currently blocks creating agents and starting new agent conversations.'
 
 const FIXED_RULE_POLICY =
-  '- Only the person and the profile that created an agent can change its standing rules; any conversation of that profile counts, and when no creating profile is recorded, only the person can. Being the same profile as the agent gives no right to change its rules: an agent never writes its own, and keeps its own notes instead. Anyone else, the agent included, can propose a change, and the person decides a proposal. Each version keeps its author and reason, and can be undone.'
+  '- Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -1036,6 +1036,7 @@ describe('§9 · one agent instruction set', () => {
 
   it('says the rule-writing policy under its own heading, never in the shared core', () => {
     expect(composeProfileBundle(context())).not.toContain(RULE_WRITING_POLICY)
+    expect(composeProfileBundle(context())).not.toContain(FIXED_RULE_POLICY)
     expect(thisConversationText(context())).toContain(FIXED_RULE_POLICY)
   })
 })
@@ -1055,15 +1056,14 @@ function grantLines(said: string): string[] {
 
 describe('the workspace rules in the conversation block', () => {
   for (const profileSlug of ['brobot', 'named', null]) {
-    it(`keeps the two agreed sentences beside cwd for ${String(profileSlug)}`, () => {
+    it(`keeps the folder continuity sentence beside cwd for ${String(profileSlug)}`, () => {
       const text = thisConversationText(context({ profileSlug }))
       expect(text).toContain(
         '- Your working directory is `/tmp/work`.\n' +
-          '- This folder persists: files you leave here are still here in later conversations.\n' +
-          '- Ask when something is destructive or ambiguous.',
+          '- This folder persists: files you leave here are still here in later conversations.',
       )
       expect(text.split('This folder persists:').length - 1).toBe(1)
-      expect(text.split('Ask when something is destructive or ambiguous.').length - 1).toBe(1)
+      expect(text).not.toContain('Ask when something is destructive or ambiguous.')
       expect(text).not.toContain('BROBOT-WORKSPACE-CANARY')
     })
   }
