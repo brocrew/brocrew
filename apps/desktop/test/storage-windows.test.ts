@@ -112,7 +112,11 @@ it('measures later Windows categories even when the workspace reaches its own en
   directory(roots.plugins!)
   directory(roots.cache!)
   directory(roots.resources)
-  const reading = await new StorageEngine(roots, { entries: 30, depth: 64 }).measure()
+  const reading = await new StorageEngine(roots, {
+    entries: 30,
+    total: 50_000,
+    depth: 64,
+  }).measure()
   expect(reading.parts.find((part) => part.id === 'workspace')).toMatchObject({
     partial: true,
     error: 'limit',
@@ -133,7 +137,7 @@ it('measures later Windows categories even when the workspace reaches its own en
   expect(insideData(data, win32.join(data.toUpperCase(), 'backups'))).toBe(true)
 })
 
-it('includes task output after fifty thousand workspace files while the walk keeps progressing', async () => {
+it('stops a fifty-thousand-file workspace at its default budget and says the size is partial', async () => {
   const roots = storageRoots()
   const names = Array.from({ length: 50_000 }, (_, n) => `file-${n}`)
   disk.entries.set(roots.data.toLowerCase(), { children: [] })
@@ -149,18 +153,59 @@ it('includes task output after fifty thousand workspace files while the walk kee
   disk.entries.set(roots.database[0]!.toLowerCase(), { bytes: 29 })
   const progressed = vi.fn()
   const reading = await new StorageEngine(roots, undefined, undefined, progressed).measure()
-  expect(reading.parts.find((part) => part.id === 'workspace')).toMatchObject({
-    bytes: 1_098_576,
+  const workspace = reading.parts.find((part) => part.id === 'workspace')
+  expect(workspace).toMatchObject({ partial: true, error: 'limit' })
+  expect(workspace!.bytes).toBeGreaterThan(0)
+  expect(workspace!.bytes).toBeLessThan(10_000)
+  expect(reading.parts.find((part) => part.id === 'database')).toMatchObject({
+    bytes: 29,
     partial: false,
   })
-  expect(reading.totalBytes).toBe(1_098_605)
-  expect(reading.partial).toBe(false)
+  expect(reading.partial).toBe(true)
   expect(progressed).toHaveBeenCalled()
   const listing = await new StorageEngine(roots).children({
     part: 'workspace',
     segments: ['brobot-workspace'],
   })
-  expect(listing).toMatchObject({ totalBytes: 1_098_576, partial: false })
+  expect(listing).toMatchObject({ partial: true, error: 'limit' })
+  expect(listing.totalBytes).toBeLessThan(50_000)
+})
+
+it('gives each row of an opened folder its own budget and marks a row cut short', async () => {
+  const roots = storageRoots()
+  const projects = win32.join(roots.workspace, 'projects')
+  disk.entries.set(roots.data.toLowerCase(), { children: [] })
+  disk.entries.set(roots.workspace.toLowerCase(), { children: ['projects'] })
+  disk.entries.set(projects.toLowerCase(), { children: ['a', 'b'] })
+  for (const row of ['a', 'b']) {
+    disk.entries.set(win32.join(projects, row).toLowerCase(), { children: ['f1', 'f2', 'f3'] })
+    for (const name of ['f1', 'f2', 'f3'])
+      disk.entries.set(win32.join(projects, row, name).toLowerCase(), { bytes: 5 })
+  }
+  const listing = await new StorageEngine(roots, { entries: 6, total: 50_000, depth: 64 }).children(
+    { part: 'workspace', segments: ['brobot-workspace', 'projects'] },
+  )
+  expect(listing).toMatchObject({ partial: true, error: 'limit' })
+  expect(listing.entries.map((entry) => entry.name).sort()).toEqual(['a', 'b'])
+  for (const entry of listing.entries) {
+    expect(entry).toMatchObject({ partial: true })
+    expect(entry.bytes).toBeGreaterThan(0)
+    expect(entry.bytes).toBeLessThan(15)
+  }
+})
+
+it('stops an opened folder of many rows at the request budget', async () => {
+  const roots = storageRoots()
+  const names = Array.from({ length: 30 }, (_, n) => `row-${n}`)
+  disk.entries.set(roots.data.toLowerCase(), { children: [] })
+  disk.entries.set(roots.workspace.toLowerCase(), { children: names })
+  for (const name of names)
+    disk.entries.set(win32.join(roots.workspace, name).toLowerCase(), { bytes: 1 })
+  const listing = await new StorageEngine(roots, { entries: 1_000, total: 20, depth: 64 }).children(
+    { part: 'workspace', segments: ['brobot-workspace'] },
+  )
+  expect(listing).toMatchObject({ partial: true, error: 'limit' })
+  expect(listing.entries.length + listing.smallerCount).toBeLessThan(10)
 })
 
 it('keeps measured workspace bytes when its directory stops yielding entries', async () => {

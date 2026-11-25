@@ -39,7 +39,13 @@ export interface StorageOverview {
   readonly error?: StorageError
 }
 export type StorageEntry = { readonly name: string } & (
-  | { readonly bytes: number; readonly isDirectory: boolean; readonly isLink?: false }
+  | {
+      readonly bytes: number
+      readonly isDirectory: boolean
+      readonly isLink?: false
+      /** The walk stopped short, at a limit or an error: the bytes are what it measured. */
+      readonly partial?: true
+    }
   | { readonly bytes: null; readonly isDirectory: false; readonly isLink: true }
 )
 export interface StorageDirectory {

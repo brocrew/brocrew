@@ -494,7 +494,7 @@ it('root reveal selects the first existing database-family file or backup folder
 
 it('reports finite traversal limits and cancellation, including a depth limit', async () => {
   await file(join(roots.workspace, 'one', 'two', 'file'), 3)
-  const limited = await new StorageEngine(roots, { entries: 2, depth: 64 }).measure()
+  const limited = await new StorageEngine(roots, { entries: 2, total: 50_000, depth: 64 }).measure()
   expect(limited.partial).toBe(true)
   expect(limited.parts.some((part) => part.error === 'limit')).toBe(true)
   expect(
@@ -503,9 +503,9 @@ it('reports finite traversal limits and cancellation, including a depth limit', 
     ),
   ).toBe(true)
   expect(
-    (await new StorageEngine(roots, { entries: 100, depth: 1 }).measure()).parts.find(
-      (part) => part.id === 'workspace',
-    )?.error,
+    (
+      await new StorageEngine(roots, { entries: 100, total: 50_000, depth: 1 }).measure()
+    ).parts.find((part) => part.id === 'workspace')?.error,
   ).toBe('limit')
 })
 

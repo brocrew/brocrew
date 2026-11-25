@@ -41,7 +41,13 @@ export type StorageRequest =
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
 export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
 type StorageRoot = { path: string; part: StoragePartId; segments: readonly string[] }
-const STORAGE_BOUNDS = { entries: Infinity, depth: 64 } as const
+/**
+ * A size is never worth walking a whole tree: every entry visited is file-system work, and an
+ * on-access scanner repeats it. Each part, or each row of an opened folder, takes at most
+ * `entries` steps (about two for each file or folder it visits), and one request at most `total`.
+ * A size cut short is reported as partial.
+ */
+const STORAGE_BOUNDS = { entries: 10_000, total: 50_000, depth: 64 } as const
 /** A worker that reports no progress for this long is judged stalled; a slow walk that keeps reporting is not. */
 export const STORAGE_STALL_TIMEOUT = 15_000
 
@@ -66,11 +72,13 @@ export async function storageFreeBytes(path: string): Promise<number | null> {
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
   private visited = 0
+  private spent = 0
   private canonicalData = ''
   constructor(
     private readonly roots: StorageRoots,
     private readonly bounds: {
       entries: number
+      total: number
       depth: number
     } = STORAGE_BOUNDS,
     private readonly cancelled: () => boolean = () => false,
@@ -79,8 +87,14 @@ export class StorageEngine {
 
   private checkpoint(): void {
     if (this.cancelled()) throw new StorageFailure('cancelled')
-    if (++this.visited > this.bounds.entries) throw new StorageFailure('limit')
+    this.visited++
+    this.spent++
+    if (this.exhausted()) throw new StorageFailure('limit')
     this.progressed()
+  }
+
+  private exhausted(): boolean {
+    return this.visited > this.bounds.entries || this.spent > this.bounds.total
   }
 
   private async initialise(): Promise<void> {
@@ -207,7 +221,7 @@ export class StorageEngine {
         const child = [...segments, entry.name]
         if (!this.allowed(part, child)) continue
         bytes += await this.size(join(actual, entry.name), part, child, state, true, earlierRoots)
-        if (this.visited > this.bounds.entries) break
+        if (this.exhausted()) break
       }
       return bytes
     } catch (error) {
@@ -277,8 +291,6 @@ export class StorageEngine {
       await this.initialise()
       freeBytes = await storageFreeBytes(this.canonicalData)
       for (const id of STORAGE_PART_IDS) {
-        // A large or slow part must not spend the budget of every later part.
-        this.visited = 0
         let bytes = 0
         const state: { error?: StorageError } = {}
         try {
@@ -287,6 +299,8 @@ export class StorageEngine {
             ? this.groupedPaths(id).map(({ name, path }) => ({ path, segments: [name] }))
             : this.paths(id).map((path) => ({ path, segments: [] }))
           for (const { path, segments } of roots) {
+            // A large or slow root must not spend the budget of every later one.
+            this.visited = 0
             try {
               const safe = await this.checked(path, id)
               const rootState = { started: false }
@@ -365,8 +379,15 @@ export class StorageEngine {
             (await this.emptyRecovery(entry.path, safe))
           )
             return true
-          const bytes = await this.size(entry.path, location.part, entry.segments, state)
-          keep({ name: entry.name, bytes, isDirectory: stat.isDirectory() })
+          const row: { error?: StorageError } = {}
+          const bytes = await this.size(entry.path, location.part, entry.segments, row)
+          if (row.error) state.error ??= row.error
+          keep({
+            name: entry.name,
+            bytes,
+            isDirectory: stat.isDirectory(),
+            ...(row.error ? { partial: true as const } : {}),
+          })
         } catch (error) {
           const reason = storageReason(error)
           if (reason === 'cancelled') throw error
@@ -378,9 +399,12 @@ export class StorageEngine {
         }
         return true
       }
+      // Each row gets the same budget, as each root of a part does in a measure.
       if (this.virtual(location.part) && location.segments.length === 0) {
-        for (const entry of this.groupedPaths(location.part))
+        for (const entry of this.groupedPaths(location.part)) {
+          this.visited = 0
           if (!(await include({ ...entry, segments: [entry.name] }))) break
+        }
       } else {
         const path = this.locationPath(location)
         const safe = await this.checked(path, location.part)
@@ -388,6 +412,7 @@ export class StorageEngine {
         const directory = await opendir(safe)
         try {
           for await (const entry of directory) {
+            this.visited = 0
             this.checkpoint()
             const segments = [...location.segments, entry.name]
             if (

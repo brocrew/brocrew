@@ -359,7 +359,7 @@ onMounted(() => {
               <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg
               ><span>{{ entry.name }}</span
               ><span class="folder-size">{{
-                entry.isLink ? 'Link' : storageSize(entry.bytes)
+                entry.isLink ? 'Link' : `${storageSize(entry.bytes)}${entry.partial ? '+' : ''}`
               }}</span
               ><a
                 href="#"
@@ -392,7 +392,7 @@ onMounted(() => {
     >
       <header class="drill-head">
         <h3>{{ trail.at(-1) }}</h3>
-        <span>{{ storageSize(directory.totalBytes) }}</span>
+        <span>{{ storageSize(directory.totalBytes) }}{{ directory.partial ? '+' : '' }}</span>
       </header>
       <div v-for="entry in directory.entries" :key="entry.name" class="drilled-row">
         <svg class="icon" aria-hidden="true">
@@ -405,7 +405,9 @@ onMounted(() => {
         >
           {{ entry.name }}</button
         ><span v-else>{{ entry.name }}</span
-        ><strong>{{ entry.isLink ? 'Link' : storageSize(entry.bytes) }}</strong
+        ><strong>{{
+          entry.isLink ? 'Link' : `${storageSize(entry.bytes)}${entry.partial ? '+' : ''}`
+        }}</strong
         ><a
           v-if="!entry.isLink"
           href="#"

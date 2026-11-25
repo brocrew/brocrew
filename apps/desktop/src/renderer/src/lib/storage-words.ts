@@ -40,7 +40,7 @@ export function storageError(error: StorageError): string {
     case 'linked-path':
       return 'This folder cannot be opened safely from BroCrew’s storage folders.'
     case 'limit':
-      return 'Some sizes could not be measured within the time limit.'
+      return 'Some sizes could not be measured.'
     case 'busy':
       return 'Storage is busy. Try again in a moment.'
     case 'cancelled':

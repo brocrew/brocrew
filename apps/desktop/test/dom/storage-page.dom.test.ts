@@ -238,6 +238,29 @@ it('drills through typed locations, shows the smaller-item summary, and returns 
   await settle()
   expect(m.host.querySelectorAll('[data-part]')).toHaveLength(8)
 })
+it('marks a folder and its rows measured only in part', async () => {
+  const { m } = setup({
+    children: vi.fn(async (location) => ({
+      location,
+      entries: [
+        { name: 'big-repo', bytes: 2048, isDirectory: true, partial: true as const },
+        { name: 'notes', bytes: 1024, isDirectory: false },
+      ],
+      smallerCount: 0,
+      smallerBytes: 0,
+      totalBytes: 3072,
+      partial: true,
+      error: 'limit' as const,
+    })),
+  })
+  await settle()
+  m.host.querySelector<HTMLButtonElement>('button[aria-label="Open Workspace"]')!.click()
+  await settle()
+  const rows = [...m.host.querySelectorAll('.drilled-row strong')].map((row) => row.textContent)
+  expect(rows).toEqual(['2.0 KB+', '1.0 KB'])
+  expect(m.host.querySelector('.drill-head span')!.textContent).toBe('3.0 KB+')
+  expect(m.q('storage-message').textContent).toBe('Some sizes could not be measured.')
+})
 it('uses the OS reveal bridge and remeasures only after a successful cache clear', async () => {
   vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
   const { m, bridge } = setup()
