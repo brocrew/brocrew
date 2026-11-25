@@ -44,7 +44,6 @@ export const TURN_BLOCK_WORDS = {
   waitingOnThePerson: 'waiting on the person',
   currentUnavailable: 'Your current work is not available. list_tasks shows what you hold.',
   untitled: 'untitled',
-  noStatus: 'none',
   helper: (
     conversation: string,
     label: string,
@@ -57,8 +56,8 @@ export const TURN_BLOCK_WORDS = {
   more: (count: number, incomplete = false): string =>
     `and ${incomplete ? 'at least ' : ''}${String(count)} more: list_tasks`,
   updateGivenWork: 'Check this work and make any needed updates.',
-  current: (label: string, title: string, status: string, conversation: string): string =>
-    `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}${conversation.endsWith('.') ? '' : '.'} If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,
+  current: (label: string, title: string, conversation: string): string =>
+    `Your current work: task ${label} · ${title}, in ${conversation}${conversation.endsWith('.') ? '' : '.'}`,
 } as const
 
 export interface AHelperInTheTurn {
@@ -163,8 +162,15 @@ function oneLine(text: string, limit: number): string {
   return points.length > limit ? `${points.slice(0, limit).join('')}…` : points.join('')
 }
 
+function currentLabel(current?: CurrentWorkInTheTurn): string | null {
+  return current?.kind === 'piece' && [...current.label].length <= TURN_LABEL_POINTS
+    ? current.label
+    : null
+}
+
 function extraLines(facts: ExtraTurnFacts, now: number): string[] {
   const lines: string[] = []
+  let nudged = false
   if (facts.helpers !== undefined) {
     const { more } = facts.helpers
     const rows = facts.helpers.rows.filter((row) => row.state !== null)
@@ -190,28 +196,31 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
     const overflow = more + Math.max(0, rows.length - 5)
     if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow, facts.helpers.incomplete === true))
     else if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
-    if (rows.length > 0) lines.push(TURN_BLOCK_WORDS.updateGivenWork)
+    if (rows.length > 0) {
+      lines.push(TURN_BLOCK_WORDS.updateGivenWork)
+      nudged = true
+    }
   }
   if (facts.nobodyWaiting === true) lines.push(TURN_BLOCK_WORDS.nobody)
   if (facts.replyQuestion === true) lines.push(TURN_BLOCK_WORDS.replyQuestion)
   const current = facts.currentWork
   if (current !== undefined) {
     if (
-      (current.kind === 'piece' && [...current.label].length > TURN_LABEL_POINTS) ||
+      (current.kind === 'piece' && currentLabel(current) === null) ||
       (current.kind === 'ambiguous' &&
         current.labels.some((label) => [...label].length > TURN_LABEL_POINTS))
     )
       lines.push(TURN_BLOCK_WORDS.currentUnavailable)
-    else if (current.kind === 'piece')
+    else if (current.kind === 'piece') {
       lines.push(
         TURN_BLOCK_WORDS.current(
           current.label,
           oneLine(current.title ?? TURN_BLOCK_WORDS.untitled, 200),
-          oneLine(current.status ?? TURN_BLOCK_WORDS.noStatus, 200),
           facts.conversation ?? 'this conversation',
         ),
       )
-    else
+      if (!nudged) lines.push(TURN_BLOCK_WORDS.updateGivenWork)
+    } else
       lines.push(
         current.kind === 'none'
           ? TURN_BLOCK_WORDS.currentNone
@@ -301,7 +310,7 @@ function itsOpenQuestions(questions: readonly AQuestionItHasOpen[], now: number)
   ]
 }
 
-function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number): string[] {
+function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number, selected: string | null): string[] {
   if (waiting.givers.length + waiting.askers.length === 0) return []
   const givers = waiting.givers.slice(0, OPEN_QUESTIONS_NAMED)
   const askers = waiting.askers.slice(0, OPEN_QUESTIONS_NAMED - givers.length)
@@ -309,7 +318,10 @@ function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number): string[] {
   const moreAskers = waiting.askers.length - askers.length
   return [
     'Waiting on you:',
-    ...givers.map((one) => `- ${one.who} gave you task ${one.work} and is waiting for it.`),
+    ...givers.map(
+      (one) =>
+        `- ${one.who} gave you ${one.work === selected ? 'the current task' : `task ${one.work}`} and is waiting for it.`,
+    ),
     ...askers.map(
       (one) =>
         `- ${one.who} asked you ${one.id} ${howLongAgo(one.askedAt, now)}. ` +
@@ -349,7 +361,9 @@ export function whatThisAppAddsToATurn(turn: {
       : 'This app adds what follows. It is not part of the message above, and that message comes first.',
     turn.aPersonStartedIt ? itIs : `${itIs} ${lastWrote}`,
     ...(turn.questions === null ? [] : itsOpenQuestions(turn.questions, now)),
-    ...(turn.waiting === null ? [] : whoWaitsOnIt(turn.waiting, now)),
+    ...(turn.waiting === null
+      ? []
+      : whoWaitsOnIt(turn.waiting, now, currentLabel(turn.extra?.currentWork))),
     ...extraLines(turn.extra ?? {}, now),
     ...(turn.extra?.profileChanges ?? []),
   ].join('\n')

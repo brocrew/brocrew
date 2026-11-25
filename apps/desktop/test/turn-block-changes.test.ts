@@ -353,6 +353,28 @@ describe('turn block changes', () => {
     expect(read().lastRecordedChangeAt).toBe(55)
   })
 
+  it('names the current task once and keeps other waiting tasks explicit', () => {
+    const footer = whatThisAppAddsToATurn({
+      now: input.now,
+      aPersonStartedIt: true,
+      thePersonLastWroteAt: null,
+      questions: null,
+      waiting: {
+        givers: [
+          { who: 'Ada', work: 'W1.2' },
+          { who: 'Ali', work: 'W1.3' },
+        ],
+        askers: [],
+      },
+      extra: { currentWork: { kind: 'piece', label: 'W1.2', title: 'Check it', status: 'Ready' } },
+    })
+    expect(footer).toContain('- Ada gave you the current task and is waiting for it.')
+    expect(footer).toContain('- Ali gave you task W1.3 and is waiting for it.')
+    expect(footer.match(/W1\.2/g)).toHaveLength(1)
+    expect(footer).not.toContain('Ready')
+    expect(footer.split(TURN_BLOCK_WORDS.updateGivenWork)).toHaveLength(2)
+  })
+
   it('keeps new words in one formatter, bounds fields and flattens injected line breaks', () => {
     const rendered = block({
       helpers: { rows: [{ ...helper(1), name: 'A\n' + 'x'.repeat(1000) }], more: 0 },
