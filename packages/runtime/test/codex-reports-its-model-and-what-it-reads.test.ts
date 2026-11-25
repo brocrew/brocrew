@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type RuntimeEvent } from '../src/index'
 import { CodexRuntime } from '../src/codex'
+import { expectSilentProbeToGiveUp } from './helpers/silent-probe'
 import {
   completedTurn,
   threadStartResponse,
@@ -350,15 +351,10 @@ describe('the model list, asked of the app-server rather than written down (058)
     transport.onRequest('model/list', () => new Promise(() => {})) // alive, and never answering
     const runtime = new CodexRuntime(adopt(transport))
 
-    vi.useFakeTimers()
-    try {
-      const probing = runtime.listModels({ providerHome: '/tmp/x/home' })
-      const settled = expect(probing).rejects.toThrow(/did not answer/)
-      await vi.advanceTimersByTimeAsync(61_000)
-      await settled
-    } finally {
-      vi.useRealTimers()
-    }
+    await expectSilentProbeToGiveUp(
+      () => runtime.listModels({ providerHome: '/tmp/x/home' }),
+      61_000,
+    )
     expect(transport.closeCount, 'the stalled app-server must still be reaped').toBe(1)
   })
 

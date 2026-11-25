@@ -54,13 +54,12 @@ export function answerNeverLeftThisWindow(cause: string | null): string {
  *
  * ⚑ **The number, derived** (rule 22) — ⚠️ it is a copy: no door's bound is on the wire (`739`
  * GAP). At or above every single bound the host itself puts on a door a person presses: a Stop's
- * 2 s (`DEFAULT_INTERRUPT_WAIT_MS`), the command list's 5 s, `waitForIdle`'s 5 s, a Claude settings
- * acknowledgement's 10 s (`SETTINGS_ACK_TIMEOUT_MS`) — and equal to the host's own patience with a
- * provider that has stopped talking (`DEFAULT_LAUNCH_TIMEOUT_MS`, `DEFAULT_DELIVERY_WAIT_MS`, *"the
+ * 2 s (`DEFAULT_INTERRUPT_WAIT_MS`), the command list's 5 s and `waitForIdle`'s 5 s — and equal to the
+ * host's own patience with a provider that has stopped talking (`DEFAULT_LAUNCH_TIMEOUT_MS`, `DEFAULT_DELIVERY_WAIT_MS`, *"the
  * same order of patience"*).
- * ⚠️ **Three ordinary paths can run longer, named** (`739` review): a Claude send stacking three
- * settings acknowledgements (≈37 s); a send that meets the delivery wait, whose 15 s starts only
- * after the host's own checks; and a close — its stop and drain are 5 s and 5 s, then the archive,
+ * ⚠️ **Three ordinary paths can run longer, named** (`739` review): a Claude send waiting on its
+ * settings acknowledgements, which have no clock and end on the answer or the CLI's exit (card 197);
+ * a send that meets the delivery wait, whose 15 s starts only after the host's own checks; and a close — its stop and drain are 5 s and 5 s, then the archive,
  * which the host does not bound. On each, `busy` comes down early and the line says it has had no
  * answer, which is true; the buttons that re-light are Codex's plan bar and a superseded sign-in's
  * Reopen, which a send cannot be under, and the grant sheet's Reopen, which a Claude send CAN be

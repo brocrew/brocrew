@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type RuntimeEvent } from '../src/index'
 import { ClaudeRuntime, type ClaudeQuery } from '../src/claude'
 import { TODO_TOOLS } from '../src/claude/todo-plan'
+import { expectSilentProbeToGiveUp } from './helpers/silent-probe'
 import { FakeQuery, init, collect, has, toolOpts, startFake } from './fake-claude-query'
 
 describe('ClaudeRuntime — config-independent prompting (007 P1-6)', () => {
@@ -564,15 +565,10 @@ describe('the model list, asked of the provider rather than written down (058)',
       async () => true,
     )
 
-    vi.useFakeTimers()
-    try {
-      const probing = runtime.listModels({ providerHome: '/tmp/x/home' })
-      const settled = expect(probing).rejects.toThrow(/did not answer/)
-      await vi.advanceTimersByTimeAsync(20_000)
-      await settled
-    } finally {
-      vi.useRealTimers()
-    }
+    await expectSilentProbeToGiveUp(
+      () => runtime.listModels({ providerHome: '/tmp/x/home' }),
+      61_000,
+    )
     // …and the child is released. The deadline frees the AWAITER; only this frees the process, so
     // a bound without a reachable `finally` would have swapped a hang for a leak.
     expect(closed, 'the stalled CLI must still be closed').toBe(1)

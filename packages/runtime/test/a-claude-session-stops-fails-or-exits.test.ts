@@ -487,31 +487,6 @@ describe('202 · the receipt, and the turn that must not start (191 H3, H5)', ()
     expect(await listing).toHaveLength(1)
     expect(probe.returnCount).toBe(1)
   })
-
-  it('⛔ H5 · settings that never answer fail the turn instead of hanging the send', async () => {
-    const { fq, handle, events, consumer } = await startFake()
-    fq.emit(init('sess_hang', '/tmp/x'))
-    await vi.waitFor(has(events, (e) => e.type === 'session'))
-    await handle.setModel('opus')
-    fq.holdSettings = new Promise<void>(() => {}) // never
-
-    vi.useFakeTimers()
-    try {
-      const sending = handle.send('hello')
-      sending.catch(() => {})
-      await vi.advanceTimersByTimeAsync(11_000)
-      // ⛔ The send IPC comes back. Before 202 it never did — three unbounded control requests
-      // between opening the turn and pushing the message.
-      await expect(sending).rejects.toThrow(/did not answer within/)
-    } finally {
-      vi.useRealTimers()
-    }
-    // …and the turn it opened was terminalized rather than left running forever.
-    expect(events.filter((e) => e.type === 'turn').at(-1)).toMatchObject({ state: 'failed' })
-
-    await handle.close()
-    await consumer
-  })
 })
 
 /**
