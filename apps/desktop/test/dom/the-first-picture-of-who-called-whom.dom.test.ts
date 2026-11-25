@@ -1,7 +1,7 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
@@ -450,8 +450,16 @@ describe('§1 · the property — who started it, what it started, and what pass
     ).toEqual(['worker', 'worker'])
     // ⚑ Each chip draws its small plate.
     for (const chip of chips) expect(chip.querySelector('[data-cy="agent-plate"]')).toBeTruthy()
-    chips[1]!.querySelector('button')!.click()
+    const chip = chips[1]!.querySelector<HTMLElement>('.agent-chip[role="button"]')!
+    expect(chip.tabIndex).toBe(0)
+    chip.click()
     expect(press).toEqual(['sess_busy'])
+    chip.focus()
+    expect(document.activeElement).toBe(chip)
+    await userEvent.keyboard('{Enter}')
+    expect(press).toEqual(['sess_busy', 'sess_busy'])
+    await userEvent.keyboard(' ')
+    expect(press).toEqual(['sess_busy', 'sess_busy', 'sess_busy'])
     // ⛔ …and no card opens under the strip: the panel is this agent's card alone.
     expect(m.drawer.host.querySelectorAll('.agent')).toHaveLength(0)
     expect(m.drawer.all('session-bot')).toHaveLength(1)
@@ -468,7 +476,15 @@ describe('§1 · the property — who started it, what it started, and what pass
     })
     const chips = agentRows(m.q('cast-children-strip'))
     expect(chips).toHaveLength(2)
-    for (const chip of chips) expect(chip.querySelector('button')).toBeNull()
+    for (const chip of chips) {
+      expect(chip.querySelector('button')).toBeNull()
+      const control = chip.querySelector<HTMLElement>('.agent-chip')!
+      expect(control).not.toBeNull()
+      expect(control.getAttribute('role')).toBeNull()
+      expect(control.getAttribute('tabindex')).toBeNull()
+      expect(control.tabIndex).toBe(-1)
+      expect(control.matches('button, a[href], input, select, textarea, summary')).toBe(false)
+    }
   })
 
   it('🔴 a tile draws the big avatar’s facts as it does: the plate, and beside it the name, profile and word', async () => {
@@ -864,7 +880,12 @@ describe('§3 · four children, no fact about where any of them is, and the pres
     // Each of the four chips opens its own conversation, whatever that conversation’s state.
     const strip = m.q('cast-children-strip')
     expect(agentRows(strip)).toHaveLength(4)
-    for (const chip of strip.querySelectorAll<HTMLElement>('button')) chip.click()
+    const controls = strip.querySelectorAll<HTMLElement>('.agent-chip[role="button"]')
+    expect(controls).toHaveLength(4)
+    for (const chip of controls) {
+      expect(chip.tabIndex).toBe(0)
+      chip.click()
+    }
     expect(opened).toEqual(['sess_recording', 'sess_unwatched', 'sess_here', 'sess_elsewhere'])
 
     // ⛔ **And the words of the old press are not on this band at all** — the one press's words are
@@ -904,7 +925,7 @@ describe('§3 · four children, no fact about where any of them is, and the pres
     // The recipient’s chip opens its conversation; in the graph, its card provides the
     // corresponding press.
     m.q('cast-children-strip')
-      .querySelector<HTMLButtonElement>('button[data-conversation="sess_unwatched"]')!
+      .querySelector<HTMLElement>('[role="button"][data-conversation="sess_unwatched"]')!
       .click()
     await nextTick()
     expect(pressed).toEqual(['sess_unwatched'])

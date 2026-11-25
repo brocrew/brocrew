@@ -205,6 +205,7 @@ const briefs = computed(() => briefsOf(props.state))
       <p v-if="pending && !page" class="list-count" role="status">Reading tasks…</p>
       <p v-if="failed" class="list-count" role="alert">Could not read this conversation’s tasks.</p>
       <TaskList
+        :conversation="props.conversation"
         v-if="shown > 0"
         data-cy="cast-taken"
         :tasks="shownTasks"

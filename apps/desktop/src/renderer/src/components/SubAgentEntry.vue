@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
+import type { PathsHere } from '../composables/useMessagePaths'
 import { computed } from 'vue'
 import { subAgentFacets } from '../lib/agent-state'
 import type { SubAgentCard } from '../lib/transcript'
@@ -8,6 +10,7 @@ import AgentState from './AgentState.vue'
 const props = withDefaults(
   defineProps<{
     card: SubAgentCard
+    paths?: PathsHere | null
     placement?: 'transcript' | 'nested'
     canOpenTranscript?: boolean
   }>(),
@@ -40,10 +43,16 @@ function openTranscript(): void {
   >
     <div class="head" data-cy="subagent-head">
       <AgentState size="compact" v-bind="facets" :label="card.kind || anonymous" />
-      <span class="who">
+      <div class="who">
         <strong data-cy="subagent-kind">{{ card.kind || anonymous }}</strong>
-        <span v-if="card.title" class="title" data-cy="subagent-title">{{ card.title }}</span>
-      </span>
+        <MarkdownWords
+          v-if="card.title"
+          class="title"
+          data-cy="subagent-title"
+          :text="card.title"
+          :paths="props.paths"
+        />
+      </div>
       <span v-if="card.running && card.lastTool" class="doing" data-cy="subagent-last-tool">
         {{ card.lastTool }}
       </span>

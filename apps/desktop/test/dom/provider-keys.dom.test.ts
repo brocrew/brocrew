@@ -86,7 +86,8 @@ describe('a question id from the prototype chain (146 §2)', () => {
       await Promise.resolve()
 
       // ⛔ `__proto__` stored nothing at all, so neither of these could ever become true.
-      expect(chip!.classList.contains('selected')).toBe(true)
+      expect(chip!.closest('.option')!.classList.contains('selected')).toBe(true)
+      expect(chip!.getAttribute('aria-pressed')).toBe('true')
       const answer = m.q('user-input-answer') as HTMLButtonElement
       expect(answer.disabled).toBe(false)
 
@@ -167,7 +168,8 @@ describe('a REQUEST id from the prototype chain, around the card (150, from 148 
       expect(chip, `no chip under request id ${id}`).not.toBeNull()
       chip!.click()
       await Promise.resolve()
-      expect(chip!.classList.contains('selected')).toBe(true)
+      expect(chip!.closest('.option')!.classList.contains('selected')).toBe(true)
+      expect(chip!.getAttribute('aria-pressed')).toBe('true')
 
       const answer = m.q('user-input-answer') as HTMLButtonElement
       expect(answer.disabled).toBe(false)

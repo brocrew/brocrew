@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PathsHere } from '../composables/useMessagePaths'
 import { computed, ref, watch } from 'vue'
 import { didNotPlainlySucceed } from '../lib/tool-outcome'
 import { runLine, type RunCall, type RunMember, type RunThought } from '../lib/tool-runs'
@@ -47,6 +48,7 @@ import ToolEntry from './ToolEntry.vue'
  */
 const props = withDefaults(
   defineProps<{
+    paths?: PathsHere | null
     /** The run's members, tool calls and finished thoughts, in ledger order. */
     members: readonly RunMember[]
     /**
@@ -55,6 +57,8 @@ const props = withDefaults(
      * ⚑ `false` draws the GAP rather than nothing, which is `462` §2.2.
      */
     canReadAnswer?: boolean
+    /** An answer already opened and held by the pane. */
+    canReadAnswerFor?: (callId: string) => boolean
   }>(),
   { canReadAnswer: false },
 )
@@ -232,7 +236,8 @@ function moveTab(event: KeyboardEvent, index: number): void {
         <ToolEntry
           :key="shownCall.id"
           :item="shownCall"
-          :can-read-answer="props.canReadAnswer"
+          :paths="props.paths"
+          :can-read-answer="props.canReadAnswerFor?.(shownCall.callId) ?? props.canReadAnswer"
           opened
           @open-answer="(callId, name) => emit('openAnswer', callId, name)"
         />

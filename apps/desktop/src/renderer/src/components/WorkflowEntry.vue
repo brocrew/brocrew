@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { PathsHere } from '../composables/useMessagePaths'
+import { vButtonKeys } from '../lib/button-keys'
 import { computed, ref } from 'vue'
 import { pathTail } from '../../../shared/path-tail'
 import { workflowAgentFacets, workflowAgentStopped } from '../lib/agent-state'
@@ -6,6 +8,7 @@ import type { ChildWorkInput } from '../../../shared/runtime-ipc'
 import type { WorkflowRunCard } from '../lib/transcript'
 import { workflowPhaseState } from '../lib/workflow'
 import AgentState from './AgentState.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * A dynamic workflow, drawn where it was launched (108, designed in 107).
@@ -30,6 +33,7 @@ import AgentState from './AgentState.vue'
  */
 const props = withDefaults(
   defineProps<{
+    paths?: PathsHere | null
     run: WorkflowRunCard
     /**
      * Whether an agent's transcript, the journal and the script have somewhere to open. Off, none
@@ -266,23 +270,29 @@ const outputName = computed(() => {
 
 <template>
   <div class="workflow" data-cy="workflow-entry" :data-status="status" :data-task-id="run.taskId">
-    <button
+    <div
       class="wf-head"
-      type="button"
+      role="button"
+      tabindex="0"
       :aria-expanded="open"
       :aria-controls="open ? bodyId : undefined"
       data-cy="workflow-head"
       @click="open = !open"
+      v-button-keys
     >
       <!-- ⚠️ The dot is `running | completed | failed | unknown | unfinished` and NEVER amber — see
            the component comment. Colour is not alone: the status word is written beside it. -->
       <span class="wf-dot" :class="status"></span>
-      <span class="wf-who">
+      <div class="wf-who">
         <strong data-cy="workflow-name">{{ run.name || 'workflow' }}</strong>
-        <span v-if="run.description" class="wf-desc" data-cy="workflow-description">
-          {{ run.description }}
-        </span>
-      </span>
+        <MarkdownWords
+          v-if="run.description"
+          class="wf-desc"
+          data-cy="workflow-description"
+          :text="run.description"
+          :paths="props.paths"
+        />
+      </div>
       <span class="wf-meta">
         <span v-if="phaseOf" class="wf-phase-of" data-cy="workflow-phase-of">{{ phaseOf }}</span>
         <span v-if="tally" class="wf-tally" data-cy="workflow-tally">{{ tally }}</span>
@@ -290,7 +300,7 @@ const outputName = computed(() => {
         <span v-if="runUsage" class="wf-usage" data-cy="workflow-usage">{{ runUsage }}</span>
         <svg class="icon chevron" :class="{ open }"><use href="#i-chevron" /></svg>
       </span>
-    </button>
+    </div>
 
     <!-- ⚠️ **The tree owns a BOUNDED scroll** (107 §3). 22 agents must not become 22 rows of
          transcript height; past `--wf-tree-max` the tree scrolls inside itself and the conversation

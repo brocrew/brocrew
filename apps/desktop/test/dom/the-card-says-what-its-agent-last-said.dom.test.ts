@@ -1,3 +1,4 @@
+import { userEvent } from 'vitest/browser'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
@@ -55,9 +56,15 @@ describe('the agent card says what its agent last said', () => {
     const m = panel(state)
     const bubble = m.q('card-latest')
     expect(visible(bubble)).toBe(true)
-    expect(m.q('card-latest-words').textContent).toBe(
+    const words = m.q('card-latest-words')
+    expect(words.textContent?.replace(/\s+/g, ' ').trim()).toBe(
       'All tasks are on track. I am monitoring the team and will tell you',
     )
+    expect(words.querySelector('p')?.textContent).toBe('All tasks are on track.')
+    expect([...words.querySelectorAll('li')].map((one) => one.textContent)).toEqual([
+      'I am monitoring the team',
+      'and will tell you',
+    ])
     expect(m.q('card-latest-ago').textContent).toBe('5m ago')
     // ⚑ Beside the plate, under the name — never under the avatar.
     const plate = m.q('agent-plate').getBoundingClientRect()
@@ -66,14 +73,21 @@ describe('the agent card says what its agent last said', () => {
     expect(name.bottom).toBeLessThanOrEqual(bubble.getBoundingClientRect().top)
   })
 
-  it('🔴 a press shows the message in the conversation', () => {
+  it('🔴 a press shows the message in the conversation', async () => {
     const state = stateOf([said('Checking the window states now.')], Date.now())
     const navigated: string[] = []
     const m = panel(state, navigated)
     const bubble = m.q('card-latest')
-    expect(bubble.tagName).toBe('BUTTON')
+    expect(bubble.getAttribute('role')).toBe('button')
+    expect(bubble.tabIndex).toBe(0)
     bubble.click()
     expect(navigated).toEqual([bubble.dataset.item])
+    bubble.focus()
+    expect(document.activeElement).toBe(bubble)
+    await userEvent.keyboard('{Enter}')
+    expect(navigated).toEqual([bubble.dataset.item, bubble.dataset.item])
+    await userEvent.keyboard(' ')
+    expect(navigated).toEqual([bubble.dataset.item, bubble.dataset.item, bubble.dataset.item])
     expect(state.items.find((item) => item.id === navigated[0])?.kind).toBe('assistant')
   })
 

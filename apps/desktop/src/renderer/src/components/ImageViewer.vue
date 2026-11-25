@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
 import { computed } from 'vue'
 import { assetUrl } from '../../../shared/asset-url'
 import { pathTail } from '../../../shared/path-tail'
@@ -48,7 +49,7 @@ const name = computed(() => pathTail(props.path))
 
     <!-- The whole prompt, unclamped. This is the surface you opened because the caption in the
          conversation was not enough. -->
-    <p v-if="prompt" class="prompt" data-cy="viewer-prompt">{{ prompt }}</p>
+    <MarkdownWords v-if="prompt" class="prompt" data-cy="viewer-prompt" :text="prompt" />
   </div>
 </template>
 

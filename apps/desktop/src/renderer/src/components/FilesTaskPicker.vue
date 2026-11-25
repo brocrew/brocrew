@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
+import { vButtonKeys } from '../lib/button-keys'
+import { useClientMessagePaths } from '../composables/useMessagePaths'
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import {
   libraryUnavailable,
@@ -23,9 +26,11 @@ const emit = defineEmits<{
   choose: [task: LibraryTask, includeSubtasks: boolean]
   unavailable: [failure: LibraryUnavailable]
 }>()
+// This cross-workspace task index carries no conversation or working folder.
+const paths = useClientMessagePaths(() => null)
 const query = ref(''),
   parent = ref<string | null>(null),
-  parentName = ref('All root tasks')
+  parentTask = shallowRef<LibraryTask | null>(null)
 const depth = ref(props.includeSubtasks),
   selected = shallowRef<LibraryTask | null>(null)
 const result = shallowRef<Extract<FilesLibraryResult, { type: 'tasks' }> | null>(null)
@@ -74,13 +79,13 @@ async function readTasks(more = false): Promise<void> {
 }
 function browse(task: LibraryTask): void {
   parent.value = task.id
-  parentName.value = `${task.label} · ${task.title ?? 'Untitled'}`
+  parentTask.value = task
   query.value = ''
   selected.value = null
 }
 function roots(): void {
   parent.value = null
-  parentName.value = 'All root tasks'
+  parentTask.value = null
 }
 watch([query, parent], () => {
   generation++
@@ -122,7 +127,13 @@ onUnmounted(() => {
             placeholder="Task label or current title"
         /></label>
         <div class="location">
-          <button type="button" @click="roots">All roots</button><span>{{ parentName }}</span>
+          <button type="button" @click="roots">All roots</button
+          ><MarkdownWords
+            v-if="parentTask"
+            :text="parentTask.title ?? 'Untitled'"
+            :lead="`${parentTask.label} ·`"
+            :paths="paths"
+          /><span v-else>All root tasks</span>
         </div>
         <p v-if="busy && result === null" role="status">Reading tasks…</p>
         <p v-if="failure" role="status" data-cy="files-task-error">
@@ -152,18 +163,25 @@ onUnmounted(() => {
           </button>
           <ul>
             <li v-for="task in result.tasks" :key="task.id">
-              <button
-                type="button"
+              <div
+                role="button"
+                tabindex="0"
+                v-button-keys
                 class="task"
                 :aria-pressed="selected?.id === task.id"
                 data-cy="files-task-option"
                 :data-task="task.id"
                 @click="selected = task"
               >
-                <strong>{{ task.label }} · {{ task.title ?? 'Untitled' }}</strong
-                ><span>{{ task.breadcrumb }}</span
-                ><small v-if="task.clipped">Some display details are shortened.</small>
-              </button>
+                <MarkdownWords
+                  class="task-title"
+                  :text="task.title ?? 'Untitled'"
+                  :lead="`${task.label} ·`"
+                  :paths="paths"
+                />
+                <MarkdownWords class="task-breadcrumb" :text="task.breadcrumb" :paths="paths" />
+                <small v-if="task.clipped">Some display details are shortened.</small>
+              </div>
               <button
                 v-if="task.children > 0"
                 type="button"
@@ -237,11 +255,13 @@ h2 {
   margin: 0;
 }
 button,
+.task,
 input {
   font: inherit;
   color: inherit;
 }
-button {
+button,
+.task {
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -252,7 +272,7 @@ button:disabled {
   opacity: 0.6;
   cursor: default;
 }
-button[aria-pressed='true'] {
+.task[aria-pressed='true'] {
   background: var(--accent-fill);
   border-color: var(--accent);
 }
@@ -305,6 +325,9 @@ li {
   gap: 6px;
   align-items: stretch;
 }
+.task-title {
+  font-weight: var(--fw-semibold);
+}
 .task {
   display: grid;
   gap: 5px;
@@ -313,7 +336,7 @@ li {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.task span,
+.task-breadcrumb,
 .task small {
   font-size: var(--type-small);
   color: var(--muted);

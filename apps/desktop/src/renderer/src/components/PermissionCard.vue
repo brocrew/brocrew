@@ -628,19 +628,18 @@ function decide(outcome: PermissionOutcome): void {
       <!-- The provider's own sentence, when it sends one (071). ABOVE the disclosure and never
            instead of it: "Claude wants to read foo.txt" is a readable summary of a request, and what
            Allow authorizes is the block below. -->
-      <p
-        v-if="item.request.summary"
-        class="request-summary"
-        data-cy="permission-summary"
-        @click="paths.clicked"
-      >
-        <PathsInText :text="item.request.summary" :found="paths" />
-      </p>
+      <div v-if="item.request.summary" class="request-summary" data-cy="permission-summary">
+        <MarkdownWords :text="item.request.summary" :paths="props.paths" />
+      </div>
       <!-- 🔴 725 · R44 — what the model wrote about this command, under its agent's name: beside
            the disclosure, never in it (181). -->
-      <p v-if="agentSays" class="request-summary" data-cy="permission-agent-reason">
-        {{ agentSays }}
-      </p>
+      <MarkdownWords
+        v-if="agentSays"
+        class="request-summary"
+        data-cy="permission-agent-reason"
+        :text="agentSays"
+        :paths="props.paths"
+      />
       <!-- ⚑ The server's link, copied in one press: open it in your browser, then answer here. -->
       <p
         v-if="serverLink && !answered && offeredHere('allow')"

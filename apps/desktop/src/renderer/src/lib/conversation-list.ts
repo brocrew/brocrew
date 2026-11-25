@@ -260,7 +260,13 @@ function firstSentence(line: string): string {
 export function aGiverWaitsOnPurposeSays(
   gave: readonly WorkEdge[],
   listed: readonly ListedConversation[] | null,
-): { readonly says: string; readonly whole: string } | null {
+): {
+  readonly says: string
+  readonly whole: string
+  readonly conversation: string
+  readonly lead: string
+  readonly status: string | null
+} | null {
   const open = gave.filter(
     (piece) => Object.hasOwn(TASK_IS_OPEN, piece.state) && TASK_IS_OPEN[piece.state],
   )
@@ -273,9 +279,13 @@ export function aGiverWaitsOnPurposeSays(
   const mark = holder?.waitingOnPurpose?.label === piece.label ? holder.waitingOnPurpose : undefined
   const lead = `Waiting on ${name}${others.size > 0 ? ` +${String(others.size)}` : ''}, who is ${mark === undefined ? WAITING_ON_PURPOSE : waitSaid(mark)}`
   const status = mark?.status ?? null
-  return status === null
-    ? { says: lead, whole: lead }
-    : { says: `${lead}: ${firstSentence(status)}`, whole: `${lead}: ${status}` }
+  return {
+    says: status === null ? lead : `${lead}: ${firstSentence(status)}`,
+    whole: status === null ? lead : `${lead}: ${status}`,
+    conversation: piece.to,
+    lead,
+    status: status === null ? null : firstSentence(status),
+  }
 }
 
 /** The host selects the naming piece; already-read edges only fill in its other open pieces. */
@@ -283,9 +293,11 @@ export function workerSubtitles(
   conversation: string,
   named: WorkThatNamesIt | null | undefined,
   pieces: readonly WorkEdge[] = [],
-): { key: string; text: string }[] {
+): { key: string; text: string; lead?: string }[] {
   if (!named) return []
-  const result = named.title ? [{ key: named.label, text: named.title }] : []
+  const result: { key: string; text: string; lead?: string }[] = named.title
+    ? [{ key: named.label, text: named.title }]
+    : []
   if (named.ended) return result
   const seen = new Set([named.label])
   const others = [...pieces]
@@ -295,7 +307,11 @@ export function workerSubtitles(
   for (const piece of others) {
     if (seen.has(piece.label) || known >= (named.more ?? 0)) continue
     seen.add(piece.label)
-    result.push({ key: piece.piece, text: [piece.label, piece.title].filter(Boolean).join(' · ') })
+    result.push({
+      key: piece.piece,
+      text: piece.title || piece.label,
+      ...(piece.title ? { lead: `${piece.label} ·` } : {}),
+    })
     known += 1
   }
   const missing = (named.more ?? 0) - known

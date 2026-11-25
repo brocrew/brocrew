@@ -37,7 +37,10 @@ const NOW = 1_700_000_000_000
  * string nobody would read as an assertion about it.
  */
 const word = (button: Element): string =>
-  button.querySelector('strong, .label')?.textContent?.trim() ?? ''
+  (button.matches('strong, .label')
+    ? button
+    : button.querySelector('strong, .label')
+  )?.textContent?.trim() ?? ''
 
 const SCOPE = {
   cwd: '/Users/alex/dev/x',

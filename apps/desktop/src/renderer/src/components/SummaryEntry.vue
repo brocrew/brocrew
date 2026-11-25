@@ -4,6 +4,7 @@ import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
 import type { TranscriptItem } from '../lib/transcript-message-contracts'
 import { turnSummaryLine } from '../lib/summary-line'
+import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
   item: Extract<TranscriptItem, { kind: 'turnSummary' | 'commandSummary' }>
@@ -15,14 +16,14 @@ const text = computed(() =>
 
 <template>
   <div class="line-lane">
-    <p
+    <div
       class="summary line-card"
       :data-cy="item.kind === 'turnSummary' ? 'turn-summary' : 'command-summary'"
     >
       <svg class="icon line-icon" aria-hidden="true">
         <use :href="item.kind === 'turnSummary' ? '#i-check' : '#i-terminal'" />
       </svg>
-      <span class="line-words" data-cy="summary-words" :title="text">{{ text }}</span>
+      <MarkdownWords compact class="line-words" data-cy="summary-words" :title="text" :text="text" />
       <span
         v-if="item.at !== undefined"
         class="line-time"
@@ -30,7 +31,7 @@ const text = computed(() =>
         :title="fullTime(item.at)"
         >{{ clockTime(item.at) }}</span
       >
-    </p>
+    </div>
   </div>
 </template>
 
@@ -39,4 +40,5 @@ const text = computed(() =>
 .summary {
   margin: 0;
 }
+
 </style>

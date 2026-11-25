@@ -264,8 +264,7 @@ const exchange = computed(() => {
         :data-at="clockTime(item.at)"
         :title="fullTime(item.at)"
       >
-        <MarkdownWords v-if="outside" :text="item.text" />
-        <template v-else>{{ item.text }}</template>
+        <MarkdownWords :text="item.text" />
       </div>
       <FileRows
         :files="handedBack.rows"

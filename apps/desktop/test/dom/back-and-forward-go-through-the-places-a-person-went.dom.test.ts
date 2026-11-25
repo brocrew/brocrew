@@ -486,6 +486,10 @@ const linkTo = (sessionId: string, title: string): ResolvedMessageLink => ({
   opens: { sessionId },
 })
 
+function transcriptLinks(m: ReturnType<typeof mount>) {
+  return m.all('message-link').filter((el) => el.closest('[data-cy="transcript"]'))
+}
+
 /**
  * The screen showing recorded conversation A, opened from a link in the attached one, then on
  * `after`: A is let go once it is off screen. `host` answers what the host says of each link now.
@@ -498,9 +502,9 @@ async function visitedA(after: string, host: (target: string) => ResolvedMessage
   ])
   await sessions.attachOpen()
   const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
-  await expect.poll(() => m.all('message-link').length).toBe(1)
-  await expect.poll(() => m.q('message-link').dataset.linkState).toBe('available')
-  m.q('message-link').click()
+  await expect.poll(() => transcriptLinks(m).length).toBe(1)
+  await expect.poll(() => transcriptLinks(m)[0]!.dataset.linkState).toBe('available')
+  transcriptLinks(m)[0]!.click()
   await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
   m.q(after).click()
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
@@ -597,7 +601,7 @@ it('a conversation archived elsewhere since it was visited comes back as its rea
 it('a conversation deleted elsewhere since it was visited is gone past and named', async () => {
   const m = await visitedA('rail-team', hostSays('deleted'))
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   await expect.poll(() => m.all('toast').length).toBe(1)
   expect(m.q('toast').textContent).toContain('A conversation was deleted, so Back went past it.')
   // It was never looked at again: only the link that first opened it did.
@@ -622,11 +626,11 @@ it('past a profile removed meanwhile, the conversation reached is opened, not gu
   ])
   await sessions.attachOpen()
   const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
-  await expect.poll(() => m.q('message-link').dataset.linkState).toBe('available')
-  m.q('message-link').click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.2')
-  await expect.poll(() => m.q('message-link').dataset.linkState).toBe('available')
-  m.q('message-link').click()
+  await expect.poll(() => transcriptLinks(m)[0]!.dataset.linkState).toBe('available')
+  transcriptLinks(m)[0]!.click()
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.2')
+  await expect.poll(() => transcriptLinks(m)[0]!.dataset.linkState).toBe('available')
+  transcriptLinks(m)[0]!.click()
   await expect.poll(() => m.all('team-workspace').length).toBe(1)
   m.q('rail-settings').click()
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
@@ -634,7 +638,7 @@ it('past a profile removed meanwhile, the conversation reached is opened, not gu
   runtime.agentIdentities.mockResolvedValue({ ...agents, identities: [] })
   runtime.look.mockResolvedValueOnce(handed('recorded-a', 'W9.2'))
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.2')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.2')
   expect(m.all('launcher-column')).toHaveLength(0)
   expect(runtime.look).toHaveBeenCalledTimes(2)
   await expect.poll(() => m.all('toast').length).toBe(1)
@@ -736,7 +740,7 @@ it('Backs pressed during a step, then a dialog opened and closed, leave one Back
   expect(document.querySelectorAll('[data-cy="palette-scrim"]')).toHaveLength(0)
   expect(m.all('linked-history')).toHaveLength(1)
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   await settle()
   // One step: from A's page to the conversation the link was in, and no further.
   expect((m.q('nav-back') as HTMLButtonElement).disabled).toBe(true)
@@ -750,7 +754,7 @@ it('the conversation list refreshing while a step reads does not stop the step',
   ;(m.q('nav-back') as HTMLButtonElement).click()
   await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
   await settle()
   let finish!: (answer: ResumedSession) => void
@@ -784,7 +788,7 @@ it('Back pressed once the place a step reached is on screen takes the next step,
     expect(back().disabled).toBe(false)
     expect(back().title).toContain('Back to')
     back().click()
-    await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+    await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   } finally {
     frames.mockRestore()
   }
@@ -824,7 +828,7 @@ it('another tab chosen while a step reads stops the step', async () => {
   ;(m.q('nav-back') as HTMLButtonElement).click()
   await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
   await settle()
   let finish!: (answer: ResumedSession) => void
@@ -881,7 +885,7 @@ it('an archived page already read, deleted elsewhere since, is gone past and nam
   await settle()
   runtime.resolveLink.mockImplementation(async (target) => hostSays('deleted')(target))
   ;(m.q('nav-back') as HTMLButtonElement).click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.1')
   expect(m.all('linked-history')).toHaveLength(0)
   await expect.poll(() => m.all('toast').length).toBe(1)
   expect(m.q('toast').textContent).toContain('was deleted, so Back went past it.')
@@ -988,11 +992,11 @@ it('a conversation that can’t be opened again keeps the window where it is and
   ])
   await sessions.attachOpen()
   const m = mount(RuntimeScreen, {}, { width: 1200, height: 800 })
-  await expect.poll(() => m.all('message-link').length).toBe(1)
-  m.q('message-link').click()
-  await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.2')
-  await expect.poll(() => m.q('message-link').dataset.linkState).toBe('available')
-  m.q('message-link').click()
+  await expect.poll(() => transcriptLinks(m).length).toBe(1)
+  transcriptLinks(m)[0]!.click()
+  await expect.poll(() => transcriptLinks(m)[0]?.textContent).toBe('W9.2')
+  await expect.poll(() => transcriptLinks(m)[0]!.dataset.linkState).toBe('available')
+  transcriptLinks(m)[0]!.click()
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
   runtime.look.mockRejectedValueOnce(new Error('That conversation is open in another window.'))
   ;(m.q('nav-back') as HTMLButtonElement).click()

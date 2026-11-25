@@ -14,7 +14,7 @@ import type { TranscriptState } from './transcript'
 export interface LatestWords {
   /** ⚑ The item the words are, so a press can show them in the conversation. */
   readonly itemId: string
-  /** ⚑ One paragraph: each line's markdown marks taken off, the lines joined by a space. */
+  /** The original prose, rendered by the same component as the conversation. */
   readonly text: string
   /** ⚑ When the message began, or `null` where the fold had no clock. */
   readonly at: number | null
@@ -24,8 +24,8 @@ export function latestWords(state: TranscriptState): LatestWords | null {
   for (let i = state.items.length - 1; i >= 0; i -= 1) {
     const item = state.items[i]
     if (item?.kind !== 'assistant' || item.parentToolCallId !== undefined) continue
-    const text = plainParagraph(item.text)
-    if (text === '') continue
+    const text = item.text
+    if (text.trim() === '') continue
     return { itemId: item.id, text, at: item.at ?? null }
   }
   return null
@@ -38,36 +38,7 @@ export function panelWords(state: TranscriptState): LatestWords | null {
   const item = state.items.find((one) => one.kind === 'assistant' && one.ordinal === final.ordinal)
   return {
     itemId: item?.id ?? `human-final-${final.ordinal}`,
-    text: plainParagraph(final.text),
+    text: final.text,
     at: final.at,
   }
-}
-
-/**
- * ⚑ **A message as one paragraph a person reads at a glance** — a heading, quote or bullet lead,
- * bold, italics, inline code, a link's brackets and a code fence taken off, every line kept.
- * ⚠️ The bubble's `title` keeps the words exactly as written.
- */
-const FENCE = /^\s{0,3}(```|~~~)/
-const LEAD = /^\s{0,3}(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/
-const BOLD = /(\*\*|__)(.+?)\1/g
-const ITALIC = /(^|\s)[*_](\S(?:[^*_]*\S)?)[*_](?=\s|[.,;:!?)]|$)/g
-const CODE = /`([^`]+)`/g
-const LINK = /\[([^\]]+)\]\([^)]*\)/g
-
-function plainParagraph(words: string): string {
-  return words
-    .split('\n')
-    .filter((line) => !FENCE.test(line))
-    .map((line) =>
-      line
-        .replace(LEAD, '')
-        .replace(BOLD, '$2')
-        .replace(ITALIC, '$1$2')
-        .replace(CODE, '$1')
-        .replace(LINK, '$1')
-        .trim(),
-    )
-    .filter((line) => line !== '')
-    .join(' ')
 }

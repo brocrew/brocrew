@@ -1,7 +1,8 @@
-import { decode, escapeRegExp, render, shown } from './helpers/rendered-markup'
+import { decode, render, shown } from './helpers/rendered-markup'
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
+import { parse as parseSfc } from 'vue/compiler-sfc'
 import type { PermissionOutcome, RuntimeEvent } from '@brobot2/runtime'
 import { toWireEvent } from '../src/main/runtime/event-wire'
 import AttentionQueue from '../src/renderer/src/components/AttentionQueue.vue'
@@ -198,11 +199,25 @@ function userInputItem(event: UserInputRequest): UserInputItem {
   return item
 }
 
-/** ⚑ Every text a `data-cy` element holds, decoded, in document order — the element's own text only. */
-const textsOf = (markup: string, cy: string): string[] =>
-  [
-    ...shown(markup).matchAll(new RegExp(`data-cy="${escapeRegExp(cy)}"[^>]*>([\\s\\S]*?)</`, 'g')),
-  ].map((one) => decode(one[1]!.trim()))
+/** ⚑ The visible words a `data-cy` element holds, decoded, through its Markdown framing. */
+const textsOf = (markup: string, cy: string): string[] => {
+  const tree = parseSfc(`<template>${shown(markup)}</template>`).descriptor.template!.ast!
+  const words: string[] = []
+  const visit = (nodes: typeof tree.children): void => {
+    for (const node of nodes) {
+      if (node.type !== 1) continue
+      if (
+        node.props.some(
+          (prop) => prop.type === 6 && prop.name === 'data-cy' && prop.value?.content === cy,
+        )
+      )
+        words.push(decode(node.loc.source.replace(/<[^>]+>/g, '').trim()))
+      visit(node.children)
+    }
+  }
+  visit(tree.children)
+  return words
+}
 
 /** The card's leading Markdown paragraph, read before any scope or reason. */
 const leadParagraph = (markup: string, cy: string): string | undefined => {

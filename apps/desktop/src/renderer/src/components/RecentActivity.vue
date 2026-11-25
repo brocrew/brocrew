@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import MarkdownWords from './MarkdownWords.vue'
+import { vButtonKeys } from '../lib/button-keys'
 import { computed } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import {
@@ -119,10 +121,12 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
             </h2>
             <ul class="lines">
               <li v-for="line in day.lines" :key="line.id">
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  :tabindex="line.conversation === null ? -1 : 0"
+                  v-button-keys
                   class="line bb-entry"
-                  :disabled="line.conversation === null"
+                  :aria-disabled="line.conversation === null"
                   :title="
                     line.conversation === null ? 'No conversation to open' : 'Open the conversation'
                   "
@@ -137,18 +141,22 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
                   <span class="mark bb-icon-box" :class="TONE[line.what]" aria-hidden="true">
                     <svg class="icon"><use :href="WHAT_ICON[line.what]" /></svg>
                   </span>
-                  <span class="words bb-entry-words">
+                  <div class="words bb-entry-words">
                     <span class="who" :title="REGISTER_SAYS[line.register]"
                       ><strong>{{ line.agent }}</strong> {{ WHAT_WORDS[line.what] }}</span
                     >
-                    <span class="piece bb-entry-detail" :title="pieceWords(line)">{{
-                      pieceWords(line)
-                    }}</span>
-                  </span>
+                    <MarkdownWords
+                      class="piece bb-entry-detail"
+                      :title="pieceWords(line)"
+                      :text="line.piece.title ?? line.piece.label"
+                      :lead="line.piece.title === null ? undefined : `${line.piece.label} ·`"
+                      :session-id="line.conversation ?? undefined"
+                    />
+                  </div>
                   <svg v-if="line.conversation !== null" class="icon open" aria-hidden="true">
                     <use href="#i-arrow" />
                   </svg>
-                </button>
+                </div>
               </li>
             </ul>
           </section>
@@ -306,11 +314,11 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   cursor: pointer;
 }
 
-.line:hover:not(:disabled) {
+.line:hover:not([aria-disabled='true']) {
   background: var(--wash-3, var(--panel-2));
 }
 
-.line:disabled,
+.line[aria-disabled='true'],
 .line.notice {
   cursor: default;
 }

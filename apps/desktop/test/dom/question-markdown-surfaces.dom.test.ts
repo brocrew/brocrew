@@ -179,8 +179,11 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
         await expect.poll(() => words.querySelectorAll('[role="status"]').length).toBe(1)
       }
       const grant = m.q('user-input-permission')
-      expect(grant.querySelector('.md-chat, strong, code')).toBeNull()
-      expect(grant.textContent).toContain('**literal reason**')
+      const reason = grant.querySelector('.md-chat')!
+      expect(reason.querySelector('strong')?.textContent).toBe('literal reason')
+      expect(reason.textContent?.trim()).toBe('literal reason')
+      for (const field of [...grant.children].slice(1))
+        expect(field.querySelector('.md-chat, strong, code')).toBeNull()
       expect(grant.textContent).toContain('/work/`literal`')
       const before = press.mock.calls.length
       grant.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
