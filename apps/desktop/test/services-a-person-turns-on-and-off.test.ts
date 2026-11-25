@@ -704,14 +704,16 @@ describe('Service lifecycle', () => {
     const itWasApproved = (host: RuntimeHost, service: string, row: unknown): boolean =>
       (
         host as unknown as {
-          tellTheAskerItWasApproved(
-            waiting: unknown,
-            row: unknown,
-            offered: readonly string[],
-            granted: readonly string[] | null,
-          ): boolean
+          mcpServerRequests: {
+            tellTheAskerItWasApproved(
+              waiting: unknown,
+              row: unknown,
+              offered: readonly string[],
+              granted: readonly string[] | null,
+            ): boolean
+          }
         }
-      ).tellTheAskerItWasApproved(
+      ).mcpServerRequests.tellTheAskerItWasApproved(
         { requested: { requestId: 'req_fictional' }, conversation: service },
         row,
         ['read_notes'],
