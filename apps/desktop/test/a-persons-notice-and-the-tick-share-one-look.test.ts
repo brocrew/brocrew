@@ -12,6 +12,10 @@ import { LOOK_EVERY_MS, limitsReadCadence } from '../src/renderer/src/lib/person
  * reads. These run the screen's own code against held replies: every ask goes through one look
  * that keeps at most one round in flight and one owed, the last ask is always read, a closed
  * screen neither reads nor writes, and a notice leaves the limits walk on its own cadence.
+ *
+ * The last ask is read after at most one round's duration: a round owed only to notices and the
+ * tick starts that long after the previous one ended, and a look a person's own action asks for
+ * never waits.
  */
 
 const SCREEN = readFileSync(
@@ -72,15 +76,18 @@ function theTick(): string {
   return timers?.[0] ?? ''
 }
 
-function aScreen() {
+function aScreen(readMs = 0) {
   let gate: Promise<void> = Promise.resolve()
   let round = 0
+  const starts: number[] = []
   const store = Object.fromEntries(
     READERS.map((reader) => [
       reader,
       vi.fn(async () => {
         const mine = ++round
+        starts.push(performance.now())
         await gate
+        if (readMs > 0) await new Promise((resolve) => setTimeout(resolve, readMs))
         const walk = { rows: [`round ${mine}`], walk: 'fictional', ledgers: 1, rowsUnread: 0 }
         const parts = {
           questions: walk,
@@ -166,6 +173,7 @@ function aScreen() {
       }
     },
     readsOf: (reader: Reader) => store[reader].mock.calls.length,
+    starts,
   }
 }
 
@@ -175,7 +183,9 @@ async function settle(): Promise<void> {
 
 describe('a persons notice and the tick share one look at the queue', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    })
     vi.setSystemTime(NOW)
   })
   afterEach(() => {
@@ -280,5 +290,72 @@ describe('a persons notice and the tick share one look at the queue', () => {
     expect(screen.store.readLimitsDisplay).toHaveBeenCalledTimes(1)
     await screen.look()
     expect(screen.store.readLimitsDisplay).toHaveBeenCalledTimes(2)
+  })
+
+  it('the round owed to notices starts one round after the last one ended, and reads the last', async () => {
+    const screen = aScreen(300)
+    const first = screen.look(true)
+    screen.arms.persons()
+    screen.arms.conversations()
+    await vi.advanceTimersByTimeAsync(300)
+    // the first round has landed; the owed one waits as long as it took
+    expect(screen.readsOf('personsQueue')).toBe(1)
+    await vi.advanceTimersByTimeAsync(299)
+    expect(screen.readsOf('personsQueue')).toBe(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(screen.readsOf('personsQueue')).toBe(2)
+    await vi.advanceTimersByTimeAsync(300)
+    await first
+    expect(screen.refs.escalated?.value).toEqual(expect.objectContaining({ rows: ['round 2'] }))
+    expect(screen.readsOf('personsQueue')).toBe(2)
+  })
+
+  it('a look a person asked for does not wait behind the notices', async () => {
+    const screen = aScreen(300)
+    const first = screen.look(true)
+    screen.arms.persons()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(screen.readsOf('personsQueue')).toBe(1)
+    // the person answers a card while the owed round is waiting
+    const mine = screen.look()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(screen.readsOf('personsQueue')).toBe(2)
+    await vi.advanceTimersByTimeAsync(300)
+    await Promise.all([first, mine])
+    expect(screen.readsOf('personsQueue')).toBe(2)
+  })
+
+  it('a look a person asked for while a round is out is read the moment it lands', async () => {
+    const screen = aScreen(300)
+    const first = screen.look(true)
+    screen.arms.persons()
+    const mine = screen.look()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(screen.readsOf('personsQueue')).toBe(2)
+    await vi.advanceTimersByTimeAsync(300)
+    await Promise.all([first, mine])
+  })
+
+  it('notices that never stop are read once per two round durations, and the final state is read', async () => {
+    const screen = aScreen(400)
+    // a notice every 100 ms for 10 s
+    for (let step = 0; step < 100; step += 1) {
+      screen.arms.persons()
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    const lastNoticeAt = performance.now()
+    await vi.advanceTimersByTimeAsync(2_000)
+    const reads = screen.readsOf('personsQueue')
+    // without the wait this is one read per 400 ms, about 25
+    expect(reads).toBeGreaterThanOrEqual(11)
+    expect(reads).toBeLessThanOrEqual(15)
+    // the last notice is read within one wait and one round of being announced
+    const lastStart = screen.starts.at(-1)!
+    expect(lastStart - lastNoticeAt).toBeLessThanOrEqual(800)
+    expect(screen.refs.escalated?.value).toEqual(
+      expect.objectContaining({ rows: [`round ${reads}`] }),
+    )
+    for (let i = 1; i < screen.starts.length; i += 1)
+      expect(screen.starts[i]! - screen.starts[i - 1]!).toBeLessThanOrEqual(800)
   })
 })

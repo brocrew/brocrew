@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 
 /** A read the test releases by hand, recording which version of the world each one saw. */
@@ -169,5 +169,135 @@ describe('reads that ask or throw as they start', () => {
     const outcome = ask()
     expect(outcome, 'the caller was handed no promise').toBeInstanceOf(Promise)
     await expect(outcome).rejects.toThrow('it threw at once')
+  })
+})
+
+describe('a spaced read waits one read between back-to-back reads, and still reads the last ask', () => {
+  /** A read that takes `ms` of fake time, counting its starts. */
+  function timedReads(ms: number) {
+    const starts: number[] = []
+    const read = async (): Promise<void> => {
+      starts.push(performance.now())
+      await new Promise((resolve) => setTimeout(resolve, ms))
+    }
+    return { read, starts }
+  }
+  const useClock = () =>
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] })
+
+  afterEach(() => vi.useRealTimers())
+
+  it('an owed read starts one read duration after the read that was out ended', async () => {
+    useClock()
+    const timed = timedReads(400)
+    const ask = oneReadAtATime(timed.read, { spaced: true })
+    const done = ask(true)
+    void ask(true)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(timed.starts).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(399)
+    expect(timed.starts).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(400)
+    await done
+    expect(timed.starts).toHaveLength(2)
+  })
+
+  it('an ask that is not patient ends the wait and reads now', async () => {
+    useClock()
+    const timed = timedReads(400)
+    const ask = oneReadAtATime(timed.read, { spaced: true })
+    const done = ask(true)
+    void ask(true)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(timed.starts).toHaveLength(1)
+    void ask()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(400)
+    await done
+  })
+
+  it('an ask that is not patient while a read is out is read at once when it lands', async () => {
+    useClock()
+    const timed = timedReads(400)
+    const ask = oneReadAtATime(timed.read, { spaced: true })
+    const done = ask(true)
+    void ask(true)
+    void ask()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(400)
+    await done
+  })
+
+  it('a listener that hands over an event object is not patient', async () => {
+    useClock()
+    const timed = timedReads(400)
+    const ask = oneReadAtATime(timed.read, { spaced: true }) as (event?: unknown) => Promise<void>
+    const done = ask({ type: 'click' })
+    void ask({ type: 'click' })
+    await vi.advanceTimersByTimeAsync(400)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(400)
+    await done
+  })
+
+  it('asks that never stop get a bounded wait, and the final state is read', async () => {
+    useClock()
+    const log: { at: number; world: number }[] = []
+    let world = 0
+    const read = async (): Promise<void> => {
+      log.push({ at: performance.now(), world })
+      await new Promise((resolve) => setTimeout(resolve, 400))
+    }
+    const ask = oneReadAtATime(read, { spaced: true })
+    // a change every 100 ms for 10 s, each one asked for
+    for (let step = 0; step < 100; step += 1) {
+      world += 1
+      void ask(true)
+      await vi.advanceTimersByTimeAsync(100)
+    }
+    const lastChangeAt = performance.now()
+    await vi.advanceTimersByTimeAsync(2_000)
+    // one read per 800 ms (400 reading + 400 waiting), not one per 400 ms (about 30)
+    expect(log.length).toBeLessThanOrEqual(15)
+    expect(log.length).toBeGreaterThanOrEqual(11)
+    const last = log.at(-1)!
+    expect(last.world).toBe(world)
+    // the last change is read within one wait and one read of being asked
+    expect(last.at - lastChangeAt).toBeLessThanOrEqual(800)
+    // never more than one read's wait between reads while changes kept coming
+    for (let i = 1; i < log.length; i += 1)
+      expect(log[i]!.at - log[i - 1]!.at).toBeLessThanOrEqual(800)
+  })
+
+  it('the wait is capped, so a very long read does not hold the follow-up for as long', async () => {
+    useClock()
+    const timed = timedReads(20_000)
+    const ask = oneReadAtATime(timed.read, { spaced: true })
+    const done = ask(true)
+    void ask(true)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(timed.starts).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(timed.starts).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(20_000)
+    await done
+  })
+
+  it('a read made without the option is never spaced', async () => {
+    useClock()
+    const timed = timedReads(400)
+    const ask = oneReadAtATime(timed.read)
+    const done = ask(true)
+    void ask(true)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(timed.starts).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(400)
+    await done
   })
 })
