@@ -51,6 +51,7 @@ import {
   keychainAttributes,
   keychainEntryFor,
 } from '../lib/upgrade-path.mjs'
+import { RUNNER_FILES, runnerSource } from './upgrade-runner-source.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const copy = (value) => structuredClone(value)
@@ -1137,7 +1138,7 @@ describe('the workspace registry selected for an upgrade', () => {
   })
 
   it('connects the runner to the explicit baseline contract and packaged candidate readings', () => {
-    const source = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
+    const source = runnerSource()
     expect(source).toContain("'beta-registry': { type: 'string', default: 'packaged' }")
     expect(source).toContain("besideTheFolder(args['beta-registry'])")
     expect(source).toContain("besideTheFolder('packaged')")
@@ -1596,8 +1597,7 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
     ].join('\n')
 
   it('is named after the app, which the candidate reads from the package: no name is set', () => {
-    const runner = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
-    expect(runner).toContain("join(REPO, 'apps', 'desktop', 'package.json')")
+    expect(runnerSource()).toContain("join(REPO, 'apps', 'desktop', 'package.json')")
     expect(pkg.productName).toBeUndefined()
     expect(APP_NAMES_BEFORE).toEqual([pkg.name])
     expect(keychainEntryFor(APP_NAMES_BEFORE[0])).toEqual({
@@ -1625,7 +1625,7 @@ describe('the Keychain entry a Mac seals saved keys with', () => {
   })
 
   it('is asked of `security` with no password: the check never passes -w or -g', () => {
-    const asked = ['upgrade-path.mjs', 'lib/mac-update-test.mjs'].flatMap((path) => {
+    const asked = [...RUNNER_FILES, 'lib/mac-update-test.mjs'].flatMap((path) => {
       const source = readFileSync(join(ROOT, 'scripts', path), 'utf8')
       return [...source.matchAll(/(?:spawnSync|run)\('\/usr\/bin\/security', \[([^\]]*)\]/g)]
     })

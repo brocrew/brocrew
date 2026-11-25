@@ -321,15 +321,15 @@ describe('small functional copy completion observations', () => {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 describe('hidden startup window allowance', () => {
-  const source = readFileSync(join(ROOT, 'scripts/upgrade-path.mjs'), 'utf8')
-  const launch = source.slice(
-    source.indexOf('async function launch('),
-    source.indexOf('\nconst pagesOf'),
+  const read = (file) => readFileSync(join(ROOT, 'scripts/lib/upgrade-run', file), 'utf8')
+  const app = read('app.mjs')
+  const launch = app.slice(app.indexOf('async function launch('), app.indexOf('\nconst pagesOf'))
+  const conversations = read('conversations.mjs')
+  const hidden = conversations.slice(
+    conversations.indexOf('async function startHiddenProgram('),
+    conversations.indexOf('\nexport {'),
   )
-  const hidden = source.slice(
-    source.indexOf('async function startHiddenProgram('),
-    source.indexOf('\nlet exitCode = 1'),
-  )
+  const source = read('the-beta.mjs')
   const measurement = source.slice(
     source.indexOf('start: (program, workspace, stage, port) =>') + 'start: '.length,
     source.indexOf(
@@ -360,6 +360,13 @@ describe('hidden startup window allowance', () => {
         installedExe: null,
         installedProgram: null,
         running: null,
+        setRunning: (value) => {
+          context.running = value
+        },
+        setInstalled: (exe, program) => {
+          context.installedExe = exe
+          context.installedProgram = program
+        },
         performance: { now: () => 1 },
         Date,
         AbortSignal,
