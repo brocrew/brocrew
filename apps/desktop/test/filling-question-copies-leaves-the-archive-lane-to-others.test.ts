@@ -11,8 +11,11 @@ describe('filling question copies leaves the archive lane to others', () => {
   let world: AServiceWorld
   let host: RuntimeHost
   const lane = () =>
-    (host as unknown as { archives: { background<T>(work: () => Promise<T>): Promise<T> } })
-      .archives
+    (
+      host as unknown as {
+        libraryImport: { archives: { background<T>(work: () => Promise<T>): Promise<T> } }
+      }
+    ).libraryImport.archives
 
   beforeEach(() => {
     world = aServiceWorld()

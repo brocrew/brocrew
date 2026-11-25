@@ -80,14 +80,16 @@ describe('importing a Codex rollout', () => {
   const importTranscript = (id: string, path: string): Promise<unknown> =>
     (
       host() as unknown as {
-        importTranscript(
-          id: string,
-          p: 'codex',
-          path: string,
-          cancelled: () => boolean,
-        ): Promise<unknown>
+        libraryImport: {
+          importTranscript(
+            id: string,
+            p: 'codex',
+            path: string,
+            cancelled: () => boolean,
+          ): Promise<unknown>
+        }
       }
-    ).importTranscript(id, 'codex', path, () => false)
+    ).libraryImport.importTranscript(id, 'codex', path, () => false)
   const runImport = (): Promise<unknown> => importTranscript(SESSION, ROLLOUT)
 
   it('produces a ledger of the same shape a live Codex session produces', async () => {

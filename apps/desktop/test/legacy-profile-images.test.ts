@@ -86,14 +86,16 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
   const importTranscript = (id: string): Promise<unknown> =>
     (
       host() as unknown as {
-        importTranscript(
-          id: string,
-          p: 'codex',
-          path: string,
-          cancelled: () => boolean,
-        ): Promise<unknown>
+        libraryImport: {
+          importTranscript(
+            id: string,
+            p: 'codex',
+            path: string,
+            cancelled: () => boolean,
+          ): Promise<unknown>
+        }
       }
-    ).importTranscript(id, 'codex', rolloutOf(id), () => false)
+    ).libraryImport.importTranscript(id, 'codex', rolloutOf(id), () => false)
   const runImport = (): Promise<unknown> => importTranscript(SESSION)
 
   /** `generated_images/<threadId>/<call_id>.png` — the convention both measured files follow. */
