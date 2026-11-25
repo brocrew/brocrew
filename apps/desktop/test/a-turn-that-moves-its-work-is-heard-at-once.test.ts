@@ -153,7 +153,7 @@ const level = (ids: readonly string[]): Level => ({
 
 /** ⚑ The host's one composed read of what a conversation holds — private, spied by name. */
 interface HoldsARead {
-  whatItHolds(holder: string): unknown
+  stallNotices: { whatItHolds(holder: string): unknown }
 }
 
 describe('D-033 · a turn that moves a piece of work is heard by every window at once', () => {
@@ -482,7 +482,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       decorateNextHandle = null
       const { queue } = controlsOf(handles.at(-1) as FakeSessionHandle)
       await settle()
-      const read = vi.spyOn(host as unknown as HoldsARead, 'whatItHolds')
+      const read = vi.spyOn((host as unknown as HoldsARead).stallNotices, 'whatItHolds')
       const readsOf = (): number => read.mock.calls.filter(([holder]) => holder === mine).length
 
       queue.push(level(['b1', 'b2']))
@@ -501,7 +501,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
       decorateNextHandle = null
       const { queue } = controlsOf(handles.at(-1) as FakeSessionHandle)
       await settle()
-      const read = vi.spyOn(host as unknown as HoldsARead, 'whatItHolds')
+      const read = vi.spyOn((host as unknown as HoldsARead).stallNotices, 'whatItHolds')
       const readsOf = (): number => read.mock.calls.filter(([holder]) => holder === mine).length
 
       queue.push(level(['b1']))

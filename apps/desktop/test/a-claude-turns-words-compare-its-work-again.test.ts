@@ -602,7 +602,9 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
       expect(body.slice(flag, compare)).toContain('session.itsWorkWasReadBeforeItsWords = false')
       // ⚑ **The callers, pinned**: `tellWhoeverGaveTheWork` (after a `turn` or `status` row),
       // `sayWhetherALevelMovedItsWork` (a background level), and this one.
-      expect(host_.split('this.sayWhenItsWorkMoved(').length - 1).toBe(3)
+      const notices = codeOf('main/runtime/host-split/stall-notices.ts')
+      const callers = (code: string): number => code.split('this.sayWhenItsWorkMoved(').length - 1
+      expect(callers(host_) + callers(notices)).toBe(3)
     })
   })
 })
