@@ -1,4 +1,4 @@
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { personOpenerOverIpc } from './helpers/person-opens-session'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {

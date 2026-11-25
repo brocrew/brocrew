@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { aGiverAndHelper, type AServiceWorld } from './helpers/a-service-world'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { aJobMade } from './lib/scheduling-calls-fixture'
 
 const accepted = (given: GiveOutcome) => {

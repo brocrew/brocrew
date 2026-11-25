@@ -1,7 +1,7 @@
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

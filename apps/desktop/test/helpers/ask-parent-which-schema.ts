@@ -1,6 +1,6 @@
 import type { AgentToolset } from '@brobot2/runtime'
 import { expect } from 'vitest'
-import { callOn } from './call-agent-tool'
+import { callOn } from './call-tool'
 
 export async function askParentWhichSchema(workerTools: AgentToolset, piece: string) {
   const asked = await callOn(workerTools, 'ask_question', {

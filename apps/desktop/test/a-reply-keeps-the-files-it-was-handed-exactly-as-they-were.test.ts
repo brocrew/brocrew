@@ -1,5 +1,5 @@
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { textOfTheKeptFile } from './lib/kept-file-named'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'

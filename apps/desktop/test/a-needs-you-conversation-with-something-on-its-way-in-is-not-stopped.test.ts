@@ -1,4 +1,4 @@
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { permissionTurnFixture } from './helpers/permission-card-on'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,6 +1,6 @@
 import { giveAndWaitForBriefTurn, openFrontEndChain } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { chainAbove } from './helpers/conversation-ancestry'
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
 import { waitFor } from './lib/f093-host'

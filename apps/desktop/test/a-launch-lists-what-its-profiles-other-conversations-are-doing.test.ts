@@ -1,4 +1,4 @@
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import {
   fixtureProviderConfig,
   neutralHostDeps,

@@ -1,7 +1,7 @@
 import { RuntimeHost as GiverNoticeHost } from './helpers/giver-notice-host'
 import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { waitFor } from './lib/f093-host'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'

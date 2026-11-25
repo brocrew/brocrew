@@ -7,7 +7,7 @@ import { expect } from 'vitest'
 import type { SessionStore } from '../../src/main/db/session-store'
 import { agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools'
 import type { RuntimeEventSink, RuntimeHost } from '../../src/main/runtime/runtime-host'
-import { callOn } from '../helpers/call-agent-tool'
+import { callOn } from '../helpers/call-tool'
 import { waitFor } from './f093-host'
 import { RecordingSink } from './host-fixture'
 
@@ -272,7 +272,11 @@ export async function giveToSeededWorker(
 }
 
 export async function givePagesToWorker(
-  call: typeof callOn,
+  call: (
+    tools: AgentToolset,
+    name: ToolName,
+    args: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>,
   tools: AgentToolset,
   title: string,
   to: string,

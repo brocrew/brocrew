@@ -1,7 +1,7 @@
 import { newConversationGive } from './lib/give-fixture'
 import { permissionCardOn } from './helpers/permission-card-on'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'

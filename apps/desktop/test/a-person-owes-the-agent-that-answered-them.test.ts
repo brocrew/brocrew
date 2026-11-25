@@ -1,4 +1,4 @@
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { heldTurnHostFixture, type TurnEnds } from './lib/held-turn-provider'
 import { givePagesAndWaitForStall } from './lib/give-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'

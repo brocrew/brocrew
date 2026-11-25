@@ -1,6 +1,6 @@
 import { giveToConversation } from './lib/give-fixture'
 import { expectRecordedBriefBeforeFirstTurn, newestNamedHold } from './lib/recorded-send'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState } from '../src/shared/task-contracts'

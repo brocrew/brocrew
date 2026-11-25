@@ -1,4 +1,4 @@
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

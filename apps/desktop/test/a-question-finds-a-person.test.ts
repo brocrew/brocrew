@@ -1,6 +1,6 @@
 import { finishPermissionTurn, permissionCardOn } from './helpers/permission-card-on'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { TranscriptEvent } from '../src/shared/conversation-events'

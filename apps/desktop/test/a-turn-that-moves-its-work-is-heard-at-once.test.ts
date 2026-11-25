@@ -1,5 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'

@@ -1,6 +1,6 @@
 import { callAddressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'

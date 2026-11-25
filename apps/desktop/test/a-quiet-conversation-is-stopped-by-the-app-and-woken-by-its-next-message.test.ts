@@ -1,7 +1,7 @@
 import { permissionTurnFixture } from './helpers/permission-card-on'
 import { waitFor } from './lib/f093-host'
 import { RecordingSink } from './helpers/a-service-world'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import {
   fixtureConversationReaders,
   fixtureProviderConfig,

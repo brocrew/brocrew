@@ -1,5 +1,5 @@
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { recordHistoricallyMovedNote, seedHistoricalSuccessor } from './lib/historical-replacement'

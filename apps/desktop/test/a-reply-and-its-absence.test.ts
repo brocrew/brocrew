@@ -1,5 +1,5 @@
 import { callAddressedGive, giveWorkWithTitleAsBrief } from './lib/give-fixture'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { cleanupAndReportFailures } from './helpers/cleanup-failure-trace'
 import { waitFor } from './lib/f093-host'
 import { textOfTheKeptFile } from './lib/kept-file-named'

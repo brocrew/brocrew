@@ -2,7 +2,7 @@ import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
 import { expectNoQuestionWake } from './lib/question-wake'
 import { giveOpenWorkerTask } from './lib/give-fixture'
 import { personOpener } from './helpers/person-opens-session'
-import { callOn } from './helpers/call-agent-tool'
+import { callOn } from './helpers/call-tool'
 import { waitFor } from './lib/f093-host'
 import type {
   RequestRoutedEvent,
