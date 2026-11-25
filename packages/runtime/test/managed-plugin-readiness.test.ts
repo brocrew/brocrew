@@ -1,23 +1,28 @@
+import { join } from 'node:path'
 import { route, readinessHomes, deferred, ready, tick, Wire } from './fixtures/plugin-readiness'
 import { expect, it, vi } from 'vitest'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { CodexRuntime } from '../src/codex/codex-runtime'
+import { CodexExited } from '../src/codex/codex-transport'
 import { ClaudeRuntime, type ClaudeQuery } from '../src/claude/claude-runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
 import type { RuntimeEvent, SessionHandle } from '../src/index'
-import { withManagedPluginAttachments } from '../src/managed-plugin-session'
-import { MANAGED_PLUGIN_READY_WITHIN_MS } from '../src/codex/managed-plugin-readiness'
-import type { ManagedPluginDiscovery } from '../src/managed-plugin-observation'
+import { StoppedBeforeSend, withManagedPluginAttachments } from '../src/managed-plugin-session'
+import type {
+  ManagedPluginDiscovery,
+  ManagedPluginObserver,
+} from '../src/managed-plugin-observation'
 
 const { home, handles } = readinessHomes()
 
-async function start(managed = true) {
+async function start(managed = true, observeManagedPlugins?: ManagedPluginObserver) {
   const location = home(),
     wire = new Wire(location)
   const runtime = new CodexRuntime(() => wire)
   const handle = await runtime.start({
     ...location,
     ...(managed ? { managedPluginMcp: [route] } : {}),
+    ...(observeManagedPlugins && { observeManagedPlugins }),
   })
   handles.push(handle)
   const events: RuntimeEvent[] = []
@@ -274,14 +279,12 @@ it('starts without a dead plugin and records one fixed line without provider err
   expect(warnings(events)).toHaveLength(1)
 })
 
-it.each(['refused', 'tools-error', 'timeout'] as const)(
+it.each(['refused', 'tools-error'] as const)(
   'reobserves a %s first discovery on the same Codex thread before a later turn',
   async (outcome) => {
     const { wire, handle, events } = await start()
-    const first = deferred<unknown>()
     wire.discovery = async () => {
       if (outcome === 'refused') throw new Error('fictional-private-discovery-marker')
-      if (outcome === 'timeout') return first.promise
       return {
         data: [
           {
@@ -295,7 +298,7 @@ it.each(['refused', 'tools-error', 'timeout'] as const)(
     }
     const saved = handle.ref
     await handle.send('Fictional ordinary first turn')
-    await vi.advanceTimersByTimeAsync(outcome === 'timeout' ? MANAGED_PLUGIN_READY_WITHIN_MS : 0)
+    await tick()
     expect(wire.catalogsAtTurns).toEqual([[]])
     expect(warnings(events)).toHaveLength(1)
     expect(JSON.stringify(warnings(events))).not.toContain('fictional-private-discovery-marker')
@@ -327,10 +330,6 @@ it.each(['refused', 'tools-error', 'timeout'] as const)(
     expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
     expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
 
-    // A late answer from a timed-out first observation cannot release the new turn.
-    first.resolve(ready())
-    await tick()
-    expect(wire.catalogsAtTurns).toEqual([[]])
     wire.catalog = ['echo']
     recovered.resolve(ready())
     await tick()
@@ -491,43 +490,54 @@ it('an older healthy reply cannot replace a newer unknown reading before the nex
   expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
 })
 
-it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
-  const { wire, handle, events } = await start()
-  const discovery = deferred<unknown>()
-  wire.discovery = () => discovery.promise
-  await handle.send('Fictional first turn')
-  await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_READY_WITHIN_MS - 1)
-  expect(wire.catalogsAtTurns).toEqual([])
-  await vi.advanceTimersByTimeAsync(1)
-  expect(wire.catalogsAtTurns).toEqual([[]])
-  expect(warnings(events)).toHaveLength(1)
-  wire.finish()
-  await tick()
-  const laterDiscovery = deferred<unknown>()
-  wire.discovery = () => laterDiscovery.promise
-  await handle.send('Fictional later turn')
-  await tick()
-  expect(wire.catalogsAtTurns).toHaveLength(1)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(2)
-  discovery.resolve(ready())
-  await tick()
-  expect(wire.catalogsAtTurns).toHaveLength(1)
-  laterDiscovery.resolve(ready())
-  await tick()
-  expect(wire.catalogsAtTurns).toHaveLength(2)
-  expect(warnings(events)).toHaveLength(1)
-})
+it.each(['held', 'rejected'] as const)(
+  'settles a %s discovery when the transport ends',
+  async (reply) => {
+    const observer = vi.fn<ManagedPluginObserver>()
+    const { wire, handle, events } = await start(true, observer)
+    const discovery = deferred<unknown>()
+    let rejectRequest!: (error: Error) => void
+    wire.discovery = () =>
+      reply === 'held'
+        ? discovery.promise
+        : new Promise((_, reject) => {
+            rejectRequest = reject
+          })
+    await handle.send('Fictional first turn')
+    await vi.advanceTimersByTimeAsync(12_000)
+    expect(wire.catalogsAtTurns).toEqual([])
+    const exit = new CodexExited('fictional exit')
+    if (reply === 'rejected') {
+      // On exit, native transport first rejects the RPC, then closes its incoming queue.
+      rejectRequest(exit)
+      wire.queue.push({ kind: 'notification', method: 'account/updated', params: {} })
+    }
+    wire.close(exit)
+    await tick()
+    expect(handle.status()).toBe('errored')
+    expect(observer).toHaveBeenCalledExactlyOnceWith({
+      server: route.name,
+      tools: [],
+      outcome: 'cancelled',
+    })
+    discovery.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([])
+    expect(observer).toHaveBeenCalledOnce()
+    expect(warnings(events)).toEqual([])
+  },
+)
 
-it('rechecks a still-starting catalog within the same deadline', async () => {
-  const { wire, handle } = await start()
-  let reads = 0
+it('keeps a starting plugin ahead of the first turn past ten seconds', async () => {
+  const { wire, handle, events } = await start()
   wire.discovery = async () =>
-    ++reads < 3 ? { data: [{ name: route.name, runtimeStatus: 'starting' }] } : ready()
+    wire.catalog.length ? ready() : { data: [{ name: route.name, runtimeStatus: 'starting' }] }
   await handle.send('Fictional first turn')
-  await vi.advanceTimersByTimeAsync(99)
+  await vi.advanceTimersByTimeAsync(12_000)
   expect(wire.catalogsAtTurns).toEqual([])
+  expect(warnings(events)).toEqual([])
   wire.catalog = ['echo']
-  await vi.advanceTimersByTimeAsync(1)
+  await vi.advanceTimersByTimeAsync(50)
   expect(wire.catalogsAtTurns).toEqual([['echo']])
 })
 
@@ -546,18 +556,20 @@ it.each(['failed', 'authenticationRequired', 'disabled', 'cancelled'])(
   },
 )
 
-it('stops an undispatched turn promptly and a late catalog cannot send it', async () => {
+it('stops an undispatched turn after ten seconds and a late catalog cannot send it', async () => {
   const { wire, handle, events } = await start()
   const discovery = deferred<unknown>()
   wire.discovery = () => discovery.promise
   await handle.send('Fictional first turn')
+  await vi.advanceTimersByTimeAsync(12_000)
+  expect(wire.catalogsAtTurns).toEqual([])
   await handle.interrupt()
   await tick()
   expect(
     events.filter((event) => event.type === 'turn' && event.state === 'interrupted'),
   ).toHaveLength(1)
   discovery.resolve(ready())
-  await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_READY_WITHIN_MS)
+  await tick()
   expect(wire.catalogsAtTurns).toEqual([])
   expect(warnings(events)).toEqual([])
   const replacement = deferred<unknown>()
@@ -643,6 +655,62 @@ it('Claude still delivers its first prompt immediately with its authenticated ma
     },
   })
 })
+
+it.each(['Stop', 'Close'] as const)(
+  '%s settles a managed reopen while skills preparation is held',
+  async (end) => {
+    const location = home()
+    const wires: Wire[] = []
+    let revision = 'initial'
+    const runtime = withManagedPluginAttachments(
+      new CodexRuntime(() => {
+        const wire = new Wire(location)
+        const request = wire.request.bind(wire)
+        wire.request = async (method, params) =>
+          method === 'skills/list'
+            ? { data: [{ cwd: location.cwd, skills: [], errors: [] }] }
+            : request(method, params)
+        wires.push(wire)
+        return wire
+      }),
+      {
+        read: async () => ({ revision, servers: revision === 'initial' ? [route] : [] }),
+        close: async () => {},
+      },
+    )
+    const preparation = deferred<void>()
+    const preparing = deferred<void>()
+    const beforeSkillDiscovery = vi.fn(async () => {}).mockImplementationOnce(async () => {})
+    beforeSkillDiscovery.mockImplementationOnce(() => {
+      preparing.resolve()
+      return preparation.promise
+    })
+    const handle = await runtime.start({
+      ...location,
+      builtInSkills: { root: join(location.cwd, 'built-in'), skills: [] },
+      sharedSkillsRoot: join(location.cwd, 'shared'),
+      beforeSkillDiscovery,
+    })
+    revision = 'changed'
+    const rejected = vi.fn()
+    const sending = handle.send('fictional cancelled message').catch(rejected)
+    await preparing.promise
+    const stopping = end === 'Close' ? handle.close() : handle.interrupt()
+    try {
+      await tick()
+      expect(rejected.mock.calls[0]?.[0]).toBeInstanceOf(StoppedBeforeSend)
+      await stopping
+      expect(wires[1]!.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+      expect(wires.flatMap((wire) => wire.catalogsAtTurns)).toEqual([])
+      if (end === 'Stop') expect(handle.status()).toBe('idle')
+    } finally {
+      preparation.resolve()
+      await sending
+      await stopping
+      await handle.close()
+    }
+  },
+)
 
 it.each([false, true])(
   'recovers Codex before the next tool call, preserving its thread (route changed %s)',

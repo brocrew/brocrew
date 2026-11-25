@@ -1,12 +1,14 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import {
   pluginWorkspaceIdentity,
   PluginWorkspaceLease,
+  supervisorRequest,
 } from '../src/main/plugins/supervisor/client'
+import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { AGENT_ROUTES_FORMAT_2, OWNER_WIRE } from '../src/main/plugins/supervisor/protocol'
-import { supervisorFixtures } from './plugin-supervisor-fixtures'
+import { deferred, supervisorFixtures } from './plugin-supervisor-fixtures'
 
 const f = supervisorFixtures()
 const closing: (() => Promise<unknown>)[] = []
@@ -48,6 +50,108 @@ describe('a routes reply names each plugin when both sides agreed to', () => {
     expect(read.plugins).toEqual({ pending: ['zinnia'], none: ['yarrow'], unknown: false })
     expect(routes).not.toHaveBeenCalled()
   })
+
+  it.each(['reply', 'release'] as const)(
+    'settles an admitted slow route read on %s',
+    async (end) => {
+      const target = await f.fixture()
+      const owner = await target.start()
+      const lease = await target.attach()
+      const second = await f.fixture()
+      const other = await target.attach({
+        generation: randomUUID(),
+        workspaceRoot: second.workspaceRoot,
+      })
+      const reading = deferred<void>()
+      const reply = deferred<typeof named>()
+      owner.bindAgentBridge({
+        async routes() {
+          return []
+        },
+        agentRoutes() {
+          reading.resolve()
+          return reply.promise
+        },
+        revoke() {},
+      })
+
+      let settled = false
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const work = lease
+        .agentRoutes({
+          workspaceId: pluginWorkspaceIdentity(target.workspaceRoot),
+          incarnation: randomUUID(),
+          occupied: [],
+        })
+        .then(
+          (value) => {
+            settled = true
+            return { value }
+          },
+          (error: unknown) => {
+            settled = true
+            return { error }
+          },
+        )
+      try {
+        await reading.promise
+        if (end === 'reply') {
+          await vi.advanceTimersByTimeAsync(2_100)
+          expect(settled).toBe(false)
+          reply.resolve(named)
+          expect(await work).toMatchObject({ value: { format: 2, value: named } })
+        } else {
+          lease.abandon()
+          await vi.advanceTimersByTimeAsync(0)
+          expect(settled).toBe(true)
+          expect(await work).toMatchObject({ error: { code: 'unavailable' } })
+          expect(owner.valid(other.lease, other.epoch)).toBe(true)
+        }
+      } finally {
+        vi.useRealTimers()
+        reply.resolve(named)
+        await work
+      }
+    },
+  )
+
+  it('drains a raw route socket when its lease is invalidated, even if the handler never replies', async () => {
+    const target = await f.fixture()
+    const owner = await target.start()
+    const lease = await target.attach()
+    const reading = deferred<void>()
+    const reply = deferred<typeof named>()
+    owner.bindAgentBridge({
+      routes: async () => [],
+      agentRoutes() {
+        reading.resolve()
+        return reply.promise
+      },
+      revoke() {},
+    })
+    const storage = new SupervisorStorage(target.root, [target.workspaceRoot], false)
+    const request = supervisorRequest(storage, storage.read()!, {
+      kind: 'agent-routes',
+      workspace: createHash('sha256').update(target.workspaceRoot).digest('hex'),
+      generation: target.options.generation,
+      lease: lease.lease,
+      workspaceId: pluginWorkspaceIdentity(target.workspaceRoot),
+      incarnation: randomUUID(),
+      occupied: [],
+      release: false,
+      format: 2,
+    }).catch((error: unknown) => error)
+    try {
+      await reading.promise
+      expect(await owner.shutdown()).toBe(true)
+      expect(await request).toMatchObject({ code: 'unavailable' })
+      expect(storage.read()?.phase).toBe('stopped')
+    } finally {
+      reply.resolve(named)
+      await request
+      storage.close()
+    }
+  }, 15_000)
 
   it('a lease from a peer without it gets the plain array, read as the complete set', async () => {
     const target = await f.fixture()

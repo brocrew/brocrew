@@ -5,7 +5,7 @@ import { join } from 'node:path'
 /**
  * A proxy in front of the plugin service's socket. Each reply can be lost (the connection is
  * closed), held back (never sent), or sent after this whole process stalled for `stall` ms.
- * `beforeChallenge` runs before the service's challenge is passed on.
+ * `beforeChallenge` runs before the service's challenge. `beforeReply` can hold an answer.
  */
 export async function interpose(root: string) {
   const path = join(root, 'supervisor/owner.sock'),
@@ -13,7 +13,13 @@ export async function interpose(root: string) {
   renameSync(path, aside)
   const requests: string[] = [],
     replies: string[] = [],
-    plan: { lose: number; hold: number; stall: number; beforeChallenge?: () => void } = {
+    plan: {
+      lose: number
+      hold: number
+      stall: number
+      beforeChallenge?: () => void
+      beforeReply?: (request: string) => Promise<void> | undefined
+    } = {
       lose: 0,
       hold: 0,
       stall: 0,
@@ -22,7 +28,8 @@ export async function interpose(root: string) {
   const server = createServer((client) => {
     const owner = createConnection(aside)
     let challenged = false,
-      replied = false
+      replied = false,
+      request = ''
     client.on('error', () => owner.destroy())
     // The client closes only after it has acted on the reply it read.
     client.on('close', () => {
@@ -32,6 +39,7 @@ export async function interpose(root: string) {
     owner.on('error', () => client.destroy())
     client.on('data', (chunk: Buffer) => {
       requests.push(chunk.toString())
+      request += chunk.toString()
       owner.write(chunk)
     })
     owner.on('data', (chunk: Buffer) => {
@@ -50,9 +58,15 @@ export async function interpose(root: string) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, plan.stall)
           plan.stall = 0
         }
-        replies.push(chunk.toString())
-        replied = true
-        client.end(chunk)
+        const forward = () => {
+          if (client.destroyed) return
+          replies.push(chunk.toString())
+          replied = true
+          client.end(chunk)
+        }
+        const wait = plan.beforeReply?.(request)
+        if (wait) void wait.then(forward, () => client.destroy())
+        else forward()
       }
     })
   })

@@ -8,7 +8,7 @@ import {
 } from '../src/main/plugins/supervisor/client'
 import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/launcher'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { OWNER_LAUNCH_MS, OWNER_LIMITS } from '../src/main/plugins/supervisor/protocol'
+import { OWNER_LIMITS } from '../src/main/plugins/supervisor/protocol'
 
 const program = vi.hoisted(() => ({ start: vi.fn() }))
 vi.mock('node:child_process', async (original) => ({
@@ -78,7 +78,7 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       build: 'fictional-build',
     }
   }
-  it('waits for a cold six-second start and then authenticates the owner once', async () => {
+  it('authenticates the owner once a cold start passes the former launch deadline', async () => {
     const options = await workspaceOptions()
     let owner: PluginSupervisor | undefined
     let lease: PluginWorkspaceLease | undefined
@@ -86,7 +86,7 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     const ownerNow = performance.now.bind(performance)
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
     const launch = vi.fn(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 6_000))
+      await new Promise((resolve) => setTimeout(resolve, 65_000))
       owner = await PluginSupervisor.start({
         root: options.root,
         workspaceRoots: [],
@@ -105,9 +105,9 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       },
     )
     try {
-      await vi.advanceTimersByTimeAsync(2_100)
+      await vi.advanceTimersByTimeAsync(64_999)
       expect(settled).toBe(false)
-      await vi.advanceTimersByTimeAsync(3_900)
+      await vi.advanceTimersByTimeAsync(1)
       vi.useRealTimers()
       const completed = await result
       if ('error' in completed) throw completed.error
@@ -123,16 +123,69 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       await owner?.shutdown()
     }
   })
-  it('still expires a stalled start at the launch budget without retrying', async () => {
+  it('lets a caller cancel its own pending launch wait', async () => {
     const options = await workspaceOptions()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    const launch = vi.fn(() => new Promise<void>(() => {}))
-    const result = PluginWorkspaceLease.attach({ ...options, launch }).catch(
-      (error: unknown) => error,
+    const stopping = new AbortController()
+    let finish!: (reason: unknown) => void
+    const launch = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          finish = reject
+        }),
     )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
-    expect(await result).toMatchObject({ code: 'unavailable' })
+    let settled = false
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    const result = PluginWorkspaceLease.attach({
+      ...options,
+      launch,
+      signal: stopping.signal,
+    }).then(
+      (value) => ({ value }),
+      (error: unknown) => {
+        settled = true
+        return { error }
+      },
+    )
+    try {
+      await vi.advanceTimersByTimeAsync(1)
+      expect(launch).toHaveBeenCalledOnce()
+      stopping.abort(new Error('fictional app quit'))
+      await vi.advanceTimersByTimeAsync(1)
+      expect(settled).toBe(true)
+      expect(await result).toMatchObject({ error: { code: 'unavailable' } })
+    } finally {
+      finish(new Error('fictional launcher ended during cleanup'))
+      vi.useRealTimers()
+      await result
+    }
+  })
+  it('quits a pending admission without an external abort signal', async () => {
+    const { root, workspaceRoot, build } = await workspaceOptions()
+    const attachment = new PluginSupervisorAttachment()
+    let finish!: (error: Error) => void
+    const launch = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          finish = reject
+        }),
+    )
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+    attachment.start({ root, workspaceRoot, build, launch })
+    await vi.advanceTimersByTimeAsync(0)
     expect(launch).toHaveBeenCalledOnce()
+    let settled = false
+    const quitting = attachment.quit().then(() => {
+      settled = true
+    })
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(settled).toBe(true)
+      expect(await attachment.ready()).toBe(false)
+    } finally {
+      finish(new Error('fictional launcher ended during cleanup'))
+      vi.useRealTimers()
+      await quitting
+    }
   })
   it('retains the original failed start through the public refusal', async () => {
     const options = await workspaceOptions()

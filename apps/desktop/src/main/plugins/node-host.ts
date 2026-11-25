@@ -81,12 +81,17 @@ function deferred<T>(): Deferred<T> {
   void promise.catch(() => {})
   return { promise, resolve, reject }
 }
+interface ReadinessProbe {
+  readonly signal: AbortSignal
+  progress(): void
+}
 async function authenticatedHealth(
   origin: string,
   mcp: string,
   admin: string,
   version: string,
   mcpPath: string,
+  probe: ReadinessProbe,
 ): Promise<void> {
   for (const [path, token, expected, method] of [
     ['/healthz', '', 401, 'GET'],
@@ -100,8 +105,9 @@ async function authenticatedHealth(
       method,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       redirect: 'manual',
-      signal: AbortSignal.timeout(1500),
+      signal: probe.signal,
     })
+    probe.progress()
     if (response.status !== expected) {
       await response.body?.cancel()
       throw new PluginHostError('ready')
@@ -115,6 +121,7 @@ async function authenticatedHealth(
         for (;;) {
           const part = await reader.read()
           if (part.done) break
+          if (part.value.length) probe.progress()
           length += part.value.length
           if (length > 4096) throw new PluginHostError('ready')
           chunks.push(part.value)
@@ -130,17 +137,23 @@ async function authenticatedHealth(
   client.onerror = () => {}
   const transport = new StreamableHTTPClientTransport(new URL(origin + mcpPath), {
     requestInit: { headers: { Authorization: `Bearer ${mcp}` } },
-    fetch: (url, init) => {
+    fetch: async (url, init) => {
       const target = typeof url === 'object' && 'url' in url ? String(url.url) : String(url)
-      if (new URL(target).origin !== origin) return Promise.reject(new PluginHostError('ready'))
-      return fetch(url, {
+      if (new URL(target).origin !== origin) throw new PluginHostError('ready')
+      const response = await fetch(url, {
         ...init,
         redirect: 'manual',
-        signal: AbortSignal.any([
-          AbortSignal.timeout(2000),
-          ...(init?.signal ? [init.signal] : []),
-        ]),
+        signal: init?.signal ? AbortSignal.any([probe.signal, init.signal]) : probe.signal,
       })
+      probe.progress()
+      if (!response.body) return response
+      const watching = new TransformStream<Uint8Array, Uint8Array>({
+        transform(bytes, stream) {
+          if (bytes.length) probe.progress()
+          stream.enqueue(bytes)
+        },
+      })
+      return new Response(response.body.pipeThrough(watching), response)
     },
   })
   try {
@@ -159,16 +172,17 @@ export async function authenticatedHookHealth(options: {
   otherTokens: readonly string[]
   version: string
   fetch?: typeof fetch
+  probe?: ReadinessProbe
 }): Promise<void> {
   if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(options.origin))
     throw new PluginHostError('ready')
-  const signal = AbortSignal.timeout(1500)
   for (const token of ['', 'invalid', ...options.otherTokens, options.hookToken]) {
     const response = await (options.fetch ?? fetch)(options.origin + '/v1/hooks/healthz', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal,
+      signal: options.probe?.signal,
       redirect: 'manual',
     })
+    options.probe?.progress()
     const success = token === options.hookToken
     if (response.status !== (success ? 200 : 401)) {
       await response.body?.cancel()
@@ -186,6 +200,7 @@ export async function authenticatedHookHealth(options: {
       for (;;) {
         const part = await reader.read()
         if (part.done) break
+        if (part.value.byteLength) options.probe?.progress()
         length += part.value.byteLength
         if (length > 4096) throw new PluginHostError('ready')
         chunks.push(part.value)
@@ -361,14 +376,23 @@ export function createPluginNodeHost(options: {
     const ready = deferred<PluginNodeReady>(),
       exited = deferred<PluginNodeExit>()
     const groups = new Map<number, string>()
+    const startup = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const clearReadinessTimer = () => {
+      clearTimeout(timer)
+      timer = undefined
+    }
     let stopped = false,
       unsupported = false,
       proof = false,
+      awaitingAdmission = false,
       checking = false,
       stopPromise: Promise<PluginNodeExit> | undefined
     const stop = (): Promise<PluginNodeExit> => {
       if (stopPromise) return stopPromise
       stopped = true
+      clearReadinessTimer()
+      startup.abort()
       ready.reject(new PluginHostError('ready'))
       if (child.connected)
         child.send({ channel: 'brocrew-plugin-node:v1', runId, type: 'stop' }, () => {})
@@ -386,7 +410,8 @@ export function createPluginNodeHost(options: {
       ]).finally(() => clearTimeout(cap))
       return stopPromise
     }
-    // On Windows readiness is timed from the job keeper's open, whose first start compiles code.
+    // Windows must open the job keeper before it can report progress. First open compiles code.
+    // After that, a new receipt or probe response restarts the existing idle wait.
     const readyTimer = (ms: number) => {
       const one = setTimeout(() => {
         void stop()
@@ -394,7 +419,15 @@ export function createPluginNodeHost(options: {
       one.unref()
       return one
     }
-    let timer = readyTimer(windows ? KEEPER_OPEN_MS : readyMs)
+    timer = readyTimer(windows ? KEEPER_OPEN_MS : readyMs)
+    const probe: ReadinessProbe = {
+      signal: startup.signal,
+      progress() {
+        if (timer === undefined) return
+        clearTimeout(timer)
+        timer = readyTimer(readyMs)
+      },
+    }
     child.on('message', (input: unknown) => {
       const value = input as {
         channel?: unknown
@@ -426,6 +459,7 @@ export function createPluginNodeHost(options: {
         typeof value.birth === 'string' &&
         value.birth.length < 128
       ) {
+        if (groups.get(Number(value.pid)) !== value.birth) probe.progress()
         groups.set(Number(value.pid), value.birth as string)
         if (!stopped && child.connected)
           child.send(
@@ -441,6 +475,10 @@ export function createPluginNodeHost(options: {
       } else if (value.type === 'group-gone' && groups.get(Number(value.pid)) === value.birth)
         groups.delete(Number(value.pid))
       else if (value.type === 'server-closed') {
+        if (timer !== undefined) {
+          clearReadinessTimer()
+          startup.abort()
+        }
         const diagnostic = PluginStartupDiagnosticSchema.safeParse({
           exitCode: value.exitCode,
           signal: value.signal,
@@ -463,11 +501,18 @@ export function createPluginNodeHost(options: {
         }
       } else if (value.type === 'stopped') proof = value.exited === true
       else if (value.type === 'unsupported') unsupported = true
-      else if (windows && value.type === 'job' && !stopped) {
-        clearTimeout(timer)
-        timer = readyTimer(readyMs)
+      else if (windows && value.type === 'job') probe.progress()
+      else if (
+        !awaitingAdmission &&
+        value.type === 'awaiting-admission' &&
+        Number.isSafeInteger(value.serverPid) &&
+        Number(value.serverPid) > 1
+      ) {
+        awaitingAdmission = true
+        probe.progress()
       } else if (
         !stopped &&
+        !startup.signal.aborted &&
         !checking &&
         value.type === 'listening' &&
         Number.isInteger(value.port) &&
@@ -477,17 +522,19 @@ export function createPluginNodeHost(options: {
         groups.has(Number(value.serverPid))
       ) {
         checking = true
+        probe.progress()
         const origin = `http://127.0.0.1:${value.port}`
         // The server loaded its capabilities before announcing its listener.
         void rm(join(run, 'auth.json'), { force: true })
           .then(() => {
-            if (stopped) throw new PluginHostError('ready')
+            probe.signal.throwIfAborted()
             if (hosted.transport === 'hooks')
               return authenticatedHookHealth({
                 origin,
                 hookToken,
                 otherTokens: [mcpToken, adminToken],
                 version: manifest.version,
+                probe,
               })
             return authenticatedHealth(
               origin,
@@ -495,11 +542,12 @@ export function createPluginNodeHost(options: {
               adminToken,
               manifest.version,
               manifest.server!.mcpPath,
+              probe,
             )
           })
           .then(() => {
-            if (stopped) return
-            clearTimeout(timer)
+            if (stopped || probe.signal.aborted) return
+            clearReadinessTimer()
             const current = () => {
               if (stopped) throw new PluginHostError('ready')
             }
@@ -544,7 +592,7 @@ export function createPluginNodeHost(options: {
             )
           })
           .catch(() => {
-            void stop()
+            if (!stopped && !probe.signal.aborted) void stop()
           })
       }
     })
@@ -556,7 +604,8 @@ export function createPluginNodeHost(options: {
       if (finished) return
       finished = true
       stopped = true
-      clearTimeout(timer)
+      clearReadinessTimer()
+      startup.abort()
       const said = pluginStartupStderr(guardianStderr)
       ready.reject(
         serverDiagnostic

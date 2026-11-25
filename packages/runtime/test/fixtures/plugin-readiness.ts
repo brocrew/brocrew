@@ -45,6 +45,8 @@ export const tick = () => vi.advanceTimersByTimeAsync(0)
 
 export class Wire implements CodexTransport {
   readonly queue = new AsyncQueue<CodexIncoming>()
+  private readonly terminal = new AbortController()
+  readonly closedSignal = this.terminal.signal
   readonly requests: { method: string; params: unknown }[] = []
   readonly catalogsAtTurns: string[][] = []
   catalog: string[] = []
@@ -74,7 +76,8 @@ export class Wire implements CodexTransport {
   incoming(): AsyncIterable<CodexIncoming> {
     return this.queue
   }
-  close(): void {
+  close(error = new Error('fictional transport closed')): void {
+    this.terminal.abort(error)
     this.queue.close()
   }
   finish() {

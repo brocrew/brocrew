@@ -752,12 +752,7 @@ export class PluginLifecycleController {
         () => ended(false),
       )
       .catch(() => undefined)
-    // On Windows a start first opens the job keeper, which can take two minutes on a cold machine;
-    // the host bounds that open and the readiness after it (node-host.ts).
-    const connection = await bounded(
-      () => run.ready(),
-      process.platform === 'win32' ? 150_000 : 20000,
-    )
+    const connection = await run.ready()
     if (connection.priorityClamped !== undefined)
       running.priorityClamped =
         typeof connection.priorityClamped === 'boolean' ? connection.priorityClamped : null

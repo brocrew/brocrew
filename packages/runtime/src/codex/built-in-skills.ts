@@ -1,4 +1,5 @@
 import type { BuiltInSkillsContext } from '../runtime'
+import { cancelWith } from '../internal/bounded'
 import {
   BUILT_IN_SKILLS_FAILURE,
   record,
@@ -65,4 +66,26 @@ export async function registerCodexBuiltInSkills(
   })
   const catalogue = await request('skills/list', { cwds: [cwd], forceReload: true })
   verifyCodexBuiltInSkills(catalogue, context, cwd)
+}
+
+/** The shared-library write may finish after Codex closes. Only a live launch needs its result. */
+export async function prepareCodexSkills(
+  prepare: (() => Promise<void>) | undefined,
+  closed: AbortSignal | undefined,
+): Promise<void> {
+  if (!prepare || !closed) return prepare?.()
+  let awaitingExit!: (reason: unknown) => void
+  const ended = new Promise<never>((_, reject) => {
+    awaitingExit = reject
+  })
+  const cancellation = cancelWith(closed, () => awaitingExit(closed.reason))
+  const preparing = Promise.resolve().then(() => {
+    closed.throwIfAborted()
+    return prepare()
+  })
+  try {
+    await Promise.race([ended, preparing])
+  } finally {
+    cancellation.release()
+  }
 }

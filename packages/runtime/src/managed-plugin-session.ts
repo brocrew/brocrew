@@ -82,7 +82,6 @@ const signature = (value: ManagedPluginAttachment) =>
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
   )
 export const PLUGIN_ATTACHMENT_WAIT_MS = 1500
-export const MANAGED_PLUGIN_REOPEN_WITHIN_MS = 60000
 /** A cancelled message must not be redelivered when its handle is retired. */
 export class StoppedBeforeSend extends Error {
   constructor() {
@@ -333,12 +332,11 @@ export function withManagedPluginAttachments(
             const send = async () => {
               const wait = new AbortController()
               pending = wait
+              let reopening = false
               let repairingUnused = false
               let handedInput = false
-              let preparationAbort: AbortController | undefined
-              let preparationDeadline: ReturnType<typeof setTimeout> | undefined
-              // One shared wait for plugin work before this message goes out. It never refuses:
-              // whatever is not ready by then attaches at a later send.
+              // Share the attachment budget across reading routes, checking health and SDK refresh.
+              // Once a provider reopen starts, this send owns it through reply, close or Stop.
               const until = performance.now() + PLUGIN_ATTACHMENT_WAIT_MS
               const left = () => Math.max(0, until - performance.now())
               try {
@@ -433,6 +431,7 @@ export function withManagedPluginAttachments(
                     changingSettings === 0
                   ) {
                     // Codex has no per-thread MCP configuration update. Reopen only between turns.
+                    reopening = true
                     const saved = inner.ref
                     const preparedSettings = settingsRevision
                     const resume = {
@@ -442,12 +441,6 @@ export function withManagedPluginAttachments(
                       managedPluginMcp: next.servers,
                       signal: wait.signal,
                     }
-                    const abort = new AbortController()
-                    preparationAbort = abort
-                    preparationDeadline = setTimeout(
-                      () => abort.abort(),
-                      MANAGED_PLUGIN_REOPEN_WITHIN_MS,
-                    )
                     let freshRepair = false
                     async function reopen(
                       servers: readonly ManagedPluginMcpServer[],
@@ -455,11 +448,9 @@ export function withManagedPluginAttachments(
                     ) {
                       let allocated: SessionHandle | undefined
                       try {
-                        // Cancellation owns settlement; a deadline never fabricates child exit.
                         const preparing = {
                           ...resume,
                           managedPluginMcp: servers,
-                          signal: AbortSignal.any([wait.signal, abort.signal]),
                           onSessionCreated: (handle: SessionHandle) => {
                             allocated = handle
                             ownership.track(handle)
@@ -501,7 +492,6 @@ export function withManagedPluginAttachments(
                             freshAttempted ||
                             closed ||
                             wait.signal.aborted ||
-                            abort.signal.aborted ||
                             inner.status() !== 'idle' ||
                             changingSettings !== 0 ||
                             settingsRevision !== preparedSettings ||
@@ -512,7 +502,6 @@ export function withManagedPluginAttachments(
                           if (
                             closed ||
                             wait.signal.aborted ||
-                            abort.signal.aborted ||
                             dispatched ||
                             providerActive ||
                             inner.status() !== 'idle' ||
@@ -531,7 +520,6 @@ export function withManagedPluginAttachments(
                       if (freshRepair) throw new StoppedBeforeSend()
                       throw error
                     }
-                    if (!freshRepair) clearTimeout(preparationDeadline)
                     // A setting changed on the live handle must not be replaced by a stale copy.
                     if (
                       replacement &&
@@ -545,10 +533,7 @@ export function withManagedPluginAttachments(
                     if (replacement) {
                       if (
                         freshRepair &&
-                        (dispatched ||
-                          providerActive ||
-                          abort.signal.aborted ||
-                          replacement.status() !== 'idle')
+                        (dispatched || providerActive || replacement.status() !== 'idle')
                       ) {
                         await ownership.retire(replacement).catch(() => undefined)
                         throw new StoppedBeforeSend()
@@ -577,8 +562,6 @@ export function withManagedPluginAttachments(
                 }
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
-                if (repairingUnused && preparationAbort?.signal.aborted)
-                  throw new StoppedBeforeSend()
                 // A marker-only change updates what the turn waits on without reopening it.
                 if (next && signature(next) === signature(attachment)) attachment = next
                 if (next)
@@ -591,11 +574,13 @@ export function withManagedPluginAttachments(
                 handedInput = true
                 return inner.send(...args)
               } catch (error) {
-                if ((repairingUnused || freshRepairPending) && !handedInput)
+                if (
+                  !handedInput &&
+                  (repairingUnused || freshRepairPending || (reopening && wait.signal.aborted))
+                )
                   throw new StoppedBeforeSend()
                 throw error
               } finally {
-                clearTimeout(preparationDeadline)
                 if (pending === wait) pending = undefined
               }
             }

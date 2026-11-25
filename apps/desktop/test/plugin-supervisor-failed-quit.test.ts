@@ -105,6 +105,32 @@ describe.skipIf(process.platform === 'win32')(
     afterAll(async () => {
       if (folder) await rm(folder, { recursive: true, force: true })
     })
+    it('drains the listening owner and exits as a failure if service readiness cannot be published', async () => {
+      const root = join(folder, 'receipt-refused')
+      const workspace = join(root, 'w')
+      await mkdir(workspace, { recursive: true })
+      const child = fork(
+        join(folder, 'owner.mjs'),
+        [
+          root,
+          workspace,
+          fileURLToPath(new URL('../resources/plugin-host', import.meta.url)),
+          'receipt-refused',
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] },
+      )
+      children.push(child)
+      let stderr = ''
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString()
+      })
+      await expect(once(child, 'close')).resolves.toEqual([1, null])
+      expect(stderr).toContain('service.json')
+      expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+        'stopped',
+      )
+    }, 15_000)
+
     it('awaits held host cleanup after owner shutdown rejects and coalesces another signal', async () => {
       const root = join(folder, 'reject'),
         workspace = join(root, 'w')

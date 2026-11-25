@@ -163,6 +163,7 @@ export async function connectPluginSettings(options: {
   const channel = await connectPersonPluginControl({
     path: options.path,
     key: options.personKey,
+    signal: options.signal,
     async handle(input) {
       const request = ConsumerCommand.parse(input)
       if (request.kind === 'revoke') {

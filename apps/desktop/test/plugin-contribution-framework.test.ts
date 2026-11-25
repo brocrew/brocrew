@@ -102,6 +102,44 @@ describe('versioned contribution metadata', () => {
     registry.revoke(pkg.manifest.id)
     expect(entry.current()).toBe(false)
   })
+  it('loads a slow catalogue while bytes keep arriving', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-slow-catalogue-')))
+    folders.push(root)
+    const pkg = packageFixture()
+    const bytes = Buffer.from(JSON.stringify(repoListFor(pkg.release)))
+    const split = Math.floor(bytes.length / 2)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      let cancel = () => {}
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const first = setTimeout(() => controller.enqueue(bytes.subarray(0, split)), 6_000)
+          const last = setTimeout(() => {
+            controller.enqueue(bytes.subarray(split))
+            controller.close()
+          }, 31_000)
+          cancel = () => {
+            clearTimeout(first)
+            clearTimeout(last)
+          }
+        },
+        cancel() {
+          cancel()
+        },
+      })
+      vi.stubGlobal('fetch', async () => new Response(body))
+      const received = loadRepoPluginList({ root, target, appVersion: '1.0.0' }).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      )
+      await vi.advanceTimersByTimeAsync(31_000)
+      expect(await received).toMatchObject({
+        value: { entries: [expect.objectContaining({ id: pkg.release.id })] },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('uses the fixed versioned URL only when explicitly selected, retaining the frozen source', async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-catalogue-')))
     folders.push(root)

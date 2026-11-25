@@ -1,3 +1,4 @@
+import { pluginNodeHostServerSource as source } from './fixtures/plugin-node-host-server'
 import { captureLog } from './lib/log-file'
 import { pluginNodeRuntimeFixture } from './lib/plugin-node-runtime-fixture'
 import { spawn } from 'node:child_process'
@@ -106,37 +107,6 @@ vi.mock('../src/main/plugins/node-host-files', async (importOriginal) => {
   }
 })
 
-const source = String.raw`
-import http from 'node:http'; import fs from 'node:fs'; import {spawn} from 'node:child_process';
-const home = process.env.BROCREW_CHROME_DATA;
-const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));
-const server = http.createServer((req, res) => {
- const token = req.url === '/mcp' ? auth.mcpToken : auth.adminToken;
- if (req.headers.authorization !== 'Bearer '+token) { res.writeHead(401).end(); return }
- res.setHeader('content-type','application/json');
- if (req.url === '/mcp') {
-  if(req.method !== 'POST') return res.writeHead(405).end();
-  let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{
-   const packet=JSON.parse(body);
-   if(packet.id===undefined)return res.writeHead(202).end();
-   res.end(JSON.stringify({jsonrpc:'2.0',id:packet.id,result:{protocolVersion:packet.params.protocolVersion,serverInfo:{name:'fictional-host',version:'1.0.0'},capabilities:{}}}));
-  }); return;
- }
-
- if (req.url === '/healthz') return res.end(JSON.stringify({ok:true, version:'1.0.0'}));
- if (req.url === '/v1/profiles') return res.end(JSON.stringify({profiles:[]}));
- if (req.url === '/v1/launch') {
-  const child = spawn(process.env.BROCREW_CHROME_EXECUTABLE, ['--user-data-dir='+home], {detached:true, stdio:'ignore'});
-  res.end(JSON.stringify({pid:child.pid})); return;
- }
- if (req.url === '/v1/owner') return res.end(JSON.stringify({pid:process.ppid}));
- if (req.url === '/v1/env') return res.end(JSON.stringify({home, exec:process.execPath, pid:process.pid, inherited:process.env.FICTIONAL_HOST_MARKER}));
- if (req.url === '/v1/shared') return res.end(JSON.stringify(Object.fromEntries(['BROCREW_CHROME_SHARED','BROCREW_PLUGIN_OWNER_ID','BROCREW_PLUGIN_OWNER_LABEL','BROCREW_CHROME_MIGRATION_QUALIFICATION'].filter(key=>process.env[key]!==undefined).map(key=>[key,process.env[key]]))));
- res.writeHead(404).end();
-});
-server.listen(0,'127.0.0.1',()=>process.send({channel:'brocrew-plugin-node:v1',runId:process.env.BROCREW_PLUGIN_RUN_ID,type:'listening',port:server.address().port}));
-process.on('SIGTERM',()=>{});
-`
 function fixture(body = source, mcpPath = '/mcp', sharedData = false, id = 'chrome') {
   const files = new Map([['server.mjs', Buffer.from(body)]])
   const manifest = manifestFor(files)
@@ -170,7 +140,7 @@ function fixture(body = source, mcpPath = '/mcp', sharedData = false, id = 'chro
 let root: string, resources: string, runtime: PluginNodeRuntime, node: string
 const hosts: ReturnType<typeof createPluginNodeHost>[] = []
 let sequence = 0
-async function context() {
+async function context(readyMs = 5000) {
   const path = join(root, String(++sequence))
   await mkdir(path, { mode: 0o700 })
   const browser = join(path, 'fake-browser')
@@ -185,7 +155,7 @@ async function context() {
     root: home,
     runtime,
     browserExecutable: browser,
-    readyMs: 5000,
+    readyMs,
   })
   hosts.push(host)
   return { host, home, pidFile }
@@ -601,6 +571,57 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
       await once(unrelated, 'close')
     }
   }, 15000)
+  it('keeps starting while slow authenticated probes keep answering', async () => {
+    const { host } = await context(15_000)
+    const slow = source
+      .replace(
+        'http.createServer((req, res) => {',
+        'http.createServer((req, res) => setTimeout(() => {',
+      )
+      .replace('\n});\nserver.listen', '\n}, 2400));\nserver.listen')
+    const child = await host.start(fixture(slow))
+    const started = performance.now()
+    await expect(child.ready()).resolves.toMatchObject({
+      origin: expect.stringContaining('127.0.0.1'),
+    })
+    expect(performance.now() - started).toBeGreaterThan(15_000)
+  }, 35_000)
+  it('uses MCP initialization body chunks as progress after the headers', async () => {
+    const { host } = await context(2_000)
+    const streamed = source.replace(
+      /res\.end\((JSON\.stringify\(\{jsonrpc:.*)\);/,
+      `const reply = $1;
+        res.write(reply.slice(0, 1));
+        setTimeout(() => res.write(reply.slice(1, 2)), 1_300);
+        setTimeout(() => res.end(reply.slice(2)), 2_600);`,
+    )
+    const child = await host.start(fixture(streamed))
+    await expect(child.ready()).resolves.toHaveProperty('origin')
+  })
+  it('cancels an open readiness probe when the host stops', async () => {
+    const { host } = await context()
+    let started!: (signal: AbortSignal) => void
+    const attached = new Promise<AbortSignal>((resolve) => {
+      started = resolve
+    })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_input, init) => {
+      const signal = init!.signal!
+      started(signal)
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    })
+    try {
+      const child = await host.start(fixture())
+      const signal = await attached
+      const stopped = child.stop()
+      expect(signal.aborted).toBe(true)
+      await expect(child.ready()).rejects.toThrow('plugin-host-ready')
+      expect(await stopped).toEqual({ exited: true })
+    } finally {
+      fetch.mockRestore()
+    }
+  })
   it('refuses an unauthenticated healthy server, and a process that never becomes ready', async () => {
     const { host } = await context()
     const child = await host.start(

@@ -7,6 +7,7 @@ import type { PluginUnavailableReason } from '../../../shared/plugin-settings'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
+import { setImmediate as nextTurn, setTimeout as delay } from 'node:timers/promises'
 import { preparePluginNodeRuntime, runtimeFiles } from '../node-runtime'
 import {
   privateChild,
@@ -17,7 +18,7 @@ import {
   digest,
 } from '../node-host-files'
 import { SupervisorStorage } from './storage'
-import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
+import { PluginSupervisorError } from './protocol'
 import { stopLegacySupervisor } from './legacy-owner'
 import { LaunchConfig, type PluginLifecyclePlan } from './launch-format'
 import type { SharedDataOwner } from '../shared-data'
@@ -118,9 +119,7 @@ export function createPluginSupervisorLauncher(options: {
       })
       readyPhase = pluginStartupTrace.begin('ready')
       child.unref()
-      const until = performance.now() + OWNER_LAUNCH_MS - 200
-      while (performance.now() < until) {
-        if (failed || child.exitCode !== null || child.signalCode !== null) break
+      while (!failed && child.exitCode === null && child.signalCode === null) {
         try {
           const ready = JSON.parse(
             (await sourceBytes(join(directory, 'service.json'), 4096)).toString('utf8'),
@@ -132,9 +131,10 @@ export function createPluginSupervisorLauncher(options: {
         } catch {
           /* Missing private readiness is never authority to attach. */
         }
-        await new Promise((resolve) => setTimeout(resolve, 10))
+        await delay(10)
       }
-      await diagnostic.drainUntil(until)
+      // Collect queued stderr after exit. An inherited pipe cannot keep attachment waiting.
+      await nextTurn()
       throw new PluginSupervisorError('unavailable', {
         cause: Object.assign(diagnostic(), { cause: spawnError }),
       })

@@ -115,6 +115,84 @@ describe.skipIf(process.platform === 'win32')(
       },
     )
 
+    it('keeps trying a transient connection while the same owner still accepts the lease', async () => {
+      const f = await begin('reused')
+      const realNow = performance.now.bind(performance)
+      let elapsed = 0
+      const clock = vi.spyOn(performance, 'now').mockImplementation(() => realNow() + elapsed)
+      seams.connect.mockImplementationOnce(async () => {
+        elapsed = 65_000
+        throw new PluginSupervisorError('unavailable', {
+          cause: Object.assign(new Error('fictional listener not ready'), { code: 'ENOENT' }),
+        })
+      })
+      try {
+        await f.finish()
+        await f.initialization
+        expect(f.app.holdsLease()).toBe(true)
+        expect(readPluginInstructions(f.controller)).toMatchObject([{ state: 'Available' }])
+        expect(seams.connect).toHaveBeenCalledTimes(2)
+        expect(f.launch).toHaveBeenCalledOnce()
+      } finally {
+        clock.mockRestore()
+        await f.controller.close()
+      }
+    })
+
+    it('keeps a second workspace waiting when the first workspace closes during a shared launch', async () => {
+      const first = await setup()
+      const second = await setup()
+      const target = await owners.fixture()
+      const firstApp = new PluginSupervisorAttachment()
+      const secondApp = new PluginSupervisorAttachment()
+      apps.push(firstApp, secondApp)
+      controllers.push(first.controller, second.controller)
+      for (const app of [firstApp, secondApp]) vi.spyOn(app, 'supports').mockReturnValue(false)
+      const launching = deferred<void>()
+      const publish = deferred<void>()
+      const joining = deferred<void>()
+      const start = secondApp.start.bind(secondApp)
+      vi.spyOn(secondApp, 'start').mockImplementation((options) => {
+        start(options)
+        joining.resolve()
+      })
+      const launched = vi.fn(async (signal?: AbortSignal) => {
+        launching.resolve()
+        if (signal) {
+          await Promise.race([
+            publish.promise,
+            new Promise<never>((_, reject) =>
+              signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+            ),
+          ])
+        } else await publish.promise
+        await target.start()
+      })
+      seams.launch.mockImplementation((options: unknown) =>
+        Object.assign(() => launched((options as { signal?: AbortSignal }).signal), {
+          diagnostic: () => undefined,
+        }),
+      )
+      try {
+        first.controller.start({ ...first.options, root: target.root, supervisor: firstApp })
+        await launching.promise
+        second.controller.start({ ...second.options, root: target.root, supervisor: secondApp })
+        await joining.promise
+        await first.controller.close()
+        publish.resolve()
+        expect(await secondApp.ready()).toBe(true)
+        await second.controller.ready!()
+        expect(secondApp.holdsLease()).toBe(true)
+        expect(readPluginInstructions(second.controller)).toMatchObject([{ state: 'Available' }])
+        expect(launched).toHaveBeenCalledOnce()
+      } finally {
+        publish.resolve()
+        seams.launch.mockImplementation(() =>
+          Object.assign(async () => {}, { diagnostic: () => undefined }),
+        )
+      }
+    })
+
     it('connects immediately when the reused owner is already ready', async () => {
       const f = await begin('reused', true)
       await f.initialization

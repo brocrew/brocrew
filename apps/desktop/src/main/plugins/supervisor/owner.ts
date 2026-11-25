@@ -143,7 +143,7 @@ export class PluginSupervisor {
   private readonly leases = new Map<string, WorkspaceLease>()
   private readonly children = new Set<OwnedPluginChild>()
   private readonly starting = new Set<Promise<OwnedPluginChild>>()
-  private readonly sockets = new Set<Socket>()
+  private readonly sockets = new Map<Socket, WorkspaceLease | undefined>()
   /** Each app's held connection, closed when this owner drains. */
   private readonly held = new Set<Socket>()
   private readonly revocations = new Set<Promise<void>>()
@@ -303,7 +303,8 @@ export class PluginSupervisor {
       socket.destroy()
       return
     }
-    this.sockets.add(socket)
+    this.sockets.set(socket, undefined)
+    // An unauthenticated peer cannot hold one of the finite connection slots without a request.
     const deadline = setTimeout(() => socket.destroy(), OWNER_LIMITS.request)
     socket.on('close', () => {
       clearTimeout(deadline)
@@ -336,6 +337,7 @@ export class PluginSupervisor {
         socket.destroy()
         return
       }
+      clearTimeout(deadline)
       if (request.command.kind === 'hold') {
         const command = request.command
         const lease = this.leases.get(command.lease)
@@ -358,7 +360,6 @@ export class PluginSupervisor {
           return
         }
         // Each app holds one connection until it exits.
-        clearTimeout(deadline)
         lease.held = true
         this.held.add(socket)
         socket.on('close', () => {
@@ -400,6 +401,7 @@ export class PluginSupervisor {
               ? bridge.agentRoutes?.bind(bridge)
               : undefined
           if (command.format === 2 && !named) refuse()
+          this.sockets.set(socket, lease)
           void (named ?? bridge.routes.bind(bridge))(Object.freeze({ ...lease }), command)
             .then((value) => (named ? { format: 2, ...(value as Record<string, unknown>) } : value))
             .then((value) => {
@@ -530,6 +532,8 @@ export class PluginSupervisor {
   }
   private remove(lease: WorkspaceLease, reason: StopReason): void {
     this.leases.delete(lease.id)
+    // A pending route reply cannot hold the listener open after its lease is invalidated.
+    for (const [socket, pending] of this.sockets) if (pending === lease) socket.destroy()
     try {
       this.agentBridge?.revoke(lease)
     } catch (error) {
