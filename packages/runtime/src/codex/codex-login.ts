@@ -100,16 +100,16 @@ const INITIALIZE_PARAMS = {
  *
  * | | |
  * |---|---|
- * | a cold handshake, measured by 180 | **85–95 ms**, 239 ms on the first spawn after a boot |
- * | the whole check — spawn, handshake, two auth round trips | **~0.6 s**, measured in 098 |
- * | this bound | **8 s** — 33× the worst measured handshake, 13× the whole call |
+ * | a cold handshake, measured on a fast Mac | **85–95 ms**, 239 ms on the first spawn after a boot |
+ * | the whole check — spawn, handshake, two auth round trips | **~0.6 s** |
+ * | this bound | **30 s** |
  *
- * ⚑ **The ceiling is what picks it, not the floor.** `RuntimeHost` gives a credential check ten
- * seconds; a bound at or above that would never be the one that fires, and the caller would be back
- * to a generic *"could not ask"* with no idea which step went quiet — while the child it is about
- * stays alive for the difference. Eight leaves two seconds of headroom and still sits far above
- * anything this binary has been measured doing (`176`'s rule: catch a 15× regression, not a slow
- * morning).
+ * ⚑ **This is a total limit with a reason, not a stall test.** The app-server sends nothing while it
+ * works, so a quiet pipe cannot tell a slow PC from a wedged child. The limit exists so a hung child
+ * is stopped and its boot gate released while nobody is watching it. It is far above a slow PC's
+ * worst case, so a check that is only slow still finishes. It stays below `RuntimeHost`'s
+ * credential-check limit (35 s): a bound at or above that would never be the one that fires, and
+ * the caller would only learn "could not ask" with no idea which step went quiet.
  *
  * ⚠️ **It is a budget for the whole gesture, not a per-request timeout** — the same choice
  * `listModels` made and for the same reason: the budget belongs to the QUESTION, and a per-request
@@ -117,7 +117,7 @@ const INITIALIZE_PARAMS = {
  * is deliberately outside it (the host's five minutes owns that), because a person reading their
  * email is not a wedged provider.
  */
-export const CREDENTIAL_HANDSHAKE_TIMEOUT_MS = 8_000
+export const CREDENTIAL_HANDSHAKE_TIMEOUT_MS = 30_000
 
 /**
  * How long {@link CodexLogin.cancel} waits for the provider to acknowledge its own withdrawal (185).

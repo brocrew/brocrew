@@ -5,14 +5,15 @@ export const COMMANDS_END_WITHIN_MS = 1000
 
 export const RATE_LIMIT_READ = 'account/rateLimits/read'
 
-export const RATE_LIMIT_BASELINE_TIMEOUT_MS = 15_000
-
-export const COMMAND_LIST_TIMEOUT_MS = 15_000
-
-export const CHILD_READ_TIMEOUT_MS = 5_000
-
-export const CHILD_INPUT_TIMEOUT_MS = 15_000
-
+/**
+ * How long Codex may take to start a compaction it has already accepted.
+ *
+ * A total limit with a reason: what is awaited is the `turn/started` notification, not a response,
+ * so there is no request to wait on and no process exit to see while the app-server is alive. Without
+ * a limit a compaction that is accepted and never started leaves the turn "starting" for ever. The
+ * start is one local step, and a slow PC makes it take seconds, not a quarter of a minute more;
+ * when this expires the compaction stays recorded as outstanding, so no second one is asked for.
+ */
 export const COMPACTION_START_TIMEOUT_MS = 15_000
 
 export const A_COMPACTION_IS_STILL_OUTSTANDING =

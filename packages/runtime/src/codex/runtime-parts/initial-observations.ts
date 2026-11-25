@@ -1,13 +1,8 @@
 import type { CodexTransport } from '../codex-transport'
 import { RateLimitWatch, rateLimitUsage } from '../normalize'
 import { wrapUnknown, type RuntimeEvent } from '../../events'
-import { withDeadline } from '../../internal/bounded'
 import { providerCommandsFrom } from './session-views'
-import {
-  RATE_LIMIT_READ,
-  RATE_LIMIT_BASELINE_TIMEOUT_MS,
-  COMMAND_LIST_TIMEOUT_MS,
-} from './turn-state'
+import { RATE_LIMIT_READ } from './turn-state'
 
 export function seedRateLimitBaseline(
   transport: CodexTransport,
@@ -18,11 +13,7 @@ export function seedRateLimitBaseline(
   void (async () => {
     let response: unknown
     try {
-      response = await withDeadline(
-        transport.request('account/rateLimits/read', undefined),
-        RATE_LIMIT_BASELINE_TIMEOUT_MS,
-        'account/rateLimits/read',
-      )
+      response = await transport.request('account/rateLimits/read', undefined)
     } catch (error) {
       emit(
         wrapUnknown(
@@ -60,11 +51,7 @@ export function readProviderCommands(
   void (async () => {
     let response: unknown
     try {
-      response = await withDeadline(
-        transport.request('skills/list', {}),
-        COMMAND_LIST_TIMEOUT_MS,
-        'skills/list',
-      )
+      response = await transport.request('skills/list', {})
     } catch {
       return
     }

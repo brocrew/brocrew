@@ -4,7 +4,15 @@ import { isRecord, readString } from './wire-values'
 // A whole-probe deadline bounds cursor paging; no hidden rows are requested or displayed.
 export const MODEL_LIST_PAGE_LIMIT = 20
 
-export const MODEL_PROBE_TIMEOUT_MS = 15_000
+/**
+ * How long listing the models may take in total, shared by the handshake and every page.
+ *
+ * A total limit with a reason: the probe starts a throwaway app-server for a settings screen nobody
+ * is watching, and `model/list` waits on the network without sending anything, so a quiet pipe
+ * cannot tell a slow link from a hung child. The limit stops the child and lets the screen say it
+ * could not ask. It is far above a slow PC's handshake, so a probe that is only slow still lists.
+ */
+export const MODEL_PROBE_TIMEOUT_MS = 60_000
 
 export function modelChoiceOf(row: unknown): ModelChoice | null {
   if (!isRecord(row)) return null

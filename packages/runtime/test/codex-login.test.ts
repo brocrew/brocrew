@@ -115,6 +115,23 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     'account/read': ACCOUNT_CHATGPT,
   })
 
+  /** Runs a check against a quiet app-server on a clock that jumps the whole budget. */
+  async function probeUntilTheBudgetEnds(
+    factory: Parameters<typeof probeCodexAuthInHome>[0],
+    home: string,
+  ): Promise<{ state: Awaited<ReturnType<typeof probeCodexAuthInHome>>; elapsed: number }> {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const started = Date.now()
+      const checking = probeCodexAuthInHome(factory, home, home)
+      await vi.advanceTimersByTimeAsync(CREDENTIAL_HANDSHAKE_TIMEOUT_MS)
+      const state = await checking
+      return { state, elapsed: Date.now() - started }
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
   // An already-aborted signal rejects a queued acquisition, but an empty queue grants it.
   async function expectGateReleased(home: string): Promise<void> {
     const release = await beginCodexHomeBoot(home, { signal: AbortSignal.abort() })
@@ -124,9 +141,7 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
   it('⛔ A · a check whose handshake never answers leaves no transport open and no gate held', async () => {
     const home = join(root, 'codex')
 
-    const started = Date.now()
-    const state = await probeCodexAuthInHome(transports(null), home, home)
-    const elapsed = Date.now() - started
+    const { state, elapsed } = await probeUntilTheBudgetEnds(transports(null), home)
 
     expect(state.state).toBe('unknown')
     // 🔴 Said as Codex being too slow, and as nothing learned about the sign-in: a person must not
@@ -159,12 +174,21 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
   it('⛔ B · a sign-in whose handshake never answers closes the child rather than stranding it', async () => {
     const home = join(root, 'codex')
 
-    await expect(startCodexLogin(transports(null), home, home)).rejects.toThrow(/initialize/)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    try {
+      const starting = expect(startCodexLogin(transports(null), home, home)).rejects.toThrow(
+        /initialize/,
+      )
+      await vi.advanceTimersByTimeAsync(CREDENTIAL_HANDSHAKE_TIMEOUT_MS)
+      await starting
+    } finally {
+      vi.useRealTimers()
+    }
 
     expect(spawned).toHaveLength(1)
     expect(spawned[0]!.closes).toBe(1)
     await expectGateReleased(home)
-  }, 20_000)
+  })
 
   it('…and the pairing: an ordinary sign-in gets its URL, keeps the child, and frees the gate', async () => {
     const home = join(root, 'codex')
@@ -257,20 +281,19 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
 
   /**
    * ⛔ **The handshake bound is the one that fires, whichever step went quiet**, and the check's own
-   * answer names Codex as too slow. A bound at or above the host's ten seconds would leave the
+   * answer names Codex as too slow. A bound at or above the host's thirty-five seconds would leave the
    * host's deadline in charge, which cannot say who was slow, and the child alive for the difference.
    */
   it('says Codex was too slow, within its own budget, when a later step goes quiet', async () => {
     const home = join(root, 'codex')
     // Answers the handshake, then goes silent — so the budget is spent on the SECOND request.
-    const state = await probeCodexAuthInHome(
+    const { state } = await probeUntilTheBudgetEnds(
       transports({ initialize: { codexHome: home } }),
-      home,
       home,
     )
     expect(state.state).toBe('unknown')
     expect(state.state === 'unknown' && state.reason).toBe(signInNotCheckedInTime('Codex'))
-    expect(CREDENTIAL_HANDSHAKE_TIMEOUT_MS).toBeLessThan(10_000)
+    expect(CREDENTIAL_HANDSHAKE_TIMEOUT_MS).toBeLessThan(35_000)
   }, 20_000)
 
   /**

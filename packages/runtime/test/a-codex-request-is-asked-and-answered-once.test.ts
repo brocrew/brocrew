@@ -261,12 +261,11 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
         await handle.close()
       }
     })
-    it('says the skills registered when the launch has built-in skills', async () => {
+    it.each([0, 5 * 60_000])('registers built-in skills after %i ms of silence', async (ms) => {
       const transport = new FakeTransport()
       transport.onRequest('thread/start', () => okThread('th_1'))
       const said: string[] = []
       const runtime = new CodexRuntime(adopt(transport))
-      // Six fictional skills, listed back by Codex as the check expects.
       const root = resolve('/tmp/fictional/codex')
       const cwd = resolve('/tmp/x')
       const skills = {
@@ -285,21 +284,24 @@ describe('CodexRuntime — config-independent prompting (007 P1-6)', () => {
         })),
       }
       transport.onRequest('skills/extraRoots/set', () => ({}))
-      transport.onRequest('skills/list', () => ({
+      const listed = {
         data: [
-          {
-            cwd,
-            errors: [],
-            skills: skills.skills.map((one) => ({ ...one, enabled: true })),
-          },
+          { cwd, errors: [], skills: skills.skills.map((one) => ({ ...one, enabled: true })) },
         ],
-      }))
-      const handle = await runtime.start({
+      }
+      transport.onRequest(
+        'skills/list',
+        () => new Promise((answer) => setTimeout(() => answer(listed), ms)),
+      )
+      vi.useFakeTimers()
+      const starting = runtime.start({
         cwd,
         providerHome: join(cwd, 'home'),
         builtInSkills: skills,
         startPhases: (phase) => said.push(phase),
       })
+      const [handle] = await Promise.all([starting, vi.advanceTimersByTimeAsync(ms)])
+      vi.useRealTimers()
       expect(said.indexOf('skills-registered')).toBeGreaterThan(said.indexOf('boot-gate-released'))
       expect(said.indexOf('skills-registered')).toBeLessThan(said.indexOf('thread-sent'))
       await handle.close()

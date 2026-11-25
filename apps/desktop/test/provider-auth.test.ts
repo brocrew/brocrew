@@ -610,7 +610,10 @@ describe('the credential commands, at the boundary that validates them (098)', (
 
   it('a check that never answers becomes `unknown` and its work is released', async () => {
     auth.hangCheck = true
-    const state = (await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const asked = run({ kind: 'checkProviderAuth', provider: 'codex' })
+    const state = (await Promise.all([asked, vi.advanceTimersByTimeAsync(36_000)]))[0] as AuthState
+    vi.useRealTimers()
     expect(state.state).toBe('unknown')
     // The reason is ours: the child's raw stderr may carry a credential.
     expect(state.state === 'unknown' && state.reason).not.toMatch(/stderr|token/i)
@@ -619,13 +622,12 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(signInNotChecked(true)).toContain(A_CHECK_NOT_ANSWERED_SAYS)
     expect(auth.signals, 'the op was given something that can reach the child').toHaveLength(1)
     expect(auth.signals[0]?.aborted, 'and it was used when the deadline expired').toBe(true)
-
     auth.hangCheck = false
     expect(((await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState).state).toBe(
       'usable',
     )
     expect(auth.signals[1]?.aborted).toBe(false)
-  }, 20_000)
+  })
 
   it('🔴 a check that could not be asked says so, apart from one that ran out of time', async () => {
     auth.failCheck = new Error('spawn /fictional/codex ENOENT (stderr: a token-shaped secret)')

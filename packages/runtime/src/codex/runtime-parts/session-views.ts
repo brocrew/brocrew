@@ -188,17 +188,9 @@ export function restatedPlan(
 import type { CodexTransport } from '../codex-transport'
 import type { ThreadReadParams } from '../protocol/v2/ThreadReadParams'
 import type { TurnStartParams } from '../protocol/v2/TurnStartParams'
-import { withDeadline } from '../../internal/bounded'
-import { CHILD_READ_TIMEOUT_MS, CHILD_INPUT_TIMEOUT_MS } from './turn-state'
 
 export function readChildThread(transport: CodexTransport, childId: string): Promise<unknown> {
-  return withDeadline(
-    Promise.resolve(
-      transport.request('thread/read', { threadId: childId } satisfies ThreadReadParams),
-    ),
-    CHILD_READ_TIMEOUT_MS,
-    'codex thread/read',
-  )
+  return transport.request('thread/read', { threadId: childId } satisfies ThreadReadParams)
 }
 
 export function sendChildInput(
@@ -206,14 +198,8 @@ export function sendChildInput(
   childId: string,
   text: string,
 ): Promise<unknown> {
-  return withDeadline(
-    Promise.resolve(
-      transport.request('turn/start', {
-        threadId: childId,
-        input: [{ type: 'text', text, text_elements: [] }],
-      } as TurnStartParams),
-    ),
-    CHILD_INPUT_TIMEOUT_MS,
-    'codex turn/start (child)',
-  )
+  return transport.request('turn/start', {
+    threadId: childId,
+    input: [{ type: 'text', text, text_elements: [] }],
+  } as TurnStartParams)
 }

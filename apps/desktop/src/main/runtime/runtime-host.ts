@@ -26928,7 +26928,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * renderer waits on forever with its buttons disabled.
    *
    * ⛔ **And the deadline releases the WAITER, not the work** (185, from 182 H2). `withDeadline`'s
-   * own docblock says so; on this path the work is a detached `codex app-server`, so for ten seconds
+   * own docblock says so; on this path the work is a detached `codex app-server`, so for the whole limit
    * the app said `unknown` and then walked away from a live child holding the home's boot gate —
    * 5/5 trials, surviving the app's own quit. The controller below is what the deadline hands the
    * child to.
@@ -27014,7 +27014,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         : result
     } catch (error) {
       // ⛔ Aborted before the sentence is written, so "we could not ask" and "nothing of ours is
-      // still running" become true in the same breath rather than ten seconds apart.
+      // still running" become true in the same breath rather than a whole limit apart.
       this.launches.cancel(launch)
       // ⛔ **This app declining to ask is not the provider failing to answer** (197 §2, from 190 H2
       // and 086). The refusal below carries the whole reason — no such profile, or an existing one

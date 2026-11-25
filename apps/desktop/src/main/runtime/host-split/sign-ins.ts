@@ -15,11 +15,13 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60_000
 /**
  * How long a credential CHECK may take before it is reported as unaskable (098, review finding 14).
  *
- * For Codex the check spawns a real app-server — measured at ~0.6 s — so ten seconds is generous.
- * The bound is not about speed: without it a wedged spawn leaves the renderer's buttons disabled on
+ * For Codex the check spawns a real app-server — measured at ~0.6 s on a fast Mac — so
+ * thirty-five seconds leaves a slow PC room, and stays above the Codex handshake's own thirty. The
+ * bound is a total limit, not a stall test, because a quiet app-server cannot be told from a wedged
+ * one. It is not about speed: without it a wedged spawn leaves the renderer's buttons disabled on
  * a promise that can never settle, which is a worse answer than "could not ask".
  */
-const AUTH_CHECK_TIMEOUT_MS = 10_000
+const AUTH_CHECK_TIMEOUT_MS = 35_000
 
 /**
  * What a sign-in check the host could not get an answer to says. A check that ran out of time is

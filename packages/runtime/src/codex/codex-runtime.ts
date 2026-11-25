@@ -12,7 +12,6 @@ import {
   CLOSE_FLUSH_TIMEOUT_MS,
   CLOSE_INTERRUPT_TIMEOUT_MS,
   COMMANDS_END_WITHIN_MS,
-  COMMAND_LIST_TIMEOUT_MS,
   COMPACTION_START_TIMEOUT_MS,
   A_COMPACTION_IS_STILL_OUTSTANDING,
   type CodexTurn,
@@ -467,8 +466,7 @@ export class CodexSessionHandle implements SessionHandle {
         await registerCodexBuiltInSkills(
           this.builtInSkills,
           this.cwd,
-          (method, params) =>
-            withDeadline(this.transport.request(method, params), COMMAND_LIST_TIMEOUT_MS, method),
+          (method, params) => this.transport.request(method, params),
           this.sharedSkillsRoot,
         )
       } catch (cause) {
@@ -1403,11 +1401,7 @@ export class CodexSessionHandle implements SessionHandle {
         ? Promise.resolve()
             .then(() => this.beforeSkillDiscovery?.())
             .then(() =>
-              withDeadline(
-                this.transport.request('skills/list', { cwds: [this.cwd], forceReload: true }),
-                COMMAND_LIST_TIMEOUT_MS,
-                'skills/list',
-              ),
+              this.transport.request('skills/list', { cwds: [this.cwd], forceReload: true }),
             )
             .then(() => {
               if (this.currentTurn?.localId !== localId || this.currentTurn.interruptPending)
