@@ -66,8 +66,10 @@ const emit = defineEmits<{ close: [] }>()
   gap: var(--space-4);
 }
 
+/* Never shrinks: a long title gives way, and the buttons stay inside the panel. */
 .head-end {
   display: flex;
+  flex: none;
   align-items: center;
   margin-left: auto;
   gap: var(--space-4);
