@@ -27,13 +27,13 @@ export interface PromptUpdate {
 
 export interface TurnBlockSnapshot {
   readonly promptUpdates?: PromptUpdateBaseline
-  readonly memoryNudged: boolean
+  readonly memoryNudgeChecked: boolean
   readonly personWait: { readonly signature: string; readonly at: number } | null
   readonly hintedTurn: string | null
 }
 
 export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
-  memoryNudged: false,
+  memoryNudgeChecked: false,
   personWait: null,
   hintedTurn: null,
 }
@@ -125,7 +125,8 @@ export function turnBlockChanges(
     )
   }
   const memoryFolders = input.editableMemoryFolders ?? []
-  const nudgeMemory = memoryFolders.length > 0 && (memoryChanges.length > 0 || !before.memoryNudged)
+  const nudgeMemory =
+    memoryFolders.length > 0 && (memoryChanges.length > 0 || !before.memoryNudgeChecked)
   if (nudgeMemory) {
     const locations = memoryFolders.map((folder) => `\`${folder}\``).join(', ')
     profileChanges.push(`Fix or remove outdated memory in ${locations}.`)
@@ -181,7 +182,7 @@ export function turnBlockChanges(
     extra,
     next: {
       promptUpdates: baselineChanged ? promptUpdates : before.promptUpdates,
-      memoryNudged: before.memoryNudged || nudgeMemory,
+      memoryNudgeChecked: before.memoryNudgeChecked || input.editableMemoryFolders !== undefined,
       personWait:
         input.personWait === null
           ? before.personWait

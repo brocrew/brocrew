@@ -10,7 +10,7 @@ import {
   AGENT_MEMORY_TOTAL_CAP,
   MEMORY_PAGE_MOST,
 } from './instruction-limits'
-import { readMemoryStore, realPath, sizeOnDisk } from './instruction-io'
+import { readMemoryStore, realPath, safeStat, sizeOnDisk } from './instruction-io'
 
 interface MemoryLayout {
   editableFolders(home: string): readonly string[]
@@ -33,7 +33,8 @@ export function createMemoryPolicy(
   source: MemoryLayout,
 ): MemoryPolicy {
   const layout: MemoryStoreLayout = {
-    editableFolders: source.editableFolders,
+    editableFolders: (home) =>
+      source.editableFolders(home).filter((folder) => safeStat(folder)?.isDirectory() === true),
     fixedFiles: (home) => source.fixed(home, home).map((file) => file.path),
     notesFolder: source.notesFolder,
     listNotes: source.listNotes,

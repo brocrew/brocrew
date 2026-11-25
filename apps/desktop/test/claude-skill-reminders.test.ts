@@ -123,6 +123,42 @@ const memoryFixtures = [
 ] as const
 
 it.each(memoryFixtures)(
+  '$provider names only existing editable folders and prints one title-ending full stop',
+  async ({ provider }) => {
+    const world = new F093World()
+    try {
+      const host = world.buildHost(true)
+      for (const hasFolder of [true, false]) {
+        const profile = hasFolder ? 'fictional-claude-memory' : 'fictional-no-memory'
+        const folder = claudeAutoMemoryDir(world.homeOf('claude', profile))
+        if (hasFolder) mkdirSync(folder, { recursive: true })
+        const id = await world.open(host, provider, profile)
+        const title = 'Fictional questions.'
+        expect(
+          await host.renameConversation({ conversation: id, title }, { kind: 'person' }),
+        ).toMatchObject({ ok: true })
+        const endpoint = world.end.newest()
+        await host.send(id, 'Read the footer.', world.window)
+        await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+        const lines = endpoint.sends.at(-1)?.split('\n') ?? []
+        const current = lines.find((line) => line.startsWith('Your current work: task '))
+        expect(current).toContain(`${title} If the task's title`)
+        const nudge = lines.find((line) => line.startsWith(MEMORY_NUDGE))
+        expect(nudge).toBe(hasFolder ? `${MEMORY_NUDGE}\`${folder}\`.` : undefined)
+        if (!hasFolder) {
+          mkdirSync(folder, { recursive: true })
+          await host.send(id, 'Read after the empty folder was made.', world.window)
+          await vi.waitFor(() => expect(endpoint.handle.status()).toBe('idle'))
+          expect(endpoint.sends.at(-1)).not.toContain(MEMORY_NUDGE)
+        }
+      }
+    } finally {
+      await world.dispose()
+    }
+  },
+)
+
+it.each(memoryFixtures)(
   '$provider sends memory changes by path once and restores the start baseline after compaction',
   async (fixture) => {
     const world = new F093World()
@@ -158,7 +194,9 @@ it.each(memoryFixtures)(
         await vi.waitFor(() => expect(world.countOf(id, 'compaction')).toBe(before + 1))
       }
       const first = await turn('Establish the baseline.')
-      expect(first.split('\n').find((line) => line.startsWith(MEMORY_NUDGE))).toBe(nudge)
+      expect(first.split('\n').find((line) => line.startsWith(MEMORY_NUDGE))).toBe(
+        `${MEMORY_NUDGE}\`${directory}\`.`,
+      )
       expect(first).not.toContain(MEMORY_LINE)
       await compact()
       const quiet = await turn('After an unchanged compaction.')

@@ -58,7 +58,7 @@ export const TURN_BLOCK_WORDS = {
     `and ${incomplete ? 'at least ' : ''}${String(count)} more: list_tasks`,
   updateGivenWork: 'Check this work and make any needed updates.',
   current: (label: string, title: string, status: string, conversation: string): string =>
-    `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}. If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,
+    `Your current work: task ${label} · ${title} · status: ${status}, in ${conversation}${conversation.endsWith('.') ? '' : '.'} If the task's title or status is out of date, update it with update_work; rename the conversation with rename_conversation.`,
 } as const
 
 export interface AHelperInTheTurn {
