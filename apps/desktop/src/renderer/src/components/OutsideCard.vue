@@ -52,6 +52,7 @@ const props = withDefaults(
       heading?: string
       /** Start opened, for a card that holds something a person has to act on. */
       open?: boolean
+      hidePreviewWhenExpanded?: boolean
     }
     /**
      * ⚑ **Whether the words are HELD, not yet delivered** — the edge goes dashed.
@@ -113,7 +114,12 @@ const heading = computed(() => {
             <use href="#i-chevron" />
           </svg>
           <strong class="exchange-heading" :title="heading">{{ heading }}</strong>
-          <span class="exchange-preview" data-cy="exchange-preview">{{ preview }}</span>
+          <span
+            v-if="!expanded || !exchange.hidePreviewWhenExpanded"
+            class="exchange-preview"
+            data-cy="exchange-preview"
+            >{{ preview }}</span
+          >
         </button>
         <span
           v-if="exchange.state"
