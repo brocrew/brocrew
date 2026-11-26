@@ -1,11 +1,14 @@
 import { RecordingSink } from './lib/host-fixture'
 import { policyHostDeps, policySessionOpener } from './helpers/policy-session'
+import { deferred } from './helpers/quit-open-list-cases'
+import { stopFailedStart } from './helpers/stop-failed-start'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { createAppLifetime } from '../src/main/app-lifetime'
 import {
   FakeProviderSessions,
   type AgentToolset,
@@ -32,8 +35,8 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 // Local contracts keep this RED fixture compilable before the host exposes the feature.
 type Result = { ok: boolean; rail?: string; result?: Record<string, unknown> }
 type NotesHost = {
-  readOwnNotes(me: string, about: string | undefined, by: Caller): Result
-  writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): Result
+  readOwnNotes(me: string, about: string | undefined, by: Caller): Promise<Result>
+  writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): Promise<Result>
   agentOwnNotes(profile: string): OwnNotesReading | null
   saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null
   undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null
@@ -104,7 +107,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
 
   afterEach(async () => {
     await host.closeAll()
-    db.close()
+    if (db.open) db.close()
     rmSync(root, { recursive: true, force: true })
     rmSync(work, { recursive: true, force: true })
   })
@@ -203,7 +206,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
         text: args['notes'],
         why: args['why'],
       } as unknown as OwnNotesWrite
-      expect(notes().writeOwnNotes(me, direct, caller(me))).toMatchObject({
+      expect(await notes().writeOwnNotes(me, direct, caller(me))).toMatchObject({
         ok: false,
         rail: 'malformed-request',
         detail: {
@@ -269,6 +272,98 @@ describe('own notes tools bind to their caller and person controls stay in the w
     }
   })
 
+  it.each(['normal quit', 'partial-start teardown', 'a tool rejection'] as const)(
+    'joins accepted own-notes calls before closing their database after %s',
+    async (path) => {
+      const me = await start('lark')
+      const writeAtHold = deferred()
+      const writeAck = deferred()
+      const readAck = deferred()
+      const sessionClosed = deferred()
+      const order: string[] = []
+      const runAgentKnowledgeTool = host.runAgentKnowledgeTool.bind(host)
+      const close = host.close.bind(host)
+      const failure = new Error('fictional acknowledgement failure')
+      const hold = (kind: 'write' | 'read', ack: Promise<void>): Promise<void> =>
+        ack.then(() => {
+          // Exercise the same real writer after the await, as an accepted operation can do.
+          expect(store.currentOwnNotesOf('lark')?.current?.version).toBe(1)
+          order.push(kind)
+          if (kind === 'write' && path === 'a tool rejection') throw failure
+        })
+      vi.spyOn(host, 'runAgentKnowledgeTool')
+        .mockImplementationOnce((run) =>
+          runAgentKnowledgeTool(async () => {
+            const answer = await run()
+            writeAtHold.resolve()
+            await hold('write', writeAck.promise)
+            return answer
+          }),
+        )
+        .mockImplementationOnce((run) =>
+          runAgentKnowledgeTool(async () => {
+            const answer = await run()
+            await hold('read', readAck.promise)
+            return answer
+          }),
+        )
+      vi.spyOn(host, 'close').mockImplementation(async (...args) => {
+        const result = await close(...args)
+        sessionClosed.resolve()
+        return result
+      })
+
+      announce.mockClear()
+      const written = call(me, 'write_own_notes', input())
+      await Promise.race([writeAtHold.promise, written])
+      const reading = call(me, 'read_own_notes', {})
+      const writeChecked =
+        path === 'a tool rejection'
+          ? expect(written).rejects.toBe(failure)
+          : expect(written).resolves.toMatchObject({ outcome: 'ok', version: 1 })
+      const readChecked = expect(reading).resolves.toMatchObject({ outcome: 'ok', version: 1 })
+      const results = Promise.all([writeChecked, readChecked])
+      void results.catch(() => {})
+
+      const stoppingTheStart =
+        path === 'partial-start teardown'
+          ? stopFailedStart(host, new Error('fictional earlier stop failed'))
+          : undefined
+      const lifetime = createAppLifetime({
+        announceClosing: () => {},
+        closeAllSessions: () => stoppingTheStart ?? host.closeAll(),
+        stopArchiveWork: () => host.stopSweeping(),
+        drainArchiveWork: () => stoppingTheStart ?? host.drainArchiveWork(),
+        closeDatabase: () => {
+          order.push('close')
+          db.close()
+        },
+        quit: () => {},
+        exit: () => {},
+        armLastResort: () => {},
+        log: () => {},
+        now: tick,
+      })
+      const quitting = lifetime.prepareForQuit()
+      try {
+        await sessionClosed.promise
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(db.open).toBe(true)
+        expect(announce.mock.calls.some(([message]) => message.what === 'agents')).toBe(true)
+        writeAck.resolve()
+        await writeChecked
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(db.open).toBe(true)
+      } finally {
+        writeAck.resolve()
+        readAck.resolve()
+        await Promise.all([quitting, results])
+      }
+      expect(order).toEqual(['write', 'read', 'close'])
+      expect(db.open).toBe(false)
+    },
+  )
+
   it('states the shared page and next-start effect in the write description and receipt', async () => {
     const me = await start('lark')
     const writer = tools.get(me)!.tools.find((one) => one.name === 'write_own_notes')
@@ -324,13 +419,13 @@ describe('own notes tools bind to their caller and person controls stay in the w
   it('requires the live caller even when the store has a bound or adopted session row', async () => {
     const me = await start('lark')
     const other = await start('wren')
-    expect(notes().writeOwnNotes(me, said(), caller(other))).toMatchObject({
+    expect(await notes().writeOwnNotes(me, said(), caller(other))).toMatchObject({
       ok: false,
       rail: 'malformed-request',
       detail: { problems: ["Only an agent's own running conversation can write its notes."] },
     })
-    expect(notes().writeOwnNotes(me, said(), window).ok).toBe(false)
-    expect(notes().readOwnNotes(me, undefined, caller(other))).toMatchObject({
+    expect((await notes().writeOwnNotes(me, said(), window)).ok).toBe(false)
+    expect(await notes().readOwnNotes(me, undefined, caller(other))).toMatchObject({
       ok: false,
       rail: 'malformed-request',
       detail: { problems: ['Use your own running conversation to read notes.'] },
@@ -344,12 +439,12 @@ describe('own notes tools bind to their caller and person controls stay in the w
       cwd: work,
       profileId: null,
     })
-    expect(notes().writeOwnNotes('adopted', said(), caller('adopted')).ok).toBe(false)
-    expect(notes().readOwnNotes('adopted', undefined, caller('adopted')).ok).toBe(false)
-    expect(notes().writeOwnNotes('missing', said(), caller('missing')).ok).toBe(false)
+    expect((await notes().writeOwnNotes('adopted', said(), caller('adopted'))).ok).toBe(false)
+    expect((await notes().readOwnNotes('adopted', undefined, caller('adopted'))).ok).toBe(false)
+    expect((await notes().writeOwnNotes('missing', said(), caller('missing'))).ok).toBe(false)
     await host.close(me, window)
-    expect(notes().writeOwnNotes(me, said(), caller(me)).ok).toBe(false)
-    expect(notes().readOwnNotes(me, undefined, caller(me)).ok).toBe(false)
+    expect((await notes().writeOwnNotes(me, said(), caller(me))).ok).toBe(false)
+    expect((await notes().readOwnNotes(me, undefined, caller(me))).ok).toBe(false)
     expect(store.ownNotesOf('lark')!.versions).toEqual([])
   })
 
@@ -373,8 +468,8 @@ describe('own notes tools bind to their caller and person controls stay in the w
       )
       if (!given.ok) throw new Error(`give refused: ${given.refusal.rail}`)
       const helper = given.owner
-      await vi.waitFor(() =>
-        expect(notes().readOwnNotes(helper, undefined, caller(helper)).ok).toBe(true),
+      await vi.waitFor(async () =>
+        expect((await notes().readOwnNotes(helper, undefined, caller(helper))).ok).toBe(true),
       )
       tools.set(helper, handed.at(-1)!)
       expect(store.parentOf(helper)).toBe(giver)
@@ -410,13 +505,49 @@ describe('own notes tools bind to their caller and person controls stay in the w
       outcome: 'refused',
       rail: 'malformed-request',
     })
-    expect(notes().writeOwnNotes(two, said('Stale.'), caller(two))).toMatchObject({
+    expect(await notes().writeOwnNotes(two, said('Stale.'), caller(two))).toMatchObject({
       ok: false,
       rail: 'malformed-request',
       detail: { problems: ['The notes changed; read them again before replacing them.'] },
     })
     expect(store.ownNotesOf('lark')!.versions).toHaveLength(1)
     expect(store.ownNotesOf('lark')!.versions[0]!.by).toEqual({ who: 'an-agent', agent: one })
+  })
+
+  it('checks the baseline again after awaiting the page', async () => {
+    const me = await start('lark')
+    const other = await start('lark')
+    const current = store.currentOwnNotesOf.bind(store)
+    const read = vi.spyOn(store, 'currentOwnNotesOf').mockImplementationOnce((profile) => {
+      const page = current(profile)
+      queueMicrotask(() => {
+        store.writeOwnNotes(
+          profile,
+          said('The competing edit.'),
+          { who: 'an-agent', agent: other },
+          tick(),
+        )
+      })
+      return page
+    })
+    try {
+      expect(await call(me, 'write_own_notes', input('The original edit.'))).toMatchObject({
+        outcome: 'refused',
+        rail: 'malformed-request',
+        detail: {
+          problems: ['The notes could not be saved. Read them again before retrying.'],
+        },
+      })
+      const versions = store.ownNotesOf('lark')!.versions
+      expect(versions).toHaveLength(1)
+      expect(versions[0]).toMatchObject({
+        version: 1,
+        text: 'The competing edit.',
+        by: { who: 'an-agent', agent: other },
+      })
+    } finally {
+      read.mockRestore()
+    }
   })
 
   it('checks Unicode limits and version bounds in both the wire schema and host', async () => {
@@ -426,7 +557,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
         outcome: 'refused',
         rail: 'malformed-request',
       })
-      expect(notes().writeOwnNotes(me, said(bad), caller(me)).ok).toBe(false)
+      expect((await notes().writeOwnNotes(me, said(bad), caller(me))).ok).toBe(false)
     }
     expect(await call(me, 'write_own_notes', { ...input(), why: ' ' })).toMatchObject({
       outcome: 'refused',

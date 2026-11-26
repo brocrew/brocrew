@@ -205,7 +205,12 @@ export function agentToolsFor(
       createRenameConversationTool(host, me),
     ].map((definition) => {
       const tool = recordsWhatItRefused(definition)
-      if (definition.name !== 'read_agent_rules' && definition.name !== 'write_agent_rules')
+      if (
+        definition.name !== 'read_agent_rules' &&
+        definition.name !== 'write_agent_rules' &&
+        definition.name !== 'read_own_notes' &&
+        definition.name !== 'write_own_notes'
+      )
         return tool
       return {
         ...tool,

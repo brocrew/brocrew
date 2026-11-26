@@ -32,6 +32,7 @@ import { THE_APP_DID_IT, type ActedBy } from '../../../shared/who-did-it'
 import type { IdentityCreator } from '../../../shared/agent-identity-contracts'
 import type { OwnInstructionsCommit } from '../../db/agent-knowledge-history'
 import type { SessionStore } from '../../db/session-store'
+import type { AgentNotes } from '../../database'
 import { foldProfileName } from '../../db/identity'
 import { newInstructionAskId } from '../../db/ids'
 import { whoDidIt, type Caller } from '../conversation-caller'
@@ -61,6 +62,7 @@ interface InstructionDecisionOperations {
   >
   readCurrentAgentRules: SessionStore['readCurrentAgentRules']
   writeDirectAgentRules: SessionStore['writeDirectAgentRules']
+  notes(): Pick<AgentNotes, 'currentOwnNotesOf' | 'writeOwnNotes'>
   rulesAuthor(me: string, by: Caller): RulesAuthor | null
   /** Capture the current live session; invoke the returned publisher synchronously at the write. */
   instructionPublisher(
@@ -85,11 +87,11 @@ function recruiterOf(createdBy: IdentityCreator | null): string | null {
 export class InstructionDecisions {
   constructor(private readonly ops: InstructionDecisionOperations) {}
 
-  readOwnNotes(
+  async readOwnNotes(
     me: string,
     about: string | undefined,
     by: Caller,
-  ): AgentOwnNotesOutcome<AgentOwnNotesReading> {
+  ): Promise<AgentOwnNotesOutcome<AgentOwnNotesReading>> {
     const author = this.ops.rulesAuthor(me, by)
     if (author === null || (about !== undefined && typeof about !== 'string'))
       return {
@@ -98,7 +100,7 @@ export class InstructionDecisions {
         detail: { problems: [OWN_NOTES_READ_CALLER_PROBLEM] },
       }
     const profile = about === undefined ? author.profile : foldProfileName(about)
-    const page = this.ops.store().currentOwnNotesOf(profile)
+    const page = await this.ops.notes().currentOwnNotesOf(profile)
     if (page === null) return { ok: false, rail: 'no-such-agent', detail: { agent: profile } }
     const current = page.current
     return {
@@ -113,11 +115,11 @@ export class InstructionDecisions {
     }
   }
 
-  writeOwnNotes(
+  async writeOwnNotes(
     me: string,
     said: OwnNotesWrite,
     by: Caller,
-  ): AgentOwnNotesOutcome<OwnNotesReceipt> {
+  ): Promise<AgentOwnNotesOutcome<OwnNotesReceipt>> {
     const author = this.ops.rulesAuthor(me, by)
     if (author === null)
       return {
@@ -131,7 +133,8 @@ export class InstructionDecisions {
         rail: 'malformed-request',
         detail: { problems: [OWN_NOTES_BASELINE_PROBLEM] },
       }
-    const page = this.ops.store().currentOwnNotesOf(author.profile)
+    const notes = this.ops.notes()
+    const page = await notes.currentOwnNotesOf(author.profile)
     if (page === null || (page.current?.version ?? 0) !== said.expectedVersion)
       return {
         ok: false,
@@ -139,9 +142,12 @@ export class InstructionDecisions {
         detail: { problems: [OWN_NOTES_STALE_PROBLEM] },
       }
     // The tool caller id is agent:<id>; the repository derives the author from the bare session id.
-    const written = this.ops
-      .store()
-      .writeOwnNotes(author.profile, said, { who: 'an-agent', agent: me }, this.ops.now())
+    const written = await notes.writeOwnNotes(
+      author.profile,
+      said,
+      { who: 'an-agent', agent: me },
+      this.ops.now(),
+    )
     if (written === null)
       return {
         ok: false,
