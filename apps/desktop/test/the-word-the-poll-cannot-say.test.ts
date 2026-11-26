@@ -1,5 +1,9 @@
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as WindowSink,
+} from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,7 +21,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 509 · the word the poll cannot say
@@ -81,17 +84,6 @@ function streaming(
 }
 
 const WORKING = { type: 'status', state: 'working' } as RuntimeEvent
-
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('509 · the word the poll cannot say', () => {
   let userData: string

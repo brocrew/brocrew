@@ -15,13 +15,11 @@ import {
   mayHandBack,
   RuntimeHost,
   THE_APP_ITSELF,
-  type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { type UnclaimedSession } from '../src/main/runtime/host-split/unclaimed-sessions'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { agentStateWords } from '../src/shared/agent-state'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -80,20 +78,6 @@ class CapturingRuntime extends FakeRuntime {
     const handle = this.issued.at(-1)
     if (handle === undefined) throw new Error('no session has been started on this runtime')
     return handle
-  }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
   }
 }
 

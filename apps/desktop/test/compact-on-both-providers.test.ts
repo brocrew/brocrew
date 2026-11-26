@@ -1,7 +1,7 @@
 import { scriptedClaudeQuery } from './lib/scripted-claude-query'
 import type { ClaudeQuery } from '@brobot2/runtime/claude'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
-import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { neutralHostDeps, syntheticProviderHome, RecordingSink } from './lib/host-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,7 +25,7 @@ import { ScriptedCodex, Wire } from './lib/scripted-codex-compaction'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
@@ -41,7 +41,7 @@ import {
   aPersonsCompaction,
 } from '../src/main/runtime/a-command-goes-as-typed'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { agentName } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { callOn } from './helpers/call-tool'
 
@@ -71,19 +71,6 @@ import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** A FakeRuntime that keeps its handles, and makes a Codex one compact on request (§2). */
 class ProviderDouble extends FakeRuntime {
