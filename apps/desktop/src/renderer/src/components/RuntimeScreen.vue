@@ -2346,7 +2346,7 @@ function lookAfterAQueueNotice(): void {
   queueNoticePending = true
   queueMicrotask(() => {
     queueNoticePending = false
-    if (!actionableReadsClosed) void lookForWhatIsYours(true)
+    if (!actionableReadsClosed) void lookForWhatIsYours(true, true)
   })
 }
 
@@ -2354,11 +2354,12 @@ function lookAfterAQueueNotice(): void {
  * The one entry every ask for the queue goes through: the tick, the `persons` notice, the
  * `conversations` and `agents` notices, and each answer given here. `scheduled` keeps the limits
  * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
- * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
+ * {@link lookAtTheQueue}, so a burst of asks costs at most one more look, and a look a `notice`
+ * asks for waits for the look tick's spacing.
  */
-async function lookForWhatIsYours(scheduled = false): Promise<void> {
+async function lookForWhatIsYours(scheduled = false, notice = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
-  await lookAtTheQueue(scheduled)
+  await lookAtTheQueue(notice || (scheduled ? 'scheduled' : undefined))
 }
 
 /**
@@ -2419,10 +2420,10 @@ async function lookAtTheQueueOnce(): Promise<void> {
  * At most one round in flight and one owed, so the round that reads after the last ask always
  * runs; rounds never overlap, so an older round's answer can't land over a newer one.
  *
- * ⚑ **Spaced** (card 353): a round owed only to notices and the tick starts one round's own
- * duration after the last one ended, so a stream of notices cannot keep the one read worker busy
- * back to back. The last ask is still read, at most one round's duration later. ⚑ A look a person's
- * own action asks for (`scheduled` false) never waits.
+ * ⚑ **Spaced** (cards 353 and 554): a round owed only to notices starts no sooner than one look
+ * tick after the last one started, so a stream of notices joins the tick's rounds rather than
+ * keeping the one read worker busy. The last ask is still read. ⚑ The tick itself never waits, and
+ * rides on a round already out; a look a person's own action asks for never waits.
  */
 const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce, { spaced: true })
 
