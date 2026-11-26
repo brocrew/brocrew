@@ -69,7 +69,7 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
   // the primary key, instead of reading every row of the conversation through `session_id`.
   const remove = db.prepare(`DELETE FROM events
     WHERE +session_id = @session AND id IN (SELECT value FROM json_each(@ids))
-      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched')
+      AND (created_at < @before OR type IN ('provider_commands','tool_inventory')
         OR id IN (SELECT value FROM json_each(@atAnyAge)))`)
   const write = db.transaction((batch: EventTrimBatch) => {
     const current = generation.get(batch.session) as
@@ -94,7 +94,6 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
 interface ConversationHead {
   readonly active: number
   readonly building: number | null
-  readonly after: number
 }
 
 interface HistoryRow {
@@ -302,7 +301,7 @@ export async function trimOldEvents(
               const key = warning === null ? row.k : `warning ${warning}`
               const nth = (newer.get(key) ?? 0) + 1
               newer.set(key, nth)
-              let anchor = active && type === 'launched' && row.o > head.after
+              let anchor = false
               if (active && !row.protected) {
                 if (unmet.delete('command') || unmet.delete('inventory')) anchor = true
                 if (!row.resumed && unmet.delete('declaration')) anchor = true

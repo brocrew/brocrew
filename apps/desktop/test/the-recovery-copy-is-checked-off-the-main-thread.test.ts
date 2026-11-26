@@ -374,9 +374,8 @@ describe('the recovery copy is checked off the main thread', () => {
     const db = aHistory(file, 1402, 8192)
     db.prepare(
       `INSERT INTO events (id,session_id,ordinal,type,payload,created_at) VALUES
-      ('old-launch','fictional',1404,'launched','{"type":"launched"}',0),
-      ('last-launch','fictional',1405,'launched','{"type":"launched"}',0),
-      ('cut','fictional',1406,'compaction','{"type":"compaction"}',0)`,
+      ('old-commands','fictional',1404,'provider_commands','{"type":"provider_commands"}',0),
+      ('last-commands','fictional',1405,'provider_commands','{"type":"provider_commands"}',0)`,
     ).run()
     const store = createSessionStore(db)
     db.prepare(
@@ -385,7 +384,7 @@ describe('the recovery copy is checked off the main thread', () => {
     ).run()
     const unread = rowsUnreadOnce()
     const untouched = store.piecesOwnedBy('untouched', unread)
-    const changed = store.piecesOwnedBy('fictional', unread)
+    const trimmed = store.piecesOwnedBy('fictional', unread)
     const sample = windowWriterSampler(db, () => true)
     const before = sample({ kind: 'routes' })!
     expect(before).not.toBeNull()
@@ -441,9 +440,10 @@ describe('the recovery copy is checked off the main thread', () => {
       expect(Number(db.pragma('page_count', { simple: true }))).toBeLessThan(pages)
       const after = sample({ kind: 'routes' })!
       expect(after.foldReset).toBe(before.foldReset)
-      expect(sample.changedOwners!(before, after)).toEqual(['fictional'])
+      // The trim removes no row a fold reads, so no conversation's folds change.
+      expect(sample.changedOwners!(before, after)).toEqual([])
       expect(store.piecesOwnedBy('untouched', unread)).toBe(untouched)
-      expect(store.piecesOwnedBy('fictional', unread)).not.toBe(changed)
+      expect(store.piecesOwnedBy('fictional', unread)).toBe(trimmed)
       expect(unread.count).toBe(0)
       expect(result.longestBatchMs).toBeGreaterThan(0)
       expect(

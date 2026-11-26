@@ -17,6 +17,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { eventTrimWriter, trimOldEvents } from '../src/main/db/event-retention'
 
 /**
  * 🔴 **D-017 · a stop is not an ending — two lives the landed suite does not yet pin.**
@@ -25,7 +26,9 @@ import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/hos
  * from `createSession`'s, at the reopen). `a-models-own-question-stays-the-models.test.ts` already
  * pins that a FIRST life's own question outlives that life's own stop; it only ever resumes the PM,
  * never the child that asked. This pins the SECOND life: a conversation resumed once, whose question
- * in that later life survives that later life's own stop too.
+ * in that later life survives that later life's own stop too. The history trim keeps every life's
+ * `launched` row, so a question still open from an earlier life survives a later compaction and a
+ * trim as well.
  *
  * ⚑ **§2** — a message a stop handed on for its conversation's next start, whose task is withdrawn
  * while it waits, is ended `cancelled` — never resent as a stale turn once the conversation starts
@@ -180,6 +183,63 @@ describe('D-017 · a stop is not an ending', () => {
       // 🔴 **The assertion this test is about**: generation 1's own question outlives generation 1's
       // own stop — never `abandoned` by the terminal `status` row that stop wrote.
       expect(questionOf(child, q2)?.state).toBe('open')
+    })
+
+    it('a question still open from an earlier life stays open after a later life, a compaction and the history trim, and its answer reaches it', async () => {
+      const { pm, child } = await aPmAndAChild()
+      const asked = await callOn(child, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: pm,
+        question: 'which notes come first?',
+      })
+      const question = asked.question as string
+      expect(questionOf(child, question)?.state, JSON.stringify(asked)).toBe('open')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await host.closeAll()
+
+      // A second life, then two command lists and a compaction. The trim keeps only the newest
+      // command list, at any age, which shows it ran on this conversation.
+      store = createSessionStore(db, tick)
+      host = buildHost()
+      await host.resumeSession(child, window)
+      await host.closeAll()
+      const commands: TranscriptEvent = {
+        type: 'provider_commands',
+        commands: [],
+        prefix: '/',
+        source: 'test',
+      }
+      const compaction: TranscriptEvent = { type: 'compaction', source: 'test' }
+      let next = store.events(child).at(-1)!.ordinal + 1
+      for (const event of [commands, commands, compaction])
+        store.append(child, next++, event, tick())
+      expect(ledgerEvents(child, 'launched')).toHaveLength(2)
+
+      const write = eventTrimWriter(db)
+      const file = join(userData, 'brobot2.sqlite')
+      await trimOldEvents(
+        file,
+        () => false,
+        async (batch) => write(batch),
+        clock,
+      )
+      expect(ledgerEvents(child, 'provider_commands')).toHaveLength(1)
+      // Every launch stays, and with the first one this app's question stays open.
+      expect(ledgerEvents(child, 'launched')).toHaveLength(2)
+      expect(questionOf(child, question)?.state).toBe('open')
+
+      // The next launch reads it open too, and the parent's answer reaches it.
+      store = createSessionStore(db, tick)
+      host = buildHost()
+      expect(questionOf(child, question)?.state).toBe('open')
+      await host.resumeSession(pm, window)
+      const answered = await callOn(pm, 'answer_question', {
+        question,
+        asked_by: child,
+        answers: [{ part: 'answer', answer: ['the release notes'] }],
+      })
+      expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
+      expect(questionOf(child, question)?.state).toBe('answered')
     })
   })
 

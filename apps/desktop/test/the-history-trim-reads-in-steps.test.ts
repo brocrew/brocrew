@@ -19,7 +19,8 @@ const NEW = NOW - DAY
 
 /**
  * The keep rules as the trim applied them in one window query per conversation, before it read in
- * steps. Kept here, unchanged, as what the stepped reads must agree with row for row.
+ * steps, with every `launched` row now kept. Kept here as what the stepped reads must agree with
+ * row for row.
  */
 const KEPT_BY_ONE_QUERY = `WITH active AS MATERIALIZED (
     SELECT s.id, coalesce(d.active,0) AS generation
@@ -27,9 +28,6 @@ const KEPT_BY_ONE_QUERY = `WITH active AS MATERIALIZED (
     WHERE s.id=@session
   ), epochs AS MATERIALIZED (
     SELECT active.*,
-      coalesce((SELECT max(e.ordinal) FROM events e
-        WHERE e.session_id=active.id AND e.generation=active.generation
-          AND e.type IN ('compaction','conversation_reset')), -1) AS after,
       (SELECT e.id FROM events e WHERE e.session_id=active.id
         AND e.generation=active.generation AND e.type='provider_commands'
         AND CASE WHEN json_valid(e.payload) THEN json_type(e.payload)='object'
@@ -55,9 +53,8 @@ const KEPT_BY_ONE_QUERY = `WITH active AS MATERIALIZED (
         json_extract(e.payload,'$.provider'),json_extract(e.payload,'$.category'),
         coalesce(json_extract(e.payload,'$.label'),json_extract(e.payload,'$.raw.type'),'unlabelled')) ELSE '' END AS k,
       CASE WHEN e.id IN (epoch.command,epoch.inventory,epoch.declaration)
-        OR (e.type='launched' AND e.generation=epoch.generation AND e.ordinal>epoch.after)
         THEN 1 ELSE 0 END AS anchor,
-      CASE WHEN e.type NOT IN ('provider_commands','tool_inventory','launched','unknown',
+      CASE WHEN e.type NOT IN ('provider_commands','tool_inventory','unknown',
           'file_change','thinking','assistant_delta','activity','context_reading','plan_update',
           'memory_recall','memory_loaded','turn_summary','command_summary','tool_refused',
           'instruction_changed','work_sent','work_reported','project_proposed','proposal_ended') THEN 1
@@ -80,9 +77,9 @@ const KEPT_BY_ONE_QUERY = `WITH active AS MATERIALIZED (
   )
   SELECT id FROM ranked
   WHERE protected=0 AND anchor=0
-    AND nth > CASE WHEN t IN ('provider_commands','tool_inventory','launched') THEN 1
+    AND nth > CASE WHEN t IN ('provider_commands','tool_inventory') THEN 1
       WHEN t='unknown' THEN 100 ELSE 1000 END
-    AND (at<@cutoff OR t IN ('provider_commands','tool_inventory','launched'))`
+    AND (at<@cutoff OR t IN ('provider_commands','tool_inventory'))`
 
 type Row = readonly [type: string, payload: string, at: number]
 
@@ -238,6 +235,8 @@ it('reads each conversation in steps and selects exactly the rows the one query 
     )
     expect(selected.sort()).toEqual(expected)
     expect(selected.map(typeOf)).not.toContain('service_registered')
+    // Every launch stays, older ones and those before a compaction included.
+    expect(selected.map(typeOf)).not.toContain('launched')
     // The newest well-formed command list and inventory, and the newest non-resume inventory, stay.
     expect(expected.filter((id) => id.startsWith('anchors-'))).toEqual([
       'anchors-0-0',
@@ -249,12 +248,11 @@ it('reads each conversation in steps and selects exactly the rows the one query 
     expect(result.deferredConversations).toBe(1)
     const byType = new Map<string, number>()
     for (const id of expected) byType.set(typeOf(id), (byType.get(typeOf(id)) ?? 0) + 1)
-    for (const type of ['thinking', 'unknown', 'provider_commands', 'tool_inventory', 'launched'])
+    for (const type of ['thinking', 'unknown', 'provider_commands', 'tool_inventory'])
       expect(byType.get(type), type).toBeGreaterThan(0)
     expect([...byType.keys()].sort()).toEqual([
       'assistant_delta',
       'file_change',
-      'launched',
       'provider_commands',
       'thinking',
       'tool_inventory',
@@ -281,10 +279,7 @@ it('reads each step as one range of the type index, and finds a conversation by 
       range('generation>? AND (generation,ordinal)<(?,?)'),
       range('(generation,ordinal)<(?,?)'),
     ])
-    expect(plan(conversationHeadSQL, 's').filter((line) => !line.startsWith('SEARCH'))).toEqual([
-      'CORRELATED SCALAR SUBQUERY 1',
-      'CORRELATED SCALAR SUBQUERY 2',
-    ])
+    expect(plan(conversationHeadSQL, 's').filter((line) => !line.startsWith('SEARCH'))).toEqual([])
   } finally {
     db.close()
   }

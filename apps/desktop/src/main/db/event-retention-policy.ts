@@ -1,11 +1,12 @@
 /**
  * The only event types history trimming ever removes; every other type is kept. Of `error`, only
  * the repeating warnings `repeatingWarning` names are ever removed, down to the newest of each.
+ * Every `launched` row stays: the question fold reads a conversation's first launch to keep this
+ * app's questions open across a stop.
  */
 export const HISTORY_TYPES = [
   'provider_commands',
   'tool_inventory',
-  'launched',
   'unknown',
   'file_change',
   'thinking',
@@ -27,11 +28,7 @@ export const HISTORY_TYPES = [
 ] as const
 
 /** Types kept to their newest row (and the rows readers anchor on), however recent the others. */
-export const NEWEST_ONLY: ReadonlySet<string> = new Set([
-  'provider_commands',
-  'tool_inventory',
-  'launched',
-])
+export const NEWEST_ONLY: ReadonlySet<string> = new Set(['provider_commands', 'tool_inventory'])
 
 /** How many of a type's newest rows of one kind are always kept. */
 export const keptNewest = (type: string): number =>
@@ -61,14 +58,8 @@ export const turnInputSQL = `SELECT json_extract(payload,'$.sent') AS sent, json
   FROM events INDEXED BY events_turn_opening_idx
   WHERE session_id=@session AND generation=@generation AND turn_id=@turn AND type='user_turn'`
 
-/** The last ordinal of one type in the active generation: one seek on the type index. */
-const lastOrdinal = (type: string) => `coalesce((SELECT max(e.ordinal)
-    FROM events e INDEXED BY events_kind_owner_idx
-    WHERE e.type='${type}' AND e.session_id=s.id AND e.generation=coalesce(d.active,0)), -1)`
-
-/** One conversation's active and building generation, and the last compaction or reset in the active one. */
-export const conversationHeadSQL = `SELECT coalesce(d.active,0) AS active, d.building AS building,
-    max(${lastOrdinal('compaction')}, ${lastOrdinal('conversation_reset')}) AS after
+/** One conversation's active and building generation. */
+export const conversationHeadSQL = `SELECT coalesce(d.active,0) AS active, d.building AS building
   FROM provider_session s LEFT JOIN derived_generation d ON d.session_id=s.id WHERE s.id=?`
 
 /**
