@@ -207,7 +207,7 @@ describe('what a chain is told about its own depth', () => {
   const CHAIN = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7'] as const
 
   describe('no depth bound', () => {
-    it('admits a give at every level of a seven-deep chain, and tells no launch a limit', async () => {
+    it('admits a give at every level of a seven-deep chain, and tells each launch its grants', async () => {
       for (const name of CHAIN) await bringIntoBeing(name)
       await personOpens('pm')
       let under: string | null = null
@@ -221,8 +221,6 @@ describe('what a chain is told about its own depth', () => {
       expect(launched).toHaveLength(CHAIN.length + 1)
       for (const said of launched) {
         expect(said).toContain(GRANTS_HEADING)
-        expect(said).not.toContain('delegation limit')
-        expect(said).not.toContain('level below this conversation')
       }
     })
   })

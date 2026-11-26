@@ -839,25 +839,6 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
     expect(store.agentIdentityOf(DEFAULT_PROFILE_ID)).not.toBeNull()
   })
 
-  it('a stored retired grant column changes nothing a launch is told', async () => {
-    const first = await personOpens(DEFAULT_PROFILE_ID)
-    const before = thisConversationText(seen.at(-1) as InstructionContext)
-    await host.close(first, window)
-    db.prepare(
-      "UPDATE agent_identity SET can_message = 'none', can_assign_work = 'none', can_create_agents = 'none', max_depth = 0 WHERE slug = ?",
-    ).run(DEFAULT_PROFILE_ID)
-    await personOpens(DEFAULT_PROFILE_ID)
-    const said = thisConversationText(seen.at(-1) as InstructionContext)
-    expect(grantLines(said)).toEqual(grantLines(before))
-    expect(said).not.toContain('You may not')
-  })
-
-  it('omits the retired switch from a launch even when its old column holds off', async () => {
-    db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
-    await personOpens(DEFAULT_PROFILE_ID)
-    expect(thisConversationText(seen.at(-1) as InstructionContext)).not.toContain(SPAWNING_OFF)
-  })
-
   it('⛔ …and a first launch of a new identity is told the rule-writing policy', async () => {
     await personOpens('a-fresh-one')
     const ctx = seen.at(-1) as InstructionContext

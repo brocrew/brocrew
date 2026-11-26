@@ -640,9 +640,8 @@ describe('a service queues the work it is given', () => {
       })
     })
 
-    it('a first give records the service even if the retired spawning column holds off', async () => {
+    it('a first give records the service’s profile on its conversation', async () => {
       const { host, first } = await aServiceAndTwoCallers()
-      world.db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
       const given = accepted(await world.gives(host, first, 'browser-driver'))
       expect(world.store.recordedOne(given.owner)?.profileId).toBe('browser-driver')
     })

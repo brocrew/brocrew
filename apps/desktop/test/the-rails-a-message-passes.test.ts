@@ -202,9 +202,8 @@ describe('374 · the rails a message passes', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a commander interrupts, sends and takes back', () => {
-    it('🔴 the parent interrupts and its words are delivered, whatever the retired can_message column holds', async () => {
+    it('🔴 the parent interrupts and its words are delivered', async () => {
       const { pm, worker } = await aPmAndItsWorker('pm', 'worker', 'ask', true)
-      db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = 'pm'`).run()
       const by = speakingAs(pm)
 
       await expect(host.interrupt(worker, by)).resolves.toBeUndefined()

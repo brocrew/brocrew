@@ -1126,14 +1126,12 @@ describe('692 · a restart keeps what was open', () => {
       expect(launched.length - before).toBe(1)
     })
 
-    it('⚑ the host door starts it for a caller whose retired `can_message` column holds none — asked directly, past every tool', async () => {
+    it('⚑ the host door starts it for a caller that did not start it — asked directly, past every tool', async () => {
       const { children } = await theFourOpen()
       const { sessionId: neighbour } = await host.createSession(
         { provider: 'claude', profileId: 'neighbour', approvalMode: 'ask', cwd: root },
         window,
       )
-      // The column stays in the schema and nothing reads it: 'none' there stops no message.
-      db.prepare("UPDATE agent_identity SET can_message = 'none' WHERE slug = ?").run('neighbour')
       await quitAndRelaunch()
       await personPresses(neighbour)
       const before = launched.length
