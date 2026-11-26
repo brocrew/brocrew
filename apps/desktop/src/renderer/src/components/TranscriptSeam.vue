@@ -10,7 +10,8 @@ defineProps<{
   /** A sprite symbol, `#i-…`. */
   icon: string
   title: string
-  at: number
+  /** When it happened; a row with no time shows none. */
+  at?: number
 }>()
 </script>
 
