@@ -64,7 +64,7 @@ export function receiptForRecordedMessage(
     ) {
       return {
         ...result,
-        said: `Your message ${facts.recorded.id} is recorded for ${description.line}. ${result.said}`,
+        said: `Your message ${facts.recorded.id} is recorded. ${result.said}`,
       }
     }
     return result
@@ -85,7 +85,7 @@ function assembleReceipt(
     let said = outboundReceiptSaid(facts, address, conversation)
     if (facts.senderHistoryUnconfirmed) {
       if (facts.state.kind === 'started' || facts.state.kind === 'queued') {
-        said = `Your message ${facts.recorded.id} is recorded for ${conversation}. ${said}`
+        said = `Your message ${facts.recorded.id} is recorded. ${said}`
       }
       said += " The sender's history could not be confirmed."
     }
