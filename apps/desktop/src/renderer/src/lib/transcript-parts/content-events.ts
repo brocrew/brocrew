@@ -529,11 +529,10 @@ export function foldEvent(
       const log = state.changes
       const previous = log.reports[log.reports.length - 1]
       const paths = new Set(event.changes.map((change) => change.path))
-      // ⚠️ **The turn a report lands in, computed ONCE and used everywhere** (review). It used to be
-      // `Math.max(log.turn, 1)` on the report and a bare `log.turn` in the fold, so a change reported
-      // before the reader had said anything — a resumed session replaying, an agent that moves first
-      // — was stamped turn 1 while the conversation was still on turn 0. "This turn" then matched
-      // nothing and the pane drew an empty scope over rows it was holding.
+      // ⚠️ **The turn a report lands in, computed ONCE for the report and the fold.** A change
+      // reported before the reader has said anything — a resumed session replaying, an agent that
+      // moves first — lands while the conversation is still on turn 0; with two different turn
+      // values, "this turn" matches nothing and the pane draws an empty scope over rows it is holding.
       const turn = Math.max(log.turn, 1)
       // ⚠️ **A snapshot replaces; an increment appends.** Codex re-sends the whole turn's diff three
       // to five times — measured, byte-identical — so appending would keep four dead copies of every
@@ -543,10 +542,10 @@ export function foldEvent(
       const supersedes =
         previous !== undefined &&
         !previous.released &&
-        // ⚠️ **`.every` over an EMPTY array is `true`, and review caught it superseding.** A report
-        // that named nothing — the under-disclosed case, a provider hiccup — would be replaced by
-        // the next one regardless of what it said, and the empty report's own `dropped` count went
-        // with it. A superset of nothing is not a superset.
+        // ⚠️ **`.every` over an EMPTY array is `true`.** A report that named nothing — the
+        // under-disclosed case, a provider hiccup — would be replaced by the next one regardless of
+        // what it said, and the empty report's own `dropped` count would go with it. A superset of
+        // nothing is not a superset.
         previous.changes.length > 0 &&
         previous.turn === turn &&
         previous.changes.every((change) => paths.has(change.path))

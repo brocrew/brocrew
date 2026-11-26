@@ -23,21 +23,17 @@ import { type Timed, nextId } from './items'
 import { everyCard } from './cards'
 
 /**
- * The queued message an ending is ABOUT (077, corrected at 413) — **by name**, and by position
- * only where there is no name to go on.
+ * The queued message an ending is ABOUT (077, 413) — **by name**, and by position only where there
+ * is no name to go on.
  *
- * ## ⛔ The premise that stopped being true, and the row it settled
+ * ## ⛔ Never *the last unresolved one*
  *
- * ⚠️ **This used to return *the last unresolved one*, and said why**: *"the host allows only one
- * queued message per session at a time, so `the last unresolved one` and `the one this event is
- * about` are the same item by construction."* ⛔ **`394` made the mailbox hold a work message AND
- * a question, and that sentence was never revisited.** `406` reported the gap; this is it closed.
- *
- * 🔴 **Measured before it was fixed.** Queue `m_work`, queue `m_q`, then publish
- * `message_unqueued{messageId: 'm_work', reason: 'sent'}` — the fold spliced out the QUESTION's
- * row and left the work's on screen, where nothing would ever settle it. ⚑ Both halves are
- * damage: a child's question disappears from the one surface a person reads it on, and a message
- * that HAS been sent goes on saying *not sent · waiting for the turn to end* for ever.
+ * ⚠️ The mailbox can hold a work message AND a question (`394`), so the last unresolved row is not
+ * necessarily the one an ending is about. 🔴 Queue `m_work`, queue `m_q`, then publish
+ * `message_unqueued{messageId: 'm_work', reason: 'sent'}`: matched by position, the fold splices out
+ * the QUESTION's row and leaves the work's on screen, where nothing would ever settle it. ⚑ Both
+ * halves are damage: a child's question disappears from the one surface a person reads it on, and a
+ * message that HAS been sent goes on saying *not sent · waiting for the turn to end* for ever.
  *
  * ## ⚠️ The fallback is for ledgers with no names, and only those
  *

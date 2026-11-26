@@ -105,8 +105,8 @@ function cardsOf(item: TranscriptItem | undefined): SubAgentCard[] {
 /**
  * Every card in the transcript, however deep (035).
  *
- * Nesting is recursive now — an agent's agent hangs off the call that dispatched it, inside its
- * parent's card — so any lookup that used to walk `state.items` has to walk the tree instead. The
+ * Nesting is recursive — an agent's agent hangs off the call that dispatched it, inside its
+ * parent's card — so a lookup walks the tree, not `state.items`. The
  * depth is the agent's own doing and nothing here bounds it; in practice it is one or two.
  *
  * Exported since 137 for `carryForward`, which has to know which agents a fold is holding before it
@@ -450,13 +450,11 @@ export function reclaimChildRows(state: TranscriptState, card: SubAgentCard): vo
   // A sentence reclaimed AFTER the ending already set the summary is the same sentence twice — the
   // ordinary shape when the card arrives late, so the echo is dropped here as well as on arrival.
   //
-  // ⚑ **Unconditional again, and that is 137 removing a guard rather than adding one.** This used to
-  // run only `if (tookWords)`, because the `sub_agent` case above has already de-duplicated for
-  // `event.summary` and a second unconditional pass removed a SECOND row — a child that legitimately
-  // repeated a sentence lost both copies. The memory in {@link TranscriptState.echoedAnswers} is what
-  // that guard was standing in for, and it holds on every path rather than on this one: an echo is
-  // one event said twice, so the second call finds the answer already taken and does nothing. One
-  // rule, in one place, instead of a rule and a proxy for it.
+  // ⚑ **Unconditional** (137). It cannot remove a SECOND row — a child that legitimately repeated a
+  // sentence keeps both copies — because {@link TranscriptState.echoedAnswers} holds on every path:
+  // an echo is one event said twice, so the second call finds the answer already taken and does
+  // nothing. ⛔ Don't gate this on `tookWords`: that was a proxy for the memory, and the memory is
+  // the rule.
   dropEchoedProse(state, card)
   // A card that was waiting on one of those calls can now find it — but only the calls that just
   // MOVED (035 review). Sweeping every entry would re-walk the whole tree on each progress
