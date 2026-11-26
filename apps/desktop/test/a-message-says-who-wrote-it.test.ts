@@ -9,16 +9,39 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import { AN_IDENTITY_THIS_APP_CANNOT_NAME, nameTheConversation, whoseConversationIs } from '../src/main/runtime/host-split/whose-words'
+import {
+  AN_IDENTITY_THIS_APP_CANNOT_NAME,
+  nameTheConversation,
+  whoseConversationIs,
+} from '../src/main/runtime/host-split/whose-words'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { AN_AGENT_THIS_APP_CANNOT_NAME, undrivenWorkText, workUndriven } from '../src/main/runtime/reply-rails'
-import { APP_NOTICES, APP_NOTICE_MARK, NOTICE_MEANS, THE_APP_IS_THE_AUTHOR, isAppNotice, noticeMeans, type AppNotice } from '../src/shared/app-notice'
+import {
+  AN_AGENT_THIS_APP_CANNOT_NAME,
+  undrivenWorkText,
+  workUndriven,
+} from '../src/main/runtime/reply-rails'
+import {
+  APP_NOTICES,
+  APP_NOTICE_MARK,
+  NOTICE_MEANS,
+  THE_APP_IS_THE_AUTHOR,
+  isAppNotice,
+  noticeMeans,
+  type AppNotice,
+} from '../src/shared/app-notice'
 import type { Exchange } from '../src/shared/last-exchange'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import type { TranscriptState } from '../src/renderer/src/lib/transcript'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

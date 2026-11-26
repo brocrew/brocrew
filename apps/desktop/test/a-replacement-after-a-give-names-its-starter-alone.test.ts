@@ -14,11 +14,20 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type ToolName } from '../src/main/runtime/agent-tools'
-import { composeProfileBundle, thisConversationSpans, type InstructionContext } from '../src/main/runtime/factory-text'
+import {
+  composeProfileBundle,
+  thisConversationSpans,
+  type InstructionContext,
+} from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

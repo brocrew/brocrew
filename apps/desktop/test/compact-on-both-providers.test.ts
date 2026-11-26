@@ -10,7 +10,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CodexRuntime, type CodexLaunchContext } from '@brobot2/runtime/codex'
-import { FakeProviderSessions, FakeRuntime, capabilitiesFor, withDeadline, type AgentRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  capabilitiesFor,
+  withDeadline,
+  type AgentRuntime,
+  type FakeSessionHandle,
+  type StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { deferred, ready, route } from '../../../packages/runtime/test/fixtures/plugin-readiness'
 import { ScriptedCodex, Wire } from './lib/scripted-codex-compaction'
@@ -21,9 +29,17 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
-import { A_PERSON_SENT_IT, theDirectionLine, THE_PERSON_AT_A_WINDOW, type TurnOrigin } from '../src/main/runtime/turn-origin'
+import {
+  A_PERSON_SENT_IT,
+  theDirectionLine,
+  THE_PERSON_AT_A_WINDOW,
+  type TurnOrigin,
+} from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
-import { aCommandTakesNoAttachments, aPersonsCompaction } from '../src/main/runtime/a-command-goes-as-typed'
+import {
+  aCommandTakesNoAttachments,
+  aPersonsCompaction,
+} from '../src/main/runtime/a-command-goes-as-typed'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'

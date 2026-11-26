@@ -25,7 +25,11 @@ import { QUESTION_RAILS, refuseQuestion } from '../src/main/runtime/question-rai
 import { INTERRUPT_RAILS, refuseInterrupt } from '../src/main/runtime/interrupt-rails'
 import { RESOURCE_RAILS, refuseResource } from '../src/main/resources/resources'
 import { MODEL_RAILS, refuseModel } from '../src/main/connections/model-rails'
-import { WORK_SEARCH_RAILS, WORK_SEARCH_REFUSAL_WORDS, workSearchRefusal } from '../src/shared/work-search-words'
+import {
+  WORK_SEARCH_RAILS,
+  WORK_SEARCH_REFUSAL_WORDS,
+  workSearchRefusal,
+} from '../src/shared/work-search-words'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'

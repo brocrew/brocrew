@@ -1,5 +1,10 @@
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureProviderConfig, neutralHostDeps, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink,
+  syntheticProviderHome,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'

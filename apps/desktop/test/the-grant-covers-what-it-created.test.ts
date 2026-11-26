@@ -9,10 +9,19 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentIdentityRowId, identityCreatorColumn, readIdentityCreator } from '../src/main/db/identity'
+import {
+  agentIdentityRowId,
+  identityCreatorColumn,
+  readIdentityCreator,
+} from '../src/main/db/identity'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, IDENTITY_ORIGINS, type IdentityCreator, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  IDENTITY_ORIGINS,
+  type IdentityCreator,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'

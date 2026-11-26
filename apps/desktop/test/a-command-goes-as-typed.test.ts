@@ -17,8 +17,19 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
-import { A_PERSON_SENT_IT, messageNamingItsSender, THE_PERSON_AT_A_WINDOW, type TurnOrigin } from '../src/main/runtime/turn-origin'
-import { aCommandTakesNoAttachments, aPersonsCommand, LOOKS_LIKE_A_COMMAND, mightBeAPersonsCommand, theCommandItNames } from '../src/main/runtime/a-command-goes-as-typed'
+import {
+  A_PERSON_SENT_IT,
+  messageNamingItsSender,
+  THE_PERSON_AT_A_WINDOW,
+  type TurnOrigin,
+} from '../src/main/runtime/turn-origin'
+import {
+  aCommandTakesNoAttachments,
+  aPersonsCommand,
+  LOOKS_LIKE_A_COMMAND,
+  mightBeAPersonsCommand,
+  theCommandItNames,
+} from '../src/main/runtime/a-command-goes-as-typed'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'

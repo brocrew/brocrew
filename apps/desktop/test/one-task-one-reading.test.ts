@@ -18,7 +18,12 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import { forestOf, storeForestOf } from './lib/forest-of-host'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

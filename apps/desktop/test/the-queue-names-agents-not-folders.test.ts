@@ -17,7 +17,12 @@ import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 /**

@@ -1,5 +1,9 @@
 import type { AgentToolset } from '@brobot2/runtime'
-import { agentToolsFor, type AgentToolHost, type ToolName } from '../../src/main/runtime/agent-tools'
+import {
+  agentToolsFor,
+  type AgentToolHost,
+  type ToolName,
+} from '../../src/main/runtime/agent-tools'
 
 /** Calls one tool and returns its whole answer: the sentence and what it structures. */
 export async function answerOn(

@@ -16,7 +16,13 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps, waitFor } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  waitFor,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

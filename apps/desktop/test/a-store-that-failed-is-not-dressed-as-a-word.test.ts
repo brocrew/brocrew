@@ -1,6 +1,11 @@
 import { newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'

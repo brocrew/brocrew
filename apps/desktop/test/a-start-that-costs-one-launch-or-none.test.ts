@@ -14,7 +14,14 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { anOpenGate, ProviderDouble, type ResumeGate } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

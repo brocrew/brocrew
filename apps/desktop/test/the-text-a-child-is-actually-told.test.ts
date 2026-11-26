@@ -2,7 +2,16 @@ import { newConversationGive } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime } from './lib/provider-double'
 import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,12 +25,28 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { BUNDLE_MARKER, bundleHeader, composeProfileBundle, MAY_NOT_SAVE_MEMORY, MAY_SAVE_MEMORY, NO_TEXT_PROMISES_A_WATCHER, NOT_IN_THE_FACTORY_TEXT, thisConversationSpans, type InstructionContext } from '../src/main/runtime/factory-text'
+import {
+  BUNDLE_MARKER,
+  bundleHeader,
+  composeProfileBundle,
+  MAY_NOT_SAVE_MEMORY,
+  MAY_SAVE_MEMORY,
+  NO_TEXT_PROMISES_A_WATCHER,
+  NOT_IN_THE_FACTORY_TEXT,
+  thisConversationSpans,
+  type InstructionContext,
+} from '../src/main/runtime/factory-text'
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
 import { theConversationCalled } from '../src/shared/piece-called'
-import { AGENTS_FILENAME, AGENTS_OVERRIDE_FILENAME, codexConventionChain, composeSystemHint, readSessionInstructions } from '../src/main/runtime/instructions'
+import {
+  AGENTS_FILENAME,
+  AGENTS_OVERRIDE_FILENAME,
+  codexConventionChain,
+  composeSystemHint,
+  readSessionInstructions,
+} from '../src/main/runtime/instructions'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import { WORKSPACE_INSTRUCTIONS, workspaceInstructionFiles } from '../src/main/runtime/workspace'

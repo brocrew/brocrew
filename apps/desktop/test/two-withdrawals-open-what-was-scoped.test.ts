@@ -1,4 +1,9 @@
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { textOfTheKeptFile } from './lib/kept-file-named'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

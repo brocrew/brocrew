@@ -23,8 +23,16 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { aSpawnRefusedAfterItsPipes, aSpawnThatRanOutOf } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  aSpawnRefusedAfterItsPipes,
+  aSpawnThatRanOutOf,
+} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 /**

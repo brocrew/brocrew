@@ -10,7 +10,16 @@ import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/g
 import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { waitFor, type TranscriptEvent, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  waitFor,
+  type TranscriptEvent,
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 /**

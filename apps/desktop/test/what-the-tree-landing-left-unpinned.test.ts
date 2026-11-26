@@ -1,4 +1,10 @@
-import { fixtureProviderConfig, RecordingSink, neutralHostDeps, fixtureDatabase, waitFor } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  neutralHostDeps,
+  fixtureDatabase,
+  waitFor,
+} from './lib/host-fixture'
 import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'

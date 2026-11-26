@@ -10,13 +10,25 @@ import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, eachOrSkipped, ledgersSkippedOf, readOrSkip, skipTheLedger, type SessionStore } from '../src/main/db/session-store'
+import {
+  createSessionStore,
+  eachOrSkipped,
+  ledgersSkippedOf,
+  readOrSkip,
+  skipTheLedger,
+  type SessionStore,
+} from '../src/main/db/session-store'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

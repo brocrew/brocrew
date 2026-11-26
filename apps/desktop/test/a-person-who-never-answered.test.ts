@@ -4,7 +4,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle, type ResumeOptions, type SessionRef, type StartOptions } from '@brobot2/runtime'
+import {
+  FakeProviderSessions,
+  FakeRuntime,
+  type FakeSessionHandle,
+  type ResumeOptions,
+  type SessionRef,
+  type StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { waitFor } from './lib/f093-host'
@@ -15,8 +22,18 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DIGEST_LINE_KINDS, DIGEST_REGISTERS, LINE_REGISTERS, type DigestRegister } from '../src/shared/digest'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  DIGEST_LINE_KINDS,
+  DIGEST_REGISTERS,
+  LINE_REGISTERS,
+  type DigestRegister,
+} from '../src/shared/digest'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

@@ -20,7 +20,12 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { mailboxOf } from '../src/shared/mailbox'
 import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
 import { nativeQuestionOn } from './helpers/native-question'
 import { callOn } from './helpers/call-tool'

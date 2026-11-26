@@ -84,7 +84,13 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 import { AuthUnavailableError, FakeProviderSessions, ResumeError } from '@brobot2/runtime'
-import { provisionCodexAuth, reprovisionCodexAuth, CodexRuntime, createSpawnTransportFactory, probeCodexAuthInHome } from '@brobot2/runtime/codex'
+import {
+  provisionCodexAuth,
+  reprovisionCodexAuth,
+  CodexRuntime,
+  createSpawnTransportFactory,
+  probeCodexAuthInHome,
+} from '@brobot2/runtime/codex'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -99,7 +105,10 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { readableError } from '../src/renderer/src/lib/session-record'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { aSpawnRefusedAfterItsPipes, aSpawnThatRanOutOf } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import {
+  aSpawnRefusedAfterItsPipes,
+  aSpawnThatRanOutOf,
+} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 import { callAs } from './helpers/call-tool'
 
 /**

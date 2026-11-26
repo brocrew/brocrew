@@ -7,7 +7,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import type {
+  AgentToolset,
+  FakeSessionHandle,
+  ResumeOptions,
+  SessionRef,
+  StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -18,7 +24,12 @@ import { type Caller, type CallerIdentity } from '../src/main/runtime/runtime-ho
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

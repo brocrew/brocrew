@@ -18,7 +18,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

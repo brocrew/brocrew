@@ -13,12 +13,32 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { replyText, workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { A_PERSON_MUST_ACT, A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, derivePieces, isAWorkReport, undrivenSentence } from '../src/shared/tasks'
+import {
+  A_PERSON_MUST_ACT,
+  A_PERSON_MUST_ACT_SENTENCE,
+  TASK_IS_OPEN,
+  derivePieces,
+  isAWorkReport,
+  undrivenSentence,
+} from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import { WORK_STATE_WORD, personsMark, personsPart, workReading } from '../src/renderer/src/lib/work-report'
+import {
+  WORK_STATE_WORD,
+  personsMark,
+  personsPart,
+  workReading,
+} from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { waitFor, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  waitFor,
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

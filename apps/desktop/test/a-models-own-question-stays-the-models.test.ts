@@ -1,13 +1,24 @@
 import { giveToSeededWorker, newConversationGive } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions, UserInputResponse } from '@brobot2/runtime'
+import type {
+  FakeSessionHandle,
+  ResumeOptions,
+  SessionRef,
+  StartOptions,
+  UserInputResponse,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

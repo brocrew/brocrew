@@ -1,6 +1,11 @@
 import { giveANewWorkerItsFirstTask } from './lib/give-fixture'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { neutralHostDeps, RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  neutralHostDeps,
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'

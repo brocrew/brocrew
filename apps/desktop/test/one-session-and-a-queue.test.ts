@@ -13,7 +13,14 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

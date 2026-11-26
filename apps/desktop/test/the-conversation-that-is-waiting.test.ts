@@ -7,16 +7,33 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionHandle, SessionRef, StartOptions } from '@brobot2/runtime'
+import type {
+  AgentToolset,
+  ResumeOptions,
+  SessionHandle,
+  SessionRef,
+  StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_WAITS, composeWhatEachPieceIsWaitingOn, theWaitAConversationIsIn, whereTheWorkItHoldsStands } from '../src/shared/tasks'
+import {
+  TASK_IS_OPEN,
+  TASK_WAITS,
+  composeWhatEachPieceIsWaitingOn,
+  theWaitAConversationIsIn,
+  whereTheWorkItHoldsStands,
+} from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

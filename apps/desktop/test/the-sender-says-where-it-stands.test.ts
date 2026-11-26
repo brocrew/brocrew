@@ -14,7 +14,13 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

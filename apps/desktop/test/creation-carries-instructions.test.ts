@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink,
+} from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +20,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, type InstructionContext } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { WHO_WROTE_IT, WROTE_IT_MEANS, configuredLayerOf, whatIsInForce } from '../src/shared/own-instructions'
+import {
+  WHO_WROTE_IT,
+  WROTE_IT_MEANS,
+  configuredLayerOf,
+  whatIsInForce,
+} from '../src/shared/own-instructions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { closeAndRemove } from './helpers/scratch-host'
 import { callOn } from './helpers/call-tool'

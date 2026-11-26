@@ -22,7 +22,12 @@ import { DEFAULT_PROFILE_LABEL } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { PANEL_EMPTY_WORDS, panelEmptyWords } from '../src/renderer/src/lib/session-panel'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
-import { NOTHING_GIVEN_OUT, WORK_DOUBT_WORDS, workGivenOutView, type WorkGivenOutReading } from '../src/renderer/src/lib/work-given-out'
+import {
+  NOTHING_GIVEN_OUT,
+  WORK_DOUBT_WORDS,
+  workGivenOutView,
+  type WorkGivenOutReading,
+} from '../src/renderer/src/lib/work-given-out'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'

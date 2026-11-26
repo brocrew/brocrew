@@ -19,7 +19,12 @@ import { pieceLine } from '../src/shared/piece-called'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))

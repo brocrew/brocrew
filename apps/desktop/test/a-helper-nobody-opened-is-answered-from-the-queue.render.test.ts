@@ -18,8 +18,17 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
-import { attentionQueue, attentionToACardNobodyHolds, type AttentionRequest, type ConversationWithCards } from '../src/renderer/src/lib/attention'
-import { usePersonsQueue, type PersonsQueueDoors, type PersonsQueueRow } from '../src/renderer/src/lib/persons-queue'
+import {
+  attentionQueue,
+  attentionToACardNobodyHolds,
+  type AttentionRequest,
+  type ConversationWithCards,
+} from '../src/renderer/src/lib/attention'
+import {
+  usePersonsQueue,
+  type PersonsQueueDoors,
+  type PersonsQueueRow,
+} from '../src/renderer/src/lib/persons-queue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'

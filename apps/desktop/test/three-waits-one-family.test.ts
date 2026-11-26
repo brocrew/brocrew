@@ -9,17 +9,35 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionHandle, SessionRef, StartOptions } from '@brobot2/runtime'
+import type {
+  AgentToolset,
+  ResumeOptions,
+  SessionHandle,
+  SessionRef,
+  StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_WAITS, WAITING_STANDS_FOR, composeWhatEachPieceIsWaitingOn, stalledWithACause, theWaitIn } from '../src/shared/tasks'
+import {
+  TASK_IS_OPEN,
+  TASK_WAITS,
+  WAITING_STANDS_FOR,
+  composeWhatEachPieceIsWaitingOn,
+  stalledWithACause,
+  theWaitIn,
+} from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

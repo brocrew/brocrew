@@ -16,7 +16,12 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId, WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
-import { A_PERSON_SENT_IT, messageNamingItsSender, theDirectionLine, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
+import {
+  A_PERSON_SENT_IT,
+  messageNamingItsSender,
+  theDirectionLine,
+  THE_PERSON_AT_A_WINDOW,
+} from '../src/main/runtime/turn-origin'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'

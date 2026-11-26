@@ -16,7 +16,12 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { sameLocalDay } from '../src/shared/local-time'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 /**

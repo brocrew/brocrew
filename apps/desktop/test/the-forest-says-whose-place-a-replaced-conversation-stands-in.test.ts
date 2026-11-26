@@ -11,13 +11,26 @@ import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type ForestedConversation, type SessionStore } from '../src/main/db/session-store'
+import {
+  createSessionStore,
+  type ForestedConversation,
+  type SessionStore,
+} from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { type ForestConversation, type ForestTask, type NamedConversation } from '../src/shared/the-whole-forest'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  type ForestConversation,
+  type ForestTask,
+  type NamedConversation,
+} from '../src/shared/the-whole-forest'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 /**

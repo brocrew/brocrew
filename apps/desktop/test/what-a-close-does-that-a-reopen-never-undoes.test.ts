@@ -3,7 +3,13 @@ import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
-import type { AgentToolAnswer, FakeRuntime, FakeSessionHandle, RuntimeEvent, StartOptions } from '@brobot2/runtime'
+import type {
+  AgentToolAnswer,
+  FakeRuntime,
+  FakeSessionHandle,
+  RuntimeEvent,
+  StartOptions,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'
@@ -15,7 +21,16 @@ import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, type ResumeGate } from './lib/provider-double'
-import { waitFor, type TranscriptEvent, fixtureFolder, fixtureDatabase, RecordingSink, syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  waitFor,
+  type TranscriptEvent,
+  fixtureFolder,
+  fixtureDatabase,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /** What a Close of a worker mid-turn tells its parent: the turn it interrupted. */

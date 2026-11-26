@@ -25,10 +25,23 @@ import type { TextPackRead } from '../src/main/skills/text-pack'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PERSON_LAST_WROTE_WITHIN_TURNS } from '../src/main/db/session-store'
 import { THE_APP_ITSELF } from './helpers/giver-notice-host'
-import { howLongAgo, OPEN_QUESTIONS_NAMED, THE_BLOCK_BEGINS, whatThisAppAddsToATurn } from '../src/main/runtime/what-this-app-adds-to-a-turn'
+import {
+  howLongAgo,
+  OPEN_QUESTIONS_NAMED,
+  THE_BLOCK_BEGINS,
+  whatThisAppAddsToATurn,
+} from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { whatThisAppAdded, withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { EMPTY_TURN_BLOCK, turnBlockChanges, type TurnBlockSnapshot } from '../src/main/runtime/turn-block-changes'
-import { TURN_BLOCK_WORDS, type AHelperInTheTurn, type CurrentWorkInTheTurn } from '../src/main/runtime/what-this-app-adds-to-a-turn'
+import {
+  EMPTY_TURN_BLOCK,
+  turnBlockChanges,
+  type TurnBlockSnapshot,
+} from '../src/main/runtime/turn-block-changes'
+import {
+  TURN_BLOCK_WORDS,
+  type AHelperInTheTurn,
+  type CurrentWorkInTheTurn,
+} from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'

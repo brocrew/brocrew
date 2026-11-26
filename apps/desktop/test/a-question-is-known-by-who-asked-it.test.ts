@@ -8,7 +8,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { FakeSessionHandle, ResumeOptions, RuntimeEvent, SessionRef, StartOptions, UserInputResponse } from '@brobot2/runtime'
+import type {
+  FakeSessionHandle,
+  ResumeOptions,
+  RuntimeEvent,
+  SessionRef,
+  StartOptions,
+  UserInputResponse,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -19,7 +26,12 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
 const mint = vi.hoisted(() => ({ next: null as (() => string) | null }))

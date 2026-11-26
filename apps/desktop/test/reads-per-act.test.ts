@@ -12,7 +12,11 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeChangeMessage, type RuntimeChangeSubject } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type RuntimeChangeMessage,
+  type RuntimeChangeSubject,
+} from '../src/shared/runtime-ipc'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { whenTheWorldMoves } from '../src/renderer/src/lib/the-world-moved'
 import { callOn } from './helpers/call-tool'

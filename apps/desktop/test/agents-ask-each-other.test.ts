@@ -13,7 +13,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { fixtureFolder, fixtureDatabase, numberedFixtureHostPaths, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  numberedFixtureHostPaths,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**

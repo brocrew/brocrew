@@ -18,7 +18,13 @@ import type { Caller } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { thisConversationSpans } from '../src/main/runtime/factory-text'
-import { A_PERSON_SENT_IT, aTurnThatHasSaidNothing, messageNamingItsSender, theDirectionLine, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
+import {
+  A_PERSON_SENT_IT,
+  aTurnThatHasSaidNothing,
+  messageNamingItsSender,
+  theDirectionLine,
+  THE_PERSON_AT_A_WINDOW,
+} from '../src/main/runtime/turn-origin'
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'

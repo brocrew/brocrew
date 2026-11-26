@@ -15,7 +15,14 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { fixtureFolder, fixtureDatabase, fixtureProviderConfig, syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import {
+  fixtureFolder,
+  fixtureDatabase,
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const PASSED_UP =
