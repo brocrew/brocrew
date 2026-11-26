@@ -12,7 +12,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
@@ -22,8 +22,8 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
  * slug is a name somebody CREATES, which is what this file drives it as.
  */
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **456 · which verb a real model reaches for, after the copy moved.**
@@ -98,19 +98,6 @@ const BRIEF = [
   '2. Send that agent one message telling it the ticket and asking it to investigate.',
   '3. Stop. Do not investigate anything yourself.',
 ].join('\n')
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const say = (line: string): void => {
   console.log(`[456] ${line}`)

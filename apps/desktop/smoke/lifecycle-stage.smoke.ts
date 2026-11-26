@@ -18,7 +18,7 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
@@ -27,12 +27,12 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN, givenByAConversation } from '../src/shared/tasks'
 
 import { REQUEST_IS_OPEN, permissionShaped, theChannelRefusalIn } from '../src/shared/questions'
 
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
+import { RecordingSink } from '../test/lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -298,24 +298,17 @@ async function until(
   }
 }
 
-class Watcher implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
+class Watcher extends RecordingSink {
   constructor(
-    readonly ownerId: string,
+    ownerId: string,
     /**
      * ⛔ **True for exactly one sink in this file**, and it is the one the runner really is behind.
      * `375` measured that this is a fact about the SINK that owns a session; a probe that set it on
      * every sink would be answering a permission as somebody who is not there.
      */
-    readonly aPersonIsBehindIt: boolean,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((one) => one.event)
+    aPersonIsBehindIt: boolean,
+  ) {
+    super(ownerId, aPersonIsBehindIt)
   }
 }
 

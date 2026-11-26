@@ -16,11 +16,11 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /** 443: one real Haiku child, one in-flight command, one interrupt, one neutral continuation. */
 const LIMIT_MS = 90_000
@@ -47,19 +47,6 @@ const within = async <T>(label: string, promise: Promise<T>, ms = LIMIT_MS): Pro
   } finally {
     if (timer) clearTimeout(timer)
   }
-}
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = false,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 interface RawObservation {
@@ -195,7 +182,7 @@ it(
     })
     let watcher: ReturnType<typeof setInterval> | undefined
     try {
-      const rootSink = new Recorder('webContents:443:root')
+      const rootSink = new Recorder('webContents:443:root', false)
       const worker0 = await within(
         'identity launch',
         host.createSession(
@@ -219,7 +206,7 @@ it(
             model: 'claude-haiku-4-5-20251001',
             approvalMode: 'auto',
           },
-          new Recorder('webContents:443:parent'),
+          new Recorder('webContents:443:parent', false),
         ),
       )
       // ⚑ **D-016 · the work goes WITH the start** — the give starts the worker's conversation and

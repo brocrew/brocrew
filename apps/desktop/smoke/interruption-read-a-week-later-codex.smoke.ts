@@ -16,7 +16,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
@@ -26,7 +26,7 @@ import {
 } from '../src/main/connections/homes'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 443 relay 1: the same criterion-8 observation through the product's live Codex path.
@@ -69,19 +69,6 @@ async function within<T>(label: string, promise: Promise<T>, ms = LIMIT_MS): Pro
   } finally {
     if (timer !== undefined) clearTimeout(timer)
   }
-}
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = false,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 interface RequestObservation {
@@ -219,7 +206,7 @@ it(
 
     let watcher: ReturnType<typeof setInterval> | undefined
     try {
-      const rootSink = new Recorder('webContents:443:codex-root')
+      const rootSink = new Recorder('webContents:443:codex-root', false)
       const workerIdentity = await within(
         'worker identity launch',
         host.createSession(
@@ -238,7 +225,7 @@ it(
             model: MODEL,
             approvalMode: 'auto',
           },
-          new Recorder('webContents:443:codex-parent'),
+          new Recorder('webContents:443:codex-parent', false),
         ),
       )
       // ⚑ **D-016 · the child's effort is a PERSON's choice for its agent, made before the give** —
