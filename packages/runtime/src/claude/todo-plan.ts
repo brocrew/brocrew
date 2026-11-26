@@ -1,3 +1,4 @@
+import { checklistRun } from '../native-run'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { PlanStep, RuntimeEvent } from '../events'
 
@@ -194,6 +195,7 @@ export class TodoPlan {
   document(body: string): RuntimeEvent {
     return {
       type: 'plan_update',
+      run: checklistRun(this.steps, undefined, body),
       steps: this.steps.map((step) => ({ text: step.text, status: step.status })),
       body,
     }
@@ -203,6 +205,7 @@ export class TodoPlan {
   private snapshot(absorbed: string[]): RuntimeEvent {
     return {
       type: 'plan_update',
+      run: checklistRun(this.steps),
       steps: this.steps.map((step) => ({ text: step.text, status: step.status })),
       supersedes: absorbed,
     }

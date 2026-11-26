@@ -1,3 +1,4 @@
+import { nativeRun, agentInput, runLine } from '../native-run'
 import type { RuntimeEvent } from '../events'
 import { codexTurnOutcome, isCodexToolItem, subAgentBirth } from './normalize'
 
@@ -15,10 +16,16 @@ import { codexTurnOutcome, isCodexToolItem, subAgentBirth } from './normalize'
  * is adopted by {@link CodexSubAgents.report}; {@link CodexSubAgents.observe} remains the floor for a
  * thread that was never announced. `thread/status/changed` stays because it is the only signal for a
  * child whose turn completion is never seen.
+ * Raw spawn input supplies the private prompt and model.
  */
 
 /** What is known about one child. */
 interface Child {
+  prompt?: string
+  kind?: string
+  model?: string
+  outcome?: Extract<RuntimeEvent, { type: 'sub_agent' }>['outcome']
+  result?: string
   /**
    * Whether its thread is currently active. Written only by {@link CodexSubAgents.status}, so it
    * mirrors the last status frame; otherwise a repeated `active` would read as a new transition.
@@ -69,14 +76,42 @@ export class CodexSubAgents {
    * birth arrives already ended and must leave the entry ended, so a trailing `idle` reports no
    * second ending.
    */
-  note(event: RuntimeEvent): void {
-    if (event.type !== 'sub_agent') return
+  note(event: RuntimeEvent, params?: unknown): RuntimeEvent {
+    if (event.type !== 'sub_agent') return event
     const child = this.children.get(event.agentId) ?? blankChild()
-    if (event.phase === 'ended') child.ended = true
+    const item = readField(params, 'item')
+    const prompt = readString(item, 'prompt')
+    if (prompt && child.ended)
+      event = {
+        ...event,
+        phase: 'ended',
+        ...(child.outcome ? { outcome: child.outcome } : {}),
+        run: nativeRun('agent', { ...event.run, result: child.result }),
+      }
+    child.prompt = prompt || child.prompt
+    child.kind = event.kind ?? child.kind
+    child.model = readString(item, 'model') || child.model
+    if (event.phase === 'ended') {
+      child.ended = true
+      child.outcome = event.outcome ?? child.outcome
+      child.result = event.run?.result ?? child.result
+    }
     // Announced is a one-way door set from the event: `observe` marks its own events
     // `origin: 'observed'`, and later phases of an observed card carry no origin, so test for `observed`.
     if (event.origin !== 'observed') child.announced = true
     this.children.set(event.agentId, child)
+    const noted: RuntimeEvent = {
+      ...event,
+      run: nativeRun('agent', {
+        ...event.run,
+        input:
+          params === undefined
+            ? event.run?.input
+            : agentInput(child.prompt, child.kind, child.model),
+      }),
+    }
+    if (event.phase === 'ended') delete child.prompt
+    return noted
   }
 
   /**
@@ -99,8 +134,7 @@ export class CodexSubAgents {
    * This relies on `createSpawnTransportFactory` giving each session its own `app-server` with one
    * thread, so a foreign thread here is a descendant; a shared transport would need this re-checked.
    *
-   * It forwards nothing the child said (prose, reasoning, final answer), since no card surface
-   * attributes a child's words yet; only a name, a count and an outcome cross.
+   * The child's terminal message is retained in summary, with its first line in run.result.
    */
   report(method: string, params: unknown): RuntimeEvent[] {
     const agentId = readString(params, 'threadId')
@@ -144,8 +178,7 @@ export class CodexSubAgents {
     if (!own || born.agentId === own || born.agentId === announcer) return []
     // Registered as well as emitted, so the grandchild's own frames under its id are read.
     // `children` were the normalizer's output for our own thread.
-    this.note(born)
-    return [born]
+    return [this.note(born, params)]
   }
 
   /**
@@ -161,17 +194,24 @@ export class CodexSubAgents {
     if (child.turnId !== null && turnId !== child.turnId) return []
     child.outcomeFor = turnId
     child.ended = true
+    const summary = finalAnswer(turn)
+    child.outcome = codexTurnOutcome(params).outcome
+    child.result = runLine(summary) ?? child.outcome
     const ms = readCount(turn, 'durationMs')
     if (ms !== undefined) child.ms += ms
-    return [
-      {
-        type: 'sub_agent',
-        agentId,
-        phase: 'ended',
-        outcome: codexTurnOutcome(params).outcome,
-        ...(child.ms > 0 ? { usage: { ms: child.ms } } : {}),
-      },
-    ]
+    const ended: RuntimeEvent = {
+      type: 'sub_agent',
+      agentId,
+      phase: 'ended',
+      outcome: child.outcome,
+      ...(summary ? { summary } : {}),
+      run: nativeRun('agent', {
+        result: child.result,
+      }),
+      ...(child.ms > 0 ? { usage: { ms: child.ms } } : {}),
+    }
+    delete child.prompt
+    return [ended]
   }
 
   /**
@@ -196,15 +236,23 @@ export class CodexSubAgents {
       if (child.working) return []
       child.working = true
       child.ended = false
-      // Outcome state is not cleared here: {@link Child.outcomeFor} correlates on the turn id, which
-      // permits a second turn's outcome and refuses a delayed first-turn frame.
-      return [{ type: 'sub_agent', phase: 'progress', agentId }]
+      delete child.outcome
+      delete child.result
+      // Turn correlation stays intact while presentation facts are cleared.
+      return [
+        {
+          type: 'sub_agent',
+          phase: 'progress',
+          agentId,
+          run: nativeRun('agent', { progress: 'Running' }),
+        },
+      ]
     }
     if (state !== 'idle' || !child.working || child.ended) return []
     child.working = false
     child.ended = true
     // No outcome: an idle thread only says it stopped. The child's `turn/completed` supplies it.
-    return [{ type: 'sub_agent', phase: 'ended', agentId }]
+    return [{ type: 'sub_agent', phase: 'ended', agentId, run: nativeRun('agent') }]
   }
 
   /**
@@ -221,7 +269,16 @@ export class CodexSubAgents {
     // outcomes or announcements read; it gets a card and its own status only.
     this.children.set(agentId, { ...blankChild(), working: true })
     // From here it is an ordinary child; a later announcement merges onto this card because `note` keeps the existing entry.
-    return [{ type: 'sub_agent', agentId, idKind: 'thread', phase: 'started', origin: 'observed' }]
+    return [
+      {
+        type: 'sub_agent',
+        agentId,
+        idKind: 'thread',
+        phase: 'started',
+        origin: 'observed',
+        run: nativeRun('agent', { progress: 'Running' }),
+      },
+    ]
   }
 }
 
@@ -262,7 +319,15 @@ function blankChild(): Child {
 function tokens(agentId: string, params: unknown): RuntimeEvent[] {
   const total = readCount(readField(readField(params, 'tokenUsage'), 'total'), 'totalTokens')
   if (total === undefined) return []
-  return [{ type: 'sub_agent', agentId, phase: 'progress', usage: { tokens: total } }]
+  return [
+    {
+      type: 'sub_agent',
+      agentId,
+      phase: 'progress',
+      run: nativeRun('agent', { progress: `${total} tokens` }),
+      usage: { tokens: total },
+    },
+  ]
 }
 
 /** One more tool call finished inside a child; counted on `item/completed` so the number is what it has done. */
@@ -270,5 +335,22 @@ function tools(agentId: string, child: Child, params: unknown): RuntimeEvent[] {
   const type = readString(readField(params, 'item'), 'type')
   if (!isCodexToolItem(type)) return []
   child.toolCalls += 1
-  return [{ type: 'sub_agent', agentId, phase: 'progress', usage: { toolCalls: child.toolCalls } }]
+  return [
+    {
+      type: 'sub_agent',
+      agentId,
+      phase: 'progress',
+      run: nativeRun('agent', { progress: `${child.toolCalls} tool calls` }),
+      usage: { toolCalls: child.toolCalls },
+    },
+  ]
+}
+
+function finalAnswer(turn: unknown): string | undefined {
+  const items = readField(turn, 'items')
+  if (!Array.isArray(items)) return undefined
+  return items
+    .filter((item) => readString(item, 'type') === 'agentMessage')
+    .map((item) => readString(item, 'text'))
+    .at(-1)
 }

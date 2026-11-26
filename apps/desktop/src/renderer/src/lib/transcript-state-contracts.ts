@@ -3,6 +3,7 @@ import type { BackgroundRow, ScheduledRow } from '../../../shared/agent-state-co
 import type { HumanAnswers } from '../../../shared/human-answer-contracts'
 import type { RefusalTold } from '../../../shared/refusals'
 import type {
+  BackgroundWorkEnding,
   ContextReading,
   DeclaredToolset,
   FileChange,
@@ -48,6 +49,13 @@ import type {
 export interface BackgroundRegistry {
   /** Every piece of live background work after the last frame that stated the level. */
   running: BackgroundRow[]
+  /** Observed facts remain available when a level removes work before its ending arrives. */
+  history?: (Omit<BackgroundWorkEnding, 'outcome'> & {
+    outcome?: BackgroundWorkEnding['outcome']
+    unfinished?: boolean
+    description?: string
+    at?: number
+  })[]
   /**
    * ⚠️ **Rows the provider sent that the last level event did not carry** — past the cap, or with no
    * id at all. Non-zero means this list is UNDERSTATING what is running, and `247` §3 requires it

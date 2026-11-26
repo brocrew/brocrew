@@ -23,7 +23,7 @@ import {
 import { FILES_DID_NOT_ANSWER } from '../lib/files-kept'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '../lib/session-panel'
-import type { TranscriptState } from '../lib/transcript'
+import type { TranscriptState, PlanItem } from '../lib/transcript'
 import { isVisibleIn } from '../lib/transcript-mode'
 import { panelWords } from '../lib/latest-words'
 import { briefsOf } from '../lib/piece-briefs'
@@ -242,6 +242,11 @@ const briefs = computed(() => briefsOf(props.state))
  * Show the latest words and their age beside the plate only when this window holds the transcript. See `latest-words.ts`.
  */
 const latest = computed(() => panelWords(props.state))
+const checklist = computed(() =>
+  props.state.items.find(
+    (item): item is PlanItem => item.kind === 'plan' && item.id === props.panel.todo?.itemId,
+  ),
+)
 const humanAnswer = computed(() => {
   const answer = props.state.humanAnswers.latest
   return answer?.final == null ? null : answer
@@ -762,6 +767,7 @@ const fileManager = fileManagerHere()
 
       <RunningNowCard
         :state="props.state"
+        :checklist="checklist"
         :conversation="props.conversation"
         :can-stop="props.canStopBackgroundWork"
         :on-stop="props.onStopBackgroundWork"
@@ -770,48 +776,6 @@ const fileManager = fileManagerHere()
         :show-schedule="scheduleShown"
         @navigate="emit('navigate', $event)"
       />
-
-      <!-- The checklist, while it still has a step left. It renders as a summary rather than as a
-           second copy of `PlanEntry`: the entry in the conversation is the plan, and this is a
-           reminder that there is one, one click away from it. -->
-      <section v-if="props.panel.todo" class="panel-section" data-cy="panel-todo">
-        <div class="section-head">
-          <span>Checklist</span>
-          <span class="tally"
-            >{{ props.panel.todo.done }} of {{ props.panel.todo.steps.length }}</span
-          >
-        </div>
-        <div
-          class="row"
-          role="button"
-          :tabindex="canReach(props.panel.todo.itemId) ? 0 : -1"
-          data-cy="panel-row"
-          :data-item="props.panel.todo.itemId"
-          :aria-disabled="!canReach(props.panel.todo.itemId)"
-          title="Show the checklist in the conversation"
-          @click="canReach(props.panel.todo.itemId) && emit('navigate', props.panel.todo.itemId)"
-          v-button-keys
-        >
-          <ol class="steps">
-            <li
-              v-for="(step, index) in props.panel.todo.steps"
-              :key="index"
-              class="step"
-              :class="step.status"
-              :data-status="step.status"
-            >
-              <span class="mark" aria-hidden="true">{{ step.status === 'done' ? '✓' : '' }}</span>
-              <MarkdownWords class="step-text" :text="step.text" :session-id="props.conversation" />
-            </li>
-          </ol>
-          <MarkdownWords
-            v-if="props.panel.todo.note"
-            class="row-detail"
-            :text="props.panel.todo.note"
-            :session-id="props.conversation"
-          />
-        </div>
-      </section>
 
       <!-- 🔴 **UI-002 · what this agent made, and the inputs it handed over** — `07-where-resources-show`
            §2 item 2: *"what has this agent made?"*, grouped by piece, the newest first. ⛔ Nothing
@@ -1622,57 +1586,5 @@ button.run-effort[aria-expanded='true'] {
   font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.step {
-  display: grid;
-  align-items: baseline;
-  padding: 1px 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-3);
-  grid-template-columns: 10px minmax(0, 1fr);
-  line-height: var(--leading-relaxed);
-}
-
-/* The same shape grammar as the checklist in the conversation (028): an empty ring pending, a
-   filled dot active, a tick done — so the colour is reinforcement and never the only signal. */
-.mark {
-  display: grid;
-  width: 10px;
-  height: 10px;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-pill);
-  font-size: var(--type-caption);
-  place-items: center;
-  transform: translateY(1px);
-}
-
-.step.active {
-  color: var(--text-soft);
-}
-
-.step.active .mark {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.step.done {
-  color: var(--faint);
-}
-
-.step.done .step-text {
-  text-decoration: line-through;
-}
-
-.step.done .mark {
-  border-color: var(--success);
-  color: var(--success);
 }
 </style>

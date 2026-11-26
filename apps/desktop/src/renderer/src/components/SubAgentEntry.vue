@@ -2,7 +2,7 @@
 import MarkdownWords from './MarkdownWords.vue'
 import type { PathsHere } from '../composables/useMessagePaths'
 import { computed } from 'vue'
-import { subAgentFacets } from '../lib/agent-state'
+import { subAgentFacets, type AgentFacets } from '../lib/agent-state'
 import type { SubAgentCard } from '../lib/transcript'
 import type { ChildWorkInput } from '../../../shared/runtime-ipc'
 import AgentState from './AgentState.vue'
@@ -13,6 +13,8 @@ const props = withDefaults(
     paths?: PathsHere | null
     placement?: 'transcript' | 'nested'
     canOpenTranscript?: boolean
+    suppliedFacets?: AgentFacets
+    suppliedStatus?: string
   }>(),
   { placement: 'transcript', canOpenTranscript: true },
 )
@@ -24,8 +26,10 @@ const openLabel = computed(() => props.card.title || props.card.kind || anonymou
 const status = computed(() =>
   props.card.running ? 'running' : (props.card.outcome ?? 'unreported'),
 )
-const statusLabel = computed(() => (status.value === 'unreported' ? 'ended' : status.value))
-const facets = computed(() => subAgentFacets(props.card))
+const statusLabel = computed(
+  () => props.suppliedStatus ?? (status.value === 'unreported' ? 'ended' : status.value),
+)
+const facets = computed(() => props.suppliedFacets ?? subAgentFacets(props.card))
 
 function openTranscript(): void {
   emit('openChild', { part: 'transcript', agentId: props.card.agentId }, openLabel.value)
@@ -56,6 +60,7 @@ function openTranscript(): void {
       <span v-if="card.running && card.lastTool" class="doing" data-cy="subagent-last-tool">
         {{ card.lastTool }}
       </span>
+      <slot name="metadata" />
       <span class="status" data-cy="subagent-status">{{ statusLabel }}</span>
       <button
         v-if="canOpenTranscript"
@@ -68,6 +73,7 @@ function openTranscript(): void {
         <span class="action-label">Open transcript</span> <span aria-hidden="true">→</span>
       </button>
     </div>
+    <slot />
   </div>
 </template>
 
@@ -82,6 +88,7 @@ function openTranscript(): void {
 }
 
 [data-placement='transcript'] {
+  width: 100%;
   max-width: var(--measure-message);
   margin: var(--space-3) auto var(--space-6);
 }
@@ -140,15 +147,15 @@ function openTranscript(): void {
   color: var(--muted);
 }
 
-[data-status='running'] .status {
+.subagent[data-status='running'] > .head > .status {
   color: var(--accent-text);
 }
 
-[data-status='completed'] .status {
+.subagent[data-status='completed'] > .head > .status {
   color: var(--success);
 }
 
-[data-status='failed'] .status {
+.subagent[data-status='failed'] > .head > .status {
   color: var(--danger);
 }
 

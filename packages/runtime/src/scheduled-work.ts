@@ -1,3 +1,5 @@
+import type { NativeRun } from './native-run'
+
 /**
  * **Work the session has promised to do LATER** (253) — the provider-neutral vocabulary for it.
  *
@@ -136,6 +138,7 @@
  * counted, because an id is the only thing that makes two payloads comparable.
  */
 export interface ScheduledJob {
+  readonly run?: NativeRun
   /** The provider's own id for this job — Claude's `SessionCronSummary.id`. */
   readonly id: string
   /**

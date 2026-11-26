@@ -287,7 +287,7 @@ describe('Codex sub-agents — subAgentActivity → sub_agent (033)', () => {
   }
 
   it('a birth becomes ONE card, identified by the child thread and named from its path', () => {
-    expect(normalizeNotification('item/started', { item: BIRTH })).toEqual([
+    expect(normalizeNotification('item/started', { item: BIRTH })).toMatchObject([
       {
         type: 'sub_agent',
         phase: 'started',

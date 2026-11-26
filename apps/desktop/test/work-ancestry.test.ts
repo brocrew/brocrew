@@ -284,3 +284,45 @@ it('delivers a fresh receiver dependency chain once, and clears that baseline at
   expect(large.bytes).toBeLessThanOrEqual(small.bytes * 2.1)
   expect(large.nextBytes).toBe(small.nextBytes)
 })
+
+it.each(['progress', 'ended'] as const)(
+  'delivers full run input to a fresh receiver after sparse %s',
+  (phase) => {
+    const read = new WorkAncestryRead()
+    let ordinal = 0
+    const publish = (event: TranscriptEvent) => {
+      const changed = read.observe(event)
+      read.remember({ event, ordinal, at: ordinal++ })
+      return read.delivery(event, changed)
+    }
+    publish(call('dispatch-a'))
+    publish({
+      type: 'sub_agent',
+      agentId: 'child-a',
+      phase: 'started',
+      parentToolCallId: 'dispatch-a',
+      run: { kind: 'agent', input: 'Inspect every fictional pear.' },
+    })
+    publish({
+      type: 'sub_agent',
+      agentId: 'child-a',
+      phase,
+      run:
+        phase === 'progress'
+          ? { kind: 'agent', progress: 'Inspecting pears' }
+          : { kind: 'agent', result: '{"pears":3}' },
+    })
+    read.beginDelivery()
+    const baseline = publish(call('fresh-read', 'dispatch-a'))?.baseline
+    const child = baseline?.find((row) => row.event.type === 'sub_agent')?.event
+    expect(child).toMatchObject({
+      type: 'sub_agent',
+      phase,
+      run: {
+        kind: 'agent',
+        input: 'Inspect every fictional pear.',
+        ...(phase === 'progress' ? { progress: 'Inspecting pears' } : { result: '{"pears":3}' }),
+      },
+    })
+  },
+)

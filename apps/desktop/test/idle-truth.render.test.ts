@@ -188,7 +188,7 @@ describe('250 · the header pill', () => {
     expect(row, 'the background run row is present').toBeDefined()
     const label = row?.match(/data-cy="panel-run-label"[^>]*>([\s\S]*?)<\/strong>/)?.[1]
     expect(label).toBe('node -e &quot;…&quot;')
-    expect(row).toContain('Commands · Bash')
+    expect(row).toContain('Runs · Bash')
     // …and the description it replaced is gone, so this is a change of answer rather than a row that
     // grew a second one.
     expect(html).not.toContain('waiting for person.txt to appear on Desktop')

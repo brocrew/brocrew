@@ -7,8 +7,9 @@ import { workflowAgentFacets, workflowAgentStopped } from '../lib/agent-state'
 import type { ChildWorkInput } from '../../../shared/runtime-ipc'
 import type { WorkflowRunCard } from '../lib/transcript'
 import { workflowPhaseState } from '../lib/workflow'
-import AgentState from './AgentState.vue'
 import MarkdownWords from './MarkdownWords.vue'
+import SubAgentEntry from './SubAgentEntry.vue'
+import RunInput from './RunInput.vue'
 
 /**
  * A dynamic workflow, drawn where it was launched (108, designed in 107).
@@ -35,6 +36,7 @@ const props = withDefaults(
   defineProps<{
     paths?: PathsHere | null
     run: WorkflowRunCard
+    opened?: boolean
     /**
      * Whether an agent's transcript, the journal and the script have somewhere to open. Off, none
      * of those buttons is drawn and each agent's label is plain text.
@@ -66,7 +68,7 @@ const emit = defineEmits<{
 }>()
 
 /** Folded by default. The head states everything that changes, so folded is never uninformative. */
-const open = ref(false)
+const open = ref(props.opened ?? false)
 
 /**
  * Which finished phases the reader has asked to see (112).
@@ -229,7 +231,7 @@ function agentUsage(agent: { tokens?: number; toolCalls?: number; durationMs?: n
 }
 
 const AGENT_WORD: Record<string, string> = {
-  queued: 'queued',
+  queued: 'awaiting a slot',
   running: 'running',
   done: 'completed',
   failed: 'failed',
@@ -305,6 +307,12 @@ const outputName = computed(() => {
     <!-- ⚠️ **The tree owns a BOUNDED scroll** (107 §3). 22 agents must not become 22 rows of
          transcript height; past `--wf-tree-max` the tree scrolls inside itself and the conversation
          below stays where the reader left it. -->
+    <RunInput
+      v-if="open"
+      :text="run.run?.input"
+      :progress="run.run?.progress"
+      :result="run.run?.result"
+    />
     <div v-if="open" :id="bodyId" class="wf-tree" data-cy="workflow-tree">
       <section
         v-for="phase in phases"
@@ -364,89 +372,46 @@ const outputName = computed(() => {
             :data-state="workflowAgentStopped(agent, props.run) ? 'unknown' : agent.state"
             data-cy="workflow-agent"
           >
-            <div class="wf-agent-row">
-              <!-- ⚠️ **The RUN goes in beside the agent** (118, from 117 §2). A row whose `state`
-                   is still `running` inside a run that is over says "working · live" about agents
-                   that stopped when the run was killed — inside this very tree, under a head that
-                   already says it is over. `props.run` is where the terminal status lives, and it
-                   is right here. See `frozenInsideAnEndedRun`. -->
-              <AgentState
-                size="compact"
-                v-bind="workflowAgentFacets(agent, props.run)"
-                :label="agent.label"
-              />
-              <span class="wf-agent-who">
-                <!-- ⚠️ **The label is the door to the child's own transcript** (112). It is a
-                     button rather than a whole-row click target so the row's meta stays selectable
-                     — an id you cannot copy is an id you cannot use (111's ruling, same place). -->
-                <button
-                  v-if="agent.state !== 'queued' && props.canOpenChild"
-                  class="wf-agent-open"
-                  type="button"
-                  data-cy="workflow-agent-label"
-                  :title="`Open what ${agent.label} did`"
-                  @click="
-                    emit('openChild', { part: 'transcript', agentId: agent.agentId }, agent.label)
-                  "
+            <SubAgentEntry
+              placement="nested"
+              :card="{
+                agentId: agent.agentId,
+                kind: agent.label,
+                title: agent.state === 'failed' ? undefined : agent.lastToolSummary,
+                running: agent.state === 'running' && !workflowAgentStopped(agent, run),
+                lastTool: workflowAgentStopped(agent, run) ? undefined : agent.lastTool,
+                outcome:
+                  agent.state === 'done'
+                    ? 'completed'
+                    : agent.state === 'failed'
+                      ? 'failed'
+                      : undefined,
+                body: [],
+              }"
+              :supplied-facets="workflowAgentFacets(agent, run)"
+              :supplied-status="
+                workflowAgentStopped(agent, run)
+                  ? AGENT_WORD.unknown
+                  : (AGENT_WORD[agent.state] ?? agent.state)
+              "
+              :can-open-transcript="agent.state !== 'queued' && canOpenChild"
+              @open-child="(what) => emit('openChild', what, agent.label)"
+            >
+              <template #metadata>
+                <span v-if="(agent.attempt ?? 1) > 1" class="wf-attempt" data-cy="workflow-attempt"
+                  >attempt {{ agent.attempt }}</span
                 >
-                  {{ agent.label }}
-                </button>
-                <!-- ⛔ **A QUEUED agent is not a control** (review). It is waiting for a slot and has
-                     written no file at all, so the button could only ever refuse — 106's dead
-                     control, with a sentence instead of a shrug. It still reads as itself, and
-                     `awaiting a slot` beside it already says why there is nothing to open. Plain
-                     too where this surface has nothing that could open it. -->
-                <strong v-else data-cy="workflow-agent-label-plain">{{ agent.label }}</strong>
-                <!-- Surface the provider's `lastToolSummary` where it arrives, including any person-requested prefix. Identity still comes from `agentId` and `label`, not a naming convention in the text. Omit the summary for failed agents whose failure dock already shows it. -->
-                <span
-                  v-if="agent.lastToolSummary && agent.state !== 'failed'"
-                  class="wf-summary"
-                  data-cy="workflow-agent-summary"
-                >
-                  {{ agent.lastToolSummary }}
-                </span>
-                <!-- ⚠️ **`attempt` rides alongside and is NOT flattened into the state** (107 §3).
-                     A retry is a second try at the same work, which is a different fact from a
-                     second agent — and `subAgentFacets` has nowhere to put it, which is half the
-                     reason workflow agents do not go through it. -->
-                <span v-if="(agent.attempt ?? 1) > 1" class="wf-attempt" data-cy="workflow-attempt">
-                  attempt {{ agent.attempt }}
-                </span>
-                <span v-if="agent.state === 'queued'" class="wf-queued" data-cy="workflow-queued">
-                  awaiting a slot
-                </span>
-              </span>
-              <span class="wf-agent-meta">
-                <!-- ⚠️ **The last tool goes with the last state** (118). It is no more current
-                     than the `running` beside it was, and a killed run showing `StructuredOutput`
-                     reads as a tool call in flight. -->
-                <span
-                  v-if="agent.lastTool && !workflowAgentStopped(agent, props.run)"
-                  class="wf-tool"
-                  data-cy="workflow-agent-tool"
-                >
-                  {{ agent.lastTool }}
-                </span>
-                <span class="wf-agent-status" data-cy="workflow-agent-status">
-                  {{
-                    workflowAgentStopped(agent, props.run)
-                      ? AGENT_WORD.unknown
-                      : (AGENT_WORD[agent.state] ?? agent.state)
-                  }}
-                </span>
                 <span
                   v-if="agentUsage(agent)"
                   class="wf-agent-usage"
                   data-cy="workflow-agent-usage"
+                  >{{ agentUsage(agent) }}</span
                 >
-                  {{ agentUsage(agent) }}
-                </span>
-              </span>
-            </div>
-            <!-- The reason, docked BELOW the row rather than squeezed into it (101). -->
-            <p v-if="agent.state === 'failed'" class="wf-reason" data-cy="workflow-agent-reason">
-              {{ failureNote(agent) }}
-            </p>
+              </template>
+              <p v-if="agent.state === 'failed'" class="wf-reason" data-cy="workflow-agent-reason">
+                {{ failureNote(agent) }}
+              </p>
+            </SubAgentEntry>
           </li>
         </ol>
       </section>
@@ -603,12 +568,12 @@ const outputName = computed(() => {
 .chevron {
   width: 12px;
   height: 12px;
-  transform: rotate(90deg);
+  transform: none;
   transition: transform var(--dur-fast) ease;
 }
 
 .chevron.open {
-  transform: none;
+  transform: rotate(90deg);
 }
 
 .wf-tree {
@@ -706,74 +671,10 @@ const outputName = computed(() => {
   padding: var(--space-2) 0;
 }
 
-.wf-agent-row {
-  display: grid;
-  align-items: center;
-  gap: var(--space-4);
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.wf-agent-who {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The label, which is now the door to the child's transcript. It keeps the weight the `strong` had
-   so the row does not read as having changed shape; only the pointer and the underline on hover say
-   it is a control. */
-.wf-agent-open {
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-soft);
-  font-size: inherit;
-  font-weight: var(--fw-bold);
-  text-align: left;
-}
-
-.wf-agent-open:hover {
-  color: var(--accent-text);
-  text-decoration: underline;
-}
-
-/*
- * Style the provider-reported summary as a fact rather than a control.
- */
-.wf-summary {
-  margin-left: var(--space-3);
-  color: var(--faint);
-  font-family: var(--font-mono);
-  font-size: var(--type-caption);
-}
-
-/* Violet is the queued register (107 §7) — it is the one hue that is neither "running" nor
-   "finished" and is emphatically not the amber that means someone is waiting on YOU. */
-.wf-attempt,
-.wf-queued {
+.wf-attempt {
   margin-left: var(--space-3);
   color: var(--accent-2-text);
   font-size: var(--type-caption);
-}
-
-.wf-agent-meta {
-  display: inline-flex;
-  align-items: center;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-.wf-agent[data-state='failed'] .wf-agent-status {
-  color: var(--danger);
-}
-
-.wf-agent[data-state='done'] .wf-agent-status {
-  color: var(--success);
 }
 
 .wf-reason {

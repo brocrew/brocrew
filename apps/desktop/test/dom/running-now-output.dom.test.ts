@@ -1,5 +1,5 @@
 import { mapWorkflowEvents } from '../panel-run.fixture'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import RunningNowCard from '../../src/renderer/src/components/RunningNowCard.vue'
@@ -13,32 +13,152 @@ const tick = async (): Promise<void> => {
   await nextTick()
 }
 
-it.each(['agent', 'workflow'] as const)(
-  'uses the short missing-output line for a %s reader miss',
-  async (kind) => {
-    const events =
-      kind === 'agent'
-        ? record([
-            { type: 'sub_agent', agentId: 'map-reader', phase: 'started', title: 'Read the map' },
-          ])
-        : record(mapWorkflowEvents())
-    const m = mount(
-      ConversationPane,
-      paneProps({
-        record: events,
-        drawerOpen: true,
-        onReadChildWork: async () => ({ ok: false, reason: 'gone' }),
-        onReadWorkflowOutput: async () => ({ ok: false, reason: 'gone' }),
-      }),
-      { width: 1400, height: 900 },
+it('uses the short missing-output line for an agent reader miss', async () => {
+  const m = mount(
+    ConversationPane,
+    paneProps({
+      record: record([
+        { type: 'sub_agent', agentId: 'map-reader', phase: 'started', title: 'Read the map' },
+      ]),
+      drawerOpen: true,
+      onReadChildWork: async () => ({ ok: false, reason: 'gone' }),
+    }),
+    { width: 1400, height: 900 },
+  )
+  m.q('panel-row').click()
+  await tick()
+  expect(m.host.textContent).toContain('Output not available')
+  expect(m.all('child-work-viewer')).toHaveLength(0)
+})
+
+it('opens the same workflow and input from the conversation and panel without reading its output file', async () => {
+  const read = vi.fn(async () => ({ ok: false as const, reason: 'gone' as const }))
+  const events = mapWorkflowEvents()
+  const last = events.at(-1)!
+  if (last.type !== 'workflow_run') throw new Error('Missing workflow fixture')
+  const workflow = {
+    ...last,
+    run: {
+      kind: 'workflow' as const,
+      input: 'Review the map for three walkers.',
+      progress: 'Checking the footpath',
+    },
+  }
+  const session = ref(record([...events.slice(0, -1), workflow]))
+  const Host = defineComponent({
+    setup: () => () =>
+      h(
+        ConversationPane,
+        paneProps({ record: session.value, drawerOpen: true, onReadWorkflowOutput: read }),
+      ),
+  })
+  const m = mount(Host, {}, { width: 1400, height: 900 })
+  expect(m.all('workflow-entry')).toHaveLength(1)
+  m.q('workflow-head').click()
+  await tick()
+  expect(m.q('run-input').textContent).toContain('Review the map for three walkers.')
+  m.q('panel-row').click()
+  await tick()
+  expect(m.all('workflow-entry')).toHaveLength(2)
+  expect(m.all('run-input')).toHaveLength(2)
+  expect(m.all('run-state')).toHaveLength(2)
+  for (const state of m.all('run-state'))
+    expect(state.textContent).toContain('Checking the footpath')
+  for (const input of m.all('run-input'))
+    expect(input.textContent).toContain('Review the map for three walkers.')
+  expect(read).not.toHaveBeenCalled()
+  expect(m.all('workflow-output-viewer')).toHaveLength(0)
+  m.q('close-overlay').click()
+  await tick()
+  applyEvent(session.value.transcript, {
+    ...workflow,
+    outcome: 'completed',
+    run: { kind: 'workflow', result: 'Map review complete' },
+  })
+  await tick()
+  expect(m.q('running-now-rows').querySelectorAll('[data-cy=panel-row]')).toHaveLength(0)
+  m.q('past-runs-open').click()
+  await tick()
+  expect(m.q('past-runs-dialog').textContent).toContain('Map review complete')
+  m.q('panel-row').click()
+  await tick()
+  expect(m.all('workflow-entry')).toHaveLength(2)
+  for (const state of m.all('run-state')) {
+    expect(state.textContent).toContain('Map review complete')
+    expect(state.textContent).not.toContain('Checking the footpath')
+  }
+  for (const input of m.all('run-input'))
+    expect(input.textContent).toContain('Review the map for three walkers.')
+  expect(read).not.toHaveBeenCalled()
+})
+
+it('draws the same checklist component inside Running now and the conversation', async () => {
+  const session = ref(
+    record([
+      {
+        type: 'plan_update',
+        steps: [
+          { text: 'Read the map', status: 'done' },
+          { text: 'Check the footpath', status: 'active' },
+        ],
+        run: { kind: 'checklist', input: 'Check the route', progress: 'Checking the footpath' },
+      },
+    ]),
+  )
+  const Host = defineComponent({
+    setup: () => () => h(ConversationPane, paneProps({ record: session.value, drawerOpen: true })),
+  })
+  const m = mount(Host, {}, { width: 1400, height: 900 })
+  await tick()
+  expect(m.all('plan-entry')).toHaveLength(2)
+  const panel = m.q('panel-agents')
+  expect(panel.querySelectorAll('[data-cy=plan-entry]')).toHaveLength(1)
+  expect(panel.querySelector('[data-cy=panel-todo]')?.textContent).toContain('Check the footpath')
+  m.q('checklist-open').click()
+  await tick()
+  const detail = m.q('close-overlay').closest('.sheet-shell')!
+  expect(detail.querySelector('[data-cy=run-input]')?.textContent).toContain('Check the route')
+  expect(detail.querySelector('[data-cy=run-state]')?.textContent).toContain(
+    'Checking the footpath',
+  )
+  m.q('close-overlay').click()
+  await tick()
+  const checklist = m.q('panel-todo')
+  const fold = checklist.querySelector<HTMLButtonElement>('button[aria-expanded]')!
+  expect(fold.querySelector('use')?.getAttribute('href')).toBe('#i-chevron')
+  expect(fold.getAttribute('aria-expanded')).toBe('true')
+  fold.click()
+  await tick()
+  expect(fold.getAttribute('aria-expanded')).toBe('false')
+  expect(checklist.querySelector<HTMLElement>('.body')?.style.display).toBe('none')
+  expect(m.all('plan-entry')).toHaveLength(2)
+  applyEvent(session.value.transcript, {
+    type: 'plan_update',
+    steps: [
+      { text: 'Read the map', status: 'done' },
+      { text: 'Check the footpath', status: 'done' },
+    ],
+    run: { kind: 'checklist', result: 'Route checked' },
+  })
+  await tick()
+  expect(m.all('panel-todo')).toHaveLength(0)
+  expect(m.all('plan-entry')).toHaveLength(1)
+  m.q('past-runs-open').click()
+  await tick()
+  expect(m.q('past-runs-dialog').textContent).toContain('Route checked')
+  m.q('panel-row').click()
+  await tick()
+  expect(m.all('plan-entry')).toHaveLength(2)
+  for (const plan of m.all('plan-entry')) {
+    expect(plan.textContent).toContain('Check the footpath')
+    expect(plan.getAttribute('data-done')).toBe('2')
+    expect(plan.querySelector('[data-cy=run-input]')?.textContent).toContain('Check the route')
+    expect(plan.querySelector('[data-cy=run-state]')?.textContent).toContain('Route checked')
+    expect(plan.querySelector('[data-cy=run-state]')?.textContent).not.toContain(
+      'Checking the footpath',
     )
-    m.q('panel-row').click()
-    await tick()
-    expect(m.host.textContent).toContain('Output not available')
-    expect(m.all('child-work-viewer')).toHaveLength(0)
-    expect(m.all('workflow-output-viewer')).toHaveLength(0)
-  },
-)
+  }
+})
 
 it('does not put a late missing output into the next conversation', async () => {
   const state = createTranscript()

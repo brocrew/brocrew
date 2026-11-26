@@ -17,13 +17,14 @@ it('keeps ordinary tools out and joins a workflow with its background identity',
   tool.workflow = {
     taskId: 'review',
     name: 'Review the map',
+    run: { kind: 'workflow' },
     running: true,
     phases: [],
     agents: [],
   }
   state.background.running = [
     { id: 'review', toolCallId: 'workflow-call', description: 'Review the map', kind: 'workflow' },
-    { id: 'monitor', description: 'Watch paths', kind: 'monitor' },
+    { id: 'monitor', description: 'Watch paths', kind: 'monitor', run: { kind: 'monitor' } },
   ]
   const runs = panelRuns(state)
   expect(runs.active).toHaveLength(2)
@@ -50,7 +51,21 @@ it('lists only known background endings and keeps reported failure wording', () 
 it('keeps an unreported background kind generic', () => {
   const state = createTranscript()
   state.background.running = [{ id: 'work', description: 'Check paths' }]
-  expect(panelRuns(state).active[0]?.group).toBe('Background')
+  expect(panelRuns(state).active[0]?.group).toBe('Runs')
+  state.background.running[0] = {
+    ...state.background.running[0]!,
+    run: {
+      kind: 'command',
+      input: '[literal command](https://example.test) *keep*',
+      progress: '**literal output**',
+    },
+  }
+  expect(panelRuns(state).active[0]).toMatchObject({
+    label: '[literal command](https://example.test) *keep*',
+    labelIsProse: false,
+    detail: '**literal output**',
+    detailIsProse: false,
+  })
 })
 
 it('joins an ended native child with its anchored background ending', () => {

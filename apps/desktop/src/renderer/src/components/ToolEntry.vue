@@ -10,6 +10,7 @@ import type { ToolItem, TranscriptItem } from '../lib/transcript'
 import SubAgentEntry from './SubAgentEntry.vue'
 import WorkflowEntry from './WorkflowEntry.vue'
 import MarkdownWords from './MarkdownWords.vue'
+import RunInput from './RunInput.vue'
 
 /**
  * One thing the agent did: a foldable row, with its output underneath when it lands.
@@ -419,7 +420,8 @@ const droppedNote = computed(() =>
          `answer` slot is where the whole-answer panel puts the complete answer instead. -->
     <div class="tool-open">
       <p class="cap">what it was asked</p>
-      <pre class="text" data-cy="tool-input">{{ item.summary }}</pre>
+      <pre class="text" data-cy="tool-input">{{ item.run?.input ?? item.summary }}</pre>
+      <RunInput :progress="item.run?.progress" :result="item.run?.result" />
       <div v-if="!folded && live" class="tool-tail" :data-cy="`tool-tail-${item.id}`">
         <p v-if="absence" class="tail-absent" :data-cy="`tool-tail-absent-${item.id}`">
           {{ absence }}

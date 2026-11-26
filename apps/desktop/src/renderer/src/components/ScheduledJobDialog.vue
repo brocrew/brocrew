@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import MarkdownWords from './MarkdownWords.vue'
 import { computed, useId } from 'vue'
 import { scheduleLine, SCHEDULE_PROMPT_CHARS, SCHEDULE_WHEN_CHARS } from '../lib/scheduled-work'
 import {
@@ -13,12 +12,13 @@ const props = defineProps<{ job: TimedScheduledJob; now: number }>()
 const emit = defineEmits<{ close: [] }>()
 const titleId = useId()
 const line = computed(() => scheduleLine(props.job))
-const prompt = computed(() => scheduledPromptText(props.job.prompt))
+const input = computed(() => props.job.run?.input ?? props.job.prompt)
+const prompt = computed(() => scheduledPromptText(input.value))
 const when = computed(() => scheduledRecordedTimeWords(props.job, props.now))
 const notStarted = computed(() => scheduledNotStartedWords(props.job))
 const longerCopy = computed(
   () =>
-    (props.job.prompt?.length ?? 0) > SCHEDULE_PROMPT_CHARS ||
+    (input.value?.length ?? 0) > SCHEDULE_PROMPT_CHARS ||
     (props.job.schedule?.length ?? 0) > SCHEDULE_WHEN_CHARS ||
     (line.value.fallback !== undefined && props.job.id.length > SCHEDULE_WHEN_CHARS),
 )
@@ -56,7 +56,7 @@ const longerCopy = computed(
         The available copy is longer than expected; it is shown here in full.
       </p>
       <template v-if="prompt !== null">
-        <MarkdownWords class="bb-reader job-prompt" data-cy="scheduled-job-prompt" :text="prompt" />
+        <div class="bb-reader job-prompt" data-cy="scheduled-job-prompt">{{ prompt }}</div>
         <p
           v-if="prompt.trim() === ''"
           class="bb-caption bb-muted"

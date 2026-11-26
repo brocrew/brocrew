@@ -1,3 +1,4 @@
+import { nativeRun, commandInput } from '../native-run'
 import {
   MAX_BACKGROUND_ID,
   MAX_BACKGROUND_TEXT,
@@ -75,6 +76,7 @@ function readString(source: unknown, key: string): string {
  * One `ThreadBackgroundTerminal` as a {@link BackgroundWork}, or undefined when it has no usable
  * `processId` (the stop key; such rows are counted as dropped). `kind` is omitted because Codex
  * states none. `itemId` is the owning tool call's id.
+ * The neutral run carries the full command and directory.
  */
 function toWork(row: unknown): BackgroundWork | undefined {
   const id = readString(row, 'processId')
@@ -83,6 +85,9 @@ function toWork(row: unknown): BackgroundWork | undefined {
   const command = truncate(readString(row, 'command').trim(), MAX_BACKGROUND_TEXT - 1)
   return {
     id,
+    run: nativeRun('command', {
+      input: commandInput(readString(row, 'command'), readString(row, 'cwd')),
+    }),
     ...(itemId !== '' && itemId.length <= MAX_BACKGROUND_ID ? { toolCallId: itemId } : {}),
     ...(command !== '' ? { description: command } : {}),
   }
@@ -121,6 +126,10 @@ export function endingsBetween(
       id: row.id,
       ...(row.toolCallId !== undefined ? { toolCallId: row.toolCallId } : {}),
       outcome: weStopped.has(row.id) ? 'stopped' : 'unknown',
+      run: nativeRun('command', {
+        input: row.run?.input,
+        result: weStopped.has(row.id) ? 'Stopped' : undefined,
+      }),
     })
   }
   return endings

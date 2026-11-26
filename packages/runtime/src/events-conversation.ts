@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { nativeRunSchema } from './native-run'
 import { isMessageAct } from './message-act'
 import { MAX_FILE_DIFF_BYTES } from './file-change'
 import { MAX_BACKGROUND_ID } from './background-work'
@@ -100,6 +101,7 @@ export const MAX_MEMORY_PATH = 512
 
 export const toolCallSchema = z.object({
   type: z.literal('tool_call'),
+  run: nativeRunSchema.optional(),
   /** Claude tool_use id / Codex itemId — correlates to `tool_result`. */
   id: z.string(),
   name: z.string(),
@@ -153,6 +155,8 @@ export const toolCallSchema = z.object({
 /** A tool finished. `ok` from Claude's error marker / Codex terminal status. */
 export const toolResultSchema = z.object({
   type: z.literal('tool_result'),
+  /** Updates the command opened by this call id; carries no new run identity. */
+  run: nativeRunSchema.pick({ result: true }).optional(),
   id: z.string(),
   summary: z.string(),
   ok: z.boolean(),
@@ -358,6 +362,7 @@ export type PlanStep = z.infer<typeof planStepSchema>
  */
 export const planUpdateEventSchema = z.object({
   type: z.literal('plan_update'),
+  run: nativeRunSchema.optional(),
   steps: z.array(planStepSchema),
   note: z.string().optional(),
   body: z.string().optional(),
@@ -411,6 +416,7 @@ export const planUpdateEventSchema = z.object({
  */
 export const subAgentEventSchema = z.object({
   type: z.literal('sub_agent'),
+  run: nativeRunSchema.optional(),
   /** Claude's `task_id`, Codex's `agentThreadId`. Stable across every phase — the correlation key. */
   agentId: z.string(),
   /**

@@ -131,7 +131,7 @@ describe('text on the content’s washes and raised panels', () => {
     expect(readsAt(words!)).toBeLessThan(4.5)
   })
 
-  it('a workflow’s block: an agent’s link on the ink wash, and an open button’s second wash over it', async () => {
+  it('a workflow’s shared agent row clears the wash, while its open button keeps the second wash', async () => {
     wear({ shared: FLAT, tokens: { content: { 'text-soft': '#6e7283', ...WHITE_PANELS } } })
     const card: WorkflowRunCard = {
       taskId: 'wq1demo',
@@ -162,9 +162,12 @@ describe('text on the content’s washes and raised panels', () => {
     await settle()
     m.host.querySelector<HTMLElement>('[data-cy="workflow-phase-head-1"]')!.click()
     await settle()
-    const agent = m.host.querySelector<HTMLElement>('[data-cy="workflow-agent-label"]')
-    expect(agent, 'the agent’s link is drawn').not.toBeNull()
-    expect(readsAt(agent!)).toBeLessThan(4.5)
+    const agent = m.host.querySelector<HTMLElement>(
+      '[data-cy="workflow-agent"] [data-cy="subagent-kind"]',
+    )
+    expect(agent, 'the shared agent’s label is drawn').not.toBeNull()
+    expect(shownUnder(agent!)).toEqual({ r: 255, g: 255, b: 255, a: 1 })
+    expect(readsAt(agent!)).toBeGreaterThanOrEqual(4.5)
     // Under the pointer an open button lays the second wash over the block's, as the check stacks it.
     const open = m.host.querySelector<HTMLElement>('[data-cy="workflow-open-journal"]')
     expect(open, 'the journal opens from the block').not.toBeNull()

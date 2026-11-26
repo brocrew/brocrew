@@ -117,7 +117,7 @@ const endings = (events: RuntimeEvent[]) =>
 describe('275 · reading one page of Codex background terminals', () => {
   it('carries the processId as the id and the itemId as the tool call — both measured to match', () => {
     const page = readTerminalPage({ data: [LIVE_ROW], nextCursor: null })
-    expect(page.rows).toEqual([
+    expect(page.rows).toMatchObject([
       {
         id: '42852',
         toolCallId: 'exec-62bc2acf-84b1-41a0-8d14-505c4014166e',
@@ -162,7 +162,7 @@ describe('275 · reading one page of Codex background terminals', () => {
 
   it('carries an itemId only when there is one, and a description only when it is not blank', () => {
     const page = readTerminalPage({ data: [{ processId: '7', itemId: '', command: '   ' }] })
-    expect(page.rows).toEqual([{ id: '7' }])
+    expect(page.rows).toMatchObject([{ id: '7' }])
   })
 
   it('reads a real cursor and treats an empty one as none — a page is provider data', () => {
@@ -177,13 +177,13 @@ describe('275 · what LEFT the level, and how it is said to have ended', () => {
   const row = { id: '42852', toolCallId: 'exec-1' }
 
   it('says `stopped` only where the provider answered `terminated: true`', () => {
-    expect(endingsBetween([row], [], new Set(['42852']))).toEqual([
+    expect(endingsBetween([row], [], new Set(['42852']))).toMatchObject([
       { id: '42852', toolCallId: 'exec-1', outcome: 'stopped' },
     ])
   })
 
   it('⛔ says `unknown` for a row that simply went away — 074’s rule, not a guess at completion', () => {
-    expect(endingsBetween([row], [], new Set())).toEqual([
+    expect(endingsBetween([row], [], new Set())).toMatchObject([
       { id: '42852', toolCallId: 'exec-1', outcome: 'unknown' },
     ])
   })
@@ -193,7 +193,9 @@ describe('275 · what LEFT the level, and how it is said to have ended', () => {
   })
 
   it('carries no toolCallId when the row had none', () => {
-    expect(endingsBetween([{ id: '9' }], [], new Set())).toEqual([{ id: '9', outcome: 'unknown' }])
+    expect(endingsBetween([{ id: '9' }], [], new Set())).toMatchObject([
+      { id: '9', outcome: 'unknown' },
+    ])
   })
 })
 

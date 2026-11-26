@@ -34,7 +34,7 @@ const lines = computed(() =>
   props.registry.jobs.map((job) => ({
     ...scheduleLine(job),
     next: scheduledTimeWords(job, now.value),
-    preview: scheduledPromptPreview(job.prompt),
+    preview: scheduledPromptPreview(job.run?.input ?? job.prompt),
     notStarted: scheduledNotStartedWords(job),
   })),
 )
