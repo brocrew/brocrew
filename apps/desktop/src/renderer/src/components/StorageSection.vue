@@ -185,6 +185,7 @@ async function pruneBackups() {
   if (acting.value || !storage) return
   actionBusy.value = true
   cacheMessage.value = ''
+  const before = overview.value?.partial ? null : partBytes('backups')
   try {
     const result = await storage.pruneBackups()
     if (!live) return
@@ -193,7 +194,13 @@ async function pruneBackups() {
       return
     }
     forgetFolders()
-    await measure()
+    const measured = await measure()
+    if (!live) return
+    const after = partBytes('backups')
+    if (!measured?.complete) return
+    if (result.removed === 0) message.value = 'No backups were removed.'
+    else if (before !== null && after !== null && after < before)
+      message.value = `${storageSize(before - after)} freed.`
   } catch (error) {
     if (live) message.value = readableError(error)
   } finally {
@@ -231,6 +238,9 @@ async function showFolders(event: Event) {
 }
 function child(base: StorageLocation, name: string): StorageLocation {
   return { part: base.part, segments: [...base.segments, name] }
+}
+function partBytes(id: StoragePartId): number | null {
+  return overview.value?.parts.find((part) => part.id === id)?.bytes ?? null
 }
 function root(part: StoragePartId): StorageLocation {
   return { part, segments: [] }

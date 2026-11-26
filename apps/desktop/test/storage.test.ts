@@ -646,10 +646,10 @@ function harness() {
 it('prunes backups only for app windows, serializes repeat clicks, and reports failures', async () => {
   const h = harness()
   let permitted = false
-  let finish!: () => void
+  let finish!: (removed: number) => void
   const prune = vi.fn(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<number>((resolve) => {
         finish = resolve
       }),
   )
@@ -666,8 +666,8 @@ it('prunes backups only for app windows, serializes repeat clicks, and reports f
   const pending = h.invoke(STORAGE_CHANNELS.pruneBackups)
   expect(prune).toHaveBeenCalledOnce()
   expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: false, error: 'busy' })
-  finish()
-  expect(await pending).toEqual({ ok: true })
+  finish(2)
+  expect(await pending).toEqual({ ok: true, removed: 2 })
   prune.mockRejectedValueOnce(new Error('fictional disk error'))
   expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: false, error: 'unavailable' })
   stop()
@@ -694,7 +694,7 @@ it('cache clear uses only the narrow cache API and preserves unrelated state in 
   })
   const reveal = vi.fn()
   const stop = registerStorageIpc(h.ipc, service, {
-    pruneBackups: async () => {},
+    pruneBackups: async () => 0,
     clearCache: () => clearHttpCache(service, clear),
     reveal,
     isAppWindow: () => true,
@@ -759,7 +759,7 @@ it('refuses native cache clear when its mapped root is linked or outside the dat
     } as unknown as StorageService
     const clear = vi.fn(async () => {})
     const stop = registerStorageIpc(h.ipc, service, {
-      pruneBackups: async () => {},
+      pruneBackups: async () => 0,
       clearCache: () => clearHttpCache(service, clear),
       reveal: () => {},
       isAppWindow: () => true,
@@ -787,7 +787,7 @@ it('rejects foreign senders and malformed IPC; cancels reads on navigation and r
   const clear = vi.fn(async () => {})
   let permitted = false
   const stop = registerStorageIpc(h.ipc, service, {
-    pruneBackups: async () => {},
+    pruneBackups: async () => 0,
     clearCache: clear,
     reveal: () => {},
     isAppWindow: () => permitted,
@@ -822,7 +822,7 @@ it.each(['did-navigate', 'render-process-gone', 'destroyed'])(
       close: vi.fn(),
     } as unknown as StorageService
     const unregister = registerStorageIpc(h.ipc, service, {
-      pruneBackups: async () => {},
+      pruneBackups: async () => 0,
       clearCache: async () => {},
       reveal: () => {},
       isAppWindow: () => true,
@@ -887,7 +887,7 @@ it.each(['complete', 'failed'] as const)(
       reject = no
     })
     const clear = vi.fn(() => work)
-    const prune = vi.fn(async () => {})
+    const prune = vi.fn(async () => 0)
     const stop = registerStorageIpc(h.ipc, { close: vi.fn() } as unknown as StorageService, {
       reveal: () => {},
       clearCache: clear,
@@ -912,7 +912,7 @@ it.each(['complete', 'failed'] as const)(
       const terminal =
         status === 'complete' ? { id: 1, status } : { id: 1, status, error: 'unavailable' }
       expect(await h.invoke(STORAGE_CHANNELS.watchCacheClear, 2)).toEqual(terminal)
-      expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: true })
+      expect(await h.invoke(STORAGE_CHANNELS.pruneBackups)).toEqual({ ok: true, removed: 0 })
       expect(prune).toHaveBeenCalledTimes(1)
       expect(await h.invoke(STORAGE_CHANNELS.clearCache)).toEqual({
         ok: true,
@@ -935,7 +935,7 @@ it('cache observers release on navigation without cancelling work or losing the 
   const stop = registerStorageIpc(h.ipc, { close: vi.fn() } as unknown as StorageService, {
     reveal: () => {},
     clearCache: () => work,
-    pruneBackups: async () => {},
+    pruneBackups: async () => 0,
     isAppWindow: () => true,
   })
   try {

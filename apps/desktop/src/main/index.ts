@@ -640,7 +640,7 @@ function registerIpc(
         if (!recoveryStartSucceeded || theOneAppAnswer !== 'sole')
           throw new StorageFailure('unavailable')
         let failed = false
-        await prune(app.getPath('userData'), theBuildsMigrations(), {
+        const removed = await prune(app.getPath('userData'), theBuildsMigrations(), {
           ownership: 'sole',
           currentAppVersion: app.getVersion(),
           warn: (line) => {
@@ -649,6 +649,7 @@ function registerIpc(
           },
         })
         if (failed) throw new StorageFailure('unavailable')
+        return removed.length
       }),
     isAppWindow: (event) =>
       storageAppWindows.has(event.sender) &&

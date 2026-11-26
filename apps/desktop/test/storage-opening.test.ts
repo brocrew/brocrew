@@ -45,7 +45,7 @@ function storageClient(roots: StorageRoots, start: StorageWorkerFactory) {
   const stop = registerStorageIpc(ipc, service, {
     reveal: () => {},
     clearCache: async () => {},
-    pruneBackups: async () => {},
+    pruneBackups: async () => 0,
     isAppWindow: () => true,
   })
   const bridge = storageBridge(client)

@@ -60,6 +60,10 @@ export interface StorageDirectory {
 }
 export type StorageAction =
   { readonly ok: true } | { readonly ok: false; readonly error: StorageError }
+/** A finished prune says how many old backups it removed. */
+export type PruneReply =
+  | { readonly ok: true; readonly removed: number }
+  | { readonly ok: false; readonly error: StorageError }
 export type CacheClearState = { readonly id: number } & (
   | { readonly status: 'clearing' | 'pending' | 'complete' }
   | { readonly status: 'failed'; readonly error: StorageError }
@@ -78,7 +82,7 @@ export interface StorageBridge {
     onState: (state: CacheClearState | null) => void,
     onError: (error: unknown) => void,
   ): () => void
-  pruneBackups(): Promise<StorageAction>
+  pruneBackups(): Promise<PruneReply>
 }
 export const STORAGE_CHANNELS = {
   freeSpace: 'storage:free-space',

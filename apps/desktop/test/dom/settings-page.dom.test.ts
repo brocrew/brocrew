@@ -83,7 +83,7 @@ async function settings(
           cacheListeners.delete(onState)
         }
       },
-      pruneBackups: async () => ({ ok: true }),
+      pruneBackups: async () => ({ ok: true, removed: 0 }),
     } satisfies StorageBridge,
     logging: logging ?? {
       getLogging: async () => ({

@@ -53,7 +53,7 @@ function setup(over: Partial<StorageBridge> = {}, available = true, injected = t
       onState(null)
       return () => {}
     }),
-    pruneBackups: vi.fn(async () => ({ ok: true as const })),
+    pruneBackups: vi.fn(async () => ({ ok: true as const, removed: 1 })),
     ...over,
   } satisfies StorageBridge
   const wrongBridge = (): never => {
@@ -196,11 +196,11 @@ it('uses the default desktop storage capability when there is no ancestor client
 })
 
 it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only on success', async () => {
-  let finish!: (value: { ok: true }) => void
+  let finish!: (value: { ok: true; removed: number }) => void
   const { m, bridge } = setup({
     pruneBackups: vi.fn<StorageBridge['pruneBackups']>(
       () =>
-        new Promise<{ ok: true }>((resolve) => {
+        new Promise<{ ok: true; removed: number }>((resolve) => {
           finish = resolve
         }),
     ),
@@ -212,7 +212,7 @@ it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only
   m.q('storage-prune-backups').dispatchEvent(new MouseEvent('click', { bubbles: true }))
   expect(bridge.pruneBackups).toHaveBeenCalledTimes(1)
   expect(bridge.measure).toHaveBeenCalledTimes(1)
-  finish({ ok: true })
+  finish({ ok: true, removed: 1 })
   await settle()
   expect(bridge.measure).toHaveBeenCalledTimes(2)
   vi.mocked(bridge.pruneBackups).mockResolvedValueOnce({ ok: false, error: 'unavailable' })
@@ -220,6 +220,69 @@ it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only
   await settle()
   expect(bridge.measure).toHaveBeenCalledTimes(2)
   expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
+})
+function withBackupBytes(bytes: number): StorageOverview {
+  return {
+    ...overview,
+    parts: overview.parts.map((part) => (part.id === 'backups' ? { ...part, bytes } : part)),
+  }
+}
+it('Keep the last 2 says what it freed, and says so when it removed nothing', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(withBackupBytes(3 * 1024 ** 3))
+    .mockResolvedValueOnce(withBackupBytes(1024 ** 3))
+    .mockResolvedValueOnce(withBackupBytes(1024 ** 3))
+  const { m, bridge } = setup({ measure })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(1)
+  expect(m.q('storage-message').textContent).toContain('2.0 GB freed.')
+  vi.mocked(bridge.pruneBackups).mockResolvedValueOnce({ ok: true, removed: 0 })
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(2)
+  expect(m.q('storage-message').textContent).toContain('No backups were removed.')
+})
+it('Keep the last 2 does not call a removal nothing when the size before was a partial reading', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce({ ...withBackupBytes(1024 ** 3), partial: true })
+    .mockResolvedValueOnce(withBackupBytes(2 * 1024 ** 3))
+  const { m, bridge } = setup({ measure })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(1)
+  expect(m.host.textContent).not.toContain('No backups were removed.')
+  expect(m.host.textContent).not.toContain('freed.')
+})
+it('Keep the last 2 says nothing was removed when the prune says so, even if the size grew', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(withBackupBytes(1024 ** 3))
+    .mockResolvedValueOnce(withBackupBytes(2 * 1024 ** 3))
+  const { m } = setup({
+    measure,
+    pruneBackups: vi.fn(async () => ({ ok: true as const, removed: 0 })),
+  })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(m.q('storage-message').textContent).toContain('No backups were removed.')
+})
+it('Keep the last 2 keeps a partial reading in view instead of claiming what it cannot know', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(withBackupBytes(3 * 1024 ** 3))
+    .mockResolvedValueOnce({ ...withBackupBytes(3 * 1024 ** 3), partial: true })
+  const { m } = setup({ measure })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(m.q('storage-message').textContent).toContain('Some sizes could not be measured.')
+  expect(m.q('storage-message').textContent).not.toContain('No backups were removed.')
 })
 it('drills through typed locations, shows the smaller-item summary, and returns through the breadcrumb', async () => {
   const { m, bridge } = setup()

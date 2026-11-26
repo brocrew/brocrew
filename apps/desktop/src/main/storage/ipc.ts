@@ -4,6 +4,7 @@ import {
   isStorageLocation,
   type CacheClearReply,
   type CacheClearState,
+  type PruneReply,
   type StorageAction,
   type StorageDirectory,
   type StorageLocation,
@@ -17,7 +18,7 @@ export interface StorageActions {
   readonly reveal: (path: string) => void
   /** Electron's HTTP cache API preserves cookies, sessions, files, plugins and recovery copies. */
   readonly clearCache: () => Promise<void>
-  readonly pruneBackups: () => Promise<void>
+  readonly pruneBackups: () => Promise<number>
   readonly isAppWindow: (event: IpcMainInvokeEvent) => boolean
 }
 
@@ -182,13 +183,12 @@ export function registerStorageIpc(
       clearTimeout(timer)
     }
   })
-  ipc.handle(STORAGE_CHANNELS.pruneBackups, async (event): Promise<StorageAction> => {
+  ipc.handle(STORAGE_CHANNELS.pruneBackups, async (event): Promise<PruneReply> => {
     if (closed || !actions.isAppWindow(event)) return { ok: false, error: 'unavailable' }
     if (clearing) return { ok: false, error: 'busy' }
     clearing = true
     try {
-      await actions.pruneBackups()
-      return { ok: true }
+      return { ok: true, removed: await actions.pruneBackups() }
     } catch (error) {
       return { ok: false, error: storageReason(error) }
     } finally {
