@@ -63,6 +63,7 @@ export type { ToolDeps, ToolOutput } from './common.js'
 export function buildToolDefs(): ToolDef[] {
   return fenceToolDefs([
     {
+      downloadRouting: false,
       spec: {
         name: 'list_browser_profiles',
         description:

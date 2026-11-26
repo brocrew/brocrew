@@ -61,16 +61,16 @@ async function startWithRestoredTab(
       expect(browser.knownWindowId('fern', restored as unknown as Page)).toBe(4)
     })
   }
-  const tool = createAgentChromeTools({ ...h.deps, browser }).find(
-    (candidate) => candidate.definition.name === 'list_tabs',
-  )!
-  const list = async () => {
-    const response = await tool.execute({ profile: 'fern' }, {})
+  const tools = createAgentChromeTools({ ...h.deps, browser })
+  const call = async (name: string, args: Record<string, string>) => {
+    const tool = tools.find((candidate) => candidate.definition.name === name)!
+    const response = await tool.execute(args, {})
     const content = response.content as Array<{ text: string }>
     return JSON.parse(content[0].text)
   }
   return {
-    list,
+    list: () => call('list_tabs', { profile: 'fern' }),
+    listProfiles: () => call('list_browser_profiles', {}),
     delayRouting: () => {
       delayRouting = true
     },
@@ -85,15 +85,29 @@ it('lists the already-restored tab on the first call after Chrome starts', async
   expect(await h.list()).toMatchObject([restoredTab])
 })
 
-it('answers the first list with the real restored window while a download-routing reply is held', async () => {
-  const h = await startWithRestoredTab(true)
+it.each([
+  {
+    inventory: 'the restored tab with its real window',
+    call: 'list' as const,
+    watchBeforeStart: true,
+    expected: restoredTab,
+  },
+  {
+    inventory: 'the running profile',
+    call: 'listProfiles' as const,
+    watchBeforeStart: false,
+    expected: { name: 'fern', enabled: true, open: true },
+  },
+])('lists $inventory after startup while download routing is held', async (scenario) => {
+  const { call, watchBeforeStart, expected } = scenario
+  const h = await startWithRestoredTab(watchBeforeStart)
   h.delayRouting()
-  const result = h.list()
+  const result = h[call]()
   try {
     const pending = Symbol('waiting for Chrome')
     expect(
       await Promise.race([result, new Promise((resolve) => setImmediate(() => resolve(pending)))]),
-    ).toMatchObject([restoredTab])
+    ).toMatchObject([expected])
   } finally {
     h.releaseRouting()
     await result
