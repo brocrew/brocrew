@@ -13,6 +13,21 @@ function idlePastTheCache(store: PromptLedger, id: string, since: number, now: n
   return store.newestOfType?.(id, 'user_turn', undefined, end.ordinal + 1) == null
 }
 
+/** The newest of this conversation's own compactions after `ordinal`, skipping child agents'. */
+function newestCompactionAfter(
+  store: PromptLedger,
+  id: string,
+  ordinal: number,
+  matches: (event: Extract<TranscriptEvent, { type: 'compaction' }>) => boolean = () => true,
+): number | undefined {
+  for (let before: number | undefined; ;) {
+    const row = store.newestOfType?.(id, 'compaction', before, ordinal + 1)
+    if (row?.event.type !== 'compaction') return undefined
+    if (row.event.parentToolCallId === undefined && matches(row.event)) return row.ordinal
+    before = row.ordinal
+  }
+}
+
 /** Read only compaction rows, skipping compactions of child agents. */
 export function hasCompactionAfter(
   store: PromptLedger,
@@ -20,12 +35,28 @@ export function hasCompactionAfter(
   ordinal: number,
   matches: (event: Extract<TranscriptEvent, { type: 'compaction' }>) => boolean = () => true,
 ): boolean {
+  return newestCompactionAfter(store, id, ordinal, matches) !== undefined
+}
+
+/** A reading the adapter marked as a model request's own usage, after `ordinal`. */
+function aModelRequestAfter(store: PromptLedger, id: string, ordinal: number): boolean {
   for (let before: number | undefined; ;) {
-    const row = store.newestOfType?.(id, 'compaction', before, ordinal + 1)
-    if (row?.event.type !== 'compaction') return false
-    if (row.event.parentToolCallId === undefined && matches(row.event)) return true
+    const row = store.newestOfType?.(id, 'context_reading', before, ordinal + 1)
+    if (row?.event.type !== 'context_reading') return false
+    if (row.event.modelRequest === true) return true
     before = row.ordinal
   }
+}
+
+/**
+ * A compaction calls for a new start only until the model has run on the compacted history: that
+ * request sent the kept start with it, so the provider's cache now holds that start. A local
+ * command, a turn that failed before the model, or an adapter that cannot tell leaves no such
+ * reading, and the next relaunch starts fresh as before.
+ */
+function compactedSinceTheStartWasLastSent(store: PromptLedger, id: string, ordinal: number) {
+  const compacted = newestCompactionAfter(store, id, ordinal)
+  return compacted !== undefined && !aModelRequestAfter(store, id, compacted)
 }
 
 export function promptStartFor(store: PromptLedger, id: string, model: string | null, now: number) {
@@ -38,7 +69,7 @@ export function promptStartFor(store: PromptLedger, id: string, model: string | 
   if (start === undefined || 'from' in start || start.model !== model) return null
   if (idlePastTheCache(store, id, row.ordinal, now)) return null
 
-  if (hasCompactionAfter(store, id, row.ordinal)) return null
+  if (compactedSinceTheStartWasLastSent(store, id, row.ordinal)) return null
   return { start, ordinal: row.ordinal, given: row.event.given }
 }
 

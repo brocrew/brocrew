@@ -918,8 +918,9 @@ export class FakeSessionHandle implements SessionHandle {
   simulateContextReading(
     reading: Extract<RuntimeEvent, { type: 'context_reading' }>['reading'],
     source = 'fake/tokenUsage',
+    modelRequest?: true,
   ): void {
-    this.push({ type: 'context_reading', reading, source })
+    this.push({ type: 'context_reading', reading, source, ...(modelRequest && { modelRequest }) })
   }
 
   /**

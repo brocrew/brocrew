@@ -1713,6 +1713,7 @@ describe('context readings and compaction boundaries (087)', () => {
         type: 'context_reading',
         reading: { kind: 'tokens', used: 46975 },
         source: 'message_start',
+        modelRequest: true,
       },
     ])
   })
@@ -1758,6 +1759,7 @@ describe('context readings and compaction boundaries (087)', () => {
         type: 'context_reading',
         reading: { kind: 'tokens', used: 47659 },
         source: 'message_delta',
+        modelRequest: true,
       },
     ])
   })
@@ -1785,6 +1787,7 @@ describe('context readings and compaction boundaries (087)', () => {
         type: 'context_reading',
         reading: { kind: 'tokens', used: 47657 },
         source: 'message_delta',
+        modelRequest: true,
       },
     ])
   })
@@ -1815,7 +1818,12 @@ describe('context readings and compaction boundaries (087)', () => {
     expect(
       readings(frame({ type: 'message_start', message: { usage: { input_tokens: 0 } } })),
     ).toEqual([
-      { type: 'context_reading', reading: { kind: 'tokens', used: 0 }, source: 'message_start' },
+      {
+        type: 'context_reading',
+        reading: { kind: 'tokens', used: 0 },
+        source: 'message_start',
+        modelRequest: true,
+      },
     ])
   })
 
