@@ -749,7 +749,7 @@ describe('129 §3 · a faded row that can still be read', () => {
     const surface = pane('light')
     const all = rows(surface)
     const dim = all.find((r) => r.dimmed)!
-    const note = [...surface.querySelectorAll<HTMLElement>('.cb-sub')]
+    const note = [...surface.querySelectorAll<HTMLElement>('.seam-sub')]
       .map((el) => {
         const colour = parseColor(getComputedStyle(el).color)!
         const { fg, bg } = paintedInk(el, colour)

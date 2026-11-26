@@ -1,0 +1,62 @@
+/* What every transcript entry draws the same way: the meta row and its quiet labels, the dotted
+   press that goes somewhere, the clock and the words. Each entry keeps its own row height and the
+   hover that brightens its clock. */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  gap: var(--space-4);
+}
+
+.heading,
+.task {
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-bold);
+}
+
+.about {
+  color: var(--faint);
+  font-size: var(--type-caption);
+}
+
+/* A destination, not a form control: no border or background, and a dotted underline that goes
+   solid on hover, so the 22 px row never grows. */
+.press {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.press:hover,
+.press:focus-visible {
+  color: var(--text-soft);
+  text-decoration-style: solid;
+}
+
+.time {
+  margin-left: auto;
+  color: var(--faint);
+  font: var(--type-caption) / 1 var(--font-mono);
+  opacity: 0.55;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.time.beside {
+  margin-left: 0;
+}
+
+.msg-body {
+  padding-top: var(--space-2);
+  color: var(--text-soft);
+  font-size: var(--type-reading);
+  line-height: var(--leading-reading);
+  white-space: pre-wrap;
+}

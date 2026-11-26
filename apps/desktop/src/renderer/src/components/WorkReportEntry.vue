@@ -225,7 +225,7 @@ const exchange = computed(() => {
              gesture rather than a restatement of the sentence. -->
         <button
           v-if="where"
-          class="go-to-conversation"
+          class="press"
           type="button"
           data-cy="work-report-where"
           :data-held="String(where.held)"
@@ -242,7 +242,7 @@ const exchange = computed(() => {
         <button
           v-for="(resource, index) in presses"
           :key="resource"
-          class="go-to-conversation"
+          class="press"
           type="button"
           data-cy="work-report-document"
           :data-document="resource"
@@ -281,6 +281,8 @@ const exchange = computed(() => {
   </component>
 </template>
 
+<style scoped src="./transcript-entry-presentation.css"></style>
+
 <style scoped>
 /* ⛔ **658 · no `.msg` grid and no avatar** — the frame is `OutsideCard`'s. It used to be
    `ContinuationEntry`'s, *"deliberately"*, and that shared frame is what drew a child's reply at a
@@ -301,12 +303,7 @@ const exchange = computed(() => {
 }
 
 .msg-meta {
-  display: flex;
   height: 22px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
 }
 
 .msg-meta strong {
@@ -315,50 +312,7 @@ const exchange = computed(() => {
   font-weight: var(--fw-bold);
 }
 
-.about {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-/* ⛔ **A destination, not a form control**: no border, no background, `font: inherit`, and a
-   dotted underline that goes solid on hover. ⚑ That is the affordance an in-text destination in
-   this app uses, and the meta row is 22px high — a bordered button would grow it and move the
-   whole entry. */
-.go-to-conversation {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.go-to-conversation:hover,
-.go-to-conversation:focus-visible {
-  color: var(--text-soft);
-  text-decoration-style: solid;
-}
-
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) ease;
-}
-
 .work:hover .time {
   opacity: 1;
-}
-
-.msg-body {
-  padding-top: var(--space-2);
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  white-space: pre-wrap;
 }
 </style>

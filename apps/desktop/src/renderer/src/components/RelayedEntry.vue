@@ -223,42 +223,13 @@ const view = ref<'readable' | 'raw'>('readable')
   </component>
 </template>
 
+<style scoped src="./transcript-entry-presentation.css"></style>
+
 <style scoped>
 /* ⛔ **658 · no `.msg` grid and no avatar any more** — the frame is `OutsideCard`'s, a card shifted
    right, because the person's frame is what made another agent look like a participant. */
 .msg-meta {
-  display: flex;
   min-height: 20px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-/* ⚑ Discreet: the heading is quieter than a participant's name — muted ink, one step smaller. */
-.heading {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-.task {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-.about {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) ease;
 }
 
 /* ⚑ The views ride the meta row's right edge, just before the clock. */
@@ -266,19 +237,7 @@ const view = ref<'readable' | 'raw'>('readable')
   margin-left: auto;
 }
 
-.time.beside {
-  margin-left: 0;
-}
-
 .relayed:hover .time {
   opacity: 1;
-}
-
-.msg-body {
-  padding-top: var(--space-2);
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  white-space: pre-wrap;
 }
 </style>
