@@ -126,26 +126,32 @@ export class SupervisorStorage {
     }
   }
   read(): OwnerRecord | null {
-    this.check()
-    let before: BigIntStats
-    try {
-      before = lstatSync(this.record, { bigint: true })
-    } catch (error) {
-      if (missing(error)) return null
-      refuse()
-    }
-    privateEntry(before, false)
-    const fd = openNotThroughALink(this.record, constants.O_RDONLY)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      if (!same(before, held) || held.size > 4096n) refuse()
-      const result = OwnerRecord.parse(JSON.parse(readFileSync(fd, 'utf8')))
+    for (let replaced = false; ; replaced = true) {
       this.check()
-      return result
-    } catch {
-      refuse()
-    } finally {
-      closeSync(fd)
+      let before: BigIntStats
+      try {
+        before = lstatSync(this.record, { bigint: true })
+      } catch (error) {
+        // Absent only on the first look: a record that was there and is gone stays unreadable.
+        if (missing(error) && !replaced) return null
+        refuse()
+      }
+      privateEntry(before, false)
+      const fd = openNotThroughALink(this.record, constants.O_RDONLY)
+      try {
+        const held = fstatSync(fd, { bigint: true })
+        // The owner replaces the record by rename. One that lands between the lstat and the open is
+        // a newer whole record: it is checked and read from the start, as the record now is.
+        if (!same(before, held)) continue
+        if (held.size > 4096n) refuse()
+        const result = OwnerRecord.parse(JSON.parse(readFileSync(fd, 'utf8')))
+        this.check()
+        return result
+      } catch {
+        refuse()
+      } finally {
+        closeSync(fd)
+      }
     }
   }
   /** Advice only; this receipt never releases the fence or authorizes another owner. */
