@@ -1,4 +1,8 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as NullSink,
+} from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,19 +14,11 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { HOME_FOLDER } from '../src/main/connections/homes'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = 'owner:1'
-  alive = true
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 describe('an identity that outlives a project', () => {
   let dir: string

@@ -1,4 +1,9 @@
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  syntheticProviderHome,
+  RecordingSink as PersonSink,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,14 +15,9 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type CallerIdentity,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -58,18 +58,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * as a test needs it to.
  */
 describe('681 · a starting child is already in its project', () => {
-  class PersonSink implements RuntimeEventSink {
-    // ⚑ A window IS a person — the sink a person's own conversations are opened through.
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   let userData: string
   let work: string
   let db: AppDatabase

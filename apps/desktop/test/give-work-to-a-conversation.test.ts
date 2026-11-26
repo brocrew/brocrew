@@ -7,6 +7,7 @@ import {
   neutralHostDeps,
   syntheticProviderHome,
   waitFor,
+  RecordingSink as PersonSink,
 } from './lib/host-fixture'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,28 +19,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type RuntimeEventSink,
-  type CallerIdentity,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class PersonSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('give_work goes to the conversation the giver names', () => {
   let userData: string

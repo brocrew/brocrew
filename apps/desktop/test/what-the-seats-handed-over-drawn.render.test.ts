@@ -9,7 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import {
   whatAProviderPressWouldClear,
@@ -29,24 +29,12 @@ import {
   type AgentIdentities,
   type AgentIdentity,
   type RuntimeBridge,
-  type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink as Seat } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class Seat implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const CATALOGUE: Record<Provider, ModelChoice[]> = {
   claude: [

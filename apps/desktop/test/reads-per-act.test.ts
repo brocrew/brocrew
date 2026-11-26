@@ -1,4 +1,9 @@
-import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  syntheticProviderHome,
+  RecordingSink as Sink,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   DEFAULT_PROFILE_ID,
@@ -42,15 +47,6 @@ import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  // ⚑ the events themselves are not what this file counts — the announcements are
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 /** ⚑ The toolset each conversation is handed — how the harness calls the agent tools as an agent would. */
 class ToolWatchingRuntime extends FakeRuntime {
