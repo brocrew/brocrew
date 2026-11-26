@@ -67,10 +67,16 @@ off." with "Turn on", which installs it again: at once in a running visible prof
 the profile's next launch, where it takes precedence over Chrome's older record. A removed helper comes back at the next launch. `list_extensions` marks it `builtIn`. Profiles
 where the person turned extensions off have no helper. Sync and extensions are on by default
 (temporary profiles excepted); profiles made before that were switched on once. At capacity, creation refuses
-until cleanup resolves or the profile closes; it never restarts a live profile automatically. Run the optional disposable native
-focus check in `scripts/native/` to verify frontmost-app/Space behavior on a macOS seat; the opt-in
+until cleanup resolves or the profile closes; it never restarts a live profile automatically. The opt-in
 `BROCREW_CHROME_RUNTIME_TEST=1` tests load real local files with a test-only headless launch argument
 and do not prove native focus. Never use real or signed-in profiles for those checks.
+
+macOS focus and Space behavior was qualified once, for the helper, by a manual native harness
+(four-case focus check and two-Space check). No further run is planned, so the harness was removed;
+it is in Git history under `scripts/native/` before card 563, and its receipts stay as historical
+evidence. Nothing in the tree measures macOS frontmost-app or Space changes now. The `open_tab` fix (2d8d00e7) has
+a packaged HTTPS receipt, which checks tab and window IDs, and a release-candidate check in a
+workspace that is still pending. Neither measures focus or Space.
 
 ## Profiles across workspaces
 

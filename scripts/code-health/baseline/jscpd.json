@@ -2129,7 +2129,6 @@
   "typescript|plugins/chrome/test/helper-runtime.test.ts|plugins/chrome/test/window-runtime.test.ts",
   "typescript|plugins/chrome/test/private-browser.test.ts|plugins/chrome/test/profile-defaults.test.ts",
   "typescript|plugins/chrome/test/profile-delete-admin.test.ts|plugins/chrome/test/profile-rename-admin.test.ts",
-  "typescript|plugins/chrome/test/window-runtime.test.ts|scripts/native/two-space-check.ts",
   "yaml|.github/workflows/ci.yml|.github/workflows/ci.yml",
   "yaml|.github/workflows/ci.yml|.github/workflows/claude-code.yml",
   "yaml|.github/workflows/ci.yml|.github/workflows/code-health.yml",
