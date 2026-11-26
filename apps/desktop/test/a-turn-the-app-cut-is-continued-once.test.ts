@@ -13,6 +13,7 @@ import {
   type Gate,
   type Stops,
 } from './helpers/cut-account-cases'
+import { registerLaunchWakeCases } from './helpers/launch-wake-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -381,6 +382,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     starts,
     stateOf,
     continuations,
+    ledger,
+    askedFor,
     waitFor,
     settle,
     EMAIL,
@@ -998,6 +1001,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
           (event.type === 'message_queued' &&
             ('report' in (event as object) || event.appNotice === 'a-work-wait-needs-attention')),
       )
+    registerLaunchWakeCases({ ...accountCases, aGivenPieceIsCut, toldItStalled, restarted })
 
     it('after a crash, the launch says nothing of the work its continuation drives, and nobody is told it stopped', async () => {
       const { lead, worker } = await aGivenPieceIsCut('crash')
