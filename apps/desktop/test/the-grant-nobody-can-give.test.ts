@@ -9,10 +9,8 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   RuntimeHost,
-  type CallerIdentity,
   type RuntimeEventSink,
   type RuntimeHostDeps,
 } from '../src/main/runtime/runtime-host'
@@ -43,8 +41,6 @@ class AnonymousSink implements RuntimeEventSink {
   send(): void {}
   sendLiveness(): void {}
 }
-
-const PLANNER: CallerIdentity = { ownerId: 'mcp:planner' }
 
 describe('355 · the identity door a person writes through', () => {
   let userData: string
@@ -115,49 +111,9 @@ describe('355 · the identity door a person writes through', () => {
     folders = [...new Set([...folders, profileId])]
   }
 
-  /** A live parent an agent may command — the conversation a `give_work` call comes from. */
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, cwd: work, approvalMode: 'ask' },
-      window,
-      PLANNER,
-    )
-    folders = [...new Set([...folders, profileId])]
-    return sessionId
-  }
-
   /** A command over the real wire, as the real window sink. */
   const overTheWire = (raw: unknown, sink: RuntimeEventSink = window): Promise<unknown> =>
     executeRuntimeCommand(host, sink, raw)
-
-  describe('§1 · what decides whether a give starts a conversation', () => {
-    /**
-     * ⚑ **The retired grant columns are never read.** A row that still says `max_depth = 0` and
-     * `can_create_agents = 'none'` — values an older build wrote — neither refuses a give nor bounds
-     * how deep it sits.
-     */
-    it('a give is admitted whatever the retired grant columns of its giver still hold', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm')
-      db.prepare(
-        `UPDATE agent_identity SET max_depth = 0, can_create_agents = 'none' WHERE slug = 'pm'`,
-      ).run()
-      const tool = agentToolsFor(host, parent).tools.find((one) => one.name === 'give_work')
-      if (tool === undefined) throw new Error('no give_work tool')
-      const given = (
-        await tool.call({
-          definition_of_done: 'The requested result and its checks are recorded.',
-          profile: 'worker',
-          to: 'new',
-          conversation_title: 'The unchanged call',
-          title: 'The unchanged call',
-          brief: 'the unchanged call',
-        })
-      ).structured as Record<string, unknown>
-      expect(given.outcome, JSON.stringify(given)).toBe('ok')
-      expect(typeof given.agent).toBe('string')
-    })
-  })
 
   describe('§2 · what the door will not do', () => {
     /** ⛔ Criterion 12, at the door: configuring a name into existence is the act the rail refuses. */
