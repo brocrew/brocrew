@@ -10,11 +10,11 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **348 · a REAL Codex child calls a BroBot tool, gives another agent work, and talks to it.**
@@ -51,23 +51,6 @@ import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-pat
 const CHEAP = 'gpt-5.6-luna'
 /** ⛔ Model-unprompted and appearing nowhere else, so a match cannot be an echo of the prompt. */
 const MARKER = `BROBOT_348_CHILD_${process.pid}`
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  // ⛔ Not a person. Added when 348 met 349 at integration: this is an automated probe's recorder,
-  // so it may command a session and may never answer a permission for one (HO-005 Q2). Matches the
-  // two sibling smokes 349 itself updated.
-  readonly aPersonIsBehindIt = false
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((one) => one.event)
-  }
-}
 
 const say = (line: string): void => {
   process.stdout.write(`${line}\n`)
@@ -136,7 +119,7 @@ it(
       }),
     })
 
-    const window = new Recorder('webContents:1')
+    const window = new Recorder('webContents:1', false)
     try {
       // ── 1 · bring the identity into being, the only way anything can ────────────────────────
       // ⛔ Started and closed with no turn sent: a handshake, and no model tokens spent.
@@ -157,7 +140,7 @@ it(
       say(`1 · identity 'worker' exists (session ${worker0.sessionId}, closed), on ${CHEAP}`)
 
       // ── 2 · a parent that may give it work ──────────────────────────────────────────────────
-      const parentSink = new Recorder('webContents:2')
+      const parentSink = new Recorder('webContents:2', false)
       const parent = await host.createSession(
         { provider: 'codex', profileId: 'pm', cwd: work, model: CHEAP, approvalMode: 'auto' },
         parentSink,
