@@ -231,7 +231,7 @@ const NOUN_OF_KIND: Readonly<Record<PersonsQueueKind, { one: string; many: strin
 }
 
 /** "1 question" / "4 questions" — the plural said once, from the table above. */
-export function counted(kind: PersonsQueueKind, count: number): string {
+function counted(kind: PersonsQueueKind, count: number): string {
   const noun = NOUN_OF_KIND[kind]
   return `${count} ${count === 1 ? noun.one : noun.many}`
 }
@@ -243,7 +243,7 @@ export function counted(kind: PersonsQueueKind, count: number): string {
  * ⚠️ **`403` wrote the two-population sentence by hand**, and the asks joined it (D-017 · R19): a
  * sentence per state is `never-name-a-count-of-surfaces` written as prose.
  */
-export function andJoin(parts: readonly string[]): string {
+function andJoin(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? ''
   return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
 }

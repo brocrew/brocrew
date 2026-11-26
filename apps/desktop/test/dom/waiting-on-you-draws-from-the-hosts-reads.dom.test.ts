@@ -202,7 +202,7 @@ describe('§3 · cornerHead — the queue keeps its own hole, and one ask sings 
     )
   })
 
-  it('sings one ask in the singular even beside another population', () => {
+  it('beside another population, one ask is counted under the page title', () => {
     const view = {
       count: 1,
       heading: '1 question is waiting on you',
@@ -216,7 +216,7 @@ describe('§3 · cornerHead — the queue keeps its own hole, and one ask sings 
     } as InstructionAsksView
 
     const joined = cornerHead(view, oneAsk, null)
-    expect(joined!.heading).toBe("1 question and 1 ask to set an agent's rules are waiting on you")
+    expect(joined!.heading).toBe('Waiting on you')
     expect(joined!.count).toBe(2)
 
     // ⚑ The paired contrast: no asks at all — the view's own heading stands, with no ask phrase

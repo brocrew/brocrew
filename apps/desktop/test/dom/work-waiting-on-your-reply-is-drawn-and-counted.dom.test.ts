@@ -167,13 +167,13 @@ describe('§2 · cornerHead — the work waiting on a reply is counted and named
       new Set(),
     )!
 
-  it('says one alone in the singular, several in the plural, and beside a question both', () => {
+  it('says one alone in the singular, and several or beside a question under the page title', () => {
     expect(cornerHead(allClear, null, replies(1))).toEqual({
       heading: 'An agent is waiting on your reply',
       count: 1,
     })
     expect(cornerHead(allClear, null, replies(2))).toEqual({
-      heading: '2 pieces of work that need your reply are waiting on you',
+      heading: 'Waiting on you',
       count: 2,
     })
     const aQuestion = {
@@ -183,7 +183,7 @@ describe('§2 · cornerHead — the work waiting on a reply is counted and named
       rows: [{ kind: 'a-question' } as unknown as PersonsQueueRow],
     } as unknown as PersonsQueueView
     expect(cornerHead(aQuestion, null, replies(1))).toEqual({
-      heading: '1 question and 1 piece of work that needs your reply are waiting on you',
+      heading: 'Waiting on you',
       count: 2,
     })
     // ⚑ The paired contrast: with no such work the queue's own heading stands, word for word.
