@@ -40,7 +40,7 @@ import {
   type PersonsQueueRow,
   type PersonsQueueWorld,
 } from './persons-queue-rows'
-import { type PersonsQueueView, andJoin, counted, personsQueueView } from './persons-queue-view'
+import { type PersonsQueueView, personsQueueView } from './persons-queue-view'
 import {
   type InstructionAsksView,
   type ProviderLimitsView,
@@ -456,28 +456,6 @@ export interface CornerHead {
   readonly count: number
 }
 
-/** "1 ask to set an agent's rules" / "3 asks to set agents' rules". */
-function asksCounted(count: number): string {
-  return count === 1 ? "1 ask to set an agent's rules" : `${count} asks to set agents' rules`
-}
-
-/** "1 thing an agent asked you to do" / "2 things agents asked you to do". */
-function todosCounted(count: number): string {
-  return count === 1 ? '1 thing an agent asked you to do' : `${count} things agents asked you to do`
-}
-
-/** "1 request to add an MCP server" / "2 requests to add MCP servers". */
-function serverRequestsCounted(count: number): string {
-  return count === 1 ? '1 request to add an MCP server' : `${count} requests to add MCP servers`
-}
-
-/** ⚑ **F097** — "1 piece of work that needs your reply" / "2 pieces of work that need your reply". */
-function repliesCounted(count: number): string {
-  return count === 1
-    ? '1 piece of work that needs your reply'
-    : `${count} pieces of work that need your reply`
-}
-
 /**
  * 🔴 **D-017 · R19 · the corner's head — the queue's heading, widened by what is drawn beside it**:
  * the asks, and (F097) the work waiting on the person's reply.
@@ -486,8 +464,9 @@ function repliesCounted(count: number): string {
  * and it is `434`'s rule: over nothing, the all-clear *"Nothing is waiting on you"* may not stand
  * while the look for either has not answered whole, so that list's own hole is said instead.
  *
- * ⚑ **With either, one noun per population, never blended** — {@link waitingFor}'s rule, the asks
- * and then the replies named last. ⚠️ `null` where there is nothing the head may say: no queue look
+ * With more than one kind waiting, the head is the page's own title, *Waiting on you*, and the
+ * count beside it says how many: a sentence naming every kind wrapped to eight lines in the narrow
+ * corner before any item showed. ⚠️ `null` where there is nothing the head may say: no queue look
  * has landed and neither list has anything to add — a heading over lists nobody has read is the
  * false all-clear.
  */
@@ -550,20 +529,7 @@ export function cornerHead(
       count,
     }
   }
-  const rows = view?.rows ?? []
-  const present = (['a-question', 'a-decision'] as const)
-    .map((kind) => ({ kind, count: rows.filter((row) => row.kind === kind).length }))
-    .filter((one) => one.count > 0)
-  return {
-    heading: `${andJoin([
-      ...present.map((one) => counted(one.kind, one.count)),
-      ...(asked > 0 ? [asksCounted(asked)] : []),
-      ...(owed > 0 ? [repliesCounted(owed)] : []),
-      ...(requested > 0 ? [serverRequestsCounted(requested)] : []),
-      ...(todo > 0 ? [todosCounted(todo)] : []),
-    ])} are waiting on you`,
-    count,
-  }
+  return { heading: 'Waiting on you', count }
 }
 
 /**
