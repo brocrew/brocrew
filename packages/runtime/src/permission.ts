@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 /**
- * A forward-compatible decision object for answering a `permission_request`
- * (HO-001 §6 refinement 2). A bare `'allow' | 'deny'` string is deliberately
- * NOT used: the 001 spike showed both providers need more shape than that.
+ * A forward-compatible decision object for answering a `permission_request` (HO-001 §6 refinement
+ * 2). A bare `'allow' | 'deny'` string is deliberately NOT used: both providers need more shape
+ * than that.
  *
  * Provider mapping (001 §Q3 per provider):
  *   - `allow`             → Claude `canUseTool` allow (may carry `updatedInput`);
@@ -16,25 +16,20 @@ import { z } from 'zod'
  *                            `_meta.persist: 'session'`); Claude
  *                            `{ behavior:'allow', updatedPermissions:[…] }` carrying the CLI's
  *                            OWN `suggestions` for that ask, each held to
- *                            `destination:'session'` — 🔴 **736 · R94: the rule the CLI itself
+ *                            `destination:'session'` — 🔴 **R94: the rule the CLI itself
  *                            suggests, never a narrower one of this app's** (for a read outside
  *                            the folder, the CLI's directory rule; for an edit, its
  *                            *allow all edits* mode).
- *                            **This line used to read "Claude has no session-scope, so
- *                            an adapter maps it to `allow`". It has one** — `CanUseTool`
- *                            takes `suggestions`, `PermissionResult` takes
- *                            `updatedPermissions` — and that false belief is exactly what
- *                            shipped as the 031 bug: every tool re-prompted whichever
- *                            button was clicked, which does not merely annoy, it rots the
- *                            safety model, because a user who is asked anyway turns yolo
- *                            on permanently.
+ *                            A session grant that still re-prompted would rot the
+ *                            safety model: a user who is asked anyway turns yolo on
+ *                            permanently.
  *   - `allow_all_for_session` → **every future use of this tool this session, whatever
- *                            its arguments** (058). See the ⚠️ below — it is a
+ *                            its arguments**. See the ⚠️ below — it is a
  *                            different grant from the one above, not a stronger
  *                            wording of it.
- *   - `allow_always`      → 🔴 **736 · R95 — the CLI's own choice that outlives the
+ *   - `allow_always`      → 🔴 **R95 — the CLI's own choice that outlives the
  *                            conversation, with the persistence the CLI gives it**,
- *                            kept where its CLI keeps it (740 · R99) — Codex's in
+ *                            kept where its CLI keeps it (R99) — Codex's in
  *                            the conversation's provider home: its command approval
  *                            `{ acceptWithExecpolicyAmendment }` (its *don't ask
  *                            again for commands that start with …*, kept in
@@ -44,13 +39,11 @@ import { z } from 'zod'
  *                            and declared with its server at every launch);
  *                            Claude's own choice where it keeps a rule
  *                            (`localSettings`), kept where the CLI keeps it — the
- *                            PROJECT's `.claude/settings.local.json` (🔴 **740 ·
- *                            R99**; `736` held it to the provider home's
- *                            `settings.json`). Offered only where the provider
- *                            offered it — never on an `rm`, whose own choice keeps
- *                            nothing (measured).
- *   - `cancel`            → the provider's own cancel, with the CLI's effect (🔴 **736 ·
- *                            R97**): Codex's `{ decision: 'cancel' }` on a command or
+ *                            PROJECT's `.claude/settings.local.json` (🔴 **R99**).
+ *                            Offered only where the provider offered it — never on
+ *                            an `rm`, whose own choice keeps nothing (measured).
+ *   - `cancel`            → the provider's own cancel, with the CLI's effect (🔴 **R97**):
+ *                            Codex's `{ decision: 'cancel' }` on a command or
  *                            file approval **ends the turn** — Codex's doing, as its
  *                            terminal's *No* does; an elicitation's `{ action: 'cancel' }`
  *                            cancels that request and the turn RUNS ON, as its terminal's
@@ -59,23 +52,19 @@ import { z } from 'zod'
  *                            of its own to it.
  *
  * ⚠️ **`allow_for_session` and `allow_all_for_session` are two grants, and the difference is the
- * whole point of the second one (058).**
+ * whole point of the second one.**
  *
- * `allow_for_session` is the provider's OWN rule for the ask (🔴 **736 · R94**: on Claude the CLI's
+ * `allow_for_session` is the provider's OWN rule for the ask (🔴 **R94**: on Claude the CLI's
  * suggestions held to the conversation; on Codex its `acceptForSession`), and the card's
- * `grants.allow_for_session` says what that covers. ⚠️ Until `736` it was scoped to what the CARD
- * DISCLOSED — for Claude, the tool *and the paths in its input*, which is why 031 refused to offer
- * it for an opaque tool: a `Bash` card states a
- * command it does not decompose, so a grant read off it would cover things the card never showed.
- * The measurement behind that ruling is quoted at `claudeDecisionsFor`, and it is not hypothetical —
- * approving `Bash — echo ALPHA` for the session let `rm -f …` run afterwards with no card at all.
+ * `grants.allow_for_session` says what that covers.
  *
- * The consequence was that the tool with the worst approval fatigue was the one tool offered no
- * relief. `allow_all_for_session` closes that by making the wide grant **askable for**, never
- * inferable: it means exactly what 031 measured and refused to grant silently, so the only honest
- * way to have it is a button that says so. Adapters offer it only on an under-disclosed card; since
- * `736` it may sit beside the provider's own rule as a second, separate button, and a UI must never
- * present the two as the same choice.
+ * `allow_all_for_session` is the wide grant — every future use of the tool, whatever its arguments
+ * — made **askable for**, never inferable. A `Bash` card states a command it does not decompose, so
+ * a grant read off it would cover things the card never showed (measured: approving
+ * `Bash — echo ALPHA` for the session let `rm -f …` run afterwards with no card at all). So the
+ * only honest way to have it is a button that says so. Adapters offer it only on an
+ * under-disclosed card; it may sit beside the provider's own rule as a second, separate button,
+ * and a UI must never present the two as the same choice.
  */
 export const permissionDecisionSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -90,7 +79,7 @@ export const permissionDecisionSchema = z.discriminatedUnion('outcome', [
   }),
   z.object({ outcome: z.literal('allow_for_session') }),
   z.object({ outcome: z.literal('allow_all_for_session') }),
-  /** 🔴 736 · R95 — the provider's own choice that outlives the conversation. */
+  /** 🔴 R95 — the provider's own choice that outlives the conversation. */
   z.object({ outcome: z.literal('allow_always') }),
   z.object({ outcome: z.literal('cancel') }),
 ])
@@ -104,11 +93,9 @@ export type PermissionDecision = z.infer<typeof permissionDecisionSchema>
  * own `scope.availableDecisions` lists, and every adapter validates an answer against what it
  * offered. So a new outcome starts life offered by nobody.
  *
- * ⚠️ **With ONE exception, and it is not an oversight — see {@link ALWAYS_HONOURED}** (482). The
- * two refusals are exempt from that validation in both adapters, and the paragraph above described
- * the rule as though they were not. ⛔ A description that is wrong about an exemption is how a
- * producer comes to build an offer as if the exemption did not exist, which is exactly what
- * `478` F4 found on one card and this dispatch found on three more.
+ * ⚠️ **With ONE exception, and it is not an oversight — see {@link ALWAYS_HONOURED}.** The two
+ * refusals are exempt from that validation in both adapters. ⛔ A producer must never build an offer
+ * as if that exemption did not exist.
  */
 export const permissionOutcomeSchema = z.enum([
   'allow',
@@ -121,26 +108,21 @@ export const permissionOutcomeSchema = z.enum([
 export type PermissionOutcome = z.infer<typeof permissionOutcomeSchema>
 
 /**
- * 🔴 **The outcomes every adapter honours WHATEVER the request offered** (482, from `478` F4).
+ * 🔴 **The outcomes every adapter honours WHATEVER the request offered** (`478` F4).
  *
- * ## ⛔ This is the ADAPTERS' floor, and until now it was a literal written twice
+ * ## ⛔ This is the ADAPTERS' floor, named once
  *
- * ⚠️ **`claude-runtime.ts` and `codex-runtime.ts` each held their own
- * `decision.outcome === 'deny' || decision.outcome === 'cancel'`**, each under a comment explaining
- * the same rule in different words — *"declining has to stay possible whatever was offered, or
- * fail-closed stops being usable"* on one, *"a decline is always a valid Codex reply and cancel is
- * a client-side turn-kill"* on the other. ⛔ Two copies of one rule with no name is why the
- * PRODUCERS of {@link permissionScopeSchema}'s `availableDecisions` were free to build an offer as
- * if the rule did not exist.
+ * ⚠️ **Both adapters' answer gates ask {@link isAlwaysHonoured}**: declining has to stay possible
+ * whatever was offered, or fail-closed stops being usable. ⛔ One rule with no name, copied into
+ * each adapter, would leave the PRODUCERS of {@link permissionScopeSchema}'s `availableDecisions`
+ * free to build an offer as if the rule did not exist.
  *
  * ## 🔴 What it does NOT do
  *
  * ⛔ **It does not put a button anywhere.** A surface draws `scope.availableDecisions` and nothing
- * else; naming the floor here is what lets a producer ADD to its own offer deliberately.
- * ⚑ **Since 487 every producer adds it through {@link publishedOffer}**, so the floor is one
- * derivation rather than a habit four call sites happen to share — the paragraph that used to
- * stand here named three producers that omitted a member and deferred the repair to a ruling, and
- * `483`'s repair 1 is that ruling.
+ * else; naming the floor here is what lets a producer ADD to its own offer deliberately. ⚑ **Every
+ * producer adds it through {@link publishedOffer}** (`483`'s repair 1), so the floor is one
+ * derivation rather than a habit four call sites happen to share.
  *
  * ⛔ **And it is never a widening.** Both members are refusals the adapter already accepts; a
  * positive is gated by the offered set on Claude always, and on Codex whenever the provider
@@ -160,21 +142,19 @@ export function isAlwaysHonoured(outcome: PermissionOutcome): boolean {
 }
 
 /**
- * 🔴 **What a request PUBLISHES, with {@link ALWAYS_HONOURED} kept** (487, `483`'s repair 1).
+ * 🔴 **What a request PUBLISHES, with {@link ALWAYS_HONOURED} kept** (`483`'s repair 1).
  *
- * ## ⛔ The defect it closes, and why it was not a card bug
+ * ## ⛔ The defect it closes, and why it is not a card bug
  *
- * ⚠️ **`482` proved the gap at the GATE and could not close it at the PRODUCER.** Both adapters
- * exempt the two refusals from the offered-set check, so a `deny` or a `cancel` is honoured on a
- * request that named neither — and four shapes of Codex command approval published an offer that
- * named neither, so no surface drew a control the rails had admitted all along.
+ * ⚠️ Both adapters exempt the two refusals from the offered-set check, so a `deny` or a `cancel` is
+ * honoured on a request that named neither. A producer that published an offer naming neither would
+ * leave no surface drawing a control the rails admit.
  *
- * 🔴 **One of those four is BroBot's own fail-closed** (`483`): when a command approval carries a
+ * 🔴 **One such producer is BroBot's own fail-closed**: when a command approval carries a
  * requested-permission profile this app cannot display faithfully, every positive is withheld on
- * purpose. ⛔ **Withholding the positives is right; withholding the REFUSALS with them left a
- * person holding a card they could not answer at all**, which is `106` — a control that cannot act
- * must say so rather than be absent — arriving through a fail-closed rather than through an
- * omission.
+ * purpose. ⛔ **Withholding the positives is right; withholding the REFUSALS with them would leave a
+ * person holding a card they could not answer at all** — and a control that cannot act must say so
+ * rather than be absent.
  *
  * ## ⚑ What it is
  *
@@ -196,18 +176,16 @@ export function publishedOffer(positives: readonly PermissionOutcome[]): Permiss
 }
 
 /**
- * 🔴 **697 · `672` F1 — a card's `persistence` is what its BUTTONS can grant, and nothing else.**
+ * 🔴 **`672` F1 — a card's `persistence` is what its BUTTONS can grant, and nothing else.**
  *
- * ⛔ Codex's command card said `session` whenever the server PROPOSED an exec-policy amendment —
- * and no answer this app could send applied one (until `736` the amendment forms mapped to `null`;
- * since R95 the one Codex OFFERS is `allow_always`, and reads as `always`). So every ordinary Codex command card measured by `672`
- * (14 of 14 shapes) told a person *"for the whole conversation, not just this action"* above a
- * one-shot Allow. ⚑ A proposal is not an offer: `session` exactly when a positive the card PUBLISHES
- * grants beyond this one action — one derivation, read by every producer (`031`'s Claude rule was
- * already this, written out in place).
+ * ⛔ A proposal is not an offer. A server PROPOSING an exec-policy amendment does not make a Codex
+ * command card `session`: no answer applies it except the `allow_always` Codex OFFERS (R95), which
+ * reads as `always`. Reading the proposal as `session` would tell a person *"for the whole
+ * conversation, not just this action"* above a one-shot Allow. ⚑ `session` exactly when a positive
+ * the card PUBLISHES grants beyond this one action — one derivation, read by every producer.
  */
 export function persistenceOf(offer: readonly PermissionOutcome[]): 'once' | 'session' | 'always' {
-  // 🔴 736 · R95 — a button that outlives the conversation is the widest thing the card can grant.
+  // 🔴 R95 — a button that outlives the conversation is the widest thing the card can grant.
   if (offer.includes('allow_always')) return 'always'
   return offer.some(
     (outcome) => outcome === 'allow_for_session' || outcome === 'allow_all_for_session',
@@ -218,10 +196,10 @@ export function persistenceOf(offer: readonly PermissionOutcome[]): 'once' | 'se
 
 /**
  * A policy amendment the provider PROPOSED alongside a request, for FUTURE actions — disclosed
- * because it would widen standing permission beyond this one action. ⚠️ **Proposed, not applied**
- * (697): the provider applies one only on an answer that chooses it — since `736` (R95) that answer
- * is `allow_always` where Codex OFFERS the amendment as a decision, and the rule it writes is in
- * {@link permissionScopeSchema}'s `grants`. A card's Allow is still the plain accept.
+ * because it would widen standing permission beyond this one action. ⚠️ **Proposed, not applied**:
+ * the provider applies one only on an answer that chooses it — `allow_always` (R95) where Codex
+ * OFFERS the amendment as a decision, and the rule it writes is in {@link permissionScopeSchema}'s
+ * `grants`. A card's Allow is still the plain accept.
  */
 export const permissionAmendmentSchema = z.object({
   /** `exec` = auto-allow similar commands; `network` = allow/deny a host for later requests. */
@@ -260,12 +238,12 @@ const grantRuleSchema = z.discriminatedUnion('kind', [
 export type GrantRule = z.infer<typeof grantRuleSchema>
 
 /**
- * 🔴 **736 · what each standing button on a card installs** (R94, R95), keyed by the button's own
- * outcome so two conversation grants on one card cannot be read as each other — the rules, and for a grant
- * that outlives the conversation the FILE the provider keeps it in: 🔴 **`740` · R99** — *"kept where
- * the CLI keeps it"*: Claude's in the project's `.claude/settings.local.json`; Codex's in the
- * conversation's provider home (`rules/default.rules`, `brobot-kept-tool-approvals.json`), where the
- * Codex terminal keeps them. (`736`'s R95 put Claude's in the provider home too.)
+ * 🔴 **What each standing button on a card installs** (R94, R95), keyed by the button's own outcome
+ * so two conversation grants on one card cannot be read as each other — the rules, and for a grant
+ * that outlives the conversation the FILE the provider keeps it in: 🔴 **R99** — *"kept where the
+ * CLI keeps it"*: Claude's in the project's `.claude/settings.local.json`; Codex's in the
+ * conversation's provider home (`rules/default.rules`, `brobot-kept-tool-approvals.json`), where
+ * the Codex terminal keeps them.
  *
  * ⚠️ **Absent is not "nothing"**: an adapter that cannot say what a grant installs leaves it absent,
  * and a surface must not read a grant with no rules as one that covers nothing.
@@ -273,7 +251,7 @@ export type GrantRule = z.infer<typeof grantRuleSchema>
 export const permissionGrantsSchema = z.object({
   /** What `allow_for_session` installs, for this conversation — the provider's own rule (R94). */
   allow_for_session: z.array(grantRuleSchema).optional(),
-  /** What `allow_all_for_session` installs, for this conversation — the whole tool (058). */
+  /** What `allow_all_for_session` installs, for this conversation — the whole tool. */
   allow_all_for_session: z.array(grantRuleSchema).optional(),
   /**
    * What `allow_always` KEEPS, beyond this conversation (R95). ⚠️ On Claude, pressing it also
@@ -281,17 +259,16 @@ export const permissionGrantsSchema = z.object({
    * session, an added directory among them.
    */
   allow_always: z.array(grantRuleSchema).optional(),
-  /** Where `allow_always` is kept — Claude's project local settings, Codex's provider home (740). */
+  /** Where `allow_always` is kept (R99): Claude's project local settings, Codex's provider home. */
   alwaysFile: z.string().optional(),
 })
 export type PermissionGrants = z.infer<typeof permissionGrantsSchema>
 
 /**
- * Provider-neutral security scope of a `permission_request` (014, fixing 007
- * P1-7). The pre-014 event reduced an approval to `kind` + a generic action +
- * a truncated reason, so a user could approve materially more than the card
- * showed. Both adapters now populate this typed shape from their own request so
- * the UI can disclose the FULL consequence of approving.
+ * Provider-neutral security scope of a `permission_request`. Both adapters populate this typed
+ * shape from their own request so the UI can disclose the FULL consequence of approving: an
+ * approval reduced to `kind` + a generic action + a truncated reason would let a user approve
+ * materially more than the card showed.
  *
  * Deliberately **neutral**: it never embeds raw provider JSON. The adapter keeps
  * the original typed request stored by id to answer on; only this distilled
@@ -301,7 +278,7 @@ export const permissionScopeSchema = z.object({
   /** Working directory the action runs in, if known. */
   cwd: z.string().optional(),
   /**
-   * Filesystem paths the action would read/write/affect. Two entry forms (039):
+   * Filesystem paths the action would read/write/affect. Two entry forms:
    *  - **Access-labelled** — an entry an adapter derived from a REQUESTED permission, prefixed
    *    with `read ` / `write ` / `restrict ` and a space (`"write /etc"`,
    *    `"read glob:**\/*.ts"`, `"write special:tmpdir"`, `"restrict /etc"` for a sandbox DENY
@@ -315,12 +292,12 @@ export const permissionScopeSchema = z.object({
   networkHosts: z.array(z.string()),
   /**
    * `once` = this action only; `session` = a session-wide grant (e.g. a write grant root);
-   * 🔴 `always` (`736`, R95) = a button on the card installs a rule that outlives the conversation.
+   * 🔴 `always` (R95) = a button on the card installs a rule that outlives the conversation.
    * ⚑ What a button on the card can grant — {@link persistenceOf} — never what the provider merely
    * proposed.
    */
   persistence: z.enum(['once', 'session', 'always']),
-  /** 🔴 736 · R94 — what each standing button installs; see {@link permissionGrantsSchema}. */
+  /** 🔴 R94 — what each standing button installs; see {@link permissionGrantsSchema}. */
   grants: permissionGrantsSchema.optional(),
   /** A session-wide filesystem grant root the request asks to open, if any. */
   grantRoot: z.string().optional(),
@@ -329,16 +306,14 @@ export const permissionScopeSchema = z.object({
   /** The outcomes the provider actually offers for this request (drives decision validation). */
   availableDecisions: z.array(permissionOutcomeSchema),
   /**
-   * 🔴 **Why this request offers no way to ALLOW it** (487) — present only when it offers none.
+   * 🔴 **Why this request offers no way to ALLOW it** — present only when it offers none.
    *
-   * ## ⛔ It exists because {@link publishedOffer} spends the channel that used to carry it
+   * ## ⛔ It exists because {@link publishedOffer} always fills `availableDecisions`
    *
-   * ⚠️ **Until 487 the fact was carried by accident**, as `availableDecisions: []`. A surface could
-   * read *nothing is on offer* out of the empty array and nothing else, which is why the one
-   * sentence drawn on it — *"The provider offered no decisions for this request."* — attributed
-   * this app's own fail-closed to the provider (`483`). ⛔ Keeping the two refusals is right and it
-   * overwrites that array, so **the fact has to be written rather than inferred** or the repair
-   * would take away the only thing a surface had to go on.
+   * {@link publishedOffer} always adds the two refusals, so an empty `availableDecisions` cannot
+   * carry *nothing is on offer*, and **the fact has to be written rather than inferred**. Read out
+   * of the offer alone, it would also attribute this app's own fail-closed to the provider (*"The
+   * provider offered no decisions for this request."*).
    *
    * ## ⚑ The WORD, and the surface carries the sentence
    *
@@ -351,7 +326,7 @@ export const permissionScopeSchema = z.object({
    *    nothing the positives were withheld to keep back.
    *  - `could-not-represent-the-answers` — the provider DID offer a way to accept and this app has
    *    no neutral outcome for it (the network amendment or a look-alike — the exec-policy one is
-   *    `allow_always` since `736`), so it could not put it on a card.
+   *    `allow_always`), so it could not put it on a card.
    *  - `none-was-offered` — the provider enumerated no way to allow at all.
    *
    * ⛔ **Absent is not a fourth member.** Absent means this request offers a way to allow it, and
@@ -361,19 +336,18 @@ export const permissionScopeSchema = z.object({
     .enum(['could-not-describe-the-grant', 'could-not-represent-the-answers', 'none-was-offered'])
     .optional(),
   /**
-   * True when the adapter could not fully represent the request's scope in this
-   * neutral shape (a broader/opaque request — e.g. extra permission profiles, or
-   * a decision option we can't map). The UI must treat it as broad; it is
-   * surfaced, never silently dropped (007 P1-7).
+   * True when the adapter could not fully represent the request's scope in this neutral shape (a
+   * broader/opaque request — e.g. extra permission profiles, or a decision option we can't map).
+   * The UI must treat it as broad; it is surfaced, never silently dropped.
    */
   underDisclosed: z.boolean(),
   /**
-   * The session's approval mode (078) — part of the honest scope, not decoration.
+   * The session's approval mode — part of the honest scope, not decoration.
    *
    * In `auto` a card is rare, so one that does surface is worth labelling: it tells the user that
-   * everything ELSE in this session is running unprompted. ⚑ Since `728` one kind is expected, not an
-   * anomaly: while Claude is planning, its own plan mode's asks reach the person even in `auto`, as
-   * the CLI's do. Absent means `ask`.
+   * everything ELSE in this session is running unprompted. ⚑ One kind is expected, not an anomaly:
+   * while Claude is planning, its own plan mode's asks reach the person even in `auto`, as the
+   * CLI's do. Absent means `ask`.
    */
   approvalMode: z.enum(['ask', 'auto']).optional(),
 })
@@ -390,35 +364,33 @@ const userInputOptionObject = z.object({
   /** What the user picks, and **what the answer is made of** — forwarded to the provider verbatim. */
   label: z.string(),
   /**
-   * Why the model offered it — the sentence the user needs in order to choose (143).
+   * Why the model offered it — the sentence the user needs in order to choose.
    *
-   * ⚠️ **Both providers declare it REQUIRED and BroBot dropped it on both.** Codex's
-   * `ToolRequestUserInputOption` is `{label, description}`, neither nullable; Claude's pinned
-   * `AskUserQuestionInput` option is `{label, description, preview?}` with only `preview` optional.
-   * So this is not a field that is usually sent — it is one both providers guarantee, and the user
-   * was choosing between labels with the reasoning removed.
+   * ⚠️ **Both providers declare it REQUIRED.** Codex's `ToolRequestUserInputOption` is
+   * `{label, description}`, neither nullable; Claude's pinned `AskUserQuestionInput` option is
+   * `{label, description, preview?}` with only `preview` optional. So this is not a field that is
+   * usually sent — it is one both providers guarantee, and dropping it would leave the user
+   * choosing between labels with the reasoning removed.
    *
    * ⚑ **Optional HERE for one reason only: the ledger.** Every `user_input_request` recorded before
-   * 143 has options that were bare strings, and {@link storedQuestionsParsed} gives those a
-   * `label` and nothing else — there is no description to invent for them (086). An absent one
-   * renders as nothing at all; see `UserInputCard.vue`.
+   * 143 has options that were bare strings, and {@link storedQuestionsParsed} gives those a `label`
+   * and nothing else — there is no description to invent for them. An absent one renders as nothing
+   * at all; see `UserInputCard.vue`.
    *
-   * ⛔ **`preview` is deliberately NOT here.** 142 measured it real in the corpus (three previews of
+   * ⛔ **`preview` is deliberately NOT here.** It is real in the corpus (three previews of
    * 266/251/315 characters in `sess_865688c3`'s `raw_frame` archive), and it is a second surface —
-   * a panel, not a line under a label. 108 refused `promptPreview` on that judgement and 139
-   * refused `description` on it; this dispatch was scoped to take `description` and say so.
+   * a panel, not a line under a label.
    */
   description: z.string().optional(),
 })
 
 /**
- * One offered choice on a {@link userInputQuestionSchema} (143).
+ * One offered choice on a {@link userInputQuestionSchema}.
  *
- * ⚠️ **A union because the LEDGER holds both shapes, and only one of them can be parsed.** Before
- * 143 an option was a bare string, and five such `user_input_request` rows exist in the live
- * database this was measured against — including the two-question call that motivated 139. A
- * string branch that coerces to `{label}` means every path which PARSES normalizes for free: the
- * adapters, the IPC boundary, and `toWireEvent`.
+ * ⚠️ **A union because the LEDGER holds both shapes, and only one of them can be parsed.** Rows
+ * recorded before 143 hold options as bare strings, and five such `user_input_request` rows exist
+ * in the live database this was measured against. A string branch that coerces to `{label}` means
+ * every path which PARSES normalizes for free: the adapters, the IPC boundary, and `toWireEvent`.
  *
  * Apply the same option coercion on replay through {@link storedQuestionsParsed}. `session-store.ts`'s `toPersistedEvents` casts stored events without Zod parsing, so legacy string options otherwise reach a card expecting objects and render blank.
  */
@@ -429,10 +401,9 @@ export const userInputOptionSchema = z.union([
 export type UserInputOption = z.infer<typeof userInputOptionObject>
 
 /**
- * One structured question on a `user_input_request` (020, fixing 007 P2-1) — the
- * neutral shape a future UI answers per-question. Provider-neutral: built from
- * Claude `AskUserQuestion` questions or Codex `item/tool/requestUserInput`
- * questions; carries no raw provider payload.
+ * One structured question on a `user_input_request` — the neutral shape a future UI answers
+ * per-question. Provider-neutral: built from Claude `AskUserQuestion` questions or Codex
+ * `item/tool/requestUserInput` questions; carries no raw provider payload.
  */
 export const userInputQuestionSchema = z.object({
   /** Stable id to answer against (Codex question id, or a positional `q{n}`). */
@@ -440,13 +411,13 @@ export const userInputQuestionSchema = z.object({
   /** The question text. */
   prompt: z.string(),
   /**
-   * The compact label the providers DESIGNED for this card — `"Scope"`, `"Demo files"` (143).
+   * The compact label the providers DESIGNED for this card — `"Scope"`, `"Demo files"`.
    *
    * ⚑ **Both send one and both bound it.** Claude's pinned typings: *"Very short label displayed as
    * a chip/tag (max 12 chars)"*, required on every question. Codex's `ToolRequestUserInputQuestion`
    * declares `header: string`, non-null. The bound is the provider's, not ours — nothing here
    * truncates, because a header longer than its own documented limit is a fact about the model's
-   * output and 086 says show it rather than tidy it away.
+   * output, and it is shown rather than tidied away.
    *
    * Optional for the ledger, exactly as {@link UserInputOption.description} is: rows recorded before
    * 143 have no header, and a question without one shows none.
@@ -455,16 +426,14 @@ export const userInputQuestionSchema = z.object({
   /** Available choices; empty = free-form answer. */
   options: z.array(userInputOptionSchema),
   /**
-   * **This question also takes an answer that is not on the list** (143).
+   * **This question also takes an answer that is not on the list.**
    *
-   * ⛔ **The defect this fixes: BroBot could never show a free-form escape that BOTH providers
-   * guarantee.** The card rendered a text field only when `options.length === 0` — and both
-   * normalizers forbid exactly that. Codex's `normalize_request_user_input_args` forces
-   * `is_other = true` on every ordinary question and its options are *"2–3 mutually exclusive
-   * choices"*; Claude's pinned typings tell the model *"There should be no 'Other' option, that
-   * will be provided automatically"*. So on both providers every ordinary question offers one, the
-   * provider expects an answer that may not be a label, and the user had no way to give it. That is
-   * `multiSelect` again — the provider distinguished something and we did not.
+   * ⛔ **Both providers guarantee a free-form escape.** Codex's `normalize_request_user_input_args`
+   * forces `is_other = true` on every ordinary question and its options are *"2–3 mutually
+   * exclusive choices"*; Claude's pinned typings tell the model *"There should be no 'Other'
+   * option, that will be provided automatically"*. So on both providers every ordinary question
+   * offers one, and the provider expects an answer that may not be a label — a card that drew a
+   * text field only when `options.length === 0` would never show it.
    *
    * ⚑ **Read, not assumed, on the provider that sends it.** Codex states `isOther` per question and
    * `codexQuestions` copies it; Claude has no field to copy because the escape is unconditional, so
@@ -478,35 +447,31 @@ export const userInputQuestionSchema = z.object({
    */
   allowOther: z.boolean().optional(),
   /**
-   * **What the user types here must not be shown as they type it** (143, from 141 §3.1).
+   * **What the user types here must not be shown as they type it** (141 §3.1).
    *
-   * Codex declares `isSecret` per question. 141 measured that it *"is not exposed by the ordinary
-   * pinned model-tool schema and defaults false"* — so no ordinary Codex question sets it today —
-   * and that BroBot dropped it anyway, *"leaving a latent masking gap if another valid producer
-   * sets it"*. Carried rather than dropped a second time: it costs one attribute on one input, and
-   * the alternative is a field that silently renders a secret in clear text the first time any
-   * producer does set it.
+   * Codex declares `isSecret` per question. It *"is not exposed by the ordinary pinned model-tool
+   * schema and defaults false"* — so no ordinary Codex question sets it today — but carrying it
+   * costs one attribute on one input, and the alternative is a field that silently renders a secret
+   * in clear text the first time any producer does set it.
    *
    * ⚑ **It masks the FREE-FORM input and nothing else.** Options are labels the model wrote and the
    * user picks; there is no secret in choosing one. Claude has no equivalent field, so a Claude
-   * question never sets this — stated rather than emulated (035).
+   * question never sets this — stated rather than emulated.
    *
    * ⛔ **Masking is a display rule, not a storage one.** The answer VALUES are not persisted at all
-   * — `RuntimeHost` records the outcome `answered`/`rejected` and never the text (141 §MEDIUM 3) —
-   * so there is no ledger row for this flag to have to protect.
+   * — `RuntimeHost` records the outcome `answered`/`rejected` and never the text — so there is no
+   * ledger row for this flag to have to protect.
    */
   secret: z.boolean().optional(),
   /**
-   * **This question takes SEVERAL answers** (139).
+   * **This question takes SEVERAL answers.**
    *
-   * ⚠️ **A question that needed this really did arrive, and there was nowhere to put it.** Claude's
-   * `AskUserQuestion` declares `multiSelect: boolean` on every question — REQUIRED in the SDK's own
-   * input type, not optional — and `sess_71a5b654` ord 234 sent two questions in one call, one
-   * `"multiSelect": true` and one `false`. This shape had exactly three members, so the normalizer
-   * had nothing to copy the flag INTO: both questions crossed as the same neutral thing and the card
-   * rendered them identically. The app asked a multiple-choice question as though only one answer
-   * were allowed, and the `string[]` half of {@link userInputResponseSchema} — built in 033 — could
-   * not be reached by any question the product could render.
+   * ⚠️ **Claude's `AskUserQuestion` declares `multiSelect: boolean` on every question** — REQUIRED
+   * in the SDK's own input type — and one call can mix them: `sess_71a5b654` ord 234 sent one
+   * `"multiSelect": true` and one `false`. Without this field both would cross as the same neutral
+   * thing, and the card would ask a multiple-choice question as though only one answer were
+   * allowed. It is also what makes the `string[]` half of {@link userInputResponseSchema}
+   * reachable.
    *
    * ⚑ **Optional, and that is a fact about the LEDGER rather than a licence for the adapters.**
    * Every `user_input_request` recorded before 139 carries no such field, and a persisted row is
@@ -516,69 +481,61 @@ export const userInputQuestionSchema = z.object({
    * absent flag on a NEW question is an adapter that forgot rather than a mode nobody ruled on —
    * and the difference is legible in the ledger.
    *
-   * ⛔ **Two things this used to say are false, and 141 measured both** (142 §5). It claimed a
-   * `.default(false)` "would fill one in on its behalf" for historical replay: replay never invokes
-   * Zod at all, so a default would not run on a single one of those rows — it would only fill in
-   * fresh parses, answering for the adapters on the one path where they are supposed to speak. And
-   * it claimed absent means single-select, *"which is what those questions were"*: the very call
-   * that motivated 139 carried one `true` and one `false` before the normalizer dropped both, so
-   * absent means **unknown**. The card renders an unknown flag as single-select — the only safe
-   * reading available to it — and at least one historical row is genuinely misrepresented by that.
+   * ⛔ **No `.default(false)`, and absent is not single-select.** Replay never invokes Zod, so a
+   * default would not run on a single historical row — it would only fill in fresh parses,
+   * answering for the adapters on the one path where they are supposed to speak. And historical
+   * questions were not all single-select: the call in `sess_71a5b654` carried one `true` and one
+   * `false` before the normalizer dropped both, so absent means **unknown**. The card renders an
+   * unknown flag as single-select — the only safe reading available to it — and at least one
+   * historical row is genuinely misrepresented by that.
    *
    * ⛔ **Codex has no equivalent, and its plural answer is not one.** `ToolRequestUserInputQuestion`
    * is `{id, header, question, isOther, isSecret, options}` — measured in the generated protocol,
-   * no multi-select flag anywhere — while `ToolRequestUserInputAnswer` is `{answers: Array<string>}`,
-   * plural for every question. A response shape that CAN carry several is not a question that asked
-   * for several, and reading one as the other would invent a signal the provider does not send
-   * (035). A Codex question is single-select and `codexQuestions` says so in one word.
+   * no multi-select flag anywhere — while `ToolRequestUserInputAnswer` is
+   * `{answers: Array<string>}`, plural for every question. A response shape that CAN carry several
+   * is not a question that asked for several, and reading one as the other would invent a signal
+   * the provider does not send. A Codex question is single-select and `codexQuestions` says so in
+   * one word.
    */
   multiSelect: z.boolean().optional(),
 })
 export type UserInputQuestion = z.infer<typeof userInputQuestionSchema>
 
 /**
- * Parse the questions of a STORED `user_input_request` — the one path that never parsed (143, 146).
+ * Parse the questions of a STORED `user_input_request` — the one path that never parsed.
  *
  * ⚠️ **Replay is a cast.** `toPersistedEvents` does `JSON.parse(row.payload) as TranscriptEvent` and
  * hands the result to the renderer through `latestHistory` — `toWireEvent` is on the LIVE emit path
- * only. So a `user_input_request` recorded before 143 arrives at `UserInputCard.vue` with
- * `options: string[]` while the type promises `UserInputOption[]`, and `option.label` is `undefined`
- * for every chip. Measured, not hypothesised — and re-counted exactly by 145: of seven
- * `user_input_request` rows in the live database, five carry questions, **three with one question
- * and four options and two with two questions and seven options**, and all 26 of those options are
- * bare strings. One of the two-question rows is the very call 139 was raised for. (143 wrote "all
- * five have four options" here; that was never true of those two.)
+ * only. So a `user_input_request` recorded before 143 would arrive at `UserInputCard.vue` with
+ * `options: string[]` while the type promises `UserInputOption[]`, and `option.label` would be
+ * `undefined` for every chip. Measured: of seven `user_input_request` rows in the live database,
+ * five carry questions, **three with one question and four options and two with two questions and
+ * seven options**, and all 26 of those options are bare strings.
  *
- * ⛔ **143 closed that with a hand-written coercion, and the coercion was the next defect** (145
- * MEDIUM 1). It looked for bare strings and CAST everything else, so it fixed the one malformed
- * shape it had been told about and trusted every other: `["A", 42]` produced a chip whose label was
- * a number, `{label: 42}` reached `label.trim()` and threw, and a `questions` field that was not an
- * array threw inside the migration itself. Two validators — this and
- * {@link userInputOptionSchema} — kept in step by hand, which is the class of hole 143 §0 named and
- * then re-opened one function down.
+ * ⚑ **So replay PARSES, with the same schema every other path uses.** There is one definition of
+ * what an option is, and the legacy string form is coerced by the union branch written for it. A
+ * hand-written coercion that looked for bare strings and CAST everything else would trust every
+ * other malformed shape: `["A", 42]` gives a chip whose label is a number, `{label: 42}` reaches
+ * `label.trim()` and throws, and a `questions` field that is not an array throws too. Two
+ * validators kept in step by hand is the hole this closes.
  *
- * ⚑ **So replay PARSES, with the same schema every other path uses.** There is now one definition
- * of what an option is, and the legacy string form is coerced by the union branch that was already
- * written for it rather than by a copy of it. Nothing has to be kept in step because there is no
- * second thing.
- *
- * ⛔ **A row that does not parse THROWS, and `toPersistedEvents` already says what that means:**
- * *"A row we cannot parse is skipped rather than replayed as something else: a transcript with a
- * hole is honest, a transcript with a fabricated entry is not."* All three malformed shapes above
- * now reach that one documented policy instead of three different accidents.
+ * ⛔ **A row that does not parse THROWS, and `toPersistedEvents` already says what that means:** *"A
+ * row we cannot parse is skipped rather than replayed as something else: a transcript with a hole
+ * is honest, a transcript with a fabricated entry is not."* All three malformed shapes above reach
+ * that one documented policy.
  *
  * ⚠️ **`unknown` in, because the type was the lie.** A caller holding `UserInputQuestion[]` from a
  * cast has a promise the database never made; taking `unknown` is what forces the check to happen.
  *
  * ⛔ **A string becomes `{label}` and gains NOTHING else.** There is no description in a row that
  * never carried one, and inventing an empty one would make "the model gave no reason" and "the
- * model gave the empty reason" the same thing on screen (086).
+ * model gave the empty reason" the same thing on screen.
  *
  * ---
  *
- * ⛔ **It validates SHAPE and deliberately does not call {@link duplicateAnswerKey}** (150, ruling on
- * 148 L1). The omission is real — an old or imported row whose questions share an answer key parses
- * here without complaint — and fixing it would be the wrong trade, in the direction 086 cares about.
+ * ⛔ **It validates SHAPE and deliberately does not call {@link duplicateAnswerKey}.** The omission
+ * is real — an old or imported row whose questions share an answer key parses here without
+ * complaint — and fixing it would be the wrong trade.
  *
  * The duplicate-key defect is about DELIVERY: two questions keyed alike means the second answer
  * overwrites the first on the way to the provider. A replayed row is not being delivered anywhere.
@@ -588,20 +545,20 @@ export type UserInputQuestion = z.infer<typeof userInputQuestionSchema>
  * READ; this is a row we can read perfectly well and merely disapprove of.
  *
  * ⚑ **And nothing depends on the parse for safety.** The live path is closed at publication in both
- * adapters (146, and 150 for the other two malformations), a reopened card is settled and cannot be
- * answered, and the one gesture that could still destroy an answer — sending one — is refused
- * independently by {@link answerToForward} at the gesture. A check here would be a fourth guard on a
- * path with no way through, bought by deleting history.
+ * adapters, a reopened card is settled and cannot be answered, and the one gesture that could still
+ * destroy an answer — sending one — is refused independently by {@link answerToForward} at the
+ * gesture. A check here would be a fourth guard on a path with no way through, bought by deleting
+ * history.
  */
 export function storedQuestionsParsed(questions: unknown): readonly UserInputQuestion[] {
   return z.array(userInputQuestionSchema).parse(questions)
 }
 
 /**
- * The first key that appears twice, or `null` when every one is distinct (146).
+ * The first key that appears twice, or `null` when every one is distinct.
  *
- * ⛔ **A question set whose answers cannot be told apart must never become a card** (145 HIGH 3).
- * Both providers key their answer by a string they chose and neither constrains it: Claude's
+ * ⛔ **A question set whose answers cannot be told apart must never become a card.** Both providers
+ * key their answer by a string they chose and neither constrains it: Claude's
  * `AskUserQuestionOutput.answers` is a dictionary of *question text* → answer and the pinned SDK
  * permits 1–4 questions with no uniqueness condition; Codex's `ToolRequestUserInputResponse` is
  * keyed by *question id* and its pinned normalizer validates options but not id uniqueness. Two
@@ -613,10 +570,10 @@ export function storedQuestionsParsed(questions: unknown): readonly UserInputQue
  * provider's. For Claude the neutral ids are positional (`q0`, `q1`) and cannot collide, while the
  * wire key is the question text — so the text is what is checked there.
  *
- * ⛔ **The remedy is to fail the call CLOSED, before anything is shown** — the same ruling 064 made
- * for `AskUserQuestion` with no questions at all, and for the same reason: the honest thing to tell
- * the model is that its call was malformed and can be retried, rather than to ask a human to answer
- * questions only some of whose answers can be delivered.
+ * ⛔ **The remedy is to fail the call CLOSED, before anything is shown** — as for `AskUserQuestion`
+ * with no questions at all, and for the same reason: the honest thing to tell the model is that its
+ * call was malformed and can be retried, rather than to ask a human to answer questions only some
+ * of whose answers can be delivered.
  */
 export function duplicateAnswerKey(
   questions: readonly UserInputQuestion[],
@@ -632,27 +589,26 @@ export function duplicateAnswerKey(
 }
 
 /**
- * ⛔ **An option nobody can choose — the dead control 148 M6 found, refused at the gesture** (150).
+ * ⛔ **An option nobody can choose — a dead control, refused at the gesture.**
  *
- * A single-select question offering `"   "` and `"real"` rendered two chips. Picking the blank one
- * stored it, {@link answerToForward} trimmed it away as *nothing chosen*, `aria-pressed` reverted,
- * Answer stayed disabled, and the explanatory hint renders only for multi-select — so the user got a
- * control that visibly does nothing and says nothing about why. **A control that cannot act,
- * reachable from a label both providers permit** (106).
+ * A single-select question offering `"   "` and `"real"` would render two chips. Picking the
+ * blank one stores it, {@link answerToForward} trims it away as *nothing chosen*, `aria-pressed`
+ * reverts, Answer stays disabled, and the explanatory hint renders only for multi-select — a
+ * control that visibly does nothing and says nothing about why, reachable from a label both
+ * providers permit.
  *
- * ⚑ **Refused before any card is published**, which is 064's ruling for `AskUserQuestion` with no
- * questions and 146's for two questions sharing an answer key, applied to the third way the same
- * call can be malformed. The honest thing to tell the model is that its option list cannot be
- * answered, which it can see and retry; the alternative is a human staring at a chip that is not a
- * chip.
+ * ⚑ **Refused before any card is published**, as `AskUserQuestion` with no questions and two
+ * questions sharing an answer key are: the third way the same call can be malformed. The honest
+ * thing to tell the model is that its option list cannot be answered, which it can see and retry;
+ * the alternative is a human staring at a chip that is not a chip.
  *
- * ⛔ **This does NOT trim, rename or filter the provider's labels** (143/146). Exact non-blank
- * labels — including meaningful leading, trailing and non-breaking spaces — are deliberately
- * byte-preserved, and dropping a choice would change what the model asked. The test is only whether
- * a label consists of nothing but whitespace, and the answer is to refuse the whole call.
+ * ⛔ **This does NOT trim, rename or filter the provider's labels.** Exact non-blank labels —
+ * including meaningful leading, trailing and non-breaking spaces — are deliberately byte-preserved,
+ * and dropping a choice would change what the model asked. The test is only whether a label
+ * consists of nothing but whitespace, and the answer is to refuse the whole call.
  *
- * ⚠️ **`answerToForward`'s own nothing-chosen rule stays exactly as it is** (146 §1). That path is
- * still reachable — a stored or imported card, answered after this adapter published it — and it is
+ * ⚠️ **`answerToForward`'s own nothing-chosen rule stays exactly as it is.** That path is still
+ * reachable — a stored or imported card, answered after this adapter published it — and it is
  * correct there. This closes the branch that had no way to say anything at all.
  *
  * Returns the offending label so the message can quote it back, or `null` when every option is
@@ -669,19 +625,19 @@ export function unanswerableOptionLabel(questions: readonly UserInputQuestion[])
 }
 
 /**
- * 🔴 **The two consent cards that MOVE plan mode, as a closed vocabulary** (478).
+ * 🔴 **The two consent cards that MOVE plan mode, as a closed vocabulary.**
  *
  * ⛔ **Named by what approving one DOES, not by the tool that raised it.** The tool names are
- * Claude's — `EnterPlanMode` and `ExitPlanMode` — and `317` forbids the renderer naming a provider
- * in anything a person reads; a surface keyed on a tool name would also be `464`'s rename hazard,
- * spelling a label somebody else owns. ⚑ The adapter reads its own `PLAN_GESTURES` and says which
- * of these it is, once, on the event.
+ * Claude's — `EnterPlanMode` and `ExitPlanMode` — and the renderer never names a provider in
+ * anything a person reads; a surface keyed on a tool name would also spell a label somebody else
+ * owns, and break when it is renamed. ⚑ The adapter reads its own `PLAN_GESTURES` and says which of
+ * these it is, once, on the event.
  *
  * ⚠️ **Closed because the sentence a person reads before pressing is keyed by it**, so a third
  * consent card cannot reach a surface without somebody writing what approving it does.
  *
- * ⚑ **`start-planning` is on ledger rows written before `736` only.** R98 took `EnterPlanMode`'s
- * card away (the CLI does not ask before it, measured); the member stays because this is the
+ * ⚑ **`start-planning` is on ledger rows written before `736` only.** R98: `EnterPlanMode` raises
+ * no card (the CLI does not ask before it, measured); the member stays because this is the
  * stored-event contract, and an older row must still parse and still say what its press did.
  */
 export const PLAN_CONSENTS = ['start-planning', 'stop-planning'] as const
@@ -694,21 +650,20 @@ export type PlanConsent = (typeof PLAN_CONSENTS)[number]
 
 /**
  * The requested scope of a permission-grant `user_input_request` (Codex
- * `item/permissions/requestApproval`) — neutral, no raw payload (020).
+ * `item/permissions/requestApproval`) — neutral, no raw payload.
  */
 export const userInputPermissionSchema = z.object({
   /** Working directory the request applies to, if given. */
   cwd: z.string().optional(),
   /**
-   * ⛔ **709 · written by no producer since `709` — rows from before it still carry it.** It was the
-   * request's `reason` with no author, and the model writes that (measured: see {@link agentReason}),
-   * so it was the agent's sentence drawn unlabelled — on the card, as its headline, and on Home as the
-   * first line of what a grant would authorize. ⚑ Kept so an old row still parses.
+   * ⛔ **Written by no producer — rows from before `709` still carry it.** It is the request's
+   * `reason` with no author, and the model writes that (measured: see {@link agentReason}), so it
+   * would be the agent's sentence drawn unlabelled. ⚑ Kept so an old row still parses.
    */
   reason: z.string().optional(),
   /**
-   * 🔴 **709 · R44 — the MODEL's own words for this request, under its author's name.** Present only
-   * when the model wrote some.
+   * 🔴 **R44 — the MODEL's own words for this request, under its author's name.** Present only when
+   * the model wrote some.
    *
    * ⚑ **Measured** (`probe:codex-approval-reason`, bundled Codex 0.146.0): with Codex's
    * `request_permissions` tool enabled, the `reason` the model passes arrives on
@@ -721,12 +676,12 @@ export const userInputPermissionSchema = z.object({
    */
   agentReason: z.string().optional(),
   /**
-   * Requested extra filesystem access, every entry **access-labelled** with a `read ` /
-   * `write ` / `restrict ` prefix (`"write /etc"`, `"read glob:**\/*.ts"`,
-   * `"write special:project_roots"`; `restrict ` marks a sandbox DENY entry) — covering both
-   * the legacy read/write arrays and the newer `entries` (path / glob / special) forms, so the
-   * UI sees everything a positive decision would grant (039). A request whose shapes cannot be
-   * displayed truthfully is failed closed by the adapter rather than granted unseen.
+   * Requested extra filesystem access, every entry **access-labelled** with a `read ` / `write ` /
+   * `restrict ` prefix (`"write /etc"`, `"read glob:**\/*.ts"`, `"write special:project_roots"`;
+   * `restrict ` marks a sandbox DENY entry) — covering both the legacy read/write arrays and the
+   * newer `entries` (path / glob / special) forms, so the UI sees everything a positive decision
+   * would grant. A request whose shapes cannot be displayed truthfully is failed closed by the
+   * adapter rather than granted unseen.
    */
   paths: z.array(z.string()),
   /** Whether extra network access is requested. */
@@ -739,51 +694,43 @@ export type UserInputPermission = z.infer<typeof userInputPermissionSchema>
  * `item/tool/requestUserInput` / `item/permissions/requestApproval`) — HO-001
  * §6 refinements 3 & 4.
  *
- * These are server-initiated *requests*, not events: the provider blocks until
- * answered. `reject` is the **protocol-safe default** so the provider can never
- * hang when the app has no richer UI for the request. Each adapter maps it to
- * that method's **documented denied/empty payload** — never a JSON-RPC error
- * (020, fixing 007 P2-1) — so the turn continues predictably.
+ * These are server-initiated *requests*, not events: the provider blocks until answered. `reject`
+ * is the **protocol-safe default** so the provider can never hang when the app has no richer UI for
+ * the request. Each adapter maps it to that method's **documented denied/empty payload** — never a
+ * JSON-RPC error — so the turn continues predictably.
  *
- * **Multi-question answers (033, deliberate contract change fixing 023 P2 #1):** a
- * `user_input_request` can carry SEVERAL `questions` (020), so the `answer` variant
- * correlates answers to questions **by question id** — `{ answers: { [questionId]:
- * string | string[] } }` — instead of a single `text` that only answered question 1.
- * A value is a single answer or several (multi-select). Adapters build each
- * provider's payload for **every** question and validate **completeness**: a request
- * whose questions are not all answered is **failed closed** (safe-declined), never
- * partially forwarded. An answer to an unknown id (no matching question) is ignored.
+ * **Multi-question answers:** a `user_input_request` can carry SEVERAL `questions`, so the `answer`
+ * variant correlates answers to questions **by question id** —
+ * `{ answers: { [questionId]: string | string[] } }`. A value is a single answer or several
+ * (multi-select). Adapters build each provider's payload for **every** question and validate
+ * **completeness**: a request whose questions are not all answered is **failed closed**
+ * (safe-declined), never partially forwarded. An answer to an unknown id (no matching question) is
+ * ignored.
  *
- * ⚠️ **The `string[]` half was unreachable until 139, and the gap was on the QUESTION side.** This
- * union has allowed several answers since 033, and nothing in the product could ever produce one:
- * the neutral question carried no `multiSelect` (see {@link userInputQuestionSchema}), so every card
- * rendered single-select and every answer was a string. That is why 139 is a question-shape change
- * rather than an answer-shape one, and why a single-select answer is still exactly the string it
- * always was — no existing caller had to move.
+ * ⚠️ **The `string[]` half is reached through the QUESTION side**: a card offers several answers
+ * only for a question whose `multiSelect` is `true` (see {@link userInputQuestionSchema}), and a
+ * single-select answer is a plain string.
  *
  * ⛔ **Completeness is not usefulness, and {@link answerToForward} is where both are decided.** A
  * key being present says only that the id was answered; it does not say the value can be told to a
  * provider. Nothing chosen (`''`, `[]`, blanks) and several chosen for a question that declared ONE
- * are both failed closed, because forwarding either would state a human decision nobody made —
- * 064's rule, applied to the value instead of to the question.
+ * are both failed closed, because forwarding either would state a human decision nobody made — the
+ * rule that refuses a question with nothing to ask, applied to the value instead of to the
+ * question.
  *
- * ⚠️ **139 wrote that paragraph and only one adapter kept it** (142 §2). Claude validated; Codex
- * checked completeness alone and forwarded `[]`, a blank, and two selections for a one-answer
- * question straight to the provider. A promise made in this file and kept in one adapter is a
- * promise the other silently breaks, which is why the rule now lives HERE as code rather than here
- * as prose — see {@link answerToForward}.
+ * ⚠️ **One rule, as code, for both adapters** — see {@link answerToForward}. A promise made in prose
+ * here and kept in one adapter would be a promise the other silently breaks.
  */
 const answerValueSchema = z.union([z.string(), z.array(z.string())])
 
 /**
- * The answers, keyed by ids the PROVIDER chose — parsed so that no key can be a special one (146).
+ * The answers, keyed by ids the PROVIDER chose — parsed so that no key can be a special one.
  *
- * ⛔ **`z.record` was the wrong tool and it took a measurement to see it.** A Codex question id and
- * a Claude question text are unrestricted strings on both wires: the pinned `0.146.0`
- * `request_user_input_spec.rs` validates options but not id syntax, uniqueness or reserved names,
- * and the SDK's `AskUserQuestionInput` declares `question: string` with no condition either. So
- * `__proto__` is a legal id, and this is what each shape does with one — measured on the versions
- * this repo pins, not reasoned about:
+ * ⛔ **Not `z.record`.** A Codex question id and a Claude question text are unrestricted strings on
+ * both wires: the pinned `0.146.0` `request_user_input_spec.rs` validates options but not id
+ * syntax, uniqueness or reserved names, and the SDK's `AskUserQuestionInput` declares
+ * `question: string` with no condition either. So `__proto__` is a legal id, and this is what each
+ * shape does with one — measured on the versions this repo pins, not reasoned about:
  *
  *  - `plain['__proto__'] = 'alpha'` sets the object's PROTOTYPE. `Object.getOwnPropertyNames` is
  *    `[]` and `JSON.stringify` is `{}`. The answer is gone, silently.
@@ -841,7 +788,7 @@ export const userInputResponseSchema = z.discriminatedUnion('kind', [
 export type UserInputResponse = z.infer<typeof userInputResponseSchema>
 
 /**
- * What an answer becomes on the wire — or why it cannot go at all (142 §1/§2/§3).
+ * What an answer becomes on the wire — or why it cannot go at all.
  *
  * `forwardable` carries the CANONICAL value of every question, keyed by neutral question id: the
  * chosen labels with nothing-at-all members dropped, in the order the user sent them, each one
@@ -852,7 +799,7 @@ export type AnswerToForward =
       readonly forwardable: true
       readonly values: ReadonlyMap<string, readonly string[]>
       /**
-       * The answers that were TYPED rather than picked — the `Other` half, by question id (143).
+       * The answers that were TYPED rather than picked — the `Other` half, by question id.
        *
        * ⚠️ **Neither provider distinguishes these on the wire, and that is a measured fact rather
        * than an omission here.** Codex's `ToolRequestUserInputAnswer` is `{answers: string[]}` with
@@ -868,77 +815,66 @@ export type AnswerToForward =
        */
       readonly typed: ReadonlyMap<string, readonly string[]>
     }
-  /** Why not — an adapter diagnostic for the log, naming the question ids. Never UI copy (085). */
+  /** Why not — an adapter diagnostic for the log, naming the question ids. Never UI copy. */
   | { readonly forwardable: false; readonly why: string }
 
 /**
- * Whether a value IS one of the labels this question offers — the membership rule, once (146).
+ * Whether a value IS one of the labels this question offers — the membership rule, once.
  *
- * ⛔ **It used to be two rules, and 145 MEDIUM 2 measured the gap between them.** The card asked
- * `option.label === value` while this file asked `option.label.trim() === member.trim()`, so a
- * label padded with NBSP and typed plainly into the `Other` field was free-form on screen and a
- * chosen label on the wire. Exact equality on both sides is the whole fix, and it is only available
- * because the card stopped trimming what it sends.
+ * ⛔ **The card and this file must agree exactly.** If the card asked `option.label === value` while
+ * this file trimmed, a label padded with NBSP and typed plainly into the `Other` field would be
+ * free-form on screen and a chosen label on the wire. Exact equality on both sides is the whole
+ * rule, and the card does not trim what it sends.
  *
  * ⚠️ **The card cannot import this, and that is a deliberate boundary rather than an oversight.**
  * `shared/runtime-ipc.ts` says it: the renderer takes TYPES from the runtime and no values, so that
  * the provider adapters never reach the renderer bundle. So the rule is one line on each side and
  * pinned by a test that drives the same NBSP fixture through both — the agreement is asserted
- * rather than assumed, which is the same route 146 took for replay.
+ * rather than assumed.
  */
 export function isOfferedLabel(question: UserInputQuestion, value: string): boolean {
   return question.options.some((option) => option.label === value)
 }
 
 /**
- * Can this answer be told to a provider as a human's choice, and as WHAT (142)?
+ * Can this answer be told to a provider as a human's choice, and as WHAT?
  *
- * ## Three defects, one function
+ * ## Why one function, at the moment of answering
  *
- * **§1 — the ledger said `Answered` when the adapter said deny.** 139 put this check inside Claude's
- * `canUseTool` continuation, which runs *after* `respondUserInput` has already taken the broker slot
- * and returned. `RuntimeHost` could not observe the later outcome, so it recorded `answered` for an
- * answer the adapter had refused to state — *"the transcript states a human answer was accepted when
- * the adapter explicitly refused to tell it to the provider"* (141 HIGH 1). Both adapters now call
- * this at the **moment the answer is given** and refuse it there (`AnswerRefused('not-usable')`), so
- * the card stays open and answerable and nothing false is written. 039's rule is the reason:
- * `accepted` is a claim, and a claim needs a source — this is the source.
+ * **The ledger must not say `Answered` when the adapter says deny.** Both adapters call this at the
+ * **moment the answer is given** and refuse it there (`AnswerRefused('not-usable')`), so the card
+ * stays open and answerable and nothing false is written: `accepted` is a claim, and a claim needs
+ * a source — this is the source. A check run after `respondUserInput` returned is one `RuntimeHost`
+ * cannot observe.
  *
- * **§2 — Codex enforced none of it.** `userInputPayloadFor` checked only that every id was PRESENT,
- * so `[]`, a blank, two selections for a question `codexQuestions` publishes as `multiSelect:false`,
- * and a substantively partial answer all reached the provider (141 HIGH 2). One implementation, both
- * adapters — a rule kept in one place cannot be kept by one provider.
+ * **One implementation, both adapters** — a rule kept in one place cannot be kept by one provider
+ * only.
  *
- * **§3 — the value validated was not the value forwarded.** Claude's guard filtered blanks *to
- * count* and then joined the ORIGINAL array, so `["the root", "   "]` passed and became
- * `"the root,    "` (141 MEDIUM 2). Returning the canonical values instead of a boolean is what
- * makes that class of defect unrepresentable: an adapter cannot forward something this function did
- * not approve, because approval and value are the same call.
+ * **The value validated is the value forwarded.** Returning the canonical values instead of a
+ * boolean makes it impossible for an adapter to forward something this function did not approve,
+ * because approval and value are the same call. A guard that filtered blanks *to count* and then
+ * joined the original array would pass `["the root", "   "]` as `"the root,    "`.
  *
  * ## The rules
  *
  *  - **Every question answered.** An id that is absent fails closed; a partial answer that silently
- *    drops questions 2..n is never forwarded (033).
- *  - **Something chosen.** `''`, `[]`, and arrays of blanks all say nothing. 064 refused a question
- *    with nothing to ask because the model's own question came back successful and empty; an
- *    answered question with no answer in it is the same event one layer down.
+ *    drops questions 2..n is never forwarded.
+ *  - **Something chosen.** `''`, `[]`, and arrays of blanks all say nothing. A question with
+ *    nothing to ask is refused because it comes back successful and empty; an answered question
+ *    with no answer in it is the same event one layer down.
  *  - **Not several, for a question that takes one.** `multiSelect !== true` means one — see
  *    `claudeAnswerText` for what joining two would build on the wire.
- *  - **A value that is not on the list only where the list says it may be** (143). A question with
+ *  - **A value that is not on the list only where the list says it may be.** A question with
  *    options takes its own labels; anything else is an `Other` answer, and
  *    {@link UserInputQuestion.allowOther} is the only thing that permits one. A question with NO
  *    options is free-form by definition and takes whatever was typed.
  *
- * ⚠️ **Membership is EXACT, and 146 is where the two halves of the old workaround came out
- * together.** 143 matched on the trimmed value and forwarded the option's own label, because
- * `UserInputCard.answer()` trimmed everything it sent and a label with real leading space would
- * otherwise have been refused as an `Other` answer to a question that takes none. 145 measured what
- * that bought: an offered label padded with NBSP, typed plainly into the `Other` field, was shown
- * to the user as free-form and arrived at the provider as the listed label, with Claude's freeform
- * signal omitted — *"the user saw one category of answer while the provider receives another"*, and
- * 139's own defect one layer along. The card no longer trims (its own contract said typed text is
- * never trimmed, and it was trimming it), so the tidying that needed forgiving is gone and
- * forgiving it is gone with it. **One rule: a value is a label when it IS that label.**
+ * ⚠️ **Membership is EXACT.** The card does not trim what it sends (its own contract: typed text is
+ * never trimmed), so there is nothing to forgive. Matching on a trimmed value would let an offered
+ * label padded with NBSP, typed plainly into the `Other` field, be shown to the user as free-form
+ * and arrive at the provider as the listed label, with Claude's freeform signal omitted: the user
+ * would see one category of answer while the provider receives another. **One rule: a value is a
+ * label when it IS that label.**
  *
  * ⚑ **A typed value is never trimmed** — it is the user's own words, and it is reported separately
  * in `typed` so an adapter can carry it where the provider has somewhere to put it. Blank members
@@ -946,12 +882,11 @@ export function isOfferedLabel(question: UserInputQuestion, value: string): bool
  * nothing", not a rewrite of what was said.
  *
  * ⚑ **An answer to an unknown id is ignored, not refused** — the loop is over the QUESTIONS. That
- * has been the contract since 033 and it is what lets a card send a draft key for a question the
- * provider withdrew.
+ * is what lets a card send a draft key for a question the provider withdrew.
  *
- * ⛔ **`Object.hasOwn`, never `in`** (146, from 145 HIGH 2). A provider-chosen id of `constructor`
- * made `'constructor' in answers` true on any ordinary object, so an unanswered question counted as
- * answered and the inherited FUNCTION reached `.trim()` — a throw, from a legal question id.
+ * ⛔ **`Object.hasOwn`, never `in`.** A provider-chosen id of `constructor` makes
+ * `'constructor' in answers` true on any ordinary object, so an unanswered question would count
+ * as answered and the inherited FUNCTION would reach `.trim()` — a throw, from a legal question id.
  */
 export function answerToForward(
   questions: readonly UserInputQuestion[],
