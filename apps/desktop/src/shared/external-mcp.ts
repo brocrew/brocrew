@@ -1,24 +1,22 @@
 import { foldProfileName, isPathSegment, PATH_SEGMENT_RULE } from './profile-name'
 
 /**
- * 🔴 **One external MCP server a person registered, and who may reach it** (516, HO-040 §4.2,
- * `HO-042` §6, built from `507` §2).
+ * 🔴 **One external MCP server a person registered, and who may reach it** (HO-040 §4.2, `HO-042`
+ * §6).
  *
- * ## ⛔ Register once globally — and since 524 the SERVER says who it is for
+ * ## ⛔ Register once globally — and the SERVER says who it is for
  *
- * 🔴 **`HO-048` §1 WITHDREW the default this module was built on, and the PO named their own error.**
- * HO-040 §4.2 read *"Register the server once, globally. Grant it per identity … this is the part
- * that makes focused identities genuinely specialised rather than differently named"*, and `516`
- * built exactly that. ⛔ **The PO's diagnosis:** *"I justified per-identity grants with* this is the
- * part that makes focused identities genuinely specialised*, which is an argument about one agent
- * that does not exist yet, applied to every agent that does."* ⚠️ **A Kibana server under
- * per-identity-by-default is three manual acts times every identity, forever.**
+ * 🔴 **Per-identity grants are not the default** (`HO-048` §1). ⛔ **The PO's ruling:** *"I justified
+ * per-identity grants with* this is the part that makes focused identities genuinely specialised*,
+ * which is an argument about one agent that does not exist yet, applied to every agent that does."*
+ * ⚠️ **A Kibana server under per-identity-by-default is three manual acts times every identity,
+ * forever.**
  *
- * ⚑ **So *is this server everyone's?* is now a property of the SERVER** — {@link
- * ExternalMcpServerReach}, one column, defaulting to `'everyone'` — **and the grant table is the
- * mechanism for the exception.** ⛔ *"Do not elaborate it"* (`HO-048` §1.1): a grant still either has
- * a row or it does not, with no nullable boolean and no role-derived default (standing rule 10), and
- * nobody has yet needed a restricted server.
+ * ⚑ **So *is this server everyone's?* is a property of the SERVER** —
+ * {@link ExternalMcpServerReach}, one column, defaulting to `'everyone'` — **and the grant table is
+ * the mechanism for the exception.** ⛔ *"Do not elaborate it"* (`HO-048` §1.1): a grant still
+ * either has a row or it does not, with no nullable boolean and no role-derived default (standing
+ * rule 10), and nobody has yet needed a restricted server.
  *
  * ## ⚠️ What this ruling does NOT change, because the next reader will assume otherwise
  *
@@ -30,32 +28,31 @@ import { foldProfileName, isPathSegment, PATH_SEGMENT_RULE } from './profile-nam
  *
  * ## ⛔ The URL is IMMUTABLE, and that is a constraint rather than a preference
  *
- * `HO-042` §6, quoting `507` §2.1: ⛔ *"a mutable URL would let one global row silently retarget
- * every identity that already trusted it."* ⚑ **So changing an endpoint is remove-and-add**, which
- * deletes every grant by cascade and makes a person grant the new target deliberately. ⚠️ This
- * module therefore offers no edit and the wire carries no save verb — the absence is the rule.
+ * `HO-042` §6: ⛔ *"a mutable URL would let one global row silently retarget every identity that
+ * already trusted it."* ⚑ **So changing an endpoint is remove-and-add**, which deletes every grant
+ * by cascade and makes a person grant the new target deliberately. ⚠️ This module therefore offers
+ * no edit and the wire carries no save verb — the absence is the rule.
  *
  * ## ⚠️ What this module is NOT
  *
  * ⛔ **It holds no credential of any kind and there is no shape here for one** — stage 1 is
- * unauthenticated loopback only (brief §4, `507` §8). ⛔ **It holds no status, no tool list and no
- * last-seen time**: `507` §2.1 — *"A registry row says what a person configured; it does not claim
- * that the endpoint is presently alive."* What actually connected is the child's own inventory,
- * which `392` reads and `SessionTools.vue` draws.
+ * unauthenticated loopback only (brief §4). ⛔ **It holds no status, no tool list and no last-seen
+ * time**: *"A registry row says what a person configured; it does not claim that the endpoint is
+ * presently alive."* What actually connected is the child's own inventory, which `SessionTools.vue`
+ * draws.
  *
  * ⚑ **A `src/shared` module holding no zod and no main-only import**, which is the rule
  * `capabilities.ts` is written under: the renderer may name a registry row without pulling a
  * validator it never runs or a provider adapter it must never bundle.
  */
 /**
- * 🔴 **Who a registered server is for — one property of the SERVER, with two values** (524,
- * `HO-048` §1).
+ * 🔴 **Who a registered server is for — one property of the SERVER, with two values** (`HO-048` §1).
  *
  * ⛔ **This is NOT `ExternalMcpReach` in `@brobot2/runtime`**, and the two are duals rather than
  * copies: that one is *the servers this launch may reach*, carried to an adapter; this one is *how
  * far one server reaches*, stored on its row. ⚠️ **Nor is it an availability**: the registry holds
- * no status, no tool list and no last-seen time (`507` §2.1), so a word that could be read as *is it
- * up* would be a claim this table has refused to make since `0032`.
+ * no status, no tool list and no last-seen time, so a word that could be read as *is it up* would
+ * be a claim this table refuses to make.
  *
  *  - `'everyone'` — ⚑ **the default, and the whole of `HO-048` §1.** *"A registration form that
  *    starts restricted and asks a person to open it up would reproduce today's cost with one extra
@@ -67,7 +64,7 @@ import { foldProfileName, isPathSegment, PATH_SEGMENT_RULE } from './profile-nam
 export type ExternalMcpServerReach = 'everyone' | 'restricted'
 
 /**
- * ⛔ **The vocabulary, closed in the READER because the column carries no CHECK** (524).
+ * ⛔ **The vocabulary, closed in the READER because the column carries no CHECK.**
  *
  * ⚠️ **SQLite has no `ADD CONSTRAINT`**, so a CHECK on `external_mcp_server` — a table
  * `external_mcp_server_grant` already points at — would have forced drizzle's 12-step rebuild with a
@@ -76,14 +73,14 @@ export type ExternalMcpServerReach = 'everyone' | 'restricted'
  *
  * 🔴 **Anything that is not literally `'everyone'` is `'restricted'`** — a typo, a hand-edited row,
  * a word a later build writes that this one predates, a value arriving as `unknown` from anywhere.
- * ⚠️ **A NULL is NOT among them and the column is why**: `0033` is `NOT NULL DEFAULT 'everyone'`, and
- * `a-server-the-workspace-has.test.ts` §4 drives an `UPDATE … SET reach = NULL` to prove the database
- * refuses one rather than claiming it here. ⚑ **The fold answers narrow for it anyway**, because the
- * argument is `unknown` and a reader that trusted one constraint to cover a second question is how
- * `169` §1's two spellings begin. ⛔ **Narrowest and never the default**, which is the rule
- * `a-check-constraint-on-an-existing-sqlite-table-rebuilds-it` states for exactly this trade: *"an
- * unrecognised value must fold to the NARROWEST meaning, never to the default, or a typo becomes a
- * widening."*
+ * ⚠️ **A NULL is NOT among them and the column is why**: `0033` is `NOT NULL DEFAULT 'everyone'`,
+ * and `a-server-the-workspace-has.test.ts` §4 drives an `UPDATE … SET reach = NULL` to prove the
+ * database refuses one rather than claiming it here. ⚑ **The fold answers narrow for it anyway**,
+ * because the argument is `unknown` and a reader that trusted one constraint to cover a second
+ * question would hold two spellings of one rule. ⛔ **Narrowest and never the default**, which is
+ * the rule `a-check-constraint-on-an-existing-sqlite-table-rebuilds-it` states for exactly this
+ * trade: *"an unrecognised value must fold to the NARROWEST meaning, never to the default, or a
+ * typo becomes a widening."*
  *
  * ⚠️ **The DEFAULT and this FOLD point in opposite directions, deliberately.** They answer different
  * questions: *what does a person who said nothing get* is the widest and is the ruling; *what does a
@@ -103,13 +100,12 @@ export interface ExternalMcpServerRow {
   /** When a person added it. Audit, and the order the list is drawn in. */
   readonly registeredAt: number
   /**
-   * 🔴 **Who it is for** (524, `HO-048` §1) — see {@link ExternalMcpServerReach}.
+   * 🔴 **Who it is for** (`HO-048` §1) — see {@link ExternalMcpServerReach}.
    *
    * ⛔ **Always folded on the way out of the store**, so no reader of this row has to decide what an
    * unreadable column means. ⚠️ **Fixed at registration, like the URL**: there is no save verb on
-   * this wire at all (`516` shipped none, deliberately), and changing this is remove-and-add — which
-   * is the same act the immutable URL already makes a person perform, and it cascades the grants
-   * away in the same breath.
+   * this wire at all, and changing this is remove-and-add — which is the same act the immutable URL
+   * already makes a person perform, and it cascades the grants away in the same breath.
    */
   readonly reach: ExternalMcpServerReach
 }
@@ -141,8 +137,7 @@ export function externalMcpGrantRowId(profileSlug: string, serverName: string): 
 export const MAX_EXTERNAL_MCP_GRANTS = 32
 
 /**
- * 🔴 **The two characters a server name may not contain, and the measurement behind them** (`507`
- * F4).
+ * 🔴 **The two characters a server name may not contain, and the measurement behind them.**
  *
  * ⛔ **`tool-inventory.ts`'s `splitQualified` splits at the FIRST `__`**, so a server called
  * `work__browser` is read as server `work` with a tool called `browser__…` — a row mis-grouped in
@@ -159,13 +154,13 @@ export const EXTERNAL_MCP_FORBIDDEN_IN_A_NAME = '__'
 export const EXTERNAL_MCP_NAME_RULE = `${PATH_SEGMENT_RULE}, and never two underscores together`
 
 /**
- * 🔴 **Why a name is refused, as the sentence a person reads — or null when it is fine** (516).
+ * 🔴 **Why a name is refused, as the sentence a person reads — or null when it is fine.**
  *
  * ⛔ **The reserved name arrives as an ARGUMENT and is never spelled here.** `AGENT_TOOL_SERVER`
- * owns the word `brobot` (`466`) and it lives in `main/runtime/agent-tools.ts`, which this module
- * may not import; a copy would be a second authority on the one name that must never be taken.
- * ⚠️ The door passes it, and `an-external-server-and-the-names-it-may-not-take.test.ts` drives the
- * real constant through this function rather than a literal.
+ * owns the word `brobot` and it lives in `main/runtime/agent-tools.ts`, which this module may not
+ * import; a copy would be a second authority on the one name that must never be taken. ⚠️ The door
+ * passes it, and `an-external-server-and-the-names-it-may-not-take.test.ts` drives the real
+ * constant through this function rather than a literal.
  *
  * ⚑ **It folds first and judges the FOLD**, because the fold is what the column holds and what the
  * `external_mcp_server_name_folded_ck` CHECK asserts — so a name this answers `null` for is a name
@@ -193,7 +188,7 @@ export function externalMcpNameRefusal(said: string, reservedServer: string): st
 }
 
 /**
- * ⛔ **The hosts a registered URL may name** — loopback, and nothing else (brief §4, `507` §8).
+ * ⛔ **The hosts a registered URL may name** — loopback, and nothing else (brief §4).
  *
  * ⚠️ **`127.` covers the whole `127.0.0.0/8` block** rather than the one address people type, because
  * every one of them is the same machine and refusing `127.0.0.2` would be a rule about a habit.
@@ -208,14 +203,14 @@ function isLoopbackHost(hostname: string): boolean {
 }
 
 /**
- * 🔴 **Why a URL is refused, as the sentence a person reads — or null when it is fine** (516).
+ * 🔴 **Why a URL is refused, as the sentence a person reads — or null when it is fine.**
  *
  * Accept only loopback HTTP(S) URLs without user-info. This registry has no credential shape and is intended for servers on the person's machine, not unauthenticated endpoints on someone else's network.
  *
- * ⚠️ **It bounds the URL THIS APP STORES and not every hop the providers make** — `507` F5, stated
- * rather than implied: Claude opens its own connection to this address and may follow whatever that
- * server answers with. ⛔ **A no-redirect network sandbox is the app-owned proxy class the PO
- * declined in `HO-042` §2**, and this function does not claim to be one.
+ * ⚠️ **It bounds the URL THIS APP STORES and not every hop the providers make** — stated rather than
+ * implied: Claude opens its own connection to this address and may follow whatever that server
+ * answers with. ⛔ **A no-redirect network sandbox is the app-owned proxy class the PO declined in
+ * `HO-042` §2**, and this function does not claim to be one.
  */
 export function externalMcpUrlRefusal(said: string): string | null {
   const raw = said.trim()
@@ -245,13 +240,13 @@ export function externalMcpUrlRefusal(said: string): string | null {
 }
 
 /**
- * 🔴 **Which of a server's own tool names collide with ours** (516, HO-040 §4.3, `HO-042` §2).
+ * 🔴 **Which of a server's own tool names collide with ours** (HO-040 §4.3, `HO-042` §2).
  *
  * ⛔ **Compared BARE and not qualified, and that is the whole ruling.** Each provider qualifies a
- * server's tools — `mcp__<server>__<tool>` on Claude, `<server>__<tool>` on Codex — so byte equality
- * is already impossible. ⚠️ **Qualification does not solve `408`'s SEMANTIC collision**: an external
- * `give_work` teaches the model a second verb whose meaning and governance are not this app's, and
- * *"a model cannot be expected to tell them apart"* (HO-040 §4.3).
+ * server's tools — `mcp__<server>__<tool>` on Claude, `<server>__<tool>` on Codex — so byte
+ * equality is already impossible. ⚠️ **Qualification does not solve the SEMANTIC collision**: an
+ * external `give_work` teaches the model a second verb whose meaning and governance are not this
+ * app's, and *"a model cannot be expected to tell them apart"* (HO-040 §4.3).
  *
  * ⚑ **Folded on both sides**, so `Give_Work` is the same collision as `give_work`.
  */
@@ -268,7 +263,7 @@ export function collidingToolNames(
  *
  * Refuse collisions at registration without a namespacing proxy. The current boundary assumes a local server at the person's configured URL and cannot prevent later inventory changes. Revisit proxy enforcement before admitting remote servers, credentials or marketplace servers.
  *
- * ⚠️ **It names the conflicts**, because a refusal a person cannot act on is a wall (`425`).
+ * ⚠️ **It names the conflicts**, because a refusal a person cannot act on is a wall.
  */
 export function externalMcpCollisionRefusal(name: string, colliding: readonly string[]): string {
   return (
@@ -284,14 +279,14 @@ export function externalMcpCollisionRefusal(name: string, colliding: readonly st
  * grants beside it, said once for the block that is not one of them.
  *
  * ⛔ **A running conversation does not move.** Claude fixes a query's `Options` for its life, so the
- * servers a session holds are the ones it was started or reopened with (`307`).
+ * servers a session holds are the ones it was started or reopened with.
  */
 export const EXTERNAL_MCP_TAKES_EFFECT =
   'A change here reaches the next conversation this identity starts, or the next time one is ' +
   'reopened. Nothing running moves.'
 
 /**
- * ⚑ **What removing a registry row does to every identity that was granted it** (`507` §5).
+ * ⚑ **What removing a registry row does to every identity that was granted it.**
  *
  * ⛔ **Said before the press, not after it**: the grants go with the row by cascade, and a person
  * who removes a server to re-add it at a new address is the case the immutable URL creates.
@@ -301,7 +296,7 @@ export const EXTERNAL_MCP_REMOVAL_MEANS =
   'edited — add the new one and grant it again.'
 
 /**
- * ⚑ **The two words a person chooses between when they register a server** (524, `HO-048` §1).
+ * ⚑ **The two words a person chooses between when they register a server** (`HO-048` §1).
  *
  * ⛔ **The first is the DEFAULT and is pre-selected**, which is the ruling rather than a layout
  * decision: *"a registration form that starts restricted and asks a person to open it up would
@@ -319,7 +314,7 @@ export const EXTERNAL_MCP_RESTRICTED = 'Only the identities I grant it to'
  *
  * Explain that shared servers are reachable by every app agent, including agents the person never opens, and automatic mode may use their tools without asking. Put that scope on the registration form before the press.
  *
- * ## ⚑ `367`'s shape, which is what makes it a disclosure rather than a warning
+ * ## ⚑ A disclosure rather than a warning
  *
  * Show the explanation before registration without blocking it or requiring an acknowledgment, matching the properties of `YOLO_MEANS` in `renderer/src/lib/approval-mode.ts`. Describe reach plainly without judging the choice.
  *
@@ -329,20 +324,13 @@ export const EXTERNAL_MCP_RESTRICTED = 'Only the identities I grant it to'
  * fixed.** `RuntimeHost.externalMcpContext` hands a launch nothing at all unless
  * `capabilitiesFor(provider).externalMcpServers` is `available`.
  *
- * ⚠️ **This paragraph used to rest on *one of the two providers is `unwired`*, and `605` moved
- * that entry**, so the argument is restated on the ground that outlives it: ⛔ **a registration is
- * a permission and not a delivery.** The day a third provider arrives — or an existing one moves
- * the other way — *reaches* would be false again, with nothing red.
+ * ⛔ **A registration is a permission and not a delivery.** The day a third provider arrives — or an
+ * existing one moves the other way — *reaches* would be false, with nothing red.
  *
  * ⚑ **What this column decides is PERMISSION, which is true on every provider**; what a given
  * conversation is actually handed is a delivery fact the capability sheet already states in that
  * provider's own words. ⚠️ **It is deliberately not restated here** — a second copy of another
- * file's sentence is a second authority on it, which is the drift `169` §1 names — and `524`'s
- * response files the alternative as a finding rather than leaving it implied.
- *
- * ⛔ **That clause cited `HO-042` §3 until `605`, and the ruling is WITHDRAWN** (`HO-090` §1).
- * ⚑ The reason to keep one copy is unchanged and never depended on which sentence was being
- * copied.
+ * file's sentence is a second authority on it, free to drift.
  *
  * ⚠️ **The yolo clause is true on both arms**, including vacuously on the one that is handed no
  * servers: it says what happens when tools ARE called without asking, and never that they will be.
@@ -353,7 +341,7 @@ export const EXTERNAL_MCP_EVERYONE_MEANS =
   'before it does.'
 
 /**
- * ⚑ **What the exception is FOR, said beside it** (524, `HO-048` §1).
+ * ⚑ **What the exception is FOR, said beside it** (`HO-048` §1).
  *
  * ⛔ **It names resources rather than agents**, because that is the PO's test for when to reach for
  * it: *"a person ticks it when the resource is genuinely exclusive — a Chrome profile, a device —
@@ -366,7 +354,7 @@ export const EXTERNAL_MCP_RESTRICTED_MEANS =
   'Everything else is everyone’s.'
 
 /**
- * ⚑ **What an identity's own sheet says about a server it did not have to be granted** (524).
+ * ⚑ **What an identity's own sheet says about a server it did not have to be granted.**
  *
  * ⛔ **Drawn instead of a tick-box and never as a TICKED one.** A checked box a person cannot uncheck
  * is a control that lies about what it is; this row is not a grant and there is nothing on it to
@@ -377,7 +365,7 @@ export const EXTERNAL_MCP_EVERYONES = 'Available to every identity'
 
 /**
  * 🔴 **Where the answer lives, for a person looking at this sheet for the box that is not there** —
- * `106`'s rule, which is that a control a person cannot move must say what would move it.
+ * a control a person cannot move must say what would move it.
  *
  * ⛔ **It names the act rather than a menu path this file cannot verify**: a server's reach is fixed
  * at registration for the same reason its URL is (there is no save verb on this wire at all), so the
@@ -388,40 +376,34 @@ export const EXTERNAL_MCP_REACH_IS_FIXED =
   'remove it and add it again to change it.'
 
 /**
- * 🔴 **What a person reads where nothing is registered — one sentence, three surfaces** (566).
+ * 🔴 **What a person reads where nothing is registered — one sentence, three surfaces.**
  *
- * ## ⛔ It exists because two of those three surfaces disagreed, and one of them was false
+ * ## ⛔ One sentence, so the surfaces cannot disagree
  *
- * ⚠️ **`516` wrote this sentence twice**, once in the rail and once in the registration sheet, and
- * both copies said *it grants nobody until you tick it on an agent's own sheet*. ⛔ **`524` moved the
- * default to `'everyone'` and corrected ONE of them** — `SideRail.vue`'s — **leaving
- * `ExternalMcpRegistry.vue`'s telling a person the exact opposite of what the pre-selected radio
- * eight lines below it was about to do.** ⚑ Found by `566` grepping `grants nobody`; the sweep that
- * missed it is `169` §1's rule arriving as a measurement rather than as an argument.
+ * ⚠️ **Two copies of this sentence can drift apart**, and a stale one tells a person the exact
+ * opposite of what the pre-selected radio beside it is about to do. ⚑ So every surface draws this
+ * one.
  *
- * ## ⚑ The rail's wording, minus its pointer, and that is what makes it sayable anywhere
+ * ## ⚑ No pointer, and that is what makes it sayable anywhere
  *
- * ⛔ **`EXT-008` §2 quoted the shipped rail's sentence as documentation living in navigation, and
- * `566` §4.3 ruled it TRUE and told this dispatch to take it or better it.** ⚠️ Bettering it was
- * removing *Add one above* — a claim about where a control sits, which was true in the rail, false
- * in the sheet where the form is BELOW, and is the reason one sentence could not already be two
- * surfaces' copy. ⚑ **What is left is the durable half: the ruling.** Each surface draws its own
- * entrance beside it.
+ * ⚠️ **A clause such as *Add one above* is a claim about where a control sits** — true on one
+ * surface and false on another where the form is BELOW. ⚑ **What is left is the durable half: the
+ * ruling.** Each surface draws its own entrance beside it.
  */
 export const EXTERNAL_MCP_NONE_YET =
   'No external MCP servers yet. Every agent can use one unless you register it as restricted.'
 
 /**
- * 🔴 **The two things this register REFUSES to claim, said once on the page that draws it** (566,
- * v2.10 §4).
+ * 🔴 **The two things this register REFUSES to claim, said once on the page that draws it** (v2.10
+ * §4).
  *
  * ## ⛔ Both halves are this module's own docblock, promoted to something a person reads
  *
  * ⚠️ **Neither clause is new and neither is the mock's.** *"A registry row says what a person
- * configured; it does not claim that the endpoint is presently alive"* is `507` §2.1, quoted at the
- * head of this file; *"what actually connected is the child's own inventory"* is the sentence beside
- * it. ⛔ **v2.10 asked for exactly these two refusals** — *"no tool standing badge, health claim,
- * tool execution control or injection toggle"* and *"registration is deliberately distinct from a
+ * configured; it does not claim that the endpoint is presently alive"* is quoted at the head of
+ * this file; *"what actually connected is the child's own inventory"* is the sentence beside it. ⛔
+ * **v2.10 asked for exactly these two refusals** — *"no tool standing badge, health claim, tool
+ * execution control or injection toggle"* and *"registration is deliberately distinct from a
  * conversation's reported tool inventory"* — ⚑ **and the product had already written both as
  * comments.** Rule 5: a safety sentence with no test is a comment, and a comment no person reads is
  * a refusal the surface does not make.
@@ -430,22 +412,21 @@ export const EXTERNAL_MCP_NONE_YET =
  *
  * ⛔ **v2.10's version ends *"Inspect that conversation's Tools tab"*, and this one does not.** A
  * pointer clause is a claim (`a-pointer-clause-is-a-claim`): the inventory this app actually has is
- * `SessionTools`, an overlay opened from inside one conversation, and a sentence on a workspace page
- * that names a tab would be describing navigation this dispatch did not build and cannot enforce.
- * ⚑ **Saying WHERE the answer lives — in the conversation — is true and survives the day that
- * overlay is renamed.**
+ * `SessionTools`, an overlay opened from inside one conversation, and a sentence on a workspace
+ * page that names a tab would be describing navigation this app does not enforce. ⚑ **Saying WHERE
+ * the answer lives — in the conversation — is true and survives the day that overlay is renamed.**
  */
 export const EXTERNAL_MCP_REGISTER_IS_NOT_A_REPORT =
   'A registration says what you configured. It does not say the server is running, and it does not ' +
   'say which of its tools reached an agent — that is read from the conversation itself.'
 
 /**
- * ⚑ **What the register IS, on the page whose whole subject it is** (566).
+ * ⚑ **What the register IS, on the page whose whole subject it is.**
  *
  * ⛔ **It says *on this machine* because the door does** — {@link externalMcpUrlRefusal} admits
  * loopback and nothing else — ⚠️ **and it says *registered* rather than *available*, which is the
- * distinction `564` named as the one thing this projection must not blur:** *"registry presence is
- * not a live/usable-session claim."*
+ * one distinction this projection must not blur:** *"registry presence is not a live/usable-session
+ * claim."*
  */
 export const EXTERNAL_MCP_REGISTER_IS =
   'Every MCP server you have registered on this machine. Registering one is a choice you made, not ' +

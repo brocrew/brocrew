@@ -20,15 +20,15 @@ import { PERMANENCE_SAID, isRailPermanence } from '../../shared/refusals'
 import { nothingRecordsWho, whoDidItSays } from '../../shared/who-did-it'
 import { whereItWent } from '../../shared/questions'
 import { ASKED_TO_STOP } from '../../shared/how-work-stopped'
-// ⚑ **D-016 · a piece is its label beside its title** (`shared/piece-called`), in `shared/` so main
-// spells it as the window does — and the `tool-answered` line quotes tools' receipts, which name
-// pieces by the same label.
+// ⚑ **A piece is its label beside its title** (`shared/piece-called`), in `shared/` so main spells
+// it as the window does — and the `tool-answered` line quotes tools' receipts, which name pieces by
+// the same label.
 import { pieceLine } from '../../shared/piece-called'
 import { ledgersSkippedOf, skipTheLedger, type DigestRow } from '../db/session-store'
 import { AGENT_TOOL_SERVER } from './agent-tools'
 
 /**
- * 🔴 **The distiller** (438, HO-024 §5.1–5.4, HO-025 §2 criteria 16/18/19).
+ * 🔴 **The distiller** (HO-024 §5.1–5.4, HO-025 §2 criteria 16/18/19).
  *
  * ## ⛔ A pure fold, and that is what criterion 19 is
  *
@@ -57,27 +57,24 @@ import { AGENT_TOOL_SERVER } from './agent-tools'
  * prompt or an `apply_patch` argument is the work itself. ⚠️ And it is drawn as `claimed`, with
  * the agent named on the row, which is the whole of HO-024 §5.1.
  *
- * ⛔ **`question_asked.prompt` is never drawn either** — `437`'s row is read only to decide
- * whether a routing can say which work it is about. A type in the read vocabulary that produces
- * no line of its own is a decision, stated here so it cannot be mistaken for an omission.
+ * ⛔ **`question_asked.prompt` is never drawn either** — its row is read only to decide whether a
+ * routing can say which work it is about. A type in the read vocabulary that produces no line of
+ * its own is a decision, stated here so it cannot be mistaken for an omission.
  */
 
 /**
  * ⚑ **Fixed, so the surface's order is the vocabulary's and not the ledger's accidents** — and
- * DERIVED from {@link LINE_REGISTERS} since `466`, rather than a second list of the same words.
+ * DERIVED from {@link LINE_REGISTERS}, rather than a second list of the same words.
  *
- * ⛔ **`ObservedLineKind`, so `worker-reported` cannot be listed here** (465). It used to be the
- * whole vocabulary minus one member somebody had remembered to leave out, and the day anybody
- * pasted the twelfth in, an agent's own sentence would have been grouped and drawn as something
- * the engine watched.
+ * ⛔ **`ObservedLineKind`, so `worker-reported` cannot be listed here**: an agent's own sentence
+ * must never be grouped and drawn as something the engine watched.
  *
- * 🔴 **466 · and it was still a LITERAL, which is invisible when it goes short in the other
- * direction.** `sentence()` is exhaustive, so a kind added to {@link DIGEST_LINE_KINDS} and
- * forgotten there is a compile error — but a kind added and forgotten HERE compiled, folded, and
- * was never emitted by {@link distil}, with nothing red. ⚠️ That is
- * `a-loop-over-a-literal-variant-list-is-not-exhaustive`, and `466` added four kinds at once,
- * which is the dispatch that would have paid for it. ⚑ **465's own table is the derivation**: a
- * kind is drawn in order exactly when it declares it may be built as an observation.
+ * 🔴 **Not a LITERAL, which is invisible when it goes short.** `sentence()` is exhaustive, so a kind
+ * added to {@link DIGEST_LINE_KINDS} and forgotten there is a compile error — but a kind forgotten
+ * in a literal here would compile, fold, and never be emitted by {@link distil}, with nothing red
+ * (`a-loop-over-a-literal-variant-list-is-not-exhaustive`). ⚑ **The registers table is the
+ * derivation**: a kind is drawn in order exactly when it declares it may be built as an
+ * observation.
  */
 const OBSERVED_ORDER: readonly ObservedLineKind[] = DIGEST_LINE_KINDS.filter(
   (kind): kind is ObservedLineKind =>
@@ -91,7 +88,7 @@ function many(count: number, one: string, more: string): string {
 
 /**
  * ⛔ **`1 · this one; 2 · that one`** — a counted breakdown in one of the app's own closed
- * vocabularies (466).
+ * vocabularies.
  *
  * ⚑ **`turn-ended`'s shape, with a sentence where it has a word.** That line says *"3 completed,
  * 1 failed"* because `turn.state`'s members read as English; `RAIL_PERMANENCES` and
@@ -107,30 +104,30 @@ function eachWord(counts: Map<string, number>, say: (word: string) => string): s
 }
 
 /**
- * ⛔ **The clause that names actors, or nothing at all** (477) — {@link eachWord}'s breakdown with
- * the vocabulary's own sentences, and the empty string when this window saw none.
+ * ⛔ **The clause that names actors, or nothing at all** — {@link eachWord}'s breakdown with the
+ * vocabulary's own sentences, and the empty string when this window saw none.
  *
- * ⚠️ **Empty rather than *"nobody"***: a window whose every row predates provenance must compose
- * `465`'s sentence and nothing else, so the two clauses are independent and each one is silent
- * about a population it has no rows for.
+ * ⚠️ **Empty rather than *"nobody"***: a window whose every row predates provenance must compose the
+ * nobody-recorded sentence and nothing else, so the two clauses are independent and each one is
+ * silent about a population it has no rows for.
  */
 function whoClause(counts: Map<string, number>, lead: string): string {
   return counts.size === 0 ? '' : ` ${lead}: ${eachWord(counts, whoDidItSays)}.`
 }
 
 /**
- * ⛔ **`465`'s sentence, scoped to the rows it is still true of** (477, HO-029 §2.2).
+ * ⛔ **The nobody-recorded sentence, scoped to the rows it is true of** (HO-029 §2.2).
  *
  * ⚠️ **Counted off the silent rows and never off the group**, which is what makes a MIXED window
- * honest: two requests answered, one of them by a named person, must say the absence about ONE.
- * ⚑ A window with no silent rows says nothing here, and a window with nothing else composes
- * exactly the string `465` shipped.
+ * honest: two requests answered, one of them by a named person, must say the absence about ONE. ⚑ A
+ * window with no silent rows says nothing here, and a window with nothing else composes exactly
+ * that sentence.
  */
 function nobodyClause(count: number, verb: string): string {
-  // ⛔ **503 · the sentence itself moved to `shared/who-did-it.ts` and this composes it.** A
-  // request CARD now describes the same population, and two composers of one sentence are two
-  // chances to disagree about the fact this app has to be most careful with. ⚑ What stays here is
-  // the digest's own frame — the leading space, the full stop, and the silence at zero.
+  // ⛔ **The sentence itself lives in `shared/who-did-it.ts` and this composes it.** A request CARD
+  // describes the same population, and two composers of one sentence are two chances to disagree
+  // about the fact this app has to be most careful with. ⚑ What stays here is the digest's own
+  // frame — the leading space, the full stop, and the silence at zero.
   return count === 0 ? '' : ` ${nothingRecordsWho(verb, count)}.`
 }
 
@@ -141,7 +138,7 @@ interface Grouped {
   detail: string | null
 }
 
-/** ⚑ **D-016 · a piece as a line names it** — its label beside its title ({@link pieceLine}). */
+/** ⚑ **A piece as a line names it** — its label beside its title ({@link pieceLine}). */
 interface NamedPiece {
   readonly piece: string
   readonly label: string
@@ -158,14 +155,14 @@ interface Tally {
   /** A piece's id to its label and title, for pieces GIVEN inside this window. */
   readonly given: Map<string, NamedPiece>
   /**
-   * 🔴 **475 · the held message's name to the piece it carried**, for pieces given inside this
-   * window whose brief was HELD — `WorkGivenEvent.messageId`, which is absent when the brief went
-   * straight out and there was no message to hold.
+   * 🔴 **The held message's name to the piece it carried**, for pieces given inside this window
+   * whose brief was HELD — `WorkGivenEvent.messageId`, which is absent when the brief went straight
+   * out and there was no message to hold.
    *
    * ⛔ **`derivePieces` keys the same pair the same way and its rule is carried, not re-decided**:
-   * *"an unnamed ending pairs with nothing"* (`354`). A ledger written before messages had names
-   * holds `message_unqueued` rows with no `messageId`, and treating `undefined` as a match would
-   * join two different messages.
+   * *"an unnamed ending pairs with nothing"*. A ledger written before messages had names holds
+   * `message_unqueued` rows with no `messageId`, and treating `undefined` as a match would join two
+   * different messages.
    *
    * ⚠️ **A BARE key, and {@link key} holds the rule this field is the example of.**
    * `newQueuedMessageId` is `msg_${randomUUID()}`, minted at one call site in this process and
@@ -175,10 +172,9 @@ interface Tally {
    */
   readonly byMessage: Map<string, NamedPiece>
   /**
-   * 🔴 **475 · pieces this window can say something about the fate of** — a reply, a taking back,
-   * a brief that was never sent, or a restart that stalled it. ⛔ It is the set the
-   * `work-without-an-ending` gap subtracts, so a piece this digest DID speak for is not also counted
-   * as one it could not.
+   * 🔴 **Pieces this window can say something about the fate of** — a reply, a taking back, a brief
+   * that was never sent, or a restart that stalled it. ⛔ It is the set the `work-without-an-ending`
+   * gap subtracts, so a piece this digest DID speak for is not also counted as one it could not.
    *
    * ⚠️ **Not a claim that the work is closed.** A stalled piece is open and a not-sent one is very
    * much open; this records that a SENTENCE on this card is about it.
@@ -188,19 +184,18 @@ interface Tally {
    */
   readonly spokenFor: Set<string>
   /**
-   * 🔴 **D-016 · the questions each piece's owner asked about it, inside this window** — by piece,
-   * each as its `(conversation, request id)` {@link key}. ⚑ Taking the piece back or closing it ends
-   * them (the questions fold's `work_taken_back` and `work_closed` arms), so this digest's arms for
-   * the two read them into {@link ended}: no row of their own says so.
+   * 🔴 **The questions each piece's owner asked about it, inside this window** — by piece, each as
+   * its `(conversation, request id)` {@link key}. ⚑ Taking the piece back or closing it ends them
+   * (the questions fold's `work_taken_back` and `work_closed` arms), so this digest's arms for the
+   * two read them into {@link ended}: no row of their own says so.
    */
   readonly questionsAboutPiece: Map<string, string[]>
   /**
-   * 🔴 **Requests a `question_asked` row was written for** — `437`'s only such row — **by
-   * `(conversation, request id)`** (474).
+   * 🔴 **Requests a `question_asked` row was written for, by `(conversation, request id)`.**
    *
-   * ⛔ **Composite through {@link key}, which is also where the difference from {@link byMessage}
-   * is argued.** ⚠️ This set can hold a PROVIDER's request id, and one id this app did not mint is
-   * enough — `463` F2: *"provider request IDs are only session-local"*.
+   * ⛔ **Composite through {@link key}, which is also where the difference from {@link byMessage} is
+   * argued.** ⚠️ This set can hold a PROVIDER's request id, and one id this app did not mint is
+   * enough: *"provider request IDs are only session-local"*.
    */
   readonly questionsNamingWork: Set<string>
   /**
@@ -215,7 +210,7 @@ interface Tally {
    * leave it permanently unclosable — a gap in every window every time, which HO-025 §5.3 says
    * would mean the design is wrong rather than the ledger.
    *
-   * ⛔ **By `(conversation, request id)` since `474`** — see {@link key}.
+   * ⛔ **By `(conversation, request id)`** — see {@link key}.
    */
   readonly travelled: Set<string>
   /**
@@ -241,7 +236,7 @@ interface Tally {
   refusals: number
   replies: number
   /**
-   * 🔴 **How many refusals carried each permanence, in the order they were first seen** (466).
+   * 🔴 **How many refusals carried each permanence, in the order they were first seen.**
    *
    * ⛔ **Keyed by the raw word off the row and never by {@link RailPermanence}**, because a ledger
    * row is `JSON.parse`d and cast: a build reading a vocabulary that has moved must count the word
@@ -249,27 +244,23 @@ interface Tally {
    */
   readonly permanences: Map<string, number>
   /**
-   * 🔴 **How many requests only a person can settle came up for each reason** (466), first-seen
-   * order — `request_routed.because`, which the fold already reads to tell two populations apart
-   * and used to discard.
+   * 🔴 **How many requests only a person can settle came up for each reason**, first-seen order —
+   * `request_routed.because`, which the fold also reads to tell two populations apart.
    */
   readonly because: Map<string, number>
   /**
-   * 🔴 **A call this app's OWN tools answered, by `(conversation, call id)`** (466).
+   * 🔴 **A call this app's OWN tools answered, by `(conversation, call id)`.**
    *
    * ⛔ **Composite, through {@link key}, and that is not caution.** `tool_call.id` is the
-   * PROVIDER's, and `463` F2 measured a real collision from keying request facts on a bare one
-   * across a project: *"provider request IDs are only session-local"*. ⚠️ A `tool_result` matched
-   * to a `tool_call` of the same id in ANOTHER conversation would print one tool's name over
-   * another tool's answer, which is that defect with a sentence on it.
+   * PROVIDER's, and request facts keyed on a bare one collide across a project: *"provider request
+   * IDs are only session-local"*. ⚠️ A `tool_result` matched to a `tool_call` of the same id in
+   * ANOTHER conversation would print one tool's name over another tool's answer.
    *
-   * ⚑ **`466` keyed this field this way and refused to widen it; `474` widened it** — and
-   * {@link key} says why that follows from where an id is minted rather than from which dispatch
-   * arrived first.
+   * ⚑ {@link key} says why this follows from where an id is minted.
    */
   readonly ourCalls: Map<string, string>
   /**
-   * 🔴 **477 · how many answered requests named each actor**, first-seen order — the counter
+   * 🔴 **How many answered requests named each actor**, first-seen order — the counter
    * {@link Tally.permanences} is, over {@link WHO_DID_IT} instead of `RAIL_PERMANENCES`.
    *
    * ⛔ **Keyed by the raw word off the row and never by {@link WhoDidIt}**, for `permanences`'
@@ -279,14 +270,14 @@ interface Tally {
    */
   readonly answerers: Map<string, number>
   /**
-   * 🔴 **477 · how many answered requests named NOBODY** — the rows written before this app
-   * recorded an actor (HO-029 §2.2).
+   * 🔴 **How many answered requests named NOBODY** — the rows written before this app recorded an
+   * actor (HO-029 §2.2).
    *
    * ⛔ **A separate counter and not a member of {@link answerers}.** *We never wrote this down* and
    * *the caller was one this app has no word for* are different claims about the ledger, and
    * folding them into one count would report a discontinuity in this app's own history as a
-   * property of whoever answered. ⚑ It is what keeps `465`'s sentence exactly right for the
-   * population it was written for, for ever.
+   * property of whoever answered. ⚑ It is what keeps the nobody-recorded sentence exactly right for
+   * the population it describes, for ever.
    */
   answeredByNobodyRecorded: number
 }
@@ -314,35 +305,32 @@ function bump(tally: Tally, kind: ObservedLineKind, at: number, detail: string |
  * different children share one key and be max-merged into one reading, which is the one
  * arithmetic mistake this whole section exists to avoid.
  *
- * 🔴 **474 · and the same joiner now carries every REQUEST fact in this fold** (`463` F2). ⛔ A
- * provider's request id is minted per conversation — Codex's is a JSON-RPC `RequestId`, rendered
- * `number:1` for the first server request of every connection, and Claude's is an SDK `toolUseID`
- * *"unique per tool call and scoped to the turn that raised them"*. ⚠️ **So a bare id made two
- * conversations' first questions one request**: an answer in one closed the `open-is-not-waiting`
- * gap for the other, and a `question_asked` in one closed the `question-without-work` gap for the
- * other. ⛔ **`NUL` rather than `:` or `-`**, because a request id may contain either — `requestKey`
- * renders a Codex id as `number:1`, which already has a colon in it.
+ * 🔴 **And the same joiner carries every REQUEST fact in this fold.** ⛔ A provider's request id is
+ * minted per conversation — Codex's is a JSON-RPC `RequestId`, rendered `number:1` for the first
+ * server request of every connection, and Claude's is an SDK `toolUseID` *"unique per tool call and
+ * scoped to the turn that raised them"*. ⚠️ **So a bare id would make two conversations' first
+ * questions one request**: an answer in one would close the `open-is-not-waiting` gap for the
+ * other, and a `question_asked` in one would close the `question-without-work` gap for the other. ⛔
+ * **`NUL` rather than `:` or `-`**, because a request id may contain either — `requestKey` renders
+ * a Codex id as `number:1`, which already has a colon in it.
  *
  * ## 🔴 Which keys in this fold carry the conversation, and which do not — ONE account
  *
- * ⚑ **474 relay 1**, because `474` and `475` landed on neighbouring fields and each argued about
- * the OTHER's subject. ⛔ **Two self-contained halves of one rule is not a rule**, so the rule is
- * here, once, and each field says only which side of it it lands on.
+ * ⛔ **Two self-contained halves of one rule is not a rule**, so the rule is here, once, and each
+ * field says only which side of it it lands on.
  *
  * ⚑ **{@link distil} is the one read in this app that folds MANY conversations at once** — see
  * `SessionStore.DigestRow`, *"asks about every placed conversation and gets back rows from many of
- * them at once"* — so every correlation it makes has to answer for itself. ⛔ **What answers is
- * not the width of the read, and never the dispatch that wrote the field. It is where the id was
- * MINTED.**
+ * them at once"* — so every correlation it makes has to answer for itself. ⛔ **What answers is not
+ * the width of the read. It is where the id was MINTED.**
  *
  * > ⛔ **A collection keys `(conversation, id)` unless EVERY id it can hold was minted by this
  * > process.**
  *
  * ⚠️ **One-sided on purpose.** Pairing an id that is already unique costs a prefix and changes no
- * answer; leaving the pair off a session-local one merges two conversations in silence, which is
- * `463` F2 measured rather than feared. ⛔ **So a MIXED population pairs**: the request sets hold
- * provider ids AND the `req_<uuid>` ones this app mints for `437`'s own questions, and one id it
- * did not mint is enough.
+ * answer; leaving the pair off a session-local one merges two conversations in silence. ⛔ **So a
+ * MIXED population pairs**: the request sets hold provider ids AND the `req_<uuid>` ones this app
+ * mints for its own questions, and one id it did not mint is enough.
  *
  * **BARE** — {@link Tally.given}, {@link Tally.spokenFor} and {@link Tally.questionsAboutPiece}'s
  * keys (`newWorkId`, `work_<uuid>`) and
@@ -355,16 +343,15 @@ function bump(tally: Tally, kind: ObservedLineKind, at: number, detail: string |
  * and {@link Tally.routed}, {@link Tally.travelled}, {@link Tally.ended} and
  * {@link Tally.questionsNamingWork} (a request id).
  *
- * ⚠️ **A future field needs neither dispatch's history — it needs to know who mints its id**, and
- * `what-a-request-is-about-and-whose-it-is.test.ts` derives both rosters from this source, so a
- * field added on the wrong side of the rule goes red rather than silent.
+ * ⚠️ **A future field needs to know who mints its id**, and goes on the side of the rule that answer
+ * puts it.
  */
 function key(...parts: readonly string[]): string {
   return parts.join('\u0000')
 }
 
 /**
- * ⛔ **One more of a word, in the order the words were first seen** (466).
+ * ⛔ **One more of a word, in the order the words were first seen.**
  *
  * ⚠️ **First-seen order rather than the vocabulary's**, and it is a determinism decision rather
  * than a taste one: the read hands the fold rows in `created_at, session_id, ordinal` order, so
@@ -377,7 +364,7 @@ function countWord(counts: Map<string, number>, word: string): void {
 }
 
 /**
- * 🔴 **This app's own tool, unqualified — or `null` because the agent called something else** (466).
+ * 🔴 **This app's own tool, unqualified — or `null` because the agent called something else.**
  *
  * ## ⛔ Both spellings, because a bare prefix is a provider test wearing a data test's clothes
  *
@@ -398,8 +385,8 @@ function countWord(counts: Map<string, number>, word: string): void {
  *
  * ⛔ `ToolRefusedEvent.tool` is *"unqualified — `spawn_agent`, never `mcp__brobot__spawn_agent`"*,
  * and the digest already prints it that way on `tool-refused`. ⚠️ Printing the qualified name here
- * would put two spellings of one tool on one card, and one of them names a PROVIDER — which `317`
- * forbids in user-visible text and has a source scan for.
+ * would put two spellings of one tool on one card, and one of them names a PROVIDER — which
+ * user-visible text may not do, and a source scan checks.
  */
 function ourTool(name: string): string | null {
   for (const provider of SUPPORTED_PROVIDERS) {
@@ -410,7 +397,7 @@ function ourTool(name: string): string | null {
 }
 
 /**
- * ⛔ **The maximum per child, never a sum of progress frames** (`430`'s measured rule).
+ * ⛔ **The maximum per child, never a sum of progress frames** (a measured rule).
  *
  * ⚠️ Claude re-sends one child's cumulative total on every frame — 6,997 then 8,944 — so adding
  * them reports 15,941 for a child that spent 8,944. Codex reports the child's whole-thread
@@ -455,9 +442,9 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
       case 'work_given': {
         const named = { piece: event.piece, label: event.label, title: event.title }
         tally.given.set(event.piece, named)
-        // ⚑ **475 · the edge to the held message, when there was one.** ⛔ `messageId` is absent
-        // when the brief went STRAIGHT OUT — `derivePieces` starts such a row at `working` rather
-        // than `waiting` — and an absent name pairs with nothing, deliberately.
+        // ⚑ **The edge to the held message, when there was one.** ⛔ `messageId` is absent when the
+        // brief went STRAIGHT OUT — `derivePieces` starts such a row at `working` rather than
+        // `waiting` — and an absent name pairs with nothing, deliberately.
         if (event.messageId !== undefined) tally.byMessage.set(event.messageId, named)
         bump(
           tally,
@@ -471,8 +458,8 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         tally.replies += 1
         const named = tally.given.get(event.piece)
         if (named === undefined) tally.carriedIn += 1
-        // ⚑ **475** — see {@link Tally.spokenFor}. A reply is the ordinary ending, and work this
-        // window watched end is not work whose fate it could not say.
+        // ⚑ See {@link Tally.spokenFor}. A reply is the ordinary ending, and work this window
+        // watched end is not work whose fate it could not say.
         tally.spokenFor.add(event.piece)
         const said = name(row.sessionId)
         // The questions its owner asked about it end with it, as a close's do.
@@ -493,11 +480,11 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         break
       }
       case 'work_taken_back': {
-        // ⚑ **466 · named when this window saw the give** — a taking back of older work says so
-        // rather than printing nothing at all.
+        // ⚑ **Named when this window saw the give** — a taking back of older work says so rather
+        // than printing nothing at all.
         const named = tally.given.get(event.piece)
         tally.spokenFor.add(event.piece)
-        // ⚑ **D-016 · and the questions its owner asked about it end with it**, as a close's do — the
+        // ⚑ **And the questions its owner asked about it end with it**, as a close's do — the
         // questions fold ends them on this row, which is the whole of what says so: no row of their
         // own is written.
         for (const asked of tally.questionsAboutPiece.get(event.piece) ?? []) tally.ended.add(asked)
@@ -519,8 +506,8 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         break
       }
       case 'work_closed': {
-        // ⚑ **D-016 · a close, `work_taken_back`'s twin** — named when this window saw the give, and
-        // the questions its owner asked about it end with it on this row.
+        // ⚑ **A close, `work_taken_back`'s twin** — named when this window saw the give, and the
+        // questions its owner asked about it end with it on this row.
         const named = tally.given.get(event.piece)
         tally.spokenFor.add(event.piece)
         for (const asked of tally.questionsAboutPiece.get(event.piece) ?? []) tally.ended.add(asked)
@@ -535,7 +522,7 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         break
       }
       case 'message_unqueued': {
-        // 🔴 **475 · the only stall cause a windowed row-reader can attribute to a piece of work.**
+        // 🔴 **The only stall cause a windowed row-reader can attribute to a piece of work.**
         //
         // ## ⛔ Read for the EDGE, and it contributes nothing without one
         //
@@ -570,18 +557,18 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         break
       }
       case 'request_routed': {
-        // ⛔ **474 · the CONVERSATION and the id, never the id alone** — see
+        // ⛔ **The CONVERSATION and the id, never the id alone** — see
         // {@link Tally.questionsNamingWork}.
         tally.routed.add(key(row.sessionId, event.requestId))
-        // 🔴 **611 · THREE populations, one row type, and the fold that tells them apart is
-        // shared** — {@link whereItWent}. ⛔ It read `because === undefined` and called that
-        // *travelled*; since `HO-088` §2 a routing can carry no refusal and still not have gone to
-        // any parent, so that spelling put every question an agent addressed to a person into the
-        // `travelled` set — where `question-without-work` then asked which work it named and
-        // `question-travelled` told a person it had gone up.
+        // 🔴 **THREE populations, one row type, and the fold that tells them apart is shared** —
+        // {@link whereItWent}. ⛔ Not `because === undefined`: since `HO-088` §2 a routing can carry
+        // no refusal and still not have gone to any parent, so that spelling would put every
+        // question an agent addressed to a person into the `travelled` set — where
+        // `question-without-work` would then ask which work it named and `question-travelled` would
+        // tell a person it had gone up.
         const went = whereItWent(event)
-        // ⚑ **D-009 · a question to an agent the asker named travelled too** — to another
-        // conversation, which owes the answer — so it is counted and joined exactly as the parent's.
+        // ⚑ **A question to an agent the asker named travelled too** — to another conversation,
+        // which owes the answer — so it is counted and joined exactly as the parent's.
         if (went.is === 'the-parent' || went.is === 'the-agent-the-asker-named') {
           tally.travelled.add(key(row.sessionId, event.requestId))
           bump(tally, 'question-travelled', row.at, null)
@@ -591,25 +578,24 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
           // not a question a parent failed to answer.
           bump(tally, 'question-addressed-to-a-person', row.at, null)
         } else {
-          // ⚑ **466 · the reason is KEPT** — `463`: *"the digest collapses all five reasons into
-          // one count"*, and a person cannot name what happened from *"5 requests came up"*.
+          // ⚑ **The reason is KEPT** — a person cannot name what happened from *"5 requests came
+          // up"*.
           countWord(tally.because, went.because)
           bump(tally, 'decision-raised', row.at, null)
         }
         break
       }
       case 'question_asked': {
-        // ⚑ **Read for its `piece`, and since `466` it also SAYS which work.** `437` minted the
-        // only row in this app that says which work a question is about; it rides beside its own
-        // `request_routed`, so this arm still draws no question — what it draws is the EDGE, which
-        // nothing drew before and which `463` asked for by name.
+        // ⚑ **Read for its `piece`, and it also SAYS which work.** It is the only row in this app
+        // that says which work a question is about; it rides beside its own `request_routed`, so
+        // this arm still draws no question — what it draws is the EDGE.
         const asked = key(row.sessionId, event.requestId)
         tally.questionsNamingWork.add(asked)
-        // ⚑ **611 · a PASSED-UP question names no piece here**, and a question to an agent may name
-        // none. ⛔ It is still a question this app raised, so the row above still counts it; what
-        // it cannot do is name work, and `question-about-work` is a line about work.
-        // ⚑ **D-016 · the row carries the piece's LABEL**, so the line names it whenever the piece
-        // was given — no absence for work given before this window.
+        // ⚑ **A PASSED-UP question names no piece here**, and a question to an agent may name none.
+        // ⛔ It is still a question this app raised, so the row above still counts it; what it
+        // cannot do is name work, and `question-about-work` is a line about work. ⚑ **The row
+        // carries the piece's LABEL**, so the line names it whenever the piece was given — no
+        // absence for work given before this window.
         if (event.piece !== undefined) {
           tally.questionsAboutPiece.set(event.piece, [
             ...(tally.questionsAboutPiece.get(event.piece) ?? []),
@@ -637,11 +623,11 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         tally.ended.add(key(row.sessionId, event.requestId))
         break
       case 'user_decision':
-        // 🔴 **477 · the row says who answered, and a row written before it could does not**
-        // (HO-029 §2.1/§2.2). ⛔ **Two counters and never one**: a named actor and an absence are
-        // different claims, and the sentence below states each about its own population rather
-        // than choosing whichever is bigger. ⚠️ **Nothing is inferred for the absent arm** — the
-        // kind is still named for the request, and `465`'s sentence is still what the old rows
+        // 🔴 **The row says who answered, and a row written before it could does not** (HO-029
+        // §2.1/§2.2). ⛔ **Two counters and never one**: a named actor and an absence are different
+        // claims, and the sentence below states each about its own population rather than choosing
+        // whichever is bigger. ⚠️ **Nothing is inferred for the absent arm** — the kind is still
+        // named for the request, and the nobody-recorded sentence is still what the old rows
         // produce, because it is still the only true thing to say about them.
         if (event.by === undefined) tally.answeredByNobodyRecorded += 1
         else countWord(tally.answerers, event.by.who)
@@ -656,16 +642,16 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         // PER LAUNCH, so two restarts inside one window would otherwise name more conversations
         // than exist.
         tally.restartedIn.add(row.sessionId)
-        // ⚑ **D-016 · the row names the pieces the restart stalled** — the line below says that
-        // work is stalled, so this card speaks for each of them.
+        // ⚑ **The row names the pieces the restart stalled** — the line below says that work is
+        // stalled, so this card speaks for each of them.
         for (const piece of event.pieces ?? []) tally.spokenFor.add(piece)
         bump(tally, 'work-restarted', row.at, null)
         break
       case 'tool_refused':
         tally.refusals += 1
-        // ⚑ **466 · the permanence is on the row and was being thrown away.** `405` records it
-        // *"beside `permanence` even though every door DERIVES it"* precisely so a reader does not
-        // have to re-derive it, and the digest was the reader that did not read it.
+        // ⚑ **The permanence is on the row, so it is read rather than re-derived** — the row
+        // records it *"beside `permanence` even though every door DERIVES it"* precisely so a
+        // reader does not have to.
         countWord(tally.permanences, event.permanence)
         bump(tally, 'tool-refused', row.at, `${event.tool}, by the rail ${event.rail}`)
         break
@@ -692,8 +678,8 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         reportUsage(tally, key(row.sessionId, event.agentId), event.usage?.tokens)
         break
       case 'workflow_run': {
-        // ⛔ **The roster, never the run's own `usage`, and never both** (`430`). They are two
-        // descriptions of one spend produced from one frame — the repo's own fixture carries
+        // ⛔ **The roster, never the run's own `usage`, and never both**. They are two descriptions
+        // of one spend produced from one frame — the repo's own fixture carries
         // `usage.total_tokens: 7718` and a single roster agent with `tokens: 7718`. ⚑ Counting at
         // the AGENT level is the declared aggregation level, and the surface says so.
         for (const agent of event.agents ?? []) {
@@ -702,11 +688,11 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         break
       }
       case 'tool_call': {
-        // 🔴 **466 · only THIS APP's own tools, and the row is kept rather than drawn.** A call is
-        // half a fact; what `463` needed named is what the tool ANSWERED, and the answer is on the
-        // `tool_result` row, which carries no tool name. ⛔ So the call is remembered by
-        // `(conversation, id)` — see {@link Tally.ourCalls} for why the conversation is in the key
-        // — and the result names the tool from it.
+        // 🔴 **Only THIS APP's own tools, and the row is kept rather than drawn.** A call is half a
+        // fact; what needs naming is what the tool ANSWERED, and the answer is on the `tool_result`
+        // row, which carries no tool name. ⛔ So the call is remembered by `(conversation, id)` —
+        // see {@link Tally.ourCalls} for why the conversation is in the key — and the result names
+        // the tool from it.
         const ours = ourTool(event.name)
         if (ours !== null) tally.ourCalls.set(key(row.sessionId, event.id), ours)
         break
@@ -718,11 +704,10 @@ function fold(rows: readonly DigestRow[], name: (id: string) => string): Tally {
         // guessing it is ours would print the agent's own `Bash` output into a digest.
         const called = tally.ourCalls.get(key(row.sessionId, event.id))
         if (called === undefined) break
-        // ⚠️ **`summary` is the SHORT FORM and the only durable one.** `457` measured 353
-        // characters of prose against 3,691 of payload and `TOOL_SUMMARY_MAX` cuts at 200; `462`
-        // owns the whole answer and holds it only while a conversation is running, which is never
-        // true of a window a digest is reading back. ⛔ So this is not 462's surface, cannot become
-        // it, and must not imply it is showing everything.
+        // ⚠️ **`summary` is the SHORT FORM and the only durable one.** `TOOL_SUMMARY_MAX` cuts it at
+        // 200 characters, and the whole answer is held only while a conversation is running, which
+        // is never true of a window a digest is reading back. ⛔ So this line must not imply it is
+        // showing everything.
         bump(
           tally,
           'tool-answered',
@@ -755,19 +740,18 @@ function sentence(kind: ObservedLineKind, group: Grouped, tally: Tally): string 
       return `${many(group.count, 'piece of work was', 'pieces of work were')} closed by whoever gave it — the most recent is ${group.detail ?? 'work handed out before this window'}.`
     case 'work-closed-by-a-person':
       return `${many(group.count, 'piece of work was', 'pieces of work were')} closed by a person — the most recent is ${group.detail ?? 'work handed out before this window'}.`
-    // 🔴 **475 · what the app DID, never what the agent got.** ⛔ *Not sent* is this app's own
-    // word for all three endings `abandoned` covers — `QueuedMessage.vue` leads every one of them
-    // with it — and it is the strongest thing that is true of the mid-handover case, where the
-    // row itself says the message may have reached the agent and nothing can come back either
-    // way. ⚠️ **No cause clause**, for that reason: the cause is on `detail` and `detail` is not
-    // drawn here.
+    // 🔴 **What the app DID, never what the agent got.** ⛔ *Not sent* is this app's own word for all
+    // three endings `abandoned` covers — `QueuedMessage.vue` leads every one of them with it — and
+    // it is the strongest thing that is true of the mid-handover case, where the row itself says
+    // the message may have reached the agent and nothing can come back either way. ⚠️ **No cause
+    // clause**, for that reason: the cause is on `detail` and `detail` is not drawn here.
     case 'work-not-sent':
       return `${many(group.count, 'held message carrying work was not sent', 'held messages carrying work were not sent')} — the most recent carried ${group.detail ?? 'unnamed'}.`
     case 'question-travelled':
       return `${many(group.count, 'question', 'questions')} travelled to a parent.`
-    // ⚑ **611 · it says WHO it was for and never who answered it** (HO-028 §2, `465`'s rule) — the
-    // routing row records where the app sent it, and a digest line claiming a person had read it
-    // would be an observation about somebody this window never watched.
+    // ⚑ **It says WHO it was for and never who answered it** (HO-028 §2) — the routing row records
+    // where the app sent it, and a digest line claiming a person had read it would be an
+    // observation about somebody this window never watched.
     case 'question-addressed-to-a-person':
       return `${many(group.count, 'question was', 'questions were')} addressed to a person by the conversation that asked.`
     case 'decision-raised':
@@ -785,16 +769,14 @@ function sentence(kind: ObservedLineKind, group: Grouped, tally: Tally): string 
     case 'question-lost':
       return `${many(group.count, 'question was', 'questions were')} still open when the app last went away.`
     case 'request-answered':
-      // 🔴 **This said *"answered by a person"* until `465`, and `463` measured it false through
-      // the production door**: the parent AGENT answered its spawned worker's question, through
-      // `RuntimeHost.answerQuestion`, and the digest drew an `observed` chip in front of a person
-      // who had never been asked. ⛔ **`465` narrowed it to the ending and the absence**, because
-      // the row genuinely did not know who had answered.
+      // 🔴 **Never *"answered by a person"* on its own**: a parent AGENT can answer its spawned
+      // worker's question, through `RuntimeHost.answerQuestion`, and an `observed` chip in front of
+      // a person who was never asked would be false.
       //
-      // 🔴 **477 · the row knows now, and the old rows still do not — so BOTH clauses are drawn,
-      // each about its own population** (HO-029 §2.2: *"new events produce a name, old ones
-      // produce that sentence, nothing in between, nothing guessed"*). ⛔ **A window holding only
-      // old rows composes `465`'s sentence byte for byte**, which is the point: the sentence is
+      // 🔴 **The row knows who answered, and old rows do not — so BOTH clauses are drawn, each about
+      // its own population** (HO-029 §2.2: *"new events produce a name, old ones produce that
+      // sentence, nothing in between, nothing guessed"*). ⛔ **A window holding only old rows
+      // composes the nobody-recorded sentence byte for byte**, which is the point: the sentence is
       // not retired, it is scoped. ⚠️ **And still never *"a person"* for an actorless row** — the
       // absence clause counts `answeredByNobodyRecorded`, never `group.count`, so a mixed window
       // cannot lend a named row's actor to a silent one.
@@ -803,24 +785,21 @@ function sentence(kind: ObservedLineKind, group: Grouped, tally: Tally): string 
         'Who answered',
       )}${nobodyClause(tally.answeredByNobodyRecorded, 'answered')}`
     case 'work-interrupted':
-      // 🔴 **709 · R43 — the ASK, counted as an ask.** ⛔ *"Work was stopped"* read the row as proof
-      // the stop worked, which was true only while `SessionMachine` renamed whatever the provider did
-      // next `interrupted`. ⚑ A provider can complete a turn it was asked to stop, and the turn line
+      // 🔴 **R43 — the ASK, counted as an ask.** ⛔ *"Work was stopped"* would read the row as proof
+      // the stop worked. ⚑ A provider can complete a turn it was asked to stop, and the turn line
       // beside this one says so in the provider's word — so this line says what the row records.
       return `Work was ${ASKED_TO_STOP} ${many(group.count, 'time', 'times')}.`
     case 'work-restarted':
       // ⛔ **This row does NOT mean the work recovered.** `WorkRestartedEvent`'s own docblock is
       // *"the app being killed while work is in progress"*, `derivePieces` moves the piece to
       // `stalled`, and the transcript's own words are *"the app restarted while this conversation
-      // still held work"*. ⚠️ The first version of this line said *"came back after a restart"* —
-      // an `observed` chip in front of a sentence that inverted the fact, which is the exact
-      // failure this whole surface is about.
+      // still held work"*. ⚠️ *"Came back after a restart"* would put an `observed` chip in front of
+      // a sentence that inverts the fact, which is the exact failure this whole surface is about.
       return `The app restarted while ${many(tally.restartedIn.size, 'conversation', 'conversations')} still held work nobody had finished; that work is stalled until somebody drives it.`
     case 'tool-refused':
       return `${many(group.count, 'tool call was', 'tool calls were')} refused — the most recent was ${group.detail ?? 'unnamed'}. How long each is expected to hold: ${eachWord(
         tally.permanences,
-        // ⚑ **`shared/refusals.ts`'s table, which 466 moved there so this fold could read it** —
-        // the renderer's transcript row has printed the same clause since `405`.
+        // ⚑ **`shared/refusals.ts`'s table**, which the renderer's transcript row prints too.
         (word) => (isRailPermanence(word) ? PERMANENCE_SAID[word] : word),
       )}.`
     case 'turn-ended': {
@@ -838,9 +817,8 @@ function sentence(kind: ObservedLineKind, group: Grouped, tally: Tally): string 
     case 'tool-answered':
       return `${many(group.count, 'call to this app’s own tools', 'calls to this app’s own tools')} came back — the most recent was ${group.detail ?? 'unnamed'}.`
   }
-  // ⛔ **No `worker-reported` arm, and its absence is now checked by the compiler** (465). It used
-  // to be an unreachable case kept for exhaustiveness over the whole vocabulary; the parameter is
-  // `ObservedLineKind` now, so the switch is exhaustive over exactly the kinds that reach it and a
+  // ⛔ **No `worker-reported` arm, and its absence is checked by the compiler**: the parameter is
+  // `ObservedLineKind`, so the switch is exhaustive over exactly the kinds that reach it and a
   // claim's sentence has no way in here at all.
 }
 
@@ -855,26 +833,24 @@ const GAP_WORDS: Readonly<Record<DigestGapKind, (count: number) => string>> = {
     `${many(count, 'refusal names', 'refusals name')} the rail and not what it collided with — the target is not recorded anywhere.`,
   'question-without-work': (count) =>
     `${many(count, 'question does', 'questions do')} not say which piece of work it is about.`,
-  // 🔴 **466 · `463` F3, and the sentence is its own** — *"Part of this digest source record could
-  // not be read."* ⛔ The cause is genuinely not known, which is `LedgerWalk.rowsUnread`'s own
-  // rule: *"a COUNT of the rows it is unable to speak for, with the cause still unstated"*.
+  // 🔴 **Its own sentence.** ⛔ The cause is genuinely not known, which is `LedgerWalk.rowsUnread`'s
+  // own rule: *"a COUNT of the rows it is unable to speak for, with the cause still unstated"*.
   'source-unreadable': (count) =>
     `${many(count, 'row', 'rows')} of the record this digest reads could not be read, so part of what happened here is missing from every line above. ⚠️ Nothing records why, and a row this app dropped is a row nothing else here can stand in for.`,
-  // ⚑ **D-017 · R8 — its own sentence**: a whole conversation's record is not one row.
+  // ⚑ **R8 — its own sentence**: a whole conversation's record is not one row.
   'source-skipped': (count) =>
     `${many(count, 'conversation’s record', 'conversations’ records')} could not be read, so part of what happened here is missing from every line above. ⚠️ Nothing records why.`,
   'open-is-not-waiting': (count) =>
     `${many(count, 'request was', 'requests were')} raised here and nothing this digest reads ended one. ⚠️ It does not read a conversation stopping, so *open* means no ending in its vocabulary — never that somebody is still waiting.`,
-  // 🔴 **475 · `open-is-not-waiting` one subject over, and the same honesty.** ⛔ The sentence
-  // names the REASON rather than implying a ledger limit: the rows that stop work being driven
-  // name no piece of work, so the digest counts them and can never say whose work they stopped.
-  // ⚑ Which piece each one stalled is `derivePieces`' answer and it is reached by folding a whole
-  // conversation — not a window — so no reader shaped like this one can produce it.
+  // 🔴 **`open-is-not-waiting` one subject over, and the same honesty.** ⛔ The sentence names the
+  // REASON rather than implying a ledger limit: the rows that stop work being driven name no piece
+  // of work, so the digest counts them and can never say whose work they stopped. ⚑ Which piece
+  // each one stalled is `derivePieces`' answer and it is reached by folding a whole conversation —
+  // not a window — so no reader shaped like this one can produce it.
   //
-  // ⚑ **D-017 · `05` rules 2 and 3 — no conversation ends; one that cannot be reopened is replaced**
-  // (`replaced_by`, which stalls what it held `could_not_be_reopened` and names no work either). ⛔ It
-  // said *"a conversation's own ending"*. ⚑ **D-016 · a restart names its pieces now** and is spoken
-  // for, so it left this sentence.
+  // ⚑ **`05` rules 2 and 3 — no conversation ends; one that cannot be reopened is replaced**
+  // (`replaced_by`, which stalls what it held `could_not_be_reopened` and names no work either). ⚑
+  // **A restart names its pieces** and is spoken for, so it is not in this sentence.
   'work-without-an-ending': (count) =>
     `${many(count, 'piece of work was', 'pieces of work were')} handed out here and nothing this digest reads says what became of one. ⚠️ A turn ending, a stop and a conversation replaced because it could not be reopened are what leave work undriven, and none of those rows names a piece of work — so this card can count them and never tell you whose work stopped.`,
 }
@@ -890,11 +866,10 @@ function gap(kind: DigestGapKind, count: number): DigestGap | null {
 /**
  * The distilled window. ⛔ Pure: same read in, same value out.
  *
- * 🔴 **466 · it takes the WALK rather than its rows**, because `463` F3 is a fact about the read
- * and not about anything in it: *"forbid the silent project sentence when an eligible row was
+ * 🔴 **It takes the WALK rather than its rows**, because a skipped row is a fact about the read and
+ * not about anything in it: *"forbid the silent project sentence when an eligible row was
  * skipped"*. ⛔ A fold handed only `walk.rows` could not tell a window that recorded nothing from
- * one whose every row was unparseable — they are the same empty array — which is the whole of the
- * finding.
+ * one whose every row was unparseable — they are the same empty array.
  */
 export function distil(
   read: LedgerWalk<DigestRow>,
@@ -927,9 +902,9 @@ export function distil(
   // ⛔ **The TRAVELLED set, not every routing.** A permission never travelled and has no piece to
   // name, so asking *which work* of one would fire this gap on every permission for ever.
   const withoutWork = [...tally.travelled].filter((id) => !tally.questionsNamingWork.has(id)).length
-  // ⛔ **475 · the pieces GIVEN in this window, and only those.** Work handed out before the
-  // window is not counted here: the `carried-in` gap is the one that speaks for it, and counting
-  // it twice would make a hole look bigger than the ledger it was read from.
+  // ⛔ **The pieces GIVEN in this window, and only those.** Work handed out before the window is not
+  // counted here: the `carried-in` gap is the one that speaks for it, and counting it twice would
+  // make a hole look bigger than the ledger it was read from.
   const workWithoutAnEnding = [...tally.given.keys()].filter(
     (piece) => !tally.spokenFor.has(piece),
   ).length
@@ -941,11 +916,11 @@ export function distil(
     gap('collision-target', tally.refusals),
     gap('question-without-work', withoutWork),
     gap('open-is-not-waiting', unanswered),
-    // 🔴 **475 · the work this window handed out and could say nothing else about.** ⛔ Subtracted
-    // rather than counted separately, so the `work-not-sent` line VISIBLY takes one off this
-    // number: a fact the card states is not also a fact the card says it cannot state.
+    // 🔴 **The work this window handed out and could say nothing else about.** ⛔ Subtracted rather
+    // than counted separately, so the `work-not-sent` line VISIBLY takes one off this number: a
+    // fact the card states is not also a fact the card says it cannot state.
     gap('work-without-an-ending', workWithoutAnEnding),
-    // 🔴 **466 · the read's own hole, drawn where every other unknown is drawn.** ⚑ It fits
+    // 🔴 **The read's own hole, drawn where every other unknown is drawn.** ⚑ It fits
     // `DIGEST_GAP_KINDS`' stated rule — *"every member is conditional on rows the window actually
     // contains, and a window with none shows none"* — because `gap()` refuses a zero.
     gap('source-unreadable', read.rowsUnread),
@@ -956,9 +931,9 @@ export function distil(
 }
 
 /**
- * 🔴 **D-017 · R8 — {@link distil}, skipping a conversation whose rows the fold cannot take**
- * rather than losing the whole digest. ⚑ Only after the whole fold threw, each conversation's rows
- * are folded alone; one that throws is warned, dropped, and counted on the read handed back.
+ * 🔴 **R8 — {@link distil}, skipping a conversation whose rows the fold cannot take** rather than
+ * losing the whole digest. ⚑ Only after the whole fold threw, each conversation's rows are folded
+ * alone; one that throws is warned, dropped, and counted on the read handed back.
  */
 export function distilSkipping(
   read: LedgerWalk<DigestRow>,
