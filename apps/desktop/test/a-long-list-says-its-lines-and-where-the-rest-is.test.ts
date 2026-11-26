@@ -1,11 +1,8 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { readFileSync, realpathSync } from 'node:fs'
+import { realpathSync } from 'node:fs'
 import { sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolset } from '@brobot2/runtime'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
-import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import type { AgentCard } from '../src/main/runtime/agent-directory'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -16,7 +13,7 @@ import {
 } from '../src/main/runtime/tool-families/long-replies'
 import { aGiverAndHelper, type AServiceWorld } from './helpers/a-service-world'
 import { answerOn } from './helpers/call-tool'
-import { fullReplyPath, wholeReply } from './lib/full-reply'
+import { fullReplyPath, splitFullReply, toolTextViaClaude, wholeReply } from './lib/full-reply'
 
 /**
  * 🔴 **484 · a long list or record says its actionable lines, and where the rest is.**
@@ -31,17 +28,6 @@ import { fullReplyPath, wholeReply } from './lib/full-reply'
 const accepted = (given: GiveOutcome) => {
   if (!given.ok) throw new Error(given.refusal.reason)
   return given
-}
-
-/** The short form, and the whole reply from the file it names. */
-function split(text: string): { short: string; path: string; full: string } {
-  const path = fullReplyPath(text)
-  if (path === null) throw new Error(`no full reply named in: ${text.slice(0, 200)}`)
-  return {
-    short: text.slice(0, text.length - `\n\nFull reply: ${path}`.length),
-    path,
-    full: readFileSync(path, 'utf8'),
-  }
 }
 
 const textOf = async (tools: AgentToolset, name: ToolName, args: Record<string, unknown> = {}) =>
@@ -100,7 +86,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
   it('§2 a long board keeps a line a piece inline, and the whole board is in the file', async () => {
     const pieces = await givesMany(12)
     const text = await textOf(agentToolsFor(host, giver), 'list_tasks')
-    const { short, path, full } = split(text)
+    const { short, path, full } = splitFullReply(text)
     // The same real spelling Claude is given for the folder, whatever symlink the temp folder is behind.
     expect(path.startsWith(`${toolRepliesFolder()}${sep}`)).toBe(true)
     expect(realpathSync.native(path)).toBe(path)
@@ -119,7 +105,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
   it('§3 a long record keeps its line, status, done condition and brief inline', async () => {
     const [piece] = await givesMany(1)
     const text = await textOf(agentToolsFor(host, giver), 'list_tasks', { piece: piece!.label })
-    const { short, full } = split(text)
+    const { short, full } = splitFullReply(text)
     expect(short).toContain(`${piece!.label} · Survey room 1`)
     expect(short).toContain('Done when: Room 1 is surveyed')
     expect(short).toContain(`Its brief:\n${aLongBrief(1)}`)
@@ -147,12 +133,12 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
       })
     await waitForPerson(piece.label)
     const compact = await codexList({})
-    expect(await viaClaude(tools, 'list_tasks', {})).toBe(compact)
+    expect(await toolTextViaClaude(tools, 'list_tasks', {})).toBe(compact)
     expect(compact).toContain(piece.label)
     expect(compact).not.toMatch(/Full reply:|Done when:|brocrew:\/\//)
     const expectMatchingSpills = (codexText: string, claudeText: string) => {
-      const codex = split(codexText)
-      const claude = split(claudeText)
+      const codex = splitFullReply(codexText)
+      const claude = splitFullReply(claudeText)
       expect(claude.short).toBe(codex.short)
       expect(claude.full).toBe(codex.full)
       expect(claude.path).not.toBe(codex.path)
@@ -162,7 +148,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
     const named = { piece: piece.label }
     const namedReply = expectMatchingSpills(
       await codexList(named),
-      await viaClaude(tools, 'list_tasks', named),
+      await toolTextViaClaude(tools, 'list_tasks', named),
     )
     expect(namedReply.short).toContain(
       'Done when: The room is booked and the confirmation is recorded.',
@@ -171,7 +157,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
 
     const [longPiece] = await givesMany(12)
     await waitForPerson(longPiece!.label)
-    expectMatchingSpills(await codexList({}), await viaClaude(tools, 'list_tasks', {}))
+    expectMatchingSpills(await codexList({}), await toolTextViaClaude(tools, 'list_tasks', {}))
   })
 
   it('§5 a long conversation list keeps who, state and context a line', async () => {
@@ -180,7 +166,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
         await world.gives(host, giver, 'helper', { conversation_title: `Room ${String(n)}` }),
       )
     const answer = await answerOn(agentToolsFor(host, giver), 'list_agents', {})
-    const { short, full } = split(answer.text)
+    const { short, full } = splitFullReply(answer.text)
     expect(short.length).toBeLessThan(full.length)
     for (const line of short.split('\n').filter((one) => one.startsWith('conversation ')))
       expect(line.split(' · ').length).toBeGreaterThanOrEqual(3)
@@ -196,7 +182,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
     for (let n = 1; n <= 45; n++)
       world.anAgent(`fictional-building-surveyor-${String(n)}`, 'normal')
     const text = await textOf(agentToolsFor(host, giver), 'list_profiles')
-    const { short, full } = split(text)
+    const { short, full } = splitFullReply(text)
     // What each runs on is in the file, so the reply with its path is still shorter than the whole.
     expect(text.length).toBeLessThan(full.length)
     const line = (body: string) =>
@@ -249,7 +235,7 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
           'Some of them are worn and some are new. '.repeat(20),
       })
     const text = await textOf(agentToolsFor(host, giver), 'list_questions')
-    const { short, full } = split(text)
+    const { short, full } = splitFullReply(text)
     for (let n = 1; n <= 3; n++) {
       expect(short).toContain(`Which chairs go in room ${String(n)}?`)
       expect(full).toContain(`Which chairs go in room ${String(n)}?`)
@@ -303,27 +289,3 @@ describe('484 · where a reply is cut', () => {
     expect(shortenedIfLong('give_work', answered, undefined, write)).toBe(answered)
   })
 })
-
-/** One `tools/call` to the in-process server the Claude CLI is given, through the MCP SDK's client. */
-async function viaClaude(
-  toolset: AgentToolset,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const server = (
-    claudeMcpServersFor(toolset)!['brobot'] as unknown as {
-      instance: { server: { connect(transport: unknown): Promise<void>; close(): Promise<void> } }
-    }
-  ).instance.server
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
-  const client = new Client({ name: 'fictional-card-484', version: '1' })
-  try {
-    await server.connect(serverSide)
-    await client.connect(clientSide)
-    const answered = await client.callTool({ name, arguments: args })
-    return (answered.content as { text: string }[]).map((one) => one.text).join('\n')
-  } finally {
-    await client.close()
-    await server.close()
-  }
-}

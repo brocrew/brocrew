@@ -62,6 +62,51 @@ export function toolRepliesFolder(): string {
  * Writes a whole reply to a new file in the system temp folder and returns its path: a fresh folder
  * a call, so a later read never finds another call's reply.
  */
+/**
+ * What a short reply leaves for the line naming its temp file: the folder the writer uses, by its
+ * real path, and more than enough for the call's own folder and file below it.
+ */
+export const roomForTheReplyPath = (): number => toolRepliesFolder().length + 80
+
+/** How long one item's line may be in a short list. */
+const ITEM_LINE_CHARACTERS = 160
+
+/** An item on one line, cut at a whole character when it is longer than a line may be. */
+function oneLine(item: string): string {
+  const characters = [...item.replace(/\s+/g, ' ').trim()]
+  return characters.length <= ITEM_LINE_CHARACTERS
+    ? characters.join('')
+    : `${characters.slice(0, ITEM_LINE_CHARACTERS - 1).join('')}…`
+}
+
+/** Said instead of the lines that say how to go on, when they are too long to go inline. */
+export const HOW_TO_GO_ON_IS_IN_THE_FILE =
+  'How to go on is in the full reply: read it before continuing.'
+
+/**
+ * A long list's short form: how many there are, as many of its items as fit, each on one line,
+ * then what must stay whole — how to go on, and what could not be read. When those alone would
+ * make the reply long, it says where they are instead, and they stay in the file.
+ */
+export function shortList(
+  counted: (shown: number) => string,
+  items: readonly string[],
+  whole: readonly string[],
+): string {
+  const budget = SHORT_REPLY_CHARACTERS - roomForTheReplyPath()
+  const all = whole.join('\n\n')
+  const kept =
+    all === '' || counted(0).length + 2 + all.length <= budget ? all : HOW_TO_GO_ON_IS_IN_THE_FILE
+  const room = budget - (kept === '' ? 0 : kept.length + 2)
+  const lines: string[] = []
+  for (const item of items) {
+    const line = `- ${oneLine(item)}`
+    if ([counted(lines.length + 1), ...lines, line].join('\n').length > room) break
+    lines.push(line)
+  }
+  return [[counted(lines.length), ...lines].join('\n'), ...(kept === '' ? [] : [kept])].join('\n\n')
+}
+
 function writeTheFullReply(tool: string, text: string): string {
   const folder = madeFolderOfReplies()
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')

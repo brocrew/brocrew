@@ -24,7 +24,9 @@ import { CURRENT_RULES_CHARS } from '../../../shared/conversation-title'
 import type { ToolName } from './catalog'
 import {
   WORK_SEARCH_WORDS,
+  workSearchHitLines,
   workSearchInWords,
+  workSearchNotes,
   workSearchRefusal,
 } from '../../../shared/work-search-words'
 import {
@@ -32,6 +34,7 @@ import {
   aPieceNotEndedWhileAQuestionStarts,
 } from '../../../shared/questions'
 import { answer, refusalAnswer } from './answers'
+import { SHORT_REPLY_CHARACTERS, shortList } from './long-replies'
 import { refuseTool } from './refusals'
 import { conversationSearchQuery } from '../../../shared/work-search'
 import { z } from 'zod'
@@ -764,7 +767,21 @@ export function createSearchWorkTool(
           const refused = workSearchRefusal(found.reason)
           return answer(refused, `refused (${refused.rail}): ${refused.reason}`)
         }
-        return answer({ outcome: 'ok', ...found.page }, workSearchInWords(found.page))
+        const whole = workSearchInWords(found.page)
+        // The short form only for a reply too long to go whole: a line a conversation, and how to go on.
+        const matched = found.page.hits.length
+        const short =
+          whole.length <= SHORT_REPLY_CHARACTERS
+            ? undefined
+            : shortList(
+                (shown) =>
+                  shown === matched
+                    ? `${String(matched)} ${matched === 1 ? 'conversation matches' : 'conversations match'}, each cut short:`
+                    : `${String(matched)} conversations match; the first ${String(shown)}, each cut short:`,
+                workSearchHitLines(found.page),
+                workSearchNotes(found.page),
+              )
+        return answer({ outcome: 'ok', ...found.page }, whole, short)
       }),
   }
 }
