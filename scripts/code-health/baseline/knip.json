@@ -1769,7 +1769,6 @@
   "types|plugins/chrome/src/tabs.ts|Ring",
   "types|plugins/chrome/src/tools/common.ts|ToolOutput",
   "types|plugins/chrome/src/tools/index.ts|ToolOutput",
-  "types|plugins/chrome/test/native-focus-contract.ts|NativeSnapshot",
   "types|plugins/whatsapp/src/bridge.ts|BridgeQr",
   "types|plugins/whatsapp/src/http/adminRoutes.ts|AdminSettings",
   "types|plugins/whatsapp/src/localFileGuard.ts|localFileGuard.GuardFs",

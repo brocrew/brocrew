@@ -147,7 +147,7 @@ export async function lockHeldByLiveChrome(
   const command = await commandOf(pid)
   return command !== null && /chrom|msedge|microsoft[- ]edge/i.test(command)
 }
-export async function killChromeOf(
+async function killChromeOf(
   dir: string,
   graceMs = KILL_GRACE_MS,
   deps: EndDeps = {},

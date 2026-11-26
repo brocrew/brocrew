@@ -64,8 +64,9 @@ Patch author headers and client-specific implementation were not imported.
 - Added window metadata awaits recheck live tab/profile permission before page actions or
   HTTP fetches. Launch guards, branded credential-store policy and private download fencing stay.
 
-Native AppKit/Space proof is a separate optional check (`scripts/native/`); headless runtime
-checks do not establish focus behavior. Neither the source import nor a dry build authorizes
+Native AppKit/Space behavior was qualified once by a manual harness, since removed (card 563;
+see the README). Headless runtime checks do not establish focus behavior, and neither does the
+packaged HTTPS receipt for the `open_tab` fix or its pending release-candidate check. Neither the source import nor a dry build authorizes
 publication or deployment.
 
 ## BroCrew helper and background placement
