@@ -87,6 +87,8 @@ export interface TaskRecordExchange {
  */
 export type TranscriptTurn = {
   readonly at: number
+  /** When its opening row was recorded. */
+  readonly recordedAt: number
   readonly said: Words | null
 } & (
   { readonly received: ReceivedInATurn } | { readonly startedByItsProvider: TurnItsProviderStarted }
@@ -109,6 +111,39 @@ export const WORDS_CAP = 4 * 1024
 export const TURNS_BACK_MAX = 20
 export const TURNS_BACK_DEFAULT = 3
 
+/** Who wrote a message, as `read_transcript`'s `from` names it. */
+export type TranscriptAuthor =
+  | { readonly is: 'a-person' }
+  | { readonly is: 'this-app' }
+  | { readonly is: 'a-conversation'; readonly conversation: string }
+
+/** What a `read_transcript` call asks, before its sender and label are resolved. */
+export interface TranscriptAsked {
+  readonly back: number
+  readonly search: string | null
+  /** `a-person`, `this-app`, or a conversation by any label or id. */
+  readonly from?: string
+  readonly since?: number
+  readonly until?: number
+  /** A task label. */
+  readonly about?: string
+  readonly kind?: 'received' | 'answers'
+}
+
+/** Which turns `read_transcript` reads: every filter given must hold. */
+export interface TranscriptRead {
+  readonly back: number
+  readonly search: string | null
+  readonly from?: TranscriptAuthor
+  /** The opening row's time, from and to, both included. */
+  readonly since?: number
+  readonly until?: number
+  /** A piece id: a message of the turn was sent under it. */
+  readonly about?: string
+  /** Search only the messages received, or only the answers. */
+  readonly kind?: 'received' | 'answers'
+}
+
 /** ⚑ **How much of a message a notice previews.** */
 export const PREVIEW_CAP = 200
 
@@ -126,9 +161,7 @@ export function senderOf(
 ): WhoSentIt {
   if (turn.attribution === undefined) return { is: 'a-person' }
   if (turn.attribution === 'provider_transcript') return { is: 'its-own-cli' }
-  // ⚑ **F033 · the piece the words were sent under** — the one a reply reports on, a brief gives
-  // or the words drive, as the row keeps it.
-  const about = turn.work?.piece ?? turn.piece ?? turn.drives
+  const about = pieceSentUnder(turn)
   const who =
     turn.relayedFrom === undefined
       ? null
@@ -141,6 +174,36 @@ export function senderOf(
     return { is: 'an-agent', ...who }
   }
   return { is: 'this-app', carrying: who }
+}
+
+/** Whether this one message was written by the author asked for. */
+export function writtenBy(message: UserTurnPart, author: TranscriptAuthor): boolean {
+  const from = senderOf(message)
+  switch (author.is) {
+    case 'a-person':
+      return from.is === 'a-person'
+    case 'this-app':
+      return from.is === 'this-app' && from.carrying === null
+    case 'a-conversation':
+      return from.is === 'an-agent'
+        ? from.conversation === author.conversation
+        : from.is === 'this-app' && from.carrying?.conversation === author.conversation
+  }
+}
+
+/**
+ * ⚑ **F033 · the piece the words were sent under** — the one a reply reports on, a brief gives or
+ * the words drive, as the row keeps it.
+ */
+function pieceSentUnder(
+  message: Pick<UserTurnEvent, 'work' | 'piece' | 'drives'>,
+): string | undefined {
+  return message.work?.piece ?? message.piece ?? message.drives
+}
+
+/** Whether this one message was sent under the piece. */
+export function sentAbout(message: UserTurnPart, piece: string): boolean {
+  return pieceSentUnder(message) === piece
 }
 
 /**

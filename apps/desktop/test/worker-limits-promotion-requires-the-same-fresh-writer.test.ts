@@ -195,7 +195,8 @@ describe('only a fresh unchanged writer authorizes canonical preparation', () =>
         statement.source.includes('AND (ordinal >= (SELECT min(ordinal)') ||
         statement.source.includes('run.readable AS readable') ||
         statement.source.includes('reported.readable AS readable') ||
-        (statement.source.includes("type = 'user_turn'") &&
+        (statement.source.includes('INDEXED BY events_fold_idx') &&
+          statement.source.includes("type = 'user_turn'") &&
           statement.source.includes('created_at AS at') &&
           statement.source.includes('ORDER BY ordinal DESC LIMIT ?')),
     )

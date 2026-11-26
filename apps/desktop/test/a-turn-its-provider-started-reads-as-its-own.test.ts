@@ -85,6 +85,7 @@ describe('§1 · read_transcript — a turn its provider started is its own entr
     // ⛔ Until this follow-up the wake's words were the message's: `started it\n\nthe sleep finished`.
     expect(turns[1]).toEqual({
       at: expect.any(Number),
+      recordedAt: expect.any(Number),
       startedByItsProvider: { after: [ENDED] },
       said: { text: 'the sleep finished', clipped: false },
     })

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
+import { theFileUnnamed, wholeReply } from './lib/full-reply'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -207,7 +208,9 @@ describe('reader tools answer field failures through Claude MCP', () => {
       const direct = await toolOf(entry.name).call(args)
       expect(direct.structured?.outcome, direct.text).toBe('ok')
       const wire = await server(entry.name)
-      expect(words(await wire.call(args))).toBe(direct.text)
+      const overWire = words(await wire.call(args))
+      expect(theFileUnnamed(overWire)).toBe(theFileUnnamed(direct.text))
+      expect(wholeReply(overWire)).toBe(wholeReply(direct.text))
       expect(calls.at(-1)?.structured).toEqual(direct.structured)
     })
 

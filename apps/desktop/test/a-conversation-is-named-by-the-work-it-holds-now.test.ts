@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { wholeReply } from './lib/full-reply'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
@@ -532,7 +533,9 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       // ⚑ And read back from its record, the message names its sender the same way.
       const read = await fullCall(tools, 'read_transcript', { agent: 'W1.2.1' })
       expect(read.structured, read.text).toMatchObject({ outcome: 'ok' })
-      expect(read.text).toContain('came from Ada (the owner of W1.1 · Build the world clock page):')
+      expect(wholeReply(read.text)).toContain(
+        'came from Ada (the owner of W1.1 · Build the world clock page):',
+      )
     })
   })
 

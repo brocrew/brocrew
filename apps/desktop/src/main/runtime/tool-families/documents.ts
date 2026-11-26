@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import {
   type AConversation,
   type Exchange,
@@ -5,6 +6,7 @@ import {
   type ReceivedInATurn,
   TURNS_BACK_DEFAULT,
   TURNS_BACK_MAX,
+  previewOf,
   type TranscriptTurn,
   WORDS_CAP,
   type WhoSentIt,
@@ -39,6 +41,7 @@ import { filesHoldingThoseWords, noFileHoldsThoseWords } from '../agent-tool-ans
 import { namedByItsWorkOnce } from './listings'
 import { pieceLine } from '../../../shared/piece-called'
 import { refuseTool } from './refusals'
+import { SHORT_REPLY_CHARACTERS, toolRepliesFolder } from './long-replies'
 
 /**
  * **D-012 · who sent a message, as `read_transcript` hands it over** — the kind, and the agent id
@@ -106,6 +109,16 @@ export function fromClause(from: WhoSentIt, named: (who: AConversation) => strin
   }
 }
 
+/**
+ * What a short reply leaves for the line naming its temp file: the folder the writer uses, by its
+ * real path, and more than enough for the call's own folder and file below it.
+ */
+const roomForThePath = (): number => toolRepliesFolder().length + 80
+
+/** An ISO 8601 date, or a date and time with its zone: a calendar day that exists. */
+const ISO_DATE = z.iso.date()
+const ISO_DATE_TIME = z.iso.datetime({ offset: true })
+
 /** **F080** — how many of a wake's background endings a transcript turn quotes, newest last. */
 const SUMMARIES_SHOWN = 5
 
@@ -114,6 +127,129 @@ function wordsBlock(words: Words): string {
   return words.clipped
     ? `${words.text}\n(cut at ${String(WORDS_CAP)} units — there was more)`
     : words.text
+}
+
+/**
+ * Each turn as its own block, oldest first. `kind` keeps only the messages received or only the
+ * answers.
+ */
+function turnBlocks(
+  name: string,
+  turns: readonly TranscriptTurn[],
+  named: (who: AConversation) => string,
+  kind?: 'received' | 'answers',
+): string[] {
+  const lines: string[] = []
+  const eachFrom = (came: readonly Received[]): string[] =>
+    came.map((one) => `From ${fromClause(one.from, named)}:\n${wordsBlock(one.words)}`)
+  turns.forEach((turn, index) => {
+    if (kind === 'answers') {
+      lines.push(
+        turn.said === null
+          ? `Turn ${String(index + 1)}: ${name} said nothing back.`
+          : `Turn ${String(index + 1)}, ${name} said:\n${wordsBlock(turn.said)}`,
+      )
+      return
+    }
+    // **F080 — a turn its provider started by itself is its own entry**, with what its provider
+    // said ended just before it, in its own words, each on a line of its own.
+    if ('startedByItsProvider' in turn) {
+      const after = turn.startedByItsProvider.after
+      if (after.length === 0) {
+        lines.push(
+          `Turn ${String(index + 1)}, which its provider started by itself; no message opened it.`,
+        )
+      } else {
+        // The provider's own words, a block of their own (`614`'s placement), the newest few.
+        const shown = after.slice(-SUMMARIES_SHOWN)
+        lines.push(
+          `Turn ${String(index + 1)}, which its provider started by itself after its background work ended${after.length > shown.length ? ` (the last ${String(shown.length)} of ${String(after.length)})` : ''}:`,
+          shown.join('\n'),
+        )
+      }
+      if (kind === 'received') return
+      lines.push(
+        turn.said === null
+          ? `${name} said nothing in it.`
+          : `${name} said:\n${wordsBlock(turn.said)}`,
+      )
+      return
+    }
+    const came = oldestFirst(turn.received)
+    lines.push(
+      came.length === 1
+        ? `Turn ${String(index + 1)}, from ${fromClause(turn.received.from, named)}:\n${wordsBlock(turn.received.words)}`
+        : [
+            `Turn ${String(index + 1)}, ${String(came.length)} messages together, oldest first:`,
+            ...eachFrom(came),
+          ].join('\n\n'),
+    )
+    if (kind === 'received') return
+    lines.push(
+      turn.said === null ? `${name} said nothing back.` : `${name} said:\n${wordsBlock(turn.said)}`,
+    )
+  })
+  return lines
+}
+
+/** What a filtered read says: how many turns matched, then each shown turn as its own block. */
+function matchedTurnsText(
+  name: string,
+  turns: readonly TranscriptTurn[],
+  matched: number,
+  named: (who: AConversation) => string,
+  kind?: 'received' | 'answers',
+): string {
+  if (matched === 0) return `No turn of ${name} matches.`
+  const counted =
+    matched === turns.length
+      ? `${String(matched)} ${matched === 1 ? 'turn matches' : 'turns match'}, oldest first:`
+      : `${String(matched)} turns match; the newest ${String(turns.length)}, oldest first (a larger turns_back reads more):`
+  return [counted, ...turnBlocks(name, turns, named, kind)].join('\n\n')
+}
+
+/**
+ * The short form of a long read: the count, then one line per turn, newest last, as many as fit
+ * the inline length.
+ */
+function shortTranscriptText(
+  name: string,
+  turns: readonly TranscriptTurn[],
+  matched: number,
+  named: (who: AConversation) => string,
+  readAt: number,
+  room: number,
+  kind?: 'received' | 'answers',
+): string {
+  const lineOf = (turn: TranscriptTurn): string => {
+    const when = clockTimeFrom(turn.recordedAt, readAt)
+    const said =
+      turn.said === null ? null : (previewOf(turn.said) ?? '(words this app could not read)')
+    const received =
+      'startedByItsProvider' in turn
+        ? `${when}, started by its provider`
+        : `${when}, from ${fromClause(turn.received.from, named)}: “${previewOf(turn.received.words) ?? '(words this app could not read)'}”`
+    if (kind === 'answers') return `${when}: ${said === null ? 'nothing back' : `“${said}”`}`
+    if (kind === 'received') return received
+    return `${received} → ${said === null ? 'nothing back' : `“${said}”`}`
+  }
+  const counted = (shown: number): string =>
+    shown === matched
+      ? `${String(matched)} ${matched === 1 ? 'turn matches' : 'turns match'}, oldest first, each cut short:`
+      : `${String(matched)} turns match; the newest ${String(shown)}, oldest first, each cut short:`
+  const left = room - counted(0).length - 1
+  const lines: string[] = []
+  let used = 0
+  for (const turn of [...turns].reverse()) {
+    const one = `- ${lineOf(turn)}`
+    if (used + one.length + 1 > left) {
+      if (lines.length === 0) lines.push(`${one.slice(0, Math.max(0, left - 2))}…`)
+      break
+    }
+    lines.unshift(one)
+    used += one.length + 1
+  }
+  return [counted(lines.length), lines.join('\n')].join('\n')
 }
 
 /**
@@ -164,43 +300,7 @@ export function transcriptText(
   lines.push(
     `Its turns, oldest first${older ? ' (there are older ones: a larger turns_back, or a search, reads them)' : ''}:`,
   )
-  turns.forEach((turn, index) => {
-    // **F080 — a turn its provider started by itself is its own entry**, with what its provider
-    // said ended just before it, in its own words, each on a line of its own.
-    if ('startedByItsProvider' in turn) {
-      const after = turn.startedByItsProvider.after
-      if (after.length === 0) {
-        lines.push(
-          `Turn ${String(index + 1)}, which its provider started by itself; no message opened it.`,
-        )
-      } else {
-        // The provider's own words, a block of their own (`614`'s placement), the newest few.
-        const shown = after.slice(-SUMMARIES_SHOWN)
-        lines.push(
-          `Turn ${String(index + 1)}, which its provider started by itself after its background work ended${after.length > shown.length ? ` (the last ${String(shown.length)} of ${String(after.length)})` : ''}:`,
-          shown.join('\n'),
-        )
-      }
-      lines.push(
-        turn.said === null
-          ? `${name} said nothing in it.`
-          : `${name} said:\n${wordsBlock(turn.said)}`,
-      )
-      return
-    }
-    const came = oldestFirst(turn.received)
-    lines.push(
-      came.length === 1
-        ? `Turn ${String(index + 1)}, from ${fromClause(turn.received.from, named)}:\n${wordsBlock(turn.received.words)}`
-        : [
-            `Turn ${String(index + 1)}, ${String(came.length)} messages together, oldest first:`,
-            ...eachFrom(came),
-          ].join('\n\n'),
-    )
-    lines.push(
-      turn.said === null ? `${name} said nothing back.` : `${name} said:\n${wordsBlock(turn.said)}`,
-    )
-  })
+  lines.push(...turnBlocks(name, turns, named))
   return lines.join('\n\n')
 }
 
@@ -318,7 +418,7 @@ export function createReadTranscriptTool(
     name: 'read_transcript',
     handlerOwnsMissingInput: true,
     description:
-      'Read any conversation, by any of its labels or its id: the last message it received (and who sent it) with its latest words back, then its last turns, or the turns whose words contain a search. The answer names the conversation by its address and title. Reading leaves an archived conversation archived.',
+      'Read any conversation, by any of its labels or its id: the last message it received (and who sent it) with its latest words back, then its last turns. Filters, all optional and combined: search for words, from for who wrote a message, since and until for when the turn began, about for a task label, kind for only the messages received or only the answers. With any filter, the answer is only the matching turns and how many matched, without the last exchange. A long answer comes back short, with the whole of it in a temp file whose path ends the reply. The answer names the conversation by its address and title. Reading leaves an archived conversation archived.',
     beyondItsRails: 'nothing-its-rails-do-not-cover',
     input: Object.fromEntries(
       Object.entries(readerInputs.read_transcript).map(([field, schema]) => [
@@ -345,6 +445,32 @@ export function createReadTranscriptTool(
         if (search !== undefined && (typeof search !== 'string' || search.trim() === '')) {
           problems.push('search, when given, must be some words')
         }
+        const nameGiven = (field: 'from' | 'about'): string | undefined => {
+          const value = args[field]
+          if (value === undefined) return undefined
+          if (typeof value === 'string' && value.trim() !== '') return value.trim()
+          problems.push(`${field}, when given, must name it`)
+          return undefined
+        }
+        const from = nameGiven('from')
+        const about = nameGiven('about')
+        const timeOf = (field: 'since' | 'until'): number | undefined => {
+          const value = args[field]
+          if (value === undefined) return undefined
+          const at =
+            typeof value === 'string' &&
+            (ISO_DATE.safeParse(value).success || ISO_DATE_TIME.safeParse(value).success)
+              ? Date.parse(value)
+              : Number.NaN
+          if (Number.isNaN(at)) problems.push(`${field}, when given, must be an ISO 8601 time`)
+          return at
+        }
+        const since = timeOf('since')
+        const until = timeOf('until')
+        const kind = args.kind
+        if (kind !== undefined && kind !== 'received' && kind !== 'answers') {
+          problems.push('kind, when given, must be one of received, answers')
+        }
         if (problems.length > 0 || typeof agent !== 'string' || typeof turnsBack !== 'number') {
           return readerFieldRefusal('read_transcript', args, problems)!
         }
@@ -355,12 +481,57 @@ export function createReadTranscriptTool(
         const read = host.readTranscript(addressed, {
           back: turnsBack,
           search: typeof search === 'string' ? search.trim() : null,
+          ...(from === undefined ? {} : { from }),
+          ...(since === undefined ? {} : { since }),
+          ...(until === undefined ? {} : { until }),
+          ...(about === undefined ? {} : { about }),
+          ...(kind === 'received' || kind === 'answers' ? { kind } : {}),
         })
-        if (!read.ok) return refusalAnswer(refuseTool(read.refusal, { agent: addressed }))
+        if (!read.ok) {
+          return refusalAnswer(
+            refuseTool(
+              read.refusal,
+              read.field === undefined
+                ? { agent: addressed }
+                : { [read.field]: read.field === 'from' ? from : about },
+            ),
+          )
+        }
+        const filtered =
+          search !== undefined ||
+          from !== undefined ||
+          since !== undefined ||
+          until !== undefined ||
+          about !== undefined ||
+          kind !== undefined
+        const shownKind = kind === 'received' || kind === 'answers' ? kind : undefined
         // **D-016 · commit 7 · R3 — each sender by the piece it owns**, never by its id; the
         // subject keeps its agent's name — the caller just named it, and the words say *its*.
         const called = namedByItsWorkOnce(host)
         const named = (who: AConversation): string => called(who.conversation, who.about ?? null)
+        const head = host.nameByItsWork(addressed)
+        const whole = [
+          head,
+          filtered
+            ? matchedTurnsText(read.name, read.turns, read.matched, named, shownKind)
+            : transcriptText(read.name, read.lastExchange, read.turns, read.older, named),
+        ].join('\n\n')
+        // The short form, and the folder its path names, only for a reply too long to go whole.
+        const short =
+          whole.length <= SHORT_REPLY_CHARACTERS
+            ? undefined
+            : [
+                head,
+                shortTranscriptText(
+                  read.name,
+                  read.turns,
+                  read.matched,
+                  named,
+                  read.readAt,
+                  SHORT_REPLY_CHARACTERS - head.length - 2 - roomForThePath(),
+                  shownKind,
+                ),
+              ].join('\n\n')
         return answer(
           {
             outcome: 'ok',
@@ -385,11 +556,10 @@ export function createReadTranscriptTool(
               said: turn.said === null ? null : wordsPayload(turn.said),
             })),
             older: read.older,
+            matched: read.matched,
           },
-          [
-            host.nameByItsWork(addressed),
-            transcriptText(read.name, read.lastExchange, read.turns, read.older, named),
-          ].join('\n\n'),
+          whole,
+          short,
         )
       }),
   }

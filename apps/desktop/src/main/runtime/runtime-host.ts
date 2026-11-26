@@ -488,7 +488,13 @@ import type {
 export type { GiveOutcome } from './spawn-rails'
 import { agentIdentityRowId, foldProfileName } from '../db/identity'
 import { LinkAnswers, type ReadLinkAnswer } from './link-answers'
-import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../shared/last-exchange'
+import type {
+  Exchange,
+  ReceivedInATurn,
+  TranscriptAsked,
+  TranscriptAuthor,
+  TranscriptTurn,
+} from '../../shared/last-exchange'
 import type { WhatARestartWouldStopIn } from '../../shared/updates'
 // ⚑ **D-016 · commit 7 · a conversation named by the piece it owns** (R1, R3), and a person's
 // rename of a piece (R4) — beside the one spelling of a piece.
@@ -33804,24 +33810,54 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   /** Read any known conversation's transcript, including an empty one. */
   readTranscript(
     target: string,
-    read: { readonly back: number; readonly search: string | null },
+    read: TranscriptAsked,
   ):
-    | { readonly ok: false; readonly refusal: 'no-such-agent' }
+    | {
+        readonly ok: false
+        readonly refusal: 'no-such-agent' | 'no-piece-by-that-name'
+        readonly field?: 'from' | 'about'
+      }
     | {
         readonly ok: true
         readonly name: string
         readonly lastExchange: Exchange
         readonly turns: readonly TranscriptTurn[]
         readonly older: boolean
+        readonly matched: number
+        readonly readAt: number
       } {
     if (!this.mayReadTheTranscriptOf(target)) {
       return { ok: false, refusal: 'no-such-agent' }
+    }
+    let from: TranscriptAuthor | undefined
+    if (read.from === 'a-person' || read.from === 'this-app') from = { is: read.from }
+    else if (read.from !== undefined) {
+      const conversation = resolveConversationAddress(read.from, this.deps.store)
+      if (!this.mayReadTheTranscriptOf(conversation)) {
+        return { ok: false, refusal: 'no-such-agent', field: 'from' }
+      }
+      from = { is: 'a-conversation', conversation }
+    }
+    let about: string | undefined
+    if (read.about !== undefined) {
+      const piece = this.deps.store.workByLabel(read.about)
+      if (piece === null) return { ok: false, refusal: 'no-piece-by-that-name', field: 'about' }
+      about = piece.piece
     }
     return {
       ok: true,
       name: this.whatToCallTheConversation(target),
       lastExchange: this.deps.store.lastExchange(target),
-      ...this.deps.store.transcript(target, read),
+      readAt: this.now(),
+      ...this.deps.store.transcript(target, {
+        back: read.back,
+        search: read.search,
+        ...(from === undefined ? {} : { from }),
+        ...(read.since === undefined ? {} : { since: read.since }),
+        ...(read.until === undefined ? {} : { until: read.until }),
+        ...(about === undefined ? {} : { about }),
+        ...(read.kind === undefined ? {} : { kind: read.kind }),
+      }),
     }
   }
 
