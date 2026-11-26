@@ -1,26 +1,30 @@
-/** The longest a spaced read waits before its owed follow-up, however long the last read took. */
-const LONGEST_SPACE_MS = 5_000
+/** A spaced read starts at most once per this: the queue's own look tick. */
+const SPACE_MS = 5_000
 
 /**
  * Coalesce a burst into one in-flight read and one follow-up that sees its last change.
  *
- * A `spaced` read also waits, before a follow-up owed only to `ask(true)`, as long as the read just
- * took (at most {@link LONGEST_SPACE_MS}), so a stream of asks cannot keep the reader busy back to
- * back. The follow-up is still read, one read's duration after that one. Any ask that is not
- * `ask(true)` ends the wait and reads now.
+ * A `spaced` read waits before a read asked only by `ask(true)` until {@link SPACE_MS} after the
+ * last read started, and at least as long as that read took (at most {@link SPACE_MS} after it
+ * ended), so a stream of asks cannot keep the reader busy. The last ask is still read. Any other
+ * ask ends the wait and reads now, except that `ask('scheduled')`, which carries no change of its
+ * own, rides on a read already in flight.
  */
 export function oneReadAtATime(
   read: () => Promise<void>,
   options: { readonly spaced?: boolean } = {},
-): (patient?: boolean) => Promise<void> {
+): (patient?: boolean | 'scheduled') => Promise<void> {
   let running: Promise<void> | null = null
   let owed = false
   let hurried = false
   let endWait: (() => void) | null = null
+  let reading = false
+  let lastStarted: number | null = null
+  let lastEnded = 0
 
   const waitOut = (ms: number): Promise<void> =>
     new Promise((resolve) => {
-      const timer = setTimeout(() => endWait?.(), Math.min(ms, LONGEST_SPACE_MS))
+      const timer = setTimeout(() => endWait?.(), ms)
       endWait = () => {
         clearTimeout(timer)
         endWait = null
@@ -32,17 +36,24 @@ export function oneReadAtATime(
     try {
       let failed: { readonly error: unknown } | null = null
       while (owed) {
+        if (options.spaced === true && !hurried && lastStarted !== null) {
+          const took = lastEnded - lastStarted
+          const ready = Math.max(lastStarted + SPACE_MS, lastEnded + Math.min(took, SPACE_MS))
+          const left = ready - performance.now()
+          if (left > 0) await waitOut(left)
+        }
         owed = false
         hurried = false
         failed = null
-        const started = performance.now()
+        lastStarted = performance.now()
+        reading = true
         try {
           await read()
         } catch (error) {
           failed = { error }
         }
-        const took = performance.now() - started
-        if (options.spaced === true && owed && !hurried && took > 0) await waitOut(took)
+        reading = false
+        lastEnded = performance.now()
       }
       if (failed !== null) throw failed.error
     } finally {
@@ -50,7 +61,8 @@ export function oneReadAtATime(
     }
   }
 
-  return (patient?: boolean) => {
+  return (patient?: boolean | 'scheduled') => {
+    if (patient === 'scheduled' && reading && running !== null) return running
     owed = true
     // Only an explicit `true` may wait; an event object handed in by a listener must not.
     if (patient !== true) {
