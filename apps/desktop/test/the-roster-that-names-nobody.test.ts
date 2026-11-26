@@ -251,7 +251,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ada)?.label).toBe('W1')
       expectRosterText(
         listed.text,
-        `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn}${lastActive(ada)} · holds W1`,
+        `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn} · holds W1`,
         ada,
         'ada',
       )
@@ -279,7 +279,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', null)).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `conversation W1 · worker · worker · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
+        `conversation W1 · worker · worker · Claude · idle${runsOn} · holds W1`,
         worker,
         'worker',
       )
@@ -289,7 +289,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.setAgentDisplayName('worker', 'Ada')).toBe(true)
       expectRosterText(
         (await ask(worker, 'list_agents')).text,
-        `conversation W1 · Ada · Ada (worker) · Claude · idle${runsOn}${lastActive(worker)} · holds W1`,
+        `conversation W1 · Ada · Ada (worker) · Claude · idle${runsOn} · holds W1`,
         worker,
         'worker',
       )
@@ -304,7 +304,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.agentIdentities().map((one) => one.slug)).toContain('dev')
       expectRosterText(
         (await ask(dev, 'list_agents')).text,
-        `conversation W1 · Ada · Ada (Dev) · Claude · idle${runsOn}${lastActive(dev)} · holds W1`,
+        `conversation W1 · Ada · Ada (Dev) · Claude · idle${runsOn} · holds W1`,
         dev,
         'dev',
       )
@@ -314,7 +314,7 @@ describe('610 · the roster that names nobody', () => {
       const brobot = await personOpens(DEFAULT_PROFILE_ID)
       expectRosterText(
         (await ask(brobot, 'list_agents')).text,
-        `conversation W1 · ${DEFAULT_PROFILE_LABEL} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn}${lastActive(brobot)} · holds W1`,
+        `conversation W1 · ${DEFAULT_PROFILE_LABEL} · ${DEFAULT_PROFILE_LABEL} (${DEFAULT_PROFILE_ID}) · Claude · idle${runsOn} · holds W1`,
         brobot,
         'brobot',
       )
@@ -337,11 +337,9 @@ describe('610 · the roster that names nobody', () => {
 
       let card: AgentCard | undefined
       let listed = ''
-      let activity = ''
       await whileAResumeIsHeld(ours, async (cards) => {
         card = cards.find((one) => one.agent === ours)
         listed = (await ask(reader, 'list_agents')).text
-        activity = lastActive(ours)
       })
       // ⚑ **D-017 · R11 — a start reads `active`** (`starting` was a process fact, and is gone).
       expect(card?.state).toEqual({ is: 'active' })
@@ -353,7 +351,7 @@ describe('610 · the roster that names nobody', () => {
       expect(store.rootOf(ours)?.label).toBe('W1')
       // ⚑ D-042 · a held resume runs on its row's pair, replayed — what the line says it runs on.
       expect(listed.split('\n')).toContain(
-        `conversation W1 · untitled · ${THIS_APP_CANNOT_NAME_IT} · Claude · active${runsOn}${activity} · holds W1`,
+        `conversation W1 · untitled · ${THIS_APP_CANNOT_NAME_IT} · Claude · active${runsOn} · holds W1`,
       )
       expect(THIS_APP_CANNOT_NAME_IT).toBe('an agent this app cannot name')
       // 🔴 **And the word it did NOT print**, which is the whole of the forbidden input: the
@@ -449,9 +447,13 @@ describe('610 · the roster that names nobody', () => {
         profile: 'ada',
         name: 'Ada',
       })
-      // ⛔ **The same bytes as the listing**, which is `433`'s invariant made visible: enumerating
-      // and inspecting are one question asked for a set and for one id.
-      expect(asked.text).toBe((await ask(ada, 'list_agents')).text)
+      const listed = await ask(ada, 'list_agents')
+      expectRosterText(
+        listed.text,
+        `conversation W1 · Ada · Ada (ada) · Claude · idle${runsOn} · holds W1`,
+        ada,
+        'ada',
+      )
     })
 
     // ⚑ **D-016** — `list_projects`, the third door that carried the same card, is gone with
@@ -489,7 +491,8 @@ describe('610 · the roster that names nobody', () => {
       // ⚑ **D-016 · commit 7 · R3 — each is named by the piece it owns first, then who it is.**
       expect(said).toContain('Each row: conversation <address> · <title>')
       expect(said).toContain('the name a person gave it, and the profile slug give_work takes')
-      expect(said).toContain('its provider, model, effort and context size; and the tasks it holds')
+      expect(said).toContain('its provider, model and effort; and the labels and states')
+      expect(said).toContain('get_agent_status shows context, activity and task titles')
       // ⛔ **And the sentence it replaced, which was TRUE and useless.**
       expect(said).not.toContain('Reports id, project, profile, state')
     })
