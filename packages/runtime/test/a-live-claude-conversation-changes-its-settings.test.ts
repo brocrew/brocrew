@@ -10,7 +10,6 @@ import {
   type AgentToolset,
   type SessionHandle,
 } from '../src/index'
-import { ClaudeRuntime } from '../src/claude'
 import {
   FakeQuery,
   init,
@@ -20,6 +19,7 @@ import {
   atOnce,
   sdkToolCall,
   startFake,
+  recordingClaudeRuntime,
 } from './fake-claude-query'
 
 describe('the settings a live conversation can change (076)', () => {
@@ -351,19 +351,12 @@ describe('W4.189 · work folders ride the flag layer beside the kept rules — C
   })
 
   it('🔴 a RESUME carries them, beside the kept rules, as a start does', async () => {
-    const fq = new FakeQuery()
-    let options: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        options = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { fq, runtime, options: launched } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_w', cwd: home, rotation: 0 },
       { providerHome: home, workFolders: ['/w/a'] },
     )
+    const options = launched()
     expect(options?.resume).toBe('sess_w')
     expect(permissionsOf(options)).toStrictEqual({ ...KEPT, additionalDirectories: ['/w/a'] })
     expect(handle.workFolders.effective).toEqual(['/w/a'])

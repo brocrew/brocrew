@@ -162,6 +162,11 @@ describe('ClaudeRuntime — auth inheritance (022)', () => {
  */
 describe('ClaudeRuntime — a credential refused mid-session (110)', () => {
   const REFUSAL = 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.'
+  // The rows a refused login leaves: one error carrying the provider's own sentence, a turn this app
+  // ended as failed, and the session errored, both saying the login was refused.
+  const REFUSED_ERROR = { type: 'error', message: REFUSAL, fatal: true, cause: 'auth_stale' }
+  const REFUSED_TURN = { type: 'turn', state: 'failed', wordOf: 'this-app', loginRefused: true }
+  const REFUSED_STATUS = { type: 'status', state: 'errored', loginRefused: true }
 
   // ⚑ The frame as the SDK sends it: the CLI wrote this message, and says so with its model (680).
   const refuse = (fq: FakeQuery): void =>
@@ -205,9 +210,7 @@ describe('ClaudeRuntime — a credential refused mid-session (110)', () => {
       expect(events.filter((event) => event.type === 'error')).toEqual([
         { type: 'error', message: REFUSAL, fatal: true, cause },
       ])
-      expect(events.filter((event) => event.type === 'turn')).toEqual([
-        { type: 'turn', state: 'failed', wordOf: 'this-app', loginRefused: true },
-      ])
+      expect(events.filter((event) => event.type === 'turn')).toEqual([REFUSED_TURN])
       await handle.close()
       await consumer
     },
@@ -265,18 +268,14 @@ describe('ClaudeRuntime — a credential refused mid-session (110)', () => {
     await vi.waitFor(has(events, (e) => e.type === 'status' && e.state === 'errored'))
 
     // ONE error, carrying the provider's own sentence and the value a surface reads.
-    expect(events.filter((e) => e.type === 'error')).toEqual([
-      { type: 'error', message: REFUSAL, fatal: true, cause: 'auth_stale' },
-    ])
+    expect(events.filter((e) => e.type === 'error')).toEqual([REFUSED_ERROR])
     // Record `failed`, never `completed`, when the turn could not run. The SDK can
     // subsequently send `result: success`; terminalizing and freezing first prevents that
     // provider result from reaching the ledger. Mark the app-authored ending and say the
     // login supplied at launch was refused.
-    expect(events.filter((e) => e.type === 'turn')).toEqual([
-      { type: 'turn', state: 'failed', wordOf: 'this-app', loginRefused: true },
-    ])
+    expect(events.filter((e) => e.type === 'turn')).toEqual([REFUSED_TURN])
     expect(events.filter((e) => e.type === 'status' && e.state === 'errored')).toEqual([
-      { type: 'status', state: 'errored', loginRefused: true },
+      REFUSED_STATUS,
     ])
     expect(handle.status()).toBe('errored')
     // The whole point: the next message cannot be spent on a process that cannot serve it.
@@ -332,14 +331,10 @@ describe('ClaudeRuntime — a credential refused mid-session (110)', () => {
 
     it('⚑ control: on the machine login, nothing says `onAKey` — today’s rows exactly', async () => {
       const events = await refusedOn({ login: 'fake-oauth-token' }, REFUSAL)
-      expect(events.filter((e) => e.type === 'error')).toEqual([
-        { type: 'error', message: REFUSAL, fatal: true, cause: 'auth_stale' },
-      ])
-      expect(events.filter((e) => e.type === 'turn')).toEqual([
-        { type: 'turn', state: 'failed', wordOf: 'this-app', loginRefused: true },
-      ])
+      expect(events.filter((e) => e.type === 'error')).toEqual([REFUSED_ERROR])
+      expect(events.filter((e) => e.type === 'turn')).toEqual([REFUSED_TURN])
       expect(events.filter((e) => e.type === 'status' && e.state === 'errored')).toEqual([
-        { type: 'status', state: 'errored', loginRefused: true },
+        REFUSED_STATUS,
       ])
     })
 

@@ -319,6 +319,23 @@ export async function sdkToolCall(
   return call()
 }
 
+/**
+ * A ClaudeRuntime over a FakeQuery whose factory records the SDK options of its latest launch, for
+ * tests about what a start or a resume asks the SDK for. `options()` reads them after the launch.
+ */
+export function recordingClaudeRuntime() {
+  const fq = new FakeQuery()
+  let launched: Options | undefined
+  const runtime = new ClaudeRuntime(
+    (params) => {
+      launched = params.options
+      return fq
+    },
+    async () => true,
+  )
+  return { fq, runtime, options: () => launched }
+}
+
 /** Start a ClaudeRuntime backed by a FakeQuery. `start()` returns immediately;
  *  the session/init arrives when the test emits it (streaming reality). */
 export async function startFake(

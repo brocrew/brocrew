@@ -1,9 +1,46 @@
 import { readFileSync } from 'node:fs'
-import type { Options, PermissionUpdate, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type {
+  CanUseTool,
+  Options,
+  PermissionUpdate,
+  SDKMessage,
+} from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { type AgentToolset } from '../src/index'
 import { init, firstOfType, has, toolOpts, atOnce, startFake } from './fake-claude-query'
+
+/** The PreToolUse guard the runtime actually installed. */
+function floorOf(sdkOptions: () => Options) {
+  const guard = sdkOptions().hooks?.PreToolUse?.[0]?.hooks?.[0]
+  if (!guard) throw new Error('PreToolUse guard not installed')
+  return (tool: string, input: unknown = {}) =>
+    (
+      guard as unknown as (i: {
+        hook_event_name: string
+        tool_name: string
+        tool_input: unknown
+        tool_use_id: string
+      }) => Promise<{
+        continue?: boolean
+        hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string }
+      }>
+    )({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 't' })
+}
+
+/** Two questions in one AskUserQuestion call: 'Anything else?', then `second`. */
+function askTwoQuestions(canUse: CanUseTool, second: string, toolUseID: string) {
+  return canUse(
+    'AskUserQuestion',
+    {
+      questions: [
+        { question: 'Anything else?', header: 'One', multiSelect: false, options: [] },
+        { question: second, header: 'Two', multiSelect: false, options: [] },
+      ],
+    },
+    toolOpts(toolUseID),
+  )
+}
 
 describe('ClaudeRuntime — permissions via canUseTool', () => {
   it('file tool → permission_request(file); allow → {behavior:allow}', async () => {
@@ -442,23 +479,6 @@ describe('ClaudeRuntime — permissions via canUseTool', () => {
    * red on every commit that still had the floor.
    */
   describe('plan mode, and what moves it (150, 728)', () => {
-    /** The PreToolUse guard the runtime actually installed. */
-    function floorOf(sdkOptions: () => Options) {
-      const guard = sdkOptions().hooks?.PreToolUse?.[0]?.hooks?.[0]
-      if (!guard) throw new Error('PreToolUse guard not installed')
-      return (tool: string, input: unknown = {}) =>
-        (
-          guard as unknown as (i: {
-            hook_event_name: string
-            tool_name: string
-            tool_input: unknown
-            tool_use_id: string
-          }) => Promise<{
-            continue?: boolean
-            hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string }
-          }>
-        )({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 't' })
-    }
     const PLAN_FILE = '/tmp/x/home/plans/buzzing-wibbling-ocean.md'
 
     it('an APPROVED plan ENDS plan mode — the field defect, end to end', async () => {
@@ -623,23 +643,6 @@ describe('ClaudeRuntime — permissions via canUseTool', () => {
    * every MCP tool, measured by `probe:tool-calls-as-the-cli`).
    */
   describe('this app’s own verbs, and the hook (461, 486, 728)', () => {
-    /** The PreToolUse guard the runtime actually installed — its own copy, per the 150 block. */
-    function floorOf(sdkOptions: () => Options) {
-      const guard = sdkOptions().hooks?.PreToolUse?.[0]?.hooks?.[0]
-      if (!guard) throw new Error('PreToolUse guard not installed')
-      return (tool: string, input: unknown = {}) =>
-        (
-          guard as unknown as (i: {
-            hook_event_name: string
-            tool_name: string
-            tool_input: unknown
-            tool_use_id: string
-          }) => Promise<{
-            continue?: boolean
-            hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string }
-          }>
-        )({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 't' })
-    }
     /**
      * ⚑ **The proposing verb and a minting one, in ONE toolset** — standing rule 3's pairing: the
      * same call, one fact over, and the two readings must DIVERGE here or the test measures nothing.
@@ -1035,16 +1038,7 @@ describe('ClaudeRuntime — permissions via canUseTool', () => {
     // all.**
     const { fq, handle, canUse, events, consumer } = await startFake()
 
-    const answerP = canUse(
-      'AskUserQuestion',
-      {
-        questions: [
-          { question: 'Anything else?', header: 'One', multiSelect: false, options: [] },
-          { question: 'Anything else?', header: 'Two', multiSelect: false, options: [] },
-        ],
-      },
-      toolOpts('tu_dup'),
-    )
+    const answerP = askTwoQuestions(canUse, 'Anything else?', 'tu_dup')
 
     expect(await answerP).toMatchObject({ behavior: 'deny' })
     expect((await answerP) as { message?: string }).toMatchObject({
@@ -1062,16 +1056,7 @@ describe('ClaudeRuntime — permissions via canUseTool', () => {
     // similarity, and a call whose two questions differ by one character is an ordinary call.
     const { fq, handle, canUse, events, consumer } = await startFake()
 
-    const answerP = canUse(
-      'AskUserQuestion',
-      {
-        questions: [
-          { question: 'Anything else?', header: 'One', multiSelect: false, options: [] },
-          { question: 'Anything else??', header: 'Two', multiSelect: false, options: [] },
-        ],
-      },
-      toolOpts('tu_near'),
-    )
+    const answerP = askTwoQuestions(canUse, 'Anything else??', 'tu_near')
     await vi.waitFor(has(events, (e) => e.type === 'user_input_request'))
     await handle.respondUserInput('tu_near', {
       kind: 'answer',

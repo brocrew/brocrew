@@ -12,6 +12,51 @@ import {
   startFake,
 } from './fake-claude-query'
 
+type Fake = Awaited<ReturnType<typeof startFake>>
+
+/** Clear what was seen, then ask for a fully disclosed Write the CLI suggests a narrow rule for. */
+async function askADisclosedWrite({ sdkOptions, events }: Pick<Fake, 'sdkOptions' | 'events'>) {
+  events.length = 0
+  void sdkToolCall(
+    sdkOptions(),
+    'Write',
+    { file_path: '/tmp/x/a.txt' },
+    toolOpts('tu_2', CLI_SUGGESTS.write),
+  )
+  await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
+}
+
+/** Ask for `tool` once more, and deny the card it raises. */
+async function denyTheNextAsk(
+  { sdkOptions, events, handle }: Pick<Fake, 'sdkOptions' | 'events' | 'handle'>,
+  tool: string,
+  input: Record<string, unknown>,
+) {
+  void sdkToolCall(sdkOptions(), tool, input, toolOpts('tu_2'))
+  await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
+  await handle.respondPermission(firstOfType(events, 'permission_request').id, { outcome: 'deny' })
+}
+
+/** A Bash ask the CLI marked as one a person must answer, as it crosses the wire. */
+const A_MARKED_ASK = {
+  type: 'permission_request',
+  id: 'tu_1',
+  kind: 'command',
+  action: 'Bash',
+  detail: 'echo r36 &',
+  scope: {
+    cwd: '/tmp/x',
+    paths: [],
+    networkHosts: [],
+    persistence: 'once',
+    amendments: [],
+    availableDecisions: ['allow', 'deny', 'cancel'],
+    underDisclosed: true,
+    approvalMode: 'ask',
+  },
+  suppressAlwaysAllowRule: true,
+}
+
 describe('waiting on the user is not silence (076)', () => {
   /**
    * Drive a turn to an open `user_input_request` and leave it unanswered.
@@ -130,14 +175,7 @@ describe('the WHOLESALE session grant an opaque tool can be asked for (058)', ()
 
     // …and the complement: a fully-disclosed file tool is offered the narrow grant — the CLI's own
     // rule, where it suggested one (736, R94) — and NOT the wide one.
-    events.length = 0
-    void sdkToolCall(
-      sdkOptions(),
-      'Write',
-      { file_path: '/tmp/x/a.txt' },
-      toolOpts('tu_2', CLI_SUGGESTS.write),
-    )
-    await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
+    await askADisclosedWrite({ sdkOptions, events })
     const disclosed = firstOfType(events, 'permission_request')
     expect(disclosed.scope.availableDecisions).toContain('allow_for_session')
     expect(disclosed.scope.availableDecisions).not.toContain('allow_all_for_session')
@@ -314,11 +352,7 @@ describe('the WHOLESALE session grant an opaque tool can be asked for (058)', ()
     events.length = 0
     // A file write is a different tool and was never granted. "Wholesale" is bounded by the tool the
     // card named; a grant that spread across tools would grant something no card was ever shown for.
-    void sdkToolCall(sdkOptions(), 'Write', { file_path: '/tmp/x/a.txt' }, toolOpts('tu_2'))
-    await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
-    await handle.respondPermission(firstOfType(events, 'permission_request').id, {
-      outcome: 'deny',
-    })
+    await denyTheNextAsk({ sdkOptions, events, handle }, 'Write', { file_path: '/tmp/x/a.txt' })
 
     await handle.close()
     fq.end()
@@ -393,11 +427,7 @@ describe('the WHOLESALE session grant an opaque tool can be asked for (058)', ()
     expect(handle.approval.effective).toBe('ask')
 
     events.length = 0
-    void sdkToolCall(sdkOptions(), 'Bash', { command: 'echo BETA' }, toolOpts('tu_2'))
-    await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
-    await handle.respondPermission(firstOfType(events, 'permission_request').id, {
-      outcome: 'deny',
-    })
+    await denyTheNextAsk({ sdkOptions, events, handle }, 'Bash', { command: 'echo BETA' })
 
     await handle.close()
     fq.end()
@@ -465,14 +495,7 @@ describe('695 · R36 — the two marks the CLI puts on an ask', () => {
     expect(card.scope.persistence).toBe('once')
     await handle.respondPermission(card.id, { outcome: 'deny' })
 
-    events.length = 0
-    void sdkToolCall(
-      sdkOptions(),
-      'Write',
-      { file_path: '/tmp/x/a.txt' },
-      toolOpts('tu_2', CLI_SUGGESTS.write),
-    )
-    await vi.waitFor(has(events, (e) => e.type === 'permission_request'))
+    await askADisclosedWrite({ sdkOptions, events })
     expect(firstOfType(events, 'permission_request').scope.availableDecisions).toContain(
       'allow_for_session',
     )
@@ -564,22 +587,7 @@ describe('695 · R36 — the two marks the CLI puts on an ask', () => {
 
   it('the wire keeps both marks — a schema that stripped them would drop them before the ledger', () => {
     const parsed = runtimeEventSchema.parse({
-      type: 'permission_request',
-      id: 'tu_1',
-      kind: 'command',
-      action: 'Bash',
-      detail: 'echo r36 &',
-      scope: {
-        cwd: '/tmp/x',
-        paths: [],
-        networkHosts: [],
-        persistence: 'once',
-        amendments: [],
-        availableDecisions: ['allow', 'deny', 'cancel'],
-        underDisclosed: true,
-        approvalMode: 'ask',
-      },
-      suppressAlwaysAllowRule: true,
+      ...A_MARKED_ASK,
       defaultToNo: true,
     })
     expect(parsed).toMatchObject({ suppressAlwaysAllowRule: true, defaultToNo: true })
@@ -846,22 +854,7 @@ describe('700 · `695` F-f — the provider’s own reason for an ask it marked'
 
   it('🔴 the wire keeps the reason — a schema that stripped it would drop it before the ledger', () => {
     const parsed = runtimeEventSchema.parse({
-      type: 'permission_request',
-      id: 'tu_1',
-      kind: 'command',
-      action: 'Bash',
-      detail: 'echo r36 &',
-      scope: {
-        cwd: '/tmp/x',
-        paths: [],
-        networkHosts: [],
-        persistence: 'once',
-        amendments: [],
-        availableDecisions: ['allow', 'deny', 'cancel'],
-        underDisclosed: true,
-        approvalMode: 'ask',
-      },
-      suppressAlwaysAllowRule: true,
+      ...A_MARKED_ASK,
       providerReason: THE_CLIS_OWN,
     })
     expect(parsed).toMatchObject({ providerReason: THE_CLIS_OWN })
