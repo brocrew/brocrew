@@ -204,6 +204,8 @@ const view = computed(() =>
   </section>
 </template>
 
+<style scoped src="./read-gap-presentation.css"></style>
+
 <style scoped>
 .search-action {
   align-self: flex-end;
@@ -335,19 +337,7 @@ const view = computed(() =>
 }
 
 .gap {
-  margin: 0;
   padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--wash-1);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: 1.5;
-}
-
-.gap strong {
-  display: block;
-  color: var(--text-soft);
 }
 
 .covers {
