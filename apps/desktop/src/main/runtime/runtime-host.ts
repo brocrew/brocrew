@@ -4540,6 +4540,19 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
+   * 🔴 **541 · only the PUBLICATION of this conversation's state is asked for** — the path
+   * {@link stateMayHaveMoved} ends in, without what it does first (the listing, the persons, the idle
+   * countdown, the service's next piece). ⚑ A reply's text edge changes what the state says and
+   * nothing a lifecycle reads, so it must not be one more wake for them. A host without a state
+   * listener skips it.
+   */
+  private theStateWasAskedFor(conversation: string): void {
+    if (this.deps.statesMoved === undefined) return
+    this.statesToAsk.add(conversation)
+    this.askTheFlush()
+  }
+
+  /**
    * 🔴 **D-019 · a fact this conversation's one state is read from may have moved** — noted, and
    * asked once the loop has finished what it is doing ({@link sayWhatMoved}).
    *
@@ -4558,9 +4571,7 @@ export class RuntimeHost implements LiveHost {
     this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
     this.conversationIdle.countTheIdleMinutes(conversation)
-    if (this.deps.statesMoved === undefined) return
-    this.statesToAsk.add(conversation)
-    this.askTheFlush()
+    this.theStateWasAskedFor(conversation)
   }
 
   /**
@@ -15297,10 +15308,15 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **F036 · and whose questions it owes an answer to**, for the same reason.
     if (owed.owedTo.length === 0) this.owesTheAnswersOf.delete(sessionId)
     else this.owesTheAnswersOf.set(sessionId, owed.owedTo)
+    // 🔴 **541 · a reply still arriving is a turn being driven**, whatever the provider's status
+    // says: text can stream after its `idle` (042), and {@link BeingDoneTracker} already holds that
+    // fact for this conversation — the same one the window's pill reads — so it is read here and no
+    // second source is made.
+    const replying = session?.beingDone.current.streaming === true
     const active =
       this.startsInFlight.has(sessionId) ||
       this.arrivals.has(sessionId) ||
-      (slot !== undefined && !going && (slot.session === null || status === 'working'))
+      (slot !== undefined && !going && (slot.session === null || status === 'working' || replying))
     const answererIds =
       active || owed.owedQuestions.length === 0 ? [] : this.theIdsItStandsFor(sessionId)
     let stalledQuestion: string | undefined
@@ -35531,7 +35547,16 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // read one question over: a conversation nobody is watching is the ORDINARY case for *what is
     // each agent doing* — every agent-spawned child is one — so a fold that only happened while a
     // window was open would be missing from exactly the conversations this read exists for.
+    const wasReplying = session.beingDone.current.streaming
     session.beingDone.observe(event, at)
+    // 🔴 **541 · a reply starting or ending moves the one state** when the provider's own status is
+    // not already saying `working` — text is a row that marks nothing, so without this a reply that
+    // streams after `idle` (or ends after it) would leave the state as it was last read.
+    if (
+      session.beingDone.current.streaming !== wasReplying &&
+      session.handle.status() !== 'working'
+    )
+      this.theStateWasAskedFor(session.id)
     const workAncestry = session.workAncestry.observe(wire)
     if (wire.type === 'conversation_reset') session.ancestrySeed = undefined
     // The ordinal is taken and the row written whether or not anyone is listening.
