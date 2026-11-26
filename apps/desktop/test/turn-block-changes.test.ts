@@ -148,6 +148,23 @@ describe('turn block changes', () => {
     )
     expect(block(renamed.extra)).toContain('in conversation W1 · Renamed.')
 
+    // Only what the line shows counts: a rename while no task is current, or a title edit past
+    // the part the line shows, changes nothing it says.
+    const noTask = turnBlockChanges(
+      { ...input, conversation: 'conversation W1 · Renamed while idle', now: 130_000 },
+      first.next,
+    )
+    expect(noTask.extra.currentWork).toBeUndefined()
+    const long = { ...work, title: 'x'.repeat(200) + ' first ending' }
+    const longSaid = turnBlockChanges({ ...input, current: long, now: 140_000 }, first.next)
+    expect(block(longSaid.extra)).toContain('x'.repeat(200) + '…')
+    const longEdited = turnBlockChanges(
+      { ...input, current: { ...long, title: 'x'.repeat(200) + ' second ending' }, now: 150_000 },
+      longSaid.next,
+    )
+    expect(longEdited.extra.currentWork).toBeUndefined()
+    expect(block(longEdited.extra)).not.toContain(TURN_BLOCK_WORDS.updateGivenWork)
+
     // Unchanged, it is said again once two hours have passed since it was last said.
     const quiet = { ...input, current: retitled, conversation: 'conversation W1 · Renamed' }
     const before = turnBlockChanges({ ...quiet, now: 360_000 + 2 * 3_600_000 }, renamed.next)
