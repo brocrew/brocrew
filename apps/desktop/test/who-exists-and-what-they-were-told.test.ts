@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +14,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
@@ -17,7 +22,7 @@ import { EVERY_AGENT_THIS_APP_HOLDS } from '../src/shared/capabilities'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 // ⚑ **584 · the list this app assigns from first** (`HO-078` §5) — imported so §4 can say *the app
 // named it* rather than spelling the handle, which would pin the list's order at a door about what
 // crosses.
@@ -57,17 +62,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * database, and a name it does not list is `no-such-profile`, PERMANENT, at the give door.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('488 · who exists, and what they were told', () => {
   let userData: string
   let work: string
@@ -105,7 +99,7 @@ describe('488 · who exists, and what they were told', () => {
         return { instructions: read.instructions, systemHint: undefined, memoryLoaded: null }
       },
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

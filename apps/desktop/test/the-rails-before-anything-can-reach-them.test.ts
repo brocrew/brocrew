@@ -1,5 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,8 +25,6 @@ import {
   type SpawnRail,
 } from '../src/main/runtime/spawn-rails'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -50,20 +47,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * call, one fact over, allowed and then refused — and **every refusal is paired with the positive
  * that proves the test was reaching the rule** rather than failing for some other reason.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 /**
  * A commander (340) — a {@link CallerIdentity} and deliberately not a sink: it has no screen, and it
@@ -122,7 +105,7 @@ describe('341 · the rails, before anything can reach them', () => {
     providerSessions = new FakeProviderSessions()
     counter = 0
     host = buildHost()
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

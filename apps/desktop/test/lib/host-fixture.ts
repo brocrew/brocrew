@@ -110,19 +110,35 @@ export function fixtureHostPaths(
     ...neutralHostDeps(rootGetter),
     resourcesRoot: () => resourcesRoot(rootGetter()),
     prepareProviderHome: syntheticProviderHome(rootGetter),
+    ...launchPaths(rootGetter),
+  }
+}
+
+function launchPaths(
+  rootGetter: () => string,
+): Pick<RuntimeHostDeps, 'providerHomePath' | 'resolveCwd'> {
+  return {
     providerHomePath: (provider) => join(rootGetter(), 'provider-homes', provider),
     resolveCwd: (sessionId, requested) => resolveSessionCwd(rootGetter(), sessionId, requested),
   }
 }
 
-export function numberedFixtureHostPaths(rootGetter: () => string, now: () => number) {
+/**
+ * What one host's launches need: its provider homes and session folders under the root, numbered
+ * session ids from `sess_1`, the clock, and the fixture provider configuration.
+ */
+export function numberedLaunches(rootGetter: () => string, now: () => number) {
   let counter = 0
   return {
-    ...fixtureHostPaths(rootGetter),
+    ...launchPaths(rootGetter),
     newSessionId: () => `sess_${++counter}`,
     now,
     readProviderConfig: fixtureProviderConfig,
   }
+}
+
+export function numberedFixtureHostPaths(rootGetter: () => string, now: () => number) {
+  return { ...fixtureHostPaths(rootGetter), ...numberedLaunches(rootGetter, now) }
 }
 
 export function latestToolset(handed: readonly AgentToolset[]): AgentToolset {
@@ -153,10 +169,7 @@ export function fixtureConversationReaders(
 }
 
 export function fixtureTurnCounts(currentStore: () => Pick<SessionStore, 'events'>) {
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    currentStore()
-      .events(sessionId)
-      .map((entry) => entry.event)
+  const { ledger } = fixtureLedger(currentStore)
   const turnsIn = (sessionId: string): number =>
     ledger(sessionId).filter((event) => event.type === 'turn').length
   const userTurnsIn = (sessionId: string): number =>

@@ -1,5 +1,10 @@
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  closeHostFixture,
+} from './lib/host-fixture'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -104,12 +109,7 @@ describe('632 · a child avatar shows what the child is doing', () => {
     window = new Window('webContents:1')
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = async (profileId = 'default'): Promise<string> => {
     const { sessionId } = await host.createSession(

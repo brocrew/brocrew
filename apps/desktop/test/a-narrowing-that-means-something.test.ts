@@ -1,4 +1,3 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { lstatSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +9,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { profileHome } from '../src/main/connections/homes'
 import {
   SPAWN_RAILS,
@@ -19,9 +17,12 @@ import {
   permanenceOf,
 } from '../src/main/runtime/spawn-rails'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  numberedLaunches,
+} from './lib/host-fixture'
 // ⚠️ **The sink INTERFACE is the host's, not the wire's** — the wire declares the message.
 
 /**
@@ -112,20 +113,6 @@ vi.mock('node:fs', async (importOriginal) => {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
-
 describe('371 · a narrowing that means something', () => {
   let userData: string
   /** The folder the whole tree hangs off — stands in for a project root. */
@@ -135,7 +122,6 @@ describe('371 · a narrowing that means something', () => {
   let db: AppDatabase
   let host: RuntimeHost
   let store: SessionStore
-  let counter: number
   let window: RecordingSink
   let clock: number
   const tick = (): number => clock++
@@ -149,7 +135,6 @@ describe('371 · a narrowing that means something', () => {
     applyMigrations(db, migrationsFolder)
     clock = 3_000_000
     store = createSessionStore(db, tick)
-    counter = 0
     fsWatch.calls = []
     fsWatch.recording = false
     host = new RuntimeHost({
@@ -157,15 +142,11 @@ describe('371 · a narrowing that means something', () => {
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: syntheticProviderHome(() => userData),
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       // ⚑ **339's own rule, wired in rather than faked** — the folder refusals below are
       // `checkSessionCwd`'s own sentences, reached through the seam a launch uses.
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      ...numberedLaunches(() => userData, tick),
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

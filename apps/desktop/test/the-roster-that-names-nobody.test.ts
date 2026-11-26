@@ -1,4 +1,3 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,28 +9,18 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type AgentCard,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type AgentCard } from '../src/main/runtime/runtime-host'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
   whoseConversationIs,
 } from '../src/main/runtime/host-split/whose-words'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   THIS_APP_CANNOT_NAME_IT,
   agentToolsFor,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps, numberedLaunches } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -67,20 +56,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * `~/.codex`; the app can read them without naming them as its own.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((one) => one.event)
-  }
-}
-
 describe('610 · the roster that names nobody', () => {
   let userData: string
   let work: string
@@ -88,7 +63,6 @@ describe('610 · the roster that names nobody', () => {
   let host: RuntimeHost
   let store: SessionStore
   let sessions: FakeProviderSessions
-  let counter: number
   let window: RecordingSink
   let clock: number
   const tick = (): number => clock++
@@ -108,7 +82,6 @@ describe('610 · the roster that names nobody', () => {
     applyMigrations(db, migrationsFolder)
     clock = 3_000_000
     store = createSessionStore(db, tick)
-    counter = 0
     sessions = new FakeProviderSessions()
     holdTheHome = null
     host = new RuntimeHost({
@@ -121,13 +94,9 @@ describe('610 · the roster that names nobody', () => {
         if (holdTheHome !== null) await holdTheHome.released
         return home
       },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      ...numberedLaunches(() => userData, tick),
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

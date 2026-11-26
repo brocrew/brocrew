@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,14 +8,8 @@ import { FakeRuntime, type ProviderRuntimeContext } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  CreateSessionInput,
-  ModelChoice,
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { CreateSessionInput, ModelChoice, SessionLiveness } from '../src/shared/runtime-ipc'
 import { EFFORT_LAUNCH_CASES } from './fixtures/effort-launches'
 
 /**
@@ -92,23 +86,6 @@ const D042_HEADER: Readonly<Record<string, string>> = {
 const headerOf = (probe: (typeof EFFORT_LAUNCH_CASES)[number]): string =>
   D042_HEADER[probe.name] ?? probe.header
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-}
-
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 /** The `model` / `reasoning` rows, as the header and the drawer read them off one liveness. */
@@ -145,7 +122,7 @@ describe('274 · the header reads what the launcher asked for, and nothing more'
         files: [],
       }),
     })
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(async () => {

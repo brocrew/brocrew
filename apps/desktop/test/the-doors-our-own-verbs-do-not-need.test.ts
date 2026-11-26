@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,11 +15,10 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAILS, permanenceOf, retryableOf } from '../src/main/runtime/spawn-rails'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -37,17 +41,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * later cannot arrive un-classified, and §1 below reads the table off the real toolset rather than
  * off a list somebody typed twice.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /**
  * ⛔ **The split, as this dispatch shipped it** — asserted by NAME and not by count
@@ -156,7 +149,7 @@ describe('486 · the doors our own verbs do not need', () => {
       now: tick,
       readProviderConfig: fixtureProviderConfig,
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

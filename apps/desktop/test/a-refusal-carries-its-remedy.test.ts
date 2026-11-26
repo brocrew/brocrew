@@ -1,4 +1,9 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  neutralHostDeps,
+  numberedLaunches,
+  syntheticProviderHome,
+} from './lib/host-fixture'
 import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,8 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   SPAWN_RAILS,
   permanenceOf,
@@ -70,7 +74,6 @@ import {
 } from '../src/shared/refusals'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -139,16 +142,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * write the artifact, name it, succeed. 🔴 **A remedy nobody has walked is a sentence, not a
  * remedy.**
  */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /**
  * ⛔ **Every vocabulary, as DATA** — so every claim below is walked rather than sampled.
@@ -238,7 +231,6 @@ describe('425 · a refusal carries its remedy', () => {
   let host: RuntimeHost
   let store: SessionStore
   let sessions: FakeProviderSessions
-  let counter: number
   let window: RecordingSink
   let clock: number
   const tick = (): number => clock++
@@ -250,25 +242,16 @@ describe('425 · a refusal carries its remedy', () => {
     applyMigrations(db, migrationsFolder)
     clock = Date.UTC(2030, 0, 1)
     store = createSessionStore(db, tick)
-    counter = 0
     sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      ...numberedLaunches(() => userData, tick),
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
   afterEach(async () => {

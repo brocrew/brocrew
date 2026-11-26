@@ -1,7 +1,12 @@
 import { agentToolCode } from './helpers/agent-tool-source'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  RecordingSink,
+  neutralHostDeps,
+  numberedLaunches,
+  closeHostFixture,
+  syntheticProviderHome,
+} from './lib/host-fixture'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,12 +19,10 @@ import {
   type ResumeOptions,
   type StartOptions,
 } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
@@ -32,12 +35,7 @@ import {
   sessionSpeakingAs,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -58,20 +56,6 @@ const srcRoot = join(here, '../src')
  * section asks it, and a second give of one identity by one giver REACHES the conversation that
  * giver has rather than being refused (§3, §3.1).
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 /**
  * ⚑ **A `FakeRuntime` that keeps what it was launched WITH.** `158` added `systemHint` to
@@ -113,7 +97,6 @@ describe('347 · the five tools', () => {
    * constructed** — installed for the whole suite it would park the first launch of every test.
    */
   let gate: FakeLaunchGate | null
-  let counter: number
   let window: RecordingSink
   let clock: number
   const tick = (): number => clock++
@@ -125,7 +108,6 @@ describe('347 · the five tools', () => {
     applyMigrations(db, migrationsFolder)
     clock = 2_000_000
     store = createSessionStore(db, tick)
-    counter = 0
     starts = []
     resumes = []
     sessions = new FakeProviderSessions()
@@ -137,26 +119,13 @@ describe('347 · the five tools', () => {
       // what lets a gate be installed for one launch rather than for the whole suite.
       createRuntime: () =>
         watchingRuntime(starts, resumes, { sessions, ...(gate === null ? {} : { gate }) }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
-      providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
-      newSessionId: () => `sess_${++counter}`,
-      now: tick,
-      readProviderConfig: fixtureProviderConfig,
+      prepareProviderHome: syntheticProviderHome(() => userData),
+      ...numberedLaunches(() => userData, tick),
     })
-    window = new RecordingSink('webContents:1')
+    window = new RecordingSink('webContents:1', false)
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    db.close()
-    rmSync(userData, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(host, db, userData, work))
 
   const personOpens = async (
     profileId: string,
@@ -729,7 +698,7 @@ describe('347 · the five tools', () => {
       expect(host.sessionIds).not.toContain(recorded)
 
       gate = new FakeLaunchGate()
-      const reopening = host.resumeSession(recorded, new RecordingSink('webContents:3'))
+      const reopening = host.resumeSession(recorded, new RecordingSink('webContents:3', false))
       await until(() => (gate?.held ?? 0) > 0)
 
       let answered: Record<string, unknown> | null = null
@@ -969,7 +938,7 @@ describe('347 · the five tools', () => {
 
         await host.close(id, window)
         resumes.length = 0
-        await host.resumeSession(id, new RecordingSink('webContents:2'))
+        await host.resumeSession(id, new RecordingSink('webContents:2', false))
         // ⛔ **This is the assertion §3 of the brief exists for.** Codex re-reads a file; Claude must
         // be handed the option again. A resume that dropped it would be invisible in every transcript.
         const resumed = resumes.at(-1)

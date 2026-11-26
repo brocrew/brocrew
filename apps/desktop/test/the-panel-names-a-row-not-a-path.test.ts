@@ -1,30 +1,13 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, migrationsFolder, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type SessionHandle } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  // ⚠️ Liveness is not what this file measures; the sink still has to satisfy the interface.
-  sendLiveness(): void {}
-}
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /** A runtime whose handle reports an instruction list, the way Codex's handshake does. */
 class Reporting extends FakeRuntime {
@@ -44,8 +27,6 @@ class Reporting extends FakeRuntime {
     return this.wire(await super.start(...args))
   }
 }
-
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 /**
  * 🔴 **356 · the renderer names a ROW, and the host looks the string up.**
@@ -117,7 +98,7 @@ describe('356 · a row, resolved by the host that launched the session', () => {
       }),
       revealPath: (path) => revealed.push(path),
     })
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(async () => {
