@@ -9,7 +9,7 @@ import {
 } from './who-did-it'
 
 /**
- * 🔴 **Telling *somebody stopped this* from *this broke*** (395, HO-007 S5) — the reading, and the
+ * 🔴 **Telling *somebody stopped this* from *this broke*** (HO-007 S5) — the reading, and the
  * enumeration of every place it has to be readable.
  *
  * ## ⛔ Why this file exists at all
@@ -22,56 +22,45 @@ import {
  * 🔴 **And no single field can tell them apart.** `turn.state === 'interrupted'` has four producers
  * — {@link SessionMachine.forceEnd} from `interrupt()`, the same call from `close()`,
  * `terminalizeErrored` when a fatal error lands on a turn an interrupt was already requested for,
- * and `failTurn` — plus a fifth: the PROVIDER's own word (Codex `turn/completed{status:'interrupted'}`,
- * Claude `terminal_reason: 'aborted_*'`). ⚑ **The discriminator is a PAIR of neighbouring rows, not a
- * field**, which is exactly why it has to be a named fold rather than a reading each surface
- * performs for itself. ⚑ **Since `720` (R71) the first four carry `wordOf: 'this-app'`** on the
- * `turn` row, so WHOSE word it is is a field — rows before `720` carry none, and who ASKED is still
- * the neighbouring row.
+ * and `failTurn` — plus a fifth: the PROVIDER's own word (Codex
+ * `turn/completed{status:'interrupted'}`, Claude `terminal_reason: 'aborted_*'`). ⚑ **The
+ * discriminator is a PAIR of neighbouring rows, not a field**, which is exactly why it has to be a
+ * named fold rather than a reading each surface performs for itself. ⚑ **The first four carry
+ * `wordOf: 'this-app'`** (R71) on the `turn` row, so WHOSE word it is is a field — rows written
+ * before `720` carry none, and who ASKED is still the neighbouring row.
  *
- * ⚠️ **709 · R43 — the fifth used to be the machine's, not the provider's.** ⛔ A permission `cancel`
- * latched `requestInterrupt()` and `completeTurn` then RENAMED the provider's own outcome
- * `interrupted` — so a turn the provider completed after an ask read `it-was-stopped`. ⚑ Since `709`
- * `completeTurn` records the provider's word. ⚑ The latch still decides the word of two of the
- * machine's own four — `failTurn` and a fatal error (`terminalizeErrored`); `forceEnd` sets it itself
- * and always says `interrupted`.
+ * ⚠️ **The fifth is the provider's word, never the machine renaming it** (R43). `completeTurn`
+ * records the provider's own outcome, so a turn the provider completed after an ask reads
+ * `it-finished`. ⚑ The latch still decides the word of two of the machine's own four — `failTurn`
+ * and a fatal error (`terminalizeErrored`); `forceEnd` sets it itself and always says
+ * `interrupted`.
  *
- * ⚠️ **492 moved one Cancel door from the latch to the provider's word.** ⛔ On the Codex agent-tool
- * card the latch was the ONLY thing producing `interrupted` — the provider was never asked to stop,
- * so an ordinary completion was renamed. ⚑ That door now sends `turn/interrupt` and the word arrives
- * as the provider's own. **The doors that tell the provider** — a command or file approval's
- * `{decision:'cancel'}`, and Claude's `interrupt: true` — kept the latch, and since `709` their word
- * is the provider's too. ⚑ **`720` closed the rest**: every Cancel door latches (R71), and the
- * external-MCP elicitation card — whose `{action:'cancel'}` goes to the MCP server and let the turn
- * run on to `completed` (`probe:codex-external-mcp` arm H) — also asked the card's own turn to stop
- * (R74). 🔴 **`736` (R97) took that back**: the Codex terminal's own Esc lets the turn run on, and
- * *"BroBot adds no stop of its own to a Cancel"* — so every elicitation card's Cancel is only the
- * server's answer, and its row says so (`stopsNothing`).
+ * ⚠️ **Every Cancel door latches** (R71). **The doors that tell the provider** — a command or file
+ * approval's `{decision:'cancel'}`, Claude's `interrupt: true`, and the Codex agent-tool card's
+ * `turn/interrupt` — get the provider's own word back. 🔴 **An external-MCP elicitation card's
+ * Cancel is only the server's answer** (R97): its `{action:'cancel'}` goes to the MCP server, the
+ * Codex terminal's own Esc lets the turn run on, and *"BroBot adds no stop of its own to a Cancel"*
+ * — so its row says so (`stopsNothing`).
  *
- * ## 🔴 494 · a Cancel writes no `work_interrupted`, and it never had to
+ * ## 🔴 A Cancel writes no `work_interrupted`
  *
- * ⛔ **`492` filed the absence as a finding and priced the wrong repair** — a second
- * {@link WorkInterruptedEvent} from `RuntimeHost.respondPermission`. ⚑ **The actor was already
- * recorded**: {@link UserDecisionEvent.by} has carried it since `477`, written unconditionally by
- * the one writer that can spell `cancel`, on a row this fold was simply not reading.
- *
- * ⚠️ **So `494` moved the READER and wrote nothing new.** `491`'s assertion — *a cancel writes no
- * `work_interrupted`* — is still true, and HO-029 §2.2's *do not backfill* was never in the way,
- * because nothing is backfilled. 🔴 **The fold now reads a second producer**, and
- * {@link whoCancelledIt} is the one derivation all three readers of it share.
+ * ⚑ **The actor is already recorded**: {@link UserDecisionEvent.by} carries it, written
+ * unconditionally by the one writer that can spell `cancel` (`RuntimeHost.respondPermission`). ⛔ So
+ * a second {@link WorkInterruptedEvent} from that writer would record one fact twice. 🔴 **The fold
+ * reads both producers**, and {@link whoCancelledIt} is the one derivation all three readers of it
+ * share. HO-029 §2.2's *do not backfill* is not in the way, because nothing is backfilled.
  *
  * ## ⛔ Two questions, and neither is derived from the other
  *
- * ⚠️ **{@link HowWorkStopped} is about the WORK; {@link WhoStoppedIt} is about a GESTURE.** They
- * are independent, and folding them into one vocabulary is how *"it was stopped"* comes to imply
- * *"a person did it"* — which is the false sentence this dispatch found shipped
- * (`ENDING_SENTENCE.interrupted`, since `222`).
+ * ⚠️ **{@link HowWorkStopped} is about the WORK; {@link WhoStoppedIt} is about a GESTURE.** They are
+ * independent, and folding them into one vocabulary is how *"it was stopped"* comes to imply *"a
+ * person did it"*, which is false.
  *
  * ⚑ **The case that proves they are independent**: a turn can be asked to stop and finish anyway —
- * no longer narrow since `709` (R43): Codex completes a turn after `turn/interrupt`
- * (`probe:codex-early-interrupt`) and the ledger records its word. So {@link StopReading.how} may
- * read `it-finished` while {@link StopReading.who} names an agent — and both statements are true,
- * and since `720` (R72) the stall notice says both.
+ * Codex completes a turn after `turn/interrupt` (`probe:codex-early-interrupt`) and the ledger
+ * records its word (R43). So {@link StopReading.how} may read `it-finished` while
+ * {@link StopReading.who} names an agent — and both statements are true, and the stall notice says
+ * both (R72).
  *
  * ## ⚠️ What this fold deliberately does NOT read
  *
@@ -88,7 +77,7 @@ import {
  */
 
 /**
- * 🔴 **Every place an interruption or a fault can be observed** (395 §1) — the search shape the
+ * 🔴 **Every place an interruption or a fault can be observed** — the search shape the
  * distinguishability claim is measured against.
  *
  * ⛔ **A closed list, so *"they differ everywhere"* is a loop rather than three assertions somebody
@@ -139,15 +128,14 @@ export const WHO_STOPPED_IT: readonly WhoStoppedIt[] = WHO_DID_IT.filter(
 )
 
 /**
- * 🔴 **The actor of a permission answered `cancel`** (494) — `null` when no row names one.
+ * 🔴 **The actor of a permission answered `cancel`** — `null` when no row names one.
  *
  * ## ⛔ ONE derivation and three readers
  *
  * ⚠️ **{@link howWorkStopped}, `derivePieces` and `SessionStore.lastAskToStop` all ask this.**
- * {@link stoppedBy}'s standing rule applies to a derivation exactly as it does to a sentence:
- * three spellings would be three chances to disagree about who pressed one button, and two of
- * those readers sit on ONE payload — `AgentCard` carries `lastEndedTurn` and `lastAskToStop`
- * together, which is the pair `484` was dispatched about.
+ * {@link stoppedBy}'s standing rule applies to a derivation exactly as it does to a sentence: three
+ * spellings would be three chances to disagree about who pressed one button, and two of those
+ * readers sit on ONE payload — `AgentCard` carries `lastEndedTurn` and `lastAskToStop` together.
  *
  * ## ⚠️ `undefined` is HO-029 §2.2, and it stays `null` for ever
  *
@@ -157,9 +145,9 @@ export const WHO_STOPPED_IT: readonly WhoStoppedIt[] = WHO_DID_IT.filter(
  *
  * ## 🔴 A cancel this app cannot name CLEARS an earlier ask
  *
- * ⛔ **It does not inherit one.** `394`'s rule in every caller is *the last ask wins*; returning
- * *keep whatever you had* would put an agent's name on a person's press — `491`'s defect, one
- * producer over. ⚑ So the callers assign this result whether or not it is `null`.
+ * ⛔ **It does not inherit one.** Every caller's rule is *the last ask wins*; returning *keep
+ * whatever you had* would put an agent's name on a person's press. ⚑ So the callers assign this
+ * result whether or not it is `null`.
  *
  * ## ⚠️ It is the LEDGER boundary, which is why it re-asks what the type already answers
  *
@@ -171,8 +159,8 @@ export const WHO_STOPPED_IT: readonly WhoStoppedIt[] = WHO_DID_IT.filter(
 export function whoCancelledIt(by: ActedBy | undefined): Pick<AskToStop, 'by' | 'asker'> | null {
   if (by === undefined) return null
   // ⚠️ **`typeof` rather than the arm.** {@link ActedBy} guarantees the id on this arm and a
-  // REPLAYED row does not, so the bare word is what a row written without one reads as — which is
-  // the sentence {@link stoppedBy} has carried since `484`.
+  // REPLAYED row does not, so the bare word is what a row written without one reads as, as in
+  // {@link stoppedBy}.
   if (by.who === 'an-agent') {
     return { by: 'an-agent', asker: typeof by.agent === 'string' ? by.agent : null }
   }
@@ -195,13 +183,12 @@ export interface StopReading {
    *
    * ⚠️ **`null` beside `it-was-stopped` is a REACHABLE and honest pair**, not a gap: a conversation
    * closed mid-turn is stopped by a teardown that writes no ask at all. ⛔ Reporting `a-person` for
-   * that is the sentence `395` repaired; reporting `nothing-has-said` for the WORK would be a
-   * second lie, because the work really did stop.
+   * that would be false; reporting `nothing-has-said` for the WORK would be a second lie, because
+   * the work really did stop.
    *
-   * ⛔ **494 · a permission answered `cancel` is no longer one of those**, and the change is in
-   * this fold rather than in any writer. {@link UserDecisionEvent.by} names the caller, so the two
-   * remaining nulls are a turn nobody asked to stop and a row written before `477` — see
-   * {@link whoCancelledIt}. ⚑ Its vocabulary is {@link WhoStoppedIt}'s and no longer one producer's.
+   * ⛔ **A permission answered `cancel` is not one of those.** {@link UserDecisionEvent.by} names
+   * the caller, so the two remaining nulls are a turn nobody asked to stop and a row written before
+   * `477` — see {@link whoCancelledIt}. ⚑ Its vocabulary is {@link WhoStoppedIt}'s.
    */
   readonly who: WhoStoppedIt | null
   /** The conversation that asked — present only when {@link who} is `an-agent`. */
@@ -225,9 +212,8 @@ const NOTHING_HAS_SAID: StopReading = { how: 'nothing-has-said', who: null, aske
  * present for every fault and for no interruption. ⛔ Reading `fatal` here would make a recoverable
  * provider failure read as an interruption.
  *
- * ⚠️ **The LAST ask wins**, for `394`'s reason one door over: a turn can be asked to stop twice —
- * a person after an agent, most obviously — and the reading names who last asked rather than who
- * first did.
+ * ⚠️ **The LAST ask wins**: a turn can be asked to stop twice — a person after an agent, most
+ * obviously — and the reading names who last asked rather than who first did.
  */
 export function howWorkStopped(entries: readonly PersistedEventInfo[]): StopReading {
   let asked: StopReading['who'] = null
@@ -244,21 +230,19 @@ export function howWorkStopped(entries: readonly PersistedEventInfo[]): StopRead
       continue
     }
     if (event.type === 'user_decision') {
-      // 🔴 **494 · the second producer of an ask, and the only outcome that is one.** ⛔ `allow`,
-      // `deny`, `answered` and `rejected` move nothing here: they are answers to a REQUEST, and
-      // this field is about the TURN. ⚑ `cancel` is the one that stops it — on all three doors
-      // (⚑ but for an external-MCP elicitation card, which asks nothing — every one since `736`,
-      // R97; until then only one whose frame named no turn, `723` R81 — below),
-      // and `RuntimeHost.respondPermission` is its single writer.
+      // 🔴 **The second producer of an ask, and the only outcome that is one.** ⛔ `allow`, `deny`,
+      // `answered` and `rejected` move nothing here: they are answers to a REQUEST, and this field
+      // is about the TURN. ⚑ `cancel` is the one that stops it — on all three doors (⚑ but for an
+      // external-MCP elicitation card, which asks nothing — R97, below), and
+      // `RuntimeHost.respondPermission` is its single writer.
       //
       // ⚠️ **Assigned whether or not it names anybody**, which is {@link whoCancelledIt}'s own
       // rule: *the last ask wins*, and a cancel this app cannot name the author of must clear an
       // earlier one rather than inherit it.
       if (event.outcome !== 'cancel') continue
-      // 🔴 **723 · R81 — a cancel that asked no turn to stop is no ask** (`stopsNothing`: since
-      // `736` every external-MCP elicitation card's Cancel; until then only a card whose frame named
-      // no turn). ⛔ Read as one, it would name its presser as the one who asked the running turn to
-      // stop, and nobody asked anything.
+      // 🔴 **R81 — a cancel that asked no turn to stop is no ask** (`stopsNothing`: every
+      // external-MCP elicitation card's Cancel, R97). ⛔ Read as one, it would name its presser as
+      // the one who asked the running turn to stop, and nobody asked anything.
       if (event.stopsNothing === true) continue
       const cancelled = whoCancelledIt(event.by)
       asked = cancelled?.by ?? null
@@ -282,27 +266,26 @@ export function howWorkStopped(entries: readonly PersistedEventInfo[]): StopRead
         : // ⚠️ `completed` with an error row on it is still a completion: `completeTurn` only emits
           // an error on the `failed` arm, so the pair can only mean a recoverable error EARLIER in
           // the turn that the provider then recovered from. Calling that a fault would report a
-          // turn that finished as one that broke. ⚑ (680: a Claude turn the provider REFUSED used to
-          // close `completed` too — `is_error` on a `success` result was not read — and this said
-          // *it finished* of it. It closes `failed` now; see `claudeResultOutcome`.)
+          // turn that finished as one that broke. ⚑ A Claude turn the provider REFUSED closes
+          // `failed`, not `completed`; see `claudeResultOutcome`.
           'it-finished'
   return { how, who: asked, asker }
 }
 
 /**
- * 🔴 **What this app claims when it asks a turn to stop — `asked`, and never `stopped`** (492,
- * `HO-032` §1 · criterion 20).
+ * 🔴 **What this app claims when it asks a turn to stop — `asked`, and never `stopped`** (`HO-032`
+ * §1 · criterion 20).
  *
- * ## ⛔ One clause, because after `492` it is one act
+ * ## ⛔ One clause, because it is one act
  *
- * ⚠️ **Two surfaces describe stopping a turn and they used to make different claims about it.**
- * `interrupt_agent` answers a model *"… was asked to stop"* — `RuntimeHost.interruptAgent`'s own
- * ruling, because **Codex's `interrupt()` awaits an answer the app-server may never send, and an
- * answered ask can still leave the turn running** (709 corrected the mechanism), so a
- * verb answering *stopped* would be false on one provider and would hang on the other. ⛔ The
- * permission card said *"the whole turn is interrupted"*, which is the claim that verb refuses to
- * make. ⚑ **`HO-032` §1 made a person's Cancel perform the same act**, and HO-030 §2's argument is
- * about habit: two spellings of one act teach a reader that the words are decoration.
+ * ⚠️ **Two surfaces describe stopping a turn, and they must make the same claim.** `interrupt_agent`
+ * answers a model *"… was asked to stop"* — `RuntimeHost.interruptAgent`'s own ruling, because
+ * **Codex's `interrupt()` awaits an answer the app-server may never send, and an answered ask can
+ * still leave the turn running**, so a verb answering *stopped* would be false on one provider and
+ * would hang on the other. ⛔ A permission card saying *"the whole turn is interrupted"* would make
+ * the claim that verb refuses to make. ⚑ **`HO-032` §1 made a person's Cancel perform the same
+ * act**, and HO-030 §2's argument is about habit: two spellings of one act teach a reader that the
+ * words are decoration.
  *
  * ## ⚠️ A CLAUSE and not a sentence, and the difference is deliberate
  *
@@ -311,26 +294,26 @@ export function howWorkStopped(entries: readonly PersistedEventInfo[]): StopRead
  * agent and its state. ⚑ What must not differ is the CLAIM, so the claim is the shared bytes and
  * each surface supplies its own subject — `stoppedBy`'s shape, one field over.
  *
- * ⚠️ **It says nothing about what the agent does next**, which is `430`'s narrowing and
- * `WHAT_COMES_AFTER_IS_NOT_OURS`'s job on the surfaces that draw it.
+ * ⚠️ **It says nothing about what the agent does next**, which is `WHAT_COMES_AFTER_IS_NOT_OURS`'s
+ * job on the surfaces that draw it.
  */
 export const ASKED_TO_STOP = 'asked to stop'
 
 /**
- * 🔴 **729 · PM ruling R90 — the reader's own ask, said as its own act** (`724` F-2).
+ * 🔴 **PM ruling R90 — the reader's own ask, said as its own act.**
  *
  * ⚑ **R90:** *"When the one who asked a turn to stop is the reader itself, it is told so as its own
- * act (you asked it to stop), never by its own name as if someone else had."* ⛔ Since `724` (`720`
- * F-C) the asker is NAMED — and the asker is usually the giver reading the sentence, so a project
- * manager that stopped its own worker was told *"…, by Ada"* about its own gesture.
+ * act (you asked it to stop), never by its own name as if someone else had."* ⛔ The asker is NAMED,
+ * and the asker is usually the giver reading the sentence, so without this a project manager that
+ * stopped its own worker would be told *"…, by Ada"* about its own gesture.
  *
  * ⚠️ **R90's words, not {@link ASKED_TO_STOP}'s bytes**: that claim is passive and takes its actor
- * from {@link stoppedBy}; this one has the READER as its subject, which only a sentence composed for
- * one known reader can say — a message addressed TO that agent. ⚠️ **A person can read it too**
- * (`729`'s review): the push is drawn verbatim in the giver's transcript
- * (`WorkReportEntry.vue`), where *you* is that conversation's agent — as the card's own mark, *work
- * you gave out*, already reads it. ⛔ {@link stoppedBy}'s *"third person, never you"* stands for every
- * sentence composed FOR a person — the transcript's own notices, a Sessions row, a person's band.
+ * from {@link stoppedBy}; this one has the READER as its subject, which only a sentence composed
+ * for one known reader can say — a message addressed TO that agent. ⚠️ **A person can read it too**:
+ * the push is drawn verbatim in the giver's transcript (`WorkReportEntry.vue`), where *you* is that
+ * conversation's agent — as the card's own mark, *work you gave out*, already reads it. ⛔
+ * {@link stoppedBy}'s *"third person, never you"* stands for every sentence composed FOR a person —
+ * the transcript's own notices, a Sessions row, a person's band.
  */
 export const YOU_ASKED_IT_TO_STOP = 'you asked it to stop'
 
@@ -343,31 +326,29 @@ export const YOU_ASKED_IT_TO_STOP = 'you asked it to stop'
  * later, and two spellings would be two chances to disagree about a fact this dispatch exists to
  * get right.
  *
- * ⚑ **Third person, never *"you"*.** `222` shipped *"you stopped its last turn"* and it was false
- * for three of the four gestures that write the value; a transcript is also read by somebody other
- * than whoever pressed the button, and by the same person a week later. ⚠️ **729 · R90 — the one
- * exception is not made here**: a sentence composed for ONE agent reader that was itself the asker
- * says {@link YOU_ASKED_IT_TO_STOP} instead of calling this (`reply-rails.ts`' `theStallAndItsAsk`).
+ * ⚑ **Third person, never *"you"*.** *"you stopped its last turn"* would be false for three of the
+ * four gestures that write the value; a transcript is also read by somebody other than whoever
+ * pressed the button, and by the same person a week later. ⚠️ **R90's one exception is not made
+ * here**: a sentence composed for ONE agent reader that was itself the asker says
+ * {@link YOU_ASKED_IT_TO_STOP} instead of calling this (`reply-rails.ts`' `theStallAndItsAsk`).
  *
- * @param agent the words for the asking conversation, when there is one. ⚠️ Since `724` (`720` F-C)
- *   every main-process sentence hands its NAME here (`reply-rails.ts`' `theAskNamed`, over
- *   `RuntimeHost.nameByItsWork` — its agent's name and the piece it owns, since D-016 · commit 7 ·
- *   R3), never the `sess_…` handle — ⚑ and since `729` (R90) the reader's OWN ask never reaches
- *   here: it is {@link YOU_ASKED_IT_TO_STOP}. ⛔ One caller still hands an ID:
- *   {@link whoAskedClause}, a reading's `asker` — which has no caller. ⚑ **Since `737` the renderer
- *   hands the NAME or nothing** (`stop-unanswered.ts`' `whoAskedItToStop`, for both rows an agent's
- *   ask writes): the agent's `agentName` where the row carries its identity and the window has the
- *   roster, else `null` — the category. The transcript handed a `work_interrupted` row's `agent`
- *   here until then, and drew *"asked to stop by sess_…"*.
+ * @param agent the words for the asking conversation, when there is one. ⚠️ Every main-process
+ *   sentence hands its NAME here (`reply-rails.ts`' `theAskNamed`, over `RuntimeHost.nameByItsWork`
+ *   — its agent's name and the piece it owns, D-016 · R3), never the `sess_…` handle — ⚑ and the
+ *   reader's OWN ask never reaches here: it is {@link YOU_ASKED_IT_TO_STOP} (R90). ⛔ One caller
+ *   still hands an ID: {@link whoAskedClause}, a reading's `asker` — which has no caller. ⚑ **The
+ *   renderer hands the NAME or nothing** (`stop-unanswered.ts`' `whoAskedItToStop`, for both rows an
+ *   agent's ask writes): the agent's `agentName` where the row carries its identity and the window
+ *   has the roster, else `null` — the category, never *"asked to stop by sess_…"*.
  */
 export function stoppedBy(by: WhoStoppedIt, agent: string | null): string {
   // ⚠️ **`'an agent'` when the row carries no id**, which a row written before this app named the
   // asker would be. It is the honest generalisation of what the row does say, and never a guess at
   // which conversation it was.
   //
-  // ⛔ **494 · the other words come from {@link WHO_DID_IT_SAYS} rather than from a second table
-  // here.** ⚑ {@link didIt} is the same phrasing for the same vocabulary one subject over, and two
-  // tables for one set of words is how a surface comes to disagree with the digest about an actor.
+  // ⛔ **The other words come from {@link WHO_DID_IT_SAYS} rather than from a second table here.** ⚑
+  // {@link didIt} is the same phrasing for the same vocabulary one subject over, and two tables for
+  // one set of words is how a surface comes to disagree with the digest about an actor.
   return by === 'an-agent' ? (agent ?? WHO_DID_IT_SAYS['an-agent']) : WHO_DID_IT_SAYS[by]
 }
 
@@ -378,38 +359,35 @@ export function stoppedBy(by: WhoStoppedIt, agent: string | null): string {
  * with no ask written at all; a surface then says only that the work was stopped, which is all this
  * app knows.
  *
- * ⚠️ **494 · a card answered `cancel` used to be the other example here and is not one any more.**
- * ⚑ {@link whoCancelledIt} reads the actor off the decision row, so this clause now names a person
- * for the press that stopped the turn — and the remaining nulls are a turn nobody asked to stop and
- * a decision written before `477`.
+ * ⚠️ **A card answered `cancel` is not such a case.** ⚑ {@link whoCancelledIt} reads the actor off
+ * the decision row, so this clause names a person for the press that stopped the turn — and the
+ * remaining nulls are a turn nobody asked to stop and a decision written before `477`.
  */
 export function whoAskedClause(reading: StopReading): string | null {
   return reading.who === null ? null : stoppedBy(reading.who, reading.asker)
 }
 
 /**
- * 🔴 **Which turn an ask to stop landed on** (484, HO-031 §2.1) — four answers, all reachable.
+ * 🔴 **Which turn an ask to stop landed on** (HO-031 §2.1) — four answers, all reachable.
  *
  * ⛔ **It exists because an ask is an act on a CONVERSATION and {@link StopReading} is about one
  * TURN.** `RuntimeHost.askTheWorkToStop` writes `work_interrupted` for every caller and at every
  * moment, and `SessionStore`'s `turnFor` gives a row `turn_id = null` when nothing is running — so
- * the one gesture this app records the author of is invisible to every reader narrowed by turn.
- * ⚑ That is the measurement behind HO-031 §2.1: the ledger held `{"by":"a-person"}` and
- * `get_agent_status` answered `who: null`.
+ * the one gesture this app records the author of is invisible to every reader narrowed by turn: the
+ * ledger can hold `{"by":"a-person"}` while `get_agent_status` answers `who: null`.
  *
- * ⚠️ **Each member is a state something actually reaches**, which is the test `395` applied to
- * the `this-app` word it drafted and removed — see {@link WhoStoppedIt}.
+ * ⚠️ **Each member is a state something actually reaches**, the same test {@link WhoStoppedIt}
+ * applies.
  *
  *  - **`the-turn-that-ended-last`** — the ordinary Stop, pressed while a turn was running. The same
  *    act {@link StopReading.who} already reports, named here so a reader can tell it IS the same.
  *  - **`a-turn-that-ended-earlier`** — asked while a turn was running, and that turn has ended with
  *    another turn after it: the words a stop was asked for went in as soon as it ended, which is
- *    what an interrupting message or answer does. ⚠️ It read `no-turn-was-running` until then — the
- *    turn it stopped was neither the last one ended nor the one running.
+ *    what an interrupting message or answer does. ⚠️ Not `no-turn-was-running`: a turn was
+ *    running, and the turn it stopped is neither the last one ended nor the one running.
  *  - **`a-turn-that-is-running-now`** — asked, and the turn has not closed. ⛔ Not a race to be
- *    tidied away: Codex's `interrupt()` awaits an answer the app-server may never send (709),
- *    which `395` measured and `askTheWorkToStop` writes its row before the provider is asked
- *    precisely because of.
+ *    tidied away: Codex's `interrupt()` awaits an answer the app-server may never send, which is
+ *    why `askTheWorkToStop` writes its row before the provider is asked.
  *  - **`no-turn-was-running`** — Stop on an idle or stalled conversation. ⚑ Reachable from a window
  *    and from `interrupt_agent` alike: `INTERRUPT_RAILS` has no member for *there is nothing to
  *    stop*, deliberately, and this is the shape HO-031 §2.1 was written about.
@@ -424,8 +402,8 @@ export const WHERE_AN_ASK_LANDED = [
 export type WhereAnAskLanded = (typeof WHERE_AN_ASK_LANDED)[number]
 
 /**
- * 🔴 **The last time anybody asked this conversation's work to stop** (484) — the CONVERSATION's
- * fact, beside {@link LastEndedTurn}'s turn-shaped one.
+ * 🔴 **The last time anybody asked this conversation's work to stop** — the CONVERSATION's fact,
+ * beside {@link LastEndedTurn}'s turn-shaped one.
  *
  * ⛔ **Two fields, two questions, and the difference is which subject each is about.**
  * {@link StopReading.who} answers *who stopped THAT turn* and is `null` for a turn nobody stopped —
@@ -435,15 +413,15 @@ export type WhereAnAskLanded = (typeof WHERE_AN_ASK_LANDED)[number]
  * different false sentence from the one being repaired.
  *
  * ⚑ **{@link turn} is what makes the pair readable rather than two numbers a reader has to guess
- * about.** When it says anything but `the-turn-that-ended-last`, they are two acts. ⚠️ **709 · R43:
- * when it says `the-turn-that-ended-last` they are still two FACTS** — this ask, and that turn's
- * ending. ⚑ That ending is the provider's own word where the provider ended the turn — a Codex Stop
- * of a running turn, a Cancel on any door that asks one (never an external-MCP elicitation card's
- * since `736`, R97 — its row carries `stopsNothing`) — so a turn asked to stop and completed anyway reads
+ * about.** When it says anything but `the-turn-that-ended-last`, they are two acts. ⚠️ **R43: when
+ * it says `the-turn-that-ended-last` they are still two FACTS** — this ask, and that turn's ending.
+ * ⚑ That ending is the provider's own word where the provider ended the turn — a Codex Stop of a
+ * running turn, a Cancel on any door that asks one (never an external-MCP elicitation card's, R97 —
+ * its row carries `stopsNothing`) — so a turn asked to stop and completed anyway reads
  * `it-finished` beside this ask, and both are true. ⛔ **Except where the machine ended it itself**:
  * Claude's Stop, once its receipt is in or its 2 s ack bound runs out, and every Close go through
  * `forceEnd`, which says `interrupted` whatever the provider says after — and that later word is
- * absorbed unread. ⚑ Since `720` (R71) that row carries `wordOf: 'this-app'`.
+ * absorbed unread. ⚑ That row carries `wordOf: 'this-app'` (R71).
  */
 export interface AskToStop extends StopAsker {
   /** Epoch ms of the row. */
@@ -455,15 +433,14 @@ export interface AskToStop extends StopAsker {
 }
 
 /**
- * 🔴 **The last turn that ENDED — and never the one running now** (484, HO-031 §2.2).
+ * 🔴 **The last turn that ENDED — and never the one running now** (HO-031 §2.2).
  *
  * ## ⛔ The ruling this type carries
  *
- * ⚠️ **BroBot read `lastTurn: {"how":"the-provider-faulted"}` beside a task that had since been
- * answered and could not tell *stale* from *describing an older turn*.** ⛔ **The ambiguity was the
- * defect and neither reading was the bug**: the field has always been about the last CLOSED turn —
- * `SessionStore`'s query narrows on `closed_at IS NOT NULL` — and nothing in the value said so, so
- * a reader had to resolve it from a docblock it could not see.
+ * ⚠️ **A reader of `lastTurn: {"how":"the-provider-faulted"}` beside a task since answered cannot
+ * tell *stale* from *describing an older turn*** unless the value says which. ⛔ The field is about
+ * the last CLOSED turn — `SessionStore`'s query narrows on `closed_at IS NOT NULL` — and a reader
+ * cannot be asked to resolve that from a docblock it cannot see.
  *
  * 🔴 **So the answer is written down and the other reading is unrepresentable.** {@link endedAt} is
  * a moment a running turn does not have, and {@link since} says outright whether this is the
@@ -482,8 +459,8 @@ export interface LastEndedTurn extends StopReading {
   /** ⚑ **Epoch ms the turn OPENED** — `turn.opened_at`: with {@link endedAt}, when it ran. */
   readonly startedAt: number
   /**
-   * ⚑ **F080 — its provider started that turn by itself** (a `provider_turn` opened it: Claude
-   * waking its agent when a background task ended). Absent when a message began it.
+   * ⚑ **Its provider started that turn by itself** (a `provider_turn` opened it: Claude waking its
+   * agent when a background task ended). Absent when a message began it.
    */
   readonly startedByItsProvider?: true
   /**
@@ -498,7 +475,7 @@ export interface LastEndedTurn extends StopReading {
 
 /**
  * ⚑ **The clause a surface adds beside a sentence that reports an ask** — `''` when nobody is
- * named (484).
+ * named.
  *
  * ⛔ **{@link whoAskedClause}'s shape for the other subject.** That one answers about a TURN's
  * reading and returns `null`; this one answers about a stall's actor and returns the words already
@@ -509,10 +486,10 @@ export interface LastEndedTurn extends StopReading {
  * `list_tasks` returns and the notice a parent is PUSHED are read as one account of one event, and
  * two spellings would be two chances to disagree about who did it.
  *
- * ⚠️ **724 · `720` F-C — `asker` is the NAME both callers hand it** (`reply-rails.ts`'
- * `theStallAndItsAsk`, over `theAskNamed`), never the row's id: the type cannot tell the two
- * strings apart, so a caller that passed {@link AskToStop.asker} straight through would print the
- * handle `HO-095` §5.3 ruled out of a sentence.
+ * ⚠️ **`asker` is the NAME both callers hand it** (`reply-rails.ts`' `theStallAndItsAsk`, over
+ * `theAskNamed`), never the row's id: the type cannot tell the two strings apart, so a caller that
+ * passed {@link AskToStop.asker} straight through would print the handle `HO-095` §5.3 ruled out of
+ * a sentence.
  */
 export function askedByClause(ask: Pick<AskToStop, 'by' | 'asker'> | null): string {
   return ask === null ? '' : `, by ${stoppedBy(ask.by, ask.asker)}`
