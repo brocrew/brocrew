@@ -20,8 +20,8 @@ it('keeps the empty card and history door visible', () => {
   expect(m.q('past-runs-open').textContent).toContain('(0)')
 })
 
-it('deduplicates a native child and background identity and excludes wake-ups from the live count', () => {
-  const state = createTranscript()
+it('deduplicates a native child and background identity and excludes wake-ups from the live count', async () => {
+  const state = reactive(createTranscript())
   startMapReader(state)
   state.background.running = [
     { id: 'map-reader', description: 'Read the map' },
@@ -34,6 +34,20 @@ it('deduplicates a native child and background identity and excludes wake-ups fr
   expect(m.q('running-now-rows').querySelectorAll('[data-cy="panel-row"]')).toHaveLength(2)
   expect(m.q('panel-agents').querySelector('.count')?.textContent).toContain('2')
   expect(m.q('schedule-open-wake').textContent).toContain('Check the map')
+  for (const event of mapWorkflowEvents()) applyEvent(state, event)
+  state.workflows['map-review']!.description = 'A short detail'
+  await tick()
+  const row = m.host.querySelector<HTMLElement>('[data-run-key="workflow:map-review"]')!
+  const height = row.getBoundingClientRect().height
+  state.workflows['map-review']!.description =
+    '**Bold detail**  \nsecond line\n\n- first item\n- next item'
+  await tick()
+  const detail = row.querySelector<HTMLElement>('.detail')!
+  expect(detail.querySelector('.markdown-words')?.classList.contains('compact')).toBe(true)
+  expect(detail.querySelector('strong')?.textContent).toBe('Bold detail')
+  expect(getComputedStyle(detail).display).not.toBe('none')
+  expect(row.getBoundingClientRect().height).toBeLessThanOrEqual(height + 1)
+  for (const br of detail.querySelectorAll('br')) expect(getComputedStyle(br).display).toBe('none')
 })
 
 it('moves an ended child to searchable past runs without another read', async () => {
@@ -118,13 +132,24 @@ it('opens the native transcript through the existing pane reader', async () => {
   expect(m.q('child-work-viewer').textContent).toContain('Three paths found.')
 })
 
-it('opens the selected workflow through the existing output reader only after a click', async () => {
+it('opens the selected workflow component and reads its artifact only through the output action', async () => {
   const asked: string[] = []
   const m = mount(
     ConversationPane,
     paneProps({
       drawerOpen: true,
-      record: record(mapWorkflowEvents()),
+      record: record([
+        ...mapWorkflowEvents(),
+        {
+          type: 'workflow_run',
+          taskId: 'map-review',
+          toolUseId: 'workflow-call',
+          name: 'Review the map',
+          outcome: 'completed',
+          outputFile: '/sample/map-review.output',
+          source: 'task_notification',
+        },
+      ]),
       onReadWorkflowOutput: async (id: string) => {
         asked.push(id)
         return {
@@ -139,9 +164,16 @@ it('opens the selected workflow through the existing output reader only after a 
     { width: 1400, height: 900 },
   )
   expect(asked).toEqual([])
+  m.q('past-runs-open').click()
+  await tick()
   m.q('panel-run-workflow:map-review')
     .querySelector<HTMLButtonElement>('[data-cy="panel-row"]')!
     .click()
+  await tick()
+  expect(asked).toEqual([])
+  expect(m.all('workflow-entry')).toHaveLength(2)
+  expect(m.all('workflow-output-viewer')).toHaveLength(0)
+  m.q('workflow-open-output').click()
   await tick()
   expect(asked).toEqual(['map-review'])
   expect(m.q('workflow-output-viewer').textContent).toContain('Three paths checked.')

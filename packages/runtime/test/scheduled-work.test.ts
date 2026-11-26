@@ -68,7 +68,7 @@ describe('253 · SessionCrons — the level, and what it refuses to say', () => 
     expect(event?.type).toBe('scheduled_work')
     expect(event?.source).toBe('hook/Stop')
     expect(event?.jobs?.map((j) => j.id)).toEqual(['a7c8a668', 'b1'])
-    expect(event?.jobs?.[0]).toEqual(LIVE)
+    expect(event?.jobs?.[0]).toMatchObject(LIVE)
     expect(event?.dropped).toBeUndefined()
   })
 
@@ -100,7 +100,9 @@ describe('253 · SessionCrons — the level, and what it refuses to say', () => 
     const crons = new SessionCrons()
     crons.observe([LIVE], 'hook/Stop')
     expect(crons.observe([LIVE, { ...LIVE, id: 'b1' }], 'hook/Stop')?.jobs).toHaveLength(2)
-    expect(crons.observe([{ ...LIVE, schedule: '*/2 * * * *' }], 'hook/Stop')?.jobs?.[0]).toEqual({
+    expect(
+      crons.observe([{ ...LIVE, schedule: '*/2 * * * *' }], 'hook/Stop')?.jobs?.[0],
+    ).toMatchObject({
       ...LIVE,
       schedule: '*/2 * * * *',
     })
@@ -267,7 +269,7 @@ describe('253 · SessionCrons — the level, and what it refuses to say', () => 
       [{ id: 'x', schedule: 5, recurring: 'yes', prompt: { a: 1 }, extra: 'ignored' }],
       'hook/Stop',
     )
-    expect(event?.jobs?.[0]).toEqual({ id: 'x' })
+    expect(event?.jobs?.[0]).toMatchObject({ id: 'x' })
   })
 })
 

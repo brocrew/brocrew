@@ -1,10 +1,12 @@
+import { nativeRun, runLine, type NativeRun } from '../native-run'
+import { claudeRunKind, ClaudeToolRuns } from './native-runs'
 import { MAX_BACKGROUND_WORK, type BackgroundWork } from '../background-work'
 
 /**
  * Each background_tasks_changed payload replaces the per-process membership, so the next level
  * corrects any missed start or finish edge.
  */
-export class BackgroundTasks {
+export class BackgroundTasks extends ClaudeToolRuns {
   /** The level: task id → what the provider said about it. Replaced wholesale, never merged. */
   private live = new Map<string, { kind?: string; description?: string }>()
   /** How many rows the last level payload carried that {@link live} does not — 0 normally. */
@@ -14,6 +16,33 @@ export class BackgroundTasks {
   private readonly taskOf = new Map<string, string>()
   /** Keep past membership so either ending frame can report the task after its live entry is gone. */
   private readonly everBackground = new Set<string>()
+  private readonly kinds = new Map<string, NativeRun['kind']>()
+
+  releaseTask(taskId: string): void {
+    const toolUseId = this.toolOf.get(taskId)
+    if (toolUseId) this.releaseCall(toolUseId)
+    this.kinds.delete(taskId)
+  }
+
+  progressFor(taskId: string, text: string): NativeRun | undefined {
+    const kind = this.runFor(this.toolOf.get(taskId) ?? '')?.kind ?? this.kinds.get(taskId)
+    return kind === 'monitor' || kind === 'command'
+      ? nativeRun(kind, { progress: runLine(text) })
+      : undefined
+  }
+
+  endingRun(taskId: string, summary: string, outcome: string): Partial<NativeRun> | undefined {
+    const call = this.runFor(this.toolOf.get(taskId) ?? '')
+    const kind = call?.kind ?? this.kinds.get(taskId)
+    return kind
+      ? nativeRun(kind, {
+          input: call?.input,
+          result: runLine(summary) ?? (outcome === 'unknown' ? undefined : outcome),
+        })
+      : runLine(summary)
+        ? { result: runLine(summary) }
+        : undefined
+  }
 
   /**
    * Replace the set from a `background_tasks_changed` payload. The SDK says consumers should replace
@@ -37,7 +66,11 @@ export class BackgroundTasks {
         },
       ]),
     )
-    for (const task of tasks) this.everBackground.add(task.id)
+    for (const task of tasks) {
+      this.everBackground.add(task.id)
+      const kind = claudeRunKind(task.kind ?? '')
+      if (kind) this.kinds.set(task.id, kind)
+    }
   }
 
   /** Each handle attaches one query, so later system/init frames belong to the same CLI process. */
@@ -136,8 +169,16 @@ export class BackgroundTasks {
   snapshot(): BackgroundWork[] {
     return [...this.live.entries()].map(([id, about]) => {
       const toolCallId = this.toolOf.get(id)
+      const call = this.runFor(toolCallId ?? '')
+      const kind = call?.kind ?? claudeRunKind(about.kind ?? '')
+      const run = kind
+        ? nativeRun(kind, {
+            input: call?.input ?? about.description,
+          })
+        : undefined
       return {
         id,
+        ...(run ? { run } : {}),
         ...(toolCallId ? { toolCallId } : {}),
         ...(about.kind ? { kind: about.kind } : {}),
         ...(about.description ? { description: about.description } : {}),

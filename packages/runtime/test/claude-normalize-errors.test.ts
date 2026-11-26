@@ -85,7 +85,13 @@ describe('a refused credential (110)', () => {
       ),
     ).toEqual([
       { type: 'assistant_message', text: 'Let me check the logs…' },
-      { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' },
+      {
+        type: 'tool_call',
+        id: 'tu_1',
+        name: 'Bash',
+        summary: 'ls',
+        run: { kind: 'command', input: 'ls' },
+      },
       // …and the ending still lands, because it never depended on the diversion.
       {
         type: 'error',

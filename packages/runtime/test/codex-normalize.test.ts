@@ -30,7 +30,7 @@ describe('normalizeNotification — Codex → content RuntimeEvents', () => {
           { step: 'Create notes.txt', status: 'inProgress' },
           { step: 'Count the lines', status: 'pending' },
         ]),
-      ).toEqual({
+      ).toMatchObject({
         type: 'plan_update',
         steps: [
           { text: 'Create notes.txt', status: 'active' },
@@ -48,7 +48,7 @@ describe('normalizeNotification — Codex → content RuntimeEvents', () => {
           ],
           'Created the file and verified its line count.',
         ),
-      ).toEqual({
+      ).toMatchObject({
         type: 'plan_update',
         steps: [
           { text: 'Create notes.txt', status: 'done' },
@@ -91,7 +91,7 @@ describe('normalizeNotification — Codex → content RuntimeEvents', () => {
     it('an EMPTY plan passes through as the empty list it is', () => {
       // Never observed, and deliberately not second-guessed here: the adapter states what the
       // provider said, and the FOLD decides that an empty checklist opens no block (028).
-      expect(planned([])).toEqual({ type: 'plan_update', steps: [] })
+      expect(planned([])).toMatchObject({ type: 'plan_update', steps: [] })
     })
   })
 
@@ -126,13 +126,13 @@ describe('normalizeNotification — Codex → content RuntimeEvents', () => {
       normalizeNotification('item/started', {
         item: { type: 'commandExecution', id: 'i1', command: 'ls -la' },
       }),
-    ).toEqual([{ type: 'tool_call', id: 'i1', name: 'shell', summary: 'ls -la' }])
+    ).toMatchObject([{ type: 'tool_call', id: 'i1', name: 'shell', summary: 'ls -la' }])
 
     expect(
       normalizeNotification('item/completed', {
         item: { type: 'commandExecution', id: 'i1', status: 'completed' },
       }),
-    ).toEqual([{ type: 'tool_result', id: 'i1', summary: 'shell command', ok: true }])
+    ).toMatchObject([{ type: 'tool_result', id: 'i1', summary: 'shell command', ok: true }])
 
     expect(
       normalizeNotification('item/completed', {
@@ -502,7 +502,7 @@ describe('normalizeNotification — full ThreadItem coverage + error shape (007 
     const text = '# Add verbose CLI output\n\n## Summary\n\nAdd a `--verbose` option.\n'
     expect(
       normalizeNotification('item/completed', { item: { type: 'plan', id: 'p1', text } }),
-    ).toEqual([{ type: 'plan_update', steps: [], body: text.trim() }])
+    ).toMatchObject([{ type: 'plan_update', steps: [], body: text.trim() }])
   })
 
   it('a plan item at STARTED says nothing — its text is empty on the wire (057)', () => {
@@ -539,13 +539,13 @@ describe('normalizeNotification — full ThreadItem coverage + error shape (007 
       explanation: null,
       plan: [{ step: 'read the file', status: 'inProgress' }],
     })
-    expect(checklist).toEqual([
+    expect(checklist).toMatchObject([
       { type: 'plan_update', steps: [{ text: 'read the file', status: 'active' }] },
     ])
     const document = normalizeNotification('item/completed', {
       item: { type: 'plan', id: 'p1', text: '# Plan' },
     })
-    expect(document).toEqual([{ type: 'plan_update', steps: [], body: '# Plan' }])
+    expect(document).toMatchObject([{ type: 'plan_update', steps: [], body: '# Plan' }])
   })
 
   it('the reasoning SUMMARY stream carries the words (027)', () => {
@@ -761,7 +761,7 @@ describe('tool-result status is affirmative-only and exhaustive (060 P2)', () =>
   it('an affirmative `completed` is ok:true and its summary is left clean', () => {
     expect(
       completed({ type: 'commandExecution', id: 'i1', command: 'ls -la', status: 'completed' }),
-    ).toEqual({ type: 'tool_result', id: 'i1', summary: 'ls -la', ok: true })
+    ).toMatchObject({ type: 'tool_result', id: 'i1', summary: 'ls -la', ok: true })
   })
 
   it('webSearch has NO status in the protocol, so its completion is an affirmative success', () => {

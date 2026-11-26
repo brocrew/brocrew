@@ -170,6 +170,6 @@ export async function openAChildsWork(m: Mounted): Promise<void> {
   const phase = m.host.querySelector<HTMLElement>('[data-cy="workflow-phase-head-1"]')
   if (phase?.getAttribute('aria-expanded') !== 'true')
     await press(m.host, '[data-cy="workflow-phase-head-1"]')
-  await press(m.host, '[data-cy="workflow-agent-label"]')
+  await press(m.host, '[data-cy="workflow-agent"] [data-cy="subagent-open-transcript"]')
   await new Promise((done) => setTimeout(done, 300))
 }

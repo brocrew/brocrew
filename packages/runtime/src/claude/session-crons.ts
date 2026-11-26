@@ -1,3 +1,4 @@
+import { scheduledRun } from '../native-run'
 import {
   MAX_SCHEDULED_JOBS,
   MAX_SCHEDULE_PROMPT,
@@ -125,6 +126,10 @@ function readJob(entry: unknown): ScheduledJob | null {
   const prompt = record['prompt']
   return {
     id: clipScheduleText(id, MAX_SCHEDULE_TEXT),
+    run: scheduledRun({
+      ...(typeof prompt === 'string' ? { prompt } : {}),
+      ...(typeof schedule === 'string' ? { schedule } : {}),
+    }),
     ...(typeof schedule === 'string'
       ? { schedule: clipScheduleText(schedule, MAX_SCHEDULE_TEXT) }
       : {}),

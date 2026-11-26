@@ -4,7 +4,7 @@ import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 
-import { computed, nextTick, onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, reactive, ref } from 'vue'
 import type {
   AgentIdentity,
   PermissionDecision,
@@ -89,8 +89,13 @@ import ActivityPill from './ActivityPill.vue'
 import ImageViewer from './ImageViewer.vue'
 import CanonicalDocumentOverlay from './CanonicalDocumentOverlay.vue'
 import WorkflowOutputViewer from './WorkflowOutputViewer.vue'
+import WorkflowEntry from './WorkflowEntry.vue'
+import PlanEntry from './PlanEntry.vue'
+import ToolEntry from './ToolEntry.vue'
+import SheetShell from './SheetShell.vue'
 import ChildWorkViewer from './ChildWorkViewer.vue'
 import ToolAnswerViewer from './ToolAnswerViewer.vue'
+import RunInput from './RunInput.vue'
 import OverlayHost, { useModalDepth } from './OverlayHost.vue'
 import SessionTools from './SessionTools.vue'
 import AgentInstructionsSheet from './AgentInstructionsSheet.vue'
@@ -535,41 +540,8 @@ const composerState = computed<ComposerState>(() => {
 })
 
 /**
- * Name the speaking agent using the same recorded identity as the other surfaces.
- *
- * > *"BroBot messages say **BroBot** which is correct. But the "project manager" messages say
- * > **claude**. it's better if they say **Project Manager**."*
- *
- * ## ⛔ It was `meta.provider`, and that is not a name for an agent
- *
- * ⚠️ **One derivation, five surfaces**: every assistant turn's author, the composer's placeholder,
- * the composer's footer hint, and the two entries that name the speaker of a compaction and of a
- * reset. ⛔ **All five said `claude` about a conversation the rail, the PROFILE field and the
- * AGENTS list all called `project-manager`** — two answers to *who is this* inside one window.
- *
- * ⚑ **{@link agentName} is the app's ONE naming function** (`449`), and this is it being asked
- * rather than a sixth answer being written. ⛔ **It is NOT `identity.displayName ?? identity.slug`
- * spelled again**, which is the expression `a-row-that-says-who-is-in-it.test.ts` §3 greps for.
- *
- * ## ⚠️ The provider is not lost, and that was checked before the word moved
- *
- * ⛔ **`SessionHeader`'s `providerChip` draws the provider** on this same screen — so which
- * provider produced a turn is still legible, and removing the word here removes no fact
- * (`a-number-can-survive-the-death-of-its-derivation`, pointed the other way). ⚑ `SessionContext`
- * reads `provider` too, as a capability KEY rather than as a name, and is untouched.
- *
- * ⚠️ **This paragraph said the chip draws `provider · model · reasoning`, and `578` made that
- * false** (`EXT-010` §1.1): the model and the effort are the Agent panel's and the chip keeps the
- * provider alone. ⛔ The claim this paragraph is actually making — *the provider is
- * still on this screen* — is unchanged, and the sentence is corrected in the commit that moved the
- * other two (standing rule 19's corollary).
- *
- * ## ⛔ `'Assistant'` survives for the one null that must not reach {@link agentName}
- *
- * ⚠️ **No `meta` is a record this window has made and the host has not answered for yet.** Naming
- * it BroBot on the strength of that null would invent an identity — `profileLabel`'s own rule, and
- * `SideRail.who` answers the same null with the session id for the same reason. ⚑ A generic word is
- * not an invented identity; it is the absence of one, said out loud.
+ * All speaker labels use the recorded agent identity. Until it is known, say Assistant.
+ * The header names the provider separately.
  */
 const who = computed(() => ownAgent.value ?? 'Assistant')
 
@@ -827,73 +799,9 @@ const GO_AHEAD_WAITS_FOR_AN_ANSWER =
   'Wait for what you just asked of this conversation to be answered, then start work.'
 
 /**
- * ⛔ **What the composer must be told before the press** (219 §1, from 217 §9).
- *
- * ⚠️ **This pane withheld `blocked` entirely, and the button above it did not.** `canGoAhead` has
- * carried `!signInSuperseded` since 149 with a comment reading *"This button SENDS, so everything
- * true of the composer is true of it"* — and the composer, which has a prop built for exactly this,
- * was the one send path left un-gated. Send stayed lit and full-accent in a state this component
- * already knew made a send impossible; pressing it handed the words back with a red error, and did
- * so again for every press until the conversation was reopened.
- *
- * ⚑ **The FIRST press is still allowed, and that is not a gap left open.** A supersession is
- * *discovered* by a gesture — `checkSignIn` is a `security` subprocess run at the turn boundary, and
- * since `690` when an agent asks to wake the conversation — so the fact does not exist before a send
- * or such a wake has been refused once, and there is nothing to be dark about. What 219 removed is the second press onward.
- *
- * ## ⛔ Why it is withheld while the composer is `frozen` or `ended`
- *
- * ⚠️ **`blocked` outranks every state sentence in the hint, and in those two states the state has
- * the better one.** `canSend` already refuses both, so nothing is un-gated by withholding it — the
- * only thing that would change is the words, and they would change for the worse:
- *
- * - **`frozen`**: a card is open, and answering it is the way forward. Answering is NOT a turn and
- *   the host does not refuse it — `assertCanTakeTurn` is called at the turn boundary and nowhere
- *   else — so *"no message can go out"* would replace a true, actionable sentence with one that is
- *   about a gesture the user was not making. `sign-in-superseded.dom.test.ts` pins the frozen hint
- *   through a supersession as 147's acceptance 7, and it is the paired negative for this clause.
- *
- *   ⛔ **Withheld for the SIGN-IN and no longer for a CLOSE** (234 §2, from `228` M2). The clause
- *   above is about a remedy that outlives the reason — reopen on the current credential, and this
- *   conversation carries on. A close removes the remedy the frozen sentence names, so `closing`
- *   overtakes it; see the block below.
- * - **`ended`**: there is nothing to send to at all, which is the more fundamental fact and the one
- *   whose remedy is different.
- *
- * ⚑ **`busy` IS included**, because the host refuses a queue and an interrupt-and-send on the same
- * gate (`assertCanTakeTurn(session, 'queue')`), and both are what ⌘↵ and ⇧⌘↵ mean from there. The
- * stop button is untouched — interrupting needs no credential, and 085's asymmetry is the same one.
- *
- * ## ⛔ A second reason, because §2's enumeration found one
- *
- * ⚠️ **A close in flight is the same defect with a different fact**, and the pane had it too.
- * `sessionStore.close()` sets `record.phase = 'closing'` BEFORE it awaits the host — 089 put it
- * there precisely because *"that a close was asked for is the one fact only this side holds"* — and
- * this component already reads it: {@link facetInput} hands it to `sessionFacets`, which draws the
- * word **closing** on the header plate. So the plate said the conversation was going away while the
- * composer under it still offered Send, and a press came back *"cannot send: session … is still
- * closing"*. Teardown drains and records behind that gesture (075), so the window is long enough
- * to finish a sentence in.
- *
- * ⚑ **Closing outranks the sign-in**, and the order is not arbitrary: a conversation on its way out
- * cannot be repaired by reopening it on another credential, so offering that remedy first would name
- * a later that does not exist for this session.
- *
- * ## 🔴 714 · a THIRD reason — a command with files (`708` H-3a, `R42`)
- *
- * ⛔ **The host refuses a command that carries attachments** — at the send, at the queue, and before
- * an interrupt-and-send asks the turn to stop — and until `714` Send was lit over it. ⚑ This window holds
- * the provider's list (the palette's), the draft and what is staged in it, so it can say so before
- * the press: {@link aCommandInTheBox}. ⚠️ **Asked LAST**: a close and a superseded sign-in hold back
- * every message, and taking the files off would not light Send in either — their sentences name the
- * remedy that does. ⛔ **And the host stays the authority**: where this window holds no list, or a
- * list that is not the host's, the press is refused with the host's own sentence (`session-error`)
- * and the words and files come back — see that function's note. ⚠️ **The other direction, stated**:
- * a last life's list naming a command the new life dropped darkens Send over a press the host would
- * take, until the new child publishes — with the remedy under the pointer either way.
- *
- * See `send-refusals.ts` for the whole set of states the host refuses a send in, and which of them
- * this window can know about at all.
+ * Show the send reasons the window already knows, with closing before sign-in and attachments.
+ * Frozen and ended states keep their own actionable hints. Busy sends use the same sign-in rule;
+ * Stop is independent. The host remains the authority for facts this window does not hold.
  */
 const sendBlocked = computed<SendBlock[]>(() => {
   // Every reason that holds, most important first: the composer shows the first and counts the rest.
@@ -1242,28 +1150,9 @@ function draftFor(requestId: string): RequestDraft {
   return requestDraft(props.record, requestId)
 }
 
-const {
-  viewing,
-  openFor,
-  toolsFor,
-  instructionsFor,
-  toolsOpen,
-  instructionsOpen,
-  inputsFor,
-  inputsOpen,
-  readingOutput,
-  outputFor,
-  readingChild,
-  childFor,
-  closeToolAnswer,
-  answerFor,
-  openWorkflowOutput,
-  openChildWork,
-  openPanelRun,
-  openToolAnswer,
-  canReadToolAnswer,
-  openImage,
-} = useConversationOverlays(props, transcript, () => canReadToolAnswers.value)
+const overlays = reactive(
+  useConversationOverlays(props, transcript, () => canReadToolAnswers.value),
+)
 
 /**
  * 🔴 **F093 (C9 d) · what the model got with one message**, for the switch under each message here
@@ -1311,12 +1200,12 @@ async function openResource(resourceId: string): Promise<void> {
 
 async function refreshChildWork(): Promise<void> {
   const read = props.onReadChildWork
-  const open = readingChild.value
+  const open = overlays.readingChild
   if (!read || !open || open.agentId === null) return
   const result = await read({ part: 'transcript', agentId: open.agentId })
-  const still = readingChild.value
+  const still = overlays.readingChild
   if (!still || still.sessionId !== open.sessionId || still.agentId !== open.agentId) return
-  readingChild.value = { ...still, result }
+  overlays.readingChild = { ...still, result }
 }
 
 /**
@@ -1343,7 +1232,13 @@ const modalDepth = useModalDepth()
 
 function onKey(event: KeyboardEvent): void {
   // Escape belongs to the open viewer, including one raised outside this pane.
-  if (modalDepth.value > 0 || openFor.value || outputFor.value || childFor.value || answerFor.value)
+  if (
+    modalDepth.value > 0 ||
+    overlays.openFor ||
+    overlays.outputFor ||
+    overlays.childFor ||
+    overlays.answerFor
+  )
     return
   if (event.key !== 'Escape') return
   if (composerState.value !== 'busy' && composerState.value !== 'frozen') return
@@ -1394,7 +1289,7 @@ onUnmounted(() => {
       @hand-back="emit('handBack')"
       @delete="emit('delete')"
       @toggle-drawer="emit('toggleDrawer')"
-      @open-tools="toolsFor = props.record.sessionId"
+      @open-tools="overlays.toolsFor = props.record.sessionId"
     />
 
     <!-- ⛔ **The shared shelf** (389 §3) — a `flex: 0 0 auto` sibling of `.pane-body`, so it spans
@@ -1483,7 +1378,7 @@ onUnmounted(() => {
           :can-stop-commands="canStopBackgroundWork"
           :stopping-call="stoppingCall"
           :can-read-tool-answers="canReadToolAnswers"
-          :can-read-tool-answer="canReadToolAnswer"
+          :can-read-tool-answer="overlays.canReadToolAnswer"
           :can-take-a-message="canTakeAMessage"
           :recorded="props.record.phase === 'recorded'"
           :taken-without-this-window="takenWithoutThisWindow"
@@ -1496,14 +1391,14 @@ onUnmounted(() => {
           @move="(id, decision) => emit('move', id, decision)"
           @respond="(id, response) => emit('respond', id, response)"
           @take-it-over="emit('takeItOver')"
-          @open-image="openImage"
+          @open-image="overlays.openImage"
           @open-conversation="(sessionId, briefOf) => emit('openConversation', sessionId, briefOf)"
           @open-document="(resourceId) => void openResource(resourceId)"
-          @open-workflow-output="openWorkflowOutput"
-          @open-child-work="openChildWork"
+          @open-workflow-output="overlays.openWorkflowOutput"
+          @open-child-work="overlays.openChildWork"
           @watch-command="onWatchCommand"
           @stop-command="(callId, key) => void onStopCommand(callId, key)"
-          @open-tool-answer="(callId, name) => void openToolAnswer(callId, name)"
+          @open-tool-answer="(callId, name) => void overlays.openToolAnswer(callId, name)"
           @cancel-queued="(messageId) => emit('cancelQueued', messageId)"
           @stop-queued="(messageId) => emit('stopQueued', messageId)"
           @open-instructions="emit('showInstructions')"
@@ -1730,15 +1625,15 @@ onUnmounted(() => {
         @update:tab="(tab) => emit('update:drawerTab', tab)"
         @navigate="focus"
         @compact-now="(intent) => emit('compactNow', intent)"
-        @open-asset="openImage"
+        @open-asset="overlays.openImage"
         :on-reveal-path="props.onRevealPath"
         :on-read-config-file="props.onReadConfigFile"
         :can-stop-background-work="canStopBackgroundWork"
         :on-stop-background-work="props.onStopBackgroundWork"
-        :on-open-run="openPanelRun"
+        :on-open-run="overlays.openPanelRun"
         @refresh-config="emit('refreshConfig')"
-        @open-instructions="instructionsFor = props.record.sessionId"
-        @open-inputs="inputsFor = props.record.sessionId"
+        @open-instructions="overlays.instructionsFor = props.record.sessionId"
+        @open-inputs="overlays.inputsFor = props.record.sessionId"
         @open-book="(profile) => emit('openBook', profile)"
         @set-approval-mode="(mode) => emit('setApprovalMode', mode)"
         @set-session-setting="(body) => emit('setSessionSetting', body)"
@@ -1747,17 +1642,89 @@ onUnmounted(() => {
 
     <!-- One image, from either entrance (067). `OverlayHost` owns the chrome — Esc, the backdrop,
          the focus trap — so this is only the thing on it. -->
-    <OverlayHost v-if="openFor" label="Image" @close="viewing = null">
-      <ImageViewer :path="openFor.path" :prompt="openFor.prompt" @close="viewing = null" />
+    <OverlayHost v-if="overlays.openFor" label="Image" @close="overlays.viewing = null">
+      <ImageViewer
+        :path="overlays.openFor.path"
+        :prompt="overlays.openFor.prompt"
+        @close="overlays.viewing = null"
+      />
     </OverlayHost>
 
     <!-- What a workflow wrote (108), on paper with the Markdown/Raw toggle — 107 §4's ruling. Same
          `OverlayHost`, so there is one answer to "what does opening a thing do". -->
-    <OverlayHost v-if="outputFor" label="Workflow output" @close="readingOutput = null">
+    <OverlayHost
+      v-if="overlays.workflowFor || overlays.planFor || overlays.toolFor || overlays.backgroundFor"
+      :label="overlays.workflowFor ? 'Workflow' : overlays.planFor ? 'Checklist' : 'Run'"
+      @close="overlays.closePanelRun"
+    >
+      <SheetShell glyph="↳" style="--sheet-width: 780px" @close="overlays.closePanelRun">
+        <template #header
+          ><strong>{{
+            overlays.workflowFor ? 'Workflow' : overlays.planFor ? 'Checklist' : 'Run'
+          }}</strong></template
+        >
+        <template #body>
+          <RunInput
+            v-if="overlays.backgroundFor"
+            :pending-output="
+              !overlays.backgroundFor.outcome &&
+              !overlays.backgroundFor.unfinished &&
+              transcript.background.running.some((work) => work.id === overlays.backgroundFor?.id)
+            "
+            :text="overlays.backgroundFor.run?.input"
+            :progress="overlays.backgroundFor.run?.progress"
+            :result="overlays.backgroundFor.run?.result"
+          />
+          <PlanEntry v-if="overlays.planFor?.kind === 'plan'" :item="overlays.planFor" embedded />
+          <ToolEntry
+            v-if="overlays.toolFor?.kind === 'tool'"
+            :key="overlays.toolFor.callId"
+            :item="overlays.toolFor"
+            :paths="messagePaths"
+            opened
+            :tail="tailFor(overlays.toolFor.callId)"
+            :can-watch="canWatchCommands"
+            :output-capability="outputCapability"
+            :background-output-capability="backgroundOutputCapability"
+            :can-stop="canStopBackgroundWork"
+            :stopping="stoppingCall(overlays.toolFor.callId)"
+            :can-read-answer="overlays.canReadToolAnswer(overlays.toolFor.callId)"
+            :can-open-child="!!props.onReadChildWork"
+            :can-open-output="!!props.onReadWorkflowOutput"
+            @open-child="overlays.openChildWork"
+            @open-output="overlays.openWorkflowOutput"
+            @watch="onWatchCommand"
+            @stop="onStopCommand"
+            @open-answer="
+              (callId, name) => {
+                overlays.readingTool = null
+                void overlays.openToolAnswer(callId, name)
+              }
+            "
+          />
+          <WorkflowEntry
+            v-if="overlays.workflowFor"
+            :run="overlays.workflowFor"
+            :paths="messagePaths"
+            opened
+            :can-open-child="!!props.onReadChildWork"
+            :can-open-output="!!props.onReadWorkflowOutput"
+            @open-child="overlays.openChildWork"
+            @open-output="overlays.openWorkflowOutput"
+          />
+        </template>
+      </SheetShell>
+    </OverlayHost>
+
+    <OverlayHost
+      v-if="overlays.outputFor"
+      label="Workflow output"
+      @close="overlays.readingOutput = null"
+    >
       <WorkflowOutputViewer
-        :result="outputFor.result"
-        :workflow="outputFor.workflow"
-        @close="readingOutput = null"
+        :result="overlays.outputFor.result"
+        :workflow="overlays.outputFor.workflow"
+        @close="overlays.readingOutput = null"
       />
     </OverlayHost>
 
@@ -1778,8 +1745,12 @@ onUnmounted(() => {
          about the session, and reading it off a transcript scrolled back into history would report
          what was true then. That is the same split `SessionDrawer` makes between `state` and
          `shown`, applied to a registry rather than to items. -->
-    <OverlayHost v-if="toolsOpen" label="Inventory workbench" @close="toolsFor = null">
-      <SessionTools :tools="control.tools" @close="toolsFor = null" />
+    <OverlayHost
+      v-if="overlays.toolsOpen"
+      label="Inventory workbench"
+      @close="overlays.toolsFor = null"
+    >
+      <SessionTools :tools="control.tools" @close="overlays.toolsFor = null" />
     </OverlayHost>
 
     <!-- 🔴 **The agent's side, wide** (`527` §3.3) — raised HERE with the pane's other sheets, so
@@ -1788,56 +1759,69 @@ onUnmounted(() => {
          navigate to does not"*** (`HO-050` §1.2): nothing routes, nothing unmounts, Escape and the
          backdrop close it, and `OverlayHost` gives focus back to the entry that opened it. -->
     <OverlayHost
-      v-if="instructionsOpen"
+      v-if="overlays.instructionsOpen"
       label="What this agent was told"
-      @close="instructionsFor = null"
+      @close="overlays.instructionsFor = null"
     >
       <AgentInstructionsSheet
-        :instructions="instructionsOpen.instructions"
+        :instructions="overlays.instructionsOpen.instructions"
         :on-read-instruction="props.onReadInstruction"
         :on-reveal-path="props.onRevealPath"
         :tools="control.tools"
         :relaunched="props.record.liveFrom !== null"
-        @close="instructionsFor = null"
+        @close="overlays.instructionsFor = null"
       />
     </OverlayHost>
 
     <!-- 🔴 **F093 · everything this agent is given**, through the same host as the sheet above. -->
-    <OverlayHost v-if="inputsOpen" label="Instructions, memory and tools" @close="inputsFor = null">
+    <OverlayHost
+      v-if="overlays.inputsOpen"
+      label="Instructions, memory and tools"
+      @close="overlays.inputsFor = null"
+    >
       <AgentInputPopup
         :session-id="props.record.sessionId"
-        :provider="inputsOpen.provider"
+        :provider="overlays.inputsOpen.provider"
         :who="who"
-        :profile="profileItRunsAs(inputsOpen)"
+        :profile="profileItRunsAs(overlays.inputsOpen)"
         :state="control"
         :start-loaded="controlHoldsTheStart(props.record)"
-        @close="inputsFor = null"
+        @close="overlays.inputsFor = null"
       />
     </OverlayHost>
 
     <!-- What one tool answered (462), on the same paper and through the same host as the two above. -->
-    <OverlayHost v-if="answerFor" label="Tool answer" @close="closeToolAnswer">
+    <OverlayHost v-if="overlays.answerFor" label="Tool answer" @close="overlays.closeToolAnswer">
       <ToolAnswerViewer
-        :name="answerFor.name"
-        :answer="answerFor.answer"
-        :can-ask="canReadToolAnswers || answerFor.answer !== null"
+        :name="overlays.answerFor.name"
+        :answer="overlays.answerFor.answer"
+        :can-ask="canReadToolAnswers || overlays.answerFor.answer !== null"
         :paths="messagePaths"
-        :short-form="answerFor.shortForm"
-        :call="answerFor.call"
-        @close="closeToolAnswer"
+        :short-form="overlays.answerFor.shortForm"
+        :call="overlays.answerFor.call"
+        @close="overlays.closeToolAnswer"
       />
     </OverlayHost>
 
     <!-- What one sub-agent did (112), on the same paper and through the same host. -->
-    <OverlayHost v-if="childFor" label="What a sub-agent did" @close="readingChild = null">
+    <OverlayHost
+      v-if="overlays.childFor"
+      label="What a sub-agent did"
+      @close="overlays.readingChild = null"
+    >
       <ChildWorkViewer
-        :result="childFor.result"
-        :label="childFor.label"
-        :agent="childFor.agentId"
+        :result="overlays.childFor.result"
+        :run="
+          overlays.childFor.agentId
+            ? transcript.subAgentCards.get(overlays.childFor.agentId)?.run
+            : undefined
+        "
+        :label="overlays.childFor.label"
+        :agent="overlays.childFor.agentId"
         :on-refresh="refreshChildWork"
         :on-read-state="onReadChildState"
         :on-send="onSendToChild"
-        @close="readingChild = null"
+        @close="overlays.readingChild = null"
       />
     </OverlayHost>
   </section>

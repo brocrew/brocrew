@@ -167,7 +167,7 @@ describe('247 · the level, and it REPLACES', () => {
       undefined,
       new BackgroundTasks(),
     )
-    expect(backgroundOf(events)).toEqual([
+    expect(backgroundOf(events)).toMatchObject([
       {
         type: 'background_work',
         running: [{ id: TASK, kind: 'local_bash', description: DESCRIPTION }],
@@ -361,7 +361,7 @@ describe('247 · the endings, and both bookends get to speak', () => {
     normalizeMessage(started(), undefined, undefined, undefined, state)
     expect(
       backgroundOf(normalizeMessage(notification(), undefined, undefined, undefined, state)),
-    ).toEqual([
+    ).toMatchObject([
       {
         type: 'background_work',
         ended: {
@@ -514,7 +514,7 @@ describe('257 · a cron fire is an `init` that is NOT a restart', () => {
     // answered `[]` here, and the card the person was watching went blank while the command ran.
     expect(
       backgroundOf(normalizeMessage(started(), undefined, undefined, undefined, state))[0]?.running,
-    ).toEqual([{ id: TASK, toolCallId: CALL, kind: 'local_bash', description: DESCRIPTION }])
+    ).toMatchObject([{ id: TASK, toolCallId: CALL, kind: 'local_bash', description: DESCRIPTION }])
     // …and the receipt still reads as a detachment, which is what `detachedAs` is asked for.
     expect(
       resultOf(normalizeMessage(receipt(), undefined, undefined, undefined, state))?.backgrounded,

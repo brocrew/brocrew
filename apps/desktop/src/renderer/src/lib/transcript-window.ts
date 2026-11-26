@@ -128,6 +128,7 @@ function asSubAgentEvent(card: SubAgentCard): TranscriptEvent {
     type: 'sub_agent',
     agentId: card.agentId,
     phase: card.running ? 'progress' : 'ended',
+    ...(card.run === undefined ? {} : { run: { ...card.run } }),
     ...(card.idKind !== undefined ? { idKind: card.idKind } : {}),
     ...(card.parentToolCallId !== undefined ? { parentToolCallId: card.parentToolCallId } : {}),
     ...(card.origin !== undefined ? { origin: card.origin } : {}),
@@ -221,7 +222,11 @@ export function carryForward(
     // Copied one level deeper for the reason the two above are copied, and the rows with it: the
     // registry is REPLACED wholesale by the next level frame, so a shared array is a way for two
     // folds to disagree later for no reason.
-    background: { running: [...state.background.running], dropped: state.background.dropped },
+    background: {
+      ...state.background,
+      running: [...state.background.running],
+      history: state.background.history?.map((one) => ({ ...one, run: one.run && { ...one.run } })),
+    },
     // Copied one level deep for the reason the three above are copied: the outgoing state stays
     // reachable for the length of this call, and a shared array is a way for two folds to disagree
     // later for no reason. The JOBS themselves are the provider's own frozen rows and are shared.

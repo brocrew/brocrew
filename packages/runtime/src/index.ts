@@ -318,3 +318,5 @@ export {
 export { ManagedPluginFailure } from './managed-plugin-failure'
 
 export type { ProviderConfigLayout } from './provider-configuration'
+
+export { scheduledRun, type NativeRun } from './native-run'

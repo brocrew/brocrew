@@ -229,9 +229,14 @@ describe('words in the second accent, on their fills', () => {
     await settle()
     expectOn(
       'awaiting a slot',
-      m.host.querySelector('[data-cy="workflow-queued"]'),
-      block,
-      'var(--wash-2)',
+      m.host.querySelector(
+        '[data-cy="workflow-agent"][data-state="queued"] [data-cy="subagent-status"]',
+      ),
+      m.host.querySelector(
+        '[data-cy="workflow-agent"][data-state="queued"] [data-cy="subagent-entry"]',
+      )!,
+      'var(--panel)',
+      'var(--muted)',
     )
     const head = m.host.querySelector<HTMLElement>('[data-cy="workflow-head"]')!
     await userEvent.hover(head)

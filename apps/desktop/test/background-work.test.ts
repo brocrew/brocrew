@@ -521,7 +521,20 @@ describe('287 finding 1 · a Codex command that outlives its turn, with no recei
     expect(BACKGROUND_WORD[backgroundState(row(state).background as DetachedWork)]).toBe(
       'did not finish',
     )
-    expect(state.background).toEqual({ running: [], dropped: 0 })
+    expect(state.background).toEqual({
+      running: [],
+      dropped: 0,
+      history: [
+        {
+          id: '42852',
+          toolCallId: EXEC,
+          description: 'sleep 402.278',
+          command: { name: 'Bash', text: 'sleep 402.278' },
+          run: undefined,
+          unfinished: true,
+        },
+      ],
+    })
   })
 
   it('⚑ …and a level arriving AFTER that reopen corrects it, because the provider outranks the sweep', () => {
@@ -539,7 +552,7 @@ describe('287 finding 1 · a Codex command that outlives its turn, with no recei
 })
 
 describe('248 · work does not outlive the conversation running it', () => {
-  it('🔴 a closed session stops the card claiming, and empties the registry', () => {
+  it('a closed session clears live claims and retains unfinished history', () => {
     // 222's stale indicator arriving through the STORE. `247` made the level self-correcting for a
     // replay (`init` emits `running: []`); a conversation that is closed, read-only or reopened from
     // a ledger never reaches an `init`, and this is that door.
@@ -552,7 +565,11 @@ describe('248 · work does not outlive the conversation running it', () => {
     expect(row(state).background?.unfinished).toBeUndefined()
     markReadOnly(state, 'this is a recording')
     expect(row(state).background).toMatchObject({ id: 'b6uoyo82k', unfinished: true })
-    expect(state.background).toEqual({ running: [], dropped: 0 })
+    expect(state.background).toEqual({
+      running: [],
+      dropped: 0,
+      history: [{ id: 'b6uoyo82k', run: undefined, unfinished: true }],
+    })
     expect(BACKGROUND_WORD[backgroundState(row(state).background as DetachedWork)]).toBe(
       'did not finish',
     )
