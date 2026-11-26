@@ -83,7 +83,7 @@ export interface UserTurnEvent {
    *
    * ## `provider_transcript` — a file said the person said it (074, from 069 §2.4)
    *
-   * `import-claude.ts` and `import-codex.ts` read user turns from provider-home JSONL files rather than sends the app observed. A writer with access to those files can supply user-looking messages, so mark that provenance instead of presenting the words as verified typing.
+   * The Claude and Codex transcript importers read user turns from provider-home JSONL files rather than sends the app observed. A writer with access to those files can supply user-looking messages, so mark that provenance instead of presenting the words as verified typing.
    *
    * It is not fixable by checking harder: from the file's point of view there is nothing to check
    * against, which is exactly why this records the provenance instead of pretending to verify it.

@@ -740,7 +740,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
   })
 
   it('🔴 a turn read from the provider’s own record: found by the text its importer took from it', async () => {
-    // ⚑ The Claude importer's turn is the record's string content, as it is (`import-claude.ts`).
+    // ⚑ The Claude importer's turn is the record's string content, as it is.
     planted('sess_imported', 'claude', [
       { type: 'user_turn', text: CLAUDE_FIRST, attribution: 'provider_transcript' },
       { type: 'turn', state: 'completed' },
@@ -1121,7 +1121,7 @@ describe.sequential(
       mkdirSync(dirname(rollout), { recursive: true })
       const codex = lines('codex-rollout.jsonl')
       // ⚑ The turn as the Codex importer took it from the rollout: Codex's message text, split from
-      // what Codex put around it (`import-codex.ts`) — the row a conversation adopted from a
+      // what Codex put around it — the row a conversation adopted from a
       // person's own folder carries, with no text handed over.
       const said = sentIn('codex', codex, NOTE)
       writeFileSync(rollout, `${codex.join('\n')}\n`)

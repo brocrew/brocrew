@@ -420,7 +420,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   readWorkflowOutput: { how: 'plain-by-construction' },
   // ⛔ **`356` deliberately made this an INDEX and not a path**, following its two neighbours:
   // `workflow-output.ts` says *"the renderer never supplies a path"* and keys on a task id, and
-  // `child-work.ts` keys on the agent. So the payload is `{ sessionId, index }` — a string and a
+  // the child-work reader keys on the agent. So the payload is `{ sessionId, index }` — a string and a
   // NUMBER, and a number is a number however it was read. ⚑ §8 drives that rather than claiming it.
   readInstructionSource: { how: 'plain-by-construction' },
   // ⛔ **733 · `plain-by-construction` on both halves**: `session-store.ts` writes the literal

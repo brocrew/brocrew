@@ -18,7 +18,7 @@
 #     entry in app.asar)
 #
 # Claude Code does not ship. A person installs it (https://code.claude.com/docs/en/setup), and
-# `src/main/runtime/claude-program.ts` finds it and gives the Agent SDK its absolute path on every
+# `src/main/providers/claude/program.ts` finds it and gives the Agent SDK its absolute path on every
 # launch. So the archive holds no Agent SDK platform package
 # (`@anthropic-ai/claude-agent-sdk-<platform>`, the SDK's optional dependencies), each a whole
 # Claude Code binary of 200 MB and more: the negation under `files:` keeps them out. The SDK's own
@@ -118,8 +118,8 @@ mac:
   # `build/icon-1024.png`.
   icon: build/icon.icns
   # The bundled Codex for macOS arm64 (014). ⚑ Under `mac:` since F072: electron-builder adds a
-  # platform's own `extraResources` to the shared ones above, and each platform copies only the
-  # Codex build it can run — `codex-binary.ts`' `BUNDLED_CODEX` names the same package and triple.
+  # platform's own `extraResources` to the shared ones above. Each platform copies only the Codex
+  # build matching its package and triple in `BUNDLED_CODEX` in `src/main/providers/codex/program.ts`.
   # Preserve the already-signed pinned Node bytes; the runtime descriptor hashes them.
   signIgnore:
     - 'plugin-node/node$'

@@ -428,7 +428,7 @@ export type RuntimeCommand =
   | { kind: 'teamProfileGraph'; request: import('../team-profile-graph').TeamProfileGraphRequest }
   | { kind: 'searchWork'; conversation: string; query: import('../work-search').WorkSearchQuery }
   // 112. Keyed on the AGENT even for the journal and the script, because the run id those two are
-  // filed under is the one thing the provider does not put on the wire — see `main/child-work.ts`.
+  // filed under is the one thing the provider does not put on the wire.
   | ({ kind: 'readChildWork' } & SessionInput & ChildWorkInput)
   // 296. Keyed on the same `agentId` the transcript read is, and gated by the same ledger allowlist
   // — a child this session never reported is not a child this app will ask about or speak to.

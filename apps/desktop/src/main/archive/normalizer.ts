@@ -23,10 +23,10 @@
  * | version | what changed |
  * |---|---|
  * | `0` | Backfilled for ledgers derived before versioning; these read as stale. |
- * | `1` | `import-codex.ts` preserves `image_generation_end`, including generated pictures. |
+ * | `1` | The Codex importer preserves `image_generation_end`, including generated pictures. |
  * | `2` | Both importers mark imported `user_turn` events with `attribution: 'provider_transcript'`, since the app did not observe the person typing them. |
- * | `3` | `import-codex.ts` separates harness-injected developer/user context from the person's request instead of attributing it to the person. Older ledgers need Rebuild to correct their bubbles. |
- * | `4` | `import-claude.ts` diverts synthetic API notices to errors for every error word and for wordless `isApiErrorMessage` notices. Older ledgers need Rebuild to stop showing provider notices as assistant words. |
+ * | `3` | The Codex importer separates harness-injected developer/user context from the person's request instead of attributing it to the person. Older ledgers need Rebuild to correct their bubbles. |
+ * | `4` | The Claude importer diverts synthetic API notices to errors for every error word and for wordless `isApiErrorMessage` notices. Older ledgers need Rebuild to stop showing provider notices as assistant words. |
  * | `5` | Claude's explicit `end_turn` survives archive import as final phase; older projections remain readable and rebuild only on request. |
  * | `6` | Claude command calls and results retain the supplied native run facts across import batches. |
  */

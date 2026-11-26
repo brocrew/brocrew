@@ -82,7 +82,7 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
     writeFileSync(rolloutOf(id), `${lines.join('\n')}\n`)
   }
 
-  /** The private pass `adoptSessions` and `importRecordedSession` both reach (as `import-codex`). */
+  /** The private Codex import pass reached by both `adoptSessions` and `importRecordedSession`. */
   const importTranscript = (id: string): Promise<unknown> =>
     (
       host() as unknown as {

@@ -340,7 +340,7 @@ describe('transcript import from the provider’s own file', () => {
     // side by side. This holds them together over a REAL transcript: for the record types the
     // SDK also produces, the imported events must equal the live ones, summaries included.
     //
-    // Two deliberate differences are excluded, both documented in import-claude.ts:
+    // The comparison excludes two intentional differences:
     //   - `user_turn`, and ONLY for a record whose content is a string: live, the HOST records
     //     our own turn (084); replaying a file, that record is the only source. Exempting every
     //     `user_turn` would have hidden a real divergence — an earlier version turned the CLI's
@@ -353,8 +353,8 @@ describe('transcript import from the provider’s own file', () => {
     // we launched, and this is a file. The fixture holds no record with an `error` field, so nothing
     // here exercises it today. If the fixture is ever refreshed with one — plausible, since it is
     // literally the incident 110 was written for — this equality will go red on `fatal`/`cause`
-    // ALONE. That is the documented divergence in `import-claude.ts`, not a bug: exclude it, do not
-    // "fix" it by making the two agree.
+    // ALONE. Exclude those fields from the comparison to preserve that distinction between the live
+    // session and the imported file.
     const compared: string[] = []
     for (const line of fixture.lines) {
       const record = JSON.parse(line) as { type?: string; message?: { content?: unknown } }

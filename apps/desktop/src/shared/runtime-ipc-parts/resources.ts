@@ -353,7 +353,7 @@ export type ConfigFileResult =
   | { ok: true; path: string; name: string; text: string; truncated: boolean; bytes: number }
   | { ok: false; reason: 'no-path' | 'gone' | 'not-readable' | 'unreadable' }
 
-/** Which of a sub-agent's artefacts to open (112). See `main/child-work.ts` for where each lives. */
+/** Which of a sub-agent's artefacts to open (112). The provider adapter resolves its location. */
 export type ChildWorkPart = 'transcript' | 'journal' | 'script'
 
 /**

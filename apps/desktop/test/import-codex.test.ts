@@ -280,7 +280,7 @@ describe('214 §2 · injected provider context is not the user speaking', () => 
 
     // ⛔ The whole point: nothing here speaks in the user's name.
     expect(events.every((event) => event.type !== 'user_turn')).toBe(true)
-    // ⚑ And it is KEPT, in the category `import-claude.ts` has used since 074 — out of both
+    // ⚑ And it is KEPT, in the same category as in the Claude transcript importer — out of both
     // transcript modes, whole in the Events tab. Dropping it would be the other kind of dishonesty.
     expect(events.map((event) => event.type)).toEqual(['unknown', 'unknown'])
     expect(events.every((event) => event.category === 'echo')).toBe(true)

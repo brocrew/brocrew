@@ -625,7 +625,7 @@ export interface SessionStore {
    * Read what one sub-agent did (112) — its transcript, its run's journal, or the script.
    *
    * Same rule as above and one more: the agent is named, and the main process checks that name
-   * against the ledger before it looks at a directory. See `main/child-work.ts`.
+   * against the ledger before it looks at a directory.
    */
   readChildWork(sessionId: string, what: ChildWorkInput): Promise<ChildWorkResult>
   /**

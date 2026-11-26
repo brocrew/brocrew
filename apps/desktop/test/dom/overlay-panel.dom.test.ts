@@ -286,7 +286,7 @@ const PROSE = 4.5
  * renders fine — but `TranscriptView` fades every row ABOVE the newest one to `opacity: 0.5`
  * (`.entry.summarised-out`), and on paper that collapses near-black ink to **2.86:1** where on the
  * near-black page it stays at 3.63:1. That is a real number on a real affordance, and it is NOT
- * this viewer's: `import-claude.ts` emits seven event types and `compaction` is not among them, so
+ * this viewer's: the Claude transcript importer emits no `compaction` event, so
  * no child file this door opens can contain one. Asserting the popup against a state it cannot
  * enter would be a red for someone else's surface. The measurement is in the response, for the PM.
  */

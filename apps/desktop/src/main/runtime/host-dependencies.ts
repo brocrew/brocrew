@@ -192,7 +192,7 @@ export interface RuntimeHostDeps {
    */
   askTheProvider?(provider: Provider, key: string): Promise<ApiKeyCheck>
   /**
-   * Each provider's program as this computer runs it (`provider-versions.ts`): the bundled Codex
+   * Each provider's program as this computer runs it: the bundled Codex
    * read once per run, the person's Claude Code whenever it changed. Optional: without it each
    * says it cannot be told.
    */

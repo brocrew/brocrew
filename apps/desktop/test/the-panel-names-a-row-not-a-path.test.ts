@@ -11,26 +11,6 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
-/**
- * 🔴 **356 · the renderer names a ROW, and the host looks the string up.**
- *
- * ⛔ **The doors that read a file's TEXT refuse a renderer-supplied path by construction** —
- * `workflow-output.ts` (*"The renderer never supplies a path"*), `child-work.ts` (which will not even
- * let the absolute path travel BACK). (`asset-protocol.ts` was a third until `726` · R92 made it
- * serve any image file a URL names.) 356 §1 puts two buttons on a panel full of paths, and the only
- * way to do that without inverting both rulings is for the wire to carry a target — a row of the
- * session's own record — and for main to resolve it.
- *
- * ⚑ **So what is measured here is the resolution**, not the reading: that each target lands on the
- * string the host holds for THAT session, that a target naming nothing answers `no-path` rather than
- * revealing something nearby, and that the path handed to the OS is the one the row named.
- *
- * ⚠️ **And the layer labels** (§3, from 357), because they are computed on the same journey: the
- * provider hands over bare strings, and the session's own home and cwd decide which layer each one
- * is in. A fixture whose two files land in ONE layer would be answered identically by every
- * plausible implementation — so the fixture below straddles both.
- */
-
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
   readonly messages: RuntimeEventMessage[] = []
@@ -67,6 +47,25 @@ class Reporting extends FakeRuntime {
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
+/**
+ * 🔴 **356 · the renderer names a ROW, and the host looks the string up.**
+ *
+ * ⛔ **The doors that read a file's TEXT refuse a renderer-supplied path by construction** —
+ * `workflow-output.ts` (*"The renderer never supplies a path"*), `readChildWork` (which will not even
+ * let the absolute path travel BACK). (`asset-protocol.ts` was a third until `726` · R92 made it
+ * serve any image file a URL names.) 356 §1 puts two buttons on a panel full of paths, and the only
+ * way to do that without inverting both rulings is for the wire to carry a target — a row of the
+ * session's own record — and for main to resolve it.
+ *
+ * ⚑ **So what is measured here is the resolution**, not the reading: that each target lands on the
+ * string the host holds for THAT session, that a target naming nothing answers `no-path` rather than
+ * revealing something nearby, and that the path handed to the OS is the one the row named.
+ *
+ * ⚠️ **And the layer labels** (§3, from 357), because they are computed on the same journey: the
+ * provider hands over bare strings, and the session's own home and cwd decide which layer each one
+ * is in. A fixture whose two files land in ONE layer would be answered identically by every
+ * plausible implementation — so the fixture below straddles both.
+ */
 describe('356 · a row, resolved by the host that launched the session', () => {
   let userData: string
   let db: AppDatabase

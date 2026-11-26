@@ -873,7 +873,7 @@ describe('exporting a session', () => {
       })
       const asExported = JSON.parse(readFileSync(exported.path, 'utf8')) as SessionBundle
       // ⚠️ **A `session` event is ADDED, because the fixture is an ADOPTED conversation and those
-      // have none** — `import-claude.ts` emits no lifecycle at all, which is the case the next test
+      // have none** — the Claude transcript importer emits no `session` event, which the next test
       // pins. A session this app RAN carries one, and that is the shape the smoke found.
       const original: SessionBundle = {
         ...asExported,

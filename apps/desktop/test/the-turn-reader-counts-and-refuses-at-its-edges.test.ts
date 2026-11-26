@@ -248,7 +248,7 @@ describe('§3 · 🔴 Codex: the nth', () => {
   })
 
   it('🔴 a turn read from the record: asked for its second, the first is not it', () => {
-    // ⚑ The text the Codex importer took from the rollout (`import-codex.ts`), as §5 of
+    // ⚑ The text the Codex importer took from the rollout, as §5 of
     // `turn-as-sent.test.ts` reads it.
     const said = sentIn('codex', codex, NOTE)
     const own = { by: 'its-own-record' } as const
@@ -279,8 +279,8 @@ describe('§4 · Codex: which block is the message, and how it is reported', () 
   })
 
   it('⚑ a message read from the record is reported whole, as the record keeps it — ⛔ never only as its split words', () => {
-    // ⚑ Codex's own separator (`REQUEST_MARKER`, `codex-injected.ts`): the importer keeps what is
-    // below it as the turn's words.
+    // ⚑ The importer keeps the words below Codex's separator
+    // (`REQUEST_MARKER` in `providers/codex/codex-injected.ts`).
     const block = 'Context.\n\n## My request for Codex:\nhello'
     const file = [
       codexMeta({ id: 't' }),
