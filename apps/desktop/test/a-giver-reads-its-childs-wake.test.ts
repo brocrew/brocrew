@@ -1,4 +1,5 @@
 import { waitFor } from './lib/f093-host'
+import { wholeReply } from './lib/full-reply'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -107,6 +108,11 @@ describe('F080 · a giver reads its child’s wake', () => {
     const answered = await tool.call(args)
     return { structured: answered.structured as Record<string, unknown>, text: answered.text }
   }
+  /** A read with its whole reply, from the temp file when the reply was long. */
+  const whole = (read: { structured: Record<string, unknown>; text: string }) => ({
+    ...read,
+    text: wholeReply(read.text),
+  })
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
@@ -198,7 +204,7 @@ describe('F080 · a giver reads its child’s wake', () => {
     it('🔴 seven endings: the newest five as a block, and the count said — the payload carries all seven', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       theWake(worker, 7, 'woke and checked the jobs')
-      const read = await call(pm.tools, 'read_transcript', { agent: worker })
+      const read = whole(await call(pm.tools, 'read_transcript', { agent: worker }))
 
       const shown = [3, 4, 5, 6, 7]
         .map((n) => `Background command "job ${String(n)}" completed (exit code 0)`)
@@ -229,7 +235,7 @@ describe('F080 · a giver reads its child’s wake', () => {
     it('⚑ the control — five endings: all five, and no count', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       theWake(worker, 5, 'woke')
-      const read = await call(pm.tools, 'read_transcript', { agent: worker })
+      const read = whole(await call(pm.tools, 'read_transcript', { agent: worker }))
       const all = [1, 2, 3, 4, 5]
         .map((n) => `Background command "job ${String(n)}" completed (exit code 0)`)
         .join('\n')
@@ -240,7 +246,7 @@ describe('F080 · a giver reads its child’s wake', () => {
     it('⚑ none in the record, and nothing said: it says no message opened it, and that it said nothing', async () => {
       const { pm, worker } = await aPmAndItsWorker()
       theWake(worker, 0, null)
-      const read = await call(pm.tools, 'read_transcript', { agent: worker })
+      const read = whole(await call(pm.tools, 'read_transcript', { agent: worker }))
       expect(read.text).toMatch(
         /Turn \d+, which its provider started by itself; no message opened it\./,
       )
@@ -255,7 +261,7 @@ describe('F080 · a giver reads its child’s wake', () => {
       const { pm, worker, label } = await aPmAndItsWorker()
 
       // ⚑ The control first: before the wake, the exchange is an answer, and says nothing more.
-      const before = await call(pm.tools, 'read_transcript', { agent: worker })
+      const before = whole(await call(pm.tools, 'read_transcript', { agent: worker }))
       expect(before.structured.last_exchange).not.toHaveProperty(
         'since_then_its_provider_started_a_turn',
       )
@@ -268,7 +274,7 @@ describe('F080 · a giver reads its child’s wake', () => {
 
       theWake(worker, 1, 'the job finished, and I checked it')
 
-      const after = await call(pm.tools, 'read_transcript', { agent: worker })
+      const after = whole(await call(pm.tools, 'read_transcript', { agent: worker }))
       expect(after.structured.last_exchange).toMatchObject({
         answer: { text: 'the job finished, and I checked it' },
         since_then_its_provider_started_a_turn: true,

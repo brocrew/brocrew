@@ -55,7 +55,12 @@ import type {
 import type { AskOutcome, WithdrawQuestionOutcome } from '../question-rails'
 import type { Caller } from '../conversation-caller'
 import type { DocumentContent, DocumentForm } from '../../../shared/documents'
-import type { Exchange, ReceivedInATurn, TranscriptTurn } from '../../../shared/last-exchange'
+import type {
+  Exchange,
+  ReceivedInATurn,
+  TranscriptAsked,
+  TranscriptTurn,
+} from '../../../shared/last-exchange'
 import type { FindFilesAsked, FoundFiles } from '../kept-file-search'
 import type { GiveOutcome } from '../spawn-rails'
 import type { HandedPath } from '../../../shared/attachment-contracts'
@@ -271,15 +276,21 @@ export interface AgentToolHost {
   withdrawQuestion(input: { requestId: string }, by: Caller): WithdrawQuestionOutcome
   readTranscript(
     target: string,
-    read: { readonly back: number; readonly search: string | null },
+    read: TranscriptAsked,
   ):
-    | { readonly ok: false; readonly refusal: 'no-such-agent' }
+    | {
+        readonly ok: false
+        readonly refusal: 'no-such-agent' | 'no-piece-by-that-name'
+        readonly field?: 'from' | 'about'
+      }
     | {
         readonly ok: true
         readonly name: string
         readonly lastExchange: Exchange
         readonly turns: readonly TranscriptTurn[]
         readonly older: boolean
+        readonly matched: number
+        readonly readAt: number
       }
   requestMcpServer(me: string, said: McpServerAsked): McpServerRequestOutcome
   runAgentKnowledgeTool(run: () => Promise<AgentToolAnswer>): Promise<AgentToolAnswer>

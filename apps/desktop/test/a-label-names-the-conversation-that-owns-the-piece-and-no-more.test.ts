@@ -1,4 +1,5 @@
 import { addressedGive, givePagesToNewWorker } from './lib/give-fixture'
+import { wholeReply } from './lib/full-reply'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { didIt, type ActedBy } from '../src/shared/who-did-it'
@@ -292,7 +293,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       const readById = await fullCall(brobotTools, 'read_transcript', { agent: id })
       expect(readByLabel.structured, readByLabel.text).toMatchObject({ outcome: 'ok', agent: id })
       expect(readById.structured, readById.text).toMatchObject({ outcome: 'ok', agent: id })
-      expect(readByLabel.text).toBe(readById.text)
+      expect(wholeReply(readByLabel.text)).toBe(wholeReply(readById.text))
     }
     // ⚑ What the read carried is the child's own words, so "ok" is not an empty read.
     const aliLines = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1.1' })
@@ -740,7 +741,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
     )
 
     const read = await fullCall(brobotTools, 'read_transcript', { agent: 'W1.1' })
-    expect(read.text).toContain('came from BroBot (the owner of W1)')
+    expect(wholeReply(read.text)).toContain('came from BroBot (the owner of W1)')
 
     // IDs are destinations only; prose and visible link labels still name the conversation.
     for (const said of [status.text, interrupt.text, message.text, read.text]) {

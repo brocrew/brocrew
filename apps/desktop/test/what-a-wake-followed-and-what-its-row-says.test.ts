@@ -212,6 +212,7 @@ describe('§2 · a wake is a turn of its own', () => {
     // ⚑ A wake that said nothing says so: no words, not the words of the turn before it.
     expect(one.turns[0]).toEqual({
       at: expect.any(Number),
+      recordedAt: expect.any(Number),
       startedByItsProvider: { after: [] },
       said: null,
     })

@@ -129,6 +129,32 @@ export function readerFields() {
         .describe(
           'Read instead the turns whose messages or answers contain these words (letters matched regardless of case).',
         ),
+      from: z
+        .string()
+        .optional()
+        .describe(
+          "Only turns with a message written by 'a-person', by 'this-app' (its own notices), or by a conversation named by any of its labels or its id (its messages and the words this app carried for it).",
+        ),
+      since: z
+        .string()
+        .optional()
+        .describe(
+          'Only turns that began at or after this time: an ISO 8601 date (2026-11-25), or a date and time with its zone (2026-11-25T09:00:00Z).',
+        ),
+      until: z
+        .string()
+        .optional()
+        .describe(
+          'Only turns that began at or before this time: an ISO 8601 date, or a date and time with its zone.',
+        ),
+      about: z
+        .string()
+        .optional()
+        .describe('Only turns with a message sent about this task, by its task label (W1.2).'),
+      kind: documentedToolEnum(
+        TOOL_INPUT_ENUMS['read_transcript:kind'],
+        'Read and search only one half of each turn.',
+      ).optional(),
     },
     find_files: {
       where: documentedToolEnum(TOOL_INPUT_ENUMS['find_files:where'], 'Where to look.').optional(),

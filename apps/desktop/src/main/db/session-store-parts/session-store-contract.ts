@@ -90,6 +90,7 @@ import {
   type Exchange,
   type ReceivedInATurn,
   type TaskRecordExchange,
+  type TranscriptRead,
   type TranscriptTurn,
 } from '../../../shared/last-exchange'
 import { type ActedBy } from '../../../shared/who-did-it'
@@ -675,8 +676,12 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   whatOpenedTheLastEndedTurn(sessionId: string): ReceivedInATurn | null
   transcript(
     sessionId: string,
-    read: { readonly back: number; readonly search: string | null },
-  ): { readonly turns: readonly TranscriptTurn[]; readonly older: boolean }
+    read: TranscriptRead,
+  ): {
+    readonly turns: readonly TranscriptTurn[]
+    readonly older: boolean
+    readonly matched: number
+  }
   lastAskToStop(
     sessionId: string,
     unread?: RowsUnread,

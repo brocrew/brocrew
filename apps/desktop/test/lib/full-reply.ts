@@ -13,3 +13,9 @@ export function wholeReply(text: string): string {
   const path = fullReplyPath(text)
   return path === null ? text : readFileSync(path, 'utf8')
 }
+
+/** A reply with its temp file's path left out, so the replies of two calls compare. */
+export function theFileUnnamed(text: string): string {
+  const path = fullReplyPath(text)
+  return path === null ? text : `${text.slice(0, -path.length)}<file>`
+}

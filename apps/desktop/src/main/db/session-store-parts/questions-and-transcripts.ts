@@ -15,10 +15,13 @@ import {
   capped,
   PREVIEW_CAP,
   type ReceivedInATurn,
+  sentAbout,
   type TaskRecordExchange,
+  type TranscriptRead,
   type TranscriptTurn,
   type Words,
   WORDS_CAP,
+  writtenBy,
 } from '../../../shared/last-exchange'
 import { moveOfferOf, moveReceiptOf } from '../../../shared/move-request'
 import { failureAtTurnEnd } from '../../../shared/piece-fold'
@@ -235,11 +238,6 @@ export function createQuestionsPart(deps: QuestionsPartDeps) {
       WHERE session_id = ? AND generation = ? AND ordinal > ? AND ${MAIN_THREAD_WORDS}
       ORDER BY ordinal DESC LIMIT 1`,
   )
-  const selectReceivedStartsBack = db.prepare(
-    `SELECT ordinal FROM events
-      WHERE session_id = ? AND generation = ? AND type IN ('user_turn', 'provider_turn')
-      ORDER BY ordinal DESC LIMIT ?`,
-  )
   const selectNextReceivedAfter = db.prepare(
     `SELECT ordinal FROM events
       WHERE session_id = ? AND generation = ? AND type IN ('user_turn', 'provider_turn')
@@ -269,19 +267,48 @@ export function createQuestionsPart(deps: QuestionsPartDeps) {
         AND (type IN ('user_turn', 'provider_turn') OR ${MAIN_THREAD_WORDS})
       ORDER BY ordinal ASC`,
   )
-  const selectSearchTurnStarts = db.prepare(
-    `SELECT DISTINCT (SELECT MAX(u.ordinal) FROM events u
-                       WHERE u.session_id = e.session_id AND u.generation = e.generation
-                         AND u.type IN ('user_turn', 'provider_turn')
-                         AND u.ordinal <= e.ordinal) AS start
-      FROM events e
-      WHERE e.session_id = ? AND e.generation = ? AND json_valid(e.payload)
-        AND (e.type = 'user_turn' OR (e.type = 'assistant_message'
-             AND json_extract(e.payload, '$.parentToolCallId') IS NULL))
-        AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
-        AND start IS NOT NULL
-      ORDER BY start DESC LIMIT ?`,
+  // A turn's opening rows in a time range; with the last parameter set, only those a message opened.
+  const turnStartsIn = `session_id = ? AND generation = ? AND type IN ('user_turn', 'provider_turn')
+        AND created_at BETWEEN ? AND ? AND (? = 0 OR type = 'user_turn')`
+  const selectTurnStarts = db.prepare(
+    `SELECT ordinal, type, created_at AS at FROM events WHERE ${turnStartsIn}
+      ORDER BY ordinal DESC`,
   )
+  const selectNewestTurnStarts = db.prepare(
+    `SELECT ordinal, type, created_at AS at FROM events WHERE ${turnStartsIn}
+      ORDER BY ordinal DESC LIMIT ?`,
+  )
+  const countTurnStarts = db.prepare(`SELECT COUNT(*) AS matched FROM events WHERE ${turnStartsIn}`)
+  const selectTurnStartsWithPayload = db.prepare(
+    `SELECT ordinal, type, created_at AS at,
+            CASE WHEN json_valid(payload) THEN payload END AS payload FROM events
+      WHERE ${turnStartsIn}
+      ORDER BY ordinal DESC`,
+  )
+  const searchedRows = {
+    both: `(e.type = 'user_turn' OR (e.type = 'assistant_message'
+             AND json_extract(e.payload, '$.parentToolCallId') IS NULL))`,
+    received: `e.type = 'user_turn'`,
+    answers: `(e.type = 'assistant_message'
+             AND json_extract(e.payload, '$.parentToolCallId') IS NULL)`,
+  }
+  const searchTurnStartsIn = (rows: string) =>
+    db.prepare(
+      `SELECT DISTINCT (SELECT MAX(u.ordinal) FROM events u
+                         WHERE u.session_id = e.session_id AND u.generation = e.generation
+                           AND u.type IN ('user_turn', 'provider_turn')
+                           AND u.ordinal <= e.ordinal) AS start
+        FROM events e
+        WHERE e.session_id = ? AND e.generation = ? AND json_valid(e.payload)
+          AND ${rows}
+          AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
+          AND start IS NOT NULL`,
+    )
+  const selectSearchTurnStarts = {
+    both: searchTurnStartsIn(searchedRows.both),
+    received: searchTurnStartsIn(searchedRows.received),
+    answers: searchTurnStartsIn(searchedRows.answers),
+  }
   const selectLastAskToStop = db.prepare(
     `SELECT payload, created_at, turn_id, type, ordinal FROM (
        SELECT * FROM (
@@ -527,6 +554,7 @@ export function createQuestionsPart(deps: QuestionsPartDeps) {
     sessionId: string,
     generation: number,
     rows: readonly ExchangeRow[],
+    recordedAt: number,
   ): TranscriptTurn | null {
     const [first, ...rest] = rows
     if (first === undefined) return null
@@ -546,12 +574,20 @@ export function createQuestionsPart(deps: QuestionsPartDeps) {
       }) as { summary: string }[]
       return {
         at: first.ordinal,
+        recordedAt,
         startedByItsProvider: { after: ended.map((one) => one.summary) },
         said: words,
       }
     }
     if (first.type !== 'user_turn') return null
-    return { at: first.ordinal, received: receivedOn(sessionId, first), said: words }
+    return { at: first.ordinal, recordedAt, received: receivedOn(sessionId, first), said: words }
+  }
+
+  /** A turn's opening row: its place, its kind and when it was recorded. */
+  interface StartRow {
+    readonly ordinal: number
+    readonly type: string
+    readonly at: number
   }
 
   function turnRows(sessionId: string, generation: number, from: number, until: number) {
@@ -560,43 +596,75 @@ export function createQuestionsPart(deps: QuestionsPartDeps) {
 
   function transcriptOf(
     sessionId: string,
-    read: { readonly back: number; readonly search: string | null },
-  ): { readonly turns: readonly TranscriptTurn[]; readonly older: boolean } {
+    read: TranscriptRead,
+  ): {
+    readonly turns: readonly TranscriptTurn[]
+    readonly older: boolean
+    readonly matched: number
+  } {
     const generation = activeGeneration(sessionId)
     const back = Math.max(1, Math.floor(read.back))
     const end = Number.MAX_SAFE_INTEGER
     const nextStart = (after: number): number =>
       (selectNextReceivedAfter.get(sessionId, generation, after) as { ordinal: number } | undefined)
         ?.ordinal ?? end
-    const starts: number[] = []
-    if (read.search === null) {
-      const newest = selectReceivedStartsBack.all(sessionId, generation, back + 1) as {
-        ordinal: number
-      }[]
-      starts.push(...newest.slice(0, back).map((one) => one.ordinal))
-      const turns = [...starts]
-        .reverse()
-        .map((start) =>
-          turnFrom(sessionId, generation, turnRows(sessionId, generation, start, nextStart(start))),
-        )
-        .filter((one): one is TranscriptTurn => one !== null)
-      return { turns, older: newest.length > back }
-    }
-    const found = selectSearchTurnStarts.all(
+    const bySender = read.from !== undefined || read.about !== undefined
+    const inRange = [
       sessionId,
       generation,
-      read.search.toLowerCase(),
-      back + 1,
-    ) as { start: number }[]
-    starts.push(...found.map((one) => one.start))
-    const turns = starts
-      .slice(0, back)
-      .reverse()
-      .map((start) =>
-        turnFrom(sessionId, generation, turnRows(sessionId, generation, start, nextStart(start))),
+      read.since ?? 0,
+      read.until ?? end,
+      read.kind === 'received' ? 1 : 0,
+    ] as const
+    const theTurns = (shown: readonly StartRow[], matched: number) => ({
+      turns: [...shown]
+        .reverse()
+        .map((start) =>
+          turnFrom(
+            sessionId,
+            generation,
+            turnRows(sessionId, generation, start.ordinal, nextStart(start.ordinal)),
+            start.at,
+          ),
+        )
+        .filter((one): one is TranscriptTurn => one !== null),
+      older: matched > shown.length,
+      matched,
+    })
+    // Without a search or a sender to match, the count and the newest few come from the database.
+    if (read.search === null && !bySender) {
+      return theTurns(
+        selectNewestTurnStarts.all(...inRange, back) as StartRow[],
+        (countTurnStarts.get(...inRange) as { matched: number }).matched,
       )
-      .filter((one): one is TranscriptTurn => one !== null)
-    return { turns, older: starts.length > back }
+    }
+    let starts = (bySender ? selectTurnStartsWithPayload : selectTurnStarts).all(
+      ...inRange,
+    ) as (StartRow & { payload?: string | null })[]
+    if (read.search !== null) {
+      const found = new Set(
+        (
+          selectSearchTurnStarts[read.kind ?? 'both'].all(
+            sessionId,
+            generation,
+            read.search.toLowerCase(),
+          ) as { start: number }[]
+        ).map((one) => one.start),
+      )
+      starts = starts.filter((one) => found.has(one.ordinal))
+    }
+    if (bySender) {
+      starts = starts.filter((one) => {
+        if (one.type !== 'user_turn' || one.payload == null) return false
+        const messages = theMessagesOf(JSON.parse(one.payload) as UserTurnEvent)
+        return messages.some(
+          (message) =>
+            (read.from === undefined || writtenBy(message, read.from)) &&
+            (read.about === undefined || sentAbout(message, read.about)),
+        )
+      })
+    }
+    return theTurns(starts.slice(0, back), starts.length)
   }
 
   function actorOfTheAsk(row: AskRow): Pick<AskToStop, 'by' | 'asker' | 'reason'> | null {

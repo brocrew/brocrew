@@ -1,4 +1,5 @@
 import { nameGracesTeam } from './helpers/graces-team'
+import { wholeReply } from './lib/full-reply'
 import { giveToConversation, readGivenTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
@@ -663,7 +664,7 @@ describe('484 · state a supervisor can trust', () => {
       ).toMatch(
         /^Its last turn was one its provider started by itself\. The last message it received came from /,
       )
-      const transcript = await textOf(pmTools, 'read_transcript', { agent: worker })
+      const transcript = wholeReply(await textOf(pmTools, 'read_transcript', { agent: worker }))
       expect(transcript).toContain('Since then, ')
       // ⚑ **…and its turns list it as its own**, never under the message before it.
       expect(transcript).toMatch(

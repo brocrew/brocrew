@@ -1,4 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { wholeReply } from './lib/full-reply'
 import { chainAbove } from './helpers/conversation-ancestry'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -279,7 +280,7 @@ describe('D-024 · a profile reads across its own conversations', () => {
     // by ali3 — each reads as the same conversation read by its id.
     const byRootLabel = await callFull(ali2, 'read_transcript', { agent: rootLabelOf(ali1) })
     expect(byRootLabel.structured, byRootLabel.text).toEqual(byId.structured)
-    expect(byRootLabel.text).toBe(byId.text)
+    expect(wholeReply(byRootLabel.text)).toBe(wholeReply(byId.text))
     const byGivenLabel = await callFull(ali2, 'read_transcript', { agent: given.label })
     expect(byGivenLabel.structured, byGivenLabel.text).toMatchObject({ outcome: 'ok', agent: ali3 })
 
@@ -287,7 +288,7 @@ describe('D-024 · a profile reads across its own conversations', () => {
     const symmetric = await callFull(ali1, 'read_transcript', { agent: ali2 })
     expect(symmetric.structured, symmetric.text).toMatchObject({ outcome: 'ok', agent: ali2 })
     expect(symmetric.text).toContain('check the invoices')
-    const peerLine = symmetric.text
+    const peerLine = wholeReply(symmetric.text)
       .split('\n')
       .find((line) => line.startsWith('  - conversation ') && line.includes(peerTitle))
     expect(peerLine).toContain(' — last active ')

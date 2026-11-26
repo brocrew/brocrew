@@ -222,6 +222,12 @@ export const FIND_WHERE_INPUT = toolInputVocabulary(['tree', 'everywhere'] as co
   everywhere: "'everywhere' is every piece this app keeps files for, whoever made the file.",
 })
 
+// Which half of each turn `read_transcript` reads and searches.
+const TRANSCRIPT_KIND_INPUT = toolInputVocabulary(['received', 'answers'] as const, {
+  received: "'received' is only the messages the conversation received.",
+  answers: "'answers' is only what it said back.",
+})
+
 // **Which rows `list_tasks` and `list_questions` list**: what is open, what is over, or both.
 export const LISTING_INPUT = toolInputVocabulary(['open', 'ended', 'all'] as const, {
   open: "'open', the default, is what is still open or waiting, with a count of the rest.",
@@ -267,6 +273,7 @@ export const TOOL_INPUT_ENUMS = {
   'create_agent:kind': AGENT_KIND_INPUT,
   'ask_question:who_answers': QUESTION_RECIPIENT_INPUT,
   'find_files:where': FIND_WHERE_INPUT,
+  'read_transcript:kind': TRANSCRIPT_KIND_INPUT,
   'list_tasks:more': TASK_RECORD_SECTION_INPUT,
   'list_tasks:state': LISTING_INPUT,
   'list_questions:state': LISTING_INPUT,

@@ -1,4 +1,5 @@
 import { newConversationGive } from './lib/give-fixture'
+import { wholeReply } from './lib/full-reply'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -639,7 +640,7 @@ describe('D-012 · a giver looks closer', () => {
       })
       // ⚑ Two turns: the brief's, then the follow-up's.
       expect(read.turns).toHaveLength(2)
-      const text = await textOf(pm.tools, 'read_transcript', { agent: worker })
+      const text = wholeReply(await textOf(pm.tools, 'read_transcript', { agent: worker }))
       expect(text).toContain(
         `The last message ${host.whatToCallTheConversation(worker)} received came from`,
       )
@@ -759,7 +760,7 @@ describe('D-012 · a giver looks closer', () => {
       expect(read.last_exchange).toMatchObject({ received: { clipped: true } })
       // ⛔ …and said in the WORDS a model reads, not only in the structure: a parent that cannot
       // open its child's ledger has no other way to know there was more.
-      const text = await textOf(pm.tools, 'read_transcript', { agent: worker })
+      const text = wholeReply(await textOf(pm.tools, 'read_transcript', { agent: worker }))
       expect(text.split('\n\n')[2]).toBe(
         `${'x'.repeat(WORDS_CAP)}\n(cut at ${String(WORDS_CAP)} units — there was more)`,
       )
@@ -782,7 +783,7 @@ describe('D-012 · a giver looks closer', () => {
       const received = (read.last_exchange as { received: Record<string, unknown> }).received
       expect(received.text).toBe('x'.repeat(WORDS_CAP))
       expect(received).not.toHaveProperty('clipped')
-      const text = await textOf(pm.tools, 'read_transcript', { agent: worker })
+      const text = wholeReply(await textOf(pm.tools, 'read_transcript', { agent: worker }))
       expect(text.split('\n\n')[2]).toBe('x'.repeat(WORDS_CAP))
     })
   })
