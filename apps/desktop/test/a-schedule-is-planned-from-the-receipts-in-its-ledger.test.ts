@@ -757,6 +757,8 @@ describe('the rows the store hands the evidence', () => {
         13,
       )
       put(CONVERSATION, 'scheduled_work', '{ torn', 14)
+      // ⚑ A torn launch row is a life by its type alone, and is left out once its payload is read.
+      put(CONVERSATION, 'launched', '{ torn', 14)
       put(CONVERSATION, 'status', { type: 'status', state: 'ended' }, 15)
       // ⚑ A level this app wrote is derived from the rest, and is left out.
       put(
