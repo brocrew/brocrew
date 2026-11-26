@@ -127,30 +127,13 @@ describe('733 · a config row opens its file on the app’s paper', () => {
   it('🔴 a read belongs to the conversation it was made in', async () => {
     // ⛔ Nothing between here and `RuntimeScreen` carries a `:key`, so a switch re-renders in place
     // — and this read is keyed by NAME, which the next conversation's row shares.
-    const session = ref<CreatedSession>({ ...META, config: CONFIG })
-    const view = mount(
-      defineComponent({
-        setup() {
-          return () =>
-            h(SessionDrawer as never, {
-              ...drawerProps({
-                tab: 'info',
-                session: session.value,
-                onReadConfigFile: async () => READ,
-              }),
-            })
-        },
-      }),
-      {},
-      { width: 380, height: 900 },
-    )
+    const { view, show } = swappable(async () => READ)
 
     view.q('info-open-config-auth.json').click()
     await settle()
     expect(view.q('info-read-config-auth.json').textContent).toContain('a dummy')
 
-    session.value = { ...META, sessionId: 'sess_another', config: CONFIG }
-    await settle()
+    await show({ ...META, sessionId: 'sess_another', config: CONFIG })
     expect(view.host.querySelector('[data-cy="info-read-config-auth.json"]')).toBeNull()
     // …and the row it would have sat in is still drawn, so the absence is the reset.
     expect(view.q('info-open-config-auth.json').textContent).toContain('Open')

@@ -1,15 +1,12 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick, reactive } from 'vue'
+import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import {
-  acceptEvent,
-  createSessionRecord,
-  type SessionRecord,
-} from '../../src/renderer/src/lib/session-record'
+import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
+import { liveRecord } from './conversation-records'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -68,7 +65,6 @@ async function standingGrants(): Promise<StandingGrants> {
   return load()
 }
 
-const AT = 1_700_000_000_000
 const RAIL_W = 208
 const PANE_W = 972
 const PANE_H = 900
@@ -146,22 +142,11 @@ const decided = (
 
 const asked: TranscriptEvent = { type: 'user_turn', text: 'file the bug you found' }
 
-/** ⚑ One row through the one door, at the next ordinal — as the store feeds a live record. */
-function feed(record: SessionRecord, event: TranscriptEvent): void {
-  const ordinal = record.nextOrdinal
-  acceptEvent(record, { sessionId: record.sessionId, ordinal, at: AT + ordinal * 1_000, event })
-}
-
-/** ⚑ `reactive`, as the store holds a record. */
 function conversation(
   events: TranscriptEvent[],
   meta: Partial<CreatedSession> = {},
 ): SessionRecord {
-  const record = reactive(createSessionRecord('sess_1')) as SessionRecord
-  record.meta = { ...CODEX_META, ...meta }
-  record.phase = 'open'
-  for (const event of events) feed(record, event)
-  return record
+  return liveRecord(events, { ...CODEX_META, ...meta })
 }
 
 /**

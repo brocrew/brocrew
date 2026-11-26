@@ -6,11 +6,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 
+import { CLAIMED, idleConversation } from './conversation-records'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -50,20 +49,7 @@ import { mount, unmountAll, visible, type Mounted } from './harness'
 
 const NOW = 1_700_000_000_000
 
-/** ⚑ A conversation the rail can draw: live, idle, and the host has said so. */
-function conversation(sessionId: string): unknown {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'claude',
-    cwd: '/Users/alex/dev/brobot',
-    profileId: 'default',
-    liveness: { state: 'live', since: NOW },
-  } as CreatedSession
-  record.phase = 'open'
-  applyEvent(record.control, { type: 'status', state: 'idle' }, NOW)
-  return record
-}
+const conversation = idleConversation
 
 /** ⛔ **`621`'s reading**, built the way the host builds it — every running conversation, `null`
  *  included, which is the completeness `WhatEachConversationIsWaitingOn` promises. */
@@ -178,47 +164,11 @@ describe('636 §1 · the rail row stops saying `idle` about a conversation whose
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 const SESSION: CreatedSession = {
+  ...CLAIMED,
   sessionId: 'sess_brobot',
-  provider: 'claude',
   cwd: '/Users/alex/dev/brobot',
-  providerHome: '/homes/claude',
-  profileId: 'default',
-  instructions: {
-    injected: [],
-    agentMemory: [],
-    provider: [],
-    refused: [],
-    note: '',
-    recallsReported: false,
-    writesReported: false,
-    composed: null,
-  },
-  ref: null,
-  config: {
-    home: '/homes/claude',
-    homeEnv: 'CLAUDE_CONFIG_DIR',
-    model: 'claude-sonnet-5',
-    authNote: null,
-    files: [],
-  },
-  approvalMode: 'ask',
-  pendingApprovalMode: null,
-  approvalNote: 'approvals: ask',
-  blanketGrants: [],
-  planNeedsGoAhead: false,
-  queued: [],
-  settings: {
-    model: null,
-    pendingModel: null,
-    reasoningEffort: null,
-    pendingReasoningEffort: null,
-    planMode: false,
-    pendingPlanMode: null,
-  },
-  liveness: { state: 'live', since: NOW, signInSuperseded: false },
+  config: { ...CLAIMED.config, model: 'claude-sonnet-5' },
   hasACommander: false,
-  startedWithoutAWindow: true,
-  mayHandItBack: true,
 }
 
 const bar = (waiting: ConversationWait | undefined): Mounted =>

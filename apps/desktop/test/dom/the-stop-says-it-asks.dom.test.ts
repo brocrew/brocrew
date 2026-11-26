@@ -1,18 +1,15 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick, reactive } from 'vue'
+import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import {
-  acceptEvent,
-  createSessionRecord,
-  type SessionRecord,
-} from '../../src/renderer/src/lib/session-record'
+import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { stopJoinsThatAsk } from '../../src/renderer/src/lib/stop-unanswered'
 import { ASKED_TO_STOP } from '../../src/shared/how-work-stopped'
-import { agentName, type CreatedSession } from '../../src/shared/runtime-ipc'
+import { agentName } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
-import { META, mount, paneProps, permission, unmountAll, visible, type Mounted } from './harness'
+import { CODEX_META, liveCodexRecord } from './conversation-records'
+import { mount, paneProps, permission, unmountAll, visible, type Mounted } from './harness'
 
 /**
  * # 🔴 737 · Draw 3, DRAWN — the Stop says the turn is ASKED to stop (`730` F-3), in a real engine
@@ -79,14 +76,6 @@ const FROZEN_FOOT =
   "Answer the request above to continue. A message won't answer it, but Esc is Stop: the turn is asked to stop."
 const PENDING_TAIL = 'that is already running.'
 
-/** ⚑ A Codex conversation — the host's echo of its provider on `meta`, as `725`'s suite builds it. */
-const CODEX_META: CreatedSession = {
-  ...META,
-  provider: 'codex',
-  providerHome: '/homes/codex',
-  ref: { provider: 'codex', sessionId: 'th_1', cwd: '/work', rotation: 0 },
-}
-
 /** ⚑ Who the pane says is working — `agentName` over the meta's profile, as the pane asks it. */
 const WHO = agentName(CODEX_META.profileId, null)
 
@@ -94,23 +83,7 @@ const started = { type: 'session', state: 'started', ref: CODEX_META.ref } as Tr
 const asked = { type: 'user_turn', text: 'count to sixty, slowly' } as TranscriptEvent
 const working = { type: 'status', state: 'working' } as TranscriptEvent
 
-/** ⚑ One row through the one door, at the next ordinal — as the store feeds a live record. */
-function feed(record: SessionRecord, event: TranscriptEvent): void {
-  const ordinal = record.nextOrdinal
-  acceptEvent(record, { sessionId: record.sessionId, ordinal, at: AT + ordinal * 1_000, event })
-}
-
-/** ⚑ `reactive`, as the store holds a record. */
-function conversation(
-  events: TranscriptEvent[],
-  meta: Partial<CreatedSession> = {},
-): SessionRecord {
-  const record = reactive(createSessionRecord('sess_1')) as SessionRecord
-  record.meta = { ...CODEX_META, ...meta }
-  record.phase = 'open'
-  for (const event of events) feed(record, event)
-  return record
-}
+const conversation = liveCodexRecord
 
 /** ⚑ The pane, at the width a conversation is drawn at beside the rail — left mounted to the end. */
 async function pane(record: SessionRecord, over: Record<string, unknown> = {}): Promise<Mounted> {

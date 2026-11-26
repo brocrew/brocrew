@@ -1,15 +1,13 @@
-import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import RecentActivity from '../../src/renderer/src/components/RecentActivity.vue'
-import { attentionQueue, type AttentionRequest } from '../../src/renderer/src/lib/attention'
+import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { homeAttention } from '../../src/renderer/src/lib/home-attention'
 import { DEFAULT_ACTIVITY_WINDOW_MS } from '../../src/renderer/src/lib/recent-activity'
 import type { ActivityLine, RecentActivityReading } from '../../src/shared/recent-activity'
-import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import { COMMAND_PERMISSION, homeConversation, queueOf } from './conversation-records'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -31,46 +29,12 @@ import { mount, unmountAll, visible, type Mounted } from './harness'
 const NOW = 1_700_000_000_000
 const TO = 1_760_000_000_000
 
-const SCOPE = {
-  cwd: '/Users/alex/dev/x',
-  paths: ['write /Users/alex/dev/x/out.txt'],
-  networkHosts: [],
-  persistence: 'once' as const,
-  amendments: [],
-  availableDecisions: ['allow' as const, 'deny' as const],
-  underDisclosed: false,
-}
-
-const PERMISSION: TranscriptEvent = {
-  type: 'permission_request',
-  id: 'perm-1',
-  kind: 'command',
-  action: 'Bash',
-  detail: 'pnpm test:e2e --project=chromium',
-  scope: SCOPE,
-}
-
-function conversation(sessionId: string, at: number): unknown {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'codex',
-    cwd: `/Users/alex/dev/${sessionId}`,
-    profileId: 'default',
-    approvalMode: 'ask',
-    planNeedsGoAhead: false,
-    liveness: { state: 'live', since: at },
-  } as never
-  acceptEvent(record, { sessionId, ordinal: 0, event: PERMISSION, at } as RuntimeEventMessage)
-  return record
-}
+const conversation = (sessionId: string, at: number): unknown =>
+  homeConversation(sessionId, COMMAND_PERMISSION, at)
 
 /** ⚑ **Two open conversations frozen on a permission** — the complete population. */
 const OWED = (): AttentionRequest[] =>
-  attentionQueue(
-    [conversation('sess_a', NOW - 240_000), conversation('sess_b', NOW - 900_000)] as never,
-    () => 'waiting: permission',
-  )
+  queueOf(conversation('sess_a', NOW - 240_000), conversation('sess_b', NOW - 900_000))
 
 /** ⚑ **A Recent activity reading with three lines** — the windowed population. */
 function reading(): RecentActivityReading {

@@ -4,6 +4,7 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import NoticeEntry from '../../src/renderer/src/components/NoticeEntry.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
+import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { ToolAnswer } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
@@ -300,17 +301,7 @@ describe('a refusal whose whole sentence the host kept is read whole on the card
       }),
       ev({ type: 'tool_result', id: 'toolu_give', ok: true, summary: CUT }),
     ])
-    r.meta = { ...META, liveness: { ...META.liveness, canReadToolAnswer: holds } }
-    const m = mount(
-      ConversationPane,
-      paneProps({ record: r, onReadToolAnswer: async () => null }),
-      REAL,
-    )
-    await nextTick()
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    m.q('exchange-toggle').click()
-    await nextTick()
-    return m
+    return openedOn(r, holds)
   }
 
   it('🔴 the opened card says the whole reason, remedy and all, with nothing more to press', async () => {
@@ -370,7 +361,12 @@ describe('a refusal whose whole sentence the host kept is read whole on the card
       }),
       ev({ type: 'tool_result', id: 'toolu_give', ok: true, summary }),
     ])
-    r.meta = { ...META, liveness: { ...META.liveness, canReadToolAnswer: true } }
+    return openedOn(r, true)
+  }
+
+  /** The pane over `r`, with the card's exchange opened, where the host does or doesn't hold answers. */
+  async function openedOn(r: SessionRecord, holds: boolean): Promise<Mounted> {
+    r.meta = { ...META, liveness: { ...META.liveness, canReadToolAnswer: holds } }
     const m = mount(
       ConversationPane,
       paneProps({ record: r, onReadToolAnswer: async () => null }),

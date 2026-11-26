@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import { HAND_IT_BACK } from '../../src/renderer/src/lib/handing-it-back'
-import type { CreatedSession } from '../../src/shared/runtime-ipc'
+import { CLAIMED } from './conversation-records'
 import { mount, unmountAll } from './harness'
 
 /**
@@ -22,56 +22,6 @@ import { mount, unmountAll } from './harness'
  * nothing. ⛔ A confirmation in front of this press would teach a person the two acts weigh the same,
  * which is `519` F2's defect rebuilt in a dialog.
  */
-
-const liveness = {
-  state: 'live' as const,
-  since: 1_700_000_000_000,
-  signInSuperseded: false,
-}
-
-const CLAIMED: CreatedSession = {
-  sessionId: 'sess_1',
-  provider: 'claude',
-  cwd: '/work/checkout',
-  providerHome: '/homes/claude',
-  profileId: 'default',
-  instructions: {
-    injected: [],
-    agentMemory: [],
-    provider: [],
-    refused: [],
-    note: '',
-    recallsReported: false,
-    writesReported: false,
-    composed: null,
-  },
-  ref: null,
-  config: {
-    home: '/homes/claude',
-    homeEnv: 'CLAUDE_CONFIG_DIR',
-    model: 'm',
-    authNote: null,
-    files: [],
-  },
-  approvalMode: 'ask',
-  pendingApprovalMode: null,
-  approvalNote: 'approvals: ask',
-  blanketGrants: [],
-  planNeedsGoAhead: false,
-  settings: {
-    model: null,
-    pendingModel: null,
-    reasoningEffort: null,
-    pendingReasoningEffort: null,
-    planMode: false,
-    pendingPlanMode: null,
-  },
-  queued: [],
-  liveness,
-  hasACommander: true,
-  startedWithoutAWindow: true,
-  mayHandItBack: true,
-}
 
 function bar(over: Record<string, unknown> = {}): {
   m: ReturnType<typeof mount>
