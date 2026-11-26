@@ -52,9 +52,9 @@ const DEFAULT_CLOSE_DRAIN_TIMEOUT_MS = 5_000
 /**
  * How long a reopen waits, once its provider has answered, for the read of what its Codex thread
  * already holds. The read runs alongside the resume and only decides how much of this
- * conversation's text is owed, so a late one costs tokens, never the reopen.
+ * conversation's text is owed. A result still unavailable at the deadline owes the full lead.
  */
-const DEFAULT_REOPEN_LEADS_GRACE_MS = 1_000
+const DEFAULT_REOPEN_LEADS_GRACE_MS = 2_000
 
 /**
  * 🔴 **657 · the bound on waiting for work already on its way** (standing rule 13).

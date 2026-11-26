@@ -276,12 +276,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     userData: string
   }
 
-  /**
-   * How the window's reader answers a reopen's leads read: with the store's own rows at once, after
-   * a delay, never, or with a failure. Absent: there is no window reader, and the host reads the
-   * store itself.
-   */
-  type LeadsAnswer = 'at-once' | 'never' | 'fails' | { readonly afterMs: number }
+  type LeadsAnswer =
+    'at-once' | 'never' | 'fails' | { readonly afterMs: number; readonly useDefaultGrace?: true }
 
   const anApp = (reader?: Reader, leads?: LeadsAnswer, now = Date.now): App => {
     const userData = mkdtempSync(join(tmpdir(), 'brobot2-w4205-lead-'))
@@ -339,7 +335,9 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
       readSavedMethodsFor: (profile, at) =>
         readSavedMethods(join(userData, 'provider-homes', profile, 'runbooks'), at),
       readInstructions: reader ?? theProductsReader,
-      reopenLeadsGraceMs: 60,
+      ...(leads === 'never' || (typeof leads === 'object' && leads.useDefaultGrace)
+        ? {}
+        : { reopenLeadsGraceMs: 60 }),
       ...(leads === undefined
         ? {}
         : {
@@ -904,19 +902,22 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     return { c1, reopened, tookMs, two, block: wholeLeadOf(reopened) }
   }
 
-  it('§5 · a leads read answered at once keeps the original lead and sends the new peer in the footer', async () => {
-    const app = anApp(undefined, 'at-once')
-    const { c1, two } = await reopenAfterAPeerArrives(app)
-    expect(leadsAsked).toContain(c1)
-    expect(two?.event.lead).toBeUndefined()
-    expect(two?.event.sent).toContain('Other conversations of this profile')
-  })
+  it.each([0, 1_500])(
+    '§5 · a read after %i ms keeps the lead and updates the footer',
+    async (ms) => {
+      const app = anApp(undefined, ms === 0 ? 'at-once' : { afterMs: ms, useDefaultGrace: true })
+      const { c1, two } = await reopenAfterAPeerArrives(app)
+      expect(leadsAsked).toContain(c1)
+      expect(two?.event.lead).toBeUndefined()
+      expect(two?.event.sent).toContain('Other conversations of this profile')
+    },
+  )
 
   it('§5 · a leads read that never answers does not hold the reopen: the whole text is owed', async () => {
     const app = anApp(undefined, 'never')
     const { c1, tookMs, two, block } = await reopenAfterAPeerArrives(app)
     expect(leadsAsked).toContain(c1)
-    expect(tookMs).toBeLessThan(2_000)
+    expect(tookMs).toBeLessThan(3_000)
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
     expect(two?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
   })
