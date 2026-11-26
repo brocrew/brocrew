@@ -74,7 +74,7 @@
   "apps/desktop/test/a-service-queues-its-work.test.ts": 1235,
   "apps/desktop/test/a-service-takes-one-piece-at-a-time.test.ts": 1114,
   "apps/desktop/test/a-stop-cuts-the-drive-and-a-stalled-piece-stays-stalled.test.ts": 1155,
-  "apps/desktop/test/a-stopped-conversation-is-started-in-time-for-the-jobs-it-scheduled.test.ts": 2182,
+  "apps/desktop/test/a-stopped-conversation-is-started-in-time-for-the-jobs-it-scheduled.test.ts": 1937,
   "apps/desktop/test/a-take-back-tells-its-owner-and-a-note-names-what-it-is-about.test.ts": 1334,
   "apps/desktop/test/a-task-you-can-see.test.ts": 1254,
   "apps/desktop/test/a-time-the-app-says-is-the-time-on-the-macs-clock.test.ts": 1477,
