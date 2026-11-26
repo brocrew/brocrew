@@ -56,6 +56,7 @@ import { HIDDEN_LAUNCH_ARG, pidsLaunchedOn } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
 import { whoHoldsPort } from './lib/port-probe.mjs'
+import { RendererCdp } from './lib/renderer-cdp.mjs'
 import { FORBIDDEN_DEFAULT_PORT, FORBIDDEN_PERSON_PORT } from './lib/smoke-target.mjs'
 import {
   createWindowsLifecycle,
@@ -552,60 +553,6 @@ async function targets(port) {
   }
 }
 
-/** A DevTools client; every call bounded at 10 s, and a closed socket rejects what is waiting. */
-async function devtools(url) {
-  const socket = new WebSocket(url)
-  await new Promise((done, fail) => {
-    const timer = setTimeout(
-      () => fail(new Error('the DevTools socket did not open in 10 s')),
-      10_000,
-    )
-    socket.onopen = () => {
-      clearTimeout(timer)
-      done()
-    }
-    socket.onerror = () => fail(new Error('the DevTools socket failed to open'))
-  })
-  let next = 0
-  const waiting = new Map()
-  socket.onmessage = (message) => {
-    const body = JSON.parse(String(message.data))
-    waiting.get(body.id)?.(body)
-  }
-  socket.onclose = () => {
-    for (const answer of waiting.values())
-      answer({ error: { message: 'the DevTools socket closed' } })
-  }
-  const call = (method, params = {}) =>
-    new Promise((done, fail) => {
-      const id = ++next
-      const timer = setTimeout(() => {
-        waiting.delete(id)
-        fail(new Error(`${method}: no answer in 10 s`))
-      }, 10_000)
-      waiting.set(id, (body) => {
-        clearTimeout(timer)
-        waiting.delete(id)
-        if (body.error) fail(new Error(`${method}: ${body.error.message}`))
-        else done(body.result)
-      })
-      socket.send(JSON.stringify({ id, method, params }))
-    })
-  const evaluate = async (expression) => {
-    const result = await call('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    })
-    if (result.exceptionDetails) {
-      const said = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text
-      throw new Error(`in the page: ${said}`)
-    }
-    return result.result.value
-  }
-  return { call, evaluate, close: () => socket.close() }
-}
-
 async function waitFor(probe, withinMs, what) {
   const until = Date.now() + withinMs
   while (Date.now() < until) {
@@ -688,7 +635,7 @@ async function launch(userDataDir, packagedProgram) {
 
 /** A press the way a pointer makes one, at the middle of the element. */
 async function press(session, selector, { index = 0, mayEndTheApp = false } = {}) {
-  const box = await session.evaluate(`(() => {
+  const box = await session.evaluateExpression(`(() => {
     const el = document.querySelectorAll(${JSON.stringify(selector)})[${String(index)}] ?? null
     if (el === null) return null
     el.scrollIntoView({ block: 'center', inline: 'center' })
@@ -716,7 +663,7 @@ const VERDICT_ON_SCREEN = `document.querySelector('[data-cy="recovery"]')?.getAt
 
 async function screenShows(session, kind, what) {
   return waitFor(
-    async () => ((await session.evaluate(VERDICT_ON_SCREEN)) === kind ? kind : null),
+    async () => ((await session.evaluateExpression(VERDICT_ON_SCREEN)) === kind ? kind : null),
     15_000,
     what,
   )
@@ -839,7 +786,7 @@ async function runScenario(scenario, makeRecoveryFixture, contract, keep, packag
     check('the page is recovery.html', onRecovery, opened.url)
     if (!onRecovery) throw new Error(`the app opened ${opened.url}, not the recovery window`)
 
-    const session = await devtools(opened.webSocketDebuggerUrl)
+    const session = await RendererCdp.connect(opened.webSocketDebuggerUrl, { boundMs: 10_000 })
     record.evidence.stepsBegan = true
     try {
       await steps(scenario, session, app, dataDir, copy, expected, contract, {
@@ -903,7 +850,7 @@ async function steps(
   let stopped = null
   let iconRefs = 0
   const icons = async (where) => {
-    const { refs, symbols } = await session.evaluate(ICONS)
+    const { refs, symbols } = await session.evaluateExpression(ICONS)
     iconRefs += refs.length
     const dangling = danglingIcons(refs, symbols)
     check(
@@ -927,7 +874,7 @@ async function steps(
           lines.failed && lines.openedForRecovery && lines.keepsTheWindow,
           JSON.stringify(lines),
         )
-        const seen = await session.evaluate(BRIDGE_SHAPE)
+        const seen = await session.evaluateExpression(BRIDGE_SHAPE)
         check('the document is recovery.html', /\/recovery\.html$/.test(seen.path), seen.path)
         const problems = bridgeProblems(seen.shape, contract)
         check('window.recovery is exactly the contract', problems.length === 0, problems.join('; '))
@@ -936,7 +883,7 @@ async function steps(
           seen.api === 'undefined' && !seen.apiIn,
           `${seen.api}, in window: ${String(seen.apiIn)}`,
         )
-        const verdict = await session.evaluate('window.recovery.verdict()')
+        const verdict = await session.evaluateExpression('window.recovery.verdict()')
         record.evidence.verdict = verdict
         check(
           `the verdict is ${scenario.verdict}`,
@@ -963,7 +910,7 @@ async function steps(
         await screenShows(session, 'history-only', 'the history-only screen after Restore')
         pass('a real Restore press leads to the history-only screen')
       } else if (step === 'history') {
-        const read = await session.evaluate(READ_HISTORY)
+        const read = await session.evaluateExpression(READ_HISTORY)
         record.evidence.history = read
         const problems = historyProblems(read, expected)
         check(
@@ -973,7 +920,7 @@ async function steps(
         )
         const rows = await waitFor(
           async () => {
-            const n = await session.evaluate(
+            const n = await session.evaluateExpression(
               `document.querySelectorAll('[data-cy="recovery-conversation"]').length`,
             )
             return n === expected.length ? n : null
@@ -988,7 +935,7 @@ async function steps(
           const words = expected[index].events.flatMap(({ text }) => (text === null ? [] : [text]))
           const shown = await waitFor(
             async () => {
-              const text = await session.evaluate(
+              const text = await session.evaluateExpression(
                 `document.querySelector('[data-cy="recovery-transcript"]')?.textContent ?? ''`,
               )
               return words.every((one) => text.includes(one)) ? text : null
@@ -999,7 +946,7 @@ async function steps(
           pass(
             `row ${String(index + 1)} shows its recorded words (${String(shown.length)} characters)`,
           )
-          const missing = await session.evaluate(
+          const missing = await session.evaluateExpression(
             `${JSON.stringify(ROWS_DRAWN)}.filter((cy) => document.querySelector('[data-cy="' + cy + '"]') === null)`,
           )
           check(
@@ -1010,18 +957,18 @@ async function steps(
           // Open every disclosure, so a control drawn behind one would be seen: each folded tool
           // row (pressing an open one would fold it), then the sub-agent and workflow cards.
           const folded = '.tool-entry.folded > [data-cy^="tool-toggle-"]'
-          const foldedCount = await session.evaluate(
+          const foldedCount = await session.evaluateExpression(
             `document.querySelectorAll(${JSON.stringify(folded)}).length`,
           )
           for (let n = 0; n < foldedCount; n += 1) await press(session, folded)
           for (const head of ['subagent-head', 'workflow-head']) {
-            const count = await session.evaluate(
+            const count = await session.evaluateExpression(
               `document.querySelectorAll('[data-cy="${head}"]').length`,
             )
             for (let n = 0; n < count; n += 1)
               await press(session, `[data-cy="${head}"]`, { index: n })
           }
-          const drawn = await session.evaluate(
+          const drawn = await session.evaluateExpression(
             `[...${JSON.stringify(DEAD_CONTROLS)}.filter((cy) => document.querySelector('[data-cy="' + cy + '"]') !== null),` +
               ` ...${JSON.stringify(DEAD_CONTROL_PREFIXES)}.filter((cy) => document.querySelector('[data-cy^="' + cy + '"]') !== null)]`,
           )
@@ -1045,9 +992,9 @@ async function steps(
           'no <use> on any screen checked',
         )
       } else if (step === 'no-history') {
-        const tried = await session.evaluate(TRY_HISTORY)
+        const tried = await session.evaluateExpression(TRY_HISTORY)
         check('the history is refused', tried.refused === true, JSON.stringify(tried))
-        const offered = await session.evaluate(
+        const offered = await session.evaluateExpression(
           `['recovery-restore', 'recovery-return'].filter((cy) => document.querySelector('[data-cy="' + cy + '"]') !== null)`,
         )
         check(
@@ -1058,7 +1005,7 @@ async function steps(
       } else if (step === 'return') {
         await press(session, '[data-cy="recovery-return"]')
         await screenShows(session, 'newer', 'the newer screen after Return')
-        const verdict = await session.evaluate('window.recovery.verdict()')
+        const verdict = await session.evaluateExpression('window.recovery.verdict()')
         check(
           'Return leads back to the newer data, offering the copy again',
           verdict.kind === 'newer' && verdict.offers?.id === copy.id,
@@ -1105,7 +1052,7 @@ async function keepTheScreen(session, keep, label) {
   let png = null
   const notes = []
   try {
-    dom = await session.evaluate('document.documentElement.outerHTML')
+    dom = await session.evaluateExpression('document.documentElement.outerHTML')
   } catch (error) {
     notes.push(`no DOM: ${error instanceof Error ? error.message : String(error)}`)
   }
