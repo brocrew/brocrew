@@ -1084,6 +1084,11 @@ const platform = platformHere()
   image-rendering: auto;
 }
 
+.rail :deep(:is(button, a[href], [role='button']):not(:disabled)) {
+  cursor: pointer;
+  user-select: none;
+}
+
 /* A theme's strip down the menu's right edge, drawn inside it over the rows. Clear unless set. */
 .rail::after {
   position: absolute;

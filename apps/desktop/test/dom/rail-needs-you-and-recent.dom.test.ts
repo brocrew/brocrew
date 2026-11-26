@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { cdp } from 'vitest/browser'
+import type {} from '@vitest/browser-playwright'
 import { nextTick } from 'vue'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -107,6 +109,60 @@ const ids = (m: Mounted, key: 'needs-you' | 'recent') =>
     (element) => element.dataset.sessionId,
   )
 const count = (m: Mounted, hook: string) => m.q(hook).textContent?.trim()
+
+it('uses a pointer and does not select text when dragged across sidebar controls', async () => {
+  const m = await rail([row('browse', 'reviewer', 1)])
+  const mouse = await cdp()
+  const frame = window.frameElement?.getBoundingClientRect()
+  const pageX = (x: number) => (frame ? frame.left + (x * frame.width) / window.innerWidth : x)
+  const pageY = (y: number) => (frame ? frame.top + (y * frame.height) / window.innerHeight : y)
+  for (const element of [
+    m.q('rail-sessions').querySelector('strong')!,
+    m.q('open-session-browse').querySelector('strong')!,
+  ]) {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const { left, right, top, height } = range.getBoundingClientRect()
+    expect(right - left).toBeGreaterThan(16)
+    const y = pageY(top + height / 2)
+    const start = pageX(left + 2)
+    const end = pageX(right - 2)
+    const pressed = vi.fn()
+    element.addEventListener('mousedown', pressed, { once: true })
+    window.getSelection()?.removeAllRanges()
+    await mouse.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start, y })
+    expect(getComputedStyle(element).cursor).toBe('pointer')
+    const control = element.closest('button, [role="button"]')!
+    expect(getComputedStyle(control).userSelect).toBe('none')
+    await mouse.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: start,
+      y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    })
+    try {
+      expect(pressed).toHaveBeenCalledOnce()
+      await mouse.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: end,
+        y,
+        button: 'left',
+        buttons: 1,
+      })
+    } finally {
+      await mouse.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: end,
+        y,
+        button: 'left',
+        clickCount: 1,
+      })
+    }
+    expect(window.getSelection()?.toString()).toBe('')
+  }
+})
 
 it('opens a recent conversation before its state arrives and then shows the full list', async () => {
   const now = row('recent-approval', 'reviewer', 0, { is: 'needs-you' })
