@@ -1,7 +1,7 @@
 import { type AgentToolAnswer } from '@brobot2/runtime'
 import type { AskOutcome } from '../question-rails'
 import { carryQuestionRefusal, refusalSaid, type ToolRefusalPayload } from './refusals'
-import { withAShortForm } from './long-replies'
+import { SHORT_REPLY_CHARACTERS, withAShortForm } from './long-replies'
 
 // Translate answers without catching failures the tool does not classify.
 
@@ -12,6 +12,16 @@ export const answer = (
   short?: string,
 ): AgentToolAnswer =>
   short === undefined ? { text, structured } : withAShortForm({ text, structured }, short)
+
+export const answerList = (
+  structured: Readonly<Record<string, unknown>>,
+  full: string,
+  compact: () => string,
+  short: string,
+): AgentToolAnswer =>
+  full.length <= SHORT_REPLY_CHARACTERS
+    ? answer(structured, compact())
+    : answer(structured, full, short)
 
 export const refusalAnswer = (payload: ToolRefusalPayload): AgentToolAnswer =>
   answer({ ...payload }, `refused (${payload.rail}): ${payload.reason}`)

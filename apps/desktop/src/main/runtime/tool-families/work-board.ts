@@ -40,7 +40,7 @@ import {
   whenSkipped,
 } from './listings'
 import { agentStateWords } from '../../../shared/agent-state'
-import { answer, refusalAnswer } from './answers'
+import { answer, answerList, refusalAnswer } from './answers'
 import { refuseTool } from './refusals'
 import { clockTime } from '../../../shared/clock'
 import { type readerFields } from './reader-inputs'
@@ -149,6 +149,7 @@ const pieceText = (
    * Who holds it, by name — `null` for a piece the reader holds itself.
    */
   heldByName: string | null,
+  includeDetail: boolean,
 ): string => {
   const wait = theWaitIn(piece.state)
   return `  ${pieceLine(piece.label, piece.title)} · ${piece.state}${
@@ -203,7 +204,17 @@ const pieceText = (
           }`
   }${piece.questionLostAtRestart ? ' · a question of its own was lost at a restart' : ''}${
     piece.outcome === null ? '' : ` · ${piece.outcome}`
-  } · ${piece.statusLine?.text ?? piece.brief.split('\n')[0] ?? ''}${piece.definitionOfDone === undefined ? '' : `\n  Done when: ${piece.definitionOfDone ?? 'Not recorded'}`}`
+  }${
+    includeDetail
+      ? ` · ${piece.statusLine?.text ?? piece.brief.split('\n')[0] ?? ''}${
+          piece.definitionOfDone === undefined
+            ? ''
+            : `\n  Done when: ${piece.definitionOfDone ?? 'Not recorded'}`
+        }`
+      : piece.statusLine === null
+        ? ''
+        : ` · ${piece.statusLine.text}`
+  }`
 }
 
 /**
@@ -212,10 +223,12 @@ const pieceText = (
  * whose it is, for the conversation this line is FOR**: its own, or another conversation of its
  * profile's, which `list_tasks` naming it reads too.
  */
-const rootText = (root: RootOnTheBoard, reader: string): string =>
+const rootText = (root: RootOnTheBoard, reader: string, includeDetail = true): string =>
   `  ${pieceLine(root.label, root.title)} · ${
     root.owner === reader ? 'your own work, from a person' : 'work a person gave that conversation'
-  }${root.statusLine === null ? '' : ` · ${root.statusLine.text}`}\n  Done when: ${root.definitionOfDone ?? 'Not recorded'}`
+  }${root.statusLine === null ? '' : ` · ${root.statusLine.text}`}${
+    includeDetail ? `\n  Done when: ${root.definitionOfDone ?? 'Not recorded'}` : ''
+  }`
 
 /** **D-016 · a root as a payload carries it** — no state, for {@link rootText}'s reason. */
 const rootPayload = (root: RootOnTheBoard): Readonly<Record<string, unknown>> => ({
@@ -542,8 +555,17 @@ export function createListTasksTool(
           holders.set(row.owner, name)
           return name
         }
-        const line = (row: PieceRow): string =>
-          pieceText(row, ownerIs(row), called, me, heldBecause(row), stopOf(row), heldByName(row))
+        const line = (row: PieceRow, includeDetail = true): string =>
+          pieceText(
+            row,
+            ownerIs(row),
+            called,
+            me,
+            heldBecause(row),
+            stopOf(row),
+            heldByName(row),
+            includeDetail,
+          )
         const payload = (row: PieceRow): Readonly<Record<string, unknown>> =>
           piecePayload(row, ownerIs(row), heldBecause(row), stopOf(row))
         const unreadLines = (rowsUnread: number, ledgersSkipped: number | undefined): string[] => [
@@ -586,16 +608,25 @@ export function createListTasksTool(
               payload:
                 unread === null ? payload(row) : { ...payload(row), answer_not_read: unread },
               // Said before the line's own words, which end on its answer's.
-              text:
-                unread === null ? line(row) : `  ${ANSWER_NOT_READ_SAID[unread]}:\n${line(row)}`,
+              text: (includeDetail: boolean) =>
+                unread === null
+                  ? line(row, includeDetail)
+                  : `  ${ANSWER_NOT_READ_SAID[unread]}:\n${line(row, includeDetail)}`,
             }
           }
           const ended = (row: PieceRow) => ({
             payload: { ...endedPiecePayload(row), ...ownerFacts(row) },
             text: endedPieceText(row) + ownerWords(row),
           })
-          const holdRows = [...hold.whole.map((row) => whole(row, false)), ...hold.ended.map(ended)]
-          const gaveRows = [...gave.whole.map((row) => whole(row, true)), ...gave.ended.map(ended)]
+          const listedRows = (rows: typeof hold, flagged: boolean) => [
+            ...rows.whole.map((row) => whole(row, flagged)),
+            ...rows.ended.map((row) => {
+              const result = ended(row)
+              return { payload: result.payload, text: () => result.text }
+            }),
+          ]
+          const holdRows = listedRows(hold, false)
+          const gaveRows = listedRows(gave, true)
           // A root has no state: it is its conversation's own work, listed with what is open.
           const root = asked.listing === 'ended' ? null : board.root
           const notListed = {
@@ -641,7 +672,7 @@ export function createListTasksTool(
             holdsNone ??
               [
                 'work you hold:',
-                ...(root === null ? [] : [rootText(root, me).split('\n')[0] ?? '']),
+                ...(root === null ? [] : [rootText(root, me, false)]),
                 ...shortOf(hold.whole, hold.ended, false),
               ].join('\n'),
             ...(gaveRows.length === 0
@@ -655,33 +686,16 @@ export function createListTasksTool(
                 ]),
             ...unreadLines(board.rowsUnread, board.ledgersSkipped),
           ].join('\n\n')
-          return answer(
-            {
-              outcome: 'ok',
-              listed: asked.listing,
-              you_hold: [
-                ...(root === null ? [] : [rootPayload(root)]),
-                ...holdRows.map((one) => one.payload),
-              ],
-              you_gave: gaveRows.map((one) => one.payload),
-              // The open pieces you gave that archived conversations hold, by label.
-              held_by_archived: putAway.map((row) => row.label),
-              // What the lists leave out, counted by how each ended (or `open`, when only the
-              // ended ones were asked for). Always present: `{}` says nothing was left out.
-              not_listed: notListed,
-              // **671 · R18 — the count, IN the payload and not only in a log** (the PM's
-              // words). Always present, so `0` is a measurement a model can read.
-              rows_unread: board.rowsUnread,
-            },
+          const boardText = (includeDetail: boolean) =>
             [
               holdsNone ??
                 [
                   'work you hold:',
-                  ...(root === null ? [] : [rootText(root, me)]),
-                  ...holdRows.map((one) => one.text),
+                  ...(root === null ? [] : [rootText(root, me, includeDetail)]),
+                  ...holdRows.map((one) => one.text(includeDetail)),
                 ].join('\n'),
               ...(gaveRows.length > 0
-                ? [['work you gave:', ...gaveRows.map((one) => one.text)].join('\n')]
+                ? [['work you gave:', ...gaveRows.map((one) => one.text(includeDetail))].join('\n')]
                 : // The line about what is put away says it, when open work you gave is.
                   putAway.length > 0 && asked.listing !== 'ended'
                   ? []
@@ -705,7 +719,27 @@ export function createListTasksTool(
                       )}. Name one to read its record; list_agents with archived: true names the conversations.`,
                   ]),
               ...unreadLines(board.rowsUnread, board.ledgersSkipped),
-            ].join('\n\n'),
+            ].join('\n\n')
+          return answerList(
+            {
+              outcome: 'ok',
+              listed: asked.listing,
+              you_hold: [
+                ...(root === null ? [] : [rootPayload(root)]),
+                ...holdRows.map((one) => one.payload),
+              ],
+              you_gave: gaveRows.map((one) => one.payload),
+              // The open pieces you gave that archived conversations hold, by label.
+              held_by_archived: putAway.map((row) => row.label),
+              // What the lists leave out, counted by how each ended (or `open`, when only the
+              // ended ones were asked for). Always present: `{}` says nothing was left out.
+              not_listed: notListed,
+              // **671 · R18 — the count, IN the payload and not only in a log** (the PM's
+              // words). Always present, so `0` is a measurement a model can read.
+              rows_unread: board.rowsUnread,
+            },
+            boardText(true),
+            () => boardText(false),
             short,
           )
         }
