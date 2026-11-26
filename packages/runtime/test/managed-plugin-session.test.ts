@@ -758,7 +758,7 @@ it('an unsuccessful replacement emits one fixed unavailable notice and leaves ev
   expect(events.filter((one) => JSON.stringify(one).includes('plugin/attachment'))).toHaveLength(1)
 })
 
-it('Stop joins and closes a replacement that returns after cancellation without sending a turn', async () => {
+it('app Quit closes a replacement that returns after cancellation without sending a turn', async () => {
   const f = fixture(),
     a = await f.runtime.start(initial)
   const opening = vi.mocked(f.raw.resume).getMockImplementation()!
@@ -779,7 +779,7 @@ it('Stop joins and closes a replacement that returns after cancellation without 
   const refusal = expect(sending).rejects.toThrow('stopped')
   await ready
   let closed = false
-  const closing = a.close().then(() => {
+  const closing = a.close('app-quit').then(() => {
     closed = true
   })
   await Promise.resolve()
@@ -790,7 +790,8 @@ it('Stop joins and closes a replacement that returns after cancellation without 
   expect(f.opened).toHaveLength(2)
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
   expect(f.opened[1]!.send).not.toHaveBeenCalled()
-  expect(f.opened[1]!.close).toHaveBeenCalledOnce()
+  expect(f.opened[0]!.close).toHaveBeenCalledExactlyOnceWith('app-quit')
+  expect(f.opened[1]!.close).toHaveBeenCalledExactlyOnceWith('app-quit')
   expect(f.source.close).toHaveBeenCalledOnce()
 })
 

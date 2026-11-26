@@ -12,6 +12,7 @@ export class ManagedPluginOwnership {
     }
   >()
   private readonly refused = new Map<Promise<void>, Promise<void>>()
+  private closeArgs: Parameters<SessionHandle['close']> | undefined
   private sealed = false
   private hasWitness = false
   private resolveExit!: () => void
@@ -46,11 +47,12 @@ export class ManagedPluginOwnership {
       },
     )
   }
-  retire(handle: SessionHandle, ...args: Parameters<SessionHandle['close']>): Promise<void> {
+  retire(handle: SessionHandle): Promise<void> {
     this.track(handle)
     const record = this.handles.get(handle)!
     record.retired = true
     if (!record.closing) {
+      const args = this.closeArgs ?? []
       record.closing = Promise.resolve().then(() => handle.close(...args))
       record.closing.catch(() => undefined)
       if (record.exit)
@@ -72,8 +74,9 @@ export class ManagedPluginOwnership {
     return this.refused.size === 0 && ![...this.handles.values()].some((record) => record.retired)
   }
   async closeAll(...args: Parameters<SessionHandle['close']>): Promise<void> {
+    this.closeArgs ??= args
     const handles = [...this.handles.keys()]
-    const closed = await Promise.allSettled(handles.map((handle) => this.retire(handle, ...args)))
+    const closed = await Promise.allSettled(handles.map((handle) => this.retire(handle)))
     for (const [index, result] of closed.entries()) {
       if (result.status === 'rejected' && this.handles.get(handles[index]!)?.exit === undefined)
         throw result.reason
