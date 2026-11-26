@@ -247,41 +247,67 @@ describe('message now · a message or an answer can stop the running turn', () =
       expect(read).toContain('anything not named there still runs')
     })
 
-    it('the receipt’s sentence states the intent and no timing, and an idle conversation needs no stop', async () => {
-      const { ali, adaTools, aliHandle } = await aChainOfThree()
-      const idle = await answerOn(adaTools, 'message_agent', {
-        agent: ali,
-        text: 'a note while nothing runs',
-        kind: 'note',
-        interrupt: true,
+    /**
+     * ⚑ **The same chain, with every conversation opened on `provider`**, so the receipt below is read
+     * from each provider's sessions. A helper of its own, so the shared chain above stays as it is.
+     */
+    const aChainOfThreeOn = async (provider: Provider): ReturnType<typeof aChainOfThree> => {
+      const opens = async (
+        profileId: string,
+        approvalMode: 'ask' | 'auto' = 'ask',
+      ): Promise<string> =>
+        (await host.createSession({ provider, profileId, approvalMode, cwd: root }, window))
+          .sessionId
+      return openFrontEndChain({
+        host,
+        nth: ++chains,
+        includeSibling: true,
+        bringIdentityIntoBeing: async (profileId) => {
+          await host.close(await opens(profileId), window)
+        },
+        personOpens: opens,
+        ledger,
+        firstHandle: () => undefined,
+        finalHandle: latestHandle,
       })
-      expect(idle.structured).toMatchObject({
-        outcome: 'ok',
-        asked_to_stop: false,
-        not_stopped_because: 'not-needed',
-      })
-      expect(idle.text).toContain(
-        'No turn was running that needed stopping, so nothing was interrupted.',
-      )
-      expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
+    }
 
-      await makeItWork(aliHandle)
-      const running = (
-        await answerOn(adaTools, 'message_agent', {
+    it.each(['claude', 'codex'] as const)(
+      '%s receipt states the intent and no timing, and idle needs no stop',
+      async (provider) => {
+        const { ali, adaTools, aliHandle } = await aChainOfThreeOn(provider)
+        const idle = await answerOn(adaTools, 'message_agent', {
           agent: ali,
-          text: 'a note while it runs',
+          text: 'a note while nothing runs',
           kind: 'note',
           interrupt: true,
         })
-      ).text
-      expect(running).toContain('need not wait for that work to finish')
-      // The stopped turn ended inside the wait, so the receipt says what its stop ended.
-      expect(running).toContain('The stop ended none of its commands.')
-      // The stop's own sentence (after the hold's), which promises when nothing happens.
-      expect(running.slice(running.indexOf('The turn '))).not.toMatch(
-        /immediately|at once|right away|does not wait/i,
-      )
-    })
+        expect(idle.structured).toMatchObject({
+          outcome: 'ok',
+          asked_to_stop: false,
+          not_stopped_because: 'not-needed',
+        })
+        expect(idle.text).toContain('No running turn needed stopping.')
+        expect(ledger(ali).some((event) => event.type === 'work_interrupted')).toBe(false)
+
+        await makeItWork(aliHandle)
+        const running = (
+          await answerOn(adaTools, 'message_agent', {
+            agent: ali,
+            text: 'a note while it runs',
+            kind: 'note',
+            interrupt: true,
+          })
+        ).text
+        expect(running).toContain('need not wait for that work to finish')
+        // The stopped turn ended inside the wait, so the receipt says what its stop ended.
+        expect(running).toContain('The stop ended none of its commands.')
+        // The stop's own sentence (after the hold's), which promises when nothing happens.
+        expect(running.slice(running.indexOf('The turn '))).not.toMatch(
+          /immediately|at once|right away|does not wait/i,
+        )
+      },
+    )
 
     it('…and the control: the same message without interrupt stops nothing and carries no such line', async () => {
       const { ali, adaTools, aliHandle } = await aChainOfThree()

@@ -358,7 +358,14 @@ describe('five more tools answer field failures through Claude MCP', () => {
                     : 'queued',
             },
     })
-    expect(said).toContain(`Your message ${receipt.recorded.id} is recorded for conversation`)
+    const recordedMessage = `Your message ${receipt.recorded.id} is recorded`
+    const hasDelivery = ['started', 'queued'].includes(receipt.recipient.state.kind)
+    expect(said).toContain(
+      hasDelivery ? `${recordedMessage}.` : `${recordedMessage} for conversation`,
+    )
+    expect(
+      said.split(`conversation ${receipt.recipient.address} · ${receipt.recipient.title}`),
+    ).toHaveLength(2)
     expect(said).not.toContain(failure.message)
     expect(warned.mock.calls.flat().join(' ')).toContain(failure.message)
     if (failureAt === 'readback' || failureAt === 'unknown-title') {
