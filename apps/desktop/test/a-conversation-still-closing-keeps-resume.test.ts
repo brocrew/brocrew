@@ -1,5 +1,9 @@
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as WindowSink,
+} from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -66,14 +70,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-}
-
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
 }
 
 describe('716 · R62, D-017b — a conversation still closing says no process word, and still carries on', () => {

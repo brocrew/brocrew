@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,7 +19,6 @@ import {
   DEFAULT_PROFILE_ID,
   RUNTIME_CHANGE_SUBJECTS,
   type RuntimeChangeMessage,
-  type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -54,17 +53,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A `FakeRuntime` per launch over one shared ledger of provider sessions. */
 function sharedRuntime(provider: Provider, sessions: FakeProviderSessions): FakeRuntime {
   return new FakeRuntime(provider, { sessions })
-}
-
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /**

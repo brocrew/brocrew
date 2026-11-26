@@ -3,8 +3,7 @@ import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset, StartOptions } from '@brobot2/runtime'
@@ -13,7 +12,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId, WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
 import {
@@ -25,10 +23,15 @@ import {
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  migrationsFolder,
+  RecordingSink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**
@@ -65,25 +68,6 @@ import { callOn } from './helpers/call-tool'
  * are already present in the destination transcript. Distinguishing the origin values keeps
  * that guard explicit instead of treating every message as an agent send.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt: boolean
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    aPersonIsBehindIt = true,
-  ) {
-    this.aPersonIsBehindIt = aPersonIsBehindIt
-  }
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class ProviderDouble extends FakeRuntime {
   constructor(
