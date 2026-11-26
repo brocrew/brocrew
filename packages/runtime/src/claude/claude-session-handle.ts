@@ -444,6 +444,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   private terminated = false
 
   private closing: Promise<void> | null = null
+  private quitTrace: { startedAt: number; tasks: Map<string, number> } | undefined
 
   private readonly _targetRef: SessionRef | null
 
@@ -877,6 +878,20 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   private emit(event: RuntimeEvent): void {
     if (this.terminated) return
+    const trace = this.quitTrace
+    if (trace && event.type === 'background_work' && event.ended) {
+      const task = trace.tasks.get(event.ended.id)
+      if (task !== undefined) {
+        console.info(
+          '[Card 596 quit trace]',
+          trace.startedAt,
+          Date.now(),
+          'terminal',
+          task,
+          event.ended.outcome,
+        )
+      }
+    }
     this.noteTheCommandsWaitedOn(event)
 
     this.coalescer.feed(event)
@@ -1170,6 +1185,9 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   private async detachQueryAwaitingExit(): Promise<void> {
     const query = this.query
+    if (this.quitTrace) {
+      console.info('[Card 596 quit trace]', this.quitTrace.startedAt, Date.now(), 'detach')
+    }
     this.detachQuery()
     await finishClaudeChild(query, this.child, CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
   }
@@ -1479,7 +1497,14 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   private async doClose(stopBackgroundCommands: boolean): Promise<void> {
+    const trace = stopBackgroundCommands
+      ? { startedAt: Date.now(), tasks: new Map<string, number>() }
+      : undefined
+    this.quitTrace = trace
     if (!this.machine.beginClose()) {
+      if (trace) {
+        console.info('[Card 596 quit trace]', trace.startedAt, Date.now(), 'close-state', this.machine.state)
+      }
       await this.detachQueryAwaitingExit()
       this.input.close()
       this.terminated = true
@@ -1493,11 +1518,31 @@ export class ClaudeSessionHandle implements SessionHandle {
     const stopTask = stopBackgroundCommands ? query?.stopTask?.bind(query) : undefined
     // Windows has no Claude process group to reap after the CLI exits. Give its own
     // Stop requests the same deadline as the foreground interrupt, while the query is live.
+    const snapshot = stopTask ? this.backgroundTasks.snapshot() : []
+    if (trace) {
+      console.info(
+        '[Card 596 quit trace]',
+        trace.startedAt,
+        Date.now(),
+        'selection',
+        stopTask !== undefined,
+        JSON.stringify(snapshot.map(({ run }) => run?.kind ?? 'unknown')),
+      )
+    }
     const stops = stopTask
-      ? this.backgroundTasks
-          .snapshot()
+      ? snapshot
           .filter(({ run }) => run?.kind === 'command')
-          .map(async ({ id }) => stopTask(id))
+          .map(async ({ id }, task) => {
+            trace?.tasks.set(id, task)
+            console.info('[Card 596 quit trace]', trace?.startedAt, Date.now(), 'stop-request', task)
+            try {
+              await stopTask(id)
+              console.info('[Card 596 quit trace]', trace?.startedAt, Date.now(), 'stop-reply', task)
+            } catch (error) {
+              console.info('[Card 596 quit trace]', trace?.startedAt, Date.now(), 'stop-rejected', task)
+              throw error
+            }
+          })
       : []
     if (hadTurn) {
       this.machine.requestInterrupt()
