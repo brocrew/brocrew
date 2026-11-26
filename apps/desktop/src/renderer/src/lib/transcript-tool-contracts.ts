@@ -185,10 +185,10 @@ export interface ToolItem {
  * outcome, `message_sent` a message's recipient, kind and delivery. ⚑ **So the row lands on the call
  * that produced it**, and the card draws the row.
  *
- * ⚑ **678 · and since `671` the row carries a MESSAGE's words too** — `message_sent.text`, cut at
- * `REPLY_SUMMARY_LIMIT` and `clipped` when cut. ⚠️ **This said *"`message_sent` carries none"***,
- * which was true until `671`; a row written before it still carries none, and only then does the
- * card fall back to what survived the arguments' 200-character bound (`outgoing-card.ts`).
+ * ⚑ **678 · the row carries a MESSAGE's words too** — `message_sent.text`, cut at
+ * `REPLY_SUMMARY_LIMIT` and `clipped` when cut. ⚠️ A row written before `671` carries none, and only
+ * then does the card fall back to what survived the arguments' 200-character bound
+ * (`outgoing-card.ts`).
  *
  * ⚠️ **`null` until that row arrives, and for good when the call was refused** — a refused call wrote
  * no row, and its receipt ({@link ToolItem.result}) is the whole story.
@@ -701,13 +701,11 @@ export interface UserInputItem {
    *
    * So this says the other thing: the gesture bounced, the sentence explains why, **and the card is
    * unchanged**. ⛔ **It is copy and not state**: {@link isAwaitingAnswer} ignores it, nothing
-   * branches on it, and a card carrying one is exactly as answerable as a card carrying none.
+   * settles or answers a card by it, and a card carrying one is exactly as answerable as a card
+   * carrying none.
    *
-   * ⚠️ **It used to say *"nothing derived reads it"* and `468` made that false** — the sentence
-   * survived the change that killed it, which is `458`'s subject. `attentionQueue` now carries it
-   * onto {@link AttentionRequest.refused} so the person's own queue can draw the same sentence the
-   * card does, from this one field. ⚑ **Still copy**: the projection renders it and decides
-   * nothing with it.
+   * ⚑ **It is copied out for display**: `attentionQueue` (onto {@link AttentionRequest.refused}), the
+   * question card's reading and the readable export each show this one field's sentence.
    */
   refused: string | null
 }

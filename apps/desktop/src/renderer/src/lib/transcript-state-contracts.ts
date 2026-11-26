@@ -474,10 +474,9 @@ export interface TranscriptState {
    * transcript.** `sessionPanel` and `pendingKind` both answer this by scanning every item, which
    * is fine for the one conversation on screen and is not fine for the rail — it describes every
    * open conversation and re-renders whenever any of them changes, so a scan there makes the whole
-   * rail re-render on every streaming delta. That cost is why the rail used to gate its scan on the
-   * status column, and that gate is what made the rail's answer a SECOND derivation that could
-   * differ from the pane's. This field removes the trade: the rail now feeds `needingFor` the same
-   * numbers the pane does, in O(1), with no dependency on `items` at all.
+   * rail re-render on every streaming delta, and gating that scan on the status column makes the
+   * rail's answer a SECOND derivation that can differ from the pane's. With this field the rail
+   * feeds `needingFor` the same numbers the pane does, in O(1), with no dependency on `items` at all.
    *
    * ⚠️ **Maintained by full RECOUNT, never by increments** — see {@link recountPending}. A counter
    * nudged at seven mutation sites is a counter that drifts the first time an eighth is added;

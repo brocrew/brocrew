@@ -479,9 +479,8 @@ export function markUserInputAnswered(
  * A response the host refused for a request that is GONE — already answered, unknown id, session
  * gone. The card stops being actionable.
  *
- * ⚠️ **It used to say *"or a fault nobody could classify"* and that clause is now unreachable**
- * (473, from `469` F2). An unclassified fault arrives at `noteAnswer` as `!ok` with no
- * {@link AnswerAck} at all, and this window cannot know from that whether the request was consumed
+ * ⚠️ **Not for a fault nobody could classify** (473): an unclassified fault arrives at `noteAnswer`
+ * as `!ok` with no {@link AnswerAck} at all, and this window cannot know from that whether the request was consumed
  * — so it goes to {@link markAnswerRefused} and the card stays live. ⛔ **Only a host that ANSWERED,
  * saying the request is gone, reaches this one.**
  */

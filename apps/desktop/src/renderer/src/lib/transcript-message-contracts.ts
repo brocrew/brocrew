@@ -421,17 +421,15 @@ export interface QueuedItem {
    */
   says?: AgentMessageKind
   /**
-   * 🔴 **WHICH held message this row is** (413, from `406`'s reported finding) — the
-   * {@link QueuedMessageEvent.messageId} it was queued under.
+   * 🔴 **WHICH held message this row is** — the {@link QueuedMessageEvent.messageId} it was
+   * queued under.
    *
    * ## ⛔ Because a session can hold TWO, and has been able to since `394`
    *
-   * ⚠️ **{@link openQueuedItem} used to answer *the last unresolved one*, on a stated premise:
-   * *"the host allows only one queued message per session at a time."*** ⛔ `394` made the mailbox
-   * hold a work message AND a question, and nothing corrected that sentence — so an ending named
-   * one row and settled another. ⚑ **Measured before it was fixed**: queue `m_work`, queue `m_q`,
-   * then send `m_work` — the QUESTION's row was spliced out and the work's stayed on screen with
-   * no ending it could ever receive.
+   * ⛔ **So {@link openQueuedItem} finds a row by this id, never as *the last unresolved one*:**
+   * with a work message AND a question held, queue `m_work`, queue `m_q`, then send `m_work`, and
+   * the last-unresolved rule splices out the QUESTION's row and leaves the work's on screen with no
+   * ending it could ever receive.
    *
    * ⚠️ **Optional, because a ledger written before `354` has no ids at all** — `messageId`'s own
    * absence rule, carried one layer out.
@@ -712,8 +710,8 @@ interface Timed {
  * ⚑ **What it made possible**, both in one dispatch: the transcript can find the row a reader was
  * looking at after a page has been inserted above it (`useOlderHistory`), and the change log can
  * tell which of its reports were built from events a window release has thrown away
- * (`carryForward`). Both used to be answered with arithmetic on heights and lengths that a
- * simultaneous release made wrong.
+ * (`carryForward`). ⛔ Neither may be answered with arithmetic on heights and lengths: a
+ * simultaneous release makes it wrong.
  *
  * Optional for the reason `at` is: the fold is a pure function over events and a caller with no
  * ordinal to give — a test, a synthetic entry, the read-only child viewer — should not have to
