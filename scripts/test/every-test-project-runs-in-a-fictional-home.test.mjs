@@ -7,13 +7,12 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir, userInfo } from 'node:os'
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, posix } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -62,7 +61,12 @@ describe('every test project runs in a fictional home', () => {
 
     const desktop = codeOf(read('apps/desktop/vitest.config.ts'))
     expect(desktop).toContain("name: 'desktop'")
-    for (const path of ['apps/desktop/vitest.config.ts', 'vitest.agent-processes.config.ts']) {
+    for (const path of [
+      'apps/desktop/vitest.config.ts',
+      'vitest.agent-processes.config.ts',
+      'plugins/chrome/vitest.config.ts',
+      'plugins/whatsapp/vitest.config.ts',
+    ]) {
       const config = codeOf(read(path))
       expect(config, path).toContain('env: theTestsEnv(),')
       expect(config, path).toContain('setupFiles: [THE_GUARD],')
@@ -84,20 +88,52 @@ describe('every test project runs in a fictional home', () => {
   })
 
   it('🔒 every vitest config in the repository is sealed, or is named here with why it is not', () => {
-    const folders = ['.', 'scripts']
-    for (const group of ['apps', 'packages']) {
-      for (const name of readdirSync(join(ROOT, group))) {
-        if (statSync(join(ROOT, group, name)).isDirectory()) folders.push(`${group}/${name}`)
+    // Every config file in the repository, whatever its name, with the modules its code loads by
+    // `import`, `export … from` or `require`, in either quote.
+    const skipped = new Set(['node_modules', 'out', 'dist', 'coverage'])
+    const loads = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"]([^'"]+)['"]/g
+    const configs = new Map()
+    const walk = (folder) => {
+      for (const entry of readdirSync(join(ROOT, folder), { withFileTypes: true })) {
+        if (entry.name.startsWith('.') || skipped.has(entry.name)) continue
+        const path = folder === '.' ? entry.name : `${folder}/${entry.name}`
+        if (entry.isDirectory()) walk(path)
+        else if (/\.config\.[cm]?[jt]s$/.test(entry.name))
+          configs.set(
+            path,
+            [...codeOf(read(path)).matchAll(loads)].map((one) => one[1]),
+          )
       }
     }
-    const found = folders.flatMap((folder) =>
-      readdirSync(join(ROOT, folder))
-        .filter((name) => /^vitest\b.*\.config\.[cm]?[jt]s$/.test(name))
-        .map((name) => (folder === '.' ? name : `${folder}/${name}`)),
-    )
+    walk('.')
+    // A Vitest config loads Vitest itself, or loads another Vitest config.
+    const resolved = (from, specifier) => {
+      const base = posix.join(posix.dirname(from), specifier)
+      return ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs']
+        .map((ending) => base + ending)
+        .find((path) => configs.has(path))
+    }
+    const found = [...configs]
+      .filter(([, specifiers]) => specifiers.some((one) => /^vitest(\/|$)/.test(one)))
+      .map(([path]) => path)
+    for (let grew = true; grew;) {
+      grew = false
+      for (const [path, specifiers] of configs) {
+        if (found.includes(path)) continue
+        const loaded = specifiers
+          .filter((one) => one.startsWith('.'))
+          .map((one) => resolved(path, one))
+        if (loaded.some((one) => one !== undefined && found.includes(one))) {
+          found.push(path)
+          grew = true
+        }
+      }
+    }
     // The test above reads each of these.
     const sealed = [
       'apps/desktop/vitest.config.ts',
+      'plugins/chrome/vitest.config.ts',
+      'plugins/whatsapp/vitest.config.ts',
       'vitest.agent-processes.config.ts',
       'vitest.config.ts',
       'vitest.gate-only.config.ts',
@@ -108,7 +144,20 @@ describe('every test project runs in a fictional home', () => {
     // No test run includes these: a live smoke is a check of the computer's own login, and a probe
     // makes its own sandbox.
     const live = ['vitest.smoke.config.ts']
-    expect(found.sort()).toEqual([...sealed, ...inABrowser, ...live].sort())
+    // Measures the projects above: every project it runs is taken from the root config.
+    const measuring = ['coverage-measurement.config.ts']
+    expect(found.sort()).toEqual([...sealed, ...inABrowser, ...live, ...measuring].sort())
+
+    const coverage = codeOf(read('coverage-measurement.config.ts'))
+    expect(coverage).toContain("import base, { desktopProject } from './vitest.config'")
+    expect(coverage).toContain('base\n  .test!.projects!.filter(')
+    expect(coverage).toContain('...base.test!.projects![0].test,')
+    expect(coverage).not.toMatch(/^\s*(env|setupFiles):/m)
+    // Its only project of its own is that one, and the projects it exports are the list built here.
+    expect([...coverage.matchAll(/\bprojects\.(push|unshift|splice)\(/g)]).toHaveLength(1)
+    expect([...coverage.matchAll(/^\s+projects(,|:)/gm)].map((one) => one[0].trim())).toEqual([
+      'projects,',
+    ])
   })
 
   it('🔒 the setup file spells out every folder name the seal sets, a second time', () => {
