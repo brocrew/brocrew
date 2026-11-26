@@ -192,21 +192,17 @@ describe('582 · the layer a person writes', () => {
   // §2 · versioned and revertable — HO-009 §1.2
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it.each(['none', 'propose', 'relay', null] as const)(
-    'launches with the one rule policy whatever the retired can_write_rules column holds (%s)',
-    async (held) => {
-      await bringIdentityIntoBeing('worker')
-      db.prepare('UPDATE agent_identity SET can_write_rules = ? WHERE slug = ?').run(held, 'worker')
-      const opened = await personOpens('worker')
-      expect(reads.at(-1)?.instructions.composed).toContain(
-        '- Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.',
-      )
-      expect(reads.at(-1)?.instructions.composed).not.toContain(
-        "save a person's rule for another agent",
-      )
-      await host.close(opened, window)
-    },
-  )
+  it('launches with the one rule policy', async () => {
+    await bringIdentityIntoBeing('worker')
+    const opened = await personOpens('worker')
+    expect(reads.at(-1)?.instructions.composed).toContain(
+      '- Only the person or the profile that created an agent may change its standing rules; any conversation of the creator profile counts. If no creator is recorded, only the person may change them. Sharing the target’s profile grants no right to change its rules. Agents may keep their own notes and propose rule changes for the person to decide.',
+    )
+    expect(reads.at(-1)?.instructions.composed).not.toContain(
+      "save a person's rule for another agent",
+    )
+    await host.close(opened, window)
+  })
 
   describe('§2 · nothing is ever replaced', () => {
     it('🔴 a second save APPENDS, and the first version is still readable', async () => {
@@ -402,22 +398,16 @@ describe('582 · the layer a person writes', () => {
       await host.close(asking, window)
     })
 
-    it.each([null, 'propose'])(
-      'a known agent naming a missing identity is told no-such-agent with retired grant %s',
-      async (retiredGrant) => {
-        const asking = await openAsker()
-        db.prepare("UPDATE agent_identity SET can_write_rules = ? WHERE slug = 'asker'").run(
-          retiredGrant,
-        )
-        const refused = host.proposeAgentRules(
-          asking,
-          { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
-          { ownerId: agentCallerId(asking) },
-        )
-        expect(!refused.ok && refused.rail).toBe('no-such-agent')
-        await host.close(asking, window)
-      },
-    )
+    it('a known agent naming a missing identity is told no-such-agent', async () => {
+      const asking = await openAsker()
+      const refused = host.proposeAgentRules(
+        asking,
+        { about: 'nobody-at-all', text: 'x', why: 'y', relaying: false, expectedVersion: 0 },
+        { ownerId: agentCallerId(asking) },
+      )
+      expect(!refused.ok && refused.rail).toBe('no-such-agent')
+      await host.close(asking, window)
+    })
 
     it('🔴 a person’s own save SUPERSEDES an ask waiting about that identity', async () => {
       const asking = await openAsker()
