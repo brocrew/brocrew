@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,19 +16,10 @@ import type { KeptAccounts } from '../src/main/providers/claude/account-record'
 import { NO_CUTS_KEPT } from '../src/main/turns-the-app-cut-file'
 import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
 import { resourcesRoot } from '../src/main/resources/resources'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-  type RuntimeHostDeps,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeStatesMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 const AT = Date.UTC(2026, 9, 8, 10)
@@ -72,18 +63,8 @@ class DeferredLimitsReader implements LimitsReader {
   }
 }
 
-class Watching implements RuntimeEventSink {
-  readonly ownerId = sinkOwnerId({ id: 991 })
-  readonly aPersonIsBehindIt = true
-  readonly alive = true
-  readonly events: RuntimeEventMessage[] = []
-  readonly lives: SessionLivenessMessage[] = []
-  send(message: RuntimeEventMessage): void {
-    this.events.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.lives.push(message)
-  }
+class Watching extends RecordingSink {
+  override readonly ownerId = sinkOwnerId({ id: 991 })
 }
 
 async function eventually(ready: () => boolean): Promise<void> {
@@ -276,7 +257,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('provider handle was not registered')
     await eventually(() =>
-      window.events.some(
+      window.messages.some(
         (row) =>
           row.sessionId === created.sessionId &&
           row.event.type === 'status' &&
@@ -287,7 +268,8 @@ describe('provider facts use existing reads and existing live carriers', () => {
     return { id: created.sessionId, handle, created }
   }
 
-  const latest = (id: string) => window.lives.filter((row) => row.sessionId === id).at(-1)?.liveness
+  const latest = (id: string) =>
+    window.livenessMessages.filter((row) => row.sessionId === id).at(-1)?.liveness
   const phase = (id: string) =>
     states
       .flatMap((row) => row.moved)
@@ -356,7 +338,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live('auto')
     await host.send(a.id, 'fictional normal turn', window)
     await eventually(() =>
-      window.events.some(
+      window.messages.some(
         (row) =>
           row.sessionId === a.id && row.event.type === 'turn' && row.event.state === 'completed',
       ),
@@ -434,7 +416,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     write.mockRestore()
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     await drain()
     expect(boundary.providerBlockDisclosure(a.id, 'claude')).toMatchObject({
       providerBlockStatus: 'unavailable',
@@ -448,7 +430,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     clock++
     a.handle.simulateError(UNKNOWN, false)
     await eventually(() =>
-      window.events.some((row) => row.sessionId === a.id && row.event.type === 'error'),
+      window.messages.some((row) => row.sessionId === a.id && row.event.type === 'error'),
     )
     await drain()
     expect(reads).not.toHaveBeenCalled()
@@ -469,7 +451,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     clock++
     a.handle.simulateProviderLimitClear()
     await eventually(() =>
-      window.events.some(
+      window.messages.some(
         (row) => row.sessionId === a.id && row.event.type === 'provider_limit_clear',
       ),
     )
@@ -489,7 +471,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const moved = vi.spyOn(boundary, 'stateMayHaveMoved')
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     await drain()
     expect(moved.mock.calls.some(([id]) => id === a.id)).toBe(true)
     expect(moved.mock.calls.filter(([id]) => id === b.id)).toHaveLength(0)
@@ -501,7 +483,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(`${UNKNOWN}; resets ${new Date(clock + 60_000).toISOString()}`, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     const queued = await host.queueMessage(a.id, 'fictional automatic news', THE_APP_ITSELF)
     expect(queued.outcome).toBe('queued')
     await drain()
@@ -537,7 +519,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(`${UNKNOWN}; resets ${new Date(clock + 60_000).toISOString()}`, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     const read = store.providerLimitsSeen.bind(store)
     vi.spyOn(store, 'providerLimitsSeen').mockImplementation((at, changes) => ({
       ...read(at, changes),
@@ -563,7 +545,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     host.limitsForAPerson()
     await drain()
     expect(latest(a.id)?.providerBlock).toEqual({ provider: 'claude', resetsAt: null })
@@ -630,7 +612,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(`${UNKNOWN}; resets ${new Date(clock + 1_000).toISOString()}`, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     host.limitsForAPerson()
     await drain()
@@ -651,7 +633,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     host.limitsForAPerson()
     await drain()
     const boundary = host as unknown as {
@@ -678,11 +660,11 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const next = handles.at(-1)
     if (next === undefined || next === a.handle)
       throw new Error('next provider life was not registered')
-    const clears = window.events.filter((row) => row.event.type === 'provider_limit_clear').length
+    const clears = window.messages.filter((row) => row.event.type === 'provider_limit_clear').length
     next.simulateProviderLimitClear()
     await eventually(
       () =>
-        window.events.filter((row) => row.event.type === 'provider_limit_clear').length > clears,
+        window.messages.filter((row) => row.event.type === 'provider_limit_clear').length > clears,
     )
     await drain()
     expect(latest(a.id)).toMatchObject({ providerBlockStatus: 'current', providerBlock: null })
@@ -693,7 +675,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     host.limitsForAPerson()
     await host.closeAll()
     host = anotherHost(true)
@@ -721,10 +703,10 @@ describe('provider facts use existing reads and existing live carriers', () => {
   it('keeps a real person command exempt beside automatic mail during an active person turn', async () => {
     const a = await live()
     await host.send(a.id, 'fictional first request', window)
-    await eventually(() => window.events.some((row) => row.event.type === 'permission_request'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'permission_request'))
     clock++
     a.handle.simulateError(`${UNKNOWN}; resets ${new Date(clock + 60_000).toISOString()}`, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     expect((await host.queueMessage(a.id, 'automatic follow-up', THE_APP_ITSELF)).outcome).toBe(
       'queued',
     )
@@ -748,7 +730,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     const a = await live()
     clock++
     a.handle.simulateError(UNKNOWN, false)
-    await eventually(() => window.events.some((row) => row.event.type === 'error'))
+    await eventually(() => window.messages.some((row) => row.event.type === 'error'))
     host.limitsForAPerson()
     await drain()
     expect(latest(a.id)?.providerBlock?.resetsAt).toBeNull()
@@ -762,10 +744,10 @@ describe('provider facts use existing reads and existing live carriers', () => {
     expect(latest(a.id)).toMatchObject({ providerBlockStatus: 'current', providerBlock: null })
     expect(phase(a.id)?.state).toEqual(before)
     clock++
-    const errors = window.events.filter((row) => row.event.type === 'error').length
+    const errors = window.messages.filter((row) => row.event.type === 'error').length
     a.handle.simulateError(UNKNOWN, false)
     await eventually(
-      () => window.events.filter((row) => row.event.type === 'error').length > errors,
+      () => window.messages.filter((row) => row.event.type === 'error').length > errors,
     )
     host.limitsForAPerson()
     await drain()
