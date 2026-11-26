@@ -54,7 +54,7 @@ function open(row: WaitingOnWhoWroteRow): void {
        vanishing into an all-clear. -->
   <p
     v-if="props.floating && view?.unread"
-    class="replies-short"
+    class="replies-short bb-queue-note"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-replies-unread`"
   >
@@ -64,7 +64,7 @@ function open(row: WaitingOnWhoWroteRow): void {
        draws for that count (`rows-unread.ts`). -->
   <p
     v-if="props.floating && view?.short"
-    class="replies-short"
+    class="replies-short bb-queue-note"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-replies-short`"
   >
@@ -72,22 +72,27 @@ function open(row: WaitingOnWhoWroteRow): void {
   </p>
   <ol
     v-if="rows.length > 0"
-    class="replies"
+    class="replies bb-queue-list"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-replies`"
   >
-    <li v-for="row in rows" :key="row.key" class="reply" :data-cy="`${cy}-reply-${row.key}`">
+    <li
+      v-for="row in rows"
+      :key="row.key"
+      class="reply bb-request"
+      :data-cy="`${cy}-reply-${row.key}`"
+    >
       <p class="reply-who">
         <strong>{{ row.agent }}</strong> is waiting on your reply · it answered you
         {{ row.since }}
       </p>
       <!-- ⚑ **The piece, by its label and its title** — `:title` carries the line whole, `530`'s
            pairing: the line is clamped, and a value that is never on screen is the defect. -->
-      <p class="reply-what" :title="`${row.label} · ${row.what}`">
+      <p class="reply-what bb-queue-clamp" :title="`${row.label} · ${row.what}`">
         {{ row.label }} · {{ row.what }}
       </p>
       <button
-        class="reply-go"
+        class="reply-go bb-queue-go"
         type="button"
         :data-cy="`${cy}-reply-go-${row.key}`"
         @click="open(row)"
@@ -100,34 +105,8 @@ function open(row: WaitingOnWhoWroteRow): void {
 </template>
 
 <style scoped>
-/* ⚑ **The rows, as `InstructionAsks` draws its own** — copied as declarations, for that file's
-   reason: `scoped` styles share nothing with another component. ⚠️ The page's gutter is the page's
-   (`.attention-list` gives its children none); the corner's is its card's. */
-.replies-short {
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-3);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.replies {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-5);
-  gap: var(--space-3);
-  list-style: none;
-}
-
 .reply {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
   align-items: flex-start;
-  padding: var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  gap: var(--space-2);
 }
 
 .reply-who {
@@ -136,49 +115,7 @@ function open(row: WaitingOnWhoWroteRow): void {
   overflow-wrap: anywhere;
 }
 
-/* ⚑ **The piece's line, clamped** — `.pq-stall-what`'s declarations: a title can be long. */
 .reply-what {
-  display: -webkit-box;
   margin: 0;
-  overflow: hidden;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* ⚑ **The stalled band's button** — `.pq-go`'s declarations, the same press. */
-.reply-go {
-  display: inline-flex;
-  align-items: center;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-}
-
-.reply-go .icon {
-  width: 10px;
-  height: 10px;
-}
-
-/* ⚑ **The corner copy: a row of the queue card** — `.pq-row`'s box and `.pq-rows`' gap, inside a
-   card the corner bounds and scrolls. */
-.replies-short.floating {
-  padding: 0;
-  line-height: var(--leading-tight);
-}
-
-.replies.floating {
-  padding: 0;
-  gap: var(--space-4);
-}
-
-.replies.floating .reply {
-  padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
 }
 </style>

@@ -85,7 +85,7 @@ watch(
 <template>
   <p
     v-if="unread"
-    class="requests-unread"
+    class="requests-unread bb-queue-note"
     :class="{ floating: props.floating, tools: props.place === 'tools' }"
     :data-cy="`${cy}-server-requests-unread`"
   >
@@ -94,7 +94,7 @@ watch(
   <ol
     v-if="cards.length > 0"
     ref="list"
-    class="requests"
+    class="requests bb-queue-list"
     :class="{ floating: props.floating, tools: props.place === 'tools' }"
     :data-cy="`${cy}-server-requests`"
   >
@@ -193,24 +193,6 @@ watch(
 </template>
 
 <style scoped>
-/* The requests, drawn as the instruction asks beside them are: copied as declarations, since
-   scoped styles share nothing with another component. */
-.requests-unread {
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-3);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.requests {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-5);
-  gap: var(--space-3);
-  list-style: none;
-}
-
 .request-who,
 .request-line,
 .request-means {
@@ -248,22 +230,5 @@ watch(
 .requests-unread.tools,
 .requests.tools {
   padding: 0;
-}
-
-/* The corner copy: a row of the queue card. */
-.requests-unread.floating {
-  padding: 0;
-  line-height: var(--leading-tight);
-}
-
-.requests.floating {
-  padding: 0;
-  gap: var(--space-4);
-}
-
-.requests.floating .request {
-  padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
 }
 </style>

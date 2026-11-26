@@ -43,12 +43,6 @@ const emit = defineEmits<{ decide: [approve: boolean] }>()
 </template>
 
 <style scoped>
-.ask.compact {
-  padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
-}
-
 .ask-who,
 .ask-why {
   margin: 0;

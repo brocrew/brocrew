@@ -104,7 +104,7 @@ function answer(request: AttentionRequest, response: UserInputResponse): void {
       <li
         v-for="request in props.requests"
         :key="request.key"
-        class="attention-request"
+        class="attention-request bb-raised-item"
         :data-cy="`attention-request-${request.sessionId}`"
         :data-kind="request.kind"
       >
@@ -226,16 +226,6 @@ function answer(request: AttentionRequest, response: UserInputResponse): void {
   gap: var(--space-4);
   list-style: none;
   overflow-y: auto;
-}
-
-.attention-request {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  gap: var(--space-3);
 }
 
 .request-head {

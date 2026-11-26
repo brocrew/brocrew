@@ -43,7 +43,7 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
 <template>
   <p
     v-if="unread"
-    class="asks-unread"
+    class="asks-unread bb-queue-note"
     :class="{ floating: props.floating }"
     :data-cy="props.floating ? 'persons-queue-asks-unread' : 'asks-unread'"
   >
@@ -51,7 +51,7 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
   </p>
   <ol
     v-if="rows.length > 0"
-    class="asks"
+    class="asks bb-queue-list"
     :class="{ floating: props.floating }"
     :data-cy="`${cy}-asks`"
   >
@@ -82,36 +82,3 @@ const cy = computed(() => (props.floating ? 'persons-queue' : 'waiting'))
     </StandingRuleAsk>
   </ol>
 </template>
-
-<style scoped>
-/* ⚑ **The asks, as `OwnInstructions` draws them** — copied as declarations, for that file's own
-   reason: `scoped` styles share nothing with another component. ⚠️ The page's gutter is the
-   page's (`.attention-list` gives its children none); the corner's is its card's. */
-.asks-unread {
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-3);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.asks {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-5);
-  gap: var(--space-3);
-  list-style: none;
-}
-
-/* ⚑ **The corner copy: a row of the queue card** — `.pq-row`'s box and `.pq-rows`' gap, inside a
-   card the corner bounds and scrolls. */
-.asks-unread.floating {
-  padding: 0;
-  line-height: var(--leading-tight);
-}
-
-.asks.floating {
-  padding: 0;
-  gap: var(--space-4);
-}
-</style>
