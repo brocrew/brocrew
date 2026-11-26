@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { archivedConversationsIn } from '../src/main/archived-file'
 import { MOVE_WORDS } from '../src/shared/move-request'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
@@ -118,11 +118,37 @@ describe('a person settles competing move offers', () => {
     expect(world.store.questionsRaisedIn(source).get(requestId)?.move?.destination).toBe(target)
     expect(host.whenItWasArchived(target)).toBe(archivedAt)
     expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
+    const observed: unknown[] = []
+    const send = world.window.send.bind(world.window)
+    const publish = vi.spyOn(world.window, 'send').mockImplementation((message) => {
+      const { sessionId, event } = message
+      if (sessionId === source && event.type === 'user_decision' && event.requestId === requestId) {
+        observed.push({
+          inTransaction: world.db.inTransaction,
+          archivedInMemory: host.whenItWasArchived(target),
+          archivedInStore: archivedConversationsIn(world.db).has(target),
+          queued: world.store.messagesWaitingIn(target).map((row) => row.messageId),
+          decision: world.store.theDecisionOn(source, requestId)?.movedTo,
+        })
+      }
+      send(message)
+    })
     const accepted = await host.decideMoveRequest(
       { sessionId: source, requestId, decision: 'move' },
       world.window,
     )
+    publish.mockRestore()
     expect(accepted).toMatchObject({ outcome: 'moved', sessionId: target })
+    if (accepted.outcome !== 'moved') throw new Error('the Move was refused')
+    expect(observed).toMatchObject([
+      {
+        inTransaction: false,
+        archivedInMemory: null,
+        archivedInStore: false,
+        queued: [accepted.messageId],
+        decision: { sessionId: target, messageId: accepted.messageId },
+      },
+    ])
     expect(host.whenItWasArchived(target)).toBeNull()
     expect(archivedConversationsIn(world.db).has(target)).toBe(false)
     expect(world.store.theDecisionOn(source, requestId)?.movedTo).toMatchObject({
@@ -136,6 +162,8 @@ describe('a person settles competing move offers', () => {
   it('keeps the offer open if the archive change fails and moves it once the write works', async () => {
     const { world, host, source, target, offer, targetWords } = move()
     expect((await host.archiveConversation(target)).done).toBe(true)
+    const archivedAt = host.whenItWasArchived(target)
+    expect(archivedAt).not.toBeNull()
     const requestId = await offer()
     const input = { sessionId: source, requestId, decision: 'move' as const }
     world.db.exec(`CREATE TEMP TRIGGER reject_archive_removal BEFORE DELETE ON archived_conversation
@@ -145,10 +173,16 @@ describe('a person settles competing move offers', () => {
         outcome: 'refused',
         reason: MOVE_WORDS.notRecorded,
       })
-      expect(host.whenItWasArchived(target)).not.toBeNull()
-      expect(archivedConversationsIn(world.db).has(target)).toBe(true)
+      expect(host.whenItWasArchived(target)).toBe(archivedAt)
+      expect(archivedConversationsIn(world.db).archivedAt(target)).toBe(archivedAt)
       expect(world.store.theDecisionOn(source, requestId)).toBeNull()
       expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
+      expect(
+        world.window.messages.some(
+          ({ sessionId, event }) =>
+            sessionId === source && event.type === 'user_decision' && event.requestId === requestId,
+        ),
+      ).toBe(false)
       expect(targetWords()).toHaveLength(0)
     } finally {
       world.db.exec('DROP TRIGGER reject_archive_removal')

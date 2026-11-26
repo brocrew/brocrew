@@ -24580,7 +24580,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       }
     }
     let recorded: ReturnType<typeof recordMovedRequest>
-    let publishArchiveRemoval: (() => void) | null
     try {
       const unread = rowsUnreadOnce()
       const named = this.workThatNames(offer.destination, unread)
@@ -24589,31 +24588,21 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       const at = this.now()
       const forNextStart = !this.runsNow(offer.destination)
       const destinationName = named?.title ?? this.whatToCallTheConversation(offer.destination)
-      const move = this.deps.store.atomically(() => {
-        const recorded = recordMovedRequest(
-          this.deps.store,
-          input.sessionId,
-          input.requestId,
-          offer,
-          sourceName,
-          handed.paths,
-          whoDidIt(by),
-          at,
-          forNextStart,
-          destinationName,
-        )
-        const publishArchiveRemoval =
-          recorded.queued !== null && this.archived.has(offer.destination)
-            ? this.archived.removeInTransaction([offer.destination])
-            : null
-        return { recorded, publishArchiveRemoval }
-      })
-      recorded = move.recorded
-      publishArchiveRemoval = move.publishArchiveRemoval
+      recorded = recordMovedRequest(
+        this.deps.store,
+        input.sessionId,
+        input.requestId,
+        offer,
+        sourceName,
+        handed.paths,
+        whoDidIt(by),
+        at,
+        { forNextStart, destinationTitle: destinationName, archived: this.archived },
+      )
     } catch {
       return { outcome: 'refused', reason: MOVE_WORDS.notRecorded }
     }
-    publishArchiveRemoval?.()
+    recorded.publishArchiveRemoval?.()
     for (const entry of recorded.entries) {
       const session = this.slots.get(entry.sessionId)?.session
       if (session != null) session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
@@ -24621,7 +24610,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       if (session != null) this.emitOurs(session, entry)
       else this.showTheWindowsLookingAt(entry.sessionId, entry)
     }
-    if (publishArchiveRemoval !== null) this.publishArchiveRestoration([offer.destination])
+    if (recorded.publishArchiveRemoval !== null) this.publishArchiveRestoration([offer.destination])
     if (recorded.queued !== null) {
       const queued = recorded.queued
       const session = this.slots.get(offer.destination)?.session
