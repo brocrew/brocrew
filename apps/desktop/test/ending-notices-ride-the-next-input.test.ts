@@ -465,4 +465,213 @@ describe('ending notices ride the next input', () => {
     const compacted = await call(pm, 'compact_agent', { agent: label })
     expect(compacted.rail).not.toBe('malformed-request')
   })
+
+  /**
+   * Card 591 · a coordinator that has given work to many conversations over its life still gets an
+   * exact count of what is open in its footer. The footer reads at most 32 helper ledgers; a piece
+   * that has already ended must not use that budget up, or "and at least N more" replaces the count.
+   */
+  describe('the footer counts the open work a coordinator gave', () => {
+    const turnsEnded = (id: string): number =>
+      world.ledger(id).filter((event) => event.type === 'turn').length
+
+    /** A new conversation of `worker` given `title`, its first turn over. */
+    const give = async (pm: string, title: string) => {
+      const given = await call(pm, 'give_work', {
+        profile: 'worker',
+        to: 'new',
+        conversation_title: title,
+        title,
+        brief: `Do ${title}.`,
+        definition_of_done: 'A checked result.',
+      })
+      expect(given.outcome, given.said).toBe('ok')
+      const holder = given.agent as string
+      await waitFor(() => turnsEnded(holder) >= 1, `${title}'s first turn`)
+      return { holder, label: given.label as string }
+    }
+
+    const footerFacts = (pm: string) =>
+      (
+        host as unknown as {
+          factsForTheTurnBlock(
+            session: { id: string },
+            piece: null,
+          ): { helpers: readonly { label: string }[]; helpersIncomplete: boolean }
+        }
+      ).factsForTheTurnBlock({ id: pm }, null)
+
+    it('ended work given to 34 conversations leaves the one open piece counted exactly', async () => {
+      await host.close(await world.open(host, 'claude', 'worker'), world.window)
+      const pm = await world.open(host, 'claude', 'pm')
+      for (let at = 0; at < 34; at += 1) {
+        const { holder, label } = await give(pm, `piece ${String(at)}`)
+        const replied = await call(holder, 'reply_to_parent', {
+          piece: label,
+          outcome: 'done',
+          summary: 'Done.',
+        })
+        expect(replied.outcome, replied.said).toBe('ok')
+      }
+      const open = await give(pm, 'the open piece')
+
+      const facts = footerFacts(pm)
+      expect(facts.helpersIncomplete).toBe(false)
+      expect(facts.helpers.map((row) => row.label)).toEqual([open.label])
+    }, 60_000)
+
+    /** A PM, and a way to record a give from it to a new owner, and to cancel that give's brief. */
+    const aPmThatRecordsGives = async () => {
+      const pm = await world.open(host, 'claude', 'pm')
+      const store = world.store
+      const parent = store.rootOf(pm)!
+      let at = Date.now()
+      const seed = (owner: string, messageId?: string, exists = false) => {
+        if (!exists)
+          store.create({
+            id: owner,
+            provider: 'claude',
+            cwd: world.project,
+            approvalMode: 'ask',
+            profileId: 'worker',
+            parentSessionId: pm,
+          })
+        const piece = `fiction-piece-${owner}`
+        const number = store.numberUnder(parent.piece)
+        const label = `${parent.label}.${String(number)}`
+        at += 1
+        store.recordGive(
+          {
+            piece,
+            parent: parent.piece,
+            number,
+            owner,
+            givenBy: pm,
+            title: 'T',
+            brief: 'B',
+            folder: null,
+            inputs: [],
+          },
+          store.nextOrdinal(owner),
+          {
+            type: 'work_given',
+            piece,
+            parent: parent.piece,
+            label,
+            givenBy: pm,
+            title: 'T',
+            brief: 'B',
+            ...(messageId === undefined ? {} : { messageId }),
+          },
+          at,
+        )
+        return { piece, label }
+      }
+      const cancel = (owner: string, messageId: string) =>
+        store.append(
+          owner,
+          store.nextOrdinal(owner),
+          { type: 'message_unqueued', messageId, reason: 'cancelled', text: 'B' },
+          (at += 1),
+        )
+      return { pm, store, seed, cancel }
+    }
+
+    it('a cancelled brief behind 32 open pieces is skipped, and no more than 32 ledgers open', async () => {
+      const { pm, store, seed, cancel } = await aPmThatRecordsGives()
+      // The oldest give's held brief was cancelled; 32 newer gives are open, one owner each.
+      seed('fiction-cancelled', 'msg_fiction_cancelled')
+      cancel('fiction-cancelled', 'msg_fiction_cancelled')
+      expect(store.piecesOwnedBy('fiction-cancelled')[0]?.state).toBe('withdrawn')
+      const open = Array.from({ length: 32 }, (_, i) => seed(`fiction-open-${String(i)}`))
+      const piecesBefore = store.turnBlockPiecesOwnedBy
+      const opened = new Set<string>()
+      store.turnBlockPiecesOwnedBy = (owner, unread) => {
+        opened.add(owner)
+        return piecesBefore(owner, unread)
+      }
+      try {
+        const facts = footerFacts(pm)
+        expect(facts.helpersIncomplete).toBe(false)
+        expect(facts.helpers.map((row) => row.label).sort()).toEqual(
+          open.map((row) => row.label).sort(),
+        )
+        expect(opened.has('fiction-cancelled')).toBe(false)
+        expect(opened.size).toBeLessThanOrEqual(33)
+      } finally {
+        store.turnBlockPiecesOwnedBy = piecesBefore
+      }
+    })
+
+    it('a give the fold cannot read is not taken as ended, however its brief ended', async () => {
+      const { pm, seed, cancel } = await aPmThatRecordsGives()
+      const unread = seed('fiction-unread-give', 'msg_fiction_unread')
+      cancel('fiction-unread-give', 'msg_fiction_unread')
+      // ⚑ Valid JSON the codec refuses: a present, empty done condition.
+      world.db
+        .prepare(
+          `UPDATE events SET payload = json_set(payload, '$.definitionOfDone', ' ')
+            WHERE session_id = ? AND type = 'work_given'`,
+        )
+        .run('fiction-unread-give')
+      const facts = footerFacts(pm)
+      expect(facts.helpersIncomplete).toBe(true)
+      expect(facts.helpers.map((row) => row.label)).not.toContain(unread.label)
+    })
+
+    // Núria's decision (card 591): "at least" means an open or unknown piece could not be read. An
+    // unreadable row elsewhere in a ledger whose piece from this giver verifiably ended does not.
+    it('a torn row beside a piece that verifiably ended leaves the count exact', async () => {
+      const { pm, store, seed } = await aPmThatRecordsGives()
+      const ended = seed('fiction-ended-torn')
+      store.append(
+        'fiction-ended-torn',
+        store.nextOrdinal('fiction-ended-torn'),
+        { type: 'work_replied', piece: ended.piece, outcome: 'done', summary: 'S', resources: [] },
+        Date.now() + 1_000,
+      )
+      world.db
+        .prepare(
+          `INSERT INTO events(id, session_id, generation, ordinal, type, payload, created_at)
+            VALUES (?, ?, 0, ?, ?, ?, ?)`,
+        )
+        .run(
+          'fiction-torn-status',
+          'fiction-ended-torn',
+          store.nextOrdinal('fiction-ended-torn'),
+          'status',
+          '{',
+          Date.now() + 2_000,
+        )
+      const facts = footerFacts(pm)
+      expect(facts.helpersIncomplete).toBe(false)
+      expect(facts.helpers).toEqual([])
+    })
+
+    it('a reply recorded before its give is no ending: the piece the fold leaves open is listed', async () => {
+      const { pm, store, seed } = await aPmThatRecordsGives()
+      const owner = 'fiction-early-reply'
+      store.create({
+        id: owner,
+        provider: 'claude',
+        cwd: world.project,
+        approvalMode: 'ask',
+        profileId: 'worker',
+        parentSessionId: pm,
+      })
+      const piece = `fiction-piece-${owner}`
+      store.append(
+        owner,
+        store.nextOrdinal(owner),
+        { type: 'work_replied', piece, outcome: 'done', summary: 'S', resources: [] },
+        Date.now(),
+      )
+      const open = seed(owner, undefined, true)
+      expect(open.piece).toBe(piece)
+      expect(store.piecesOwnedBy(owner).find((one) => one.piece === piece)?.state).not.toBe(
+        'answered',
+      )
+      expect(footerFacts(pm).helpers.map((row) => row.label)).toEqual([open.label])
+    })
+  })
 })
