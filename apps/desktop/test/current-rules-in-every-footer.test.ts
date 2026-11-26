@@ -164,6 +164,31 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     expect(rulesIn(await turn(me, 'After deleting.'))).toBe('')
   })
 
+  it('keeps printing them after a reopen and after the app restarts, the footer being their only way in', async () => {
+    const me = await world.open(host, provider, 'lark')
+    await turn(me, 'Hello.')
+    await update(me, { current_rules: THREE[1] })
+    const expected = [HEADING, `- ${THREE[1]}`, SENTENCE].join('\n')
+    expect(rulesIn(await turn(me, 'Before closing.'))).toBe(expected)
+
+    await host.close(me, world.window)
+    await host.resumeSession(me, world.window)
+    const reopened = await turn(me, 'After a reopen.')
+    expect(rulesIn(reopened)).toBe(expected)
+
+    await host.closeAll()
+    host = world.buildHost(true)
+    await host.resumeSession(me, world.window)
+    const restarted = await turn(me, 'After a restart.')
+    expect(rulesIn(restarted)).toBe(expected)
+    // Read off the ledger into the footer, and nowhere else: not a launch, and not the words in
+    // front of the footer, where a first turn's lead travels.
+    for (const launch of world.end.handed)
+      expect(JSON.stringify(launch.options)).not.toContain(THREE[1])
+    for (const sent of [reopened, restarted])
+      expect(withoutWhatThisAppAdds(sent)).not.toContain(THREE[1])
+  })
+
   it('says what is wrong with text over the status line’s bound, and keeps the old lines', async () => {
     const me = await world.open(host, provider, 'lark')
     await turn(me, 'Hello.')
