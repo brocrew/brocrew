@@ -7,6 +7,30 @@ import { AsyncQueue } from '../src/internal/async-queue'
 import { SessionMachine } from '../src/internal/session-machine'
 import { FakeQuery, init, collect, has, startFake } from './fake-claude-query'
 
+/**
+ * A `ClaudeRuntime` whose SDK stand-in really calls the spawn hook, as `ProcessTransport` does, and
+ * spawns through `spawn`. ⚑ **The stand-in has to SPAWN**, because the real transport does it
+ * synchronously inside `query()`. A factory that ignored the hook would leave the witness with no
+ * child, and every assertion over it would pass over nothing (196's vacuity rule).
+ */
+function spawningRuntime(fq: FakeQuery, spawn: ConstructorParameters<typeof ClaudeRuntime>[4]) {
+  return new ClaudeRuntime(
+    (params) => {
+      params.options.spawnClaudeCodeProcess?.({
+        command: 'claude',
+        args: [],
+        env: {},
+        signal: new AbortController().signal,
+      })
+      return fq
+    },
+    async () => true,
+    undefined,
+    undefined,
+    spawn,
+  )
+}
+
 describe('ClaudeRuntime — close/fatal barrier (028 P1-A)', () => {
   it('a fatal stream loss closes the SDK query from the errored state', async () => {
     const { fq, handle, events, consumer } = await startFake()
@@ -613,27 +637,10 @@ describe('233 · the exit fact is not the teardown bound (229 H1)', () => {
   }> {
     const fq = new FakeQuery()
     let spawnCalls = 0
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        // ⚑ **The stand-in has to SPAWN**, because the real transport does it synchronously inside
-        // `query()`. A factory that ignored the hook would leave the witness with no child, and
-        // every assertion below would pass over nothing (196's vacuity rule).
-        params.options.spawnClaudeCodeProcess?.({
-          command: 'claude',
-          args: [],
-          env: {},
-          signal: new AbortController().signal,
-        })
-        return fq
-      },
-      async () => true,
-      undefined,
-      undefined,
-      () => {
-        spawnCalls++
-        return spawned.child as never
-      },
-    )
+    const runtime = spawningRuntime(fq, () => {
+      spawnCalls++
+      return spawned.child as never
+    })
     const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
     return { handle, fq, spawnCalls: spawnCalls }
   }
@@ -713,21 +720,7 @@ describe('233 · the exit fact is not the teardown bound (229 H1)', () => {
   it('⛔ a RESUMED session owns its child too, not only a started one', async () => {
     const spawned = fakeChild(5150)
     const fq = new FakeQuery()
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        params.options.spawnClaudeCodeProcess?.({
-          command: 'claude',
-          args: [],
-          env: {},
-          signal: new AbortController().signal,
-        })
-        return fq
-      },
-      async () => true,
-      undefined,
-      undefined,
-      () => spawned.child as never,
-    )
+    const runtime = spawningRuntime(fq, () => spawned.child as never)
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_reopened', cwd: '/tmp/x', rotation: 0 },
       { providerHome: '/tmp/x/home' },
@@ -831,21 +824,7 @@ describe('240 §3 · the CLI’s stderr is back in the sentence a person reads',
   }> {
     const spawned = fakeChildWithStderr()
     const fq = new FakeQuery()
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        params.options.spawnClaudeCodeProcess?.({
-          command: 'claude',
-          args: [],
-          env: {},
-          signal: new AbortController().signal,
-        })
-        return fq
-      },
-      async () => true,
-      undefined,
-      undefined,
-      () => spawned.child as never,
-    )
+    const runtime = spawningRuntime(fq, () => spawned.child as never)
     const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
     const events: RuntimeEvent[] = []
     const consumer = (async () => {

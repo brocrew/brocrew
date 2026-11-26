@@ -5,6 +5,32 @@ import { type AgentToolset, type RuntimeEvent } from '../src/index'
 import { ClaudeRuntime } from '../src/claude'
 import { FakeQuery, init, collect, firstOfType, has, startFake } from './fake-claude-query'
 
+/** The provider says something: one line of visible text. */
+function saysSomething(fq: FakeQuery) {
+  fq.emit({
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'text', text: '[MAIN] looking into it' }] },
+  })
+}
+
+/** The provider reasons with nothing to show: an empty thinking delta. */
+function thinksSilently(fq: FakeQuery) {
+  fq.emit({
+    type: 'stream_event',
+    event: {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'thinking_delta', thinking: '' },
+    },
+  })
+}
+
+/** A fence after the frames under test: a frame read as `unknown`, waited for until its raw shows `seen`. */
+async function fencedOn(fq: FakeQuery, events: RuntimeEvent[], payload: number, seen: string) {
+  fq.emit({ type: 'weird_internal', payload })
+  await vi.waitFor(has(events, (e) => e.type === 'unknown' && JSON.stringify(e.raw).includes(seen)))
+}
+
 describe('ClaudeRuntime internal message receipts', () => {
   const act = 'message_act_00000000-0000-4000-8000-000000000001'
   const messageTools: AgentToolset = {
@@ -239,10 +265,7 @@ describe('ClaudeRuntime — message flow', () => {
       fq.emit(reset('sess_2'))
       // ⚠️ Fenced on THIS frame's payload: the reset's own `unknown{lifecycle}` also has a `raw`, and
       // a fence on any raw passed before the frames under test were read (721 M5 SURVIVED on it).
-      fq.emit({ type: 'weird_internal', payload: 721 })
-      await vi.waitFor(
-        has(events, (e) => e.type === 'unknown' && JSON.stringify(e.raw).includes('721')),
-      )
+      await fencedOn(fq, events, 721, '721')
       // ⛔ On `main` this moved to `sess_2` — a conversation with no transcript, which no resume opens.
       expect(events.some((e) => e.type === 'conversation_reset')).toBe(false)
       expect(handle.ref).toMatchObject({ sessionId: 'sess_1' })
@@ -330,10 +353,7 @@ describe('ClaudeRuntime — message flow', () => {
       fq.emit(init('sess_3', '/tmp/x'))
       // ⚠️ Fenced on THIS frame's payload: the reset's own `unknown{lifecycle}` also has a `raw`, and
       // a fence on any raw passed before the frames under test were read (721 M5 SURVIVED on it).
-      fq.emit({ type: 'weird_internal', payload: 721 })
-      await vi.waitFor(
-        has(events, (e) => e.type === 'unknown' && JSON.stringify(e.raw).includes('721')),
-      )
+      await fencedOn(fq, events, 721, '721')
 
       expect(events.some((e) => e.type === 'conversation_reset')).toBe(false)
       expect(handle.ref).toMatchObject({ sessionId: 'sess_1', cwd: '/tmp/x' })
@@ -352,10 +372,7 @@ describe('ClaudeRuntime — message flow', () => {
       // the init that names the conversation the session is already on.
       fq.emit(reset('sess_1'))
       fq.emit(init('sess_1', '/tmp/x'))
-      fq.emit({ type: 'weird_internal', payload: 3 })
-      await vi.waitFor(
-        has(events, (e) => e.type === 'unknown' && JSON.stringify(e.raw).includes('"payload":3')),
-      )
+      await fencedOn(fq, events, 3, '"payload":3')
 
       expect(events.some((e) => e.type === 'conversation_reset')).toBe(false)
       expect(handle.ref).toMatchObject({ sessionId: 'sess_1' })
@@ -670,20 +687,10 @@ describe('a burst the provider starts by itself (123)', () => {
     vi.useFakeTimers()
     try {
       // The provider is working (it said something), and the last thing it sends is reasoning.
-      fq.emit({
-        type: 'assistant',
-        message: { role: 'assistant', content: [{ type: 'text', text: '[MAIN] looking into it' }] },
-      })
+      saysSomething(fq)
       await vi.advanceTimersByTimeAsync(0)
       expect(handle.status(), 'the burst never armed the watchdog').toBe('working')
-      fq.emit({
-        type: 'stream_event',
-        event: {
-          type: 'content_block_delta',
-          index: 0,
-          delta: { type: 'thinking_delta', thinking: '' },
-        },
-      })
+      thinksSilently(fq)
       await vi.advanceTimersByTimeAsync(121_000)
       const stalls = events
         .filter((e) => e.type === 'error')
@@ -705,20 +712,10 @@ describe('a burst the provider starts by itself (123)', () => {
         e.type === 'error' ? [{ message: e.message, stall: e.stall, thinking: e.thinking }] : [],
       )
     try {
-      fq.emit({
-        type: 'assistant',
-        message: { role: 'assistant', content: [{ type: 'text', text: '[MAIN] looking into it' }] },
-      })
+      saysSomething(fq)
       await vi.advanceTimersByTimeAsync(0)
       expect(handle.status(), 'the burst never armed the watchdog').toBe('working')
-      fq.emit({
-        type: 'stream_event',
-        event: {
-          type: 'content_block_delta',
-          index: 0,
-          delta: { type: 'thinking_delta', thinking: '' },
-        },
-      })
+      thinksSilently(fq)
       await vi.advanceTimersByTimeAsync(121_000)
       expect(stalls()).toEqual([
         { message: 'Still thinking (2 min).', stall: true, thinking: true },

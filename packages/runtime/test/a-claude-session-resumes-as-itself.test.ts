@@ -5,26 +5,42 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResumeError, type RuntimeEvent } from '../src/index'
 import { ClaudeRuntime, claudeProjectDirName } from '../src/claude'
-import { FakeQuery, init, collect, firstOfType, has, startFake } from './fake-claude-query'
+import {
+  FakeQuery,
+  init,
+  collect,
+  firstOfType,
+  has,
+  recordingClaudeRuntime,
+  startFake,
+} from './fake-claude-query'
 
 describe('ClaudeRuntime — honest resume', () => {
+  /** `sess_x` in /tmp/x, resumed with its events collected, before the provider's first init. */
+  async function resumedBeforeItsInit() {
+    const fq = new FakeQuery()
+    const runtime = new ClaudeRuntime(
+      () => fq,
+      async () => true,
+    )
+    const handle = await runtime.resume(
+      { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
+      { providerHome: '/tmp/x/home' },
+    )
+    const events: RuntimeEvent[] = []
+    return { fq, handle, events, consumer: collect(handle, events) }
+  }
+
   it('a RESUMED session runs with the effort it was created with (024)', async () => {
     // The resume path builds its own SDK options, so effort set on start but forgotten here would
     // silently downgrade a conversation the moment it was reopened — and nothing on screen would
     // change, because Claude never reports the value back to contradict us.
-    const fq = new FakeQuery()
-    let options: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        options = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { fq, runtime, options: launched } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 2 },
       { providerHome: '/tmp/x/home', reasoningEffort: 'high' },
     )
+    const options = launched()
     expect(options?.effort, 'the resume options carry the recorded effort').toBe('high')
     // …and the resume must still be a resume: the effort rides alongside, it does not replace it.
     expect(options?.resume).toBe('sess_x')
@@ -33,19 +49,12 @@ describe('ClaudeRuntime — honest resume', () => {
   })
 
   it('resuming with no recorded effort asks for none — not a default (024)', async () => {
-    const fq = new FakeQuery()
-    let options: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        options = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { fq, runtime, options: launched } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 2 },
       { providerHome: '/tmp/x/home' },
     )
+    const options = launched()
     expect(options?.effort).toBeUndefined()
     await handle.close()
     fq.end()
@@ -74,17 +83,7 @@ describe('ClaudeRuntime — honest resume', () => {
   })
 
   it('resume: first-turn init with a DIFFERENT session_id → fatal errored, no resumed, ref stays null', async () => {
-    const fq = new FakeQuery()
-    const runtime = new ClaudeRuntime(
-      () => fq,
-      async () => true,
-    )
-    const handle = await runtime.resume(
-      { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
-      { providerHome: '/tmp/x/home' },
-    )
-    const events: RuntimeEvent[] = []
-    const consumer = collect(handle, events)
+    const { fq, handle, events, consumer } = await resumedBeforeItsInit()
     fq.emit(init('sess_DIFFERENT', '/tmp/x'))
     await vi.waitFor(has(events, (e) => e.type === 'error' && e.fatal === true))
     expect(events.some((e) => e.type === 'session' && e.state === 'resumed')).toBe(false)
@@ -94,17 +93,7 @@ describe('ClaudeRuntime — honest resume', () => {
   })
 
   it('resume: first-turn init with a DIFFERENT cwd → fatal errored (identity barrier)', async () => {
-    const fq = new FakeQuery()
-    const runtime = new ClaudeRuntime(
-      () => fq,
-      async () => true,
-    )
-    const handle = await runtime.resume(
-      { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
-      { providerHome: '/tmp/x/home' },
-    )
-    const events: RuntimeEvent[] = []
-    const consumer = collect(handle, events)
+    const { fq, handle, events, consumer } = await resumedBeforeItsInit()
     fq.emit(init('sess_x', '/tmp/OTHER'))
     await vi.waitFor(has(events, (e) => e.type === 'error' && e.fatal === true))
     expect(events.some((e) => e.type === 'session' && e.state === 'resumed')).toBe(false)
@@ -113,17 +102,7 @@ describe('ClaudeRuntime — honest resume', () => {
   })
 
   it('resume: first-turn init with an EMPTY cwd → fatal errored (cwd must be proven, not echoed)', async () => {
-    const fq = new FakeQuery()
-    const runtime = new ClaudeRuntime(
-      () => fq,
-      async () => true,
-    )
-    const handle = await runtime.resume(
-      { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
-      { providerHome: '/tmp/x/home' },
-    )
-    const events: RuntimeEvent[] = []
-    const consumer = collect(handle, events)
+    const { fq, handle, events, consumer } = await resumedBeforeItsInit()
     fq.emit(init('sess_x', '')) // matching id, but the provider did not prove the cwd
     await vi.waitFor(has(events, (e) => e.type === 'error' && e.fatal === true))
     expect(events.some((e) => e.type === 'session' && e.state === 'resumed')).toBe(false)
@@ -782,19 +761,12 @@ describe('ClaudeRuntime — ref is never synthesized', () => {
   })
 
   it('⛔ 722 · a RESUME names no session id — the CLI refuses one beside `--resume`', async () => {
-    const fq = new FakeQuery()
-    let options: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        options = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { fq, runtime, options: launched } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_x', cwd: '/tmp/x', rotation: 0 },
       { providerHome: '/tmp/x/home' },
     )
+    const options = launched()
     expect(options?.resume).toBe('sess_x')
     // *"--session-id can only be used with --continue or --resume if --fork-session is also specified."*
     expect(options?.sessionId).toBeUndefined()

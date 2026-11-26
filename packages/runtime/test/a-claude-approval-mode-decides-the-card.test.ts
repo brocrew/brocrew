@@ -6,6 +6,7 @@ import { MAX_PERMISSION_DETAIL_CHARS } from '../src/events'
 import {
   FakeQuery,
   init,
+  recordingClaudeRuntime,
   collect,
   firstOfType,
   has,
@@ -14,23 +15,36 @@ import {
   startFake,
 } from './fake-claude-query'
 
+/** A session already in its first turn, under `approvalMode`. */
+async function session(approvalMode?: 'ask' | 'auto') {
+  const ctx = await startFake({ approvalMode })
+  ctx.fq.emit(init('sess_1', '/tmp/x'))
+  await vi.waitFor(has(ctx.events, (e) => e.type === 'session'))
+  await ctx.handle.send('do it')
+  return ctx
+}
+
+/** Switch the mode mid-turn, let that turn end, and start the next one, the first under the new mode. */
+async function nextTurnUnder(
+  { handle, fq }: Pick<Awaited<ReturnType<typeof startFake>>, 'handle' | 'fq'>,
+  approvalMode: 'ask' | 'auto',
+) {
+  await handle.setApprovalMode(approvalMode)
+  fq.emit({ type: 'result', subtype: 'success', is_error: false })
+  await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+  await handle.send('again')
+}
+
 describe('auto-approve mode — Claude (078)', () => {
   /** The SDK options the adapter actually launched with, for a given mode. */
   async function optionsFor(approvalMode?: 'ask' | 'auto') {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.start({
       cwd: '/tmp/x',
       providerHome: '/tmp/x/home',
       ...(approvalMode ? { approvalMode } : {}),
     })
+    const captured = options()
     await handle.close()
     if (!captured) throw new Error('query factory never called')
     return captured
@@ -79,20 +93,13 @@ describe('auto-approve mode — Claude (078)', () => {
   })
 
   it('PLAN MODE asks the model to propose first (030)', async () => {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.start({
       cwd: '/tmp/x',
       providerHome: '/tmp/x/home',
       planMode: true,
     })
+    const captured = options()
     await handle.close()
     expect(captured?.permissionMode).toBe('plan')
     // Plan mode is NOT a substitute for the guard: it changes what the agent proposes, not what it
@@ -140,21 +147,14 @@ describe('auto-approve mode — Claude (078)', () => {
     // ⚑ So the assertion flipped, and since `728` the precedence 030 wanted lives in one place:
     // `handleCanUseTool`'s `&& !this.planning` — `auto`'s early allow stands aside while planning, so
     // the CLI's own plan-mode ask reaches the person. Nobody should "fix" that later either.
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.start({
       cwd: '/tmp/x',
       providerHome: '/tmp/x/home',
       approvalMode: 'auto',
       planMode: true,
     })
+    const captured = options()
     expect(captured?.permissionMode).toBe('plan')
     // The flag is documented against `bypassPermissions` specifically, so it is NOT asserted here —
     // claiming it alongside a mode the SDK never paired it with would be inventing a contract.
@@ -196,19 +196,12 @@ describe('auto-approve mode — Claude (078)', () => {
   })
 
   it('a RESUMED session keeps its mode — it must not silently start prompting again', async () => {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_1', cwd: '/tmp/x', rotation: 0 },
       { providerHome: '/tmp/x/home', approvalMode: 'auto' },
     )
+    const captured = options()
     await handle.close()
     // `'default'` for the same reason as the launch above (140) — `start` and `resume` share one
     // `optionsFor`, so a resumed yolo session asks for exactly what a fresh one does.
@@ -251,20 +244,13 @@ describe('auto-approve mode — Claude (078)', () => {
    * door. Both launch paths, because there are two and only one used to carry a hint at all.
    */
   it('⛔ appending a hint does NOT open a setting source — start', async () => {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.start({
       cwd: '/tmp/x',
       providerHome: '/tmp/x/home',
       systemHint: 'Contents of /tmp/x/CLAUDE.md (project instructions):\n\nbe terse',
     })
+    const captured = options()
     await handle.close()
 
     expect(captured?.systemPrompt).toMatchObject({ type: 'preset', preset: 'claude_code' })
@@ -276,19 +262,12 @@ describe('auto-approve mode — Claude (078)', () => {
   })
 
   it('⛔ …and RESUME appends it too, still with the door shut (156’s "forget who they are")', async () => {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_1', cwd: '/tmp/x', rotation: 0 },
       { providerHome: '/tmp/x/home', systemHint: 'I am the developer profile.' },
     )
+    const captured = options()
     await handle.close()
 
     expect(captured?.systemPrompt).toMatchObject({
@@ -347,19 +326,12 @@ describe('auto-approve mode — Claude (078)', () => {
   })
 
   it('🔴 no hint appends NOTHING — but the preset is still asked for (165)', async () => {
-    const fq = new FakeQuery()
-    let captured: Options | undefined
-    const runtime = new ClaudeRuntime(
-      (params) => {
-        captured = params.options
-        return fq
-      },
-      async () => true,
-    )
+    const { runtime, options } = recordingClaudeRuntime()
     const handle = await runtime.resume(
       { provider: 'claude', sessionId: 'sess_1', cwd: '/tmp/x', rotation: 0 },
       { providerHome: '/tmp/x/home' },
     )
+    const captured = options()
     await handle.close()
 
     // ⛔ **`toBeUndefined()` used to be here, and it was the defect** (165). Omitting `systemPrompt`
@@ -441,14 +413,6 @@ describe('auto-approve actually removes the card — the real canUseTool path (0
    * SDK invokes a supplied `canUseTool` regardless of `permissionMode`, so the card was still
    * published. These drive the callback the SDK actually calls.
    */
-  async function session(approvalMode?: 'ask' | 'auto') {
-    const ctx = await startFake({ approvalMode })
-    ctx.fq.emit(init('sess_1', '/tmp/x'))
-    await vi.waitFor(has(ctx.events, (e) => e.type === 'session'))
-    await ctx.handle.send('do it')
-    return ctx
-  }
-
   it('AUTO: a Bash command is allowed with no card and no waiting_permission', async () => {
     const { handle, events, consumer, fq, canUse } = await session('auto')
 
@@ -524,14 +488,6 @@ describe('auto-approve actually removes the card — the real canUseTool path (0
 })
 
 describe('switching the approval mode mid-conversation — Claude (034)', () => {
-  async function session(approvalMode?: 'ask' | 'auto') {
-    const ctx = await startFake({ approvalMode })
-    ctx.fq.emit(init('sess_1', '/tmp/x'))
-    await vi.waitFor(has(ctx.events, (e) => e.type === 'session'))
-    await ctx.handle.send('do it')
-    return ctx
-  }
-
   it('the turn already running keeps prompting — the change is queued, not applied', async () => {
     // Same contract as Codex, for a different reason: `permissionMode`,
     // `allowDangerouslySkipPermissions` and the PreToolUse guard hooks are fixed in the `Options`
@@ -555,11 +511,7 @@ describe('switching the approval mode mid-conversation — Claude (034)', () => 
 
   it('the NEXT turn is unattended — no card, no waiting_permission', async () => {
     const { handle, events, consumer, fq, canUse } = await session('ask')
-    await handle.setApprovalMode('auto')
-    fq.emit({ type: 'result', subtype: 'success', is_error: false })
-    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
-
-    await handle.send('again')
+    await nextTurnUnder({ handle, fq }, 'auto')
     expect(handle.approval).toEqual({ effective: 'auto', requested: 'auto' })
     const before = events.length
     await expect(canUse('Bash', { command: 'touch ./b.txt' }, toolOpts('tu_2'))).resolves.toEqual({
@@ -587,11 +539,7 @@ describe('switching the approval mode mid-conversation — Claude (034)', () => 
      * asserting it.
      */
     const { handle, events, consumer, fq, sdkOptions } = await session('auto')
-    await handle.setApprovalMode('ask')
-    fq.emit({ type: 'result', subtype: 'success', is_error: false })
-    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
-
-    await handle.send('again')
+    await nextTurnUnder({ handle, fq }, 'ask')
     expect(handle.approval).toEqual({ effective: 'ask', requested: 'ask' })
     const pending = sdkToolCall(
       sdkOptions(),
@@ -621,10 +569,7 @@ describe('switching the approval mode mid-conversation — Claude (034)', () => 
      * it proves that the arrangement 050 removed does not.
      */
     const { handle, events, consumer, fq, sdkOptions } = await session('auto')
-    await handle.setApprovalMode('ask')
-    fq.emit({ type: 'result', subtype: 'success', is_error: false })
-    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
-    await handle.send('again')
+    await nextTurnUnder({ handle, fq }, 'ask')
 
     const before = events.length
     // ⚠️ **Both halves are reconstructed here now, and 140 is why.** This used to take
@@ -658,11 +603,7 @@ describe('switching the approval mode mid-conversation — Claude (034)', () => 
     // keeps `permissionMode: 'default'` for life, so the callback IS reached — the guard yields, and
     // `handleCanUseTool`'s auto-approve early return is what allows the tool with no card.
     const { handle, events, consumer, fq, sdkOptions } = await session('ask')
-    await handle.setApprovalMode('auto')
-    fq.emit({ type: 'result', subtype: 'success', is_error: false })
-    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
-
-    await handle.send('again')
+    await nextTurnUnder({ handle, fq }, 'auto')
     const before = events.length
     await expect(
       sdkToolCall(sdkOptions(), 'Bash', { command: 'touch ./d.txt' }, toolOpts('tu_4')),

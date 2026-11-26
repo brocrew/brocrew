@@ -68,6 +68,18 @@ const created = (
 const steps = (event: RuntimeEvent | undefined): unknown =>
   event?.type === 'plan_update' ? event.steps : undefined
 
+/** A plan that has seen one message create two steps, A then B, neither settled yet. */
+function aPlanAfterTwoCreates() {
+  const plan = new TodoPlan()
+  plan.observe(
+    assistant(
+      call('toolu_a', 'TaskCreate', { subject: 'A', description: 'd' }),
+      call('toolu_b', 'TaskCreate', { subject: 'B', description: 'd' }),
+    ),
+  )
+  return plan
+}
+
 describe('TodoPlan — Claude`s incremental todo tools → one wholesale checklist (028)', () => {
   it('rebuilds the COMPLETE list from increments: each event states every step, not the delta', () => {
     // This is the heart of the task. `TaskCreate` adds ONE task, but the neutral event replaces the
@@ -125,13 +137,7 @@ describe('TodoPlan — Claude`s incremental todo tools → one wholesale checkli
     // session. One message carries one task record however many creates it settles — and that
     // record's `subject` is what makes the batch resolvable. It is a structured field the provider
     // supplies, not a number parsed out of a sentence.
-    const plan = new TodoPlan()
-    plan.observe(
-      assistant(
-        call('toolu_a', 'TaskCreate', { subject: 'A', description: 'd' }),
-        call('toolu_b', 'TaskCreate', { subject: 'B', description: 'd' }),
-      ),
-    )
+    const plan = aPlanAfterTwoCreates()
     plan.observe(batchResult(['toolu_a', 'toolu_b'], { task: { id: '1', subject: 'B' } }))
     // B is the one the record named, so B is the one that became addressable.
     expect(
@@ -145,13 +151,7 @@ describe('TodoPlan — Claude`s incremental todo tools → one wholesale checkli
   })
 
   it('an unbindable step degrades honestly — unaddressable, still visible, and not poisoning the plan', () => {
-    const plan = new TodoPlan()
-    plan.observe(
-      assistant(
-        call('toolu_a', 'TaskCreate', { subject: 'A', description: 'd' }),
-        call('toolu_b', 'TaskCreate', { subject: 'B', description: 'd' }),
-      ),
-    )
+    const plan = aPlanAfterTwoCreates()
     // No subject to disentangle the batch by, so bind NOTHING — ticking the wrong line is worse
     // than a step that no update can reach.
     plan.observe(batchResult(['toolu_a', 'toolu_b'], { task: { id: '1' } }))
