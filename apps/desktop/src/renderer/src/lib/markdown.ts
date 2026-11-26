@@ -48,6 +48,63 @@ const chatRenderer = new MarkdownIt({
 })
 chatRenderer.linkify.set({ fuzzyLink: false, fuzzyEmail: false })
 
+/** Punctuation that means nothing to markdown inside a line, so a backslash before it escapes nothing. */
+const MEANS_NOTHING = new Set('@$%,;^{}(\'"/?')
+/** Punctuation that means something only at the start of a line: a heading, list, quote or rule. */
+const MEANS_SOMETHING_AT_LINE_START = new Set('#-+.>)=')
+
+/**
+ * Whether markdown's escape would remove a backslash and change nothing: then the backslash is a
+ * character the agent wrote, such as a Windows separator (`Roaming\@brobot2`), and it stays.
+ */
+function escapeChangesNothing(src: string, at: number, end: number): boolean {
+  const next = src[at + 1] ?? ''
+  if (MEANS_NOTHING.has(next)) return true
+  if (MEANS_SOMETHING_AT_LINE_START.has(next)) {
+    let before = at - 1
+    while (before >= 0 && /[ \t\d]/.test(src[before]!)) before -= 1
+    return before >= 0 && src[before] !== '\n'
+  }
+  const after = at + 2 < end ? src[at + 2] : ''
+  if (next === '!') return after !== '['
+  if (next === '~') return after !== '~'
+  return false
+}
+
+/**
+ * A share at the start of a word (`\\server\`), read no further than `end`: both of its
+ * backslashes are the path's. A server's name holds only letters, digits, `.`, `-` and `_`, so
+ * markdown after a `\\` (a link, a code span) is never taken for one.
+ */
+function startsAShare(src: string, at: number, end: number): boolean {
+  return (
+    (at === 0 || !/[\p{L}\p{N}\\]/u.test(src[at - 1]!)) &&
+    /^\\\\[\p{L}\p{N}._-]+\\/u.test(src.slice(at, Math.min(end, at + 260)))
+  )
+}
+
+/**
+ * Markdown's backslash escape, applied only where it changes something. A backslash before
+ * punctuation markdown would not read stays, so a Windows path keeps its separators; `\*`,
+ * `snake\_case`, `1\.` and `\#` at the start of a line still escape.
+ *
+ * It emits the token the escape itself emits, over the same two characters, so linking and every
+ * later rule see what they saw before; only the shown text keeps its backslash.
+ */
+chatRenderer.inline.ruler.before('escape', 'escape-only-what-it-changes', (state, silent) => {
+  const { src, pos, posMax } = state
+  if (src.charCodeAt(pos) !== 0x5c || pos + 1 >= posMax) return false
+  if (!startsAShare(src, pos, posMax) && !escapeChangesNothing(src, pos, posMax)) return false
+  if (!silent) {
+    const token = state.push('text_special', '', 0)
+    token.content = src.slice(pos, pos + 2)
+    token.markup = token.content
+    token.info = 'escape'
+  }
+  state.pos += 2
+  return true
+})
+
 const inlineCode = chatRenderer.renderer.rules.code_inline!
 chatRenderer.renderer.rules.code_inline = (tokens, index, options, env, self) => {
   const code = inlineCode(tokens, index, options, env, self)

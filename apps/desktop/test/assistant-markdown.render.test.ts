@@ -126,6 +126,71 @@ describe('the chat preset is tuned for what an agent writes', () => {
       '<a href="https://example.com/x"',
     )
   })
+
+  it('a Windows path keeps the backslashes an escape would only remove', () => {
+    for (const path of [
+      'C:\\lane\\home\\AppData\\Roaming\\@brobot2\\desktop\\provider-homes\\default\\brobot',
+      'D:\\work\\@team\\#1\\$data\\~tmp\\!draft\\(old)\\report.md',
+      'C:\\Program Files (x86)\\@team\\#1.txt',
+      '\\\\server\\share\\@team\\plan.md',
+      '…\\@brobot2\\desktop\\brobot-workspace',
+    ])
+      expect(renderChatMarkdown(`It replied ${path} just now.`)).toBe(
+        `<p>It replied ${path} just now.</p>\n`,
+      )
+  })
+
+  it('keeps a backslash before punctuation markdown does not read inside a line', () => {
+    for (const mark of "@$%,;^{}('/?#-+.)=!~")
+      expect(renderChatMarkdown(`a\\${mark}b`)).toBe(`<p>a\\${mark}b</p>\n`)
+    expect(renderChatMarkdown('a\\>b and a\\"b')).toBe('<p>a\\&gt;b and a\\&quot;b</p>\n')
+  })
+
+  it('markdown around a path still applies', () => {
+    expect(renderChatMarkdown('**C:\\a\\@b** and _D:\\c\\d_')).toBe(
+      '<p><strong>C:\\a\\@b</strong> and <em>D:\\c\\d</em></p>\n',
+    )
+    expect(renderChatMarkdown('C:\\dir,[guide](https://example.com)')).toBe(
+      '<p>C:\\dir,<a href="https://example.com" title="https://example.com">guide</a></p>\n',
+    )
+  })
+
+  it('an escape that changes something is still an escape', () => {
+    expect(renderChatMarkdown('\\*not bold\\* and snake\\_case, literal\\\\alpha')).toBe(
+      '<p>*not bold* and snake_case, literal\\alpha</p>\n',
+    )
+    expect(renderChatMarkdown('C:\\dir snake\\_case')).toBe('<p>C:\\dir snake_case</p>\n')
+    expect(renderChatMarkdown('`C:\\dir`\\_suffix')).toBe('<p><code>C:\\dir</code>_suffix</p>\n')
+    expect(renderChatMarkdown('\\![a](https://e.com)')).toBe(
+      '<p>!<a href="https://e.com" title="https://e.com">a</a></p>\n',
+    )
+    const link = renderChatMarkdown('[a\\]b](C:\\dir\\report.md)')
+    expect(link).toContain('data-local-path="C:\\dir\\report.md"')
+    expect(link).toContain('>a]b</a>')
+  })
+
+  it('a kept backslash changes nothing else: link text and automatic links read as before', () => {
+    expect(renderChatMarkdown('[literal \\\\alpha](C:\\dir\\report.md)')).toContain(
+      '>literal \\alpha</a>',
+    )
+    const beforeALink = renderChatMarkdown('\\\\[guide](C:\\dir\\report.md)')
+    expect(beforeALink.startsWith('<p>\\<!--local-file:')).toBe(true)
+    expect(beforeALink).toContain('>guide</a>')
+    expect(renderChatMarkdown('\\\\`C:\\dir`')).toBe('<p>\\<code>C:\\dir</code></p>\n')
+    expect(renderChatMarkdown('\\@mailto:alice@example.com')).toBe(
+      '<p>\\@mailto:alice@example.com</p>\n',
+    )
+  })
+
+  it('at the start of a line, an escape still stops a heading, list, quote or rule', () => {
+    expect(renderChatMarkdown('\\# not a heading')).toBe('<p># not a heading</p>\n')
+    expect(renderChatMarkdown('1\\. not a list')).toBe('<p>1. not a list</p>\n')
+    expect(renderChatMarkdown('2\\) not a list')).toBe('<p>2) not a list</p>\n')
+    expect(renderChatMarkdown('\\- not a list')).toBe('<p>- not a list</p>\n')
+    expect(renderChatMarkdown('\\+ not a list')).toBe('<p>+ not a list</p>\n')
+    expect(renderChatMarkdown('\\> not a quote')).toBe('<p>&gt; not a quote</p>\n')
+    expect(renderChatMarkdown('text\n\\=== not a rule')).toBe('<p>text<br>\n=== not a rule</p>\n')
+  })
 })
 
 describe('the user’s own message is never rendered (017 keeps it plain)', () => {
