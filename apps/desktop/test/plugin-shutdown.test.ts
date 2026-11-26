@@ -421,11 +421,41 @@ describe.skipIf(process.platform === 'win32')(
       const revoke = vi.spyOn(first.sink.sink, 'revoke').mockImplementationOnce(() => ack.promise)
       first.fake.runs[0]!.exit.resolve({ exited: true })
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      // The consumer intentionally never replies. The owner ends a silent consumer at 75% of its
+      // one-second budget and gives up at 100%; on real timers one runner stall across both ran
+      // them in the same turn, before the teardown (card 393). Here the shutdown's own long timers
+      // (the cutoff and the deadlines) are held, and only the earliest, the cutoff, is fired. The
+      // lease's 10 ms polls and all I/O stay real, so the teardown it starts runs at real speed.
+      const realSetTimeout = globalThis.setTimeout
+      const realClearTimeout = globalThis.clearTimeout
+      const held = new Map<object, { run: () => void; ms: number }>()
+      const setSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+        run: () => void,
+        ms?: number,
+        ...args: unknown[]
+      ) => {
+        if (ms === undefined || ms < 100)
+          return Reflect.apply(realSetTimeout, globalThis, [run, ms, ...args])
+        const handle = { ref: () => handle, unref: () => handle }
+        held.set(handle, { run: () => run(), ms })
+        return handle
+      }) as unknown as typeof setTimeout)
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((handle: never) => {
+        if (!held.delete(handle)) realClearTimeout(handle)
+      }) as typeof clearTimeout)
       const closing = first.lease.close()
       try {
-        // The owner fixture allows one second; the consumer intentionally never replies in it.
-        await new Promise<void>((resolve) => setTimeout(resolve, 1100))
-        expect(await closing).toBe(true)
+        // The owner notices the closed lease on its own real 10 ms tick, which starts its drain.
+        while (first.drain.length === 0) await new Promise<void>((resolve) => setImmediate(resolve))
+        const cutoff = [...held.values()].sort((a, b) => a.ms - b.ms)[0]
+        expect(cutoff, `no long timer held: ${first.drain.join(', ')}`).toBeDefined()
+        cutoff!.run()
+        expect(
+          await closing,
+          `${first.drain.join(', ')}; held ${[...held.values()].map((one) => one.ms)}`,
+        ).toBe(true)
+        setSpy.mockRestore()
+        clearSpy.mockRestore()
         expect(await phase(f.root)).toBe('stopped')
         await expect(first.client.catalogue()).rejects.toThrow()
         const state = reopenLifecycleFixture(f)
@@ -434,6 +464,8 @@ describe.skipIf(process.platform === 'win32')(
         await second.client.close()
         expect(await second.lease.close()).toBe(true)
       } finally {
+        setSpy.mockRestore()
+        clearSpy.mockRestore()
         ack.resolve(true)
         await closing.catch(() => undefined)
       }
