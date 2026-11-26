@@ -81,7 +81,6 @@ export type CurrentWorkInTheTurn =
       readonly kind: 'piece'
       readonly label: string
       readonly title: string | null
-      readonly status: string | null
     }
   | { readonly kind: 'ambiguous'; readonly labels: readonly string[]; readonly more: number }
   | { readonly kind: 'none' | 'unavailable' }
@@ -148,6 +147,7 @@ export interface ExtraTurnFacts {
   readonly contextOf?: (conversation: string) => number | null
   readonly nobodyWaiting?: boolean
   readonly replyQuestion?: boolean
+  /** The current work and its conversation, said when either changes and again after a while. */
   readonly currentWork?: CurrentWorkInTheTurn
   /** The conversation's current rules and who set them last, said on every turn they exist. */
   readonly currentRules?: CurrentRules | null

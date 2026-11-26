@@ -17553,7 +17553,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const aPersonStartedIt = session.aPersonsWordsOpenedIt
     const facts = this.factsForTheTurnBlock(session, currentPiece)
     const changed = turnBlockChanges(
-      { ...facts, ...this.profileFactsAtHand(session, now), person: aPersonStartedIt, now },
+      {
+        ...facts,
+        ...this.profileFactsAtHand(session, now),
+        person: aPersonStartedIt,
+        conversation: this.nameByItsWork(session.id),
+        now,
+      },
       session.turnBlockSnapshot,
     )
     session.pendingTurnBlock = {
@@ -17570,7 +17576,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         ...changed.extra,
         openHeldCount: facts.openHeldCount,
         currentRules: currentRulesIn(this.deps.store, session.id),
-        conversation: this.nameByItsWork(session.id),
         currentContext: this.contextSizeOf(session.id)?.percentUsed ?? null,
         contextOf: (id) => this.contextSizeOf(id)?.percentUsed ?? null,
       },
@@ -35633,6 +35638,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         promptUpdates: contextRebuilt
           ? session.promptStartBaseline.updates
           : promptUpdatesFor(this.deps.store, session.id, session.promptStartBaseline, true),
+        currentWork: null,
       }
     }
     if (event.type === 'compaction' || rejected) {

@@ -30,11 +30,13 @@ export interface TurnBlockSnapshot {
   readonly promptUpdates?: PromptUpdateBaseline
   readonly personWait: { readonly signature: string; readonly at: number } | null
   readonly hintedTurn: string | null
+  readonly currentWork: { readonly signature: string; readonly at: number } | null
 }
 
 export const EMPTY_TURN_BLOCK: TurnBlockSnapshot = {
   personWait: null,
   hintedTurn: null,
+  currentWork: null,
 }
 
 export function turnBlockChanges(
@@ -50,6 +52,7 @@ export function turnBlockChanges(
     readonly nobodyWaiting: boolean
     readonly replyQuestionTurn: string | null
     readonly current: CurrentWorkInTheTurn
+    readonly conversation: string
   },
   before: TurnBlockSnapshot,
 ): { readonly extra: ExtraTurnFacts; readonly next: TurnBlockSnapshot } {
@@ -58,8 +61,9 @@ export function turnBlockChanges(
     helpers?: ExtraTurnFacts['helpers']
     nobodyWaiting?: boolean
     replyQuestion?: boolean
-    currentWork: CurrentWorkInTheTurn
-  } = { currentWork: input.current }
+    currentWork?: CurrentWorkInTheTurn
+    conversation?: string
+  } = {}
   const promptUpdates = { ...before.promptUpdates }
   let baselineChanged = false
   const profileChanges: string[] = []
@@ -194,6 +198,17 @@ export function turnBlockChanges(
     input.replyQuestionTurn !== null &&
     input.replyQuestionTurn !== before.hintedTurn
   if (hint) extra.replyQuestion = true
+  // The current work is said when it or its conversation changes, and again once it has gone
+  // unsaid for a while; an unchanged turn leaves it out.
+  const currentWork = JSON.stringify([input.current, input.conversation])
+  const currentDue =
+    before.currentWork === null ||
+    currentWork !== before.currentWork.signature ||
+    input.now - before.currentWork.at > WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS
+  if (currentDue) {
+    extra.currentWork = input.current
+    extra.conversation = input.conversation
+  }
   return {
     extra,
     next: {
@@ -205,6 +220,7 @@ export function turnBlockChanges(
             ? { signature: input.personWait, at: input.now }
             : before.personWait,
       hintedTurn: hint ? input.replyQuestionTurn : before.hintedTurn,
+      currentWork: currentDue ? { signature: currentWork, at: input.now } : before.currentWork,
     },
   }
 }

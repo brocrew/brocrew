@@ -498,7 +498,6 @@ export class WorkReads {
             kind: 'piece',
             label: root.label,
             title: lines.title,
-            status: lines.statusLine?.text ?? null,
           }
       }
       const mine = pieces(conversation)
@@ -527,7 +526,6 @@ export class WorkReads {
                 kind: 'piece',
                 label: selected.label,
                 title: selected.title,
-                status: selected.statusLine?.text ?? null,
               }
       }
       const ownLedger = ledger(conversation)
