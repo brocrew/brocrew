@@ -9,7 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { ASKED_TO_STOP, stoppedBy } from '../src/shared/how-work-stopped'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { composeReadable } from '../src/renderer/src/lib/readable-export'
@@ -19,7 +19,11 @@ import {
   createTranscript,
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as AWindow,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 725 · Draw 3 — R71: an ending THIS APP wrote is drawn as the app's word
@@ -189,14 +193,6 @@ describe('§3 · R71 — the readable export carries the clause, because it is i
 })
 
 /* ================================================================ §4 · the host path */
-
-class AWindow implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt++) {

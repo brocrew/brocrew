@@ -19,9 +19,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -54,7 +53,12 @@ import { RULE_WRITING_POLICY } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentPreamble } from '../src/main/runtime/agent-preamble'
 import { APPROVALS_ARE_THE_PERSONS, howYouWork } from './lib/the-core'
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink as Sink,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
@@ -722,17 +726,6 @@ class ContextWatchingRuntime extends ToolWatchingResumeRuntime {
   constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
     super(provider, handed, sessions)
   }
-}
-
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('§8 · what the host tells the reader, at a launch and at a reopen', () => {

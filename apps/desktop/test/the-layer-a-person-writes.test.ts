@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink as PersonsWindow,
+} from './lib/host-fixture'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   composeProfileBundle,
@@ -26,7 +31,6 @@ import {
   configuredLayerOf,
   whatIsInForce,
 } from '../src/shared/own-instructions'
-import { type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -44,18 +48,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * that called `composeProfileBundle` directly would measure the renderer of the layer and not the
  * feeder — which is exactly the state `377` left and `552` found.
  */
-
-class PersonsWindow implements RuntimeEventSink {
-  /** ⛔ **A PERSON, and it is load-bearing**: every door in this file stands behind `requireAPerson`. */
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('582 · the layer a person writes', () => {
   let userData: string

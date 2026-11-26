@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink as Sink,
+} from './lib/host-fixture'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -35,7 +40,7 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { AGENT_TOOL_SERVER, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, noPersonBehindIt } from '../src/main/runtime/ipc'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { EXTERNAL_MCP_REMOVAL_MEANS, externalMcpServerRowId } from '../src/shared/external-mcp'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -85,17 +90,6 @@ async function localMcpServer(tools: readonly string[]): Promise<LocalServer> {
   }
   running.push(one)
   return one
-}
-
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** One launch, as the provider saw it. */

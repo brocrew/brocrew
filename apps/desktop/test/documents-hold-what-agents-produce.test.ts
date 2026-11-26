@@ -5,6 +5,7 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
   fixtureDatabase,
+  RecordingSink as Window,
 } from './lib/host-fixture'
 import {
   mkdirSync,
@@ -23,7 +24,7 @@ import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { MOST_BYTES_OF_FORM, resourcesRoot } from '../src/main/resources/resources'
 import {
@@ -58,14 +59,6 @@ import { renderMarkdown } from '../src/renderer/src/lib/markdown'
  * ⛔ The one door a resource is kept through is `replyToParent`'s — `627` measured it is the only
  * one and `HO-097` §1.1 says to keep it so — reached here on a piece a real `giveWork` handed out.
  */
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 describe('635 · the store widens, and viewing never executes', () => {
   let userData: string
