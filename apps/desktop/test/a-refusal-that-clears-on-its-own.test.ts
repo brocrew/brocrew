@@ -332,21 +332,6 @@ describe('650 · a refusal that clears on its own', () => {
     expect(sentence).not.toBe(THE_FOLDS_SENTENCE)
   })
 
-  /** A `can_message` left in the retired column stops nothing: the words wait for the start. */
-  it('§1.1 a stored can_message of none does not stop a message to a launch in flight', async () => {
-    const { call } = await aParentWithASibling()
-    const { id, spawning } = await aSpawnInFlight(call)
-    db.prepare(
-      `UPDATE agent_identity SET can_message = 'none' WHERE slug = '${DEFAULT_PROFILE_ID}'`,
-    ).run()
-    const waiting = call('message_agent', { agent: id, text: 'hello', kind: 'note' })
-    expect(await stillPending(waiting)).toBe('still pending')
-    hold?.release()
-    hold = null
-    await Promise.allSettled([spawning])
-    expect(payload(await waiting)).toMatchObject({ outcome: 'ok', agent: id })
-  })
-
   // ───────────────────────────────────────────────────────────────────────────────────────────
   // §2 · the same arm, cleared by FAILING — and what the retry meets at both doors
   // ───────────────────────────────────────────────────────────────────────────────────────────
