@@ -43,7 +43,7 @@ import {
   whatAModelChoiceReaches,
 } from '../src/shared/model-choice'
 import { agentCallerId, whatItRunsOnSaid } from '../src/main/runtime/agent-tools'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink as Window } from './lib/host-fixture'
 
 /**
  * # 🔴 677 · `R25` — each agent runs on the model and effort a PERSON chose — 🔴 D-042: on its DEFAULT
@@ -464,13 +464,6 @@ class CatalogueDouble extends FakeRuntime {
   }
 }
 
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 class NobodyBehindIt implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
   alive = true

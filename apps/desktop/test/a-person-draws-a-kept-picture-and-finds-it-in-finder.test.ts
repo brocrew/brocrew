@@ -1,4 +1,9 @@
-import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  neutralHostDeps,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  RecordingSink as Window,
+} from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,7 +20,7 @@ import {
   refusedDuringAQuit,
   runtimeCommandSchema,
 } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
 import type { ResourceDrawing, ResourceReveal } from '../src/shared/runtime-ipc'
@@ -38,14 +43,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const SIXTEEN_MIB = 16 * 1024 * 1024
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 /** A PNG's signature and IHDR, saying `width` × `height`. */
 function png(width: number, height: number): Buffer {
