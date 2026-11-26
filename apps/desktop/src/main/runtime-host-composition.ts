@@ -1,3 +1,4 @@
+import { toolRepliesFolder } from './runtime/tool-families/long-replies'
 import { providerKnowledge } from './providers/index'
 import { WorkspacePluginAttachments } from './plugins/attachments'
 import { pluginWorkspaceIdentity } from './plugins/supervisor/client'
@@ -252,7 +253,7 @@ export async function composeRuntimeHost(
       platform: process.platform,
       arch: process.arch,
       managedRoot: providerHomesRoot(userData),
-      keptFilesRoot: resourcesRoot(userData),
+      readableFolders: [resourcesRoot(userData), toolRepliesFolder()],
       signal: stopProviderServices.signal,
       commandLine: app.commandLine,
       keys: {

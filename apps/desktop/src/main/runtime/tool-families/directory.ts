@@ -112,6 +112,10 @@ const cardText = (
   // **D-017 · R8** — and when its whole record could not be read, its two past fields say nothing.
   (card.ledgersSkipped === 0 ? '' : ' · its record could not be read')
 
+/** **484 · a card's short form**: who it is, its state and its context, on one line. */
+const shortCardText = (card: AgentCard, called: string): string =>
+  `${called} · ${whoseText(card.whose)} · ${agentStateWords(card.state)}${contextText(card.context)}`
+
 const queuedText = (queued: AgentCard['queued']): string =>
   queued === undefined
     ? ''
@@ -289,15 +293,21 @@ const providerUsagePayload = (
  * is dropped rather than doubled — it is what a person typed when they had nothing better, and
  * printing `worker · worker` spends the summary's characters on nothing.
  */
-const profileText = (report: ProfileReport): string =>
+const profileText = (
+  report: ProfileReport,
+  /** **484 · `false` for the short form**: who it is, without what it runs on. */
+  whatItRunsOn = true,
+): string =>
   [
     report.profile,
     ...(report.displayName === null || report.displayName === report.profile
       ? []
       : [report.displayName]),
-    ...(report.provider === null ? [] : [report.provider]),
+    ...(!whatItRunsOn || report.provider === null ? [] : [report.provider]),
     // **D-042 · R6 — its default**, what its new conversations start on.
-    ...(report.defaultModel === null ? [] : [`default ${aPairInWords(report.defaultModel)}`]),
+    ...(!whatItRunsOn || report.defaultModel === null
+      ? []
+      : [`default ${aPairInWords(report.defaultModel)}`]),
     ...(report.isAService === true ? ['a service'] : []),
   ].join(' · ')
 
@@ -545,11 +555,27 @@ export function createListAgentsTool(
           const count = notListed === null ? 'See ' : `${String(notListed)} `
           return `\n${count}more conversations: list_agents with the same filters and cursor ${next}.`
         }
+        const listed = (
+          lines: readonly string[],
+          next: string | undefined,
+          notListed: number | null,
+        ) =>
+          (lines.join('\n') ||
+            (next === undefined ? empty : 'No matching conversations on this page.')) +
+          more(notListed, next)
         if (archivedOnly) {
           const { archived, notListed, readAt, next } = host.archivedVisibleTo(by, me, input)
-          const lines = archived.map(
-            ({ card, archivedAt }) =>
-              cardText(card, host.nameByItsWork(card.agent)) + archivedSaid(archivedAt, readAt),
+          const rows = archived.map((one) => ({
+            ...one,
+            called: host.nameByItsWork(one.card.agent),
+          }))
+          const lines = rows.map(
+            ({ card, archivedAt, called }) =>
+              cardText(card, called) + archivedSaid(archivedAt, readAt),
+          )
+          const short = rows.map(
+            ({ card, archivedAt, called }) =>
+              shortCardText(card, called) + archivedSaid(archivedAt, readAt),
           )
           return answer(
             {
@@ -563,13 +589,13 @@ export function createListAgentsTool(
               notListed,
               ...(next === undefined ? {} : { next }),
             },
-            (lines.join('\n') ||
-              (next === undefined ? empty : 'No matching conversations on this page.')) +
-              more(notListed, next),
+            listed(lines, next, notListed),
+            listed(short, next, notListed),
           )
         }
         const { agents, notListed, next } = host.agentsVisibleTo(by, me, input)
-        const lines = agents.map((card) => cardText(card, host.nameByItsWork(card.agent)))
+        const rows = agents.map((card) => ({ card, called: host.nameByItsWork(card.agent) }))
+        const lines = rows.map(({ card, called }) => cardText(card, called))
         return answer(
           {
             outcome: 'ok',
@@ -578,9 +604,12 @@ export function createListAgentsTool(
             notListed,
             ...(next === undefined ? {} : { next }),
           },
-          (lines.join('\n') ||
-            (next === undefined ? empty : 'No matching conversations on this page.')) +
-            more(notListed, next),
+          listed(lines, next, notListed),
+          listed(
+            rows.map(({ card, called }) => shortCardText(card, called)),
+            next,
+            notListed,
+          ),
         )
       }),
   }
@@ -686,6 +715,13 @@ export function createGetAgentStatusTool(
                     : null,
               })
         const archivedAt = host.whenItWasArchived(card.agent)
+        const archived = archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)
+        // **484 · the short form**: who, its state and context, a stop on a person, and a failure;
+        // the work it holds and its last turn are in the file.
+        const short = [
+          shortCardText(card, conversation) + theStopOnAPerson(card.stoppedOnAPerson) + archived,
+          ...(diagnosis === undefined ? [] : [diagnosis]),
+        ].join('\n\n')
         return answer(
           {
             outcome: 'ok',
@@ -703,11 +739,12 @@ export function createGetAgentStatusTool(
           [
             cardText(card, conversation, (piece) =>
               pieceOnTheCardText(piece, piece.piece === newest?.piece ? diagnosis : undefined),
-            ) + (archivedAt === null ? '' : archivedSaid(archivedAt, last.readAt)),
+            ) + archived,
             ...(questionFailure !== null && diagnosis !== undefined ? [diagnosis] : []),
             ...(unknownDiagnosis.length === 0 ? [] : [unknownDiagnosis.join(' ')]),
             ...theLastTurnSaid(card.lastEndedTurn, last, named, askedBy, card.lastAskToStop),
           ].join('\n\n'),
+          short,
         )
       }),
   }
@@ -794,6 +831,22 @@ export function createListProfilesTool(
           ...(report.defaultModel === null ? {} : { default_model: report.defaultModel }),
           ...(report.isAService === true ? { kind: 'service' } : {}),
         }))
+        const head = [
+          EVERY_AGENT_THIS_APP_HOLDS,
+          ...(reading.next === undefined
+            ? []
+            : [`More profiles: pass ${reading.next} as cursor to list_profiles.`]),
+        ]
+        const providers = Object.keys(reading.usage) as Provider[]
+        // **484 · the short form**: who each profile is, and each provider's usage; what each runs
+        // on and the window history are in the file.
+        const short = [
+          ...head,
+          ...reading.profiles.map((report) => profileText(report, false)),
+          ...providers.map((provider) =>
+            providerUsageText(provider, reading.usage[provider], reading.readAt),
+          ),
+        ].join('\n')
         return answer(
           {
             outcome: 'ok',
@@ -820,12 +873,9 @@ export function createListProfilesTool(
           // person never sees this payload: `tool_result` carries a summary of at most 200
           // characters and `ToolEntry.vue` draws that.
           [
-            EVERY_AGENT_THIS_APP_HOLDS,
-            ...(reading.next === undefined
-              ? []
-              : [`More profiles: pass ${reading.next} as cursor to list_profiles.`]),
+            ...head,
             ...reading.profiles.map((report) => profileText(report)),
-            ...(Object.keys(reading.usage) as Provider[]).flatMap((provider) => {
+            ...providers.flatMap((provider) => {
               // Which windows it has reported, first and last, as the description promises.
               const seen = reading.windowsSeen[provider] ?? []
               return [
@@ -845,6 +895,7 @@ export function createListProfilesTool(
               ]
             }),
           ].join('\n'),
+          short,
         )
       }),
   }

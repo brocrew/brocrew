@@ -43,6 +43,7 @@ import {
 import { createRequestActionTool, createRequestMcpServerTool } from './tool-families/requests'
 import { readerFields } from './tool-families/reader-inputs'
 import { refusalAnswer } from './tool-families/answers'
+import { shortFormOf, shortenedIfLong } from './tool-families/long-replies'
 import { refusalIn, refuseTool } from './tool-families/refusals'
 import { themeAgentTools } from '../themes/agent-tools'
 
@@ -175,7 +176,7 @@ export function agentToolsFor(
       })
       const refused = refusalIn(one.name, answered.structured, said.text)
       if (refused !== null) host.noteRefusal(me, one.name, refused)
-      return said
+      return shortenedIfLong(one.name, said, shortFormOf(answered))
     },
   })
 

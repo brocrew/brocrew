@@ -19,7 +19,7 @@ function context() {
     platform: 'darwin' as const,
     arch: 'arm64',
     managedRoot: '/fictional/homes',
-    keptFilesRoot: '/fictional/kept',
+    readableFolders: ['/fictional/kept', '/fictional/replies'],
     commandLine: { hasSwitch: vi.fn(() => false), getSwitchValue: vi.fn(() => '') },
     signal: new AbortController().signal,
     keys: {
@@ -206,7 +206,10 @@ describe('provider-owned desktop inputs', () => {
   })
 
   it('hands the Claude launch the kept-files folder read_document names (card 483)', () => {
-    expect(fixture().inputs.claude.runtime.keptFilesRoot).toBe('/fictional/kept')
+    expect(fixture().inputs.claude.runtime.readableFolders).toEqual([
+      '/fictional/kept',
+      '/fictional/replies',
+    ])
   })
 
   it('uses the same current bundled program for runtime, auth and each key change', async () => {

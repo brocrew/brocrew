@@ -1,3 +1,4 @@
+import { wholeReply } from './lib/full-reply'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -435,7 +436,7 @@ describe('a successful answer says in words what its payload held', () => {
 
     const reading = await call(pmTools, 'list_tasks', { piece: label })
     expect(reading.structured).toMatchObject({ label, state: 'answered', outcome: 'done' })
-    const record = reading.text
+    const record = wholeReply(reading.text)
     expect(record).toMatch(/Its inputs: res_\S+ \(the-brief-notes\.md\)\./)
     expect(record).toContain(`Handed back with its answer: ${kept[0]!} (the-survey.md).`)
   })

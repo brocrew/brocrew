@@ -14,6 +14,7 @@ import { type ToolName } from './catalog'
 import { outboundOverflowSaid, sendOverflowAttachment } from '../send-overflow'
 import { sendResourcesInput, sendResourcesProblem } from './send-resources'
 import { answer, refusalAnswer, sendAnswer } from './answers'
+import { clockTime } from '../../../shared/clock'
 import { carryQuestionRefusal, refuseTool } from './refusals'
 import {
   countedBy,
@@ -137,6 +138,21 @@ const questionLine = (one: VisibleQuestion): string => {
         : ''
       : ` · a person answers this one (${refused})`
   }${one.byItsProvider === true ? ' · a person answers this one at its card' : ''}${delivery}${wordsMissingClause(one)}`
+}
+
+/**
+ * **484 · what a question is about**: the first line of the asker's own words, cut at 120
+ * characters. Its words open with this app's sentence naming the asker and the id
+ * (`questionText`), so the asker's begin at the second paragraph.
+ */
+const subjectOf = (words: string): string => {
+  const paragraphs = words.split('\n\n')
+  const first =
+    (paragraphs[1] ?? paragraphs[0] ?? '')
+      .split('\n')
+      .find((said) => said.trim() !== '')
+      ?.trim() ?? ''
+  return first.length <= 120 ? first : `${first.slice(0, 119)}…`
 }
 
 /** A question that is over, as a line says it: who asked, and how it ended. */
@@ -534,6 +550,27 @@ export function createListQuestionsTool(
                 frozen === 1 ? 'that conversation is' : `those ${String(frozen)} conversations are`
               } frozen until somebody decides`
         }`
+        const notListedLine =
+          listing.rest.length === 0 ? [] : [`not listed: ${countsSaid(notListed)}.`]
+        const unread = [
+          ...(listed.rowsUnread === 0 ? [] : [unreadQuestionRowsSentence(listed.rowsUnread)]),
+          ...whenSkipped(listed.ledgersSkipped, skippedQuestionRecordsSentence),
+        ]
+        // **484 · the short form**: who asked, about what, and since when; the words are in the file.
+        const short = [
+          listing.whole.length === 0 ? `${standing}.` : `${standing}:`,
+          ...listing.whole.map(
+            (one) =>
+              `${questionLine(one)} · asked ${clockTime(one.request.at)}${
+                one.words === null ? '' : `\n    ${subjectOf(one.words)}`
+              }`,
+          ),
+          ...(listing.ended.length === 0
+            ? []
+            : ['over, newest first:', ...listing.ended.map(endedQuestionLine)]),
+          ...notListedLine,
+          ...unread,
+        ].join('\n')
         return answer(
           {
             outcome: 'ok',
@@ -581,9 +618,9 @@ export function createListQuestionsTool(
                 ].join('\n'),
             // **676 · the count in the words too, whichever branch answered** — an empty list is
             // exactly when a torn routing may be the question that is missing.
-            ...(listed.rowsUnread === 0 ? [] : [unreadQuestionRowsSentence(listed.rowsUnread)]),
-            ...whenSkipped(listed.ledgersSkipped, skippedQuestionRecordsSentence),
+            ...unread,
           ].join('\n'),
+          short,
         )
       }),
   }

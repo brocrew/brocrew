@@ -45,7 +45,7 @@ export interface ClaudeRuntimeSeams {
   readonly programFound?: () => string | null
   readonly key?: () => string | null | Promise<string | null>
   readonly managedRoot?: string
-  readonly keptFilesRoot?: string
+  readonly readableFolders?: readonly string[]
   readonly launchLogin?: () => Promise<string | null>
 }
 export interface ClaudeHomeSeams {
@@ -125,7 +125,7 @@ export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
     seams.program(),
     seams.launchLogin ?? claudeKeychainTokenProviderForALaunch(),
     seams.managedRoot,
-    seams.keptFilesRoot,
+    seams.readableFolders,
   )
 }
 

@@ -55,7 +55,7 @@ export function claudeDesktopInputs(
       program: () => program().path,
       programFound: installed,
       managedRoot: context.managedRoot,
-      keptFilesRoot: context.keptFilesRoot,
+      readableFolders: context.readableFolders,
       key,
     },
     home: { key, programFound: installed },

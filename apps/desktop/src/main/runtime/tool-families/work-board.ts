@@ -618,6 +618,43 @@ export function createListTasksTool(
               ? []
               : [`of the work you gave, ${countsSaid(notListed.you_gave)}`]),
           ]
+          /** What the half the caller holds says when it lists nothing, or `null`. */
+          const holdsNone =
+            root === null && holdRows.length === 0
+              ? none(board.root !== null || board.hold.length > 0, {
+                  none: 'you hold no work',
+                  open: 'you hold no open work',
+                  ended: 'no work you hold has ended',
+                })
+              : null
+          // **484 · the short form**: a line a piece — label, title, holder, state, and when its
+          // status was set (or, with none, when it was given).
+          const shortOf = (rows: readonly PieceRow[], over: readonly PieceRow[], gave: boolean) => [
+            ...rows.map((row) => {
+              const unread = gave ? notRead(row) : null
+              const holder = heldByName(row)
+              return `${unread === null ? '' : `  ${ANSWER_NOT_READ_SAID[unread]}:\n`}  ${pieceLine(row.label, row.title)} · ${row.state}${holder === null ? '' : ` · ${heldBy(holder)}`} · ${row.statusLine === null ? `given ${clockTime(row.givenAt)}` : `status at ${clockTime(row.statusLine.at)}`}`
+            }),
+            ...over.map((row) => ended(row).text),
+          ]
+          const short = [
+            holdsNone ??
+              [
+                'work you hold:',
+                ...(root === null ? [] : [rootText(root, me).split('\n')[0] ?? '']),
+                ...shortOf(hold.whole, hold.ended, false),
+              ].join('\n'),
+            ...(gaveRows.length === 0
+              ? []
+              : [['work you gave:', ...shortOf(gave.whole, gave.ended, true)].join('\n')]),
+            ...(rest.length === 0 ? [] : [`not listed: ${rest.join('; ')}.`]),
+            ...(putAway.length === 0
+              ? []
+              : [
+                  `put away with archived conversations: ${putAway.map((row) => row.label).join(', ')}.`,
+                ]),
+            ...unreadLines(board.rowsUnread, board.ledgersSkipped),
+          ].join('\n\n')
           return answer(
             {
               outcome: 'ok',
@@ -637,17 +674,12 @@ export function createListTasksTool(
               rows_unread: board.rowsUnread,
             },
             [
-              root === null && holdRows.length === 0
-                ? none(board.root !== null || board.hold.length > 0, {
-                    none: 'you hold no work',
-                    open: 'you hold no open work',
-                    ended: 'no work you hold has ended',
-                  })
-                : [
-                    'work you hold:',
-                    ...(root === null ? [] : [rootText(root, me)]),
-                    ...holdRows.map((one) => one.text),
-                  ].join('\n'),
+              holdsNone ??
+                [
+                  'work you hold:',
+                  ...(root === null ? [] : [rootText(root, me)]),
+                  ...holdRows.map((one) => one.text),
+                ].join('\n'),
               ...(gaveRows.length > 0
                 ? [['work you gave:', ...gaveRows.map((one) => one.text)].join('\n')]
                 : // The line about what is put away says it, when open work you gave is.
@@ -674,6 +706,7 @@ export function createListTasksTool(
                   ]),
               ...unreadLines(board.rowsUnread, board.ledgersSkipped),
             ].join('\n\n'),
+            short,
           )
         }
         const continuedPiece = args.after === undefined ? null : host.pieceIdForAddress(named)
@@ -829,6 +862,8 @@ export function createListTasksTool(
         if (record.is === 'a-root') {
           // **R1 — a root is its title, its status line, its children and its resources**: its
           // state is its conversation's, which `get_agent_status` says.
+          const itsLine = rootText(record.root, me).trimStart()
+          const unread = unreadLines(record.rowsUnread, record.ledgersSkipped)
           return answer(
             {
               outcome: 'ok',
@@ -840,16 +875,29 @@ export function createListTasksTool(
               rows_unread: record.rowsUnread,
             },
             [
-              rootText(record.root, me).trimStart(),
+              itsLine,
               ...(children.length === 0 ? [] : [children.join('\n')]),
               ...resourcesByRole([]),
               ...moreLines,
-              ...unreadLines(record.rowsUnread, record.ledgersSkipped),
+              ...unread,
             ].join('\n\n'),
+            // **484 · the short form**: its line and the counts.
+            [itsLine, ...unread].join('\n\n'),
           )
         }
         const piece = record.piece
         const lastExchange = exchangePage?.preview ?? record.lastExchange
+        const openQuestions =
+          record.openQuestions.length === 0
+            ? []
+            : [
+                `Questions its owner asked about this piece that are still open: ${record.openQuestions.join(', ')}.`,
+              ]
+        // Its line (state, status, done condition) and brief open both forms; the counts close them.
+        const itsLineAndBrief = [line(piece).trimStart(), `Its brief:\n${piece.brief}`]
+        const unread = unreadLines(record.rowsUnread, record.ledgersSkipped)
+        // **484 · the short form**: those, and its open questions.
+        const short = [...itsLineAndBrief, ...openQuestions, ...unread].join('\n\n')
         return answer(
           {
             outcome: 'ok',
@@ -870,8 +918,7 @@ export function createListTasksTool(
             rows_unread: record.rowsUnread,
           },
           [
-            line(piece).trimStart(),
-            `Its brief:\n${piece.brief}`,
+            ...itsLineAndBrief,
             // **D-016 · commit 7 · R3 — its holder by its NAME**: the piece names the conversation.
             transcriptText(
               host.whatToCallTheConversation(piece.owner),
@@ -882,16 +929,13 @@ export function createListTasksTool(
               (words) => ('text' in words ? words.text : '(words could not be read)'),
             ),
             ...(lastExchange.received === null ? [] : ['Older exchanges: read_transcript.']),
-            ...(record.openQuestions.length === 0
-              ? []
-              : [
-                  `Questions its owner asked about this piece that are still open: ${record.openQuestions.join(', ')}.`,
-                ]),
+            ...openQuestions,
             ...(children.length === 0 ? [] : [children.join('\n')]),
             ...resourcesByRole(piece.resources),
             ...moreLines,
-            ...unreadLines(record.rowsUnread, record.ledgersSkipped),
+            ...unread,
           ].join('\n\n'),
+          short,
         )
       }),
   }

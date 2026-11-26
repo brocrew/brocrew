@@ -46,7 +46,7 @@ function inputsFor(run: Run, found: boolean, key: string | null = null) {
     platform: 'darwin' as const,
     arch: 'arm64',
     managedRoot: '/fictional/homes',
-    keptFilesRoot: '/fictional/kept',
+    readableFolders: ['/fictional/kept'],
     commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
     signal: new AbortController().signal,
     keys: {

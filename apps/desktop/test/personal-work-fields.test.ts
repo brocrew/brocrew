@@ -1,3 +1,4 @@
+import { wholeReply } from './lib/full-reply'
 import type { PieceRow, WorkGivenEvent } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writeFileSync } from 'node:fs'
@@ -381,7 +382,7 @@ describe('personal work fields and their existing ownership boundaries', () => {
     expect(kept).toHaveLength(1)
     expect(kept[0]).toMatchObject({ name: 'detail.md', piece })
     const record = await call(caller, 'list_tasks', { piece })
-    expect(record.text).toContain(kept[0]!.resource)
+    expect(wholeReply(record.text)).toContain(kept[0]!.resource)
     const read = await call(caller, 'read_document', { resource: kept[0]!.resource })
     expect(read.structured).toMatchObject({ outcome: 'ok' })
     expect(textOfTheKeptFile(read.text)).toContain(body)
