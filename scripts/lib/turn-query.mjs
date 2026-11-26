@@ -47,7 +47,7 @@ export function interruptedTurnQuery(sessionId = null) {
  */
 
 /** A Codex thread id, as `provider_session.external_ref` and the rollout's file name carry it. */
-export const CODEX_THREAD_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CODEX_THREAD_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Which provider ran one app session, and the ref it resumes from.

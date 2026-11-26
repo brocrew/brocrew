@@ -39,7 +39,7 @@ export const NOT_LISTENING_CODES = Object.freeze(['ENOENT', 'ECONNREFUSED'])
 /** How long `ps` has to answer before the answer is `unknown`. */
 export const PS_TIMEOUT_MS = 5000
 /** How much of a process table this will hold. Beyond it, `unknown` — never a partial table. */
-export const PS_MAX_BUFFER = 16 * 1024 * 1024
+const PS_MAX_BUFFER = 16 * 1024 * 1024
 
 /** What `one-host-gate.ts` writes: a `randomUUID()`, and nothing else ever should. */
 const TOKEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/

@@ -125,7 +125,7 @@ function jsonlFiles(root) {
 }
 
 /** Every JSON object on its own line, skipping anything unparseable. */
-export function readJsonl(path) {
+function readJsonl(path) {
   let text
   try {
     text = readFileSync(path, 'utf8')
@@ -150,7 +150,7 @@ export function readJsonl(path) {
  * lines are `session_meta` / `turn_context` / `event_msg` / `response_item`, and none of them
  * carries the `message.usage` {@link tallyUsage} bills.
  */
-export function isCodexRollout(records) {
+function isCodexRollout(records) {
   return records.some((record) =>
     ['session_meta', 'turn_context', 'event_msg', 'response_item'].includes(record?.type),
   )

@@ -419,7 +419,7 @@ const HOLE_STANDS_FOR = 'x'
  * nested brace would leave a `${` behind and turn a correct line into a violation, which is the
  * direction this must not be wrong in.
  */
-export function asEvaluated(line) {
+function asEvaluated(line) {
   // Except a `${JSON.stringify(…)}` hole, which reaches the page as a quoted value, and inside a quoted
   // selector its quotes end the attribute, which the live walk refuses. So
   // `'[data-cy="library-outcome-' + ${JSON.stringify(id)} + '"]'` must not read as a hook here.

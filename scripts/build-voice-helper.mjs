@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const NATIVE = join(ROOT, 'apps/desktop/native/voice')
 /** Every Swift file of the helper, in a fixed order. */
-export function voiceHelperSources() {
+function voiceHelperSources() {
   return readdirSync(NATIVE)
     .filter((name) => name.endsWith('.swift'))
     .sort()

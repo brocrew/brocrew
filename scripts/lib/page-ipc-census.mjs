@@ -116,7 +116,7 @@ export function pageTemplatesIn(ts, file, text) {
  * so the cost is one compile (~9 s measured on 49 pages). `syntactic` is returned rather than
  * thrown so a caller can say which page did not parse.
  */
-export function staleIpcReads(ts, root, pages) {
+function staleIpcReads(ts, root, pages) {
   // The page's own declaration of the bridge, as a root file of the program, so its global
   // augmentation types `window.api` exactly as the renderer compiles it. The census adds only an
   // index signature: a page's own globals are the page's business.

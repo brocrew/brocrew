@@ -84,7 +84,7 @@ function copyrightLines(text) {
 }
 
 /** Every package the app's archive carries, keyed by `name@version`. */
-export function packagesInTheApp() {
+function packagesInTheApp() {
   const found = new Map()
   const seen = new Set()
   const visit = (dir) => {

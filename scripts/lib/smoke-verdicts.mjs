@@ -111,7 +111,7 @@ export function claims(...entries) {
 }
 
 /** @param {unknown} value */
-export function isClaims(value) {
+function isClaims(value) {
   return typeof value === 'object' && value !== null && Boolean(value[CLAIMS])
 }
 

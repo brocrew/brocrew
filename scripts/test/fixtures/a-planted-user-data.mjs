@@ -29,7 +29,7 @@ import { DATA_FOLDER_NAME, pastedImagesRoot } from '../../lib/user-data.mjs'
  */
 
 /** Above macOS's `kern.maxproc` ceiling, so no live process can ever carry it. */
-export const DEAD_PID = 999999
+const DEAD_PID = 999999
 
 const roots = []
 

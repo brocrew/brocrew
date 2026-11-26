@@ -19,7 +19,7 @@ const STYLE_BLOCK = /(<style\b[^>]*>)([\s\S]*?)<\/style>/gi
  * The CSS regions of one file, as `{ text, offset }` — `offset` being where the region starts in
  * the whole file, so a match inside it can still be reported at its real line.
  */
-export function cssRegions(text, file = 'x.css') {
+function cssRegions(text, file = 'x.css') {
   if (file.endsWith('.vue')) {
     return [...text.matchAll(STYLE_BLOCK)].map((m) => ({
       text: m[2],
@@ -178,7 +178,7 @@ export function fallbackOnlyTokens(sources) {
 export const RAW_FAMILIES = ['border', 'radius', 'colour', 'shadow', 'type']
 
 /** The stylesheet where literal values are declared, and so the one file this scan skips. */
-export const TOKEN_FILE = 'assets/tokens.css'
+const TOKEN_FILE = 'assets/tokens.css'
 
 const PX = /(?<![\w.-])(?:\d*\.)?\d+px\b/
 const COLOUR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/

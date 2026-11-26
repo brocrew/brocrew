@@ -17,7 +17,7 @@ export const FORBIDDEN_PERSON_PORT = 9444
  * The PIDs listening on `port`, or `[]` when nothing is. Read-only: `lsof` only observes.
  * Injectable so the guard is testable without binding real ports.
  */
-export function defaultListenerPids(port) {
+function defaultListenerPids(port) {
   try {
     const out = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], {
       encoding: 'utf8',
@@ -33,7 +33,7 @@ export function defaultListenerPids(port) {
 }
 
 /** The executable path of `pid`, or '' when it cannot be read. Read-only. */
-export function defaultExecutablePath(pid) {
+function defaultExecutablePath(pid) {
   try {
     return execFileSync('ps', ['-p', String(pid), '-o', 'comm='], {
       encoding: 'utf8',

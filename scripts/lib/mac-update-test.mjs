@@ -338,7 +338,7 @@ export function stateBytes(folder, tables = {}) {
   return withMovedFiles(state, tables)
 }
 
-export function stateDigest(name, bytes) {
+function stateDigest(name, bytes) {
   return SKILL_TREE_NAMES.includes(name)
     ? skillTreeStateDigest(bytes)
     : { bytes: bytes.length, sha256: hash(bytes) }

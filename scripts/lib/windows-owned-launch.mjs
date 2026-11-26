@@ -37,7 +37,7 @@ export function parseProcessTable(json) {
   })
 }
 
-export function readWindowsProcessTable() {
+function readWindowsProcessTable() {
   const out = execFileSync(
     'powershell.exe',
     ['-NoProfile', '-NonInteractive', '-Command', TABLE_COMMAND],

@@ -226,7 +226,7 @@ function rowsOf(database) {
  * A database's rows, read from a copy so the live file and its sidecars are never opened in place: a
  * WAL database's read-only open still makes `-shm`, and a crash leaves rows in `-wal`.
  */
-export function databaseRows(file) {
+function databaseRows(file) {
   const scratch = mkdtempSync(join(tmpdir(), 'brobot-rehearsal-db-'))
   try {
     const copy = join(scratch, 'copy.sqlite')
