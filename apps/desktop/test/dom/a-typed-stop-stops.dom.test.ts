@@ -1,20 +1,17 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { nextTick, reactive } from 'vue'
+import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import {
   interruptKeyLabel,
   sendKeyLabel,
 } from '../../src/renderer/src/components/PromptComposer.vue'
 import { isOnlyAStopWord } from '../../src/renderer/src/lib/a-stop-word'
-import {
-  acceptEvent,
-  createSessionRecord,
-  type SessionRecord,
-} from '../../src/renderer/src/lib/session-record'
+import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { drawnReady } from './drawn'
+import { liveRecord } from './conversation-records'
 import { META, mount, paneProps, visible, windowCleanup, type Mounted } from './harness'
 
 /**
@@ -34,20 +31,11 @@ const started = { type: 'session', state: 'started', ref: META.ref } as Transcri
 const asked = { type: 'user_turn', text: 'build the release' } as TranscriptEvent
 const working = { type: 'status', state: 'working' } as TranscriptEvent
 
-function feed(record: SessionRecord, event: TranscriptEvent): void {
-  const ordinal = record.nextOrdinal
-  acceptEvent(record, { sessionId: record.sessionId, ordinal, at: AT + ordinal * 1_000, event })
-}
-
 function conversation(
   events: TranscriptEvent[],
   meta: Partial<CreatedSession> = {},
 ): SessionRecord {
-  const record = reactive(createSessionRecord('sess_1')) as SessionRecord
-  record.meta = { ...META, ...meta }
-  record.phase = 'open'
-  for (const event of events) feed(record, event)
-  return record
+  return liveRecord(events, { ...META, ...meta })
 }
 
 /** A running turn with the person's own message held behind it. */

@@ -10,8 +10,8 @@ import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import { conversationTitle } from '../../src/renderer/src/lib/conversation-list'
 import { theirConversations } from '../../src/renderer/src/lib/team-roster'
 import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
-import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import type { WorkThatNamesIt } from '../../src/shared/piece-called'
+import { CLAIMED } from './conversation-records'
 import { mount, unmountAll } from './harness'
 
 /**
@@ -22,56 +22,6 @@ import { mount, unmountAll } from './harness'
  * more open pieces, and *"(answered)"*, *"(taken back)"* or *"(closed)"* once it ended. ⛔ The header's
  * rename field edits the bare title, never a mark; and a root carries none.
  */
-
-const liveness = {
-  state: 'live' as const,
-  since: 1_700_000_000_000,
-  signInSuperseded: false,
-}
-
-const CLAIMED: CreatedSession = {
-  sessionId: 'sess_1',
-  provider: 'claude',
-  cwd: '/work/checkout',
-  providerHome: '/homes/claude',
-  profileId: 'default',
-  instructions: {
-    injected: [],
-    agentMemory: [],
-    provider: [],
-    refused: [],
-    note: '',
-    recallsReported: false,
-    writesReported: false,
-    composed: null,
-  },
-  ref: null,
-  config: {
-    home: '/homes/claude',
-    homeEnv: 'CLAUDE_CONFIG_DIR',
-    model: 'm',
-    authNote: null,
-    files: [],
-  },
-  approvalMode: 'ask',
-  pendingApprovalMode: null,
-  approvalNote: 'approvals: ask',
-  blanketGrants: [],
-  planNeedsGoAhead: false,
-  settings: {
-    model: null,
-    pendingModel: null,
-    reasoningEffort: null,
-    pendingReasoningEffort: null,
-    planMode: false,
-    pendingPlanMode: null,
-  },
-  queued: [],
-  liveness,
-  hasACommander: true,
-  startedWithoutAWindow: true,
-  mayHandItBack: true,
-}
 
 function header(
   named: WorkThatNamesIt | null,

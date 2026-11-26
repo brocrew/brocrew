@@ -4,13 +4,11 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { forestView } from '../../src/renderer/src/lib/the-forest'
-import type { CreatedSession } from '../../src/shared/runtime-ipc'
 
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import { assertDrawn, drawnReady } from './drawn'
+import { idleConversation } from './conversation-records'
 import { mount, unmountAll, type Mounted } from './harness'
 
 /**
@@ -30,19 +28,7 @@ const WORK_LINE = (n: number): string =>
   `This may not be accurate ${String(n)} ${n === 1 ? 'row' : 'rows'} of this app’s record could not be read, so a piece of work may be missing here, or its state may be wrong.`
 const said = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
-function conversation(sessionId: string): unknown {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'claude',
-    cwd: '/Users/alex/dev/brobot',
-    profileId: 'default',
-    liveness: { state: 'live', since: NOW },
-  } as CreatedSession
-  record.phase = 'open'
-  applyEvent(record.control, { type: 'status', state: 'idle' }, NOW)
-  return record
-}
+const conversation = idleConversation
 
 const reading = (rowsUnread: number, covers = ['sess_a']): WhatEachConversationIsWaitingOn => ({
   readAt: NOW,

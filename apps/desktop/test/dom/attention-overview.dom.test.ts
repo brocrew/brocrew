@@ -7,9 +7,8 @@ import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { attentionQueue, type AttentionRequest } from '../../src/renderer/src/lib/attention'
-import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
+import { homeConversation, queueOf } from './conversation-records'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -76,23 +75,7 @@ const QUESTION: TranscriptEvent = {
   ],
 }
 
-function conversation(sessionId: string, event: TranscriptEvent, at: number): unknown {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'codex',
-    cwd: `/Users/alex/dev/${sessionId}`,
-    profileId: 'default',
-    approvalMode: 'ask',
-    planNeedsGoAhead: false,
-    liveness: { state: 'live', since: at },
-  } as never
-  acceptEvent(record, { sessionId, ordinal: 0, event, at } as RuntimeEventMessage)
-  return record
-}
-
-const queueOf = (...records: unknown[]): AttentionRequest[] =>
-  attentionQueue(records as never, () => 'waiting: permission')
+const conversation = homeConversation
 
 let view: Mounted | null = null
 afterEach(() => {

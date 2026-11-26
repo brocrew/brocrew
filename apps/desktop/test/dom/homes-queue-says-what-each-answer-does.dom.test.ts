@@ -13,7 +13,7 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 // so this project takes the source file directly, exactly as `what-a-card-says-a-press-does`
 // already does for `ALWAYS_HONOURED`.
 import { publishedOffer } from '../../../../packages/runtime/src/permission'
-import { attentionQueue, type AttentionRequest } from '../../src/renderer/src/lib/attention'
+import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { noPositiveSays } from '../../src/renderer/src/lib/permission-offer'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import {
@@ -22,10 +22,9 @@ import {
   type AttentionDecision,
   type ConsentAsked,
 } from '../../src/renderer/src/lib/user-input-offer'
-import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 import { decisionReading, readingSentence } from '../../src/shared/questions'
+import { homeConversation, queueOf } from './conversation-records'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**
@@ -54,23 +53,8 @@ const NAME = (id: string): string => id.replace('sess_', '')
 
 /* ------------------------------------------------------- Home's own population */
 
-function conversation(sessionId: string, event: TranscriptEvent, at = NOW - 60_000): unknown {
-  const record = createSessionRecord(sessionId)
-  record.meta = {
-    sessionId,
-    provider: 'codex',
-    cwd: `/Users/alex/dev/${sessionId}`,
-    profileId: 'default',
-    approvalMode: 'ask',
-    planNeedsGoAhead: false,
-    liveness: { state: 'live', since: at },
-  } as never
-  acceptEvent(record, { sessionId, ordinal: 0, event, at } as RuntimeEventMessage)
-  return record
-}
-
-const queueOf = (...records: unknown[]): AttentionRequest[] =>
-  attentionQueue(records as never, () => 'waiting: permission')
+const conversation = (sessionId: string, event: TranscriptEvent, at = NOW - 60_000): unknown =>
+  homeConversation(sessionId, event, at)
 
 /**
  * ⛔ **One row of every KIND a person can answer from Home, and one of every consent inside the
