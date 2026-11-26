@@ -355,7 +355,14 @@ const drawsNothing = computed(
         <h1 class="bb-page-title">Waiting on you</h1>
         <p v-if="intro" class="intro" data-cy="waiting-intro">{{ intro }}</p>
         <span class="head-spacer"></span>
-        <div class="head-chips">
+        <div
+          class="head-chips"
+          role="group"
+          aria-label="Notices"
+          :tabindex="
+            props.sinceLastHere || limitsDisplay || walls.length > 0 || wallsUnread ? 0 : -1
+          "
+        >
           <SinceYouWereLastHere
             v-if="props.sinceLastHere"
             :view="props.sinceLastHere.view"
