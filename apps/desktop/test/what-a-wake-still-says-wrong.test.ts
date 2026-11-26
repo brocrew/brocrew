@@ -4,8 +4,7 @@ import { expectRecordedCannotRun } from './lib/recorded-send'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AuthUnavailableError, FakeProviderSessions, ResumeError } from '@brobot2/runtime'
 import { NoCodexSignInOnThisComputerError, CodexRuntime } from '@brobot2/runtime/codex'
@@ -24,11 +23,10 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  migrationsFolder,
+  fixtureTurnCounts,
 } from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('what a wake still says wrong', () => {
   let userData: string
@@ -109,8 +107,7 @@ describe('what a wake still says wrong', () => {
   const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
     callAs(host, caller, name, args)
 
-  const turnsIn = (sessionId: string): number =>
-    events(sessionId).filter((event) => event.type === 'turn').length
+  const { turnsIn } = fixtureTurnCounts(() => store)
 
   /**
    * ⚑ **D-016 · a child given a piece** — `give_work` starts it, and its brief is its first turn.

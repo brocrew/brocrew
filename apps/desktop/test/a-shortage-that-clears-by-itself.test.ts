@@ -32,6 +32,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  fixtureTurnCounts,
 } from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
@@ -137,8 +138,7 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
     callAs(host, caller, name, args)
 
-  const turnsIn = (sessionId: string): number =>
-    events(sessionId).filter((event) => event.type === 'turn').length
+  const { turnsIn } = fixtureTurnCounts(() => store)
 
   /**
    * ⚑ A PM a person opened, and one `worker` it gave work to, and then stopped. ⚑ **D-016 · the

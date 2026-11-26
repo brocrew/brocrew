@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../../src/shared/conversation-events'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
@@ -61,6 +61,10 @@ export class RecordingSink implements RuntimeEventSink {
     return this.events().map((event) => event.type)
   }
 }
+
+/** The desktop test folder, and the migrations every fixture database applies. */
+export const testDirectory = join(dirname(fileURLToPath(import.meta.url)), '..')
+export const migrationsFolder = join(testDirectory, '../src/main/db/migrations')
 
 export const syntheticProviderHome =
   (rootGetter: () => string) =>
@@ -160,6 +164,26 @@ export function fixtureTurnCounts(currentStore: () => Pick<SessionStore, 'events
   return { turnsIn, userTurnsIn }
 }
 
+/** A store's ledger read back, and the recorded moment of the one row that matches. */
+export function fixtureLedger(currentStore: () => Pick<SessionStore, 'events'>) {
+  const ledger = (sessionId: string): TranscriptEvent[] =>
+    currentStore()
+      .events(sessionId)
+      .map((entry) => entry.event)
+  const momentOf = (
+    sessionId: string,
+    matches: (event: TranscriptEvent) => boolean,
+    what: string,
+  ): number => {
+    const found = currentStore()
+      .events(sessionId)
+      .filter((entry) => matches(entry.event))
+    if (found.length !== 1) throw new Error(`expected exactly one ${what}, found ${found.length}`)
+    return (found[0] as PersistedEventInfo).at
+  }
+  return { ledger, momentOf }
+}
+
 type FixtureHost = Pick<RuntimeHost, 'closeAll'>
 
 /** Close the fixture hosts before their database and owned directories. */
@@ -253,7 +277,7 @@ export function fixtureFolder(prefix: string): string {
 
 export function fixtureDatabase(userData: string) {
   const db = openDatabase(join(userData, 'brobot2.sqlite'))
-  applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../../src/main/db/migrations'))
+  applyMigrations(db, migrationsFolder)
   return db
 }
 

@@ -6,8 +6,7 @@ import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
@@ -35,6 +34,7 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
   neutralHostDeps,
+  migrationsFolder,
 } from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
@@ -43,9 +43,6 @@ import { callOn } from './helpers/call-tool'
  * reports a piece's state, while the fold still says `stalled` once its turn ends; a worker nothing
  * is driving still reads as stalled. Real host, SQLite, migrations and tools.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('603 · waiting on an answer is not stalled', () => {
   let userData: string

@@ -1,6 +1,5 @@
 import { giveParkedWorker } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +12,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
@@ -23,7 +21,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
 } from './lib/host-fixture'
-import { callAs } from './helpers/call-tool'
+import { giverWorld, letItSettle } from './helpers/giver-world'
 
 /**
  * # 🔴 719 · a giver that asked was told — R69 and R70
@@ -124,39 +122,11 @@ describe('719 · a giver that asked was told', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const events = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
+  const { events, personOpens, callOn, cardsOn, letTheTurnEnd, held } = giverWorld(
+    () => ({ host, root, store, window }),
+    'cancel',
+  )
 
-  /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
-  const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
-
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
-    callAs(host, caller, name, args)
-
-  const cardsOn = (id: string): number =>
-    events(id).filter((event) => event.type === 'permission_request').length
-
-  /** Cancel the parked turn to exercise legacy notice receipts; quiet ends use the holder ladder. */
-  const letTheTurnEnd = async (id: string): Promise<void> => {
-    const card = events(id)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1) as { id: string } | undefined
-    if (card === undefined) throw new Error(`${id} is not parked`)
-    await host.respondPermission(id, card.id, { outcome: 'cancel' }, window)
-    await letItSettle()
-  }
-
-  /** ⚑ What is HELD for a conversation, in the order it was queued. */
-  const held = (id: string): string[] =>
-    events(id).flatMap((event) => (event.type === 'message_queued' ? [event.text] : []))
   /** ⚑ What a conversation has READ — every turn it was handed. */
   const read = (id: string): string[] =>
     events(id).flatMap((event) => (event.type === 'user_turn' ? [event.text] : []))

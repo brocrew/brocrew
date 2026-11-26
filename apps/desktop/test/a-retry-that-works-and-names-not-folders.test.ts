@@ -2,8 +2,7 @@ import { nameGracesTeam } from './helpers/graces-team'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, SessionMachine } from '@brobot2/runtime'
 import type { FakeSessionHandle, RuntimeEvent, StartOptions } from '@brobot2/runtime'
@@ -25,6 +24,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  migrationsFolder,
 } from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
 
@@ -43,8 +43,6 @@ import { callAs } from './helpers/call-tool'
  *
  * ⚑ Real host, real SQLite, real migrations, real tools; the only double is the provider.
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ `ProviderDouble`, with one start's handle decorated — the worker whose turn a stop ends. */
 class DecoratingDouble extends ProviderDouble {

@@ -3,8 +3,7 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { workStateWord } from '../src/shared/work-state-words'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import { type AgentToolset } from '@brobot2/runtime'
@@ -23,11 +22,9 @@ import {
   syntheticProviderHome,
   fixtureProviderConfig,
   neutralHostDeps,
+  migrationsFolder,
 } from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('one task, one reading, in every place it is drawn', () => {
   let userData: string

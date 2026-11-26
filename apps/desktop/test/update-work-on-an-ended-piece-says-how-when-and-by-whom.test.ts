@@ -1,5 +1,5 @@
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,8 +21,11 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  fixtureLedger,
+  closeHostFixture,
 } from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
+import { personOpener } from './helpers/person-opens-session'
 
 /**
  * F059 · `update_work` on a piece that has ended says how, when and by whom it ended (`1abdb8ab`).
@@ -210,19 +213,9 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
     pairs = 0
   })
 
-  afterEach(async () => {
-    for (const built of hosts) await built.closeAll()
-    db.close()
-    for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
-  })
+  afterEach(() => closeHostFixture(hosts, db, userData, root))
 
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   /** An identity a give can name: opened by a person, then closed. */
   const bringIdentityIntoBeing = async (profileId: string): Promise<void> => {
@@ -232,19 +225,7 @@ describe('F059 · §2 · update_work on an ended piece, through the real host an
   const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
     callAs(host, caller, name, args)
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-
-  /** The recorded moment of the one ledger row that matches, which must exist. */
-  const momentOf = (
-    sessionId: string,
-    matches: (event: TranscriptEvent) => boolean,
-    what: string,
-  ): number => {
-    const found = store.events(sessionId).filter((entry) => matches(entry.event))
-    if (found.length !== 1) throw new Error(`expected exactly one ${what}, found ${found.length}`)
-    return (found[0] as PersistedEventInfo).at
-  }
+  const { ledger, momentOf } = fixtureLedger(() => store)
 
   const rowsOf = (sessionId: string, type: TranscriptEvent['type']): number =>
     ledger(sessionId).filter((event) => event.type === type).length

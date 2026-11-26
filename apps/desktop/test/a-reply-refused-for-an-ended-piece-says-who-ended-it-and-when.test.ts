@@ -32,6 +32,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  fixtureLedger,
 } from './lib/host-fixture'
 
 /**
@@ -415,19 +416,7 @@ describe('D-025 · §3-§6 · a refused reply through the real host', () => {
   /** The toolset a session's calls are driven through, built the way the launch builds it. */
   const toolsOf = (sessionId: string): AgentToolset => agentToolsFor(host, sessionId)
 
-  const ledger = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-
-  /** The recorded moment of the one ledger row that matches, which must exist. */
-  const momentOf = (
-    sessionId: string,
-    matches: (event: TranscriptEvent) => boolean,
-    what: string,
-  ): number => {
-    const found = store.events(sessionId).filter((entry) => matches(entry.event))
-    if (found.length !== 1) throw new Error(`expected exactly one ${what}, found ${found.length}`)
-    return (found[0] as PersistedEventInfo).at
-  }
+  const { ledger, momentOf } = fixtureLedger(() => store)
 
   /** The turn parks on a person's card; once it has, the piece is open and its brief delivered. */
   const cardOn = async (sessionId: string): Promise<void> => {

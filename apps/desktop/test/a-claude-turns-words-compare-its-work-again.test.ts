@@ -2,8 +2,7 @@ import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, SessionMachine } from '@brobot2/runtime'
 import type { FakeSessionHandle, RuntimeEvent, StartOptions } from '@brobot2/runtime'
@@ -21,8 +20,12 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  migrationsFolder,
+  testDirectory as here,
 } from './lib/host-fixture'
 import { callAs } from './helpers/call-tool'
+import { personOpener } from './helpers/person-opens-session'
+import { letItSettle } from './helpers/giver-world'
 
 /**
  * # 🔴 D-033 · a Claude turn's words compare what its conversation holds again (`05eb3115`)
@@ -54,8 +57,6 @@ import { callAs } from './helpers/call-tool'
  *    append (finding 4 of the change's review: §5 of `work-moved-and-nothing-announced-it` forbids
  *    announcing in the plumbing, and this is the one compare it now holds).
  */
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const srcRoot = join(here, '../src')
 
 /** ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. */
@@ -269,16 +270,7 @@ describe('D-033 · a Claude turn’s words compare what its conversation holds a
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
-  const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
-
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
+  const personOpens = personOpener(() => ({ host, root, window }), 'ask')
 
   const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
     callAs(host, caller, name, args)

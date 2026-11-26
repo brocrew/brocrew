@@ -2,8 +2,7 @@ import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-whic
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -25,7 +24,11 @@ import {
   type ActedBy,
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  neutralHostDeps,
+  migrationsFolder as migrationsDir,
+} from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
@@ -38,9 +41,6 @@ import { callOn } from './helpers/call-tool'
  * because today's code cannot produce it. The provider is a double and every directory is
  * temporary.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsDir = join(here, '../src/main/db/migrations')
 
 const HOUR = 3_600_000
 const FROM = 1_800_000_000_000

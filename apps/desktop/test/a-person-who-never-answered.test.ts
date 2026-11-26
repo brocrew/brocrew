@@ -2,8 +2,7 @@ import { theParentAnswersWhichDatabase } from './helpers/the-parent-answers-whic
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import {
   FakeProviderSessions,
   FakeRuntime,
@@ -33,11 +32,9 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  migrationsFolder as migrationsDir,
 } from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsDir = join(here, '../src/main/db/migrations')
 
 const HOUR = 3_600_000
 const FROM = 1_800_000_000_000

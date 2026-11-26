@@ -5,20 +5,14 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  migrationsFolder,
 } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-  UserInputResponse,
-} from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { FakeSessionHandle, UserInputResponse } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -28,6 +22,7 @@ import { type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { callAs } from './helpers/call-tool'
+import { ProviderDouble } from './lib/provider-double'
 
 /**
  * 🔴 **D-009 · a model's OWN question stays the model's.**
@@ -51,30 +46,6 @@ import { callAs } from './helpers/call-tool'
  * ⚑ Real host, real SQLite ledger, real toolsets; the only double is the provider, whose handles
  * are kept so a test can BE the provider and raise the request.
  */
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/** ⚑ The provider double, with every handle it issued kept — starts AND resumes. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 /**
  * ⛔ **Whether the provider was answered, after a real interval** — a request nobody answers never

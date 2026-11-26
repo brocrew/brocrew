@@ -7,8 +7,7 @@ import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { AgentToolset, FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -32,11 +31,10 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  migrationsFolder,
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('400 · never close what you did not see finish', () => {
   let userData: string

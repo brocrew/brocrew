@@ -7,12 +7,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import { type ToolName } from '../src/main/runtime/agent-tools'
+import { giverWorld, letItSettle } from './helpers/giver-world'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
   waitFor,
-  type TranscriptEvent,
   fixtureFolder,
   fixtureDatabase,
   RecordingSink,
@@ -20,7 +19,6 @@ import {
   neutralHostDeps,
   fixtureProviderConfig,
 } from './lib/host-fixture'
-import { callAs } from './helpers/call-tool'
 
 /**
  * # 🔴 698 · the wake's last stale sentences — `690` F-1, R37 (`690` F-2), `690` F-3, `692` F-e
@@ -101,41 +99,13 @@ describe('698 · the wake’s last stale sentences', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  const events = (sessionId: string): TranscriptEvent[] =>
-    store.events(sessionId).map((entry) => entry.event)
-
-  /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
-  const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
-
-  const personOpens = async (profileId: string): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode: 'ask', cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
-    callAs(host, caller, name, args)
-
-  const cardsOn = (id: string): number =>
-    events(id).filter((event) => event.type === 'permission_request').length
-
-  /** ⚑ Let the turn a conversation is parked in end — the person answers its last card. */
-  const letTheTurnEnd = async (id: string): Promise<void> => {
-    const card = events(id)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1) as { id: string } | undefined
-    if (card === undefined) throw new Error(`${id} is not parked`)
-    await host.respondPermission(id, card.id, { outcome: 'allow' }, window)
-    await letItSettle()
-  }
+  const { events, personOpens, callOn, cardsOn, letTheTurnEnd, held } = giverWorld(
+    () => ({ host, root, store, window }),
+    'allow',
+  )
 
   /** Every accepted giver notice, including a completed holder-first step. */
   const receipts = (pm: string): unknown[] => giverStallReceipts(store, pm)
-  /** ⚑ What is HELD for a conversation, in the order it was queued. */
-  const held = (id: string): string[] =>
-    events(id).flatMap((event) => (event.type === 'message_queued' ? [event.text] : []))
   /** ⚑ What a conversation has READ — every turn it was handed. */
   const read = (id: string): string[] =>
     events(id).flatMap((event) => (event.type === 'user_turn' ? [event.text] : []))

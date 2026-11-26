@@ -8,8 +8,7 @@ import type { RequestState } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import type { AgentToolset, FakeSessionHandle, UserInputResponse } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
@@ -25,12 +24,12 @@ import {
   RecordingSink,
   syntheticProviderHome,
   neutralHostDeps,
+  migrationsFolder,
+  testDirectory as here,
 } from './lib/host-fixture'
 import { ProviderDouble } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
 describe('397 · the word for a question nobody stopped', () => {

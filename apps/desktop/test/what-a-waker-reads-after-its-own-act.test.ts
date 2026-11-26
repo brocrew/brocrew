@@ -1,10 +1,8 @@
 import { giveNamedChildTask } from './lib/give-fixture'
 import { waitFor } from './lib/f093-host'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions } from '@brobot2/runtime'
 import type { FakeSessionHandle } from '@brobot2/runtime'
@@ -13,7 +11,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { giverStallReceipts, isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import { type ToolName } from '../src/main/runtime/agent-tools'
+import { giverWorld, letItSettle } from './helpers/giver-world'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
@@ -23,11 +21,8 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   fixtureProviderConfig,
+  migrationsFolder,
 } from './lib/host-fixture'
-import { callAs } from './helpers/call-tool'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('what a waker reads after its own act', () => {
   let userData: string
@@ -88,44 +83,12 @@ describe('what a waker reads after its own act', () => {
     host = buildHost(createSessionStore(db, tick))
   }
 
-  const ledger = (sessionId: string) => store.events(sessionId)
-  const events = (sessionId: string): TranscriptEvent[] =>
-    ledger(sessionId).map((entry) => entry.event)
-
-  /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
-  const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))
-
-  const personOpens = async (
-    profileId: string,
-    approvalMode: 'ask' | 'auto' = 'ask',
-  ): Promise<string> => {
-    const { sessionId } = await host.createSession(
-      { provider: 'claude', profileId, approvalMode, cwd: root },
-      window,
-    )
-    return sessionId
-  }
-
-  const callOn = (caller: string, name: ToolName, args: Record<string, unknown> = {}) =>
-    callAs(host, caller, name, args)
-
-  const cardsOn = (id: string): number =>
-    events(id).filter((event) => event.type === 'permission_request').length
-
-  /** ⚑ Let the turn a conversation is parked in end — the person answers its last card. */
-  const letTheTurnEnd = async (id: string): Promise<void> => {
-    const card = events(id)
-      .filter((event) => event.type === 'permission_request')
-      .at(-1) as { id: string } | undefined
-    if (card === undefined) throw new Error(`${id} is not parked`)
-    await host.respondPermission(id, card.id, { outcome: 'allow' }, window)
-    await letItSettle()
-  }
+  const { events, personOpens, callOn, cardsOn, letTheTurnEnd, held } = giverWorld(
+    () => ({ host, root, store, window }),
+    'allow',
+  )
 
   const receipts = (pm: string): unknown[] => giverStallReceipts(store, pm)
-  /** ⚑ What is HELD for a conversation, in the order it was queued. */
-  const held = (id: string): string[] =>
-    events(id).flatMap((event) => (event.type === 'message_queued' ? [event.text] : []))
   /**
    * ⚑ What a conversation has READ — every message of every turn it was handed. 🔴 **D-027** — a
    * turn of several carries each message as a `part`, its own `text` the words joined, so a turn is
