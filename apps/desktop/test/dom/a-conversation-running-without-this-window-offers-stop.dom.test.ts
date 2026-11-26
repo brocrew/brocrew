@@ -114,6 +114,44 @@ describe('a conversation running without this window offers Stop', () => {
     expect(asked).toEqual([])
   })
 
+  it('🔴 a page that ended or failed under a newer Active: busy, and no Stop until the page shows a turn', () => {
+    for (const status of ['ended', 'errored'] as const) {
+      const asked: string[] = []
+      const m = shownFromItsLedger(
+        status,
+        { is: 'active' },
+        { onInterrupt: () => asked.push('stop') },
+      )
+      expect(m.q('composer-hint').textContent, status).toContain('is working')
+      expect(m.all('interrupt-session'), status).toHaveLength(0)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      expect(asked, status).toEqual([])
+      m.unmount()
+    }
+  })
+
+  it('⚑ a page waiting on a person under Active: Stop, and it asks the host', () => {
+    const asked: string[] = []
+    const m = shownFromItsLedger(
+      'waiting_permission',
+      { is: 'active' },
+      { onInterrupt: () => asked.push('stop') },
+    )
+    m.q('interrupt-session').click()
+    expect(asked).toEqual(['stop'])
+  })
+
+  it('⚑ a message from this view starting it keeps the start’s Stop, whatever the page says', () => {
+    const asked: string[] = []
+    const m = shownFromItsLedger(
+      'ended',
+      { is: 'active' },
+      { launching: true, onInterrupt: () => asked.push('stop') },
+    )
+    m.q('interrupt-session').click()
+    expect(asked).toEqual(['stop'])
+  })
+
   it('⚑ the control one fact over: a ledger view the host does not call Active is idle, whatever its page last said', () => {
     for (const hostSays of [{ is: 'idle' } as AgentState, null]) {
       const m = shownFromItsLedger('working', hostSays)
