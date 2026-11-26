@@ -43,14 +43,13 @@ import {
   THIS_CONVERSATION_HEADER,
 } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { readSavedMethods } from '../src/main/saved-methods'
 import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # adc4232b · a Codex thread carries BroBot's lead once, then only what changed — over the host
@@ -63,17 +62,6 @@ import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt: boolean = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** An async queue the scripted app-server pushes into. */
 class Wire<T> implements AsyncIterable<T> {

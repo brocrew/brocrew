@@ -17,10 +17,14 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION } from '../src/main/runtime/question-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**
@@ -30,14 +34,6 @@ import { callOn } from './helpers/call-tool'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 /** Every provider launch the host asks for, in order. */
 interface Launched {

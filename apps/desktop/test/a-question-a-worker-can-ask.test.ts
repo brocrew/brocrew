@@ -16,7 +16,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { REPLY_ADDRESSING_KEYS } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
@@ -24,9 +23,13 @@ import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { stillHeld } from '../src/shared/mailbox'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **437 · the question a worker can ask its parent** — criterion 29, HO-019 §1.
@@ -87,17 +90,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 describe('437 · a question a worker can ask its parent', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   /** ⚑ `415`'s instrument: remember the toolset each launch was handed. */
   let userData: string
   let root: string

@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aGiverAndHelper, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aGiverAndHelper, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * What each conversation waits on is composed once and shared by every window that asks, until

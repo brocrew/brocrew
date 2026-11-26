@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { agentStateWords } from '../src/shared/agent-state'
 import { parseLinkTarget } from '../src/shared/link-resolution'
 import { conversationLink as formatConversationLink } from '../src/shared/links'
+import { RecordingSink } from './lib/host-fixture'
 
 const conversationLink = (id: string) => `brocrew://conversation/${encodeURIComponent(id)}`
 const pieceLink = (id: string) => `brocrew://piece/${encodeURIComponent(id)}`

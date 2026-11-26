@@ -2,7 +2,7 @@ import { RuntimeHost as GiverNoticeHost } from './helpers/giver-notice-host'
 import { snapshotWindowReads } from './helpers/snapshot-window-reads'
 import { waitFor } from './lib/f093-host'
 import { callOn } from './helpers/call-tool'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,10 +28,9 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import type { SendReceipt } from '../src/shared/tool-outcome'
 import { stalledWorkSaid } from '../src/shared/stalled-work'
 import { undrivenSentence } from '../src/shared/tasks'
@@ -81,17 +80,6 @@ const ITS_TURN_WAS_STOPPED = undrivenSentence('turn_interrupted')
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⛔ Every provider launch the host asks for, in order — `start` or `resume`, and for which ref. */
 interface Launched {

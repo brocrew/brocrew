@@ -1,8 +1,9 @@
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * Both halves of the listing are composed once and shared by every window that asks, until

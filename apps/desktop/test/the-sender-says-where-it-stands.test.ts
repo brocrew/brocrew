@@ -9,12 +9,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
-import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { agentName } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
+  RecordingSink,
   fixtureFolder,
   fixtureDatabase,
   syntheticProviderHome,
@@ -39,17 +39,6 @@ import { callOn } from './helpers/call-tool'
  */
 
 describe('D-011 · the sender says where it stands', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   /** ⚑ Every toolset a launch was handed, in order. */
   let userData: string
   let root: string

@@ -18,13 +18,16 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -38,17 +41,6 @@ const BOUND = 150
 // a question does not expire on a clock because there is no clock, not because this one is short.
 
 describe('591 · a question does not expire on a clock', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   /** ⚑ `415`'s instrument: remember the toolset each launch was handed. */
   let userData: string
   let root: string

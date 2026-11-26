@@ -10,12 +10,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
+  RecordingSink,
   fixtureFolder,
   fixtureDatabase,
   syntheticProviderHome,
@@ -41,17 +40,6 @@ import {
  */
 
 describe('F080 · a giver reads its child’s wake', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase

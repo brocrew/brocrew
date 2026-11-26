@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
@@ -24,7 +24,7 @@ import {
   type SnapshotAnswer,
 } from '../src/shared/provider-snapshots'
 import type { PartSize, WhatThisAgentWasGiven } from '../src/shared/what-this-agent-was-given'
-import type { ProviderVersion, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { ProviderVersion } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 F093 · R3 — the popup's provider slot holds this build's snapshot, for the model the
@@ -47,17 +47,6 @@ import type { ProviderVersion, RuntimeEventMessage } from '../src/shared/runtime
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt: boolean = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 type Seam = (provider: Provider, model: string | null) => SnapshotAnswer
 

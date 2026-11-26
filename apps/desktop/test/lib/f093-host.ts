@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './host-fixture'
+import { RecordingSink, neutralHostDeps } from './host-fixture'
 import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
 import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -17,11 +17,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type RuntimeHostDeps,
-  type RuntimeEventSink,
-} from '../../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
 import { toolsToldInTextFor } from '../../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../../src/main/runtime/factory-text'
@@ -30,7 +26,6 @@ import { CLAUDE_INSTRUCTIONS_FILE } from '../../src/main/providers/claude/layout
 import { brobotWorkspace, workspaceOwnFilesIn } from '../../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * # F093 · one world for the gap tests: a real host on the fake runtime, on throwaway folders
@@ -110,20 +105,6 @@ export class CapturingRuntime extends FakeRuntime {
     this.end.take(this.provider, handle, options)
     return handle
   }
-}
-
-/** A window, or — with `aPersonIsBehindIt: false` — a channel no person is behind. */
-export class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** ⚑ Bounded: 400 × 10 ms at most, then a named failure. */

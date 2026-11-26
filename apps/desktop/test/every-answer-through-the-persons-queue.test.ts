@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import type {
   LedgerWalk,
   LedgerWalkKind,
@@ -31,7 +31,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { answerFor, attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import {
   noPositiveSays,
@@ -56,7 +56,6 @@ import {
   DEFAULT_PROFILE_ID,
   type CreatedSession,
   type RuntimeCommand,
-  type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 
 /**
@@ -89,20 +88,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-
-  constructor(readonly ownerId: string) {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(): void {}
 }
 
 /** Keeps the fake handles and app tools so the assertion can observe the other side of the host. */

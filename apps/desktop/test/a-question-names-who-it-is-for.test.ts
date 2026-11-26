@@ -23,7 +23,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { TOOL_INPUT_ENUMS, type ToolName } from '../src/main/runtime/agent-tools'
 import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails'
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
@@ -40,9 +39,8 @@ import {
   theChannelRefusalIn,
   whereItWent,
 } from '../src/shared/questions'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **611 · a question names who it is for** — `HO-088` §2, §3 and §4.1, and `HO-090` §4.
@@ -95,17 +93,6 @@ const codeOf = (file: string): string =>
     .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 describe('611 · a question names who it is for', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase

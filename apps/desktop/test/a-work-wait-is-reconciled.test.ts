@@ -1,5 +1,5 @@
 import { HandleKeepingRuntime as ProviderDouble } from './helpers/handle-keeping-runtime'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { registerProviderFailureFallbackCases } from './helpers/provider-failure-fallback-cases'
 import { registerPacedReminderQuitCase } from './helpers/paced-reminder-quit-case'
@@ -37,28 +37,16 @@ import {
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { NO_CUTS_KEPT, turnsTheAppCutIn, type CutRecord } from '../src/main/turns-the-app-cut-file'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 import type { ReconciliationPiece } from '../src/main/runtime/work-reconciliation'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('a work wait is reconciled without a window', () => {
   let userData: string

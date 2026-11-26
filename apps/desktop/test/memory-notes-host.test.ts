@@ -34,12 +34,6 @@ const migrationsDir = join(here, '../src/main/db/migrations')
 
 /** A window's sink: the tests below answer for a person through it. */
 class RecordingSink extends WindowSink {
-  constructor(ownerId = 'owner:1') {
-    super(ownerId)
-  }
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
   notes(): MemoryNoteEvent[] {
     return this.events().filter((event): event is MemoryNoteEvent => event.type === 'memory_note')
   }

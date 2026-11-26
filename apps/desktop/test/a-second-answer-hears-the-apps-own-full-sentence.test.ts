@@ -1,6 +1,7 @@
 import { newConversationGive } from './lib/give-fixture'
 import { callOn } from './helpers/call-tool'
 import {
+  RecordingSink,
   fixtureProviderConfig,
   latestToolset,
   neutralHostDeps,
@@ -19,7 +20,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 /**
@@ -42,14 +42,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
-}
 
 describe('M77 · a second answer to an already-answered question', () => {
   let userData: string

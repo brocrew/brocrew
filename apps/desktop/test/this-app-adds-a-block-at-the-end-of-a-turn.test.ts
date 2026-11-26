@@ -42,8 +42,12 @@ import {
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -60,17 +64,6 @@ const shipped = readBuiltInSkills(
  * mode each of the double's turns waits on a card, and ends when the card is answered.
  */
 describe('this app adds a block at the end of what a turn hands its agent', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   class ToolWatchingRuntime extends FakeRuntime {
     constructor(
       provider: Provider,

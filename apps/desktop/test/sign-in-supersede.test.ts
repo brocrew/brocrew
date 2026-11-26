@@ -1,5 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,12 +8,7 @@ import { FakeProviderSessions, FakeRuntime, type SessionHandle } from '@brobot2/
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { NULL_SESSION_STORE, createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * 147 · A session that follows the machine account — the host half.
@@ -29,32 +23,6 @@ import type {
  * refusal lands at the turn boundary and *only* at the turn boundary — nothing is interrupted,
  * nothing is closed, and nothing is thrown away.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-
-  types(): string[] {
-    return this.events().map((event) => event.type)
-  }
-}
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 

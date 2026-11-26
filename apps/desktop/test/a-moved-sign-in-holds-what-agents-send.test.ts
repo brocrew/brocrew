@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,14 +14,9 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { ACommandTakesNoAttachments } from '../src/main/runtime/a-command-goes-as-typed'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
 import { PROVIDER_NAME } from '../src/shared/runtime-ipc'
 
 /**
@@ -34,32 +29,6 @@ import { PROVIDER_NAME } from '../src/shared/runtime-ipc'
  * reopen would cost something — and the sender's receipt says which, in words that promise only what
  * the app will do. ⛔ An idle conversation is reopened at once, and nothing held is ever ended.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-
-  types(): string[] {
-    return this.events().map((event) => event.type)
-  }
-}
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 

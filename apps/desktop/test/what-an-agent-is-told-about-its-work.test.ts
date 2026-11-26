@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -14,7 +14,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { TOOL_NAMES, TOOL_REFUSALS, refuseTool } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, thisConversationSpans } from '../src/main/runtime/factory-text'
@@ -30,7 +29,6 @@ import {
   WORK_SEARCH_REFUSAL_WORDS,
   workSearchRefusal,
 } from '../src/shared/work-search-words'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { callOn } from './helpers/call-tool'
@@ -43,17 +41,6 @@ const FINISHING_LINE = 'Finish it by calling reply_to_parent with piece '
 
 /** The shape of a piece's label, as a model reading a turn sees it. */
 const A_LABEL = /W[1-9][0-9]*(?:\.[1-9][0-9]*)+/
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('what an agent is told about its work', () => {
   let userData: string

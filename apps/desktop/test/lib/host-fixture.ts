@@ -31,18 +31,35 @@ import type {
   RuntimeEventMessage,
   RuntimeStatesMessage,
   ResumableSessionInfo,
+  SessionLiveness,
+  SessionLivenessMessage,
   UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 
+/**
+ * A window double that keeps everything the host sends it: transcript messages and liveness, in
+ * order. A person is behind it unless `aPersonIsBehindIt` says otherwise.
+ */
 export class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
   readonly messages: RuntimeEventMessage[] = []
+  readonly liveness: SessionLiveness[] = []
   alive = true
-  constructor(readonly ownerId: string) {}
+  constructor(
+    readonly ownerId = 'owner:1',
+    readonly aPersonIsBehindIt = true,
+  ) {}
   send(message: RuntimeEventMessage): void {
     this.messages.push(message)
   }
-  sendLiveness(): void {}
+  sendLiveness(message: SessionLivenessMessage): void {
+    this.liveness.push(message.liveness)
+  }
+  events(): TranscriptEvent[] {
+    return this.messages.map((message) => message.event)
+  }
+  types(): string[] {
+    return this.events().map((event) => event.type)
+  }
 }
 
 export const syntheticProviderHome =

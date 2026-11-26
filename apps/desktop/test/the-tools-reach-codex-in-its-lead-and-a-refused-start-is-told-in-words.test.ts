@@ -64,7 +64,7 @@ import {
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import {
   AGENT_TOOL_INSTRUCTIONS,
@@ -77,10 +77,14 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { toldView } from '../src/renderer/src/lib/told'
 import { whoseGroups } from '../src/renderer/src/lib/whose-groups'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { homesUnder } from './helpers/scratch-host'
 
 /**
@@ -119,19 +123,6 @@ import { homesUnder } from './helpers/scratch-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** An async queue the scripted app-server pushes into. */
 class Wire<T> implements AsyncIterable<T> {

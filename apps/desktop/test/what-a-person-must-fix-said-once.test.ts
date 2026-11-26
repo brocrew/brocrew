@@ -4,7 +4,7 @@ import { personOpener } from './helpers/person-opens-session'
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
 import { format } from 'node:util'
 import { expectRecordedCannotRun, expectTaskKept } from './lib/recorded-send'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,13 +17,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { CodexUnavailableError } from '../src/main/providers/codex/program'
 import { SessionUnavailable, describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 // Windows chmod cannot create the POSIX EACCES fixture these witnesses require.
@@ -31,17 +30,6 @@ const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const REAL_ARCH = Object.getOwnPropertyDescriptor(process, 'arch') as PropertyDescriptor
 

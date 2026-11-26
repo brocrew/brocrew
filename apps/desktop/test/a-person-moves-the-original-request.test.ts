@@ -18,9 +18,9 @@ import {
 } from '../src/shared/move-request'
 import { conversationLink } from '../src/shared/links'
 import type { SessionStore } from '../src/main/db/session-store'
-import { RecordingSink } from './helpers/a-service-world'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { AgentToolAnswer } from '@brobot2/runtime'
+import { RecordingSink } from './lib/host-fixture'
 
 const PERSON = { who: 'a-person' as const }
 

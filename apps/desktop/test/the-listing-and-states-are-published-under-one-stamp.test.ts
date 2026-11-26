@@ -2,11 +2,12 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
-import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeChangeMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import type { ListingAnswer, PublishedListing } from '../src/shared/listing-published'
 import { acceptAnswer, acceptPush, emptyScope } from '../src/shared/data-version'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * The listing is answered as one publication: both halves from one composition under one stamp. A

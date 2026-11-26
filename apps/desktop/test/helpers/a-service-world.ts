@@ -1,5 +1,5 @@
 import { expect, vi } from 'vitest'
-import { neutralHostDeps } from '../lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from '../lib/host-fixture'
 import { seedHistoricalSuccessor } from '../lib/historical-replacement'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
@@ -27,14 +27,9 @@ import {
   type ProfileExecution,
 } from '../../src/main/profile-execution-file'
 import { agentCallerId, agentToolsFor, type ToolName } from '../../src/main/runtime/agent-tools'
-import {
-  RuntimeHost,
-  type GiveOutcome,
-  type RuntimeEventSink,
-} from '../../src/main/runtime/runtime-host'
+import { RuntimeHost, type GiveOutcome } from '../../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * A data folder with a database and a services list, and hosts over it, for the tests of service
@@ -46,17 +41,6 @@ const migrationsDir = join(here, '../../src/main/db/migrations')
 
 /** 2026-10-11 15:00 UTC. */
 export const NOW = 1_791_730_800_000
-
-export class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** Which writes of the services list fail: none, every one, or those holding this field. */
 type WritesFail = 'none' | 'all' | keyof ProfileExecution

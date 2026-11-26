@@ -1,5 +1,10 @@
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  neutralHostDeps,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,7 +31,6 @@ import {
   providerName,
   seededProviderFor,
   type AgentIdentity,
-  type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { callOn } from './helpers/call-tool'
 
@@ -34,17 +38,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt: boolean = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class NobodyThere extends RecordingSink {
   override readonly aPersonIsBehindIt = false

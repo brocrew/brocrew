@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -85,20 +85,6 @@ class CapturingRuntime extends FakeRuntime {
     const handle = this.issued.at(-1)
     if (handle === undefined) throw new Error('no session has been started on this runtime')
     return handle
-  }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
   }
 }
 

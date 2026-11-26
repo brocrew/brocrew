@@ -5,8 +5,9 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { CODEX_INSTRUCTIONS_FILE } from '../src/main/providers/codex/layout.mjs'
 import { brobotWorkspace } from '../src/main/runtime/workspace'
 import { sizeOf, type WhatThisAgentWasGiven } from '../src/shared/what-this-agent-was-given'
-import { F093World, RecordingSink, waitFor } from './lib/f093-host'
+import { F093World, waitFor } from './lib/f093-host'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * # the one read (`bridge.whatThisAgentWasGiven`) — who wrote each part, and how the tools are handed

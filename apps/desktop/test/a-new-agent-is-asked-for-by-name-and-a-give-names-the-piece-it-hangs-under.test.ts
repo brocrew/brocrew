@@ -11,16 +11,12 @@ import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentIdentityRowId } from '../src/main/db/identity'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  agentName,
-  type IdentityCreator,
-  type RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { agentName, type IdentityCreator } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import {
+  RecordingSink,
   fixtureFolder,
   fixtureDatabase,
   syntheticProviderHome,
@@ -58,17 +54,6 @@ import {
 const by = (agent: string): IdentityCreator => ({ by: 'an-agent', agent })
 
 describe('D-016 · a new agent is asked for by name, and a give names the piece it hangs under', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   /** Every toolset a launch was handed, in order. */
   let userData: string
   let root: string

@@ -21,7 +21,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { conversationBlock, readSessionInstructions } from '../src/main/runtime/instructions'
@@ -51,10 +51,9 @@ import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/worksp
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { howYouWork } from './lib/the-core'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { RecordingSink, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # what an agent was given — recorded with each launch and each turn, read in one go
@@ -78,17 +77,6 @@ class CapturingRuntime extends FakeRuntime {
     this.handed.push(opts.agentTools)
     return handle
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt: boolean = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** A channel with no person behind it — what the window's own sink is not. */

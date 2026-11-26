@@ -1,4 +1,3 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,12 +9,12 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { attentionQueue } from '../src/renderer/src/lib/attention'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
-import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
+import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * A Claude card the SDK aborts while it waits, end to end: the real Claude adapter under the real
@@ -64,20 +63,6 @@ class FakeQuery {
         })
       },
     })
-  }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  readonly ownerId = 'owner:1'
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
   }
 }
 

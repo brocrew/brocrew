@@ -1,4 +1,3 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,14 +12,9 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # The giver's `list_tasks` row says what the words held for its helper wait for
@@ -33,32 +27,6 @@ import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
  * the receipt's words, and says it on its line. ⚑ Controls: a helper whose sign-in never moved
  * carries none, and the row stops saying it once the held words go in.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-
-  types(): string[] {
-    return this.events().map((event) => event.type)
-  }
-}
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 

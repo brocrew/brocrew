@@ -1,9 +1,10 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { aGiverAndHelper, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
+import { aGiverAndHelper, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * Each answer of the person's queue is composed once and shared by every window that asks, until
