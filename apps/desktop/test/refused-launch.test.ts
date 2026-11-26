@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +15,7 @@ import {
   prepareProviderHome,
 } from '../src/main/connections/homes'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID, type CwdVerdict } from '../src/shared/runtime-ipc'
 
 /**
@@ -37,12 +37,8 @@ import { DEFAULT_PROFILE_ID, type CwdVerdict } from '../src/shared/runtime-ipc'
  * orderings apart.
  */
 
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class NullSink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 describe('203 · a refused launch provisions nothing (195 H4)', () => {

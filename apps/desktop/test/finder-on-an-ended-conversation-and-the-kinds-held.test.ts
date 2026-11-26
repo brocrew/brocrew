@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +10,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { readProviderConfig } from '../src/main/runtime/provider-config'
 import { refuseReply } from '../src/main/runtime/reply-rails'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   DOCUMENT_FORMS,
   FORM_OF_EXTENSION,
@@ -28,12 +28,8 @@ import {
  * is a dummy.
  */
 
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class NullSink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')

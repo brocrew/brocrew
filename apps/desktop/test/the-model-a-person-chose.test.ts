@@ -21,11 +21,7 @@ import {
   parseModelChoice,
   type SessionStore,
 } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type CallerIdentity,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, noPersonBehindIt } from '../src/main/runtime/ipc'
 import {
   admitGive,
@@ -464,12 +460,8 @@ class CatalogueDouble extends FakeRuntime {
   }
 }
 
-class NobodyBehindIt implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
+class NobodyBehindIt extends Window {
+  override readonly aPersonIsBehindIt = false
 }
 
 describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider’s own list', () => {

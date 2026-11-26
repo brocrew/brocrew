@@ -25,7 +25,7 @@ import {
   deriveProviderHome,
   prepareProviderHome,
 } from '../src/main/connections/homes'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import type { CodexSignIn } from '../src/main/providers/codex/types'
 import {
   applyEvent,
@@ -34,7 +34,7 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 // Fictional sign-ins are compared by digest so failures never print their contents.
 
@@ -50,17 +50,14 @@ const DEAD = signIn('acct-fictional-a', 'DEAD', '2026-10-08T22:00:00Z')
 const BROBOTS_OWN_BEFORE = signIn('acct-fictional-a', 'BROBOT-BEFORE', '2026-10-07T09:00:00Z')
 const ANOTHER_ACCOUNT = signIn('acct-fictional-b', 'OTHER', '2026-10-08T22:00:00Z')
 
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = 'owner:1'
-  readonly alive = true
+class Sink extends RecordingSink {
   readonly errors: TranscriptEvent[] = []
   working = 0
-  send(message: RuntimeEventMessage): void {
+  override send(message: RuntimeEventMessage): void {
+    super.send(message)
     if (message.event.type === 'error') this.errors.push(message.event)
     if (message.event.type === 'status' && message.event.state === 'working') this.working += 1
   }
-  sendLiveness(): void {}
 }
 
 const says = (handle: FakeSessionHandle, error: RuntimeEvent): void =>
