@@ -370,6 +370,10 @@ test('Git overlap uses candidate line boundaries, including moves and new paths'
     assert.equal(existed(pair([renamed, 9, 14], ['deleted-line.ts', 4, 8])), false)
     assert.equal(existed(pair([renamed, 9, 13], ['deleted-line.ts', 3, 8])), false)
     assert.equal(existed(pair([renamed, 6, 8], [renamed, 16, 18])), true)
+    // Regions of two different base pairs: old duplication jscpd now aligns differently.
+    assert.equal(existed(pair([renamed, 9, 13], [renamed, 16, 18])), true)
+    assert.equal(existed(pair(['deleted-line.ts', 4, 8], [renamed, 6, 8])), true)
+    assert.equal(existed(pair(['deleted-line.ts', 4, 8], [renamed, 6, 9])), false)
     assert.equal(existed(pair([renamed, 5, 8], [renamed, 16, 18])), false)
     assert.equal(existed(pair(['new file.ts', 1, 1], [renamed, 9, 13])), false)
     // Line 7 replaced line 6, so that endpoint keeps no base line: a rewrite, not the old pair.
@@ -480,7 +484,7 @@ const block = (seed) =>
     '',
   ].join('\n')
 
-function nativeCase(change) {
+function nativeCase(change, baseFiles = {}) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-native-'))
   const source = path.join(temporary, 'source')
   fs.mkdirSync(source)
@@ -576,6 +580,7 @@ function nativeCase(change) {
     git('init', '--template=')
     for (const file of ['a.ts', 'b.ts']) write(file, block(100))
     for (const file of ['c.ts', 'd.ts']) write(file, block(1000))
+    for (const [file, text] of Object.entries(baseFiles)) write(file, text)
     git('add', '.')
     git('-c', 'core.hooksPath=' + os.devNull, 'commit', '-m', 'Native fixture base')
     const base = git('rev-parse', 'HEAD')
@@ -671,6 +676,31 @@ test(
     })
     assert.ok(classification.countedFindings.length > 0)
     for (const finding of classification.countedFindings) assert.match(finding, /\/e\.ts:/)
+  },
+)
+
+test(
+  'native NEW from old copies re-paired after their partner is removed is existing',
+  { timeout: 120000 },
+  () => {
+    const { before, after, classification } = nativeCase(
+      ({ source, write }) => {
+        fs.unlinkSync(path.join(source, 'a.ts'))
+        for (const file of ['b.ts', 'e.ts'])
+          write(file, renameLine(block(100), 'value100_11 =', 'renamed100_11 ='))
+      },
+      { 'e.ts': block(100) },
+    )
+    const pairs = (value) =>
+      value.duplicates.map((d) =>
+        [path.basename(d.firstFile.name), path.basename(d.secondFile.name)].sort().join('|'),
+      )
+    // On the base, jscpd paired b.ts and e.ts each with a.ts, never with each other.
+    assert.ok(!pairs(before).includes('b.ts|e.ts'), pairs(before).join(', '))
+    assert.ok(pairs(after).includes('b.ts|e.ts'), pairs(after).join(', '))
+    assert.ok(classification.nativeFindings.length > 0)
+    assert.ok(classification.existingRecords.length > 0)
+    assert.equal(classification.countedFindings.length, 0)
   },
 )
 

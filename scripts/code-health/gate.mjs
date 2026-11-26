@@ -260,18 +260,20 @@ function carryLine(hunks, line, edge) {
 }
 
 /**
- * Whether a candidate clone pair already existed on the base: both endpoints lie inside the two
- * endpoints of one pair the plain base scan reported, carried to candidate lines through the diff,
- * and each endpoint keeps at least one unchanged base line. Native fingerprints change when any
- * token inside a pair changes, so an edited old pair reads as NEW natively; a grown pair extends
- * past the carried span, and a rewritten one keeps no base line, so both stay counted.
+ * Whether a candidate clone pair is old duplication: each endpoint lies inside a duplicated region
+ * the plain base scan reported in that same file, carried to candidate lines through the diff, and
+ * keeps at least one unchanged base line. The two regions need not have been paired with each other
+ * on the base: jscpd pairs each copy with one earlier copy, so removing or editing one copy can
+ * re-pair the others. Native fingerprints change when any token inside a pair changes, so an
+ * edited old pair reads as NEW natively; a grown endpoint extends past its carried region, a
+ * rewritten one keeps no base line and a new copy has no base region, so all three stay counted.
  */
 export function existedOnBase(base, baseReport, baseRoot, cwd = root) {
   const { files } = gitChanges(base, cwd)
   const changed = changedRanges(files)
   const carried = new Map()
   for (const { from, to, hunks } of files) if (from) carried.set(from, { name: to, hunks })
-  const spans = baseReport.duplicates.map((clone) =>
+  const regions = baseReport.duplicates.flatMap((clone) =>
     [clone.firstFile, clone.secondFile].map((file) => {
       const name = relativeTo(baseRoot, file.name)
       const { name: to, hunks } = carried.get(name) ?? { name, hunks: [] }
@@ -289,10 +291,8 @@ export function existedOnBase(base, baseReport, baseRoot, cwd = root) {
     return false
   }
   return (clone) =>
-    spans.some(
-      ([a, b]) =>
-        (inside(clone.firstFile, a) && inside(clone.secondFile, b)) ||
-        (inside(clone.firstFile, b) && inside(clone.secondFile, a)),
+    [clone.firstFile, clone.secondFile].every((file) =>
+      regions.some((region) => inside(file, region)),
     )
 }
 
@@ -328,7 +328,7 @@ export function classifyCloneFindings(
       classifications.push({
         finding,
         kind: 'existing',
-        endpoints: ['inside a base pair', 'inside a base pair'],
+        endpoints: ['inside a base region', 'inside a base region'],
       })
       continue
     }
