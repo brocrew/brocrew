@@ -21,7 +21,7 @@ function memoryLine(footer: string): string | undefined {
 }
 
 it.each(['claude', 'codex'] as const)(
-  '%s names only changed skills and methods after their first delivery and across a reopen',
+  '%s names only changed skills and methods, and a deleted method, after their first delivery and across a reopen',
   async (provider) => {
     const world = new F093World()
     try {
@@ -100,6 +100,19 @@ it.each(['claude', 'codex'] as const)(
       await host.close(id, world.window)
       await host.resumeSession(id, world.window)
       expect(await turn('Reopen the same thread.')).not.toContain('Check the fictional backup')
+
+      // A deleted method is said once, in one short line.
+      unlinkSync(join(methods, 'check.md'))
+      writeFileSync(join(methods, 'index.md'), first + '\n')
+      const removed = await turn('Read the removals.')
+      expect(removed).toContain('Saved methods (observed at')
+      expect(removed).toContain(`- Removed: ${join(methods, 'check.md')}`)
+      expect(removed).not.toContain('Rotate the fictional log')
+      expect(removed).not.toContain('Fictional guide')
+      expect(await turn('Quiet after the removals.')).not.toContain('Removed')
+      await host.close(id, world.window)
+      await host.resumeSession(id, world.window)
+      expect(await turn('Reopen after the removals.')).not.toContain('Removed')
     } finally {
       await world.dispose()
     }
