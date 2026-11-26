@@ -1,6 +1,7 @@
 import type {
   InstructionProposedEvent,
   InstructionSettledEvent,
+  TranscriptEvent,
 } from '../../../shared/conversation-events'
 import { aConversationTitle, titleFromOpeningMessage } from '../../../shared/conversation-title'
 import type { UserTurnEvent } from '../../../shared/human-answer-contracts'
@@ -21,7 +22,7 @@ import type { AppDatabase } from '../connection'
 import { agentIdentityRowId } from '../identity'
 import { closePastWorkSearch, pastWorkSource, searchPastWork } from '../past-work-search'
 import { type RowsUnread, rowsUnreadOnce } from '../rows-unread'
-import { aStoredObject, noteUnreadRow } from '../stored-event-codec'
+import { aStoredObject, boundStoredEvent, noteUnreadRow } from '../stored-event-codec'
 import type { SessionStore } from './session-store-contract'
 import type { ClosedTurnRow, ExchangeRow, PieceForAName, WorkDbRow } from './session-store-rows'
 import type { createTurnReadsPart } from './turn-reads'
@@ -162,6 +163,66 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
         AND (? IS NULL OR (created_at, id) < (SELECT created_at, id FROM work WHERE id = ?))
       ORDER BY created_at DESC, id DESC LIMIT ?`,
   )
+  // Card 591: the rows by which the fold (shared/tasks.ts `settle`) ends a piece for good: its
+  // give, its reply, close or withdrawal, and the cancellation of its held brief. Read once per
+  // owner in its active generation and decoded as the fold decodes them, so a row the fold cannot
+  // read proves nothing here. `LIKE` only narrows the many queue endings; the decoded reason
+  // decides.
+  const selectRowsThatEndPiecesIn = db.prepare(
+    `SELECT type, ordinal, payload FROM events INDEXED BY events_kind_owner_idx
+      WHERE session_id = @owner
+        AND generation = COALESCE(
+          (SELECT active FROM derived_generation WHERE session_id = @owner), 0)
+        AND (type IN ('work_given', 'work_replied', 'work_closed', 'work_taken_back')
+          OR (type = 'message_unqueued' AND payload LIKE '%cancelled%'))`,
+  )
+  /**
+   * Which of `pieces` have ended for good in `owner`'s active ledger, by readable rows alone. Only
+   * rows that name one of them, or a cancellation, are decoded.
+   */
+  const piecesEndedIn = (owner: string, pieces: readonly string[]): ReadonlySet<string> => {
+    const given = new Map<string, { ordinal: number; messageId: string | null }>()
+    const settled = new Map<string, number>()
+    const cancelled = new Map<string, number>()
+    const rows = selectRowsThatEndPiecesIn.all({ owner }) as {
+      type: string
+      ordinal: number
+      payload: string
+    }[]
+    for (const row of rows) {
+      if (row.type !== 'message_unqueued' && !pieces.some((piece) => row.payload.includes(piece)))
+        continue
+      let event: TranscriptEvent
+      try {
+        event = boundStoredEvent(JSON.parse(row.payload) as TranscriptEvent)
+      } catch {
+        continue
+      }
+      if (event.type === 'work_given')
+        given.set(event.piece, { ordinal: row.ordinal, messageId: event.messageId ?? null })
+      else if (event.type === 'message_unqueued') {
+        if (event.reason === 'cancelled' && event.messageId !== undefined)
+          cancelled.set(event.messageId, row.ordinal)
+      } else if (
+        event.type === 'work_replied' ||
+        event.type === 'work_closed' ||
+        event.type === 'work_taken_back'
+      )
+        settled.set(event.piece, Math.max(settled.get(event.piece) ?? -1, row.ordinal))
+    }
+    const ended = new Set<string>()
+    for (const [piece, give] of given) {
+      // The fold settles only an open piece, so an ending counts only after the give.
+      const settledAt = settled.get(piece)
+      const cancelledAt = give.messageId === null ? undefined : cancelled.get(give.messageId)
+      if (
+        (settledAt !== undefined && settledAt > give.ordinal) ||
+        (cancelledAt !== undefined && cancelledAt > give.ordinal)
+      )
+        ended.add(piece)
+    }
+    return ended
+  }
   const selectTurnBlockInstructions = db.prepare(
     `SELECT session_id AS conversation, created_at AS at, ordinal, json_valid(payload) AS readable, payload
        FROM events WHERE session_id = ? AND type IN ('instruction_proposed', 'instruction_settled')
@@ -601,10 +662,17 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
     },
 
     turnBlockCandidates(giver, limit, after = null) {
-      return selectTurnBlockCandidates.all(giver, after, after, limit) as {
+      const rows = selectTurnBlockCandidates.all(giver, after, after, limit) as {
         piece: string
         owner: string
       }[]
+      const byOwner = new Map<string, string[]>()
+      for (const row of rows) byOwner.set(row.owner, [...(byOwner.get(row.owner) ?? []), row.piece])
+      const ended = new Map<string, ReadonlySet<string>>()
+      for (const [owner, pieces] of byOwner) ended.set(owner, piecesEndedIn(owner, pieces))
+      return rows.map((row) =>
+        ended.get(row.owner)?.has(row.piece) === true ? { ...row, ended: true } : row,
+      )
     },
 
     instructionAsksWaitingIn(conversation, unread) {

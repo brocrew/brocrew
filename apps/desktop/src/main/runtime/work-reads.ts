@@ -450,6 +450,8 @@ export class WorkReads {
           if (candidates === null) throw new Error('turn has no ledger')
           const page = candidates.slice(0, TURN_HELPER_PIECES)
           for (const candidate of page) {
+            // Card 591: an ended piece opens no owner's ledger and costs none of the budget.
+            if (candidate.ended === true) continue
             let row: PieceRow | undefined
             try {
               row = pieces(candidate.owner).find(

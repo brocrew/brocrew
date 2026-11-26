@@ -134,12 +134,16 @@ import type {
 } from './session-store-rows'
 
 export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
-  /** Indexed candidate pages; the caller folds owners within its turn-block budget. */
+  /**
+   * Indexed candidate pages; the caller folds owners within its turn-block budget. `ended` is true
+   * when the owner's active ledger already holds the piece's reply, close or withdrawal, so the
+   * caller need not fold that owner to learn it ended.
+   */
   turnBlockCandidates(
     giver: string,
     limit: number,
     after?: string | null,
-  ): readonly { readonly piece: string; readonly owner: string }[] | null
+  ): readonly { readonly piece: string; readonly owner: string; readonly ended?: boolean }[] | null
   instructionAsksWaitingIn(
     conversation: string,
     unread: RowsUnread,

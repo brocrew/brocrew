@@ -763,7 +763,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           store.turnBlockPiecesOwnedBy = piecesBefore
         }
         expect(pages).toEqual([257, 257, 23])
-        expect(ownersRead.size).toBe(16)
+        // Card 591: of the 15 helpers, only the owners of open pieces are opened.
+        expect([...ownersRead.keys()].filter((owner) => owner !== pm).sort()).toEqual(
+          [...new Set(open.map((row) => row.owner))].sort(),
+        )
         expect([...ownersRead.values()].every((count) => count === 1)).toBe(true)
         expect(facts.helpers.map((row) => row.piece)).toEqual(open.map((row) => row.piece))
         const changed = turnBlockChanges(
