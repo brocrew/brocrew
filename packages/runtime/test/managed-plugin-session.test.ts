@@ -394,19 +394,6 @@ function fixture(refresh = false, exitFactory?: (index: number) => Promise<void>
     },
   }
 }
-it.each(['app-quit', undefined] as const)(
-  'forwards close reason %s once to the provider handle',
-  async (reason) => {
-    const f = fixture()
-    const handle = await f.runtime.start(initial)
-    const close = () => (reason === undefined ? handle.close() : handle.close(reason))
-    const closing = close()
-    expect(close()).toBe(closing)
-    await closing
-    expect(f.opened[0]!.close.mock.calls).toEqual([reason === undefined ? [] : [reason]])
-  },
-)
-
 it('supplies live scoped routes on fresh starts and resumes without changing personal servers', async () => {
   const f = fixture()
   const a = await f.runtime.start(initial)
@@ -672,6 +659,7 @@ it('close cancels and joins an in-flight managed reopen before releasing the sou
   await refusal
   expect(settled).toBe(true)
   expect(f.source.close).toHaveBeenCalledOnce()
+  expect(f.opened[0]!.close).toHaveBeenCalledExactlyOnceWith()
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
 })
 
@@ -778,20 +766,18 @@ it('app Quit closes a replacement that returns after cancellation without sendin
   const sending = a.send('fictional continuation')
   const refusal = expect(sending).rejects.toThrow('stopped')
   await ready
-  let closed = false
-  const closing = a.close('app-quit').then(() => {
-    closed = true
-  })
+  const closing = a.close('app-quit')
+  expect(a.close()).toBe(closing)
+  const settled = vi.fn()
+  void closing.then(settled)
   await Promise.resolve()
-  expect(closed).toBe(false)
+  expect(settled).not.toHaveBeenCalled()
   release()
   await closing
   await refusal
   expect(f.opened).toHaveLength(2)
-  expect(f.opened[0]!.send).not.toHaveBeenCalled()
-  expect(f.opened[1]!.send).not.toHaveBeenCalled()
-  expect(f.opened[0]!.close).toHaveBeenCalledExactlyOnceWith('app-quit')
-  expect(f.opened[1]!.close).toHaveBeenCalledExactlyOnceWith('app-quit')
+  expect(f.opened.every(({ send }) => send.mock.calls.length === 0)).toBe(true)
+  expect(f.opened.map(({ close }) => close.mock.calls)).toEqual([[['app-quit']], [['app-quit']]])
   expect(f.source.close).toHaveBeenCalledOnce()
 })
 
