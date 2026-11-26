@@ -6,11 +6,12 @@ import { computed, defineComponent, h, nextTick, ref, shallowReactive } from 'vu
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
-import type { AgentIdentity, KeptFile } from '../../src/shared/runtime-ipc'
+import type { KeptFile } from '../../src/shared/runtime-ipc'
 
 import type { SpawnEdge, WorkEdge } from '../../src/shared/who-called-whom'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { aNameRow } from './identity-fixture'
 
 /**
  * The conversation and graph share one selected conversation. The graph keeps the whole tree
@@ -39,11 +40,7 @@ const IDS = [
   ['dev', 'Arjun'],
   ['tester', 'Amara'],
   ['writer', 'Ayo'],
-].map(([slug, displayName]) => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName,
-})) as unknown as AgentIdentity[]
+].map(([slug, displayName]) => aNameRow(slug!, displayName!))
 
 /** ⚑ BroBot at the top, this conversation under it, two kids under this one, and one more root. */
 const FOREST = (): ForestView =>

@@ -5,7 +5,7 @@ import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injecti
 import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import { HOLDING_SAYS, whatHoldsIt, type IdentityUse } from '../../src/shared/agent-roster'
+import { HOLDING_SAYS, whatHoldsIt } from '../../src/shared/agent-roster'
 import {
   platePx,
   SIZES,
@@ -20,6 +20,7 @@ import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ip
 import type { ConversationAtWork, WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { assertDrawn, clipsOf, describeCarrier, drawnReady, lineCount, sweep } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { aRoster, aUse, anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **593 · the paint on the Team card** — `EXT-012` §1/§2, and every claim here is one SSR cannot
@@ -55,27 +56,10 @@ const FLOOR = 972
  */
 const NOW = Date.now()
 
-const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName: null,
-  createdAt: NOW - 86_400_000,
-  // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  ...over,
-})
+const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =>
+  anIdentity(slug, { createdAt: NOW - 86_400_000, ...over })
 
-const use = (slug: string, over: Partial<IdentityUse> = {}): IdentityUse => ({
-  slug,
-  conversations: 0,
-  thisAppMintsIt: false,
-  isLaunching: false,
-  isStarting: false,
-  runsOn: { provider: null, from: 'nothing-yet' },
-  ...over,
-})
+const use = aUse
 
 /**
  * ⚑ **Five identities, one per arm of {@link WhatTheyAreDoing} this page can draw a face for.**
@@ -90,23 +74,20 @@ const STARTER_USE = use('starter', {
   isLaunching: true,
 })
 
-const AGENTS: AgentIdentities = {
-  identities: [
+const AGENTS: AgentIdentities = aRoster(
+  [
     ident('ada', { displayName: 'Ada', provider: 'claude' }),
     ident('ali', { displayName: 'Ali', provider: 'codex' }),
     ident('newbie'),
     ident('starter', { displayName: 'Mo', provider: 'codex' }),
   ],
-  foldersWithoutARow: [],
-  use: [
+  [
     ADA_USE,
     use('ali', { conversations: 3, runsOn: { provider: 'codex', from: 'saved' } }),
     use('newbie'),
     STARTER_USE,
   ],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
+)
 
 const working = (
   conversation: string,

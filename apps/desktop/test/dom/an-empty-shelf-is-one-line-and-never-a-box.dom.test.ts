@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import type { IdentityUse } from '../../src/shared/agent-roster'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
+import { aRoster, aUse, anIdentity } from './identity-fixture'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
@@ -33,35 +33,14 @@ const FLOOR = 972
 
 const NOW = Date.now()
 
-const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName: null,
-  createdAt: NOW - 86_400_000,
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  ...over,
-})
-
-const use = (slug: string, over: Partial<IdentityUse> = {}): IdentityUse => ({
-  slug,
-  conversations: 0,
-  thisAppMintsIt: false,
-  isLaunching: false,
-  isStarting: false,
-  runsOn: { provider: null, from: 'nothing-yet' },
-  ...over,
-})
+const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =>
+  anIdentity(slug, { createdAt: NOW - 86_400_000, ...over })
 
 /** ⚑ Ada has run before (`conversations: 4`), so her card draws the Conversations disclosure. */
-const AGENTS: AgentIdentities = {
-  identities: [ident('ada', { displayName: 'Ada', provider: 'claude' })],
-  foldersWithoutARow: [],
-  use: [use('ada', { conversations: 4 })],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
+const AGENTS: AgentIdentities = aRoster(
+  [ident('ada', { displayName: 'Ada', provider: 'claude' })],
+  [aUse('ada', { conversations: 4 })],
+)
 
 const NOTHING_BEING_DONE: WhatIsBeingDone = { readAt: NOW, conversations: [] }
 

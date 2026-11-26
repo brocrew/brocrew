@@ -34,31 +34,13 @@ import type {
   WorkflowOutputResult,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
+import { aRoster, anIdentity } from './identity-fixture'
 
 const NOW = 1_700_000_000_000
 
-const identities = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: NOW,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  // 500 · required on `AgentIdentities`; none of these fixtures is about the launch default.
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-  ...over,
-})
+/** ⚠️ The identity keeps its pre-369 `agp:` id: nothing here reads the id's shape. */
+const identities = (over: Partial<AgentIdentities> = {}): AgentIdentities =>
+  aRoster([anIdentity('pm', { id: 'agp:default:pm', createdAt: NOW })], [], over)
 
 const CHILD: ChildWorkResult = {
   ok: true,

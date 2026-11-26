@@ -21,6 +21,7 @@ import { forestDrawn, viewFromWhoCalled } from './forest-fixture'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { assertClippedButTold, assertDrawn, describeCarrier, drawnReady, sweep } from './drawn'
 import { META, drawerProps, mount, unmountAll, type Mounted } from './harness'
+import { anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **547 · the first picture of who called whom** — `540` §7 slice 1's renderer half, drawn in a
@@ -59,18 +60,8 @@ afterEach(() => {
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
 const NOW = Date.now()
 
-const identity = (slug: string, displayName: string | null = null): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName,
-  createdAt: NOW - 86_400_000,
-  // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  // ⚑ **The shipped defaults**, because nothing on this band reads a capability — a grant invented
-  // here would be a fact about this file rather than about the app.
-})
+const identity = (slug: string, displayName: string | null = null): AgentIdentity =>
+  anIdentity(slug, { displayName, createdAt: NOW - 86_400_000 })
 
 const spawn = (over: Partial<SpawnEdge> = {}): SpawnEdge => ({
   conversation: 'sess_child',

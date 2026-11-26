@@ -8,6 +8,7 @@ import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { META, drawerProps, mount, unmountAll } from './harness'
+import { anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **The strip's own layout** — how a chip is drawn, and the box it sits in.
@@ -36,19 +37,6 @@ afterEach(() => {
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
 const NOW = Date.now()
 
-const identity = (slug: string, displayName: string | null = null): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName,
-  createdAt: NOW - 86_400_000,
-  // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  // ⚑ **The shipped defaults**, because nothing on this band reads a capability — a grant invented
-  // here would be a fact about this file rather than about the app.
-})
-
 const spawn = (over: Partial<SpawnEdge> = {}): SpawnEdge => ({
   conversation: 'sess_child',
   identity: 'worker',
@@ -56,6 +44,9 @@ const spawn = (over: Partial<SpawnEdge> = {}): SpawnEdge => ({
   running: 'unwatched',
   ...over,
 })
+
+const identity = (slug: string, displayName: string | null = null): AgentIdentity =>
+  anIdentity(slug, { displayName, createdAt: NOW - 86_400_000 })
 
 /**
  * The strip’s `<li>` elements draw one chip per agent, with a small plate and name side by

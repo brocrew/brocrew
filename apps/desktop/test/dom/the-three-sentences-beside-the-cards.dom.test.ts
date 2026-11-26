@@ -1,12 +1,13 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardSides } from './harness'
+import { aNameRow } from './identity-fixture'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import ReadingPane from '../../src/renderer/src/components/ReadingPane.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
-import type { AgentIdentity, LibraryEntry } from '../../src/shared/runtime-ipc'
+import type { LibraryEntry } from '../../src/shared/runtime-ipc'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import { createWindow, openAt } from '../../src/renderer/src/lib/transcript-window'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
@@ -38,8 +39,7 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-const ident = (slug: string, displayName: string | null): AgentIdentity =>
-  ({ id: `aid:${slug}`, slug, displayName }) as unknown as AgentIdentity
+const ident = aNameRow
 
 const INVENTORY = {
   type: 'tool_inventory',

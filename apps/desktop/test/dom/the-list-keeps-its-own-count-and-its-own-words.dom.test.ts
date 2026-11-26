@@ -8,6 +8,7 @@ import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, allTasks, drawerProps, mount, unmountAll } from './harness'
+import { anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **`TaskList.vue`'s own arithmetic and its own words** — the half of `547`/`631` that
@@ -40,15 +41,8 @@ afterEach(() => {
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
 const NOW = Date.now()
 
-const identity = (slug: string, displayName: string | null = null): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName,
-  createdAt: NOW - 86_400_000,
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-})
+const identity = (slug: string, displayName: string | null = null): AgentIdentity =>
+  anIdentity(slug, { displayName, createdAt: NOW - 86_400_000 })
 
 /** ⚑ A piece given TO this conversation — the only work the list draws. */
 const edge = (over: Partial<WorkEdge> = {}): WorkEdge => ({

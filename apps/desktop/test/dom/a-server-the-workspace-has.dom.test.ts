@@ -16,6 +16,7 @@ import {
   type ExternalMcpServerRow,
 } from '../../src/shared/external-mcp'
 import { mount, unmountAll, type Mounted } from './harness'
+import { anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **524 · the two surfaces `HO-048` changed, as a person meets them.**
@@ -56,17 +57,7 @@ const server = (
   reach,
 })
 
-const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
-  id: 'aid:pm',
-  slug: 'pm',
-  displayName: null,
-  createdAt: 1_700_000_000_000,
-  // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  ...over,
-})
+const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => anIdentity('pm', over)
 
 /** ⚑ Both answers in the map, so *held back* is about one entry rather than an unread table. */
 const CAPABILITIES = {

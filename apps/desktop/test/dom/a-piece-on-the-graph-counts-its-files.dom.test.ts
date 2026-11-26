@@ -10,9 +10,10 @@ import {
   type FilesLibraryController,
 } from '../../src/renderer/src/composables/useFilesLibrary'
 import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
-import type { KeptFile, AgentIdentity } from '../../src/shared/runtime-ipc'
+import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { aNameRow } from './identity-fixture'
 
 // Every negative below is paired with a reading of the same surface.
 afterEach(async () => {
@@ -28,11 +29,7 @@ const IDS = [
   ['project-manager', 'Ada'],
   ['inspector', 'Ana'],
   ['dev', 'Arjun'],
-].map(([slug, displayName]) => ({
-  id: `aid:${slug!}`,
-  slug,
-  displayName,
-})) as unknown as AgentIdentity[]
+].map(([slug, displayName]) => aNameRow(slug!, displayName!))
 
 const FOREST = () =>
   viewOf(
