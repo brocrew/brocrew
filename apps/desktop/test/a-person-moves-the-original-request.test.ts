@@ -292,17 +292,9 @@ describe('a person moves the stored request', () => {
     const bound = world.store.questionsRaisedIn(source).get(requestId)!.move!
     await host.closeAll()
     world.store.reopened(target, world.clock++)
-    recordMovedRequest(
-      world.store,
-      source,
-      requestId,
-      bound,
-      'Source',
-      [],
-      PERSON,
-      world.clock++,
-      false,
-    )
+    recordMovedRequest(world.store, source, requestId, bound, 'Source', [], PERSON, world.clock++, {
+      forNextStart: false,
+    })
     row(target, {
       type: 'message_queued',
       messageId: 'ordinary-stranded',

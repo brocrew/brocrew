@@ -3,6 +3,7 @@ import type { HandedPath } from '../../shared/attachment-contracts'
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import type { QueuedMessageEvent, UserDecisionEvent } from '../../shared/conversation-events'
 import type { ActedBy } from '../../shared/who-did-it'
+import type { ArchivedConversations } from '../archived-file'
 import type { SessionStore, PersistedEvent } from '../db/session-store'
 import { REQUEST_IS_OPEN, aPersonsSince } from '../../shared/questions'
 import { MOVE_WORDS, moveReceiptLine } from '../../shared/move-request'
@@ -110,7 +111,7 @@ export function rejectOpenMoveOffersForTurn(
     )
 }
 
-/** Accept the target queue entry and source decision together, before dispatch. */
+/** Accept the Move and any archive removal together, before dispatch. */
 export function recordMovedRequest(
   store: SessionStore,
   source: string,
@@ -120,9 +121,21 @@ export function recordMovedRequest(
   attachments: readonly HandedPath[],
   by: ActedBy,
   at: number,
-  forNextStart = true,
-  destinationTitle = offer.destinationName,
-): { decision: MoveDecision; entries: RuntimeEventMessage[]; queued: QueuedMessageEvent | null } {
+  {
+    forNextStart = true,
+    destinationTitle = offer.destinationName,
+    archived,
+  }: {
+    forNextStart?: boolean
+    destinationTitle?: string
+    archived?: Pick<ArchivedConversations, 'has' | 'removeInTransaction'>
+  } = {},
+): {
+  decision: MoveDecision
+  entries: RuntimeEventMessage[]
+  queued: QueuedMessageEvent | null
+  publishArchiveRemoval: (() => void) | null
+} {
   return store.atomically(() => {
     if (by.who !== 'a-person') throw new Error(MOVE_WORDS.personOnly)
     const bound = store.questionsRaisedIn(source).get(requestId)?.move
@@ -135,7 +148,8 @@ export function recordMovedRequest(
     )
       throw new Error(MOVE_WORDS.ended)
     const previous = previousMoveDecision(store, source, offer)
-    if (previous !== null) return { decision: previous, entries: [], queued: null }
+    if (previous !== null)
+      return { decision: previous, entries: [], queued: null, publishArchiveRemoval: null }
     const requests = store.routedRequestsOf(source)
     const question = requests.find((one) => one.requestId === requestId)
     if (
@@ -179,6 +193,9 @@ export function recordMovedRequest(
       })),
     ]
     for (const entry of entries) store.append(entry.sessionId, entry.ordinal, entry.event, at)
-    return { decision: { outcome: 'moved', ...receipt }, entries, queued }
+    const publishArchiveRemoval = archived?.has(offer.destination)
+      ? archived.removeInTransaction([offer.destination])
+      : null
+    return { decision: { outcome: 'moved', ...receipt }, entries, queued, publishArchiveRemoval }
   })
 }
