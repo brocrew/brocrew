@@ -1,4 +1,9 @@
-import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,7 +31,7 @@ import {
   LAUNCH_APPROVAL_UNREAD,
   launchApprovalView,
 } from '../src/renderer/src/lib/front-door-words'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -79,23 +84,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  /** ⚠️ `boolean` and not the literal, so {@link NobodyThere} below can be the other one. */
-  readonly aPersonIsBehindIt: boolean = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-/** ⛔ The one sink shape that is NOT a window — `349`'s person gate, from the other side. */
-class NobodyThere extends RecordingSink {
-  override readonly aPersonIsBehindIt = false
-}
 
 /**
  * ⛔ **A runtime that records the mode each launch was ACTUALLY given**, read out of the options the
@@ -339,7 +327,10 @@ describe('500 · the setting he should only ever make once', () => {
     /** ⛔ It changes what agents are allowed to do, one launch later — so a person must be asking. */
     it('⛔ refused when nobody is behind the channel, and allowed on the window in the same state', async () => {
       await expect(
-        ask({ kind: 'setDefaultApprovalMode', mode: 'auto' }, new NobodyThere('mcp:someone')),
+        ask(
+          { kind: 'setDefaultApprovalMode', mode: 'auto' },
+          new RecordingSink('mcp:someone', false),
+        ),
       ).rejects.toThrow(noPersonBehindIt('setDefaultApprovalMode'))
       // ⚑ **The pair, at the same moment, with the same payload** — without it the refusal above is
       // equally satisfied by a verb that is broken for everybody.

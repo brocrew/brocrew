@@ -18,8 +18,8 @@ import {
   oneRuntimePerProvider,
   providerConfigOf,
 } from './lib/hosts-over-a-scratch-database'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * When each thing happened, and whether it survives (Slice 2 · 001).
@@ -33,17 +33,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
 const FIXTURE = join(here, 'fixtures/claude-transcript.jsonl')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -114,7 +103,7 @@ describe('when each event happened', () => {
 
   it('tells the renderer the same moment it writes to the ledger', async () => {
     const host = buildHost({ discoverSessions: NO_DISCOVERY })
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'claude' }, sink)
     await waitFor(() => sink.messages.length >= 2, 'the opening events')
     await host.closeAll()
@@ -132,7 +121,7 @@ describe('when each event happened', () => {
 
   it('replays the time it happened, not the time it was reopened', async () => {
     const first = buildHost({ discoverSessions: NO_DISCOVERY })
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await first.createSession({ provider: 'codex' }, sink)
     await waitFor(() => sink.messages.length >= 2, 'the opening events')
     await first.close(created.sessionId, sink)
@@ -141,7 +130,10 @@ describe('when each event happened', () => {
     // Time passes, the app is quit and restarted, and the conversation is reopened.
     clock = 1_900_000_000_000
     const relaunched = buildHost({ discoverSessions: NO_DISCOVERY })
-    const resumed = await relaunched.resumeSession(created.sessionId, new RecordingSink())
+    const resumed = await relaunched.resumeSession(
+      created.sessionId,
+      new RecordingSink('owner:1', false),
+    )
 
     expect(resumed.history.entries.length).toBe(recorded.length)
     expect(resumed.history.entries.map((entry) => entry.at)).toEqual(

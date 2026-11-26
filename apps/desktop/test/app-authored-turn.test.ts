@@ -7,17 +7,12 @@ import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/run
 import type { Provider } from '@brobot2/shared'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 A message BroBot should sign (278, from 276)
@@ -56,30 +51,6 @@ import { neutralHostDeps } from './lib/host-fixture'
  * Vue shims — so a `.vue` import here passes `pnpm run test` and fails `pnpm run typecheck`, which
  * is a green suite beside a red gate.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  // ⛔ **A WINDOW's owner id, since 413, and it is load-bearing here of all files.** The turn
-  // below is the positive half of every negative in this suite — *"a turn somebody TYPED is still
-  // unmarked"* — and `413` made that answer depend on the caller being a window: a turn is the
-  // person's only when a person demonstrably typed it, which is a POSITIVE test on the id
-  // `sinkOwnerId` mints. ⚠️ A double spelling its own id `owner:1` was standing in for a window
-  // and did not look like one, so it was asserting the person's case from a caller the product
-  // classifies as something else.
-  readonly ownerId = sinkOwnerId({ id: 1 })
-  readonly alive = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 /**
  * ⛔ **A runtime that records the exact string the PROVIDER was handed.**
@@ -177,7 +148,14 @@ describe('the go-ahead reaches the provider and is signed by BroBot (278 §1)', 
         files: [],
       }),
     })
-    sink = new RecordingSink()
+    // ⛔ **A WINDOW's owner id, since 413, and it is load-bearing here of all files.** The turn
+    // below is the positive half of every negative in this suite — *"a turn somebody TYPED is still
+    // unmarked"* — and `413` made that answer depend on the caller being a window: a turn is the
+    // person's only when a person demonstrably typed it, which is a POSITIVE test on the id
+    // `sinkOwnerId` mints. ⚠️ A double spelling its own id `owner:1` was standing in for a window
+    // and did not look like one, so it was asserting the person's case from a caller the product
+    // classifies as something else.
+    sink = new RecordingSink(sinkOwnerId({ id: 1 }), false)
   })
 
   afterEach(async () => {

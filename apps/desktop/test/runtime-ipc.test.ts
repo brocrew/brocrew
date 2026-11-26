@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,36 +14,16 @@ import {
 } from '../src/main/runtime/ipc'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   DEFAULT_PROFILE_ID,
   RUNTIME_COMMAND_CHANNEL,
   RUNTIME_EVENT_CHANNEL,
   type CreatedSession,
   type RuntimeEventMessage,
-  type SessionLiveness,
-  type SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 
 /** The renderer→main boundary: what it accepts, what it refuses, and where it routes. */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  readonly alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs

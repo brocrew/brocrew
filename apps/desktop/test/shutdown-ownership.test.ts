@@ -1,4 +1,5 @@
 import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { RecordingSink } from './lib/host-fixture'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,15 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import type {
-  RuntimeEventSink,
-  RuntimeHost,
-  RuntimeHostDeps,
-} from '../src/main/runtime/runtime-host'
+import type { RuntimeHost, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { createArchiveCoordinator, isArchiveRefused } from '../src/main/archive/archive-coordinator'
 import type { UserHomeSession } from '../src/main/adopt/user-homes'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **The quit must wait for the import work it admitted, and it must not miss a provider that is
@@ -33,17 +29,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * `createAppLifetime`: "the connection closed after the import finished" is not a property a fake
  * store can hold an opinion about.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
@@ -418,7 +403,7 @@ describe('a provider that is still starting is owned (062)', () => {
     const built = buildHost()
     host = built.host
     held = deferred()
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
 
     const creating = host.createSession({ provider: 'codex', cwd: dir }, sink)
     await waitFor(() => starts === 1, 'the provider to be asked for')
@@ -448,7 +433,10 @@ describe('a provider that is still starting is owned (062)', () => {
     host = built.host
     held = deferred() // never resolved by this test — the provider simply never turns up
 
-    const creating = host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink())
+    const creating = host.createSession(
+      { provider: 'codex', cwd: dir },
+      new RecordingSink('owner:1', false),
+    )
     void creating.catch(() => {}) // it settles in afterEach; nothing here awaits it
     await waitFor(() => starts === 1, 'the provider to be asked for')
 
@@ -467,7 +455,7 @@ describe('a provider that is still starting is owned (062)', () => {
     await host.closeAll()
 
     await expect(
-      host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink()),
+      host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:1', false)),
     ).rejects.toThrow('shutting down')
     // Nothing was even asked of the provider — the refusal is before the spawn, not after it.
     expect(starts).toBe(0)
@@ -477,7 +465,7 @@ describe('a provider that is still starting is owned (062)', () => {
     const built = buildHost()
     host = built.host
     held = deferred()
-    const theirs = new RecordingSink('owner:2')
+    const theirs = new RecordingSink('owner:2', false)
 
     const creating = host.createSession({ provider: 'codex', cwd: dir }, theirs)
     await waitFor(() => starts === 1, 'the provider to be asked for')
@@ -493,7 +481,7 @@ describe('a provider that is still starting is owned (062)', () => {
   })
 
   it('leaves another window alone while it does it', async () => {
-    const mine = new RecordingSink('owner:1')
+    const mine = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'codex', cwd: dir }, mine)
 
     await host.closeSessionsForOwner('owner:2')
@@ -503,15 +491,15 @@ describe('a provider that is still starting is owned (062)', () => {
 
   it('resumes one record ONCE, however many callers ask at the same moment', async () => {
     // A recorded session to reopen.
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'claude', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
     await host.close(created.sessionId, sink)
     resumes = 0
 
     const [first, second] = await Promise.allSettled([
-      host.resumeSession(created.sessionId, new RecordingSink('owner:1')),
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
+      host.resumeSession(created.sessionId, new RecordingSink('owner:1', false)),
+      host.resumeSession(created.sessionId, new RecordingSink('owner:2', false)),
     ])
 
     // ⚠️ **One spawn.** Both callers used to pass the `sessions.has()` check, both spawned a
@@ -534,19 +522,19 @@ describe('a provider that is still starting is owned (062)', () => {
   })
 
   it('refuses a second resume while the first is still SPAWNING, not only once it is live', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'claude', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
     await host.close(created.sessionId, sink)
     resumes = 0
     held = deferred()
 
-    const winner = host.resumeSession(created.sessionId, new RecordingSink('owner:1'))
+    const winner = host.resumeSession(created.sessionId, new RecordingSink('owner:1', false))
     await waitFor(() => resumes === 1, 'the first resume to reach the provider')
 
     // The gap the old check could not see: reserved, spawning, not yet registered.
     await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
+      host.resumeSession(created.sessionId, new RecordingSink('owner:2', false)),
       // ⚠️ **The sentence changed and it is more accurate** (100). Nothing is open here: the
       // slot is RESERVED and its provider has not arrived, which the one word 'already open'
       // covered for three different states. This is the one with no other way out, so it is

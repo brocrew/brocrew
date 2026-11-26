@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,8 +13,7 @@ import {
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { gateClose, stillWaiting } from './helpers/provider-close-waits'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * **A launch that ends, and a launch you can end** (102).
@@ -29,17 +28,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * against a host that had stopped being able to open anything at all, which is the vacuity 102
  * asked for by name.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
@@ -209,7 +197,7 @@ describe('a launch that cannot complete (102)', () => {
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-launch-'))
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(() => {
@@ -414,7 +402,7 @@ describe('cancelling a launch (102)', () => {
 
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-cancel-'))
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(() => {

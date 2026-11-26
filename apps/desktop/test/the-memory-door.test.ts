@@ -1,5 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -25,7 +24,6 @@ import {
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
 import { REFUSAL_MEANS } from '../src/shared/agent-memory'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 The memory door, through a real host (625, `EXT-015` §1 · §3)
@@ -46,23 +44,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  */
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  // ⛔ **A WINDOW's owner id, not `owner:1`.** `aPersonTypedIt` is `aWindowIsAsking(ownerId)`, so
-  // a sink with an arbitrary id records every act as *a caller this app cannot name* — which would
-  // make §2's `{ who: 'a-person' }` assertions pass for the wrong reason, or not at all.
-  readonly ownerId = `${WINDOW_CALLER_PREFIX}1`
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 const THE_FALSE_NOTE =
   'a deliberately parked agent is indistinguishable from a broken one in this app\n'
@@ -163,7 +144,10 @@ beforeEach(async () => {
   db = openDatabase(join(userData, 'brobot2.sqlite'))
   applyMigrations(db, migrationsFolder)
   host = new RuntimeHost(await hostDeps())
-  sink = new RecordingSink()
+  // ⛔ **A WINDOW's owner id, not `owner:1`.** `aPersonTypedIt` is `aWindowIsAsking(ownerId)`, so
+  // a sink with an arbitrary id records every act as *a caller this app cannot name* — which would
+  // make §2's `{ who: 'a-person' }` assertions pass for the wrong reason, or not at all.
+  sink = new RecordingSink(`${WINDOW_CALLER_PREFIX}1`)
 })
 
 afterEach(async () => {

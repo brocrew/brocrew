@@ -9,12 +9,12 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **Which control the user pressed** (097 §2, from 085's *"the thing that would have saved me an
@@ -32,17 +32,6 @@ import { neutralHostDeps } from './lib/host-fixture'
  *
  * That it opens no turn is asserted where that is decided — `turn-table.test.ts`, beside 077's own.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'webContents:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -79,7 +68,7 @@ describe('the user_command breadcrumb (097)', () => {
         join(userData, 'provider-homes', profileId, provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
     })
-    sink = new RecordingSink()
+    sink = new RecordingSink('webContents:1')
   })
 
   afterEach(async () => {

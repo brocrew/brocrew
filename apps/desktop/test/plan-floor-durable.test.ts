@@ -1,5 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,12 +11,7 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * 🔴 **150 §0 · the DURABLE half of a plan mode the provider moved.**
@@ -94,24 +88,6 @@ const init = (id: string, cwd: string): SDKMessage =>
 
 const result = (): SDKMessage =>
   ({ type: 'result', subtype: 'success', is_error: false }) as unknown as SDKMessage
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 3_000): Promise<void> {
   const deadline = Date.now() + timeoutMs

@@ -11,12 +11,16 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**
@@ -61,24 +65,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  /**
-   * ⛔ **The flag is about the OWNER and it is load-bearing in §4** — `439`'s behalf clause is read
-   * off the slot this sink claimed, so a rig declaring `false` would measure the absence of the
-   * thing it is about. ⚑ **A window IS a person**, in the app and here.
-   */
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
 describe('439 · BroBot asks a PM, and both conversations hold both halves', () => {
   let userData: string
@@ -122,6 +108,9 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
     handed = []
     issued = new FakeProviderSessions()
     host = buildHost()
+    // ⛔ **A person is behind this window, and it is load-bearing in §4** — `439`'s behalf clause is
+    // read off the slot this sink claimed, so a rig declaring `false` would measure the absence of the
+    // thing it is about. ⚑ **A window IS a person**, in the app and here.
     window = new RecordingSink('webContents:1')
   })
 

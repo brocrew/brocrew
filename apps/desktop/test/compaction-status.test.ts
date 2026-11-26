@@ -8,7 +8,7 @@ import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { type AgentRuntime } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
   NEEDING_TOKEN,
   STANDING_TONE,
@@ -18,12 +18,8 @@ import {
   standingOf,
 } from '../src/renderer/src/lib/agent-state'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import type { SessionLiveness } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **133 · ninety-one seconds of `idle` while a 90,000-token context was compacted.**
@@ -168,23 +164,6 @@ const says = (text: string): SDKMessage =>
     message: { role: 'assistant', content: [{ type: 'text', text }] },
   }) as unknown as SDKMessage
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
-
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 3_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -261,7 +240,7 @@ describe('a compaction the app can see (133)', () => {
     fq = new FakeQuery()
     canUseTool = null
     host = buildHost()
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(async () => {

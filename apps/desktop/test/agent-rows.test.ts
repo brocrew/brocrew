@@ -1,4 +1,3 @@
-import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,15 +7,9 @@ import { FakeRuntime, type AgentInfo, type SessionHandle } from '@brobot2/runtim
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  CreateSessionInput,
-  ResumedSession,
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { CreateSessionInput, ResumedSession, SessionLiveness } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 179 · **The model you cannot see.**
@@ -38,27 +31,6 @@ import { neutralHostDeps } from './lib/host-fixture'
  * provider that has not spoken — which is exactly the state this dispatch is about, and is why the
  * whole desktop suite could be green through it. {@link Reporting} is the other end.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = 'owner:1') {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 /**
  * A runtime whose handles report what a provider has SAID — the half `FakeRuntime` has none of.
@@ -130,7 +102,7 @@ describe('179 — what a conversation can say about the model it is running', ()
         files: [],
       }),
     })
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   afterEach(async () => {
@@ -197,7 +169,7 @@ describe('179 — what a conversation can say about the model it is running', ()
     const created = await start({ model: 'claude-haiku-4-5-20251001', reasoningEffort: 'medium' })
     sink.alive = false // the window went away, exactly as a reload leaves it
 
-    const second = new RecordingSink() // …and the same surface came back
+    const second = new RecordingSink('owner:1', false) // …and the same surface came back
     const handed = handedBack(created.sessionId, second)
 
     expect(handed.handover).toBe('attached')
@@ -213,7 +185,7 @@ describe('179 — what a conversation can say about the model it is running', ()
     const created = await start({ model: 'claude-haiku-4-5-20251001', planMode: true })
     expect(created.planNeedsGoAhead).toBe(true) // non-vacuity: it really is planning
 
-    const handed = handedBack(created.sessionId, new RecordingSink())
+    const handed = handedBack(created.sessionId, new RecordingSink('owner:1', false))
 
     expect(handed.planNeedsGoAhead).toBe(true)
     expect(handed.settings.planMode).toBe(true)

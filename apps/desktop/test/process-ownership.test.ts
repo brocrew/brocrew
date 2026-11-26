@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,7 +26,7 @@ import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { gateClose, stillWaiting } from './helpers/provider-close-waits'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
 import { readLines } from '../src/main/archive/native-file'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /**
  * **Own every process you started, at every moment — including the ones nobody registered** (070,
@@ -56,17 +56,6 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/m
  */
 const NOT_CONFIRMED_STOPPED = 'has not finished putting away its last session'
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((r) => {
@@ -86,7 +75,7 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
 
 /** A Codex session that has its provider ref and has been closed, so the host holds no slot for it. */
 async function aClosedCodexSession(host: RuntimeHost, store: SessionStore, dir: string) {
-  const sink = new RecordingSink()
+  const sink = new RecordingSink('owner:1', false)
   const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
   await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
   await host.close(created.sessionId, sink)
@@ -275,7 +264,10 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
   it('a quit TERMINATES a start whose handshake never answers, instead of walking past it', async () => {
     const seen = { tornDown: [] as string[], signals: [] as (AbortSignal | undefined)[] }
     host = buildHost(seen)
-    const creating = host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink())
+    const creating = host.createSession(
+      { provider: 'codex', cwd: dir },
+      new RecordingSink('owner:1', false),
+    )
     void creating.catch(() => {})
     await waitFor(() => seen.signals.length === 1, 'the provider to be asked for')
 
@@ -294,7 +286,9 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
   it('still returns within its bound while it does it', async () => {
     const seen = { tornDown: [] as string[], signals: [] as (AbortSignal | undefined)[] }
     host = buildHost(seen)
-    void host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink()).catch(() => {})
+    void host
+      .createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:1', false))
+      .catch(() => {})
     await waitFor(() => seen.signals.length === 1, 'the provider to be asked for')
 
     // The hazard the fix could have introduced, and 062's own rule: a quit that never completes is
@@ -312,10 +306,10 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
     const seen = { tornDown: [] as string[], signals: [] as (AbortSignal | undefined)[] }
     host = buildHost(seen)
     void host
-      .createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:1'))
+      .createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:1', false))
       .catch(() => {})
     void host
-      .createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:2'))
+      .createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:2', false))
       .catch(() => {})
     await waitFor(() => seen.signals.length === 2, 'both providers to be asked for')
 
@@ -395,7 +389,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
   })
 
   it('waits on a resume attempted while the handed-back provider is still closing', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'claude', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
     await host.close(created.sessionId, sink)
@@ -403,7 +397,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     arriving = deferred()
 
     // A reopen, closed while its provider is still starting — the hand-back path.
-    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:1'))
+    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:1', false))
     void reopening.catch(() => {})
     await waitFor(() => resumes === 1, 'the resume to reach the provider')
 
@@ -423,7 +417,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     // ⚠️ **Two providers for one record must be impossible.** Before 070 the reservation was freed
     // on the first line of `handBack`, so this resume was admitted and spawned a second child onto
     // the same transcript while the first was still shutting down. It now waits and starts nothing.
-    const second = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    const second = host.resumeSession(created.sessionId, new RecordingSink('owner:2', false))
     expect(await stillWaiting(second, 150), 'waits past twice the drain bound').toBe(true)
     expect(resumes).toBe(1)
 
@@ -591,7 +585,10 @@ describe('a provider the host could not confirm stopped (070)', () => {
   })
 
   it('records the session terminal and lets it go, and keeps its ledger the recording', async () => {
-    const created = await host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink())
+    const created = await host.createSession(
+      { provider: 'codex', cwd: dir },
+      new RecordingSink('owner:1', false),
+    )
 
     // The stop times out — `closeDrainTimeoutMs` is 40ms and `closing` is never resolved here — so
     // the host lets go of a provider it could not confirm stopped.
@@ -619,7 +616,7 @@ describe('a provider the host could not confirm stopped (070)', () => {
    * `'unknown'` unconditionally, which would be the same lie pointed the other way.
    */
   it('222 §3 · a turn open when an UNCONFIRMED stop let go is recorded `unknown`, not `ended`', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     // A turn has to be OPEN for there to be an ending to over-claim. `FakeRuntime` opens one on
     // send and this test never lets it finish — the close is what interrupts it.
@@ -647,7 +644,7 @@ describe('a provider the host could not confirm stopped (070)', () => {
     // The slot is gone — the session is over as far as the UI is concerned — but the process is not
     // confirmed down, and the UI's Reopen button is one click away.
     expect(host.sessionIds).toEqual([])
-    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2', false))
     expect(await stillWaiting(reopening, 150)).toBe(true)
     expect(host.sessionIds).toEqual([])
     // A quit does not wait for it, and the waiting Reopen then starts nothing.
@@ -720,7 +717,7 @@ describe('051 is unchanged by 070', () => {
   })
 
   it('the quit stops the provider while the session is still registered, and reads no transcript', async () => {
-    await host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink())
+    await host.createSession({ provider: 'codex', cwd: dir }, new RecordingSink('owner:1', false))
 
     // The real order: stop making catch-up work, close the sessions, drain what was admitted.
     host.stopSweeping()
@@ -935,7 +932,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
    * makes reachable is 208 H3's OTHER half, *"still owned"*, and the three facts below are it.
    */
   it('⛔ when close resolved but nothing exited, says the turn was interrupted', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     await sendAndWaitForOpenTurn(host, store, created.sessionId, sink)
 
@@ -976,7 +973,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     // The slot is gone — the UI has moved this conversation to Reopen — and the process is not.
     expect(host.sessionIds).toEqual([])
     expect(exit.isConfirmed).toBe(false)
-    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    const reopening = host.resumeSession(created.sessionId, new RecordingSink('owner:2', false))
     // ⛔ **Waiting, not raced and not refused.** Before 233 this resume SUCCEEDED against a live process.
     expect(await stillWaiting(reopening, 150)).toBe(true)
     exit.confirm()
@@ -984,7 +981,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
   })
 
   it('⛔ warns on the quit instead of certifying a clean stop', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     await host.createSession({ provider: 'codex', cwd: dir }, sink)
 
     await host.closeAll()
@@ -1003,7 +1000,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
    * process really exits.
    */
   it('⚑ …and a PROVEN exit releases the id, and warns about nothing', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     await sendAndWaitForOpenTurn(host, store, created.sessionId, sink)
     // ⚑ The only difference from the tests above is the receipt.
@@ -1016,7 +1013,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     // go — and it is the better one, because it is the user-visible consequence: the Reopen button
     // works the moment the process is really gone.
     await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
+      host.resumeSession(created.sessionId, new RecordingSink('owner:2', false)),
     ).resolves.toMatchObject({ sessionId: created.sessionId })
     expect(warnings.join('\n')).not.toContain('did not confirm it stopped')
 
@@ -1091,7 +1088,7 @@ describe('233 · a launch handed back while starting is owned against the proces
   })
 
   it('⛔ keeps the id owned after handBack: a reopen waits until the process is proven gone', async () => {
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     const creating = host.createSession({ provider: 'codex', cwd: dir }, sink)
     creating.catch(() => {})
     // The reservation exists but the session does not — `sessionIds` deliberately lists only
@@ -1108,7 +1105,7 @@ describe('233 · a launch handed back while starting is owned against the proces
     // The teardown resolved — the double's `close()` has no `await` in its body, exactly as a
     // wedged Claude's resolves on the SDK's bounded receipt — and the process did not.
     expect(exit.isConfirmed).toBe(false)
-    const reopening = host.resumeSession('sess_1', new RecordingSink('owner:2'))
+    const reopening = host.resumeSession('sess_1', new RecordingSink('owner:2', false))
     expect(await stillWaiting(reopening, 150)).toBe(true)
 
     // ⚑ **The paired positive: the wait is the OWNERSHIP's, and it ends when the process goes.**

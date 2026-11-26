@@ -14,12 +14,10 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { WALK_COVERS } from '../src/shared/questions'
 import { TASK_IS_OPEN, UNDRIVEN_SENTENCES, workGivenOut } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_LABEL } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { PANEL_EMPTY_WORDS, panelEmptyWords } from '../src/renderer/src/lib/session-panel'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
 import {
@@ -33,7 +31,12 @@ import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import { visibleCopy } from './lib/visible-copy'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 import { callOn } from './helpers/call-tool'
 
 /**
@@ -82,17 +85,6 @@ const bridgeThat = (over: Record<string, unknown>): RuntimeBridge =>
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const rendererLib = join(here, '../src/renderer/src/lib')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const libSource = (name: string): string => readFileSync(join(rendererLib, name), 'utf8')
 

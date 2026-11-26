@@ -1,5 +1,5 @@
 import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { RecordingSink } from './lib/host-fixture'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type {
   AgentRuntime,
@@ -15,8 +15,7 @@ import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import type { RuntimeEventSink, RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * **A session must not stop being owned before it stops existing** (051, from 048 §1 finding 3).
@@ -34,20 +33,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  * nothing to the store's reducer, so a failed stream left the row at `working` with its turn open.
  * A fake store cannot show that.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-}
 
 /**
  * A provider we drive by hand. Its event stream is a REAL {@link AsyncQueue}, so "the queue
@@ -217,7 +202,7 @@ describe('one finalizer owns the end of a session (051)', () => {
     db = scratch.db
     store = scratch.store
     host = buildHost()
-    sink = new RecordingSink()
+    sink = new RecordingSink('owner:1', false)
   })
 
   it('closes the provider before it unregisters the session, on an explicit close', async () => {

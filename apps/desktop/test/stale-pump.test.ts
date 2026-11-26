@@ -13,8 +13,8 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * # 🔴 293 §3 · a timed-out event pump can write into the next life of the same session
@@ -46,17 +46,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
  */
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void
@@ -188,7 +177,7 @@ describe('293 §3 · a pump that outlived its life writes into nothing', () => {
     // id. Two sinks would have hidden the delivery half of this finding behind a sink nobody is
     // looking at — measured: with two, the stale event lands on the closed window's sink and the
     // assertion below passes over nothing.
-    const window = new RecordingSink('owner:1')
+    const window = new RecordingSink('owner:1', false)
     const { sessionId } = await host.createSession(
       { provider: 'claude', cwd: join(dir, 'work') },
       window,

@@ -39,10 +39,6 @@ const PROJECT_MANAGER_PROFILE_ID = 'project-manager'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class NobodyThere extends RecordingSink {
-  override readonly aPersonIsBehindIt = false
-}
-
 describe('433 §A · the provider a person can change', () => {
   let userData: string
   let root: string
@@ -226,14 +222,14 @@ describe('433 §A · the provider a person can change', () => {
       await expect(
         ask(
           { kind: 'setAgentProvider', profileId: DEFAULT_PROFILE_ID, provider: 'codex' },
-          new NobodyThere('agent:sess_1'),
+          new RecordingSink('agent:sess_1', false),
         ),
       ).resolves.toMatchObject({ provider: 'codex' })
       expect(providerColumn(DEFAULT_PROFILE_ID)).toBe('codex')
       expect(
         await ask(
           { kind: 'setAgentProvider', profileId: 'absent', provider: 'codex' },
-          new NobodyThere('agent:sess_1'),
+          new RecordingSink('agent:sess_1', false),
         ),
       ).toBeNull()
       expect((await chooseFor(DEFAULT_PROFILE_ID, 'codex')) as AgentIdentity | null).toMatchObject({

@@ -8,9 +8,9 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { stillWaiting } from './helpers/provider-close-waits'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * **Reopening a conversation the app has just called closed** (075, from 072 §5.3).
@@ -53,17 +53,6 @@ import { stillWaiting } from './helpers/provider-close-waits'
  */
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** The renderer's rule, in one line: `ended` on the stream is what drops it from the open list. */
 function saidClosed(sink: RecordingSink): boolean {
@@ -196,7 +185,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
   }
 
   it('reopens a conversation whose teardown is still running, instead of refusing it', async () => {
-    const first = new RecordingSink('owner:1')
+    const first = new RecordingSink('owner:1', false)
     const sessionId = await openOne(first)
 
     // Close it, and do NOT await the teardown — the renderer does not either. It reacts to the
@@ -213,7 +202,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
 
     // The click. Before 075 this threw `session is already open` — about a conversation the same
     // app had just moved into the Reopen list. It now waits for the teardown it named.
-    const reopening = host.resumeSession(sessionId, new RecordingSink('owner:2'))
+    const reopening = host.resumeSession(sessionId, new RecordingSink('owner:2', false))
     gate.resolve()
 
     await expect(reopening).resolves.toMatchObject({ sessionId })
@@ -227,7 +216,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // the two apart — same terminal event, same drop from the open list, same Reopen offered — so a
     // guard keyed on the phase would have waited for the conversations a user closed and refused
     // the ones that died. This is why `settleTeardown` asks whether a TEARDOWN is running.
-    const first = new RecordingSink('owner:1')
+    const first = new RecordingSink('owner:1', false)
     const sessionId = await openOne(first)
     const slots = (host as unknown as { slots: Map<string, { phase: string }> }).slots
     expect(slots.get(sessionId)?.phase).toBe('live')
@@ -241,7 +230,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // The phase is untouched — which is precisely why the old guard would have missed it.
     expect(slots.get(sessionId)?.phase).toBe('live')
 
-    const reopening = host.resumeSession(sessionId, new RecordingSink('owner:2'))
+    const reopening = host.resumeSession(sessionId, new RecordingSink('owner:2', false))
     gate.resolve()
     await expect(reopening).resolves.toMatchObject({ sessionId })
     await ending
@@ -265,7 +254,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
    * would pass this test's setup and still ship the defect; what is checked is the release event.
    */
   it('🔴 265 §1 · a reopen whose window is released mid-wait starts no provider', async () => {
-    const first = new RecordingSink('webContents:7')
+    const first = new RecordingSink('webContents:7', false)
     const sessionId = await openOne(first)
     const resumesBefore = resumed.length
 
@@ -276,7 +265,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
 
     // 2 · the old document presses Reopen. Main suspends inside `settleTeardown`, holding no slot
     //     for this invocation.
-    const reopening = host.resumeSession(sessionId, new RecordingSink('webContents:7'))
+    const reopening = host.resumeSession(sessionId, new RecordingSink('webContents:7', false))
     reopening.catch(() => {})
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(resumed.length, 'still suspended — the provider has not been asked').toBe(resumesBefore)
@@ -284,7 +273,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // 3 · the document reloads. `did-navigate` releases the slots this owner had; the replacement
     //     document performs its one-time attach and correctly receives nothing.
     const released = host.closeSessionsForOwner(first.ownerId)
-    const replacement = new RecordingSink('webContents:7')
+    const replacement = new RecordingSink('webContents:7', false)
     expect(host.attachOpenSessions(replacement)).toEqual([])
 
     // 4 · the old teardown settles. Before 265 the suspended continuation reserved the id here and
@@ -306,7 +295,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // surface registered no owned wait, so the departure of a window it never belonged to cannot
     // reach it. ⚠️ Without the window case above, this would pass over a fence that refuses
     // nothing at all — the pair is what makes each half mean something.
-    const first = new RecordingSink('webContents:7')
+    const first = new RecordingSink('webContents:7', false)
     const sessionId = await openOne(first)
     const resumesBefore = resumed.length
     const closing = host.close(sessionId, first)
@@ -333,12 +322,12 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
   it('⚑ …and a release for a DIFFERENT window does not touch it', async () => {
     // The mark is per owner. A second window closing must not refuse the first window's reopen —
     // that would be the fix over-reaching into 062's territory, where two surfaces are two owners.
-    const first = new RecordingSink('webContents:7')
+    const first = new RecordingSink('webContents:7', false)
     const sessionId = await openOne(first)
     const closing = host.close(sessionId, first)
     await waitFor(() => saidClosed(first), 'the app to say the conversation ended')
 
-    const reopening = host.resumeSession(sessionId, new RecordingSink('webContents:7'))
+    const reopening = host.resumeSession(sessionId, new RecordingSink('webContents:7', false))
     reopening.catch(() => {})
     await new Promise((resolve) => setTimeout(resolve, 10))
     await host.closeSessionsForOwner('webContents:99')
@@ -354,7 +343,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // window that then holds a handle already refusing messages — and, worse, would reappear in the
     // rail moments after the app said it had ended. The two doors are watched, not just `phase`:
     // this one goes through `close()`, and the companion below through a stream ending on its own.
-    const owner = new RecordingSink('owner:1')
+    const owner = new RecordingSink('owner:1', false)
     const sessionId = await openOne(owner)
     // ⚠️ **Attached with the session's OWN sink, and that matters** — a successful attach rebinds
     // `session.sink` to whoever asked, so probing with a throwaway sink here would quietly divert
@@ -378,14 +367,14 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
   it('still refuses a second window a conversation that is genuinely OPEN', async () => {
     // `settleTeardown` must not have loosened the reservation: nothing is closing here, so the
     // answer is the refusal 062 wrote, in the same words the rest of the app matches on.
-    const sessionId = await openOne(new RecordingSink('owner:1'))
+    const sessionId = await openOne(new RecordingSink('owner:1', false))
 
     // ⚠️ **The id is gone from the sentence, and that is the assertion** (100). The raw diagnostic
     // — which still names the id, the holder and the asker — goes to the log; what reaches a caller
     // is a sentence with nothing internal in it. Both halves are checked: the id must not be there,
     // and the sentence must say which window to go to, or it is a refusal with no way forward.
     const refused = await host
-      .resumeSession(sessionId, new RecordingSink('owner:2'))
+      .resumeSession(sessionId, new RecordingSink('owner:2', false))
       .then(() => null)
       .catch((error: unknown) => (error as Error).message)
 
@@ -401,11 +390,11 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     // session with its provider child still running, while the renderer showed "Nothing running"
     // and offered the conversation under Reopen. Same owner, so this is that window asking for its
     // own session back.
-    const owner = new RecordingSink('owner:1')
+    const owner = new RecordingSink('owner:1', false)
     const sessionId = await openOne(owner)
     const before = handles.length
 
-    const attached = await host.resumeSession(sessionId, new RecordingSink('owner:1'))
+    const attached = await host.resumeSession(sessionId, new RecordingSink('owner:1', false))
 
     expect(attached.sessionId).toBe(sessionId)
     // ⚠️ **Nothing was resumed.** No provider was asked for, which is the line 070 draws — the whole
@@ -456,7 +445,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
         files: [],
       }),
     })
-    const sink = new RecordingSink()
+    const sink = new RecordingSink('owner:1', false)
     void stuck.createSession({ provider: 'claude', cwd: join(dir, 'work') }, sink).catch(() => {})
     await waitFor(() => asked, 'the provider to be asked for')
     const reserved = 'sess_stuck'
@@ -464,7 +453,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
 
     // Far past the old bound (twenty times the drain), the Reopen is still waiting: not answered
     // "already open", and not refused.
-    const reopening = stuck.resumeSession(reserved, new RecordingSink('owner:2'))
+    const reopening = stuck.resumeSession(reserved, new RecordingSink('owner:2', false))
     void reopening.catch(() => undefined)
     expect(await stillWaiting(reopening, 400), 'still waiting, not refused').toBe(true)
   })

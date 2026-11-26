@@ -6,17 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **Send while it is working — interrupt, or queue (077).**
@@ -41,32 +36,6 @@ import { neutralHostDeps } from './lib/host-fixture'
  * Driven against `FakeRuntime`, whose representative turn parks on a permission card — which is what
  * makes the "a queued message cannot answer a card" case reachable at all.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  alive = true
-
-  constructor(readonly ownerId = sinkOwnerId({ id: 1 })) {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-
-  types(): string[] {
-    return this.events().map((event) => event.type)
-  }
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -135,7 +104,7 @@ describe('a message sent while a turn is running (077)', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-queue-'))
     host = buildHost()
-    sink = new RecordingSink()
+    sink = new RecordingSink(sinkOwnerId({ id: 1 }))
   })
 
   afterEach(async () => {

@@ -79,11 +79,6 @@ class CapturingRuntime extends FakeRuntime {
   }
 }
 
-/** A channel with no person behind it — what the window's own sink is not. */
-class NobodysSink extends RecordingSink {
-  override readonly aPersonIsBehindIt: boolean = false
-}
-
 describe('what an agent was given', () => {
   let userData: string
   let project: string
@@ -1370,7 +1365,7 @@ describe('what an agent was given', () => {
     ]
     for (const ask of asks) {
       await expect(
-        executeRuntimeCommand(host, new NobodysSink('owner:nobody'), ask),
+        executeRuntimeCommand(host, new RecordingSink('owner:nobody', false), ask),
         ask.kind,
       ).rejects.toThrow(/unless a person is asking/)
       await expect(executeRuntimeCommand(host, window, ask), ask.kind).resolves.toMatchObject({
