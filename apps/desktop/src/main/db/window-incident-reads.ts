@@ -11,6 +11,8 @@ import {
   type IncidentFact,
   type IncidentHistory,
   type WindowIncidents,
+  type WindowReconciliationFolds,
+  type ReconciliationFoldReading,
 } from './window-read-protocol'
 
 export const INCIDENT_READ_LIMIT = { entries: 512, bytes: 4 * 1024 * 1024 } as const
@@ -21,6 +23,7 @@ export class WindowIncidentReads {
   private readonly context = new AsyncLocalStorage<{
     active: boolean
     owners?: ReadonlyMap<string, IncidentReading>
+    folds?: ReadonlyMap<string, ReconciliationFoldReading>
     roots?: ReadonlyMap<string, IncidentHistory['roots'][number]>
     reported?: ReadonlyMap<string, IncidentFact<readonly string[]>>
   }>()
@@ -41,20 +44,22 @@ export class WindowIncidentReads {
     this.epoch++
   }
 
-  run<T>(answer: () => T, snapshot?: WindowIncidents): T {
+  run<T>(answer: () => T, snapshot?: WindowIncidents | WindowReconciliationFolds): T {
     const scope = {
       active: true,
       ...(snapshot === undefined
         ? {}
-        : {
-            owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
-            roots: new Map(
-              snapshot.owners.flatMap((row) =>
-                row.history.roots.map((root) => [root[0], root] as const),
+        : snapshot.kind === 'reconciliation-folds'
+          ? { folds: new Map(snapshot.owners.map((row) => [row.sessionId, row])) }
+          : {
+              owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
+              roots: new Map(
+                snapshot.owners.flatMap((row) =>
+                  row.history.roots.map((root) => [root[0], root] as const),
+                ),
               ),
-            ),
-            reported: new Map(snapshot.reported),
-          }),
+              reported: new Map(snapshot.reported),
+            }),
     }
     try {
       return this.context.run(scope, answer)
@@ -147,6 +152,13 @@ export class WindowIncidentReads {
       for (const ordinal of row[`${kind}Skipped`]) unread?.in(id)(ordinal)
       return row
     }
+    const pieceFacts = (id: string, unread?: RowsUnread) => {
+      const scope = this.context.getStore()
+      if (scope?.active !== true || scope.folds === undefined) return fact(id, unread, 'pieces')
+      const row = scope.folds.get(id)
+      if (row !== undefined) for (const ordinal of row.piecesSkipped) unread?.in(id)(ordinal)
+      return row
+    }
     const valueOf = <T>(fact: IncidentFact<T> | undefined): T => {
       if (fact == null) throw new WindowReadUnavailable()
       return structuredClone(fact.value)
@@ -225,17 +237,19 @@ export class WindowIncidentReads {
           }
         if (key === 'reconciliationWork')
           return (holders?: ReadonlySet<string>, unread?: RowsUnread) => {
-            const owners = current()
+            const scope = this.context.getStore()
+            const owners = scope?.active === true ? (scope.folds ?? scope.owners) : undefined
             if (owners === undefined) return store.reconciliationWork(holders, unread)
             return [...(holders ?? owners.keys())].flatMap((id) => {
-              const row = fact(id, unread, 'pieces')
-              if (row === undefined) throw new WindowReadUnavailable()
-              return withoutBrief(row.work)
+              const row = pieceFacts(id, unread)
+              return row === undefined
+                ? store.reconciliationWork(new Set([id]), unread)
+                : withoutBrief(row.work)
             })
           }
         if (key === 'openPiecesOf')
           return (id: string, unread?: RowsUnread) => {
-            const row = fact(id, unread, 'pieces')
+            const row = pieceFacts(id, unread)
             return row === undefined ? store.openPiecesOf(id, unread) : withoutBrief(row.pieces)
           }
         if (key === 'routedRequestsOf')

@@ -56,6 +56,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
   z.object({ kind: z.literal('checkpoint'), reuse: foldReuse.optional() }).strict(),
+  z.object({ kind: z.literal('reconciliation-folds'), holders: conversationIds }).strict(),
   z
     .object({
       kind: z.literal('work-given'),
@@ -157,19 +158,25 @@ export interface IncidentHistory {
   ])[]
   readonly statesSkipped: readonly SkippedRow[]
 }
-export interface IncidentReading {
+export interface ReconciliationFoldReading {
   readonly sessionId: string
-  readonly history: IncidentHistory
-  /** Open pieces and work rows without their brief text, which no incident composition reads. */
+  /** Open pieces and work rows without their brief text. */
   readonly pieces: readonly Omit<ReturnType<SessionStore['openPiecesOf']>[number], 'brief'>[]
   readonly work: readonly Omit<ReturnType<SessionStore['reconciliationWork']>[number], 'brief'>[]
+  readonly piecesSkipped: readonly SkippedRow[]
+}
+export interface IncidentReading extends ReconciliationFoldReading {
+  readonly history: IncidentHistory
   readonly routes: ReturnType<SessionStore['routedRequestsOf']>
   readonly messages: ReturnType<SessionStore['messagesWaitingIn']>
   readonly stop: ReturnType<SessionStore['lastAskToStop']>
-  readonly piecesSkipped: readonly SkippedRow[]
   readonly routesSkipped: readonly SkippedRow[]
   readonly messagesSkipped: readonly SkippedRow[]
   readonly stopSkipped: readonly SkippedRow[]
+}
+export interface WindowReconciliationFolds {
+  readonly kind: 'reconciliation-folds'
+  readonly owners: readonly ReconciliationFoldReading[]
 }
 export interface WindowIncidents {
   readonly kind: 'incidents'
@@ -197,6 +204,7 @@ export type WindowReadResult =
   | WindowFiles
   | WindowActivity
   | WindowIncidents
+  | WindowReconciliationFolds
   | WindowForest
   | WindowForestNodes
   | WindowPublication
@@ -237,7 +245,19 @@ const listingFacts = z
     ),
   })
   .strict()
+const reconciliationFoldReading = z.object({
+  sessionId: z.string().min(1),
+  pieces: z.array(z.unknown()),
+  work: z.array(z.unknown()),
+  piecesSkipped: z.array(skipped),
+})
 export const windowReadResult = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('reconciliation-folds'),
+      owners: z.array(reconciliationFoldReading.strict()),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('publication'),
@@ -281,16 +301,12 @@ export const windowReadResult = z.discriminatedUnion('kind', [
       routing: z.unknown(),
       reported: z.array(z.tuple([z.string(), z.unknown()])),
       owners: z.array(
-        z
-          .object({
-            sessionId: z.string().min(1),
+        reconciliationFoldReading
+          .extend({
             history: z.unknown(),
-            pieces: z.array(z.unknown()),
-            work: z.array(z.unknown()),
             routes: z.array(z.unknown()),
             messages: z.array(z.unknown()),
             stop: z.unknown(),
-            piecesSkipped: z.array(skipped),
             routesSkipped: z.array(skipped),
             messagesSkipped: z.array(skipped),
             stopSkipped: z.array(skipped),

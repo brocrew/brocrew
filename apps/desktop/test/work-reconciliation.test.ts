@@ -7,6 +7,7 @@ import {
   type ReminderProgress,
 } from '../src/main/runtime/work-reconciliation'
 import { reconciliationReceipt } from '../src/shared/work-reconciliation'
+import { deferred } from './helpers/quit-open-list-cases'
 
 function fixture() {
   let clock = 100
@@ -73,6 +74,66 @@ async function flush(machine: WorkReconciler) {
   await machine.run()
   for (let at = 0; at < 4; at++) await new Promise((resolve) => setImmediate(resolve))
 }
+
+describe('ordinary reconciliation with worker preparation', () => {
+  it.each(['busy', 'moved'] as const)(
+    'falls back once after a %s reply and rebuilds its watches',
+    async (why) => {
+      const f = fixture()
+      const calls: string[] = []
+      f.piece({ disposition: 'waiting', issue: null, waitsFor: ['dependency'] })
+      const machine = new WorkReconciler({
+        ...f.reads,
+        providerFailures: () => calls.push('provider'),
+        preparePieces: async () => {
+          calls.push('worker')
+          return why === 'moved' ? () => undefined : undefined
+        },
+        pieces: (holders) => {
+          calls.push([...holders].join(','))
+          return f.reads.pieces(holders)
+        },
+      })
+
+      await machine.run(new Set(['holder']))
+      await machine.run(new Set(['dependency']))
+      expect(calls).toEqual([
+        'provider',
+        'worker',
+        'holder',
+        'provider',
+        'worker',
+        'dependency,holder',
+      ])
+    },
+  )
+
+  it('does not compose a prepared read or fall back after close', async () => {
+    const f = fixture()
+    const held = deferred()
+    let composed = false
+    const machine = new WorkReconciler({
+      ...f.reads,
+      preparePieces: async () => {
+        await held.promise
+        return () => {
+          composed = true
+          return f.reads.pieces()
+        }
+      },
+      pieces: () => {
+        throw new Error('late fallback')
+      },
+    })
+
+    const pass = machine.run(new Set(['holder']))
+    machine.close()
+    held.resolve()
+    await pass
+    expect(composed).toBe(false)
+    expect(f.receipts).toEqual([])
+  })
+})
 
 describe('the incident ladder follows observed outcomes', () => {
   it('ends with the holder when it records a valid disposition', async () => {

@@ -6,7 +6,7 @@ import { windowFoldCache } from './window-fold-cache'
 import { checkpointRowsOf, foldHeads, seedFromCheckpoint } from './window-fold-checkpoint'
 import { readWindowWork, projectWindowPieces, type WindowPieces } from './window-work-reading'
 import { recentActivity } from '../runtime/recent-activity'
-import { createSessionStore, type ThreadLeadRow } from './session-store'
+import { createSessionStore, type SessionStore, type ThreadLeadRow } from './session-store'
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import { readTheForestFirst } from './forest-first-read'
 import { TASK_IS_OPEN } from '../../shared/tasks'
@@ -31,6 +31,42 @@ const TOKENS_KEPT = 256
 function withoutBrief<T extends { brief: unknown }>({ brief: _brief, ...row }: T) {
   void _brief
   return row
+}
+
+function noteOwnerSkips(sessionId: string, skipped: Set<SkippedRow>): RowsUnread {
+  const unread = rowsUnreadOnce()
+  return {
+    in: (id) => (ordinal) => {
+      if (id !== sessionId) throw new WindowReadUnavailable()
+      skipped.add(ordinal)
+      unread.in(id)(ordinal)
+    },
+    get count() {
+      return unread.count
+    },
+    get ledgersSkipped() {
+      return unread.ledgersSkipped
+    },
+  }
+}
+
+function reconciliationWorkFromOpenPieces(
+  store: SessionStore,
+  sessionId: string,
+  pieces: ReturnType<SessionStore['openPiecesOf']>,
+  skipped: ReadonlySet<SkippedRow>,
+  unread: RowsUnread,
+) {
+  // Reuse the open-piece fold already read for this owner.
+  const foldedStore: typeof store = {
+    ...store,
+    openPiecesOf(owner, notes) {
+      if (owner !== sessionId) throw new WindowReadUnavailable()
+      for (const ordinal of skipped) notes?.in(owner)(ordinal)
+      return pieces
+    },
+  }
+  return foldedStore.reconciliationWork(new Set([sessionId]), unread)
 }
 
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
@@ -217,6 +253,29 @@ export class WindowReadEngine {
           kind: 'forest-nodes',
           ...store.forestNodesOf(query.conversations, new Set(query.drawn), query.hidden),
         }
+      } else if (query.kind === 'reconciliation-folds') {
+        result = {
+          kind: 'reconciliation-folds',
+          owners: query.holders.map((sessionId) => {
+            checkCancelled()
+            const piecesSkipped = new Set<SkippedRow>()
+            const noted = noteOwnerSkips(sessionId, piecesSkipped)
+            const pieces = store.openPiecesOf(sessionId, noted)
+            const work = reconciliationWorkFromOpenPieces(
+              store,
+              sessionId,
+              pieces,
+              piecesSkipped,
+              noted,
+            )
+            return {
+              sessionId,
+              pieces: pieces.map(withoutBrief),
+              work: work.map(withoutBrief),
+              piecesSkipped: [...piecesSkipped],
+            }
+          }),
+        }
       } else if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()
         const readings: IncidentReading[] = []
@@ -236,22 +295,7 @@ export class WindowReadEngine {
           const routesSkipped = new Set<SkippedRow>()
           const messagesSkipped = new Set<SkippedRow>()
           const stopSkipped = new Set<SkippedRow>()
-          const noted = (skipped: Set<SkippedRow>): RowsUnread => {
-            const unread = rowsUnreadOnce()
-            return {
-              in: (id) => (ordinal) => {
-                if (id !== sessionId) throw new WindowReadUnavailable()
-                skipped.add(ordinal)
-                unread.in(id)(ordinal)
-              },
-              get count() {
-                return unread.count
-              },
-              get ledgersSkipped() {
-                return unread.ledgersSkipped
-              },
-            }
-          }
+          const noted = (skipped: Set<SkippedRow>) => noteOwnerSkips(sessionId, skipped)
           const statesSkipped = new Set<SkippedRow>()
           const reconciled = store.reconciliationPieces(sessionId, noted(statesSkipped))
           checkCancelled()
@@ -265,16 +309,13 @@ export class WindowReadEngine {
           )
           for (const ordinal of statesSkipped) piecesSkipped.add(ordinal)
           const pieces = states.filter((one) => TASK_IS_OPEN[one.state])
-          // The canonical work reader shares the open-piece fold already read for this owner.
-          const foldedStore: typeof store = {
-            ...store,
-            openPiecesOf: (owner, unread) => {
-              if (owner !== sessionId) throw new WindowReadUnavailable()
-              for (const ordinal of piecesSkipped) unread?.in(owner)(ordinal)
-              return pieces
-            },
-          }
-          const work = foldedStore.reconciliationWork(new Set([sessionId]), noted(piecesSkipped))
+          const work = reconciliationWorkFromOpenPieces(
+            store,
+            sessionId,
+            pieces,
+            piecesSkipped,
+            noted(piecesSkipped),
+          )
           const newestTurn = reconciled.newestTurn
           const stop = store.lastAskToStop(sessionId, noted(stopSkipped))
           for (const piece of pieces)

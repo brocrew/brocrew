@@ -40,6 +40,9 @@ export interface ReconciliationPiece {
 export interface ReconciliationReads {
   holders(): readonly string[]
   providerFailures?(holders: ReadonlySet<string>): void
+  preparePieces?(
+    holders: ReadonlySet<string>,
+  ): Promise<(() => readonly ReconciliationPiece[] | undefined) | undefined>
   pieces(holders: ReadonlySet<string>): readonly ReconciliationPiece[]
   receiptsFor?(
     pieces: readonly ReconciliationPiece[],
@@ -142,9 +145,12 @@ export class WorkReconciler {
 
   private async walkHolders(holders: ReadonlySet<string>): Promise<void> {
     this.reads.providerFailures?.(holders)
-    const pieces = this.reads
-      .pieces(holders)
-      .filter((one) => one.disposition !== 'ended' && one.disposition !== 'unknown')
+    const prepared =
+      this.reads.preparePieces === undefined ? undefined : await this.reads.preparePieces(holders)
+    if (this.closed) return
+    const pieces = (prepared?.() ?? this.reads.pieces(holders)).filter(
+      (one) => one.disposition !== 'ended' && one.disposition !== 'unknown',
+    )
     for (const piece of pieces)
       for (const target of piece.waitsFor ?? []) this.watch(piece.holder, target)
     if (pieces.length === 0) return

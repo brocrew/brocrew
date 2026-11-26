@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { Worker } from 'node:worker_threads'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -9,6 +10,8 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { windowFoldCache } from '../src/main/db/window-fold-cache'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
+import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import { bundleAWorker } from './helpers/bundle-a-worker'
 import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
 import { withoutBrief } from './helpers/window-incident-cases'
 
@@ -20,7 +23,7 @@ afterEach(() => {
 
 it.each([false, true])(
   'consumes an unretained incident piece fold once and preserves both skip sets (torn=%s)',
-  (torn) => {
+  async (torn) => {
     const directory = mkdtempSync(join(tmpdir(), 'incident-pieces-'))
     const file = join(directory, 'fictional.sqlite')
     const db = openDatabase(file)
@@ -90,5 +93,31 @@ it.each([false, true])(
     // The terminal is now selected before the one shared current/cut replay begins.
     expect(readsBeforeNewestTurn).toBe(0)
     expect(pieceReads).toBe(1)
+
+    // The ordinary sweep asks for just its holder group through the actual worker protocol.
+    const entry = await bundleAWorker(
+      'src/main/window-reader.worker.ts',
+      directory,
+      'reconciliation-worker.cjs',
+    )
+    const reader = new WindowWorkerReader(new Worker(entry, { workerData: { file } }))
+    try {
+      const holders = ['alpha']
+      const expectedWork = store.reconciliationWork(new Set(holders), rowsUnreadOnce())
+      expect(await reader.read({ kind: 'reconciliation-folds', holders })).toEqual({
+        kind: 'reconciliation-folds',
+        owners: [
+          {
+            sessionId: 'alpha',
+            pieces: expectedOpen.map(withoutBrief),
+            work: expectedWork.map(withoutBrief),
+            piecesSkipped: torn ? [skipped] : [],
+          },
+        ],
+      })
+    } finally {
+      await reader.close()
+    }
   },
+  60_000,
 )

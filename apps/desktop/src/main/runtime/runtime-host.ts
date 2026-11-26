@@ -858,6 +858,7 @@ import {
   windowReadQuery,
   WindowReadUnavailable,
   type WindowReadQuery,
+  type WindowReconciliationFolds,
   type WindowReadResult,
 } from '../db/window-read-protocol'
 import {
@@ -2750,11 +2751,13 @@ export class RuntimeHost implements LiveHost {
     this.workReconciler = new WorkReconciler({
       holders: () => this.deps.store.reconciliationOwners(true),
       providerFailures: (holders) => this.reconcileProviderFailureNotices(holders),
-      pieces: (holders) => {
-        const rows = this.reconciliationReading(undefined, holders).rows
-        const abandonments = this.reconcileFirstBriefNotices(rows)
-        return rows.filter((row) => !abandonments.has(row.piece))
-      },
+      ...(deps.windowReader === undefined
+        ? {}
+        : {
+            preparePieces: (holders: ReadonlySet<string>) =>
+              this.prepareReconciliationPieces(holders),
+          }),
+      pieces: (holders) => this.reconciliationPiecesForHolders(holders),
       receiptsFor: (pieces) => this.reconciliationReceiptsFor(pieces),
       receipts: (piece) => {
         const work = this.deps.store.workById(piece)
@@ -13317,6 +13320,43 @@ export class RuntimeHost implements LiveHost {
             this.whyItNoLongerGoes(session.id, queued)?.detail ??
             NOTICE_MEANS['a-work-wait-needs-attention'],
         })
+    }
+  }
+
+  private reconciliationPiecesForHolders(
+    holders: ReadonlySet<string>,
+    snapshot?: WindowReconciliationFolds,
+  ): readonly ReconciliationPiece[] {
+    if (this.launches.closed) return []
+    const read = () => this.reconciliationReading(undefined, holders).rows
+    const rows = snapshot === undefined ? read() : this.windowIncidentReads.run(read, snapshot)
+    const abandonments = this.reconcileFirstBriefNotices(rows)
+    return rows.filter((row) => !abandonments.has(row.piece))
+  }
+
+  private async prepareReconciliationPieces(holders: ReadonlySet<string>) {
+    const query: WindowReadQuery = { kind: 'reconciliation-folds', holders: [...holders] }
+    const before = this.sampleWindowWriter(query)
+    const reader = this.deps.windowReader
+    if (before === null || reader === undefined || this.launches.closed) return undefined
+    try {
+      const result = await reader.read(query)
+      if (
+        result.kind !== 'reconciliation-folds' ||
+        result.owners.length !== holders.size ||
+        result.owners.some((owner, index) => owner.sessionId !== query.holders[index])
+      )
+        return undefined
+      // WorkReconciler invokes this after its await, immediately before applying the result.
+      return () => {
+        if (this.launches.closed) return []
+        this.deps.store.checkCommitted()
+        if (!sameWindowWriter(before, this.sampleWindowWriter(query))) return undefined
+        return this.reconciliationPiecesForHolders(holders, result)
+      }
+    } catch (error) {
+      if (error instanceof WindowReadUnavailable) return undefined
+      throw error
     }
   }
 

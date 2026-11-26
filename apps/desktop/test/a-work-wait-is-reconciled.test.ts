@@ -7,7 +7,7 @@ import { registerReconciliationPersistedReadCases } from './helpers/reconciliati
 import {
   countSqlReads,
   settle,
-  registerPersistedWaitRevisionCase,
+  registerPersistedWaitCases,
 } from './helpers/persisted-wait-revision-cases'
 import type {
   ReconciliationReceipt,
@@ -64,7 +64,7 @@ describe('a work wait is reconciled without a window', () => {
   let startGap: number
   let intervals: (() => void)[]
   let firstLoad: Promise<void> | undefined
-  let build: () => RuntimeHost
+  let build: (reader?: WindowStoreReader) => RuntimeHost
   let sqlReads: string[] | null
   let stampsAvailable: boolean
   const tick = () => (freezeClock ? clock : clock++)
@@ -194,9 +194,10 @@ describe('a work wait is reconciled without a window', () => {
         return this.fit(await super.resume(ref, options))
       }
     }
-    build = () =>
+    build = (windowReader) =>
       new RuntimeHost({
         afterFirstWindowLoad: firstLoad,
+        windowReader,
         turnsTheAppCut: turnsTheAppCutIn(db),
         store,
         limitsWriterStamp: () => (stampsAvailable ? contentStamp() : null),
@@ -242,12 +243,23 @@ describe('a work wait is reconciled without a window', () => {
     create,
     waiting,
     store: () => store,
-    build: () => build(),
+    build: (reader?: WindowStoreReader) => build(reader),
+    openReconciliationReader: () => new WindowReadEngine(join(userData, 'brobot2.sqlite')),
+    holdStartup: () => {
+      firstLoad = new Promise(() => {})
+    },
+    now: () => clock,
+    advanceTo: (at: number) => {
+      clock = at
+    },
+    cycle,
+    notices,
+    receipts,
     startGap: (ms: number) => {
       startGap = ms
     },
   }
-  registerPersistedWaitRevisionCase(waitContext)
+  registerPersistedWaitCases(waitContext)
   registerPacedReminderQuitCase(waitContext)
   registerProviderFailureFallbackCases(waitContext, tick, cycle, (owner) => notices(owner).length)
   registerReconciliationPersistedReadCases(waitContext, tick)
@@ -561,33 +573,6 @@ describe('a work wait is reconciled without a window', () => {
       otherDb.close()
       paused.mockRestore()
     }
-  })
-
-  it('a future time is untouched; the 60 s tick wakes a due root once and turn end lists it', async () => {
-    const { owner, work } = await create()
-    const at = clock + 3_600_000
-    waiting(owner, work.piece, { kind: 'time', at })
-    await cycle()
-    expect(notices(owner)).toHaveLength(0)
-    clock = at
-    await cycle()
-    await waitFor(
-      () => receipts(owner, work.piece).some((one) => one.step === 'person'),
-      'the reminded turn to finish',
-    )
-    expect(notices(owner)).toHaveLength(1)
-    const queued = notices(owner)[0]!.event
-    expect(queued).toMatchObject({
-      text: `${work.label}: the time it was waiting for has come. Carry on with it, or say what it waits on now with update_work (on).`,
-    })
-    expect(host.workIncidentsForAPerson()).toMatchObject({
-      walk: 'every-conversation-that-holds-work',
-      rows: [
-        { piece: work.piece, kind: 'wait-target-ended', told: { holder: expect.any(Number) } },
-      ],
-    })
-    await cycle()
-    expect(notices(owner)).toHaveLength(1)
   })
 
   it('a reminded turn still running at the next tick is never escalated', async () => {
