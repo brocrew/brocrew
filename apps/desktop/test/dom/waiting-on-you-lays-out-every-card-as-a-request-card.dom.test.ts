@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
+import { page } from 'vitest/browser'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { unmountAll, type Mounted } from './harness'
@@ -138,6 +139,33 @@ describe('every kind of card is a card like the request cards', () => {
     const list = m.host.querySelector<HTMLElement>('.attention-list')!
     for (const provider of ['claude', 'codex'])
       expect(box(m.q(`persons-queue-wall-${provider}`)).bottom).toBeLessThanOrEqual(box(list).top)
+    unmountAll()
+    for (const width of [720, 1180, 1677]) {
+      const positions: number[] = []
+      for (const notices of [0, 1, 2, 3]) {
+        const view = await aWaitingPageWithEveryCard(width, 900, true, false, notices)
+        const card = view.host.querySelector<HTMLElement>('.pq-row')!
+        const band = view.host.querySelector<HTMLElement>('.head-chips')!
+        expect(band.querySelectorAll('.chip')).toHaveLength(notices)
+        positions.push(box(card).top)
+        expect(box(band).bottom).toBeLessThanOrEqual(
+          box(view.host.querySelector<HTMLElement>('.pills')!).top,
+        )
+        if (notices === 3) {
+          band.scrollLeft = band.scrollWidth
+          await nextTick()
+          const last = view.q('persons-queue-wall-codex')
+          expect(box(last).right).toBeLessThanOrEqual(box(band).right + 1)
+        }
+        if (import.meta.env.VITE_WAITING_HEADER_CAPTURE)
+          await page.screenshot({
+            element: view.host,
+            path: `${import.meta.env.VITE_WAITING_HEADER_CAPTURE}/waiting-${width}-${notices}.png`,
+          })
+        unmountAll()
+      }
+      expect(Math.max(...positions) - Math.min(...positions)).toBeLessThan(1)
+    }
   })
 
   it('keeps every word, button and door, with the controls at each card’s foot', async () => {
