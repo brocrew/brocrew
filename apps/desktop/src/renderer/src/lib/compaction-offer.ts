@@ -48,8 +48,41 @@ export const COMPACT_HEADING = 'Compact this conversation now?'
 export const COMPACT_HEADING_AFTER_THE_TURN = 'Compact this conversation when this turn ends?'
 
 /** The confirm's question for the press the offer would make. */
+const COMPACT_HEADING_WHEN_IT_RUNS = 'Compact this conversation when it next runs?'
+
+/**
+ * The facts a conversation listed elsewhere gives, for a card that has no composer: what the host
+ * says of it and whether anything runs it. The host decides the rest when the press arrives.
+ */
+export function compactionFactsOfAListedConversation(input: {
+  readonly is: string | undefined
+  readonly running: boolean
+  readonly who: string
+}): CompactionFacts {
+  return {
+    state:
+      input.is === 'needs-you'
+        ? 'frozen'
+        : !input.running
+          ? 'stopped'
+          : input.is === 'active'
+            ? 'busy'
+            : 'idle',
+    closing: false,
+    signInSuperseded: false,
+    hasQueued: false,
+    compactionIsWaiting: false,
+    who: input.who,
+  }
+}
+
 export function compactHeading(intent: 'now' | 'queue'): string {
   return intent === 'queue' ? COMPACT_HEADING_AFTER_THE_TURN : COMPACT_HEADING
+}
+
+/** The question a confirm asks for an offer: its own heading where it has one. */
+export function offerHeading(offer: CompactionOffer): string {
+  return offer.offered ? (offer.heading ?? compactHeading(offer.intent)) : ''
 }
 
 /**
@@ -73,8 +106,8 @@ export const THE_COMPACT_COMMAND = '/compact'
 
 /** The facts about the CONVERSATION the offer is asked of — the composer's own, read by the pane. */
 export interface CompactionFacts {
-  /** `ComposerState`'s four words — `idle`, `busy`, `starting`, `frozen`. */
-  readonly state: 'idle' | 'busy' | 'starting' | 'frozen'
+  /** `ComposerState`'s four words, or `stopped` for a listed conversation nothing runs. */
+  readonly state: 'idle' | 'busy' | 'starting' | 'frozen' | 'stopped'
   /** ⚑ The pane's `record.phase === 'closing'`. */
   readonly closing: boolean
   /** ⚑ Claude's superseded sign-in — no message goes out on it (`SIGN_IN_SUPERSEDED_BLOCK`). */
@@ -105,6 +138,8 @@ export type CompactionOffer =
       /** `now` from `idle`, `queue` from `busy` — see the file's note. */
       readonly intent: 'now' | 'queue'
       readonly why: string
+      /** The confirm's heading where the intent's own does not say it. */
+      readonly heading?: string
     }
   | {
       readonly offered: false
@@ -164,6 +199,14 @@ export function compactionOffer(
     return notNow(
       `A /compact is already waiting to go when ${facts.who} finishes — the conversation compacts then.`,
     )
+  }
+  if (facts.state === 'stopped') {
+    return {
+      offered: true,
+      intent: 'now',
+      why: `${road} ${facts.who} is not running, so it compacts when it next runs.`,
+      heading: COMPACT_HEADING_WHEN_IT_RUNS,
+    }
   }
   if (facts.state === 'busy') {
     return {

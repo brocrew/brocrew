@@ -393,6 +393,7 @@ const panel = computed(() => sessionPanel(props.state))
         :identities="props.identities ?? null"
         :can-open="props.canOpenConversation ?? false"
         :telemetry="telemetry"
+        :capabilities="props.capabilities ?? null"
         @open-conversation="(conversation) => emit('openConversation', conversation)"
       />
     </AgentCard>

@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
+import type { PickedModel } from '../lib/model-lists'
 import type { RailSays } from '../lib/agent-state'
 import type { FilesRead } from '../lib/files-kept'
 import type { CastReading } from '../lib/working-together'
@@ -80,6 +81,10 @@ interface CastState {
    * which is rule 18.
    */
   readonly goTo: ((conversation: string) => void) | null
+  /** Ask the host to compact one of these conversations; the host's refusal, or null. Null until a screen supplies it. */
+  readonly compact: ((conversation: string) => Promise<string | null>) | null
+  /** Change one of these conversations' model and effort; the host's refusal, or null. */
+  readonly pickModel: ((conversation: string, pick: PickedModel) => Promise<string | null>) | null
   /**
    * ⚑ **The whole forest, for the Graph tab** — the band's own reading names only this
    * conversation's children; this names who spawned whom everywhere, so the Graph can draw everyone
@@ -150,6 +155,10 @@ function refs(): CastRefs {
     reading: ref<CastReading | null>(null),
     loadingFor: ref<string | null>(null),
     goTo: ref<((conversation: string) => void) | null>(null),
+    compact: ref<((conversation: string) => Promise<string | null>) | null>(null),
+    pickModel: ref<((conversation: string, pick: PickedModel) => Promise<string | null>) | null>(
+      null,
+    ),
     forest: ref<TheWholeForest | null>(null),
     railSays: ref<ReadonlyMap<string, RailSays> | null>(null),
     processMemory: ref<ReadonlyMap<string, number>>(new Map()),
@@ -187,6 +196,8 @@ export function screenFacts(): ScreenFacts {
     release: () =>
       write({
         goTo: null,
+        compact: null,
+        pickModel: null,
         loadingFor: null,
         railSays: null,
         processMemory: new Map(),

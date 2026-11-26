@@ -209,9 +209,7 @@ function childFigures(
     context = known(formatTokens(live.used))
     from.context = 'now'
   } else if (last?.context && last.context.reading.kind !== 'unknown') {
-    context = known(
-      `${formatTokens(last.context.reading.used)} · ${clockTimeFrom(last.context.at, now)}`,
-    )
+    context = known(formatTokens(last.context.reading.used))
     from.context = `last reported at ${clockTimeFrom(last.context.at, now)}`
   } else context = missing(NOT_RECORDED)
   return {

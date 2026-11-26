@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { vButtonKeys } from '../lib/button-keys'
 import ConversationRow from './ConversationRow.vue'
-import { computed } from 'vue'
-import type { AgentIdentity } from '../../../shared/runtime-ipc'
+import MarkdownWords from './MarkdownWords.vue'
+import ModelPicker from './ModelPicker.vue'
+import { computed, reactive, shallowReactive } from 'vue'
+import type { Provider } from '@brobot2/shared'
+import type { AgentIdentity, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import { usePersistentToggle } from '../composables/usePersistentToggle'
-import {
-  onPurposeSaid,
-  workerLabel,
-  workerName,
-  workerSubtitles,
-  workerState,
-} from '../lib/conversation-list'
+import { onPurposeSaid, workerName, workerState } from '../lib/conversation-list'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { NOT_MEASURED, NOT_RUNNING_NOW, type AgentPanelSubAgent } from '../lib/agent-panel'
@@ -24,6 +21,9 @@ import {
   type CastCard,
   type CastReading,
 } from '../lib/working-together'
+import { compactionFactsOfAListedConversation, type CompactionFacts } from '../lib/compaction-offer'
+import type { PickedModel } from '../lib/model-lists'
+import CardCompactDoor from './CardCompactDoor.vue'
 import CardEmpty from './CardEmpty.vue'
 import CardSection from './CardSection.vue'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
@@ -93,6 +93,8 @@ const props = defineProps<{
    * cards, by conversation. ⛔ Absent draws no telemetry row.
    */
   telemetry?: ReadonlyMap<string, AgentPanelSubAgent>
+  /** What each provider can do, so a card's context figure can offer Compact now. */
+  capabilities?: ProviderCapabilityMap | null
 }>()
 
 const emit = defineEmits<{
@@ -138,12 +140,7 @@ const allAgents = computed(() =>
       ).map((card) => {
         const listed = listedCard(card)
         const worker = listed?.worker
-        return worker
-          ? {
-              ...card,
-              name: workerLabel(workerName(worker, props.identities), worker, listed?.named),
-            }
-          : card
+        return worker ? { ...card, name: workerName(worker, props.identities) } : card
       })
     : [],
 )
@@ -177,19 +174,77 @@ const agents = computed(() => {
     : rows
 })
 const hiddenIdleCount = computed(() => (showIdle.value ? 0 : idleAgents.value.size))
-function subtitles(card: CastCard) {
+/** The card's one task line: its newest piece, label first, and how many more it holds. */
+function taskLine(
+  card: CastCard,
+): { key: string; label: string; title: string; more: number } | null {
+  const named = listedCard(card)?.named
+  if (named) {
+    return { key: named.label, label: named.label, title: named.title ?? '', more: named.more ?? 0 }
+  }
+  const pieces = [...(piecesByConversation.value.get(card.conversation) ?? [])].sort(
+    (a, b) => b.givenAt - a.givenAt,
+  )
+  const newest = pieces[0]
+  return newest
+    ? { key: newest.piece, label: newest.label, title: newest.title, more: pieces.length - 1 }
+    : null
+}
+
+/** What the host knows of a card's conversation that decides whether Compact now is offered. */
+function compactionOf(card: CastCard): CompactionFacts {
+  return compactionFactsOfAListedConversation({
+    is: listedCard(card)?.state.is,
+    running:
+      cast.runningConversations.value?.some((row) => row.sessionId === card.conversation) ?? false,
+    who: card.name,
+  })
+}
+
+const canCompact = computed(
+  () => props.canOpen && props.capabilities !== undefined && cast.compact.value !== null,
+)
+function compactCapability(card: CastCard) {
+  const provider = listedCard(card)?.provider
+  const capabilities = props.capabilities
+  return provider && capabilities && Object.hasOwn(capabilities, provider)
+    ? capabilities[provider as Provider].requestCompaction
+    : null
+}
+/** The conversation's own model chooser, opened from a card's model or effort. */
+const canPick = computed(
+  () => props.canOpen && props.capabilities !== undefined && cast.pickModel.value !== null,
+)
+const pickers = shallowReactive(new Map<string, InstanceType<typeof ModelPicker>>())
+function pickerOf(card: CastCard) {
   const listed = listedCard(card)
-  return listed?.worker
-    ? workerSubtitles(
-        card.conversation,
-        listed.named,
-        piecesByConversation.value.get(card.conversation),
-      )
-    : (piecesByConversation.value.get(card.conversation) ?? []).map((piece) => ({
-        key: piece.piece,
-        text: piece.title,
-        lead: `${piece.label} ·`,
-      }))
+  if (!canPick.value || !listed) return null
+  const provider = listed.provider as Provider
+  const facts = props.telemetry?.get(card.conversation)
+  return {
+    providers: [provider],
+    profileId: listed.identity,
+    shown: facts?.model.value
+      ? { provider, model: facts.model.value, effort: facts.effort.value }
+      : null,
+    empty: 'Not named yet',
+    takeWords: 'Switch from its next message',
+    take: async (pick: PickedModel) =>
+      (await cast.pickModel.value?.(card.conversation, pick)) ?? null,
+    capabilities: props.capabilities ?? null,
+  }
+}
+function openPicker(event: MouseEvent, conversation: string, at: 'model' | 'effort'): void {
+  if (event.currentTarget instanceof HTMLElement)
+    pickers.get(conversation)?.openedFrom(event.currentTarget, at)
+}
+
+/** The host's refusal of the last Compact now pressed on a card, by conversation. */
+const compactRefused = reactive(new Map<string, string>())
+async function compactCard(conversation: string): Promise<void> {
+  compactRefused.delete(conversation)
+  const refused = await cast.compact.value?.(conversation)
+  if (refused) compactRefused.set(conversation, refused)
 }
 
 const piecesByConversation = computed(() => {
@@ -229,14 +284,14 @@ function asTheRailSays(
   return rail.get(conversation) ?? { facets: {} }
 }
 
-/** ⚑ W4.183 · a card's four facts, in v3's order. */
+/** A card's four facts; the context figure last, so its Compact now confirm opens under the row. */
 function metricsOf(card: AgentPanelSubAgent) {
   return (
     [
       ['model', 'Model', '#i-cube', card.model],
       ['effort', 'Reasoning effort', '#i-gauge', card.effort],
-      ['context', 'Context', '#i-layers', card.context],
       ['memory', 'Memory (RAM)', '#i-ram', card.memory],
+      ['context', 'Context', '#i-layers', card.context],
     ] as const
   ).map(([key, label, icon, fact]) => ({
     key,
@@ -352,97 +407,184 @@ function chipWord(card: CastCard): string | undefined {
         </div>
         <ol v-if="agents.length" class="agent-chips" data-cy="cast-children-strip">
           <li v-for="card in agents" :key="`chip-${card.conversation}`">
-            <!-- A chip opens that agent's conversation; parent navigation goes back up. Draw it as a control only when the caller can open the conversation. -->
-            <div
-              v-bind="canOpen ? { role: 'button', tabindex: 0, title: `Open ${card.name}` } : {}"
-              class="agent-chip"
-              :aria-description="asTheRailSays(card.conversation, card.facets).detail"
-              :class="{ flat: !canOpen }"
-              :data-worker="listedCard(card)?.worker ? true : undefined"
-              :data-conversation="card.conversation"
-              @click="canOpen && emit('openConversation', card.conversation)"
-              v-button-keys
-            >
-              <!-- Show plate, name, state and profile, with a chevron when it can be opened. Separate the run settings below with a line. -->
-              <ConversationRow
-                class="team-identity"
-                plate="row"
-                id-prefix="cast"
-                :row="{
-                  id: card.conversation,
-                  facets: asTheRailSays(card.conversation, card.facets).facets,
-                  plateLabel: card.name,
-                  head: 'plain',
-                  title: card.name,
-                  marks:
-                    card.conversation === conversation
-                      ? [
-                          {
-                            key: 'owner',
-                            text: 'this conversation',
-                            cy: `cast-tile-owner-${card.conversation}`,
-                          },
-                        ]
-                      : [],
-                  status: {
-                    profile: card.identity,
-                    word: chipWord(card) || null,
-                    detail: asTheRailSays(card.conversation, card.facets).detail ?? undefined,
-                  },
-                  pieces: [
-                    ...(onPurposeLine(card)
-                      ? [
-                          {
-                            key: 'on-purpose',
-                            text: onPurposeLine(card)!,
-                            cy: `cast-tile-on-purpose-${card.conversation}`,
-                          },
-                        ]
-                      : []),
-                    ...subtitles(card).map((piece) => ({
-                      ...piece,
-                      cy: `cast-tile-piece-${card.conversation}-${piece.key}`,
-                    })),
-                  ],
-                }"
-                :cy="{
-                  title: `cast-tile-name-${card.conversation}`,
-                  word: `cast-tile-word-${card.conversation}`,
-                  profile: `cast-tile-profile-${card.conversation}`,
-                }"
+            <!-- The card: its press opens that agent's conversation, and its figures sit under the press so the context figure can be a press of its own. -->
+            <div class="chip-card" :class="{ flat: !canOpen }">
+              <div
+                v-bind="canOpen ? { role: 'button', tabindex: 0, title: `Open ${card.name}` } : {}"
+                class="agent-chip"
+                :aria-description="asTheRailSays(card.conversation, card.facets).detail"
+                :class="{ flat: !canOpen }"
+                :data-worker="listedCard(card)?.worker ? true : undefined"
+                :data-conversation="card.conversation"
+                @click="canOpen && emit('openConversation', card.conversation)"
+                v-button-keys
               >
-                <template #aside>
-                  <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
-                    <use href="#i-chevron" />
-                  </svg>
-                </template>
-              </ConversationRow>
-              <!-- ⚑ **W4.183 · v3's telemetry**: model, effort, context, memory, in full — a dash
-                   where not reported, with the reason on its title. -->
+                <!-- Plate, name, profile and state, with a chevron when it can be opened; then one task line, what it said, and its figures under a line. -->
+                <ConversationRow
+                  class="team-identity"
+                  plate="row"
+                  id-prefix="cast"
+                  :row="{
+                    id: card.conversation,
+                    facets: asTheRailSays(card.conversation, card.facets).facets,
+                    plateLabel: card.name,
+                    head: 'plain',
+                    title: card.name,
+                    marks: [
+                      ...(taskLine(card)
+                        ? [
+                            {
+                              key: 'label',
+                              text: taskLine(card)!.label,
+                              tone: 'label',
+                              hint: [taskLine(card)!.label, taskLine(card)!.title]
+                                .filter(Boolean)
+                                .join(' · '),
+                              cy: `cast-tile-label-${card.conversation}`,
+                            },
+                          ]
+                        : []),
+                      ...(card.conversation === conversation
+                        ? [
+                            {
+                              key: 'owner',
+                              text: 'this conversation',
+                              cy: `cast-tile-owner-${card.conversation}`,
+                            },
+                          ]
+                        : []),
+                    ],
+                    status: {
+                      profile: card.identity,
+                      word: chipWord(card) || null,
+                      detail: asTheRailSays(card.conversation, card.facets).detail ?? undefined,
+                    },
+                  }"
+                  :cy="{
+                    title: `cast-tile-name-${card.conversation}`,
+                    word: `cast-tile-word-${card.conversation}`,
+                    profile: `cast-tile-profile-${card.conversation}`,
+                  }"
+                >
+                  <template #aside>
+                    <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
+                      <use href="#i-chevron" />
+                    </svg>
+                  </template>
+                </ConversationRow>
+              </div>
+              <div
+                v-if="taskLine(card)?.title || taskLine(card)?.more"
+                class="chip-task"
+                :title="taskLine(card)!.title"
+              >
+                <MarkdownWords
+                  v-if="taskLine(card)!.title"
+                  compact
+                  class="chip-task-text"
+                  :text="taskLine(card)!.title"
+                  :session-id="card.conversation"
+                  :data-cy="`cast-tile-piece-${card.conversation}-${taskLine(card)!.key}`"
+                /><span
+                  v-if="taskLine(card)!.more > 0"
+                  class="chip-more"
+                  :title="`${taskLine(card)!.more} more open`"
+                  :data-cy="`cast-tile-piece-${card.conversation}-more`"
+                  >+{{ taskLine(card)!.more }}</span
+                >
+              </div>
+              <div
+                v-if="onPurposeLine(card)"
+                class="chip-says"
+                :title="onPurposeLine(card)!"
+                :data-cy="`cast-tile-on-purpose-${card.conversation}`"
+              >
+                <MarkdownWords :text="onPurposeLine(card)!" :session-id="card.conversation" />
+              </div>
               <span
                 v-if="telemetry?.get(card.conversation)"
                 class="chip-telemetry"
                 :data-cy="`cast-tile-telemetry-${card.conversation}`"
               >
-                <span
+                <template
                   v-for="metric in metricsOf(telemetry.get(card.conversation)!)"
                   :key="metric.key"
-                  class="chip-metric"
-                  :class="[metric.key, { missing: metric.value === null }]"
-                  :title="`${metric.label}: ${metric.value ?? metric.why}`"
-                  :aria-label="`${metric.label}: ${metric.value ?? metric.why}`"
-                  ><svg class="icon" aria-hidden="true"><use :href="metric.icon" /></svg
-                  ><span class="chip-metric-value">{{
-                    metric.short ??
-                    (metric.key !== 'memory'
-                      ? 'not recorded'
-                      : metric.why === NOT_RUNNING_NOW
-                        ? 'not running'
-                        : NOT_MEASURED)
-                  }}</span></span
                 >
+                  <!-- The context figure is the press for Compact now, and its confirm opens under the row. -->
+                  <span v-if="metric.key === 'context' && canCompact" class="chip-compact">
+                    <CardCompactDoor
+                      :capability="compactCapability(card)"
+                      :conversation="compactionOf(card)"
+                      :hint="`${metric.label}: ${metric.value ?? metric.why}`"
+                      @compact-now="compactCard(card.conversation)"
+                    >
+                      <span class="chip-metric context" :class="{ missing: metric.value === null }"
+                        ><svg class="icon" aria-hidden="true"><use :href="metric.icon" /></svg
+                        ><span class="chip-metric-value">{{
+                          metric.short ?? 'not recorded'
+                        }}</span></span
+                      >
+                    </CardCompactDoor>
+                  </span>
+                  <button
+                    v-else-if="
+                      (metric.key === 'model' || metric.key === 'effort') && pickerOf(card)
+                    "
+                    type="button"
+                    class="chip-metric chip-pick"
+                    :class="[metric.key, { missing: metric.value === null }]"
+                    :popovertarget="pickers.get(card.conversation)?.panelId"
+                    aria-haspopup="dialog"
+                    :aria-expanded="pickers.get(card.conversation)?.isOpen ?? false"
+                    :title="`${metric.label}: ${metric.value ?? metric.why}`"
+                    :aria-label="`Change ${metric.key === 'model' ? 'model' : 'effort'}, now ${metric.short ?? 'not recorded'}`"
+                    :data-cy="`cast-tile-pick-${metric.key}-${card.conversation}`"
+                    @click="
+                      (event: MouseEvent) =>
+                        openPicker(event, card.conversation, metric.key as 'model' | 'effort')
+                    "
+                  >
+                    <svg class="icon" aria-hidden="true"><use :href="metric.icon" /></svg
+                    ><span class="chip-metric-value">{{ metric.short ?? 'not recorded' }}</span>
+                  </button>
+                  <span
+                    v-else
+                    class="chip-metric"
+                    :class="[metric.key, { missing: metric.value === null }]"
+                    :title="`${metric.label}: ${metric.value ?? metric.why}`"
+                    :aria-label="`${metric.label}: ${metric.value ?? metric.why}`"
+                    ><svg class="icon" aria-hidden="true"><use :href="metric.icon" /></svg
+                    ><span class="chip-metric-value">{{
+                      metric.short ??
+                      (metric.key !== 'memory'
+                        ? 'not recorded'
+                        : metric.why === NOT_RUNNING_NOW
+                          ? 'not running'
+                          : NOT_MEASURED)
+                    }}</span></span
+                  >
+                </template>
               </span>
+              <p
+                v-if="compactRefused.get(card.conversation)"
+                class="chip-refused"
+                role="status"
+                :data-cy="`cast-tile-compact-refused-${card.conversation}`"
+              >
+                {{ compactRefused.get(card.conversation) }}
+              </p>
             </div>
+            <ModelPicker
+              v-if="pickerOf(card)"
+              :ref="
+                (picker) =>
+                  picker
+                    ? pickers.set(card.conversation, picker as InstanceType<typeof ModelPicker>)
+                    : pickers.delete(card.conversation)
+              "
+              faceless
+              v-bind="pickerOf(card)!"
+            />
           </li>
         </ol>
         <p v-if="!agents.length && hiddenIdleCount" class="quiet" data-cy="cast-idle-empty">
@@ -526,79 +668,6 @@ function chipWord(card: CastCard): string | undefined {
   line-height: 1.5;
 }
 
-.parent {
-  display: flex;
-  align-items: center;
-  padding: var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--wash-1);
-  gap: var(--space-4);
-}
-
-.pcopy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.plabel {
-  color: var(--faint);
-  font-size: var(--type-caption);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-/* One line, clipped — the whole name is on the `title`, which is what `drawn.ts` calls a
-   recoverable cut (`531`). */
-.pname,
-.cname {
-  overflow: hidden;
-  color: var(--text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pstate,
-.cstate {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-/* One line, clipped, whole sentence on the `title` — the child card's `.creason` exactly. */
-.preason {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.psince {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-}
-
-.cards {
-  display: flex;
-  margin: 0;
-  flex-direction: column;
-  padding: 0;
-  gap: var(--space-4);
-  list-style: none;
-}
-
 /* 🔴 **631 · the children, across the top of the band.**
    ⛔ **`--tile` is the arithmetic, once**: the drawer is ~344px, so a tile must be under half of it
    for two to sit together, and under a third for three. ⚠️ A hand-tuned width per breakpoint is the
@@ -637,33 +706,36 @@ function chipWord(card: CastCard): string | undefined {
 
 /* ⚑ **W4.183 · v3's card** — its identity row, then what it runs on under a line; a press opens
    that agent's conversation. */
-.agent-chip {
+.chip-card {
   display: flex;
   width: 100%;
   min-width: 0;
   flex-direction: column;
-  align-items: stretch;
   padding: var(--space-4);
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius-md);
   background: var(--panel);
   color: var(--text);
-  cursor: pointer;
-  font: inherit;
   font-size: var(--type-small);
   gap: var(--space-4);
-  text-align: left;
 }
-
-.agent-chip.flat {
-  cursor: default;
-}
-
-.agent-chip:not(.flat):hover {
+.chip-card:not(.flat):has(.agent-chip:hover) {
   border-color: var(--accent-border);
   background: var(--accent-mix-4);
 }
-
+.agent-chip {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  gap: var(--space-4);
+  text-align: left;
+}
+.agent-chip.flat {
+  cursor: default;
+}
 .team-identity {
   display: grid;
   min-width: 0;
@@ -688,17 +760,90 @@ function chipWord(card: CastCard): string | undefined {
   background: var(--_c);
 }
 
-/* ⚑ W4.183 · v3's telemetry: model and effort, then context and memory, in full, under a line. */
+/* The card's task line, what it said, and its figures under a line. */
+.chip-task {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  align-items: center;
+  color: var(--text-soft);
+  font-size: var(--type-caption);
+  gap: var(--space-3);
+}
+.chip-task-text {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+}
+.team-identity :deep(.row-mark.label) {
+  min-height: 0;
+  line-height: 1;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-normal);
+}
+.chip-more {
+  flex: none;
+  padding: 0 var(--space-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+}
+.chip-says {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .chip-telemetry {
   display: grid;
+  margin-top: auto;
+  align-items: center;
+  justify-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
   padding-top: var(--space-3);
   border-top: var(--border-width) solid var(--line);
   color: var(--text-soft);
   font-size: var(--type-caption);
-  gap: var(--space-2) var(--space-4);
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-5);
 }
-
+.chip-compact {
+  display: contents;
+}
+.chip-telemetry :deep(.compact-door) {
+  justify-self: stretch;
+  grid-column: 1 / -1;
+}
+.chip-telemetry > *,
+.chip-telemetry :deep(.compact-press) {
+  max-width: 100%;
+}
+.chip-pick {
+  padding: 0 var(--space-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.chip-pick:hover,
+.chip-pick[aria-expanded='true'] {
+  border-color: var(--accent-border);
+  background: var(--accent-mix-8);
+}
+.chip-refused {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
 .chip-metric {
   display: inline-flex;
   min-width: 0;
@@ -714,9 +859,11 @@ function chipWord(card: CastCard): string | undefined {
 }
 
 .chip-metric-value {
+  overflow: hidden;
   min-width: 0;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chip-metric.model .chip-metric-value {
@@ -773,99 +920,6 @@ function chipWord(card: CastCard): string | undefined {
 
 .team-total.is-active .chip-dot {
   background: var(--accent);
-}
-
-/* The elbow, drawn as an indent rather than as a tree: this band is one level deep on purpose and
-   an indented rule would promise a depth nothing here has read (`540` slice 1). */
-.branch {
-  display: flex;
-  flex-direction: column;
-  padding-left: var(--space-5);
-  border-left: var(--border-accent-width) solid var(--line);
-  gap: var(--space-2);
-}
-
-.relation {
-  display: flex;
-  margin: 0;
-  align-items: center;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.relation .icon {
-  width: 11px;
-  height: 11px;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  gap: var(--space-3);
-}
-
-.chead {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-4);
-}
-
-.ccopy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-
-.cmeta {
-  overflow: hidden;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.creason {
-  overflow: hidden;
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.csince {
-  margin: 0;
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.group {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: 1.5;
-}
-
-.group strong {
-  display: block;
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.taken {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 
 .gap {

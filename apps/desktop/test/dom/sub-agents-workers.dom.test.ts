@@ -77,17 +77,18 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     async (width) => {
       listed()
       const m = await band(width)
-      expect(m.q('cast-tile-name-' + OWNER).textContent).toBe('Ada · W90.1')
+      expect(m.q('cast-tile-name-' + OWNER).textContent).toBe('Ada')
       expect(m.all('cast-tile-owner-' + OWNER)).toHaveLength(1)
       expect(m.q('cast-tile-owner-' + OWNER).textContent).toBe('this conversation')
       assertDrawn(m.q('cast-tile-owner-' + OWNER), 'the exact owner marker', m.host)
       for (let index = 0; index < IDS.length; index++) {
         const id = IDS[index]!
         const name = m.q('cast-tile-name-' + id)
-        expect(name.textContent).toBe(`Ada · W90.${index + 1}`)
+        expect(name.textContent).toBe('Ada')
         assertDrawn(name, 'the worker name', m.host)
         const piece = m.q(`cast-tile-piece-${id}-W90.${index + 1}`)
         expect(piece.textContent).toBe(TITLES[index])
+        expect(m.q(`cast-tile-label-${id}`).textContent).toBe(`W90.${index + 1}`)
         assertDrawn(piece, 'the held piece label and title', m.host)
         expect(m.q(`cast-tile-profile-${id}`).textContent).toBe(PROFILE)
         if (id !== OWNER) expect(m.all('cast-tile-owner-' + id)).toHaveLength(0)
@@ -107,7 +108,8 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     expect(m.q('cast-tile-name-ada-worker-3').textContent).toBe('Ada')
     listed()
     await nextTick()
-    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.2')
+    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
+    expect(m.q('cast-tile-piece-ada-worker-2-W90.2').textContent).toBe('Read the menu')
   })
 
   it('keeps the last piece and title on a finished worker', async () => {
@@ -123,11 +125,11 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     const work = panelWork()
     work[1] = { ...work[1]!, state: 'answered', endedAt: 1800000000000 }
     const m = await band(360, panelReading(work))
-    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.2')
+    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
     expect(m.q('cast-tile-piece-ada-worker-2-W90.2').textContent).toBe('Read the menu')
   })
 
-  it('shows every open piece for the exact holder, including known forest work, once', async () => {
+  it('shows the newest piece once and counts the other open pieces', async () => {
     const work = panelWork()
     const another: WorkEdge = {
       ...work[1]!,
@@ -153,16 +155,10 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     listed(rows)
     const m = await band(360, panelReading([...work, another]))
     expect(m.all('cast-tile-piece-ada-worker-2-W90.2')).toHaveLength(1)
-    expect(m.q('cast-tile-piece-ada-worker-2-extra-menu').textContent).toBe(
-      'W90.5 · Read another menu',
-    )
-    assertDrawn(m.q('cast-tile-piece-ada-worker-2-extra-menu'), 'the additional open piece', m.host)
-    assertDrawn(
-      m.q('cast-tile-piece-ada-worker-2-from-other-giver'),
-      'the other known giver’s piece',
-      m.host,
-    )
-    expect(m.all('cast-tile-piece-ada-worker-3-extra-menu')).toHaveLength(0)
+    expect(m.q('cast-tile-piece-ada-worker-2-more').textContent).toBe('+2')
+    assertDrawn(m.q('cast-tile-piece-ada-worker-2-more'), 'the count of other open pieces', m.host)
+    expect(m.all('cast-tile-piece-ada-worker-2-extra-menu')).toHaveLength(0)
+    expect(m.all('cast-tile-piece-ada-worker-3-more')).toHaveLength(0)
   })
 
   it('does not draw cards or piece subtitles from a different conversation reading', async () => {
@@ -206,7 +202,7 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
       cast.listedConversations.value?.find((row) => row.sessionId === 'ada-worker-2')?.worker,
     ).toEqual(rows[1]!.worker)
     const m = await band()
-    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.2')
+    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
     expect(listResumable).toHaveBeenCalledTimes(1)
     expect(listUnresumable).toHaveBeenCalledTimes(1)
     rail.unmount()
@@ -215,16 +211,16 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
 })
 
 describe('Sub agents view preferences', () => {
-  it('keeps a never-used stable number and accounts for unread other pieces', async () => {
+  it('names each worker bare and counts its other open pieces', async () => {
     const rows = panelRows()
     rows[1] = { ...rows[1]!, named: { label: 'W90.9', title: 'Latest menu', more: 3 } }
     rows[2] = { ...rows[2]!, named: null }
     listed(rows)
     const m = await band(360, panelReading([]))
-    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.9')
+    expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
     expect(m.q('cast-tile-piece-ada-worker-2-W90.9').textContent).toBe('Latest menu')
-    expect(m.q('cast-tile-piece-ada-worker-2-more').textContent).toBe('and 3 more')
-    expect(m.q('cast-tile-name-ada-worker-3').textContent).toBe('Ada (3)')
+    expect(m.q('cast-tile-piece-ada-worker-2-more').textContent).toBe('+3')
+    expect(m.q('cast-tile-name-ada-worker-3').textContent).toBe('Ada')
   })
   it('sorts by current activity only when pressed and remembers both preferences', async () => {
     const rows = panelRows().map((row, index) => ({ ...row, updatedAt: index * 100 }))

@@ -433,18 +433,26 @@ export async function pickInAConversation(
   store: Pick<SessionStore, 'get' | 'setSessionSetting'>,
   sessionId: string,
   pick: PickedModel,
+  refusals: 'record' | 'throw' = 'record',
 ): Promise<WhatAPickBecame | null | undefined> {
-  const became = await store.setSessionSetting(sessionId, { kind: 'model', value: pick.model })
+  // 'throw' asks the store to throw this call's refusal; 'record' leaves it on the record.
+  const send = (body: Parameters<SessionStore['setSessionSetting']>[1]) =>
+    refusals === 'throw'
+      ? store.setSessionSetting(sessionId, body, 'throw')
+      : store.setSessionSetting(sessionId, body)
+  const became = await send({ kind: 'model', value: pick.model })
   const record = store.get(sessionId)
-  if (record === null || record.error !== null || pick.effort === null) return became
-  const settings = record.meta?.settings
+  // A record's refusal stops the sequence; with 'throw' a refusal has already been thrown.
+  if (refusals === 'record' && (record === null || record.error !== null)) return became
+  if (pick.effort === null) return became
+  const settings = record?.meta?.settings
   const holds =
     settings?.pendingReasoningEffort != null
       ? (settings.pendingReasoningEffort.value ?? null)
       : (settings?.reasoningEffort ?? null)
   if (holds === pick.effort) return became
   const effort = { kind: 'reasoningEffort', value: pick.effort } as const
-  const then = await store.setSessionSetting(sessionId, effort)
+  const then = await send(effort)
   // ⚠️ An effort that stayed this conversation's alone does not undo a default the model already
   // made: the pair standing beyond it is still the one the model's answer named.
   if (then === undefined || (became?.itsAgentsDefault === true && then?.theLastPick !== true)) {

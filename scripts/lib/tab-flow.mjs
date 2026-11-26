@@ -261,8 +261,13 @@ export const TAB_OF_HOOK_PREFIX = {
   // …and its profile and its state word under the name, built there too.
   'cast-tile-profile-': 'open',
   'cast-tile-word-': 'open',
-  // The sub-agent cards' telemetry row.
+  // The sub-agent cards' label beside the name, what it last said, and its figures: the model and
+  // effort presses and a refused Compact now.
+  'cast-tile-label-': 'open',
+  'cast-tile-on-purpose-': 'open',
   'cast-tile-telemetry-': 'open',
+  'cast-tile-pick-': 'open',
+  'cast-tile-compact-refused-': 'open',
   // The two bars' per-row families; see their exact hooks in `TAB_OF_HOOK`.
   'panel-run-': 'open',
   'panel-stop-': 'open',

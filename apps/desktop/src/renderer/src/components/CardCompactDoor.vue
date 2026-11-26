@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import type { CapabilityStatus } from '../../../shared/runtime-ipc'
 import {
   COMPACT_IT,
   COMPACT_LINE,
   COMPACT_NOW,
-  compactHeading,
-  compactionOffer,
   KEEP_EVERYTHING,
   type CompactionFacts,
 } from '../lib/compaction-offer'
+import { useCompactConfirm } from '../composables/useCompactConfirm'
 
 /**
  * Place Compact now beside the context figure. Reuse the Context popup's `compactionOffer` gate, provider capability, conversation send facts, person-only action, confirmation and `compactNow` intent.
@@ -17,39 +16,35 @@ import {
 const props = defineProps<{
   capability: CapabilityStatus | null
   conversation: CompactionFacts | null
+  /** Said before the offer on the press's title, when the press shows a figure of its own. */
+  hint?: string
 }>()
+
+/** A press with its own content (a context figure) in place of the compact icon. */
+const slots = defineSlots<{ default?: () => unknown }>()
 
 const emit = defineEmits<{ compactNow: [intent: 'now' | 'queue'] }>()
 
-const offer = computed(() => compactionOffer(props.capability, props.conversation))
-
-/** ⚑ The confirm, open or shut — shut whenever what the answer would do changes under it. */
-const confirming = ref(false)
-watch(
-  () => (offer.value.offered ? offer.value.intent : null),
-  (intent, before) => {
-    if (intent !== before) confirming.value = false
-  },
+const { offer, confirming, heading, compactIt } = useCompactConfirm(
+  () => props.capability,
+  () => props.conversation,
+  (intent) => emit('compactNow', intent),
 )
-const heading = computed(() => (offer.value.offered ? compactHeading(offer.value.intent) : ''))
-const why = computed(() =>
-  offer.value.offered ? COMPACT_NOW : `${offer.value.lead} ${offer.value.why}`,
-)
-
-function compactIt(): void {
-  const now = offer.value
-  // ⛔ Read BEFORE the door is shut: an answer with no open question, or a withdrawn offer, sends
-  // nothing.
-  const open = confirming.value
-  confirming.value = false
-  if (open && now.offered) emit('compactNow', now.intent)
-}
+const why = computed(() => {
+  const offerSaid = !offer.value.offered
+    ? `${offer.value.lead} ${offer.value.why}`
+    : offer.value.heading
+      ? offer.value.why
+      : COMPACT_NOW
+  return props.hint ? `${props.hint} · ${offerSaid}` : offerSaid
+})
 </script>
 
 <template>
   <button
     type="button"
     class="compact-press"
+    :class="{ figure: !!slots.default }"
     :disabled="!offer.offered"
     :aria-expanded="confirming"
     :title="why"
@@ -57,7 +52,9 @@ function compactIt(): void {
     data-cy="card-run-compact"
     @click="offer.offered && (confirming = !confirming)"
   >
-    <svg class="icon" aria-hidden="true"><use href="#i-compact" /></svg>
+    <slot
+      ><svg class="icon" aria-hidden="true"><use href="#i-compact" /></svg
+    ></slot>
   </button>
   <!-- ⚑ A sibling of the press, so in the card's wrapping row it takes a line of its own under it. -->
   <div
@@ -109,6 +106,23 @@ function compactIt(): void {
 .compact-press:hover:not(:disabled),
 .compact-press[aria-expanded='true'] {
   border-color: var(--accent-border);
+}
+
+.compact-press.figure {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  gap: var(--space-2);
+}
+
+.compact-press.figure:disabled {
+  color: inherit;
 }
 
 .compact-press .icon {

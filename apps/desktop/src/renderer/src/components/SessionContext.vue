@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { CapabilityStatus } from '../../../shared/runtime-ipc'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
@@ -8,10 +8,9 @@ import {
   COMPACT_LINE,
   COMPACT_NOW,
   KEEP_EVERYTHING,
-  compactHeading,
-  compactionOffer,
   type CompactionFacts,
 } from '../lib/compaction-offer'
+import { useCompactConfirm } from '../composables/useCompactConfirm'
 import {
   barFraction,
   compactions,
@@ -219,32 +218,11 @@ const reachable = computed(() => {
  * offered here: compaction is irreversible and this control has no confirm step yet."* ⚑ The
  * confirm is the door below; the sentence now says what the press does, or why it cannot now.
  */
-const offer = computed(() => compactionOffer(props.capability, props.conversation ?? null))
-
-/**
- * ⚑ **The confirm, open or shut** — the button OPENS the question and never acts; only
- * {@link compactIt} sends.
- *
- * ⚠️ **Shut whenever the offer is withdrawn under it** — the conversation ended, a card arrived, a
- * message was queued — so an answer given to a stale question sends nothing. ⛔ And a DIFFERENT
- * conversation cannot inherit it: `SessionPanel` shuts the popup when the conversation changes, so
- * it is opened again shut (W4.208; the Events tab's rule, kept).
- */
-const confirming = ref(false)
-// ⚑ **Shut whenever what the answer would DO changes under it** — the offer withdrawn (its intent
-// reads `null`), or a question asked as *now* on an idle conversation that would be answered with a
-// compaction queued behind a turn that started while the door was open (`718`'s review). ⛔ The
-// person is asked again, in the words for what it will do. One watch: withdrawal is a change of
-// intent too, and a second watch for it alone measured as redundant (`718`'s second round).
-watch(
-  () => (offer.value.offered ? offer.value.intent : null),
-  (intent, before) => {
-    if (intent !== before) confirming.value = false
-  },
+const { offer, confirming, heading, compactIt } = useCompactConfirm(
+  () => props.capability,
+  () => props.conversation ?? null,
+  (intent) => emit('compactNow', intent),
 )
-
-/** The question the door asks — {@link compactHeading}, for the press the offer would make now. */
-const heading = computed(() => (offer.value.offered ? compactHeading(offer.value.intent) : ''))
 
 /** ⚑ The door's element, so a press can bring it on screen. */
 const theDoor = ref<HTMLElement | null>(null)
@@ -258,15 +236,6 @@ function press(): void {
   if (!offer.value.offered) return
   confirming.value = true
   void nextTick(() => theDoor.value?.scrollIntoView({ block: 'nearest' }))
-}
-
-function compactIt(): void {
-  const now = offer.value
-  // ⛔ **Read BEFORE the door is shut**, `EndingGate.answer`'s rule: the answer reports the state the
-  // person was in, and an answer with no open question — or a withdrawn offer — sends nothing.
-  const open = confirming.value
-  confirming.value = false
-  if (open && now.offered) emit('compactNow', now.intent)
 }
 </script>
 

@@ -104,10 +104,13 @@ async function band(): Promise<HTMLElement> {
 }
 
 const chipOf = (root: HTMLElement, conversation: string): HTMLElement => {
-  const chip = root.querySelector<HTMLElement>(
-    `[data-cy="cast-children-strip"] .agent-chip[data-conversation="${conversation}"]`,
-  )
-  expect(chip, `no chip for ${conversation}`).not.toBeNull()
+  // The whole card: its press, and the figures drawn under it.
+  const chip = root
+    .querySelector<HTMLElement>(
+      `[data-cy="cast-children-strip"] .agent-chip[data-conversation="${conversation}"]`,
+    )
+    ?.closest<HTMLElement>('.chip-card')
+  expect(chip, `no chip for ${conversation}`).toBeTruthy()
   return chip!
 }
 

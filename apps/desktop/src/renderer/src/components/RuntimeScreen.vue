@@ -3242,7 +3242,18 @@ onMounted(() => {
   // claims the conversation when this window does not hold it and selects only after the claim has
   // landed (rule 18). ⛔ While this is null the band draws no press at all, which is what a drawer
   // mounted with no screen above it gets.
-  castFacts.update({ goTo: (conversation) => void goToTheWork(conversation) })
+  castFacts.update({
+    goTo: (conversation) => void goToTheWork(conversation),
+    compact: (conversation) => store.compact(conversation),
+    pickModel: async (conversation, pick) => {
+      try {
+        await pickInAConversation(store, conversation, pick, 'throw')
+        return null
+      } catch (cause) {
+        return readableError(cause)
+      }
+    },
+  })
 })
 onUnmounted(() => {
   // ⛔ **534 · unsubscribed like every interval below.** The preload holds the listener on

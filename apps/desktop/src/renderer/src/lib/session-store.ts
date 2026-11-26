@@ -551,6 +551,23 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
     }
   }
 
+  /** {@link forSession}, also answering this call's own refusal, which the record's error cannot. */
+  async function forSessionSaying<T>(
+    sessionId: string,
+    action: (record: SessionRecord) => Promise<T>,
+  ): Promise<{ value?: T; refused: unknown }> {
+    let refused: unknown = null
+    const { value } = await forSession(sessionId, async (record) => {
+      try {
+        return await action(record)
+      } catch (cause) {
+        refused = cause
+        throw cause
+      }
+    })
+    return { value, refused }
+  }
+
   /**
    * **The one place a command's failure becomes the sentence beside its conversation** (148 L5).
    *
@@ -1735,8 +1752,18 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       return ok
     },
 
-    compact: async (sessionId) =>
-      void (await forSession(sessionId, () => bridge.compact({ sessionId }))),
+    async compact(sessionId) {
+      if (sessions.has(sessionId)) {
+        const { refused } = await forSessionSaying(sessionId, () => bridge.compact({ sessionId }))
+        return refused === null ? null : readableError(refused)
+      }
+      try {
+        await bridge.compact({ sessionId })
+        return null
+      } catch (cause) {
+        return readableError(cause)
+      }
+    },
 
     async refreshConfig(sessionId) {
       const { value: config } = await forSession(sessionId, () =>
@@ -1776,10 +1803,13 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
      * has; optimistically clearing the flag would make a REFUSED go-ahead look like a successful
      * one, which is the same rule `setApprovalMode` above follows.
      */
-    async setSessionSetting(sessionId, body) {
-      const { value: changed } = await forSession(sessionId, () =>
+    async setSessionSetting(sessionId, body, refusals = 'record') {
+      if (!sessions.has(sessionId))
+        return (await bridge.setSessionSetting({ sessionId, body })).thePick
+      const { value: changed, refused } = await forSessionSaying(sessionId, () =>
         bridge.setSessionSetting({ sessionId, body }),
       )
+      if (refused !== null && refusals === 'throw') throw refused
       const record = sessions.get(sessionId)
       if (changed && record?.meta) record.meta = { ...record.meta, settings: changed.settings }
       return changed?.thePick

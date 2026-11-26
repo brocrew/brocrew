@@ -639,7 +639,8 @@ export interface SessionStore {
   /** Say something to one child (296) — refused while that child is working. */
   sendToChild(sessionId: string, agentId: string, text: string): Promise<ChildSendResult>
   refreshConfig(sessionId: string): Promise<void>
-  compact(sessionId: string): Promise<void>
+  /** Compact a conversation, held in this window or not; the host's refusal, or null. */
+  compact(sessionId: string): Promise<string | null>
   /**
    * Start or stop prompting for consequential actions, from this session's next turn (034).
    *
@@ -662,11 +663,13 @@ export interface SessionStore {
   /**
    * ⚑ **D-048 · answers what the pick became beyond this conversation** (`WhatAPickBecame`): the
    * agent's default and the last pick, or why not — `null` for plan mode, `undefined` where the
-   * command was refused or not asked.
+   * command was refused or not asked. A refusal is thrown instead for a conversation this window
+   * does not hold, or when `refusals` is `throw`.
    */
   setSessionSetting(
     sessionId: string,
     body: SetSessionSettingInput['body'],
+    refusals?: 'record' | 'throw',
   ): Promise<WhatAPickBecame | null | undefined>
   /** Stop listening. The window is going away, or a test is finished. */
   dispose(): void

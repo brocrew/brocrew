@@ -73,14 +73,14 @@ describe('Sub agents', () => {
     expect(panelRows()[1]!.worker!.identity).toBe(PROFILE_ID)
     const m = await band('Ana')
     const name = m.q(`cast-tile-name-${IDS[1]}`)
-    expect(name.textContent).toBe('Ana · W90.2')
+    expect(name.textContent).toBe('Ana')
     assertDrawn(name, 'the worker’s name', m.host)
     expect(said(m.host)).not.toContain(PROFILE_ID)
   })
 
   it('titles it with the slug when the identity has no name', async () => {
     const m = await band(null)
-    expect(m.q(`cast-tile-name-${IDS[1]}`).textContent).toBe(`${PROFILE} · W90.2`)
+    expect(m.q(`cast-tile-name-${IDS[1]}`).textContent).toBe(PROFILE)
     expect(said(m.host)).not.toContain(PROFILE_ID)
   })
 })
