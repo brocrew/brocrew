@@ -216,11 +216,18 @@ describe('705 · R38 — the receipts a model and a person both read', () => {
     // ⚑ A given piece's label as `pieceCalled` makes it — asked of the product's own reader, and
     // at least two numbers deep, because a given piece sits under a root.
     expect(pieceNumbersOf(first.label)?.length).toBeGreaterThanOrEqual(2)
-    // ⚑ the label, then the title, then the state — and the brief's first line, having no status line
+    // ⚑ the label, then the title, then the state — the compact list carries no brief tail
+    const stalled = 'stalled (its turn ended with this work still open)'
+    const idle = 'the conversation holding it is now idle'
+    expect(lineFor(workerList.text, first.label)).toBe(
+      `  ${first.label} · Migrate the schema · ${stalled} · ${idle}`,
+    )
+    expect(lineFor(pmList.text, first.label)).toBe(
+      `  ${first.label} · Migrate the schema · ${stalled} · held by conversation ${first.label} · Migrate the schema · ${idle}`,
+    )
+    // the brief's first line is the full reply's, not the compact list's
     for (const said of [workerList.text, pmList.text]) {
-      expect(lineFor(said, first.label)).toMatch(
-        new RegExp(`^  ${first.label} · Migrate the schema · .* · migrate the schema$`),
-      )
+      expect(lineFor(said, first.label)).not.toContain('migrate the schema')
     }
     for (const said of [workerList.text, pmList.text]) expect(said).not.toMatch(NO_BARE_NUMBER)
     // ⚑ control: the payload carries the label and the id — the spelling is the row's, not the text's

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentToolset } from '@brobot2/runtime'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
+import type { AgentCard } from '../src/main/runtime/agent-directory'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import {
@@ -87,12 +88,13 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
     return pieces
   }
 
-  it('§1 a board of one short piece is answered whole, with no file', async () => {
-    accepted(await world.gives(host, giver, 'helper'))
+  it('§1 a board of one short piece is compact, with no file', async () => {
+    const piece = accepted(await world.gives(host, giver, 'helper'))
     const text = await textOf(agentToolsFor(host, giver), 'list_tasks')
     expect(text.length).toBeLessThanOrEqual(SHORT_REPLY_CHARACTERS)
     expect(text).not.toContain('Full reply:')
-    expect(text).toContain('Done when: The room is booked and the confirmation is recorded.')
+    expect(text).toContain(piece.label)
+    expect(text).not.toContain('Done when:')
   })
 
   it('§2 a long board keeps a line a piece inline, and the whole board is in the file', async () => {
@@ -126,25 +128,50 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
     expect(full).toContain(`Its brief:\n${aLongBrief(1)}`)
   })
 
-  it('§4 Claude and Codex send the same short form, and their files hold the same reply', async () => {
-    await givesMany(12)
+  it('§4 Claude and Codex agree on compact boards, named detail and spilled replies', async () => {
+    const piece = accepted(await world.gives(host, giver, 'helper'))
     const tools = agentToolsFor(host, giver)
-    const viaCodex = await answerCodexToolCall(tools, {
-      tool: 'list_tasks',
-      namespace: tools.server,
-      arguments: {},
-    })
-    expect(viaCodex.success).toBe(true)
-    const codexText = (viaCodex.contentItems as { text: string }[])
-      .map((one) => one.text)
-      .join('\n')
-    const claudeText = await viaClaude(tools, 'list_tasks', {})
-    const codex = split(codexText)
-    const claude = split(claudeText)
-    expect(claude.short).toBe(codex.short)
-    expect(claude.full).toBe(codex.full)
-    // A fresh file each call, so a later read never finds a stale reply.
-    expect(claude.path).not.toBe(codex.path)
+    const codexList = async (args: Record<string, unknown>): Promise<string> => {
+      const result = await answerCodexToolCall(tools, {
+        tool: 'list_tasks',
+        namespace: tools.server,
+        arguments: args,
+      })
+      expect(result.success).toBe(true)
+      return (result.contentItems as { text: string }[]).map((one) => one.text).join('\n')
+    }
+    const waitForPerson = (label: string) =>
+      vi.waitFor(() => {
+        const row = host.pieceBoard(giver).gave.find((one) => one.label === label)
+        expect(row?.state).toBe('waiting-on-a-person')
+      })
+    await waitForPerson(piece.label)
+    const compact = await codexList({})
+    expect(await viaClaude(tools, 'list_tasks', {})).toBe(compact)
+    expect(compact).toContain(piece.label)
+    expect(compact).not.toMatch(/Full reply:|Done when:|brocrew:\/\//)
+    const expectMatchingSpills = (codexText: string, claudeText: string) => {
+      const codex = split(codexText)
+      const claude = split(claudeText)
+      expect(claude.short).toBe(codex.short)
+      expect(claude.full).toBe(codex.full)
+      expect(claude.path).not.toBe(codex.path)
+      return codex
+    }
+
+    const named = { piece: piece.label }
+    const namedReply = expectMatchingSpills(
+      await codexList(named),
+      await viaClaude(tools, 'list_tasks', named),
+    )
+    expect(namedReply.short).toContain(
+      'Done when: The room is booked and the confirmation is recorded.',
+    )
+    expect(namedReply.full).toContain('Its brief:\nbook the meeting room for Tuesday')
+
+    const [longPiece] = await givesMany(12)
+    await waitForPerson(longPiece!.label)
+    expectMatchingSpills(await codexList({}), await viaClaude(tools, 'list_tasks', {}))
   })
 
   it('§5 a long conversation list keeps who, state and context a line', async () => {
@@ -152,13 +179,17 @@ describe('484 · a long reply is a short form and a file; a short one is unchang
       accepted(
         await world.gives(host, giver, 'helper', { conversation_title: `Room ${String(n)}` }),
       )
-    const text = await textOf(agentToolsFor(host, giver), 'list_agents')
-    const { short, full } = split(text)
+    const answer = await answerOn(agentToolsFor(host, giver), 'list_agents', {})
+    const { short, full } = split(answer.text)
     expect(short.length).toBeLessThan(full.length)
     for (const line of short.split('\n').filter((one) => one.startsWith('conversation ')))
       expect(line.split(' · ').length).toBeGreaterThanOrEqual(3)
     expect(short).not.toContain('holds ')
-    expect(full).toContain('holds ')
+    const cards = answer.structured?.agents as AgentCard[]
+    const held = cards.flatMap((card) => card.pieces).find((piece) => piece.state !== null)
+    if (held === undefined) throw new Error('fictional roster has no held task')
+    expect(full).toContain(`${held.label} · ${held.title} (${held.state})`)
+    expect(full).not.toMatch(/holds W[\d.]+(?: · [^\n]+?)? \(0\)/)
   })
 
   it('§6 a long roster keeps who each profile is and each provider’s usage, and is shorter', async () => {
