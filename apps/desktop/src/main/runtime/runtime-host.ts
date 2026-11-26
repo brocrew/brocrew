@@ -732,6 +732,7 @@ import {
   type PromptCollectionPrefix,
   type PromptUpdate,
   EMPTY_TURN_BLOCK,
+  SAVED_METHODS,
   turnBlockChanges,
 } from './turn-block-changes'
 
@@ -17667,7 +17668,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       promptUpdates.push({
         key: 'methods-availability',
         revision: refused ? reading.refusal.kind : 'available',
-        description: 'Saved methods',
+        description: SAVED_METHODS,
         text,
         at: now,
         observed: true,
@@ -17682,7 +17683,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         promptUpdates.push({
           key: `method:${method.path}`,
           revision: sha256Hex(Buffer.from(JSON.stringify([text, method.modifiedAt]))),
-          description: 'Saved methods',
+          description: SAVED_METHODS,
           text,
           at: now,
           observed: true,

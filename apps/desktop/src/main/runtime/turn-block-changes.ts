@@ -10,6 +10,7 @@ export const TURN_HELPER_OWNERS = 32
 export const TURN_HELPER_PIECES = 256
 const TURN_LIST_LINES = 5
 const MEMORY_PREFIX = 'memory:'
+export const SAVED_METHODS = 'Saved methods'
 
 export type PromptCollectionPrefix = 'method:' | 'skill:' | `memory:${string}:`
 
@@ -65,7 +66,20 @@ export function turnBlockChanges(
   const grouped = new Map<string, string[]>()
   const memoryChanges: string[] = []
   const newMemoryStores: string[] = []
+  const removedMethods: string[] = []
   const updates = input.promptUpdates ?? []
+  const say = (
+    update: Pick<PromptUpdate, 'description' | 'text' | 'at' | 'observed' | 'untimed' | 'group'>,
+  ): void => {
+    const when = new Date(update.at).toISOString()
+    const timing = update.observed ? `observed at ${when}` : `changed at ${when}`
+    const heading = `${update.description} (${timing}).`
+    if (update.group) {
+      const lines = grouped.get(heading)
+      if (lines === undefined) grouped.set(heading, [update.text])
+      else lines.push(update.text)
+    } else profileChanges.push(update.untimed ? update.text : `${heading}\n\n${update.text}`)
+  }
   if (input.readCollections?.length) {
     const present = new Set(updates.map(({ key }) => key))
     for (const key of Object.keys(promptUpdates) as (keyof PromptUpdateBaseline)[]) {
@@ -75,6 +89,8 @@ export function turnBlockChanges(
       ) {
         const previous = promptUpdates[key]
         if (typeof previous === 'object') memoryChanges.push(`removed: \`${previous.path}\``)
+        else if (key.startsWith('method:'))
+          removedMethods.push(`- Removed: ${key.slice('method:'.length)}`)
         delete promptUpdates[key]
         baselineChanged = true
       }
@@ -105,15 +121,10 @@ export function turnBlockChanges(
     if (seen === update.revision || (seen === undefined && update.empty)) continue
     promptUpdates[update.key] = update.revision
     baselineChanged = true
-    const when = new Date(update.at).toISOString()
-    const timing = update.observed ? `observed at ${when}` : `changed at ${when}`
-    const heading = `${update.description} (${timing}).`
-    if (update.group) {
-      const lines = grouped.get(heading)
-      if (lines === undefined) grouped.set(heading, [update.text])
-      else lines.push(update.text)
-    } else profileChanges.push(update.untimed ? update.text : `${heading}\n\n${update.text}`)
+    say(update)
   }
+  for (const text of removedMethods)
+    say({ description: SAVED_METHODS, text, at: input.now, observed: true, group: true })
   for (const [heading, lines] of grouped) profileChanges.push(`${heading}\n\n${lines.join('\n')}`)
   if (memoryChanges.length > 0) {
     const paths = memoryChanges.slice(0, TURN_LIST_LINES).join(', ')
