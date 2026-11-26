@@ -10,10 +10,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { refuseResource, resourceRemedyOf } from '../src/main/resources/resources'
 import { readProviderConfig } from '../src/main/runtime/provider-config'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isRefusalRemedy } from '../src/shared/refusals'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 /**
  * 🔴 **733 · the last credential guards** — `731` F-2 and F-4, under R92 and R93.
@@ -29,12 +29,8 @@ import { neutralHostDeps } from './lib/host-fixture'
  * and never anybody's provider home (the standing security block).
  */
 
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class NullSink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')

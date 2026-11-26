@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -19,7 +19,7 @@ import {
   listProviderHomes,
   prepareProviderHome,
 } from '../src/main/connections/homes'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { DEFAULT_PROFILE_ID, profileAlreadyNamed } from '../src/shared/runtime-ipc'
 
@@ -68,12 +68,8 @@ import { DEFAULT_PROFILE_ID, profileAlreadyNamed } from '../src/shared/runtime-i
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class NullSink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 describe('a profile name is unique at the boundary — since 417, the only place it is (187 §1)', () => {
