@@ -1,8 +1,7 @@
 import { addressedGive, giveWorkerThroughRawTool } from './lib/give-fixture'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { waitFor } from './lib/f093-host'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -25,11 +24,7 @@ import type {
   UnqueuedMessageEvent,
 } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
-import type {
-  QueuedMessageDisclosure,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { QueuedMessageDisclosure } from '../src/shared/runtime-ipc'
 
 import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -67,21 +62,6 @@ const latch = (): { promise: Promise<void>; open: () => void } => {
     open = resolve
   })
   return { promise, open }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  /** ⚑ 687 · the liveness channel is recorded too — the composer's queued disclosure rides it. */
-  readonly liveness: SessionLivenessMessage[] = []
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message)
-  }
 }
 
 /**
@@ -279,7 +259,7 @@ describe('687 · what the cards cannot say yet', () => {
     rowsOf(sessionId, 'message_unqueued').find((row) => row.event.text === text)?.event
   /** The newest liveness disclosure of a held message — what the COMPOSER reads (687). */
   const disclosedSaying = (sessionId: string, text: string): QueuedMessageDisclosure | undefined =>
-    window.liveness
+    window.livenessMessages
       .filter((one) => one.sessionId === sessionId)
       .flatMap((one) => one.liveness.queued ?? [])
       .filter((one) => one.text === text)
