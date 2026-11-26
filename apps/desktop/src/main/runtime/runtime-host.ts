@@ -2001,6 +2001,13 @@ export class RuntimeHost implements LiveHost {
   private readonly arrivals = new Map<string, Promise<void>>()
 
   /**
+   * ⚑ **Card 584 · replies being handed to the giver that waits on their piece**, counted by giver and
+   * piece ({@link whileTheReplyIsOnItsWay}): until one settles, the end of that wait is the reply's
+   * to tell, not a reminder's.
+   */
+  private readonly repliesOnTheirWay = new Map<string, number>()
+
+  /**
    * ⚑ **D-017 · R1 — conversations whose givers were told nothing because a delivery waiting in
    * {@link arrivals} could drive their work** ({@link aDeliveryIsAboutToDriveIt}) — which piece it
    * drives is known only once it lands (D-016 · commit 6): asked again once that chain drains
@@ -9412,12 +9419,16 @@ export class RuntimeHost implements LiveHost {
         delivered: null,
       }
     }
-    const delivery = await this.deliverReply(
-      piece,
-      { ...input, summary: replied.summary },
-      resources,
-      session,
-      aNewBriefWaited,
+    // ⚑ **Card 584 · the reply is its giver's wake-up for a wait on this piece** — counted before the
+    // first await, so the reminder pass the row above set off finds it on its way.
+    const delivery = await this.whileTheReplyIsOnItsWay(piece.giver, piece.piece, () =>
+      this.deliverReply(
+        piece,
+        { ...input, summary: replied.summary },
+        resources,
+        session,
+        aNewBriefWaited,
+      ),
     )
     // 🔴 **703 · the answer makes the notices the giver still holds about this work false** (`698`
     // F-A) — see {@link takeBackWhatALaterFactMadeFalse}. ⚠️ **Only when the answer LANDED**, so it
@@ -10516,6 +10527,8 @@ export class RuntimeHost implements LiveHost {
       console.warn(
         `runtime host could not start ${asker} for the answer to ${requestId}: ${errorMessage(error)}`,
       )
+      // ⚑ **Card 584** — the answer waits for a start now: a wait on it is the reminder's to wake.
+      this.reconcileWork(new Set([asker]))
       return {
         kept: this.anAnswerKept(asker, error, held.piece),
         delivery: { to: asker, taskLabel: label, ...this.sendFailedAfterRecording(error) },
@@ -12535,6 +12548,9 @@ export class RuntimeHost implements LiveHost {
           ).map((one) => [one.piece, one]),
         )
         const drivingNow = !this.nothingIsOnItsWayTo(owner, counting)
+        // ⚑ **Card 584** — what is held for this owner, read once and only if a wait needs it.
+        let heldForIt: readonly WaitingMessage[] | undefined
+        const heldOnce = () => (heldForIt ??= this.deps.store.messagesWaitingIn(owner, counting))
         let stoppedByPerson: boolean | undefined
         let failureNoticePieces: ReadonlySet<string> | undefined
         for (const work of grouped.get(owner) ?? []) {
@@ -12548,6 +12564,17 @@ export class RuntimeHost implements LiveHost {
             line?.waiting === true && line.on !== undefined
               ? this.reconciliationWaitProblem(work, line.on, line.by, watched, boundary)
               : null
+          // ⚑ **Card 584** — a wait whose reply is being handed to its holder is that reply's to end.
+          const itsReplyIsOnItsWay =
+            waitProblem === 'wait-target-ended' &&
+            line?.on !== undefined &&
+            this.theReplyIsOnItsWay(owner, line.on)
+          // ⚑ …and a result kept only for its next start wakes nothing: the reminder does.
+          const itsResultWaitsForAStart =
+            drivingNow &&
+            waitProblem === 'wait-target-ended' &&
+            line?.on !== undefined &&
+            this.itsResultWaitsForItsNextStart(owner, line.on, heldOnce)
           const one: ReconciliationPiece & {
             work: WorkRow
             title: string | null
@@ -12664,7 +12691,8 @@ export class RuntimeHost implements LiveHost {
             this.aReopenIsBeingDecidedFor.has(owner) ||
             this.reopeningForWhatWaited.has(owner) ||
             this.slots.get(owner)?.session?.reopeningOnTheCurrentSignIn === true ||
-            drivingNow
+            (drivingNow && !itsResultWaitsForAStart) ||
+            itsReplyIsOnItsWay
           rows.push({
             ...one,
             issue,
@@ -15802,6 +15830,63 @@ export class RuntimeHost implements LiveHost {
    */
   private itsHolderIsStopped(holder: string, answer?: RowsUnread): boolean {
     return this.theServiceOf(holder) === null && this.nothingIsOnItsWayTo(holder, answer)
+  }
+
+  /**
+   * ⚑ **Card 584 · `deliver` hands `giver` the reply to `piece`.** Counted from the call, in the
+   * stretch that wrote the reply, so the reminder pass that row set off reads the giver's wait on
+   * `piece` as ended by a reply on its way ({@link theReplyIsOnItsWay}). Once the delivery settles the
+   * giver is read again: a reply that reached no one, or one only kept for a start that failed
+   * ({@link itsResultWaitsForItsNextStart}), leaves the reminder to wake it.
+   */
+  private async whileTheReplyIsOnItsWay<T>(
+    giver: string,
+    piece: string,
+    deliver: () => Promise<T>,
+  ): Promise<T> {
+    const key = `${giver}\n${piece}`
+    this.repliesOnTheirWay.set(key, (this.repliesOnTheirWay.get(key) ?? 0) + 1)
+    try {
+      return await deliver()
+    } finally {
+      const left = (this.repliesOnTheirWay.get(key) ?? 1) - 1
+      if (left > 0) this.repliesOnTheirWay.set(key, left)
+      else this.repliesOnTheirWay.delete(key)
+      this.reconcileWork(new Set([giver]))
+    }
+  }
+
+  /** ⚑ **Card 584** · whether the reply that ends `owner`'s wait on `on` is being handed to it. */
+  private theReplyIsOnItsWay(owner: string, on: WaitOn): boolean {
+    return (
+      on.kind === 'agent' && 'piece' in on && this.repliesOnTheirWay.has(`${owner}\n${on.piece}`)
+    )
+  }
+
+  /**
+   * ⚑ **Card 584** · whether the result that ends `owner`'s wait on `on` (the reply to its piece,
+   * or the answer to its question) is held for `owner`'s next start, with nothing running or
+   * starting it. Words kept for a start wake nobody, so the wait's reminder is the wake-up.
+   * ⚑ Read off the held rows (`held`, read at most once per owner), so a relaunch reads it as the
+   * life that kept them did; a wait no reply or answer ends, or a running owner, reads nothing.
+   */
+  private itsResultWaitsForItsNextStart(
+    owner: string,
+    on: WaitOn,
+    held: () => readonly WaitingMessage[],
+  ): boolean {
+    const isTheResult =
+      on.kind === 'agent' && 'piece' in on
+        ? ({ authorship }: WaitingMessage) =>
+            authorship.work?.piece === on.piece && authorship.work.state === 'answered'
+        : 'request' in on
+          ? ({ authorship }: WaitingMessage) =>
+              authorship.answeredQuestion?.requestId === on.request
+          : null
+    if (isTheResult === null) return false
+    if (this.runsNow(owner) || this.startsInFlight.has(owner) || this.arrivals.has(owner))
+      return false
+    return held().some(isTheResult)
   }
 
   /**
