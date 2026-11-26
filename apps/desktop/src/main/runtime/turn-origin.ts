@@ -332,14 +332,18 @@ export function theDirectionLine(
   handsAPiece = false,
 ): string {
   const aNote = handsAPiece ? '' : 'A note expects no answer. '
-  const opening =
-    sender === 'person'
-      ? `You are answering ${who}.`
-      : `The words you write in this turn do not reach ${who}. ${aNote}` +
-        `If the sender needs a response, use message_agent if it is an agent you can reach. ` +
-        `Use answer_question for a waiting question and reply_to_parent to hand back work.`
+  if (sender === 'caller') {
+    return (
+      `The words you write in this turn do not reach ${who}. ${aNote}` +
+      'Reply with message_agent if the sender is a reachable agent. ' +
+      'Use answer_question for a waiting question or reply_to_parent to finish work. ' +
+      `For questions about work another conversation gave you, ask ${QUESTION_RECIPIENTS[0]} unless the brief says otherwise. ` +
+      `With no giver, ask ${QUESTION_RECIPIENTS[1]} for the person's decision. ` +
+      'In ask_question, who_answers is required.'
+    )
+  }
   return (
-    `${opening} For a question about a piece another conversation gave you, use ` +
+    `You are answering ${who}. For a question about a piece another conversation gave you, use ` +
     `${QUESTION_RECIPIENTS[0]} unless that piece's brief says otherwise. If no conversation gave ` +
     `you work, use ${QUESTION_RECIPIENTS[1]} when you need the person's decision. ` +
     `ask_question takes who_answers and there is no default.`
@@ -642,7 +646,7 @@ export function messageNamingItsSender(
       : ''
     const previous = workItGaveYou(stands)
     const relationship = previous === null ? '' : `\n\nThis conversation ${previous}.`
-    const direction = `Your reply here doesn't reach ${name}: answer with answer_question, hand back with reply_to_parent, or tell it something with message_agent.`
+    const direction = `Your reply here doesn't reach ${name}: use answer_question to answer, reply_to_parent to finish work, or message_agent to respond.`
     return withTheLine(
       `From ${name} (${sender})${task}${receiver}.${relationship}${person}${stop}\n\n${direction}`,
       text,

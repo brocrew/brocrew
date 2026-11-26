@@ -182,7 +182,7 @@ export function createReplyToParentTool(
           replied.resultDocument === undefined ? '' : ` Main result: ${replied.resultDocument}.`
         const saveMethod =
           methodReport === undefined && host.maySaveMemory(me)
-            ? " If this work taught you a tested method you would reuse, save it now as your Saved methods section says; otherwise you're done."
+            ? ' Save reusable tested methods as described in Saved methods.'
             : ''
         // **D-016 · commit 6 · R5 — a person's own request, answered and delivered nowhere**:
         // there is no conversation it went to, so the payload carries no `delivered` at all.

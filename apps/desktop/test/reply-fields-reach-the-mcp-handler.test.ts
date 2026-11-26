@@ -145,8 +145,7 @@ describe('reply field failures travel through the real MCP server', () => {
   }
   const recorded = () => world.ledger(worker).filter((event) => event.type === 'tool_refused')
 
-  const saveMethod =
-    "If this work taught you a tested method you would reuse, save it now as your Saved methods section says; otherwise you're done."
+  const saveMethod = 'Save reusable tested methods as described in Saved methods.'
 
   async function handBack(adapter: 'Claude' | 'Codex', args: Record<string, unknown>) {
     const wire = await server()

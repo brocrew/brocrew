@@ -666,8 +666,7 @@ describe('a successful answer says in words what its payload held', () => {
 
     /** A known profile gets the fixed reminder after the delivery arm's own words. */
     const receiptBeforeSaveReminder = (text: string): string => {
-      const suffix =
-        " If this work taught you a tested method you would reuse, save it now as your Saved methods section says; otherwise you're done."
+      const suffix = ' Save reusable tested methods as described in Saved methods.'
       expect(text.endsWith(suffix)).toBe(true)
       return text.slice(0, -suffix.length)
     }
