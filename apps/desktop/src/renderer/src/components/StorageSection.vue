@@ -185,6 +185,7 @@ async function pruneBackups() {
   if (acting.value || !storage) return
   actionBusy.value = true
   cacheMessage.value = ''
+  const before = partBytes('backups')
   try {
     const result = await storage.pruneBackups()
     if (!live) return
@@ -193,7 +194,12 @@ async function pruneBackups() {
       return
     }
     forgetFolders()
-    await measure()
+    const measured = await measure()
+    if (!live) return
+    const after = partBytes('backups')
+    if (measured?.complete && before !== null && after !== null)
+      message.value =
+        after < before ? `${storageSize(before - after)} freed.` : 'No backups were removed.'
   } catch (error) {
     if (live) message.value = readableError(error)
   } finally {

@@ -221,6 +221,41 @@ it('Keep the last 2 waits for pruning, refuses repeat clicks, and refreshes only
   expect(bridge.measure).toHaveBeenCalledTimes(2)
   expect(m.q('storage-message').textContent).toContain('Storage could not be read.')
 })
+function withBackupBytes(bytes: number): StorageOverview {
+  return {
+    ...overview,
+    parts: overview.parts.map((part) => (part.id === 'backups' ? { ...part, bytes } : part)),
+  }
+}
+it('Keep the last 2 says what it freed, and says so when it removed nothing', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(withBackupBytes(3 * 1024 ** 3))
+    .mockResolvedValueOnce(withBackupBytes(1024 ** 3))
+    .mockResolvedValueOnce(withBackupBytes(1024 ** 3))
+  const { m, bridge } = setup({ measure })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(1)
+  expect(m.q('storage-message').textContent).toContain('2.0 GB freed.')
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(bridge.pruneBackups).toHaveBeenCalledTimes(2)
+  expect(m.q('storage-message').textContent).toContain('No backups were removed.')
+})
+it('Keep the last 2 keeps a partial reading in view instead of claiming what it cannot know', async () => {
+  const measure = vi
+    .fn<StorageBridge['measure']>()
+    .mockResolvedValueOnce(withBackupBytes(3 * 1024 ** 3))
+    .mockResolvedValueOnce({ ...withBackupBytes(3 * 1024 ** 3), partial: true })
+  const { m } = setup({ measure })
+  await settle()
+  m.q('storage-prune-backups').click()
+  await settle()
+  expect(m.q('storage-message').textContent).toContain('Some sizes could not be measured.')
+  expect(m.q('storage-message').textContent).not.toContain('No backups were removed.')
+})
 it('drills through typed locations, shows the smaller-item summary, and returns through the breadcrumb', async () => {
   const { m, bridge } = setup()
   await settle()
