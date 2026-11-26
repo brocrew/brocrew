@@ -28,7 +28,7 @@ import { WHEN_THE_ASK_LANDED } from './delivery'
 import { aPairInWords, sameModel } from '../../../shared/model-choice'
 import { agentStateWords } from '../../../shared/agent-state'
 import { providerFailureDiagnosis } from '../../../shared/work-reconciliation'
-import { answer, refusalAnswer } from './answers'
+import { answer, answerList, refusalAnswer } from './answers'
 import { clockTimeFrom } from '../../../shared/clock'
 import { fromClause, receivedPayload } from './documents'
 import {
@@ -78,15 +78,15 @@ const archivedSaid = (archivedAt: number, readAt: number): string =>
 const contextText = (context: AgentCard['context']): string => {
   if (context == null) return ''
   if (context.window === null || context.percentUsed === null) {
-    return ` · context ${String(Math.round(context.used))} tokens used (window size not reported)`
+    return ` · context ${String(Math.round(context.used))} tokens (window unknown)`
   }
-  return ` · context ${String(context.percentUsed)}% of ${String(context.window)} tokens used`
+  return ` · context ${String(context.percentUsed)}% of ${String(context.window)} tokens`
 }
 
 const cardText = (
   card: AgentCard,
   called: string,
-  renderPiece: (one: PieceOnTheCard) => string = (one) => pieceOnTheCardText(one),
+  renderPiece?: (one: PieceOnTheCard) => string,
 ): string =>
   // **D-017 · R11 — the state in the one derivation's words** (`agentStateWords`), the words the
   // window draws: never whether a process runs.
@@ -94,13 +94,17 @@ const cardText = (
   theStopOnAPerson(card.stoppedOnAPerson) +
   // **D-042 · R6 — what it runs on**, so a giver can check what its helper runs.
   runsOnText(card) +
-  contextText(card.context) +
-  (card.lastActiveAt == null ? '' : ` · last active ${new Date(card.lastActiveAt).toISOString()}`) +
+  (renderPiece === undefined ? '' : contextText(card.context)) +
+  (renderPiece === undefined || card.lastActiveAt == null
+    ? ''
+    : ` · last active ${new Date(card.lastActiveAt).toISOString()}`) +
   // **W4.209 · who started it, by the piece it started it from** — the record's and the launch
   // line's words (`AgentCard.parentCalled`), never by the starter's work now.
-  `${card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
+  `${renderPiece === undefined || card.parentCalled === null ? '' : ` · started by ${card.parentCalled}`}` +
   // **D-016 · the pieces it holds** (spec D17) — its root, then its open pieces with their states.
-  (card.pieces.length === 0 ? '' : ` · holds ${card.pieces.map(renderPiece).join(', ')}`) +
+  (card.pieces.length === 0
+    ? ''
+    : ` · holds ${card.pieces.map(renderPiece ?? pieceLabelAndState).join(', ')}`) +
   // A service's queue: the tasks still waiting their turn.
   queuedText(card.queued) +
   // **676 · F3 — said on the line, where both readers of a card read it** (`AgentCard.rowsUnread`):
@@ -115,6 +119,8 @@ const cardText = (
 /** **484 · a card's short form**: who it is, its state and its context, on one line. */
 const shortCardText = (card: AgentCard, called: string): string =>
   `${called} · ${whoseText(card.whose)} · ${agentStateWords(card.state)}${contextText(card.context)}`
+
+const pieceLabelAndState = (one: PieceOnTheCard): string => pieceWithDetail(one.label, one.state)
 
 const queuedText = (queued: AgentCard['queued']): string =>
   queued === undefined
@@ -202,10 +208,14 @@ const theLastTurnSaid = (
 }
 
 /** **D-016** — `W1 · Plan the trip`, or `W1.2 · Draft the plan (working)` for an open piece. */
-const pieceOnTheCardText = (one: PieceOnTheCard, diagnosis?: string): string => {
-  const detail = diagnosis ?? one.state
-  return `${pieceLine(one.label, one.title)}${detail === null ? '' : ` (${detail})`}`
-}
+const pieceOnTheCardText = (one: PieceOnTheCard, diagnosis?: string): string =>
+  pieceWithDetail(pieceLine(one.label, one.title), diagnosis ?? one.state)
+
+const pieceWithDetail = (label: string, detail: string | null): string =>
+  `${label}${detail === null ? '' : ` (${detail})`}`
+
+const fullCardText = (card: AgentCard, called: string): string =>
+  cardText(card, called, (one) => pieceOnTheCardText(one))
 
 /**
  * **D-017 · R11 — one card as a tool's payload carries it**: every field the card holds, with its
@@ -504,7 +514,7 @@ export function createListAgentsTool(
     // conversation a giver has with an agent, and starts one only the first time. And each card
     // names the work it holds — its root and its open pieces, by label (spec D17).
     description:
-      "List conversations, the most recently active first, a page at a time. Filter by profile and by last-active date. Each row: conversation <address> · <title>; its agent (the name a person gave it, and the profile slug give_work takes); its state — working, waiting on the person, waiting on another conversation's answer, owing an answer (and to whom), running in the background (and what), scheduled (and when it next wakes), waiting on work it gave, or idle; its provider, model, effort and context size; and the tasks it holds. archived: true lists archived conversations instead, each with when it was archived and by whom. An archived conversation can still be read and asked, and stays archived; new work given to it brings it back into the person's lists. list_profiles names every agent. Being listed doesn't promise that a message will be taken: message_agent's answer says what happened.",
+      "List conversations, the most recently active first, a page at a time. Filter by profile and by last-active date. Each row: conversation <address> · <title>; its agent (the name a person gave it, and the profile slug give_work takes); its state — working, waiting on the person, waiting on another conversation's answer, owing an answer (and to whom), running in the background (and what), scheduled (and when it next wakes), waiting on work it gave, or idle; its provider, model and effort; and the labels and states of the tasks it holds. get_agent_status shows context, activity and task titles. archived: true lists archived conversations instead, each with when it was archived and by whom. An archived conversation can still be read and asked, and stays archived; new work given to it brings it back into the person's lists. list_profiles names every agent. Being listed doesn't promise that a message will be taken: message_agent's answer says what happened.",
     /**
      * **486 · the rails are the whole gate** (HO-031 §2.4).
      *
@@ -569,15 +579,16 @@ export function createListAgentsTool(
             ...one,
             called: host.nameByItsWork(one.card.agent),
           }))
-          const lines = rows.map(
-            ({ card, archivedAt, called }) =>
-              cardText(card, called) + archivedSaid(archivedAt, readAt),
-          )
-          const short = rows.map(
-            ({ card, archivedAt, called }) =>
-              shortCardText(card, called) + archivedSaid(archivedAt, readAt),
-          )
-          return answer(
+          const render = (text: (card: AgentCard, called: string) => string) =>
+            listed(
+              rows.map(
+                ({ card, archivedAt, called }) =>
+                  text(card, called) + archivedSaid(archivedAt, readAt),
+              ),
+              next,
+              notListed,
+            )
+          return answerList(
             {
               outcome: 'ok',
               archived: archived.map(({ card, archivedAt }) => ({
@@ -589,14 +600,20 @@ export function createListAgentsTool(
               notListed,
               ...(next === undefined ? {} : { next }),
             },
-            listed(lines, next, notListed),
-            listed(short, next, notListed),
+            render(fullCardText),
+            () => render(cardText),
+            render(shortCardText),
           )
         }
         const { agents, notListed, next } = host.agentsVisibleTo(by, me, input)
         const rows = agents.map((card) => ({ card, called: host.nameByItsWork(card.agent) }))
-        const lines = rows.map(({ card, called }) => cardText(card, called))
-        return answer(
+        const render = (text: (card: AgentCard, called: string) => string) =>
+          listed(
+            rows.map(({ card, called }) => text(card, called)),
+            next,
+            notListed,
+          )
+        return answerList(
           {
             outcome: 'ok',
             agents: agents.map(cardPayload),
@@ -604,12 +621,9 @@ export function createListAgentsTool(
             notListed,
             ...(next === undefined ? {} : { next }),
           },
-          listed(lines, next, notListed),
-          listed(
-            rows.map(({ card, called }) => shortCardText(card, called)),
-            next,
-            notListed,
-          ),
+          render(fullCardText),
+          () => render(cardText),
+          render(shortCardText),
         )
       }),
   }
