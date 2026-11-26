@@ -520,13 +520,10 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
   </component>
 </template>
 
+<style scoped src="./transcript-entry-presentation.css"></style>
+
 <style scoped>
 /* ⚑ **406** — the same quiet subject mark `WorkReportEntry` carries, in the same position. */
-.about {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
 .msg {
   display: grid;
   max-width: var(--measure-message);
@@ -576,7 +573,6 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
 }
 
 .msg-meta {
-  display: flex;
   /* ⚑ **714 · and it may WRAP** (714's review): with the longest heading a held row draws — two
      agents nobody named, the sender's word and the relay mark — the state had no room left on the
      line at all. It takes the next one instead. */
@@ -586,10 +582,6 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
      command refused at its flush wraps to three lines, 37 px in this 22 px row — 7 px spilled over
      the top and 7 px over the words below. ⚑ One line still draws 22 px tall. */
   min-height: 22px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
   row-gap: 0;
 }
 
@@ -615,26 +607,14 @@ const arrived = computed(() => (props.item.outcome === null ? (props.item.label 
   color: var(--faint);
 }
 
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) ease;
-}
-
 .msg:hover .time {
   opacity: 1;
 }
 
 .msg-body {
-  padding-top: var(--space-2);
   /* Muted rather than `--text-soft`: it is the same text a user bubble would carry, and the point
      is that it has not become one yet. */
   color: var(--muted);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  white-space: pre-wrap;
 }
 
 .msg.ended .msg-body {

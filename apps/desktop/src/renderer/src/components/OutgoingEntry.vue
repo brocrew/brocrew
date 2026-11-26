@@ -654,69 +654,16 @@ async function takeItBack(piece: string): Promise<void> {
   </OutsideCard>
 </template>
 
+<style scoped src="./transcript-entry-presentation.css"></style>
+
 <style scoped>
-/* ⚑ The incoming card's meta row, word for word — `RelayedEntry`'s — so the two directions of one
-   exchange read as one vocabulary. */
 .msg-meta {
-  display: flex;
   min-height: 20px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-.heading {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-.about {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.task {
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-}
-
-/* ⚑ `WorkReportEntry`'s press, by its declarations — a scoped class there matches nothing here. */
-.press {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.press:hover,
-.press:focus-visible {
-  color: var(--text-soft);
-  text-decoration-style: solid;
 }
 
 /* ⚑ The views ride the meta row's right edge, just before the clock. */
 .views {
   margin-left: auto;
-}
-
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) ease;
-}
-
-.time.beside {
-  margin-left: 0;
 }
 
 .outgoing:hover .time {
@@ -731,14 +678,6 @@ async function takeItBack(piece: string): Promise<void> {
   font-size: var(--type-reading);
   font-weight: var(--fw-bold);
   line-height: var(--leading-reading);
-}
-
-.msg-body {
-  padding-top: var(--space-2);
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  white-space: pre-wrap;
 }
 
 .cut {
