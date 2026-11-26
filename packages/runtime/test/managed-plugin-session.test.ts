@@ -394,6 +394,19 @@ function fixture(refresh = false, exitFactory?: (index: number) => Promise<void>
     },
   }
 }
+it.each(['app-quit', undefined] as const)(
+  'forwards close reason %s once to the provider handle',
+  async (reason) => {
+    const f = fixture()
+    const handle = await f.runtime.start(initial)
+    const close = () => (reason === undefined ? handle.close() : handle.close(reason))
+    const closing = close()
+    expect(close()).toBe(closing)
+    await closing
+    expect(f.opened[0]!.close.mock.calls).toEqual([reason === undefined ? [] : [reason]])
+  },
+)
+
 it('supplies live scoped routes on fresh starts and resumes without changing personal servers', async () => {
   const f = fixture()
   const a = await f.runtime.start(initial)
