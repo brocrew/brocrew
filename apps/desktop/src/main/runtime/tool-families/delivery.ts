@@ -324,7 +324,7 @@ export function whatBecameOfTheStop(
     case 'not-needed':
       return {
         structured: notStopped,
-        said: 'No turn was running that needed stopping, so nothing was interrupted.',
+        said: 'No running turn needed stopping.',
       }
     case 'not-below-you':
       return {
