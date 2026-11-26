@@ -67,8 +67,8 @@ function mutate(file, from, to) {
   return withFile(file, text.replace(from, to))
 }
 
-const CHILD = 'components/ChildWorkViewer.vue'
-const OUTPUT = 'components/WorkflowOutputViewer.vue'
+/** Draws the fill of the sub-agent popup and of the workflow output document. */
+const FRAME = 'components/DocumentViewerFrame.vue'
 const LIBRARY = 'components/SessionLibrary.vue'
 
 /* -------------------------------------------------------------- the real tree */
@@ -142,25 +142,24 @@ describe('the guard over the renderer tree', () => {
 /* ------------------------------------------------------------ the two escapes */
 
 describe('⛔ it catches both tokens this class has already cost', () => {
-  it('125: --surface-1 put back on the sub-agent popup', () => {
-    const mutated = mutate(CHILD, 'background: var(--drawer-solid)', 'background: var(--surface-1)')
+  it('125: --surface-1 put back on the sub-agent popup and the workflow output document', () => {
+    const mutated = mutate(FRAME, 'background: var(--drawer-solid)', 'background: var(--surface-1)')
     const findings = undeclaredTokenUses(mutated).filter((f) => f.token === '--surface-1')
-    expect(findings.map((f) => f.file)).toEqual([CHILD])
+    expect(findings.map((f) => f.file)).toEqual([FRAME])
   })
 
-  it('125: …and on the workflow output document — both uses, not just the first', () => {
-    const one = mutate(CHILD, 'background: var(--drawer-solid)', 'background: var(--surface-1)')
-    const both = new Map(one)
-    both.set(
-      OUTPUT,
-      source(OUTPUT).replace('background: var(--drawer-solid)', 'background: var(--surface-1)'),
+  it('125: …every use is reported, not just the first, in every file', () => {
+    const one = mutate(
+      FRAME,
+      'background: var(--drawer-solid)',
+      'background: var(--surface-1);\n  outline-color: var(--surface-1)',
     )
-    expect(both.get(OUTPUT)).toContain('var(--surface-1)')
-    expect(
-      undeclaredTokenUses(both)
-        .filter((f) => f.token === '--surface-1')
-        .map((f) => f.file),
-    ).toEqual([CHILD, OUTPUT])
+    const both = new Map(one)
+    both.set(LIBRARY, source(LIBRARY).replace('color: var(--text-soft)', 'color: var(--surface-1)'))
+    expect(both.get(LIBRARY)).toContain('var(--surface-1)')
+    const findings = undeclaredTokenUses(both).filter((f) => f.token === '--surface-1')
+    expect(findings.map((f) => f.file)).toEqual([FRAME, FRAME, LIBRARY])
+    expect(findings[1].line).toBe(findings[0].line + 1)
   })
 
   it('105: --warning, bare, is caught', () => {
