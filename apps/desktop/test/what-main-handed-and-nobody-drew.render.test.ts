@@ -17,7 +17,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
@@ -44,7 +43,12 @@ import { isRefusal } from '../src/renderer/src/lib/user-input-offer'
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { decisionReading, readingSentence } from '../src/shared/questions'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * Facts main hands the renderer that a person must see: a retracted notice's reason in the export,
@@ -95,14 +99,6 @@ function tagged(markup: string, cy: string): Tagged[] {
 function attr(attrs: string, name: string): string | null {
   const found = new RegExp(`\\s${escapeRegExp(name)}="([^"]*)"`).exec(attrs)
   return found === null ? null : decode(found[1] ?? '')
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
 }
 
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {

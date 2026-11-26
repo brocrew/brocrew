@@ -1,4 +1,8 @@
-import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  neutralHostDeps,
+  fixtureProviderConfig,
+  RecordingSink as WindowSink,
+} from './lib/host-fixture'
 import { agentRosterForWire } from './lib/agent-roster-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,20 +14,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type RuntimeEventSink,
-  type RuntimeHostDeps,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import type {
-  AgentIdentities,
-  AgentIdentity,
-  RuntimeBridge,
-  RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -37,18 +32,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * key's name lives only in the message. ⛔ A refusal that said only `(root)` would be *refused*
  * without being *refused by name*.
  */
-
-/** A window: what the app's own sink declares, and the only thing that declares it (349). */
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('D-020 · a field nobody declared is refused by name', () => {
   let userData: string

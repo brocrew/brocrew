@@ -1,4 +1,5 @@
 import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-scratch-database'
+import { RecordingSink } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync } from 'node:fs'
@@ -7,13 +8,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
-import type {
-  RuntimeEventSink,
-  RuntimeHost,
-  RuntimeHostDeps,
-} from '../src/main/runtime/runtime-host'
+import type { RuntimeHost, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **D-017 · R8 — one torn instruction row is skipped, and it never takes the whole read down**
@@ -161,17 +157,6 @@ describe('a torn instruction row does not stop the ledger · §3 nothing withdra
   let store: SessionStore
   let hostA: RuntimeHost
   const scratch = hostsOverAScratchDatabase('brobot2-torn-instruction-relaunch-')
-
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
 
   /** A host's own deps — `two-hosts-import.test.ts`'s minimal shape, no `readInstructions`. */
   const deps = (): Partial<RuntimeHostDeps> => ({
