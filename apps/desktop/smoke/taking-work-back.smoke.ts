@@ -10,11 +10,11 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **429 · the fifth property and the verb, performed against a REAL provider** (§6.5).
@@ -53,27 +53,6 @@ const CHEAP = 'claude-haiku-4-5-20251001'
 const CHEAP_LISTED = 'haiku'
 /** ⛔ Model-unprompted and appearing nowhere else, so a match cannot be an echo of the prompt. */
 const MARKER = `BROBOT_429_DONE_${process.pid}`
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  /**
-   * ⛔ **`aPersonIsBehindIt` decides whether this sink may ANSWER a card, and the third live run
-   * measured it.** ⚠️ The pump below called `respondPermission` through a sink that answered `false`
-   * and the host refused it, by name and repeatedly: *"session sess_3 is held for webContents:1, and
-   * webContents:1 asked to answer for a person."* ⚑ The refusal is right — a started child's cards
-   * are not a window's to settle unless a person is behind that window — and it is the rig that has
-   * to say which it is, which is `375`'s ruling read from the outside.
-   */
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = false,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const say = (line: string): void => {
   process.stdout.write(`${line}\n`)
@@ -141,7 +120,7 @@ it(
       }),
     })
 
-    const window = new Recorder('webContents:1')
+    const window = new Recorder('webContents:1', false)
     const started = Date.now()
     const performed: Record<string, boolean> = {}
     try {
@@ -160,7 +139,7 @@ it(
       expect(chose, 'a person chose the worker’s model').toMatchObject({ ok: true })
       say(`1 · identity 'worker' exists (session ${worker0.sessionId}, closed)`)
 
-      const parentSink = new Recorder('webContents:2')
+      const parentSink = new Recorder('webContents:2', false)
       const parent = await host.createSession(
         { provider: 'claude', profileId: 'pm', cwd: work, model: CHEAP, approvalMode: 'auto' },
         parentSink,

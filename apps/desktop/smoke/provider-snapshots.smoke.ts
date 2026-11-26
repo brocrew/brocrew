@@ -39,10 +39,9 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   claudeContextSections,
   claudeDeferredBuiltIns,
@@ -56,6 +55,7 @@ import {
   type Scrub,
 } from './provider-snapshot-parts'
 import type { ProviderSnapshotFile, SnapshotPart } from '../src/shared/provider-snapshots'
+import { RecordingSink as Window } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **W4.164 · F093 R3 — `pnpm run snapshots:providers`: what each bundled provider puts in front
@@ -100,17 +100,6 @@ const deadline = probeRunDeadline(
   runBudgetMs([...WAITS, ...WAITS]),
   TEARDOWN_MS,
 )
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 async function until(what: string, ms: number, done: () => boolean): Promise<void> {

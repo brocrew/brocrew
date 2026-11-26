@@ -10,10 +10,10 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **347 · criterion 1, performed: a REAL provider child gives another agent work and talks to it.**
@@ -53,20 +53,6 @@ const CHEAP = 'claude-haiku-4-5-20251001'
 const CHEAP_LISTED = 'haiku'
 /** ⛔ Model-unprompted and appearing nowhere else, so a match cannot be an echo of the prompt. */
 const MARKER = `BROBOT_347_CHILD_${process.pid}`
-
-class Recorder implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((one) => one.event)
-  }
-}
 
 const say = (line: string): void => {
   process.stdout.write(`${line}\n`)
@@ -136,7 +122,7 @@ it(
       }),
     })
 
-    const window = new Recorder('webContents:1')
+    const window = new Recorder('webContents:1', false)
     try {
       // ── 1 · bring the identity into being, the only way anything can ────────────────────────
       // ⛔ Started and closed with no turn sent: a handshake, and no model tokens spent.
@@ -158,7 +144,7 @@ it(
       say(`1 · identity 'worker' exists (session ${worker0.sessionId}, closed), on ${CHEAP_LISTED}`)
 
       // ── 2 · a parent that may give it work ──────────────────────────────────────────────────
-      const parentSink = new Recorder('webContents:2')
+      const parentSink = new Recorder('webContents:2', false)
       const parent = await host.createSession(
         {
           provider: 'claude',
