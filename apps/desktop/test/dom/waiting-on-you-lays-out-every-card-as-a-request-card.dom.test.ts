@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
 import { unmountAll, type Mounted } from './harness'
@@ -152,9 +152,17 @@ describe('every kind of card is a card like the request cards', () => {
           box(view.host.querySelector<HTMLElement>('.pills')!).top,
         )
         if (notices === 3) {
+          if (width === 720) {
+            expect(band.scrollWidth).toBeGreaterThan(band.clientWidth)
+            band.focus()
+            expect(document.activeElement).toBe(band)
+            await userEvent.keyboard('{ArrowRight}')
+            await expect.poll(() => band.scrollLeft).toBeGreaterThan(0)
+          }
           band.scrollLeft = band.scrollWidth
           await nextTick()
           const last = view.q('persons-queue-wall-codex')
+          expect(box(last).left).toBeGreaterThanOrEqual(box(band).left - 1)
           expect(box(last).right).toBeLessThanOrEqual(box(band).right + 1)
         }
         if (import.meta.env.VITE_WAITING_HEADER_CAPTURE)
