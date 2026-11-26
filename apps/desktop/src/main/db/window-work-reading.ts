@@ -39,6 +39,7 @@ export interface WindowWorkReading {
     readonly waitsOnWhoWrote: WindowFact<readonly StateWork[]>
     readonly naming: WindowFact<{
       readonly named: Name
+      readonly namingTaskStatus?: string
       readonly waitingOnPurpose: StateWait | null
     }>
   }[]
@@ -89,10 +90,16 @@ export function projectWindowPieces(
   store: SessionStore,
   id: string,
   folded: WindowFact<readonly PieceRow[]>,
+  listingOnly = false,
 ): WindowPieces {
   const root = store.rootOf(id)
   const open = folded.value.filter((piece) => TASK_IS_OPEN[piece.state])
-  const { named, waitingOnPurpose } = store.workThatNamesAndItsWait(id, undefined, folded.value)
+  const { named, namingTaskStatus, waitingOnPurpose } = store.workThatNamesAndItsWait(
+    id,
+    undefined,
+    folded.value,
+    listingOnly,
+  )
   const fact = <T>(value: T): WindowFact<T> => ({ value, skipped: folded.skipped })
   return {
     open,
@@ -104,6 +111,9 @@ export function projectWindowPieces(
       waitsOnWhoWrote: fact(open.filter(waitsOnWhoWrote).map(stateWork)),
       naming: fact({
         named,
+        ...(namingTaskStatus === undefined || folded.skipped.length !== 0
+          ? {}
+          : { namingTaskStatus }),
         waitingOnPurpose:
           waitingOnPurpose === null
             ? null
@@ -150,6 +160,7 @@ export function readWindowWork(
           store,
           id,
           counted((unread) => store.piecesOwnedBy(id, unread)),
+          listingOnly,
         ),
     ]),
   )

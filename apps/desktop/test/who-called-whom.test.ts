@@ -19,6 +19,7 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { openElsewhere } from '../src/renderer/src/lib/taking-over'
+import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { walkCovers } from '../src/shared/questions'
 import { type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -206,6 +207,91 @@ describe('543 · who called whom', () => {
       giveWork(pm, stranger, 'work_b', { title: 'audit it' })
       return { pm, child, quiet, stranger }
     }
+
+    it('lists the direct-start count and the current status of the task that names the row', async () => {
+      const { pm, child, quiet, stranger } = aFamily()
+      const grandchild = conversation('sess_grandchild', 'reviewer', { parent: child })
+      const root = store.rootOf(pm)!
+      store.append(
+        pm,
+        store.nextOrdinal(pm),
+        {
+          type: 'session',
+          state: 'started',
+          ref: { provider: 'codex', sessionId: 'life-pm', cwd: workspace, rotation: 0 },
+        },
+        tick(),
+      )
+      const setStatus = (owner: string, piece: string, line: string) => {
+        store.append(
+          owner,
+          store.nextOrdinal(owner),
+          { type: 'work_status_set', piece, line, by: owner },
+          tick(),
+        )
+      }
+      setStatus(pm, root.piece, 'Original plan')
+      setStatus(pm, root.piece, 'Current plan')
+      const second = giveWork(pm, child, 'work_second', { title: 'another job' })
+      setStatus(child, 'work_a', 'Halfway through')
+      setStatus(child, 'work_a', 'Ready for review')
+      setStatus(child, second, 'Second job progress')
+      store.append(
+        child,
+        store.nextOrdinal(child),
+        { type: 'work_replied', piece: second, outcome: 'done', summary: 'done', resources: [] },
+        tick(),
+      )
+
+      const readRows = async () => {
+        const answer = await host.listConversations()
+        if ('refused' in answer) throw new Error(answer.refused)
+        expect(answer.resumable.some((row) => row.sessionId === pm)).toBe(true)
+        expect(answer.unresumable.some((row) => row.sessionId === child)).toBe(true)
+        return new Map(conversationList(answer).map((row) => [row.sessionId, row]))
+      }
+      const rows = await readRows()
+      for (const id of [pm, child, quiet, stranger, grandchild]) {
+        const children = host.whoCalledWhom(id).children
+        expect(children).toMatchObject({
+          walk: 'every-conversation-this-one-spawned',
+          rowsUnread: 0,
+        })
+        expect(rows.get(id)?.startedHereCount).toBe(children.rows.length)
+      }
+      expect(rows.get(pm)).toMatchObject({
+        named: { label: root.label },
+        namingTaskStatus: 'Current plan',
+        startedHereCount: 2,
+      })
+      expect(rows.get(child)).toMatchObject({
+        named: { title: 'the migration' },
+        namingTaskStatus: 'Ready for review',
+        startedHereCount: 1,
+      })
+      expect(rows.get(quiet)).toHaveProperty('startedHereCount', 0)
+      expect(rows.get(quiet)).not.toHaveProperty('namingTaskStatus')
+      expect(rows.get(stranger)?.named).not.toBeNull()
+      expect(rows.get(stranger)).not.toHaveProperty('namingTaskStatus')
+      expect(rows.get(child)).not.toHaveProperty('waitingOnPurpose')
+
+      store.append(
+        child,
+        store.nextOrdinal(child),
+        {
+          type: 'work_replied',
+          piece: 'work_a',
+          outcome: 'done',
+          summary: 'reviewed',
+          resources: [],
+        },
+        tick(),
+      )
+      expect((await readRows()).get(child)).toMatchObject({
+        named: { title: 'the migration', ended: 'answered' },
+        namingTaskStatus: 'reviewed',
+      })
+    })
 
     it('🔴 the answer names every edge by CONVERSATION and never by slug', () => {
       const { pm, child, quiet, stranger } = aFamily()

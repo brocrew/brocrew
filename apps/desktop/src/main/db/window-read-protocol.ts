@@ -103,6 +103,7 @@ export interface WindowRoutes {
 }
 export interface WindowListingStates {
   readonly kind: 'listing'
+  readonly startedHereCounts: ReturnType<SessionStore['startedHereCounts']>
   readonly cacheToken?: string
   readonly routes: readonly RoutingReading[]
   readonly work: WindowWorkReading
@@ -328,7 +329,15 @@ export const windowReadResult = z.discriminatedUnion('kind', [
       roster: z.array(z.unknown()),
     })
     .strict(),
-  listingFacts.extend({ kind: z.literal('listing'), cacheToken: z.string().optional() }).strict(),
+  listingFacts
+    .extend({
+      kind: z.literal('listing'),
+      startedHereCounts: z.array(
+        z.tuple([z.string().min(1), z.number().int().nonnegative().safe()]),
+      ),
+      cacheToken: z.string().optional(),
+    })
+    .strict(),
   listingFacts
     .extend({
       kind: z.literal('routes'),

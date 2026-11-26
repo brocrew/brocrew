@@ -115,6 +115,7 @@ type WorkGivenMethods = Pick<
   | 'providerSessionsOf'
   | 'deleteTheTree'
   | 'spawnedBy'
+  | 'startedHereCounts'
   | 'conversationBinding'
   | 'piecesGivenBy'
   | 'newestScheduleLevels'
@@ -705,6 +706,14 @@ export function createWorkGivenPart(deps: WorkGivenPartDeps) {
           provider: row.provider as Provider,
         },
       ])
+    },
+
+    startedHereCounts() {
+      const counts = spawnSql().startedHereCounts.iterate() as Iterable<{
+        id: string
+        count: number
+      }>
+      return Array.from(counts, ({ id, count }) => [id, count] as const)
     },
 
     conversationBinding(sessionId) {
