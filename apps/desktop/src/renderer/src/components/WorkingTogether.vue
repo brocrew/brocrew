@@ -119,6 +119,15 @@ const view = computed(() =>
 /** ⚑ Every agent this conversation works with: the ones it spawned, then the others it gave work to. */
 const cast = useWhoCalledWhom()
 
+const listedById = computed(() => {
+  const rows = cast.listedConversations.value ?? []
+  const byId = new Map<string, (typeof rows)[number]>()
+  for (const row of rows) {
+    if (!byId.has(row.sessionId)) byId.set(row.sessionId, row)
+  }
+  return byId
+})
+
 // ⚑ F094 · a replaced conversation is drawn as its stand-in (D-034's place map, from the forest).
 const allAgents = computed(() =>
   view.value
@@ -127,9 +136,7 @@ const allAgents = computed(() =>
         cast.forest.value,
         props.identities,
       ).map((card) => {
-        const listed = cast.listedConversations.value?.find(
-          (row) => row.sessionId === card.conversation,
-        )
+        const listed = listedCard(card)
         const worker = listed?.worker
         return worker
           ? {
@@ -144,7 +151,7 @@ const allAgents = computed(() =>
 const latestFirst = usePersistentToggle('brobot2.subAgents.latestFirst', false)
 const showIdle = usePersistentToggle('brobot2.subAgents.showIdle', true)
 function listedCard(card: CastCard) {
-  return cast.listedConversations.value?.find((row) => row.sessionId === card.conversation)
+  return listedById.value.get(card.conversation)
 }
 // Classify the same cards the panel names, without treating an unread state as idle.
 function hiddenWhenIdle(card: CastCard): boolean {
