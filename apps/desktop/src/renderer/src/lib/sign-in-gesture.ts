@@ -43,13 +43,13 @@ export function observe(fact: SignInFact, ticket: number, said: AuthState | null
 }
 
 /** The sentences a surface says for its own gestures. */
-export interface SignInWords {
+interface SignInWords {
   signedIn(pair: SignInPair): string
   /** A copy of the machine sign-in that changed nothing. */
   unchanged: string
 }
 
-export const SIGN_IN_WORDS = {
+const SIGN_IN_WORDS = {
   finishInTheBrowser: 'Finish signing in in your browser, then come back.',
   didNotComplete: 'The sign-in did not complete.',
   copied: 'Copied your machine sign-in into this profile.',

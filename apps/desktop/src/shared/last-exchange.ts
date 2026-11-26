@@ -95,7 +95,7 @@ export type TranscriptTurn = {
 )
 
 /** ⚑ **F080 — what a turn its provider started by itself followed**, as far as the record says. */
-export interface TurnItsProviderStarted {
+interface TurnItsProviderStarted {
   /**
    * The provider's own words for each piece of background work that ended between this
    * conversation's previous turn and this one, oldest first — what woke it (*"Background command
@@ -256,7 +256,7 @@ export interface AConversation {
  * of sender, so the verb fits: a person or an agent *wrote*, this app *wrote* its own sentence or
  * carried somebody else's, and a CLI's words were *typed*.
  */
-export function whoSentItLeadIn(from: WhoSentIt, nameOf: (who: AConversation) => string): string {
+function whoSentItLeadIn(from: WhoSentIt, nameOf: (who: AConversation) => string): string {
   switch (from.is) {
     case 'a-person':
       return 'a person, who wrote'

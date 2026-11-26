@@ -23,7 +23,7 @@ import { importSideFile, objectIn } from '../../../db/side-file-import'
  */
 
 /** Why a cut was not, or will not be, continued. */
-export const NOT_CONTINUED_BECAUSE = [
+const NOT_CONTINUED_BECAUSE = [
   // Not a cut the app may continue.
   'too-old',
   'blocked',
@@ -98,7 +98,7 @@ export interface CutRecord {
   readonly at: number
 }
 
-export interface LifeRecord {
+interface LifeRecord {
   /** When the life began, epoch ms. */
   readonly since: number
   readonly identity: string
@@ -116,10 +116,10 @@ export interface KeptCuts {
 export const NO_CUTS_KEPT: KeptCuts = { lives: {}, cuts: {} }
 
 /** The most conversations each part holds; past it, the ones changed longest ago go. */
-export const MAX_CUT_CONVERSATIONS = 500
+const MAX_CUT_CONVERSATIONS = 500
 
 /** How long an ended or sent cut is kept, for a person to be told of later: a week. */
-export const CUT_KEPT_FOR_MS = 7 * 24 * 60 * 60_000
+const CUT_KEPT_FOR_MS = 7 * 24 * 60 * 60_000
 
 /** The file older builds kept these in, imported once into `cut_turn` and `cut_life`. */
 export const TURNS_THE_APP_CUT_FILE = 'turns-the-app-cut.json'

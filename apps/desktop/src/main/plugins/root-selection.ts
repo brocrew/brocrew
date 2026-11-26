@@ -15,7 +15,7 @@ import { refuse } from './supervisor/protocol'
 
 const Slot = z.string().regex(/^[a-z][a-z0-9]{0,5}$/)
 export const Marker = z.strictObject({ format: z.literal(1), slot: Slot })
-export const Pins = z.strictObject({
+const Pins = z.strictObject({
   format: z.literal(1),
   selections: z
     .array(z.strictObject({ workspace: z.string().min(1).max(4096), slot: Slot }))
@@ -26,7 +26,7 @@ const missing = (error: unknown) =>
 const identity = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path)
 
 /** Read only a bounded, unchanged regular file. Selection never creates or repairs configuration. */
-export function readRootSelectionBytes(
+function readRootSelectionBytes(
   path: string,
   limit: number,
   expectedLinks: 1 | 2 = 1,
@@ -110,7 +110,7 @@ export function workspacePluginRoot(options: {
 }
 
 /** Validate the exact root the reader would select, including a proposed offline enrollment. */
-export function plannedPluginRoot(
+function plannedPluginRoot(
   parent: string,
   workspace: string,
   selections: Array<{ workspace: string; slot: string }>,
@@ -140,7 +140,7 @@ export function plannedPluginRoot(
 }
 
 /** Validate the complete pin map even when a partial target selection cannot be read. */
-export function validatedRootPins(value: unknown) {
+function validatedRootPins(value: unknown) {
   const pins = value === undefined ? { format: 1 as const, selections: [] } : Pins.parse(value)
   const folders = new Set<string>(),
     slots = new Set<string>()

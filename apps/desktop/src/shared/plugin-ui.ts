@@ -1,8 +1,8 @@
 export const PLUGIN_UI_CHANNEL = 'brocrew-plugin-ui:v1'
 export const PLUGIN_UI_RPC = 'plugin-ui:rpc'
 export const PLUGIN_UI_EVENT = 'plugin-ui:snapshot'
-export const PLUGIN_UI_METHODS = ['read', 'subscribe', 'unsubscribe', 'proposeConfig'] as const
-export type PluginUiMethod = (typeof PLUGIN_UI_METHODS)[number]
+const PLUGIN_UI_METHODS = ['read', 'subscribe', 'unsubscribe', 'proposeConfig'] as const
+type PluginUiMethod = (typeof PLUGIN_UI_METHODS)[number]
 export interface PluginUiPacket {
   channel: typeof PLUGIN_UI_CHANNEL
   requestId: string

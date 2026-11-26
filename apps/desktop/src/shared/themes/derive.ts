@@ -78,7 +78,7 @@ export const DERIVATION = {
   'shadow-dialog': srgb('shadow', of('shadow', 2.2), 'transparent'),
 } as const satisfies Record<string, Derivation>
 
-export type DerivedName = keyof typeof DERIVATION
+type DerivedName = keyof typeof DERIVATION
 export type DerivedZone = Readonly<Record<DerivedName, Rgba>>
 
 const TRANSPARENT: Rgba = { r: 0, g: 0, b: 0, a: 0 }

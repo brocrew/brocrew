@@ -77,7 +77,7 @@ export interface View {
 export const LAUNCHER = 'new'
 
 /** The surfaces this app has. `reading` still needs a recording beside it; the rest are complete. */
-export type SurfaceName =
+type SurfaceName =
   /**
    * ⛔ **What he OWES, and it is bounded by nothing** (606) — `EXT-008` §3's first half, over
    * `home-attention.ts`'s two real populations.
@@ -137,7 +137,7 @@ export const RESERVED_PLACES = [
 ] as const
 
 /** One of the words in {@link RESERVED_PLACES}. */
-export type ReservedPlace = (typeof RESERVED_PLACES)[number]
+type ReservedPlace = (typeof RESERVED_PLACES)[number]
 
 /**
  * 🔴 **622 · what each RESERVED word draws — a table, because the bug was a missing branch.**
@@ -158,7 +158,7 @@ export type ReservedPlace = (typeof RESERVED_PLACES)[number]
  * that changes nothing today. The chain below already answered `launcher` for it, by exhaustion —
  * which is exactly how `waiting` and `away` were answered too.
  */
-export const SURFACE_OF_PLACE = {
+const SURFACE_OF_PLACE = {
   waiting: 'waiting',
   away: 'away',
   new: 'launcher',

@@ -19,7 +19,7 @@ export interface ThemeCssOptions {
   readonly contentScope?: string
 }
 
-export const CARD_INK_ATTRIBUTE = 'data-card-ink'
+const CARD_INK_ATTRIBUTE = 'data-card-ink'
 
 /** Every attribute a theme may set on its root; `applyTheme` clears them all before setting new ones. */
 export const THEME_ATTRIBUTES: readonly string[] = (() => {
@@ -35,7 +35,7 @@ export const THEME_ATTRIBUTES: readonly string[] = (() => {
   return out
 })()
 
-export const BRAND_MARK_FIGURE = '--brand-mark-figure'
+const BRAND_MARK_FIGURE = '--brand-mark-figure'
 
 /** The longhands a background setting is written as, after its name. */
 const FILL_LONGHANDS = ['color', 'image', 'size', 'position', 'repeat', 'rendering'] as const

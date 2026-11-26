@@ -77,7 +77,7 @@ export function statusWord(
 export type ToolStanding = 'confirmed' | 'offered' | 'unconfirmable'
 
 /** One tool row: what BroBot says it is, and what the child says about it. */
-export interface ToolRow {
+interface ToolRow {
   /** The tool's own name — `give_work`. */
   readonly name: string
   /** How the MODEL must spell it on this provider — `mcp__brobot__give_work`. */
@@ -88,7 +88,7 @@ export interface ToolRow {
 }
 
 /** One MCP server the child named that BroBot did not declare. */
-export interface ForeignServer {
+interface ForeignServer {
   readonly name: string
   readonly status: string
   readonly connectionKind?: string

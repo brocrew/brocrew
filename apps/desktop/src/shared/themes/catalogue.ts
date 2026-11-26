@@ -9,7 +9,7 @@ import {
 } from './schema'
 import { THEME_POSITIONS } from './theme'
 
-export interface CatalogueEntry {
+interface CatalogueEntry {
   readonly path: string
   readonly type: string
   readonly says: string

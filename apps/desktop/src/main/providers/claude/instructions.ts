@@ -43,9 +43,7 @@ function linkOf(path: string, real: string): string | undefined {
   return real === derived ? undefined : real
 }
 
-export { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
-
-export const INSTRUCTION_DOTDIR = '.claude'
+const INSTRUCTION_DOTDIR = '.claude'
 
 export function projectInstructionChain(cwd: string, home = homedir()): string[] {
   const homeResolved = resolve(home)

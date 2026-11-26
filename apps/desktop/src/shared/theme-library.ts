@@ -74,7 +74,7 @@ export interface ThemeDeleted {
   readonly active: string
 }
 
-export interface ThemeAssetInput {
+interface ThemeAssetInput {
   readonly name: string
   readonly path?: string
   readonly base64?: string

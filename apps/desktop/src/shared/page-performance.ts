@@ -47,9 +47,9 @@ export const PAGE_ATTRIBUTIONS = ['explicit-span', 'active-view', 'unknown'] as 
 /** What the person did last before it. */
 export const PAGE_INPUTS = ['scroll', 'pointer', 'key', 'resize', 'none', 'unknown'] as const
 
-export type PageSampleKind = (typeof PAGE_SAMPLE_KINDS)[number]
-export type PageComponent = (typeof PAGE_COMPONENTS)[number]
-export type PageAttribution = (typeof PAGE_ATTRIBUTIONS)[number]
+type PageSampleKind = (typeof PAGE_SAMPLE_KINDS)[number]
+type PageComponent = (typeof PAGE_COMPONENTS)[number]
+type PageAttribution = (typeof PAGE_ATTRIBUTIONS)[number]
 export type PageInput = (typeof PAGE_INPUTS)[number]
 
 interface PageSampleMeasurements {

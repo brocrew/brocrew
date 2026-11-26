@@ -177,10 +177,10 @@ export type WhatAReadingCounts = (typeof WHAT_A_READING_COUNTS)[number]
  * — `LEDGER_WALK_KINDS`' own discipline: *a walk needs a word of its own when no existing word's
  * sentence is TRUE of it.*
  */
-export type WhyNothingWasCounted = 'no-ledger'
+type WhyNothingWasCounted = 'no-ledger'
 
 /** ⚑ **A scope counted whole** — every row it asked about was read. */
-export interface CountTaken {
+interface CountTaken {
   readonly counted: 'in-full'
   readonly count: number
 }
@@ -219,7 +219,7 @@ export interface CountShort {
  * narrow the union first, so `0` can never be reached by accident — which is the whole defect
  * `453`'s walk words exist for, said with a type instead of a word.
  */
-export interface CountNotTaken {
+interface CountNotTaken {
   readonly counted: 'not-at-all'
   readonly because: WhyNothingWasCounted
 }

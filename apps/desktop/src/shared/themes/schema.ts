@@ -402,7 +402,7 @@ export const GENERIC_FONTS: ReadonlySet<string> = new Set([
   'ui-rounded',
 ])
 
-export const OVERRIDABLE_TOKENS: readonly string[] = [
+const OVERRIDABLE_TOKENS: readonly string[] = [
   'panel',
   'panel-2',
   'panel-3',
@@ -439,7 +439,7 @@ export const OVERRIDABLE_TOKENS: readonly string[] = [
 ]
 
 /** Colour tokens a theme may set in the content only: nothing in the frame draws them. */
-export const CONTENT_ONLY_TOKENS: readonly string[] = ['accent-2-text', 'accent-solid-bg']
+const CONTENT_ONLY_TOKENS: readonly string[] = ['accent-2-text', 'accent-solid-bg']
 
 /** The colour tokens a theme may set by hand in `zone`. */
 export const overridableIn = (zone: 'frame' | 'content'): readonly string[] =>

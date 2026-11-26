@@ -41,7 +41,7 @@ export const THEME_POSITIONS = [
   'bottom left',
   'bottom right',
 ] as const
-export type ThemePosition = (typeof THEME_POSITIONS)[number]
+type ThemePosition = (typeof THEME_POSITIONS)[number]
 
 /** A background: one colour under at most three layers. A plain colour in the file becomes `{ color }`. */
 export interface ThemeFill {
@@ -50,26 +50,26 @@ export interface ThemeFill {
 }
 
 /** Up to four font names, or one `assets/fonts/*.woff2`. */
-export type ThemeFont = readonly string[]
+type ThemeFont = readonly string[]
 
-export interface ThemeTypeRole {
+interface ThemeTypeRole {
   readonly font?: ThemeFont
   readonly weight?: number
   readonly style?: 'normal' | 'italic'
   readonly letterSpacing?: number
 }
 
-export interface ThemeGlass {
+interface ThemeGlass {
   readonly blur?: number
   readonly saturate?: number
 }
 
-export interface ThemeInkOnFill {
+interface ThemeInkOnFill {
   readonly fill?: string
   readonly ink?: string
 }
 
-export type ThemeEffect =
+type ThemeEffect =
   | {
       readonly type: 'drift'
       readonly zone: 'rail' | 'conversation' | 'window'

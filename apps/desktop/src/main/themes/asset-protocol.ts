@@ -32,7 +32,7 @@ export interface ThemeAssetRegistry {
   asset(id: string, path: string): AdmittedThemeAsset | null
 }
 
-export function themeRequest(url: string): { id: string; path: string; version?: string } | null {
+function themeRequest(url: string): { id: string; path: string; version?: string } | null {
   const match = new RegExp(
     `^${THEME_SCHEME}://([a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?)/([^?#]+)(?:\\?v=([a-f0-9]{64}))?$`,
   ).exec(url)
