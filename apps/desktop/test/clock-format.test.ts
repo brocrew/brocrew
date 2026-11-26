@@ -7,8 +7,7 @@ import { clockTime } from '../src/shared/clock'
  * 255 · **One formatter, not five thousand.**
  *
  * ⛔ **`212` recorded *"opening Events at the cap synchronously mounts every row — 148-171 ms"* and
- * attributed it to the row count.** Measured in Chromium on that exact corpus, by
- * `pnpm run probe:event-fold`: `describeEvent`, the other per-row string builder, costs **under a
+ * attributed it to the row count.** Measured in Chromium on that exact corpus: `describeEvent`, the other per-row string builder, costs **under a
  * millisecond** for 5,000 events; `clockTime` as shipped cost **140-146 ms**, and the same 5,000
  * through a REUSED `Intl.DateTimeFormat` cost **3.8-4.0 ms**. So the number in the ticket was not
  * five thousand rows paying for five elements each — it was one `Intl.DateTimeFormat` constructed

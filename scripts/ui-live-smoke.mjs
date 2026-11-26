@@ -4907,7 +4907,7 @@ async function main() {
       /**
        * A generous ceiling, deliberately: the measured worst case is single-digit milliseconds, and the
        * widest body (the Events tab at `WINDOW_MAX_EVENTS`, 5,000 rows) mounts in 44-71 ms in the DOM
-       * harness (`pnpm run probe:event-fold`). A second is two orders above anything the app does, so a
+       * harness. A second is two orders above anything the app does, so a
        * red here means the gesture really became slow rather than the machine being busy.
        */
       const CEILING_MS = 1_000

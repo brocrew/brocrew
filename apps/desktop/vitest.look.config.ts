@@ -35,7 +35,8 @@ export default defineConfig({
   envPrefix: ['VITE_', 'LOOK_'],
   test: {
     name: 'look',
-    // ⚠️ Stated, not inferred — see `vitest.probe.config.ts`.
+    // Stated, not inferred: a config passed to `--config` takes its root from the working directory,
+    // so without this the include glob resolves against the repo root and finds nothing.
     root: dirname(fileURLToPath(import.meta.url)),
     include: ['look/scenes/**/*.look.ts'],
     setupFiles: ['test/dom/setup/the-window-is-a-wire.ts'],

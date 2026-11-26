@@ -102,13 +102,9 @@ describe('every test project runs in a fictional home', () => {
       'vitest.config.ts',
       'vitest.gate-only.config.ts',
     ]
-    // Run in a browser, which reads no file of the person's: the window's tests, the pictures a
-    // designer asks for, and the measurements.
-    const inABrowser = [
-      'apps/desktop/vitest.dom.config.ts',
-      'apps/desktop/vitest.look.config.ts',
-      'apps/desktop/vitest.probe.config.ts',
-    ]
+    // Run in a browser, which reads no file of the person's: the window's tests and the pictures a
+    // designer asks for.
+    const inABrowser = ['apps/desktop/vitest.dom.config.ts', 'apps/desktop/vitest.look.config.ts']
     // No test run includes these: a live smoke is a check of the computer's own login, and a probe
     // makes its own sandbox.
     const live = ['vitest.smoke.config.ts']

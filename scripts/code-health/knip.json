@@ -113,7 +113,6 @@
         "test/**/*.test.{ts,mjs,js}",
         "smoke/**/*.smoke.ts",
         "*.config.ts",
-        "!vitest.probe.config.ts",
         "electron.vite.config.ts",
         "gate-only/**/*.test.ts",
         "look/scenes/**/*.look.ts",

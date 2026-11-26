@@ -18,8 +18,7 @@ import { localFormat } from '../../../shared/local-time'
  *
  * ## ⛔ The formatters are built ONCE per offset, and that is 97% of the number `212` recorded (255)
  *
- * ⚠️ **Measured, in Chromium, on the corpus the Events tab holds at its cap** — re-derive with
- * `pnpm run probe:event-fold`. `clockTime` over 5,000 events cost **140-146 ms** and the same 5,000
+ * ⚠️ **Measured, in Chromium, on the corpus the Events tab holds at its cap.** `clockTime` over 5,000 events cost **140-146 ms** and the same 5,000
  * through a REUSED `Intl.DateTimeFormat` cost **3.8-4.0 ms** — 36× — while `new Date(…)` alone cost
  * 13.2 ms and `describeEvent`, the function beside it on the same row, cost under a millisecond.
  * ⛔ So `212`'s *"opening Events at the cap mounts every row
