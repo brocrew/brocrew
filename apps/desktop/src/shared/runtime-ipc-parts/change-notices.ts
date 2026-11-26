@@ -6,7 +6,13 @@ import type { PublicationEpoch } from '../data-version'
  * RUNTIME_STATES_CHANNEL instead. Derive the type from these values so validation
  * and the preload filter share the same vocabulary.
  */
-export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'work', 'persons'] as const
+export const RUNTIME_CHANGE_SUBJECTS = [
+  'conversations',
+  'agents',
+  'work',
+  'persons',
+  'starred-conversations',
+] as const
 
 /** One of {@link RUNTIME_CHANGE_SUBJECTS}. */
 export type RuntimeChangeSubject = (typeof RUNTIME_CHANGE_SUBJECTS)[number]

@@ -753,8 +753,8 @@ export function createWorkStatementsPart(deps: WorkStatementsPartDeps) {
 
   const refreshAdoptedTx = db.transaction(
     (sessionId: string, updatedAt: number, child: ChildDescent | undefined) => {
-      touchAdopted.run(updatedAt, sessionId, updatedAt)
-      return learnDescentTx(sessionId, child)
+      const timestampChanged = touchAdopted.run(updatedAt, sessionId, updatedAt).changes > 0
+      return { timestampChanged, descentChanged: learnDescentTx(sessionId, child) }
     },
   )
 

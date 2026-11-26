@@ -22,8 +22,9 @@ import {
 } from '../../../shared/conversation-title'
 import type { WorkSearchQuery, WorkSearchResult } from '../../../shared/work-search'
 import type { PaletteAgent, PaletteNavigation } from '../lib/command-palette'
-import type { AgentIdentities } from '../../../shared/runtime-ipc'
+import type { AgentIdentities, LibraryEntry } from '../../../shared/runtime-ipc'
 import { PARTIAL_WAITING_COUNT, providerStopNotice } from '../lib/live-signal'
+import { libraryConversationTitle } from '../lib/conversation-row'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 import type { ProviderLimitsView } from '../lib/persons-queue'
@@ -33,6 +34,7 @@ import type { RailSays } from '../composables/useWhoCalledWhom'
 import type { AppInfo } from '@brobot2/shared'
 import type { SessionRecord } from '../lib/session-record'
 import ConversationRow from './ConversationRow.vue'
+import ConversationStarButton from './ConversationStarButton.vue'
 import CommandPalette from './CommandPalette.vue'
 import UpdatesMenu from './UpdatesMenu.vue'
 import WorkspacesSection from './WorkspacesSection.vue'
@@ -41,7 +43,12 @@ import { COLLAPSE_THE_MENU, EXPAND_THE_MENU } from '../lib/rail-fold'
 import { useRailFooter } from '../composables/useRailFooter'
 import { useRailRows } from '../composables/useRailRows'
 import { useRailRowViews } from '../composables/useRailRowViews'
-import { useRailSections, type RailSectionKey } from '../composables/useRailSections'
+import { useConversationStars } from '../composables/useConversationStars'
+import {
+  useRailSections,
+  type RailSectionKey,
+  type RailSectionRow,
+} from '../composables/useRailSections'
 
 /**
  * The rail holds destinations, the conversation list, one live signal and the stop switch.
@@ -161,6 +168,8 @@ const emit = defineEmits<{
    * conversation is doing. The screen owns which surface is showing, so it owns the look too.
    */
   select: [sessionId: string]
+  readStarred: [entry: LibraryEntry]
+  revealLibraryEntry: [entryId: string]
   readConversation: [sessionId: string]
   /** Show the new-conversation surface. Starting it happens there, where the thread begins. */
   newConversation: []
@@ -253,12 +262,40 @@ const paletteSearchCaller = computed(
     props.librarySearchCaller,
 )
 
+const stars = useConversationStars()
+const starredEntries = computed(
+  () => new Map(stars?.entries.value?.map((entry) => [entry.recordId ?? entry.id, entry])),
+)
+const showStars = computed(() => !props.collapsed && stars?.entries.value !== undefined)
+const starredRows = computed((): RailSectionRow[] => {
+  if (starredEntries.value.size === 0) return []
+  const listedRows = new Map(rows.value.map((row) => [row.sessionId, row]))
+  return Array.from(starredEntries.value, ([sessionId, entry]) => {
+    const row = listedRows.get(sessionId)
+    if (row) return row
+    return {
+      sessionId,
+      label: libraryConversationTitle(entry),
+      provider: entry.provider,
+      facets: null,
+      brobot: false,
+      named: null,
+      place: null,
+      word: '',
+      opening: null,
+      initialIdentity: entry.recordId === null ? null : undefined,
+      elsewhere: false,
+    }
+  })
+})
+
 const { sectionOpen, recentLimit, rowsIdOf, waitingRows, sections, moreRecent } = useRailSections(
   props,
   rows,
   onScreenId,
   coverageComplete,
   initialRecent,
+  starredRows,
 )
 
 const { identityOf, rowTitle, railView, railCy } = useRailRowViews(
@@ -268,6 +305,13 @@ const { identityOf, rowTitle, railView, railCy } = useRailRowViews(
   workByHolder,
   providerLabel,
 )
+
+function openRailRow(section: RailSectionKey, sessionId: string): void {
+  const entry = section === 'starred' ? starredEntries.value.get(sessionId) : undefined
+  if (entry?.readable) emit('readStarred', entry)
+  else if (entry) emit('revealLibraryEntry', entry.id)
+  else emit('select', sessionId)
+}
 
 function fold(key: RailSectionKey): void {
   sectionOpen[key].value = !sectionOpen[key].value
@@ -652,72 +696,82 @@ const platform = platformHere()
               >
                 {{ section.workerHeads.get(row.sessionId)?.label }}
               </p>
-              <div
-                class="rail-item"
-                :class="{ active: row.sessionId === onScreenId }"
-                :data-worker="row.worker ? true : undefined"
-                role="button"
-                tabindex="0"
-                :data-cy="`open-session-${row.sessionId}`"
-                :data-session-id="row.sessionId"
-                :data-active="row.sessionId === onScreenId"
-                :aria-label="rowTitle(row)"
-                :aria-description="
-                  [
-                    row.worker
-                      ? workerDescription(row.worker, props.agents?.identities ?? null)
-                      : null,
-                    row.detail,
-                    identityOf(row)?.address,
-                    !row.worker && row.named && identityOf(row)
-                      ? conversationTitle(row.label, row.named)
-                      : null,
-                    identityOf(row)?.author?.kind === 'person' ? 'Named by you' : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || undefined
-                "
-                :aria-describedby="
-                  !row.brobot && row.opening && !identityOf(row)
-                    ? `rail-opening-${row.sessionId} rail-state-${row.sessionId}`
-                    : `rail-state-${row.sessionId}`
-                "
-                :title="
-                  props.collapsed
-                    ? [
-                        row.worker && row.named ? row.label : null,
-                        rowTitle(row),
-                        !row.brobot ? identityOf(row)?.address : null,
-                        row.worker
-                          ? workerDescription(row.worker, props.agents?.identities ?? null)
-                          : null,
-                      ]
-                        .filter(Boolean)
-                        .join('\n')
-                    : row.worker
-                      ? workerDescription(row.worker, props.agents?.identities ?? null)
-                      : undefined
-                "
-                @click="emit('select', row.sessionId)"
-                v-button-keys
-              >
-                <ConversationRow
-                  :row="railView(row)"
-                  :minute="railMinute"
-                  id-prefix="rail"
-                  layout="contents"
-                  :cy="railCy(row)"
+              <div class="rail-row" :class="{ 'with-star': showStars }">
+                <div
+                  class="rail-item"
+                  :class="{ active: row.sessionId === onScreenId }"
+                  :data-worker="row.worker ? true : undefined"
+                  role="button"
+                  tabindex="0"
+                  :data-cy="`open-${section.key === 'starred' ? 'starred' : 'session'}-${row.sessionId}`"
+                  :data-session-id="row.sessionId"
+                  :data-active="row.sessionId === onScreenId"
+                  :aria-label="rowTitle(row)"
+                  :aria-description="
+                    [
+                      row.worker
+                        ? workerDescription(row.worker, props.agents?.identities ?? null)
+                        : null,
+                      row.detail,
+                      identityOf(row)?.address,
+                      !row.worker && row.named && identityOf(row)
+                        ? conversationTitle(row.label, row.named)
+                        : null,
+                      identityOf(row)?.author?.kind === 'person' ? 'Named by you' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || undefined
+                  "
+                  :aria-describedby="
+                    !row.brobot && row.opening && !identityOf(row)
+                      ? `${section.rowIdPrefix}-opening-${row.sessionId} ${section.rowIdPrefix}-state-${row.sessionId}`
+                      : `${section.rowIdPrefix}-state-${row.sessionId}`
+                  "
+                  :title="
+                    props.collapsed
+                      ? [
+                          row.worker && row.named ? row.label : null,
+                          rowTitle(row),
+                          !row.brobot ? identityOf(row)?.address : null,
+                          row.worker
+                            ? workerDescription(row.worker, props.agents?.identities ?? null)
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join('\n')
+                      : row.worker
+                        ? workerDescription(row.worker, props.agents?.identities ?? null)
+                        : undefined
+                  "
+                  @click="openRailRow(section.key, row.sessionId)"
+                  v-button-keys
                 >
-                  <template #lead>
-                    <span
-                      v-if="props.collapsed && row.named"
-                      class="work-label"
-                      aria-hidden="true"
-                      :data-cy="`rail-work-label-${row.sessionId}`"
-                      >{{ row.named.label }}</span
-                    >
-                  </template>
-                </ConversationRow>
+                  <ConversationRow
+                    :row="railView(row)"
+                    :minute="railMinute"
+                    :id-prefix="section.rowIdPrefix"
+                    layout="contents"
+                    :cy="railCy(row)"
+                  >
+                    <template #lead>
+                      <svg v-if="row.facets === null" class="icon" aria-hidden="true">
+                        <use href="#i-chat" />
+                      </svg>
+                      <span
+                        v-if="props.collapsed && row.named"
+                        class="work-label"
+                        aria-hidden="true"
+                        :data-cy="`rail-work-label-${row.sessionId}`"
+                        >{{ row.named.label }}</span
+                      >
+                    </template>
+                  </ConversationRow>
+                </div>
+                <ConversationStarButton
+                  v-if="showStars"
+                  class="rail-star"
+                  :target="starredEntries.get(row.sessionId) ?? row.sessionId"
+                />
               </div>
             </template>
           </div>

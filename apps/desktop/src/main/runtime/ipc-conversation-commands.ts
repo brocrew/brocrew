@@ -1,6 +1,7 @@
 import { LINK_TARGET_LIMIT } from '../../shared/link-resolution'
 import { z } from 'zod'
 import { workSearchQuery } from '../../shared/work-search'
+import type { LibraryQuery } from '../../shared/runtime-ipc-parts/library'
 import { filesLibraryRequest } from '../../shared/files-library'
 import { teamProfileGraphRequest } from '../../shared/team-profile-graph'
 import {
@@ -32,6 +33,18 @@ import {
   goAheadText,
   childMessage,
 } from './ipc-input'
+
+export function libraryQueryFromCommand(command: LibraryQuery): LibraryQuery {
+  const { query, recordId, filters, limit, offset, revealEntryId } = command
+  return {
+    query,
+    recordId,
+    filters,
+    limit,
+    offset,
+    ...(revealEntryId === undefined ? {} : { revealEntryId }),
+  }
+}
 
 /**
  * The first half of {@link runtimeCommandSchema}: the commands about one conversation — opening,
@@ -317,6 +330,7 @@ export const conversationCommands = [
      * into; the only thing worth constraining is its size.
      */
     query: z.string().max(LIBRARY_QUERY_MAX).optional(),
+    revealEntryId: z.string().optional(),
     /**
      * One recorded row by id (118), rather than a substring over captions.
      *
@@ -359,6 +373,15 @@ export const conversationCommands = [
   // ⚠️ OUR row id, not a provider's, and that is the whole difference from the command below: this
   // one names a row we already hold; that one names a file in the user's own home that has none.
   z.object({ kind: z.literal('importRecordedSession'), sessionId }),
+  z.object({ kind: z.literal('listStarredConversations') }),
+  z.object({
+    kind: z.literal('setStarredConversation'),
+    target: z.union([
+      z.object({ recordId: sessionId }),
+      z.object({ provider: providerSchema, providerSessionId: z.string().min(1).max(200) }),
+    ]),
+    starred: z.boolean(),
+  }),
   z.object({
     kind: z.literal('importUserHomeSession'),
     // The SHARED enum, like every other command here. An inline copy would still typecheck against

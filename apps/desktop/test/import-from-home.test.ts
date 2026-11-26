@@ -3,7 +3,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
-import type { SessionStore } from '../src/main/db/session-store'
+import { openDatabase } from '../src/main/db/connection'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import type { UserHomeDiscovery, UserHomeSession } from '../src/main/adopt/user-homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -28,6 +30,10 @@ describe('importing one conversation from a provider home', () => {
   let store: SessionStore
   let discovery: UserHomeDiscovery
   let host: RuntimeHost
+  const discoverRecordedHomes = vi.fn(NO_DISCOVERY)
+  const readHomes = vi.fn(() => discovery)
+  const readDescriptions = vi.fn(async () => new Map())
+  const announce = vi.fn()
 
   const scratch = hostsOverAScratchDatabase('brobot2-import-')
 
@@ -37,16 +43,28 @@ describe('importing one conversation from a provider home', () => {
     mkdirSync(join(dir, 'home'), { recursive: true })
     discovery = { found: [], skipped: [] }
 
-    host = scratch.host({
+    discoverRecordedHomes.mockReset()
+    readHomes.mockClear()
+    readDescriptions.mockClear()
+    announce.mockClear()
+    host = startHost()
+  })
+
+  function startHost(): RuntimeHost {
+    return scratch.host({
+      store,
+      discoverSessions: discoverRecordedHomes,
       // The person's own file, wherever discovery found it — what a rebuild reads again.
       nativeTranscriptPath: (provider, _home, ref) =>
         discovery.found.find((one) => one.provider === provider && one.sessionId === ref.sessionId)
           ?.path ?? null,
       readProviderConfig: providerConfigOf('X', 'm'),
       // The one seam both the import and the library read the homes through.
-      userHomeSessions: () => discovery,
+      userHomeSessions: readHomes,
+      indexedDescriptions: readDescriptions,
+      announce,
     })
-  })
+  }
 
   /** A transcript on disk, copied from a committed fixture. */
   function plant(sessionId = 'thread-1'): UserHomeSession {
@@ -203,6 +221,124 @@ describe('importing one conversation from a provider home', () => {
       // And the fact that SHOULD change, changes.
       expect(before?.recordId).toBeNull()
       expect(after?.recordId).not.toBeNull()
+    })
+
+    it('keeps a Library-only star through import and restart and removes it through the record', async () => {
+      const found = plant()
+      discovery = { found: [found], skipped: [] }
+      const target = { provider: found.provider, providerSessionId: found.sessionId }
+
+      expect(await host.listStarredConversations()).toEqual([])
+      expect(readHomes).not.toHaveBeenCalled()
+      host.setStarredConversation({ target, starred: true })
+      host.setStarredConversation({ target, starred: true })
+      const [before] = await host.listStarredConversations()
+      expect(readHomes).toHaveBeenCalledTimes(1)
+      expect(before).toMatchObject({ ...target, recordId: null, readable: false })
+      expect(store.starredLibraryIds().size).toBe(1)
+
+      const other = plant('thread-other')
+      discovery = { found: [found, other], skipped: [] }
+      announce.mockClear()
+      await host.importUserHomeSession(other.provider, other.sessionId)
+      expect(announce).not.toHaveBeenCalledWith({ what: 'starred-conversations' })
+
+      const imported = await host.importUserHomeSession(found.provider, found.sessionId)
+      expect(announce).toHaveBeenCalledWith({ what: 'starred-conversations' })
+      readHomes.mockClear()
+      readDescriptions.mockClear()
+      expect(imported.outcome).toBe('imported')
+      const recordId = imported.sessionId
+      if (recordId === null) throw new Error('The import did not return a record')
+      expect(await host.listStarredConversations()).toMatchObject([
+        { ...target, id: before?.id, recordId, readable: true },
+      ])
+      expect(store.starredLibraryIds().size).toBe(1)
+      expect(readHomes).not.toHaveBeenCalled()
+      expect(readDescriptions).not.toHaveBeenCalled()
+
+      await host.closeAll()
+      scratch.db.close()
+      const reopened = scratch.alsoClose(openDatabase(join(dir, 'brobot2.sqlite')))
+      store = createSessionStore(reopened)
+      host = startHost()
+      readHomes.mockClear()
+      const [after] = await host.listStarredConversations()
+      expect(readHomes).not.toHaveBeenCalled()
+      expect(readDescriptions).not.toHaveBeenCalled()
+      expect(after).toMatchObject({ ...target, id: before?.id, recordId, readable: true })
+
+      host.setStarredConversation({ target: { recordId }, starred: false })
+      expect(await host.listStarredConversations()).toEqual([])
+      expect(readHomes).not.toHaveBeenCalled()
+      expect(store.starredLibraryIds().size).toBe(0)
+    })
+
+    it('notifies the starred list when the sweep records a previously Library-only star', async () => {
+      const found = plant()
+      discovery = { found: [found], skipped: [] }
+      host.setStarredConversation({
+        target: { provider: found.provider, providerSessionId: found.sessionId },
+        starred: true,
+      })
+      expect(await host.listStarredConversations()).toMatchObject([{ recordId: null }])
+      discoverRecordedHomes.mockReturnValue({
+        found: [{ ...found, profileId: 'default' }],
+        skipped: [],
+      })
+
+      discovery = { found: [], skipped: [] }
+      announce.mockClear()
+      expect(await host.adoptSessions()).toMatchObject({ adopted: 1 })
+      expect(announce).toHaveBeenCalledWith({ what: 'starred-conversations' })
+      readHomes.mockClear()
+
+      const [entry] = await host.listStarredConversations()
+      expect(entry).toMatchObject({ providerSessionId: found.sessionId })
+      expect(entry?.recordId).toEqual(expect.any(String))
+      expect(readHomes).not.toHaveBeenCalled()
+
+      const later = { ...found, profileId: 'default', updatedAt: found.updatedAt + 1000 }
+      discovery = { found: [], skipped: [] }
+      discoverRecordedHomes.mockReturnValue({ found: [later], skipped: [] })
+      announce.mockClear()
+      expect(await host.adoptSessions()).toMatchObject({ adopted: 0, named: 0, descentsLearned: 0 })
+      expect(announce).toHaveBeenCalledWith({ what: 'starred-conversations' })
+      expect(await host.listStarredConversations()).toMatchObject([{ updatedAt: later.updatedAt }])
+      expect(readHomes).not.toHaveBeenCalled()
+
+      writeFileSync(found.path, '')
+      discovery = { found: [found], skipped: [] }
+      announce.mockClear()
+      const caughtUp = await host.adoptSessions()
+      expect(caughtUp.skipped).toContainEqual(
+        expect.objectContaining({ reason: 'its provider file holds no readable conversation' }),
+      )
+      expect(announce).toHaveBeenCalledWith({ what: 'starred-conversations' })
+    })
+
+    it('uses the recorded Library precedence for duplicate records without reading the home', async () => {
+      const found = plant()
+      const target = { provider: found.provider, providerSessionId: found.sessionId }
+      for (const id of ['sess_first', 'sess_second']) {
+        store.adopt({
+          ...found,
+          id,
+          profileId: null,
+        })
+      }
+      const [recorded] = (await host.listLibrary()).entries
+      expect(recorded?.recordId).toEqual(expect.any(String))
+      discovery = { found: [found], skipped: [] }
+      host.setStarredConversation({ target, starred: true })
+      readHomes.mockClear()
+      readDescriptions.mockClear()
+
+      expect(await host.listStarredConversations()).toMatchObject([
+        { id: recorded?.id, recordId: recorded?.recordId },
+      ])
+      expect(readHomes).not.toHaveBeenCalled()
+      expect(readDescriptions).not.toHaveBeenCalled()
     })
 
     it('refuses to start import work once the app has begun shutting down', async () => {

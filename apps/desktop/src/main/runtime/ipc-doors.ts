@@ -380,6 +380,8 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   // window that asked is going away: a figure for a process on its way out is worth nothing.
   processMemory: 'refused',
   listLibrary: 'refused',
+  listStarredConversations: 'refused',
+  setStarredConversation: 'refused',
   importRecordedSession: 'refused',
   importUserHomeSession: 'refused',
   rebuildLedger: 'refused',

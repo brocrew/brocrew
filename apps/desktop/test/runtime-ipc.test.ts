@@ -743,11 +743,19 @@ describe('the library filters survive the wire (121)', () => {
       kind: 'listLibrary',
       filters: ALL,
       query: 'refund',
+      revealEntryId: 'claude:thread-1',
     })
     // The dispatch builds its own object field by field, so a field it forgets to copy is invisible
     // to the schema test above and visible here.
     expect(asked).toEqual([
-      { query: 'refund', recordId: undefined, filters: ALL, limit: undefined, offset: undefined },
+      {
+        query: 'refund',
+        recordId: undefined,
+        filters: ALL,
+        limit: undefined,
+        offset: undefined,
+        revealEntryId: 'claude:thread-1',
+      },
     ])
   })
 })

@@ -275,6 +275,7 @@ const ARMS: Record<RuntimeChangeSubject, readonly ('workspace' | 'forest')[]> = 
   work: ['forest'],
   agents: [],
   persons: ['workspace'],
+  'starred-conversations': [],
 }
 
 describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`', () => {
@@ -305,6 +306,7 @@ describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`
           persons: () => {
             for (const one of ARMS.persons) void wrapped[one]()
           },
+          'starred-conversations': () => {},
         },
         () => false,
       )

@@ -14,7 +14,7 @@ export { originChipOf } from './SessionLibraryRow.vue'
 
 <script setup lang="ts">
 import ProviderLabel from './ProviderLabel.vue'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { AgentIdentity, LibraryFilters, LibraryPage } from '../../../shared/runtime-ipc'
 import { agentName, LIBRARY_QUERY_MAX } from '../../../shared/runtime-ipc'
 import { useHomeScan } from '../lib/home-scan'
@@ -59,6 +59,7 @@ import SessionLibraryRow from './SessionLibraryRow.vue'
 const props = withDefaults(
   defineProps<{
     identities?: readonly AgentIdentity[] | null
+    revealEntryId?: string
   }>(),
   { identities: null },
 )
@@ -80,6 +81,8 @@ const emit = defineEmits<{
 defineExpose({ reread })
 
 const page = ref<LibraryPage | null>(null)
+const libraryRoot = ref<HTMLElement | null>(null)
+let revealPending = props.revealEntryId
 const query = ref('')
 /**
  * **The structured narrowing** (121) — held beside `query` because they are two independent axes.
@@ -171,6 +174,7 @@ async function load(): Promise<void> {
     // Query and filters count matches across the whole library before the page is sliced.
     const result = await sessions.listLibrary({
       query: words,
+      ...(props.revealEntryId === undefined ? {} : { revealEntryId: props.revealEntryId }),
       // A plain snapshot crosses structured clone; the reactive proxy cannot. A shallow spread
       // suffices because every filter field is a primitive.
       filters: asked,
@@ -182,6 +186,19 @@ async function load(): Promise<void> {
     // The two move together, always: `page.matched` is only meaningful beside the filters it was
     // counted over, and anything that says WHICH rows matched reads this rather than the controls.
     applied.value = { filters: asked, query: words.trim() }
+    if (revealPending !== undefined) {
+      const entryId = revealPending
+      revealPending = undefined
+      await nextTick()
+      const row = libraryRoot.value?.querySelector<HTMLElement>(
+        `[data-cy="${CSS.escape(`library-row-${entryId}`)}"]`,
+      )
+      const importButton = row?.querySelector<HTMLElement>(
+        `[data-cy="${CSS.escape(`library-import-${entryId}`)}"]`,
+      )
+      const focusTarget = importButton ?? row
+      focusTarget?.focus()
+    }
   } catch (cause) {
     if (mine !== issued) return
     // Shown, never swallowed: reading the library touches the user's own directories, and a failure
@@ -417,7 +434,12 @@ const groups = computed(() => {
 })
 </script>
 <template>
-  <section class="library bb-conversation-ground" data-cy="session-library" data-chat-theme="light">
+  <section
+    ref="libraryRoot"
+    class="library bb-conversation-ground"
+    data-cy="session-library"
+    data-chat-theme="light"
+  >
     <div class="lib-headingbar">
       <header class="lib-head">
         <div class="heading">
@@ -496,7 +518,10 @@ const groups = computed(() => {
           </div>
 
           <p v-if="truncated && page" class="window-note" data-cy="library-window-note">
-            <strong>Showing the {{ page.entries.length }} most recent</strong>
+            <strong v-if="props.revealEntryId === undefined"
+              >Showing the {{ page.entries.length }} most recent</strong
+            >
+            <strong v-else>Showing {{ page.entries.length }}</strong>
             of {{ page.matched }} matching conversations<span
               v-if="noteSummary"
               class="cons"

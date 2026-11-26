@@ -58,6 +58,8 @@ export type {
   LedgerStatus,
   RebuiltLedger,
   LibraryEntry,
+  SetStarredConversation,
+  StarredConversationTarget,
   LibraryCounts,
   LibraryProviderCount,
   LibraryPage,

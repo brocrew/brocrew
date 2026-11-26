@@ -536,6 +536,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
           // compile — which is rule 3 of `the-world-moved.ts` doing its job on this file too.
           work: () => read.push('work'),
           persons: () => read.push('persons'),
+          'starred-conversations': () => read.push('starred-conversations'),
         },
         () => closing.now,
       )
@@ -560,6 +561,8 @@ describe('534 · a conversation that is born while he is looking at the rail', (
       // is a claim about the whole vocabulary rather than about the two it had when it was written.
       rig.fire('work')
       expect(rig.read).toEqual(['conversations', 'agents', 'work'])
+      rig.fire('starred-conversations')
+      expect(rig.read).toEqual(['conversations', 'agents', 'work', 'starred-conversations'])
     })
 
     it('⛔ a subject this window does not know is dropped, and the next one still lands', () => {

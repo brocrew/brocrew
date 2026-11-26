@@ -61,6 +61,7 @@ export function useRuntimeScreenReadings({
   runtime,
   archivedHere,
   refreshAgents,
+  refreshConversationStars,
   authChangedFor,
   invalidatePrograms,
   readPrograms,
@@ -82,6 +83,7 @@ export function useRuntimeScreenReadings({
   runtime: () => ClientScreenApi
   archivedHere: (conversations: readonly string[]) => void
   refreshAgents: () => void
+  refreshConversationStars: () => Promise<void>
   authChangedFor: (profileId: string, changedProvider?: Provider) => void
   invalidatePrograms: () => void
   readPrograms: () => Promise<void>
@@ -718,6 +720,7 @@ export function useRuntimeScreenReadings({
     // conversation already open reads them itself ({@link readTheFiles}); on the launcher it asks nothing.
     void readTheFiles()
     stopListening = whenTheWorldMoves((listener) => runtime().onChanged(listener), {
+      'starred-conversations': () => void refreshConversationStars(),
       conversations: () => {
         teamProfileGraph.markStale()
         filesLibrary.markStale()
@@ -790,6 +793,7 @@ export function useRuntimeScreenReadings({
         lookAfterAQueueNotice()
       },
     })
+    void refreshConversationStars()
     stopHearingLimits = runtime().onLimitsDisplayChanged((message) => {
       limitsLane.changed(message)
       if (message.why === 'scope') void refreshLimitsDisplay()

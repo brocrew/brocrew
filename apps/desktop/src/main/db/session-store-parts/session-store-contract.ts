@@ -135,6 +135,8 @@ import type {
 } from './session-store-rows'
 
 export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore {
+  starredLibraryIds(): ReadonlySet<string>
+  setStarredLibraryId(libraryId: string, starred: boolean, previousId?: string): boolean
   /**
    * Indexed candidate pages; the caller folds owners within its turn-block budget. `ended` is true
    * when the owner's active ledger already holds the piece's reply, close or withdrawal, so the
@@ -278,7 +280,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   defaultApprovalMode(): 'ask' | 'auto'
   setDefaultApprovalMode(mode: 'ask' | 'auto'): void
   parentOf(sessionId: string): string | null
-  refreshAdopted(sessionId: string, updatedAt: number, child?: ChildDescent): boolean
+  refreshAdopted(
+    sessionId: string,
+    updatedAt: number,
+    child?: ChildDescent,
+  ): { timestampChanged: boolean; descentChanged: boolean }
   learnDescent(sessionId: string, child?: ChildDescent): boolean
   setApprovalMode(sessionId: string, mode: 'ask' | 'auto'): void
   setModel(sessionId: string, model: string | null): void

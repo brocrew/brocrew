@@ -335,6 +335,24 @@
   margin-top: var(--space-1);
 }
 
+.rail-row {
+  position: relative;
+}
+
+.rail-row + .rail-row {
+  margin-top: var(--space-1);
+}
+
+.rail-row.with-star .rail-item {
+  padding-inline-end: calc(var(--space-10) + var(--space-6));
+}
+
+.rail-star {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline-end: var(--space-4);
+}
+
 .rail-item:hover {
   --row-muted: var(--rail-item-hover-ink, var(--muted));
   background: var(--rail-item-hover-bg, var(--wash-4));

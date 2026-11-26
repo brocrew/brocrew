@@ -19,6 +19,15 @@ import type { Provider, TurnEnding } from '@brobot2/shared'
  */
 export type ExportKind = 'native' | 'bundle' | 'reading'
 
+export type StarredConversationTarget =
+  | { readonly recordId: string }
+  | { readonly provider: Provider; readonly providerSessionId: string }
+
+export interface SetStarredConversation {
+  readonly target: StarredConversationTarget
+  readonly starred: boolean
+}
+
 /**
  * 🔴 **What a caller asks an export for** (633) — declared ONCE, so the wire, the bridge and the
  * preload cannot disagree about which kind carries a body.
@@ -396,6 +405,8 @@ export interface LibraryPage {
 export interface LibraryQuery {
   /** Case-insensitive substring over the fields we genuinely have. Empty or absent matches all. */
   query?: string
+  /** Bring this matching Library entry onto the first page so the list can focus it. */
+  revealEntryId?: string
   /**
    * One recorded row, by OUR id — an exact match, not a substring (118).
    *

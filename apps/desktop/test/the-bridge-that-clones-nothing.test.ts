@@ -414,6 +414,8 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   exportSession: { how: 'plain-by-construction' },
   importBundleFile: { how: 'plain-by-construction' },
   listLibrary: { how: 'plain-by-construction' },
+  listStarredConversations: { how: 'nothing' },
+  setStarredConversation: { how: 'plain-by-construction' },
   importRecordedSession: { how: 'plain-by-construction' },
   importUserHomeSession: { how: 'plain-by-construction' },
   rebuildLedger: { how: 'plain-by-construction' },

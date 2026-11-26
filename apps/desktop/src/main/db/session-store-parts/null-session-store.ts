@@ -6,6 +6,8 @@ import { foldProfileName } from '../identity'
 import type { SessionStore } from './session-store-contract'
 
 export const NULL_SESSION_STORE: SessionStore = {
+  starredLibraryIds: () => new Set(),
+  setStarredLibraryId: () => false,
   create: () => {},
   connectionOf: () => null,
   firstLaunchOf: () => false,
@@ -83,7 +85,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   sessionForSourceId: () => null,
   acceptedAskHandoff: () => null,
   associateBundleSource: () => {},
-  refreshAdopted: () => false,
+  refreshAdopted: () => ({ timestampChanged: false, descentChanged: false }),
   learnDescent: () => false,
   setApprovalMode: () => {},
   endPlanMode: () => {},

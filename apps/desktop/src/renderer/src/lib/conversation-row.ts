@@ -1,5 +1,11 @@
 import type { Provider } from '@brobot2/shared'
+import type { LibraryEntry } from '../../../shared/runtime-ipc'
 import type { AgentFacets, Standing } from './agent-state'
+import { basenameOf } from './paths'
+
+export function libraryConversationTitle(entry: LibraryEntry): string {
+  return entry.title || basenameOf(entry.cwd) || entry.cwd
+}
 
 /** A short mark beside a conversation's title, such as Archived or sub-agent. */
 interface ConversationRowMark {

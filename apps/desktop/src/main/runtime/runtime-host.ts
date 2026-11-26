@@ -314,7 +314,11 @@ import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import type { StartAttemptLine } from '../start-attempt-line'
 import type { NormalWorkerAssignment, WorkerBorn } from '../profile-execution-file'
-import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
+import {
+  RUNTIME_CHANGE_SUBJECTS,
+  TURN_ATTRIBUTION_KEYS,
+  type SetStarredConversation,
+} from '../../shared/runtime-ipc'
 import {
   moveOfferDecisions,
   originalMoveRequest,
@@ -530,7 +534,12 @@ import {
   type ResourceRefusal,
 } from '../resources/resources'
 
-import { libraryChild, type LibraryPage, type LibraryQuery } from '../library/session-library'
+import {
+  libraryChild,
+  type LibraryEntry,
+  type LibraryPage,
+  type LibraryQuery,
+} from '../library/session-library'
 import {
   EmptyNativeTranscript,
   linesAsRows,
@@ -4571,9 +4580,11 @@ export class RuntimeHost implements LiveHost {
    * its own for the same reason `announceClosing` does; this is the belt behind it.
    */
   private theWorldMoved(what: RuntimeChangeMessage['what']): void {
-    this.linkAnswers.invalidate()
-    this.moveTheListing()
-    this.moveThePersons()
+    if (what !== 'starred-conversations') {
+      this.linkAnswers.invalidate()
+      this.moveTheListing()
+      this.moveThePersons()
+    }
     // ⚑ **D-019 · the roster names whoever a question waits on** (*waiting on an answer from Ada*) —
     // ⚑ and D-036 whoever holds work given out (*waiting on <name>*) — asked here, where every
     // roster change is announced, rather than at each of its sites.
@@ -28225,6 +28236,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       for (const conversation of tree) this.settingAside.delete(conversation)
     }
     this.theWorldMoved('conversations')
+    this.libraryImport.announceStarredRecordsChanged(tree)
     return { done: true, conversations: tree }
   }
 
@@ -28261,6 +28273,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     this.moveThePersons()
     this.carryOnAfterTheStop(archived, NEWER_WORDS_AFTER_THE_ARCHIVE)
     this.theWorldMoved('conversations')
+    this.libraryImport.announceStarredRecordsChanged(archived)
   }
 
   /** A committed give brings its archived destination back even if the provider cannot start. */
@@ -28295,6 +28308,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     }
     this.bringingBack.set(sessionId, back)
     this.theWorldMoved('conversations')
+    this.libraryImport.announceStarredRecordsChanged(archived)
     return back
   }
 
@@ -28316,6 +28330,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       )
     }
     this.theWorldMoved('conversations')
+    this.libraryImport.announceStarredRecordsChanged(back.archivedAt.keys())
   }
 
   private finishItsReturnFromTheArchive(sessionId: string): string | undefined {
@@ -28667,6 +28682,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         }
       }
       const questions = this.questionsOthersAskedOf(sessionId)
+      const wasStarred = this.libraryImport.hasStarredRecord(tree)
       let deleted: TreeDeleted
       try {
         deleted = this.deps.store.deleteTheTree(tree)
@@ -28685,6 +28701,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       recordsDeleted = true
       // Said at the commit: what follows can be slow, or throw.
       this.theWorldMoved('conversations')
+      if (wasStarred) this.theWorldMoved('starred-conversations')
       this.theWorldMoved('work')
       if (service !== null) this.theServiceConversationIs(service, sessionId, 'gone')
       if (normalPoolsMarked) this.takeTheProfileExecution()
@@ -29109,6 +29126,14 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
   listLibrary(query: LibraryQuery = {}): Promise<LibraryPage> {
     return this.libraryImport.listLibrary(query)
+  }
+
+  listStarredConversations(): Promise<readonly LibraryEntry[]> {
+    return this.libraryImport.listStarredConversations()
+  }
+
+  setStarredConversation(input: SetStarredConversation): void {
+    this.libraryImport.setStarredConversation(input)
   }
 
   importUserHomeSession(provider: Provider, providerSessionId: string): Promise<ImportedFromHome> {

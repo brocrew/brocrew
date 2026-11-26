@@ -449,7 +449,7 @@ describe('the session library', () => {
       expect(page.entries.map((entry) => entry.providerSessionId)).toEqual(['new', 'mid', 'old'])
     })
 
-    it('bounds the page and still reports how many matched', async () => {
+    it('bounds the page, reveals an older entry and still reports how many matched', async () => {
       const page = await readLibrary(
         deps({
           found: Array.from({ length: 5 }, (_, i) =>
@@ -457,9 +457,9 @@ describe('the session library', () => {
           ),
           skipped: [],
         }),
-        { limit: 2 },
+        { limit: 2, revealEntryId: 'claude:t0' },
       )
-      expect(page.entries).toHaveLength(2)
+      expect(page.entries.map((entry) => entry.providerSessionId)).toEqual(['t0', 't4'])
       expect(page.matched).toBe(5)
     })
 

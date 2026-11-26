@@ -16,7 +16,7 @@ import {
 import type { ConversationRowCy, ConversationRowView } from '../lib/conversation-row'
 import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
 import type { workByConversation } from '../lib/working-together'
-import type { RailRow } from './useRailRows'
+import type { RailSectionRow } from './useRailSections'
 
 interface RailRowViewProps {
   agents?: AgentIdentities | null
@@ -30,18 +30,18 @@ interface RailRowViewProps {
 /** How each rail row is drawn: its canonical identity, title, status line and the shared row's view. */
 export function useRailRowViews(
   props: RailRowViewProps,
-  sections: Readonly<Ref<readonly { open: boolean; rows: readonly RailRow[] }[]>>,
+  sections: Readonly<Ref<readonly { open: boolean; rows: readonly RailSectionRow[] }[]>>,
   railMinute: Readonly<Ref<number>>,
   workByHolder: Readonly<Ref<ReturnType<typeof workByConversation>>>,
   providerLabel: (provider: Provider) => string,
 ) {
   const identityIds = computed((previous?: string[]) => {
-    const ids = sections.value
+    const visibleIds = sections.value
       .filter((section) => section.open)
       .flatMap((section) =>
         section.rows.filter((row) => row.initialIdentity === undefined).map((row) => row.sessionId),
       )
-      .sort()
+    const ids = [...new Set(visibleIds)].sort()
     return previous?.length === ids.length && previous.every((id, i) => id === ids[i])
       ? previous
       : ids
@@ -86,11 +86,11 @@ export function useRailRowViews(
     { immediate: true },
   )
 
-  function identityOf(row: RailRow): ConversationIdentity | null | undefined {
+  function identityOf(row: RailSectionRow): ConversationIdentity | null | undefined {
     return identities.value.get(row.sessionId) ?? row.initialIdentity
   }
 
-  function rowTitle(row: RailRow): string {
+  function rowTitle(row: RailSectionRow): string {
     const identity = identityOf(row)
     if (row.brobot) {
       const title = identity?.profileFallback ? null : (identity?.title ?? row.named?.title)
@@ -99,13 +99,13 @@ export function useRailRowViews(
     return identity?.title ?? conversationTitle(row.label, row.named)
   }
 
-  function profileName(row: RailRow): string {
+  function profileName(row: RailSectionRow): string {
     return row.worker && props.agents?.identities.some((one) => one.id === row.worker?.identity)
       ? workerName(row.worker, props.agents.identities)
       : row.label
   }
 
-  function statusLine(row: RailRow, detailed = false): string {
+  function statusLine(row: RailSectionRow, detailed = false): string {
     return [
       !row.brobot && row.named ? row.label : null,
       row.provider ? providerLabel(row.provider as Provider) : null,
@@ -121,7 +121,7 @@ export function useRailRowViews(
   }
 
   /** What one rail row draws, in the shared row's terms. */
-  function railView(row: RailRow): ConversationRowView {
+  function railView(row: RailSectionRow): ConversationRowView {
     const identity = identityOf(row)
     const worker = !!row.worker
     const workerTop = worker && !identity
@@ -148,7 +148,7 @@ export function useRailRowViews(
             : null,
         detail: row.detail,
         standing: row.standing,
-        needing: row.facets.needing,
+        needing: row.facets?.needing,
         activityAt: row.brobot ? undefined : row.activityAt,
         elsewhere: row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
         place: row.place,
@@ -165,7 +165,7 @@ export function useRailRowViews(
     }
   }
 
-  function railCy(row: RailRow): ConversationRowCy {
+  function railCy(row: RailSectionRow): ConversationRowCy {
     return {
       title: row.brobot
         ? `rail-brobot-title-${row.sessionId}`

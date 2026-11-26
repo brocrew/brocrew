@@ -1,13 +1,19 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cdp } from 'vitest/browser'
 import type {} from '@vitest/browser-playwright'
-import { nextTick } from 'vue'
+import { defineComponent, Fragment, h, nextTick, onMounted, type Component } from 'vue'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
+import SessionLibraryRow from '../../src/renderer/src/components/SessionLibraryRow.vue'
+import { provideConversationStars } from '../../src/renderer/src/composables/useConversationStars'
 import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { ConversationIdentity } from '../../src/shared/conversation-title'
 import type { ListingAnswer, RecentConversation } from '../../src/shared/listing-published'
-import type { ResumableSessionInfo, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  LibraryEntry,
+  ResumableSessionInfo,
+  RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import { mount, parseColor, record, unmountAll, type Mounted } from './harness'
 import { memoryStorage } from './memory-storage'
 import { drawnReady, titleRecovers } from './drawn'
@@ -68,6 +74,7 @@ async function rail(
   props: Record<string, unknown> = {},
   width = 266,
   first?: { readonly rows: readonly RecentConversation[]; readonly until: Promise<void> },
+  component: Component = SideRail,
 ) {
   const selected: string[] = []
   const api = {
@@ -90,7 +97,7 @@ async function rail(
   }
   vi.stubGlobal('api', api)
   const m = mount(
-    SideRail,
+    component,
     {
       open: [],
       activeId: null,
@@ -167,6 +174,134 @@ it('uses a pointer and does not select text when dragged across sidebar controls
     }
     expect(window.getSelection()?.toString()).toBe('')
   }
+})
+
+it('keeps a Library star through import and reload above BroBot using the shared row', async () => {
+  const listed = row('saved', 'brobot', 1)
+  const entry: LibraryEntry = {
+    id: 'claude:thread-saved',
+    provider: listed.provider,
+    providerSessionId: 'thread-saved',
+    recordId: listed.sessionId,
+    cwd: listed.cwd,
+    title: 'Saved conversation',
+    preview: '',
+    createdAt: NOW,
+    updatedAt: NOW,
+    bytes: null,
+    origin: 'ours',
+    onDisk: false,
+    readable: true,
+    derived: null,
+    lastEnding: 'completed',
+    unresumableReason: null,
+    child: null,
+  }
+  const providerEntry: LibraryEntry = {
+    ...entry,
+    recordId: null,
+    origin: 'user-home',
+    onDisk: true,
+    readable: false,
+  }
+  const readStarred = vi.fn()
+  const revealLibraryEntry = vi.fn()
+  let stored = false
+  let resolved = providerEntry
+  let refreshStars!: () => Promise<void>
+  const setStarredConversation = vi.fn(async ({ starred }: { starred: boolean }) => {
+    stored = starred
+    void refreshStars()
+  })
+  const client = {
+    listStarredConversations: async () => (stored ? [resolved] : []),
+    setStarredConversation,
+  }
+  const StarRail = defineComponent({
+    inheritAttrs: false,
+    setup(_, { attrs }) {
+      const stars = provideConversationStars(client, () => {
+        throw new Error('The star write failed')
+      })
+      refreshStars = stars.refresh
+      onMounted(stars.refresh)
+      return () =>
+        h(Fragment, [
+          h(SideRail, {
+            open: [],
+            activeId: null,
+            place: null,
+            ...attrs,
+            onReadStarred: readStarred,
+            onRevealLibraryEntry: revealLibraryEntry,
+          }),
+          h(SessionLibraryRow, {
+            entry: providerEntry,
+            providerLabel: 'Supplied provider',
+            updatedAgo: 'just now',
+          }),
+        ])
+    },
+  })
+  const draw = () => rail([listed], {}, 266, undefined, StarRail)
+  const first = await draw()
+  expect(first.all('rail-section-starred')).toHaveLength(0)
+  const star = () =>
+    first
+      .q(`library-row-${providerEntry.id}`)
+      .querySelector<HTMLButtonElement>('[data-cy="conversation-star"]')
+  await expect.poll(() => star()?.getAttribute('aria-pressed')).toBe('false')
+  star()!.click()
+  await expect.poll(() => first.all(`open-starred-${providerEntry.id}`).length).toBe(1)
+  expect(setStarredConversation).toHaveBeenCalledWith({
+    target: { provider: entry.provider, providerSessionId: entry.providerSessionId },
+    starred: true,
+  })
+  expect(readStarred).not.toHaveBeenCalled()
+  first.q(`open-starred-${providerEntry.id}`).click()
+  expect(revealLibraryEntry).toHaveBeenCalledWith(providerEntry.id)
+  expect(readStarred).not.toHaveBeenCalled()
+  expect(first.selected).toEqual([])
+
+  resolved = { ...providerEntry, recordId: listed.sessionId, onDisk: false }
+  await refreshStars()
+  await expect.poll(() => first.all('open-starred-saved').length).toBe(1)
+  first.q('open-starred-saved').click()
+  expect(revealLibraryEntry).toHaveBeenCalledTimes(2)
+  expect(revealLibraryEntry).toHaveBeenLastCalledWith(providerEntry.id)
+  expect(readStarred).not.toHaveBeenCalled()
+
+  resolved = entry
+  await refreshStars()
+  await expect.poll(() => first.all('open-starred-saved').length).toBe(1)
+  expect(first.all(`open-starred-${providerEntry.id}`)).toHaveLength(0)
+  first.unmount()
+
+  const m = await draw()
+  await expect.poll(() => m.all('open-starred-saved').length).toBe(1)
+  const starred = m.q('rail-section-starred')
+  expect(starred.nextElementSibling).toBe(m.q('rail-section-brobot'))
+  const copy = m.q('open-starred-saved')
+  const original = m.q('open-session-saved')
+  expect(copy.querySelector('.conversation-row')).not.toBeNull()
+  expect(copy.querySelector('.conversation-row')?.textContent).toBe(
+    original.querySelector('.conversation-row')?.textContent,
+  )
+  expect(copy.getAttribute('aria-describedby')).not.toBe(original.getAttribute('aria-describedby'))
+
+  copy.click()
+  expect(readStarred).toHaveBeenLastCalledWith(entry)
+  expect(m.selected).toEqual([])
+
+  const remove = starred.querySelector<HTMLButtonElement>('[data-cy="conversation-star"]')!
+  expect(remove.getAttribute('aria-pressed')).toBe('true')
+  remove.click()
+  await expect.poll(() => m.all('rail-section-starred').length).toBe(0)
+  expect(setStarredConversation).toHaveBeenLastCalledWith({
+    target: { recordId: listed.sessionId },
+    starred: false,
+  })
+  expect(readStarred).toHaveBeenCalledTimes(1)
 })
 
 it('opens a recent conversation before its state arrives and then shows the full list', async () => {

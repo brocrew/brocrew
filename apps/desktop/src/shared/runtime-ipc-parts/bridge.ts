@@ -87,7 +87,9 @@ import type {
   ImportedBundle,
   ImportedFromHome,
   ImportedRecording,
+  LibraryEntry,
   LibraryPage,
+  SetStarredConversation,
   LibraryQuery,
   RebuiltLedger,
 } from './library'
@@ -472,6 +474,8 @@ export interface RuntimeBridge {
   processMemory(): Promise<ProcessMemory>
   /** The library (047): our sessions and the user's own provider homes, merged and searchable. */
   listLibrary(input: LibraryQuery): Promise<LibraryPage>
+  listStarredConversations(): Promise<readonly LibraryEntry[]>
+  setStarredConversation(input: SetStarredConversation): Promise<void>
   /**
    * Fill in one RECORDED conversation's prior messages from the home this app provisioned (119).
    *

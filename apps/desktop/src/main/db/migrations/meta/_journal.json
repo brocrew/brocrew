@@ -239,6 +239,13 @@
       "when": 1795480348532,
       "tag": "0033_ask_bundle_source_aliases",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1795658016955,
+      "tag": "0034_starred_conversations",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,7 @@ import type { MethodDeleteSelection } from '../saved-method-library'
 import type { SkillsRequest } from '../skills-window'
 import type { ForestScope } from '../the-whole-forest'
 import type { NewAgent } from './identity'
-import type { ExportKind, LibraryQuery } from './library'
+import type { ExportKind, LibraryQuery, SetStarredConversation } from './library'
 import type { CheckProviderAuthInput, ProviderProfileInput } from './providers'
 import type {
   ChildWorkInput,
@@ -377,6 +377,8 @@ export type RuntimeCommand =
    */
   | { kind: 'processMemory' }
   | ({ kind: 'listLibrary' } & LibraryQuery)
+  | { kind: 'listStarredConversations' }
+  | ({ kind: 'setStarredConversation' } & SetStarredConversation)
   | ({ kind: 'importRecordedSession' } & SessionInput)
   | { kind: 'importUserHomeSession'; provider: Provider; providerSessionId: string }
   | { kind: 'rebuildLedger'; sessionId: string }

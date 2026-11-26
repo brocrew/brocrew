@@ -760,6 +760,10 @@ export const archivedConversation = sqliteTable('archived_conversation', {
   archivedAt: integer('archived_at').notNull(),
 })
 
+export const starredConversation = sqliteTable('starred_conversation', {
+  libraryId: text('library_id').primaryKey(),
+})
+
 export const signInChange = sqliteTable('sign_in_change', {
   provider: text('provider').primaryKey(),
   changedAt: integer('changed_at').notNull(),

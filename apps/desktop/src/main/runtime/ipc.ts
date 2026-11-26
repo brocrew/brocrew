@@ -17,6 +17,7 @@ import { sinkOwnerId } from './window-caller'
 import { isAPageReport, type PageReceipt } from './page-performance'
 import { describeIssues } from './ipc-input'
 import { runtimeCommandSchema } from './ipc-schemas'
+import { libraryQueryFromCommand } from './ipc-conversation-commands'
 import { DURING_A_QUIT, refusedDuringAQuit, requireAPerson } from './ipc-doors'
 
 export { runtimeCommandSchema } from './ipc-schemas'
@@ -553,7 +554,6 @@ export async function executeRuntimeCommand(
     case 'forestNodes':
       return executeForestCommand(host, command)
     case 'processMemory':
-      // Reads process memory without an owner or sink.
       return host.processMemory() satisfies Answer<'processMemory'>
     case 'claim':
       // ⛔ **Synchronous, and here that is a requirement rather than an economy** (336): the owner
@@ -572,13 +572,13 @@ export async function executeRuntimeCommand(
       // conversation by naming somebody else's id.
       return host.releaseSession(command.sessionId, sink) satisfies Answer<'release'>
     case 'listLibrary':
-      return (await host.listLibrary({
-        query: command.query,
-        recordId: command.recordId,
-        filters: command.filters,
-        limit: command.limit,
-        offset: command.offset,
-      })) satisfies Answer<'listLibrary'>
+      return (await host.listLibrary(
+        libraryQueryFromCommand(command),
+      )) satisfies Answer<'listLibrary'>
+    case 'listStarredConversations':
+      return (await host.listStarredConversations()) satisfies Answer<'listStarredConversations'>
+    case 'setStarredConversation':
+      return host.setStarredConversation(command) satisfies Answer<'setStarredConversation'>
     case 'importRecordedSession':
       return (await host.importRecordedSession(
         command.sessionId,

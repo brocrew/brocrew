@@ -189,6 +189,7 @@ import { useRuntimeNavigation } from '../composables/useRuntimeNavigation'
 import { useRuntimeAttention } from '../composables/useRuntimeAttention'
 import { useRuntimeScreenReadings } from '../composables/useRuntimeScreenReadings'
 import { useRuntimeQueueActions } from '../composables/useRuntimeQueueActions'
+import { provideConversationStars } from '../composables/useConversationStars'
 
 /**
  * The app frame: a titlebar, the rail, and one surface.
@@ -203,6 +204,9 @@ import { useRuntimeQueueActions } from '../composables/useRuntimeQueueActions'
  * around it is true.
  */
 const client = useClientApi()
+const { refresh: refreshConversationStars } = provideConversationStars(client.sessions, () =>
+  say('Could not update star.'),
+)
 /**
  * The screen's runtime reads and intents, as the selected client gives them. A client supplied for
  * the providers alone has none of these, and the window's own adapter answers them, as before.
@@ -277,6 +281,13 @@ const railFold = useRailFold()
  * conversations moved, as the rail does.
  */
 const library = ref<InstanceType<typeof SessionLibrary> | null>(null)
+const libraryReveal = ref<{ entryId: string; visit: number } | null>(null)
+let libraryVisit = 0
+function revealLibraryEntry(entryId: string): void {
+  libraryReveal.value = { entryId, visit: ++libraryVisit }
+  place.value = 'sessions'
+}
+
 /** A recorded row from All conversations can anchor the palette after every row is archived. */
 const librarySearchCaller = ref<string | null>(null)
 /**
@@ -1451,6 +1462,7 @@ const readings = useRuntimeScreenReadings({
   persons,
   agentStore,
   refreshAgents,
+  refreshConversationStars,
   authChangedFor,
   archivedHere,
   goToTheWork: (sessionId) => goToTheWork(sessionId),
@@ -1660,9 +1672,12 @@ onUnmounted(() => {
           :search-conversations="searchConversations"
           :library-search-caller="librarySearchCaller"
           @read-conversation="openFoundConversation"
+          @read-starred="readFromTheLibrary"
+          @reveal-library-entry="revealLibraryEntry"
           @go="
             (destination) => {
               linkedIdentity = null
+              libraryReveal = null
               if (destination === 'tools' || destination === 'providers') openSettings(destination)
               else if (destination === 'settings') openSettings(settingsTab)
               else place = destination
@@ -1678,6 +1693,7 @@ onUnmounted(() => {
             :key="linkedHistory.sessionId"
             :history="linkedHistory.history"
             :title="linkedHistory.title"
+            :session-id="linkedHistory.sessionId"
             :load-older="olderLinkedHistory"
           />
           <!-- 🔴 **606 · `EXT-008` §3's first destination** — *Waiting on you*: what a person OWES,
@@ -1715,6 +1731,8 @@ onUnmounted(() => {
           <SessionLibrary
             v-else-if="surface === 'sessions'"
             ref="library"
+            :key="libraryReveal?.visit"
+            :reveal-entry-id="libraryReveal?.entryId"
             :identities="agentStore.identities.value?.identities ?? null"
             @read="readFromTheLibrary"
             @delete="(sessionId) => overlays.open({ kind: 'deleteConversation', sessionId })"

@@ -169,6 +169,12 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   // is RUNNING, by the pid of the process it started.
   processMemory: { kind: 'processMemory' },
   listLibrary: { kind: 'listLibrary' },
+  listStarredConversations: { kind: 'listStarredConversations' },
+  setStarredConversation: {
+    kind: 'setStarredConversation',
+    target: { recordId: SESSION },
+    starred: true,
+  },
   importRecordedSession: { kind: 'importRecordedSession', sessionId: SESSION },
   importUserHomeSession: {
     kind: 'importUserHomeSession',

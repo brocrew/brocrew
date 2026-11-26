@@ -58,11 +58,11 @@ const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
  * A migration added after it owes this count, and the sentence it sits in, a decision:
  * `a-new-durable-write-under-userdata-owes-clean-base-a-decision`. Migrations that create a table
  * empty (`0001_the_model_list`: hand-added models and the last pick; `0003_the_api_keys`: saved,
- * sealed API keys) make the sentence name what is gone. The rest only drop columns or rows or add
+ * sealed API keys; `0034_starred_conversations`: saved stars) make the sentence name what is gone. The rest only drop columns or rows or add
  * indexes, or add a nullable column to a table the sentence already names (`0002`, `0004` to `0009`,
  * `0011`, `0033`), so the sentence names nothing more.
  */
-const MIGRATIONS = 34
+const MIGRATIONS = 35
 
 const FLAGS = new Set([
   '--dry-run',
@@ -255,7 +255,7 @@ function nextLaunch({
     // (`external_mcp_server.reach`), but a clean base holds no rows, so that reaches nothing here.
     // The model list a person keeps and the API keys they saved live in that database too.
     `no approval default set, no external MCP servers and no grants, no hand-added models, no last ` +
-    `model picked, no API keys, no conversations` +
+    `model picked, no API keys, no conversations, no starred conversations` +
     `, no personal skills or skill choices, no history of standing rules or saved methods`
   // Selected by what is there, never by what was asked for: the run that kept nothing and the run
   // that kept something do not share a sentence, even with the flag passed.

@@ -1032,10 +1032,16 @@ describe('558 · every identity he has', () => {
      * a subject nothing reads). ⚑ The vocabulary is asserted by VALUE here as well as by the
      * announcements below, so a third member would go red in this file too.
      */
-    it('⚑ a rename and a removal both announce `agents`, and the vocabulary is still two words', async () => {
+    it('a rename and a removal both announce only agents', async () => {
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual([
+        'conversations',
+        'agents',
+        'work',
+        'persons',
+        'starred-conversations',
+      ])
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
       said.length = 0
       await host.setAgentDisplayName('worker', 'Worker')

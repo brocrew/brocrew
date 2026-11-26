@@ -67,6 +67,7 @@ import type {
   ImportedBundle,
   ImportedFromHome,
   ImportedRecording,
+  LibraryEntry,
   LibraryPage,
   RebuiltLedger,
 } from './library'
@@ -310,6 +311,8 @@ export interface RuntimeCommandResults {
   processMemory: ProcessMemory
   /** One page of the library: our sessions and the user's own, merged (047). */
   listLibrary: LibraryPage
+  listStarredConversations: readonly LibraryEntry[]
+  setStarredConversation: void
   /** What filling in one recorded conversation's prior messages did (119) — every ending named. */
   importRecordedSession: ImportedRecording
   /** What importing one conversation out of a provider home did — every ending named. */

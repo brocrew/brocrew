@@ -3,10 +3,12 @@ import { computed } from 'vue'
 import { foldWindow, type WindowState } from '../lib/transcript-window'
 import { markReadOnly } from '../lib/transcript'
 import TranscriptView from './TranscriptView.vue'
+import ConversationStarButton from './ConversationStarButton.vue'
 
 const props = defineProps<{
   history: WindowState
   title: string
+  sessionId?: string
   loadOlder: () => Promise<void>
 }>()
 const transcript = computed(() => {
@@ -25,6 +27,7 @@ const transcript = computed(() => {
   >
     <header class="linked-history-head">
       <h2>{{ title }}</h2>
+      <ConversationStarButton v-if="sessionId" :target="sessionId" />
       <p>Read-only.</p>
     </header>
     <p v-if="transcript.items.length === 0">This conversation has nothing to show.</p>

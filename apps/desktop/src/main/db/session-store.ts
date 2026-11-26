@@ -12,6 +12,7 @@ export {
 } from '../database/sqlite/ledger/thread-lead-reader'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
 import { createOwnNotesStore } from '../database/sqlite/agents/own-notes-store'
+import { sqliteStarredConversations } from '../database/sqlite/starred-conversations'
 import { createMemoryRecoveryStore } from './memory-recovery'
 export { createMemoryAmendmentObserver } from './memory-recovery'
 import { createMethodChangeStore } from './method-changes'
@@ -207,6 +208,7 @@ export function createSessionStore(
   }
   return {
     ...ownNotesStore,
+    ...sqliteStarredConversations(connection),
     ...turnReads.methods,
     ...workStatements.methods,
     ...ledgerEvents.methods,

@@ -36,6 +36,8 @@ export type ClientSessionApi = Pick<
   | 'limitsForAPerson'
   | 'listConversations'
   | 'listLibrary'
+  | 'listStarredConversations'
+  | 'setStarredConversation'
   | 'listResumable'
   | 'listUnresumable'
   | 'look'

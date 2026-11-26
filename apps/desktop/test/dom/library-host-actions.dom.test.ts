@@ -87,6 +87,38 @@ afterEach(() => {
 })
 
 describe('library imports and rebuilds through the host', () => {
+  it('focuses a revealed older recording whose provider file is gone', async () => {
+    const row = entry({
+      recordId: 'older-recording',
+      onDisk: false,
+      updatedAt: Date.now() - 10 * 86_400_000,
+      unresumableReason: 'The provider file is gone.',
+    })
+    const runtime = host(row)
+    const view = mount(SessionLibrary, { revealEntryId: row.id })
+    await expect
+      .poll(() => document.activeElement?.getAttribute('data-cy'))
+      .toBe(`library-row-${row.id}`)
+    expect(view.all(`library-import-${row.id}`)).toHaveLength(0)
+    expect(runtime.importUserHomeSession).not.toHaveBeenCalled()
+  })
+
+  it('focuses the existing Import button for a revealed provider-only conversation', async () => {
+    const row = entry()
+    const runtime = host(row)
+    const view = mount(SessionLibrary, { revealEntryId: row.id })
+    await expect
+      .poll(() => document.activeElement?.getAttribute('data-cy'))
+      .toBe(`library-import-${row.id}`)
+    expect(runtime.listLibrary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revealEntryId: row.id,
+      }),
+    )
+    expect(runtime.importUserHomeSession).not.toHaveBeenCalled()
+    expect(view.all(`library-row-${row.id}`)).toHaveLength(1)
+  })
+
   it('keeps import busy until the refreshed row can be opened, and preserves its result', async () => {
     const runtime = host(entry())
     const importing = deferred<ImportedFromHome>()

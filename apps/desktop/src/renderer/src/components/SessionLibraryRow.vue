@@ -56,8 +56,10 @@ import { childLabel } from '../lib/child-descent'
 import { calendarDay } from '../lib/clock'
 import { describeDerived } from '../lib/derived-state'
 import { endingLabel } from '../lib/ending'
-import { basenameOf } from '../lib/paths'
-import type { ConversationRowView } from '../lib/conversation-row'
+import {
+  libraryConversationTitle as label,
+  type ConversationRowView,
+} from '../lib/conversation-row'
 import ConversationRow from './ConversationRow.vue'
 
 const props = defineProps<{
@@ -179,11 +181,6 @@ function rowClick(entry: LibraryEntry, event: MouseEvent): void {
   emit('read', entry)
 }
 
-/** What a row is called: the provider's own title, else its directory. Never a composed summary. */
-function label(entry: LibraryEntry): string {
-  return entry.title || basenameOf(entry.cwd) || entry.cwd
-}
-
 /** What the row draws, in the shared row's terms: no plate, as a library entry has no live state. */
 function rowView(entry: LibraryEntry): ConversationRowView {
   const origin = originChipOf(entry, props.providerLabel)
@@ -257,10 +254,15 @@ function size(bytes: number | null): string {
     :data-recorded-status="recording?.status"
     :data-adopted="adoptedFromAgent ? '' : undefined"
     :data-cy="`library-row-${entry.id}`"
+    tabindex="-1"
     @click="rowClick(entry, $event)"
   >
     <div class="row-body">
-      <ConversationRow :row="rowView(entry)" :cy="{ provider: `library-provider-${entry.id}` }">
+      <ConversationRow
+        :row="rowView(entry)"
+        :star-target="entry"
+        :cy="{ provider: `library-provider-${entry.id}` }"
+      >
         <template #aside>
           <span class="r-when">{{ updatedAgo }}</span>
         </template>

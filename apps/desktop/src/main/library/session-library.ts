@@ -75,18 +75,59 @@ export async function readLibrary(
   deps: LibraryDeps,
   query: LibraryQuery = {},
 ): Promise<LibraryPage> {
+  const { entries, skipped } = await resolveLibrary(deps)
+  const counts = tally(entries)
+  const matched = entries.filter(
+    (entry) =>
+      (query.recordId === undefined || entry.recordId === query.recordId) &&
+      matches(entry, query.query) &&
+      passesFilters(entry, query.filters),
+  )
+  const offset = Math.max(0, query.offset ?? 0)
+  const limit = Math.max(0, query.limit ?? DEFAULT_LIBRARY_LIMIT)
+  if (query.revealEntryId !== undefined) {
+    const index = matched.findIndex((entry) => entry.id === query.revealEntryId)
+    if (index > 0) matched.unshift(...matched.splice(index, 1))
+  }
+  return {
+    entries: matched.slice(offset, offset + limit),
+    matched: matched.length,
+    counts,
+    skipped: skipped.slice(0, MAX_SKIPPED_REPORTED),
+    skippedTotal: skipped.length,
+  }
+}
+
+export async function readStarredLibrary(
+  deps: LibraryDeps,
+  starred: ReadonlySet<string>,
+): Promise<readonly LibraryEntry[]> {
+  if (starred.size === 0) return []
+  return (await resolveLibrary(deps, starred)).entries
+}
+
+async function resolveLibrary(deps: LibraryDeps, starred?: ReadonlySet<string>) {
   const recorded = deps.recorded()
-  const discovery = deps.userHomeSessions()
-  const indexed = await deps.indexedDescriptions()
+  // Starred rows use the recorded projection when available, including its duplicate precedence.
+  const unresolved = starred === undefined ? undefined : new Set(starred)
 
   // Our rows, by the provider id they were recorded under. A row without one cannot be matched to a
   // file — it never got an id to match on — so it is keyed out and listed on its own below.
   const byProviderId = new Map<string, RecordedSession>()
   for (const row of recorded) {
-    if (row.providerSessionId !== null)
-      byProviderId.set(key(row.provider, row.providerSessionId), row)
+    if (unresolved !== undefined) {
+      unresolved.delete(stableId(row))
+      unresolved.delete(row.sessionId)
+    } else if (row.providerSessionId !== null) {
+      byProviderId.set(libraryProviderId(row.provider, row.providerSessionId), row)
+    }
   }
 
+  const discovery = unresolved?.size === 0 ? { found: [], skipped: [] } : deps.userHomeSessions()
+  const indexed =
+    unresolved === undefined || discovery.found.length > 0
+      ? await deps.indexedDescriptions()
+      : new Map<string, ProviderDescription>()
   const entries: LibraryEntry[] = []
   const claimed = new Set<string>()
   /**
@@ -99,8 +140,8 @@ export async function readLibrary(
 
   // Every conversation still in a user home, whether or not we hold it.
   for (const found of discovery.found) {
-    const id = key(found.provider, found.sessionId)
-    if (emitted.has(id)) continue
+    const id = libraryProviderId(found.provider, found.sessionId)
+    if (emitted.has(id) || (unresolved !== undefined && !unresolved.has(id))) continue
     emitted.add(id)
     const row = byProviderId.get(id) ?? null
     if (row) claimed.add(id)
@@ -158,7 +199,10 @@ export async function readLibrary(
   // apart by the row itself: sessions this app ran, and sessions the sweep rescued whose provider
   // file has since been deleted underneath it.
   for (const row of recorded) {
-    if (row.providerSessionId !== null && claimed.has(key(row.provider, row.providerSessionId))) {
+    if (
+      row.providerSessionId !== null &&
+      claimed.has(libraryProviderId(row.provider, row.providerSessionId))
+    ) {
       continue
     }
     const id = stableId(row)
@@ -166,7 +210,9 @@ export async function readLibrary(
     // whose file has since been deleted are in neither set, and would both arrive here.
     if (emitted.has(id)) continue
     emitted.add(id)
-    entries.push(recordedEntry(row))
+    if (starred === undefined || isRecordedStarred(starred, row)) {
+      entries.push(recordedEntry(row))
+    }
   }
 
   // Marked before the filters, so asking for the archived ones reaches past the page.
@@ -177,35 +223,7 @@ export async function readLibrary(
 
   entries.sort((a, b) => b.updatedAt - a.updatedAt)
 
-  const counts = tally(entries)
-  // ⚠️ **ANDed, and applied AFTER `tally`** — like the substring filter beside it, and for the same
-  // reason its comment gives: the counts are a statement about the whole library, and a count that
-  // moved with the query would be a lie. Naming a row we do not hold matches nothing, which is the
-  // correct answer rather than an error: the caller learns there is no library row to open.
-  //
-  // ⛔ **And BEFORE the slice, which is the whole of 121.** The facets narrow the same way the
-  // query does — over every entry the merge produced — so `matched` below is `|query ∧ filters|`
-  // over the whole library. A renderer filtering the page in hand would be searching the first 200
-  // of two thousand; here the only thing the page ever holds is the answer's first 200 rows.
-  const matched = entries.filter(
-    (entry) =>
-      (query.recordId === undefined || entry.recordId === query.recordId) &&
-      matches(entry, query.query) &&
-      passesFilters(entry, query.filters),
-  )
-  const offset = Math.max(0, query.offset ?? 0)
-  const limit = Math.max(0, query.limit ?? DEFAULT_LIBRARY_LIMIT)
-
-  return {
-    entries: matched.slice(offset, offset + limit),
-    matched: matched.length,
-    counts,
-    // Bounded for the same reason the entries are. A home whose files have all become unreadable —
-    // a bad permission change after a migration — produces one of these per file, and returning
-    // them all would put the whole list on the wire in the response to a request for ten rows.
-    skipped: discovery.skipped.slice(0, MAX_SKIPPED_REPORTED),
-    skippedTotal: discovery.skipped.length,
-  }
+  return { entries, skipped: discovery.skipped }
 }
 
 /**
@@ -312,7 +330,11 @@ export function libraryChild(child: ChildDescent | undefined): LibraryChild | nu
   }
 }
 
-function key(provider: Provider, sessionId: string): string {
+export function isRecordedStarred(starred: ReadonlySet<string>, row: RecordedSession): boolean {
+  return starred.has(stableId(row)) || starred.has(row.sessionId)
+}
+
+export function libraryProviderId(provider: Provider, sessionId: string): string {
   return `${provider}:${sessionId}`
 }
 
@@ -329,7 +351,9 @@ function key(provider: Provider, sessionId: string): string {
  * nothing can later give it one without it becoming a different conversation.
  */
 function stableId(row: RecordedSession): string {
-  return row.providerSessionId === null ? row.sessionId : key(row.provider, row.providerSessionId)
+  return row.providerSessionId === null
+    ? row.sessionId
+    : libraryProviderId(row.provider, row.providerSessionId)
 }
 
 /**

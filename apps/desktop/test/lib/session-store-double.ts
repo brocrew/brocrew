@@ -650,6 +650,8 @@ function fakeBridge() {
       skipped: [],
       skippedTotal: 0,
     }),
+    listStarredConversations: async () => [],
+    setStarredConversation: async () => {},
     importRecordedSession: async ({ sessionId }) => {
       calls.push(`importRecorded:${sessionId}`)
       return { outcome: 'imported', readable: true, note: 'Imported.' }

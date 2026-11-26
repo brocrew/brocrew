@@ -6,6 +6,8 @@ import { agoWords, fullTime } from '../lib/clock'
 import { useProviderLabel } from '../composables/useProviderLabel'
 import AgentState from './AgentState.vue'
 import ProviderLabel from './ProviderLabel.vue'
+import ConversationStarButton from './ConversationStarButton.vue'
+import type { StarTarget } from '../composables/useConversationStars'
 
 /**
  * One conversation, drawn the one way the window draws it: its plate, its title, then what it is
@@ -28,6 +30,7 @@ const props = withDefaults(
     cy?: ConversationRowCy
     /** Seconds the agent has been silent, from the owner's own counter, for the plate. */
     silentSeconds?: number
+    starTarget?: StarTarget
   }>(),
   {
     form: 'full',
@@ -262,6 +265,7 @@ const tailParts = computed(() =>
       </template>
     </div>
     <slot name="aside" />
+    <ConversationStarButton v-if="starTarget !== undefined" :target="starTarget" />
   </div>
 </template>
 

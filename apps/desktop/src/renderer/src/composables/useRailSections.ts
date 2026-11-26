@@ -7,8 +7,19 @@ import type { AppInfo } from '@brobot2/shared'
 import { usePersistentToggle } from './usePersistentToggle'
 import type { RailRow } from './useRailRows'
 
-const sectionNames = { brobot: 'BroBot', 'needs-you': 'Needs you', recent: 'Recent' } as const
+const sectionNames = {
+  starred: 'Starred',
+  brobot: 'BroBot',
+  'needs-you': 'Needs you',
+  recent: 'Recent',
+} as const
 export type RailSectionKey = keyof typeof sectionNames
+export type RailSectionRow = Omit<RailRow, 'facets' | 'standing' | 'initialIdentity'> & {
+  readonly facets: RailRow['facets'] | null
+  readonly standing?: RailRow['standing']
+  /** A provider-only row has no recorded identity to look up. */
+  readonly initialIdentity?: RailRow['initialIdentity'] | null
+}
 
 /** What the rail's sections read. */
 export interface RailSectionsProps {
@@ -17,8 +28,7 @@ export interface RailSectionsProps {
 }
 
 /**
- * The rail's three sections — BroBot, Needs you and Recent — which rows each holds, whether it is
- * open, its count and how much of Recent is shown (S06, moved out of `SideRail.vue` unchanged).
+ * Which rows each rail section holds, whether it is open, its count and how much of Recent is shown.
  */
 export function useRailSections(
   props: RailSectionsProps,
@@ -26,8 +36,10 @@ export function useRailSections(
   onScreenId: ComputedRef<string | null>,
   coverageComplete: Readonly<Ref<boolean>>,
   initialRecent: Readonly<Ref<readonly unknown[]>>,
+  starredRows: Readonly<Ref<readonly RailSectionRow[]>>,
 ) {
   const sectionOpen = {
+    starred: ref(true),
     brobot: usePersistentToggle(RAIL_SECTION_REMEMBERED.brobot, true),
     'needs-you': usePersistentToggle('brobot2.railNeedsYouOpen', true),
     recent: usePersistentToggle('brobot2.railRecentOpen', true),
@@ -47,8 +59,8 @@ export function useRailSections(
 
   function railSection(
     key: RailSectionKey,
-    eligible: readonly RailRow[],
-    shown: readonly RailRow[],
+    eligible: readonly RailSectionRow[],
+    shown: readonly RailSectionRow[],
   ) {
     const groups = groupWorkers(shown, (row) => row.sessionId)
     const workerHeads = new Map(
@@ -72,6 +84,7 @@ export function useRailSections(
     const recentTotal = key === 'recent' && coverageComplete.value ? eligible.length : null
     return {
       key,
+      rowIdPrefix: key === 'starred' ? 'rail-starred' : 'rail',
       heading:
         key === 'brobot'
           ? railSectionHeading('brobot', props.agents?.identities ?? null)
@@ -99,8 +112,10 @@ export function useRailSections(
   const sections = computed(() => {
     const waiting = waitingRows.value
     const recent = recentRows.value
+    const starred = starredRows.value
     return [
-      ...(brobotRows.value.length
+      ...(starred.length ? [railSection('starred', starred, starred)] : []),
+      ...(brobotRows.value.length || starred.length
         ? [railSection('brobot', brobotRows.value, brobotRows.value)]
         : []),
       ...(waiting.length ? [railSection('needs-you', waiting, waiting)] : []),

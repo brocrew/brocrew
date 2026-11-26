@@ -4,6 +4,7 @@ import {
   type ImportedRecording,
   providerName,
   type ImportedFromHome,
+  type SetStarredConversation,
   type RebuiltLedger,
   type RunningState,
   type RuntimeChangeMessage,
@@ -24,7 +25,16 @@ import {
   COPY_BUSY_WAIT_MS,
   SAY_COPY_PROGRESS_EVERY_MS,
 } from './answer-reads'
-import { type LibraryQuery, type LibraryPage, readLibrary } from '../../library/session-library'
+import {
+  type LibraryQuery,
+  type LibraryPage,
+  type LibraryEntry,
+  type LibraryDeps,
+  isRecordedStarred,
+  libraryProviderId,
+  readLibrary,
+  readStarredLibrary,
+} from '../../library/session-library'
 import {
   importFromHome,
   describeOutcome,
@@ -109,6 +119,7 @@ export class LibraryImport {
     let descentsLearned = 0
     /** ⚑ 727 · rows of ours this pass gave back their ref — see `nameItsLaunch`. */
     let named = 0
+    const changedRecords = new Set<string>()
 
     // A session this host is running right now is not an orphan, even if its row has no ref
     // yet: Claude names a session only on its first turn, so a scan in that window would find
@@ -152,8 +163,10 @@ export class LibraryImport {
             cwd: session.cwd,
             rotation: 0,
           })
-        )
+        ) {
           named++
+          changedRecords.add(known)
+        }
         // Already ours. Carry the provider's newer timestamp over so the list stays in the
         // order the conversations were actually last used.
         //
@@ -163,8 +176,9 @@ export class LibraryImport {
         // that held only for rows recorded after a certain date. This branch is the one place the
         // live home and our row are both in scope. What the store does with the two answers, and
         // in particular what it refuses to erase, is `mergeDescent`.
-        if (this.deps.store.refreshAdopted(known, session.updatedAt, session.child))
-          descentsLearned++
+        const refreshed = this.deps.store.refreshAdopted(known, session.updatedAt, session.child)
+        if (refreshed.descentChanged) descentsLearned++
+        if (refreshed.timestampChanged || refreshed.descentChanged) changedRecords.add(known)
         alreadyKnown++
         continue
       }
@@ -194,6 +208,7 @@ export class LibraryImport {
       // descents it had just written and which the Kind facet was already showing.
       if (session.child) descentsLearned++
       adopted++
+      changedRecords.add(id)
     }
 
     // 🔴 **534 · the scan's own rows, announced before the slow half below.**
@@ -208,6 +223,7 @@ export class LibraryImport {
     // ⚑ **727 · …and a row this pass NAMED is written too**: it moves from the half a reopen cannot
     // reach to the half it can, and a rail that did not press the scan would keep saying otherwise.
     if (adopted > 0 || named > 0) this.host.theWorldMoved('conversations')
+    if (changedRecords.size > 0) this.announceStarredRecordsChanged(changedRecords)
 
     // Importing runs over EVERY recorded session, not just the ones adopted just now: a session
     // recorded before any of this existed has a provider file too, and this is the pass that
@@ -247,6 +263,7 @@ export class LibraryImport {
     cancelled: () => boolean,
   ): Promise<number> {
     let imported = 0
+    const attemptedRecords: string[] = []
 
     for (const session of this.deps.store.resumable()) {
       // Between sessions as well as between batches: the shutdown is about to close the database.
@@ -259,6 +276,7 @@ export class LibraryImport {
       try {
         const outcome = await this.importOne(session, cancelled)
         if (outcome === 'imported') imported++
+        if (outcome !== 'skipped') attemptedRecords.push(session.sessionId)
         // Said in the same words the Library uses for the same outcome, and the loop ends: the
         // answer to "may I continue" does not change on the next one.
         if (outcome === 'stopped') {
@@ -289,6 +307,7 @@ export class LibraryImport {
       }
     }
 
+    if (attemptedRecords.length > 0) this.announceStarredRecordsChanged(attemptedRecords)
     return imported
   }
 
@@ -421,7 +440,10 @@ export class LibraryImport {
     )
     const present = readable()
     // A derive that ran also records a failure, or clears one, which the listing draws.
-    if (outcome !== 'in-use' && outcome !== 'skipped') this.host.theWorldMoved('conversations')
+    if (outcome !== 'in-use' && outcome !== 'skipped') {
+      this.host.theWorldMoved('conversations')
+      this.announceStarredRecordsChanged([sessionId])
+    }
     return { outcome, readable: present, note: failure ?? recordingNote(outcome, present) }
   }
 
@@ -546,16 +568,66 @@ export class LibraryImport {
    * and the Claude one through the SDK's own read.
    */
   async listLibrary(query: LibraryQuery = {}): Promise<LibraryPage> {
-    return readLibrary(
-      {
-        recorded: () => this.deps.store.recorded(),
-        userHomeSessions: this.deps.userHomeSessions ?? (() => ({ found: [], skipped: [] })),
-        indexedDescriptions: this.deps.indexedDescriptions ?? (() => Promise.resolve(new Map())),
-        // All conversations lists the archived ones too, each with when, so a person can restore it.
-        archivedAt: (recordId) => this.host.archived().archivedAt(recordId),
-      },
-      query,
-    )
+    return readLibrary(this.libraryDeps(), query)
+  }
+
+  listStarredConversations(): Promise<readonly LibraryEntry[]> {
+    return readStarredLibrary(this.libraryDeps(), this.deps.store.starredLibraryIds())
+  }
+
+  setStarredConversation({ target, starred }: SetStarredConversation): void {
+    const store = this.deps.store
+    let id: string
+    let previousId: string | undefined
+    if ('recordId' in target) {
+      const row = store.recordedOne(target.recordId)
+      if (row === null && starred) return
+      if (row?.providerSessionId != null) {
+        id = libraryProviderId(row.provider, row.providerSessionId)
+        previousId = row.sessionId
+      } else {
+        id = target.recordId
+      }
+    } else {
+      id = libraryProviderId(target.provider, target.providerSessionId)
+      const recordId = store.findByProviderRef(target.provider, target.providerSessionId)
+      if (recordId !== null) {
+        const row = store.recordedOne(recordId)
+        if (
+          row?.provider === target.provider &&
+          row.providerSessionId === target.providerSessionId
+        ) {
+          previousId = recordId
+        }
+      }
+    }
+    if (store.setStarredLibraryId(id, starred, previousId === id ? undefined : previousId)) {
+      this.host.theWorldMoved('starred-conversations')
+    }
+  }
+
+  hasStarredRecord(recordIds: Iterable<string>): boolean {
+    const store = this.deps.store
+    const starred = store.starredLibraryIds()
+    if (starred.size === 0) return false
+    for (const id of recordIds) {
+      const row = store.recordedOne(id)
+      if (row !== null && isRecordedStarred(starred, row)) return true
+    }
+    return false
+  }
+
+  announceStarredRecordsChanged(recordIds: Iterable<string>): void {
+    if (this.hasStarredRecord(recordIds)) this.host.theWorldMoved('starred-conversations')
+  }
+
+  private libraryDeps(): LibraryDeps {
+    return {
+      recorded: () => this.deps.store.recorded(),
+      userHomeSessions: this.deps.userHomeSessions ?? (() => ({ found: [], skipped: [] })),
+      indexedDescriptions: this.deps.indexedDescriptions ?? (() => Promise.resolve(new Map())),
+      archivedAt: (recordId) => this.host.archived().archivedAt(recordId),
+    }
   }
 
   /**
@@ -610,7 +682,10 @@ export class LibraryImport {
     // Read back rather than assumed: the row and its ledger are the only proof the import landed,
     // and an outcome word is not one.
     const sessionId = this.deps.store.findByProviderRef(provider, providerSessionId)
-    if (sessionId !== null) this.host.theWorldMoved('conversations')
+    if (sessionId !== null) {
+      this.host.theWorldMoved('conversations')
+      this.announceStarredRecordsChanged([sessionId])
+    }
     return {
       outcome,
       sessionId,
@@ -712,7 +787,10 @@ export class LibraryImport {
     // ({@link aWholeLedgerChanged}); the work a giver's drawer folds from this ledger may be gone.
     if (outcome === 'imported' || outcome === 'superseded') this.host.theWorldMoved('work')
     // The listing draws the new generation, or the failure or retry a derive records.
-    if (outcome !== 'skipped') this.host.theWorldMoved('conversations')
+    if (outcome !== 'skipped') {
+      this.host.theWorldMoved('conversations')
+      this.announceStarredRecordsChanged([sessionId])
+    }
     return { outcome, status: this.host.status(sessionId) }
   }
 

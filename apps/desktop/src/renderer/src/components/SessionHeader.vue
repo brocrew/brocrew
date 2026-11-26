@@ -473,6 +473,7 @@ const panelToggleName = computed(() =>
     <ConversationRow
       form="compact"
       id-prefix="header"
+      :star-target="props.session?.sessionId"
       :row="{
         id: props.session?.sessionId ?? 'new',
         facets: props.plate && !(unstarted && props.starting) ? props.facets : null,

@@ -146,6 +146,7 @@ import {
   type RebuiltLedger,
   type LibraryPage,
   type LibraryQuery,
+  type SetStarredConversation,
   type Provider,
   type ProviderCapabilityMap,
   type ProviderConfigInfo,
@@ -429,6 +430,14 @@ const runtime: RuntimeBridge = Object.freeze({
 
   listLibrary: (input: LibraryQuery): Promise<LibraryPage> =>
     command({ kind: 'listLibrary', ...input }),
+  listStarredConversations: () => command({ kind: 'listStarredConversations' }),
+  setStarredConversation: ({ target: selection, starred }: SetStarredConversation) => {
+    const target =
+      'recordId' in selection
+        ? { recordId: selection.recordId }
+        : { provider: selection.provider, providerSessionId: selection.providerSessionId }
+    return command({ kind: 'setStarredConversation', target, starred })
+  },
   /** Fill in one recorded conversation's prior messages from its own provider file (119). */
   importRecordedSession: (input: SessionInput): Promise<ImportedRecording> =>
     command({ kind: 'importRecordedSession', ...input }),

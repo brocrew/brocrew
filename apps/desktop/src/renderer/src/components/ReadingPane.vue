@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ConversationStarButton from './ConversationStarButton.vue'
 import ProviderLabel from './ProviderLabel.vue'
 import { computed, ref } from 'vue'
 import type {
@@ -298,6 +299,7 @@ const when = computed(() => fullTime(props.entry.updatedAt))
         >
       </div>
       <span class="when">{{ when }}</span>
+      <ConversationStarButton :target="props.entry" />
     </header>
 
     <!-- The claim this whole component exists to make, on its face and not in a tooltip. -->
