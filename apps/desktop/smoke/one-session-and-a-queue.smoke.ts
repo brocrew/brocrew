@@ -12,11 +12,11 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink as Recorder } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **440 · a real model is TOLD NO when it adds to work it did not give — and its own give reaches
@@ -71,19 +71,6 @@ const CLAUDE_CHEAP = 'claude-haiku-4-5-20251001'
 const CLAUDE_CHEAP_LISTED = 'haiku'
 /** ⚑ Cheap on both sides — the standing smoke policy for anything that spends tokens. */
 const CODEX_CHEAP = 'gpt-5.6-luna'
-
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = false,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const say = (line: string): void => {
   console.log(`[440] ${line}`)
@@ -148,7 +135,7 @@ const drive = async (arm: Arm): Promise<void> => {
     }),
   })
 
-  const window = new Recorder('webContents:1')
+  const window = new Recorder('webContents:1', false)
   let watching: ReturnType<typeof setInterval> | undefined
   try {
     // ── 1 · the holder's identity, brought into being with no turn sent ───────────────────────
@@ -168,7 +155,7 @@ const drive = async (arm: Arm): Promise<void> => {
     say(`1 · ${arm.provider}: identity 'worker' exists (${worker0.sessionId}, closed)`)
 
     // ── 2 · the first caller, and the conversation its give starts ────────────────────────────
-    const parentSink = new Recorder('webContents:2')
+    const parentSink = new Recorder('webContents:2', false)
     const parent = await host.createSession(
       {
         provider: arm.provider,
@@ -227,7 +214,7 @@ const drive = async (arm: Arm): Promise<void> => {
     // ⚑ **`431`'s door and not a relationship.** It never started the holder and does not command
     // it; every agent may message anyone by default. ⛔ **That is criterion 27's shape** — an agent
     // with no other route reaching the identity that holds the thing.
-    const secondSink = new Recorder('webContents:4')
+    const secondSink = new Recorder('webContents:4', false)
     const second = await host.createSession(
       {
         provider: arm.provider,

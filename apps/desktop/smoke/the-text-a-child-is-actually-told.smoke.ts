@@ -13,7 +13,7 @@ import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
@@ -24,9 +24,9 @@ import {
 } from '../src/main/runtime/factory-text'
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { brobotWorkspace, workspaceOwnFilesIn } from '../src/main/runtime/workspace'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
+import { RecordingSink } from '../test/lib/host-fixture'
 
 /**
  * 🔴 **377 · a real child, on BOTH providers, quoting a marker only its rendered bundle contains —
@@ -74,16 +74,8 @@ const CHEAP: Readonly<Record<Provider, string>> = {
 /** ⛔ Per-process and per-arm, so a match can never be an echo of another run's evidence. */
 const marker = (what: string): string => `BROBOT_377_${what}_${process.pid}`
 
-class Recorder implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  /** Not a person: an automated probe may command a session and may never answer a permission. */
-  readonly aPersonIsBehindIt = false
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
+class Recorder extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
   replies(): string {
     return this.messages
       .map((one) => one.event)
