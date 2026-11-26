@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink as Seat } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +13,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -26,7 +26,6 @@ import {
   type LaunchRefusal,
   type RuntimeBridge,
   type RuntimeCommand,
-  type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { everythingOverTheWire } from './lib/the-wire'
@@ -313,18 +312,6 @@ describe('§1 · `716` F-1 — the store asks main why, and keeps the word besid
 })
 
 /* ================================================================ §3 · the real wire */
-
-/** ⚑ A window a person is behind. */
-class Seat implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('§3 · the renderer’s store over main’s own dispatcher — the word main’s classifier chose', () => {
   let userData: string

@@ -18,11 +18,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { aChoiceIsInForce, whatAModelChoiceReaches } from '../src/shared/model-choice'
 import {
   createAgentStore,
@@ -41,7 +41,7 @@ import { providerTakesEffectNextTime } from '../src/renderer/src/lib/front-door-
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { everythingOverTheWire } from './lib/the-wire'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink as Window } from './lib/host-fixture'
 
 /**
  * # 🔴 696 · the model control reads R31 — `688` §1b, `688` L1's neighbour F-b, over the real doors
@@ -114,17 +114,6 @@ const CODEX_ROWS: ModelChoice[] = [
 
 // ⚑ **D-042 · `textsOf` and `draw` went with §6's drawing** — the SSR of `682`'s set-aside notice,
 // a row no conversation carries any more.
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  readonly messages: RuntimeEventMessage[] = []
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /* ═══════════════════════ §1–§5 · the control, over the real doors ═══════════════════════ */
 

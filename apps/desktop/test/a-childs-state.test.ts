@@ -3,6 +3,7 @@ import {
   syntheticProviderHome,
   neutralHostDeps,
   closeHostFixture,
+  RecordingSink as Window,
 } from './lib/host-fixture'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,11 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
@@ -26,7 +23,6 @@ import {
   workingTogetherView,
   type CastCard,
 } from '../src/renderer/src/lib/working-together'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 
 /**
@@ -62,17 +58,6 @@ import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('632 · a child avatar shows what the child is doing', () => {
   let userData: string
