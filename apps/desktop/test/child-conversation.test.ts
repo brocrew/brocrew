@@ -10,8 +10,9 @@ import {
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE, type ResumableSession } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { SessionStore } from '../src/main/db/session-store'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * # A child you can talk to (296) — the main process's half
@@ -31,12 +32,8 @@ const SESSION = 'sess_296'
 const CHILD = '01a05f65-acd4-7973-a576-10bf559433b9'
 
 /** The window that owns the conversation, and one that does not (203/062). */
-class Sink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
+class Sink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 const rowFor = (provider: Provider): ResumableSession =>

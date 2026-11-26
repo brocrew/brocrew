@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import {
   chmodSync,
   mkdirSync,
@@ -26,7 +26,7 @@ import {
   type MessagePathPlace,
 } from '../src/main/message-paths'
 import { readProviderConfig } from '../src/main/runtime/provider-config'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { ClosableHistoryReader } from '../src/main/recovery/history-reader'
 import { createRecoveryCalls } from '../src/main/recovery/window-calls'
 import {
@@ -351,12 +351,8 @@ describe('through the host: a relative path is read from that conversation’s o
   const shown: string[] = []
   const opened: string[] = []
 
-  class NullSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = false
-    readonly ownerId = 'owner:1'
-    readonly alive = true
-    send(): void {}
-    sendLiveness(): void {}
+  class NullSink extends RecordingSink {
+    override readonly aPersonIsBehindIt = false
   }
 
   beforeEach(() => {

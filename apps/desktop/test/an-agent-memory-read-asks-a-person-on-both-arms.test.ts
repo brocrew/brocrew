@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { RuntimeEventSink, RuntimeHost } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink } from './lib/host-fixture'
 
 // Each arm of the memory read has its own person check, so both are asked.
-class Sink implements RuntimeEventSink {
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  constructor(readonly aPersonIsBehindIt: boolean) {}
-  send(): void {}
-  sendLiveness(): void {}
+class Sink extends RecordingSink {
+  constructor(aPersonIsBehindIt: boolean) {
+    super('owner:1', aPersonIsBehindIt)
+  }
 }
 
 /** A host that only records which read it was asked for — nothing else is reachable here. */

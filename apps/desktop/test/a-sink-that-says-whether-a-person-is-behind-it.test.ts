@@ -20,11 +20,9 @@ import {
   THE_APP_ITSELF,
   mayAnswerAsAHuman,
   type CallerIdentity,
-  type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -85,19 +83,9 @@ class CapturingRuntime extends FakeRuntime {
  * subject of this file is a pair of sinks that differ in one field, so a default would let the
  * question be answered by whichever value it happened to be.
  */
-class Surface implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt: boolean,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
+class Surface extends RecordingSink {
+  constructor(ownerId: string, aPersonIsBehindIt: boolean) {
+    super(ownerId, aPersonIsBehindIt)
   }
 }
 

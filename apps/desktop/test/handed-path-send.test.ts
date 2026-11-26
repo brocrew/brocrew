@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { execFileSync } from 'node:child_process'
@@ -51,13 +51,9 @@ const migrations = join(here, '../src/main/db/migrations')
 const fromThePerson = (words: string): string =>
   messageNamingItsSender(words, THE_PERSON_AT_A_WINDOW)
 
-class NullSink implements RuntimeEventSink {
+class NullSink extends RecordingSink {
   // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = sinkOwnerId({ id: 1 })
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+  override readonly ownerId = sinkOwnerId({ id: 1 })
 }
 
 /**
@@ -69,18 +65,11 @@ class NullSink implements RuntimeEventSink {
  * surface that would render the one never-sent message twice. A test reading only the store cannot
  * see the defect it is about.
  */
-class Recorder implements RuntimeEventSink {
+class Recorder extends RecordingSink {
   // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = sinkOwnerId({ id: 1 })
-  readonly alive = true
-  readonly seen: TranscriptEvent[] = []
-  send(event: { event: TranscriptEvent }): void {
-    this.seen.push(event.event)
-  }
-  sendLiveness(): void {}
+  override readonly ownerId = sinkOwnerId({ id: 1 })
   of<T extends TranscriptEvent['type']>(type: T): Extract<TranscriptEvent, { type: T }>[] {
-    return this.seen.filter(
+    return this.events().filter(
       (event): event is Extract<TranscriptEvent, { type: T }> => event.type === type,
     )
   }
@@ -563,7 +552,7 @@ describe('handing the agent a path, through the host (216)', () => {
     // had even begun, and the test would be about nothing at all.
     await host.respondPermission(sessionId, 'turn_1_perm', { outcome: 'allow' }, new NullSink())
     for (let i = 0; i < 200; i++) {
-      if (watching.seen.some((each) => each.type === 'status' && each.state === 'idle')) break
+      if (watching.events().some((each) => each.type === 'status' && each.state === 'idle')) break
       await new Promise((done) => setTimeout(done, 5))
     }
     await host.close(sessionId, new NullSink())
